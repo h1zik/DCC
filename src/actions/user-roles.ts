@@ -43,4 +43,5 @@ export async function updateUserRoleByCeo(input: z.infer<typeof updateSchema>) {
   });
 
   revalidatePath("/admin/access");
+  revalidatePath("/admin/users");
 }

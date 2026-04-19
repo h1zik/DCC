@@ -59,7 +59,7 @@ export function AdminAddUserClient() {
       setPassword("");
       setConfirm("");
       router.refresh();
-      router.push("/admin/access");
+      router.push("/admin/users");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal membuat pengguna.");
     } finally {
@@ -148,10 +148,10 @@ export function AdminAddUserClient() {
           {pending ? "Menyimpan…" : "Buat pengguna"}
         </Button>
         <Link
-          href="/admin/access"
+          href="/admin/users"
           className={cn(buttonVariants({ variant: "outline" }))}
         >
-          Batal — kembali ke hak akses
+          Batal — kembali ke daftar pengguna
         </Link>
       </div>
     </form>

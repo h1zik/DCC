@@ -32,10 +32,10 @@ export default async function AdminAddUserPage() {
             Email harus unik di sistem. Setelah dibuat, atur ulang peran jika
             perlu di menu{" "}
             <Link
-              href="/admin/access"
+              href="/admin/users"
               className="text-accent-foreground font-medium underline-offset-2 hover:underline"
             >
-              Hak akses
+              Daftar pengguna
             </Link>
             .
           </CardDescription>
@@ -45,10 +45,10 @@ export default async function AdminAddUserPage() {
         </CardContent>
       </Card>
       <Link
-        href="/admin/access"
+        href="/admin/users"
         className={cn(buttonVariants({ variant: "ghost" }), "w-fit text-sm")}
       >
-        ← Daftar pengguna & peran
+        ← Kembali ke pengguna
       </Link>
     </div>
   );

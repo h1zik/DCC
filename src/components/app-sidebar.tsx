@@ -17,7 +17,7 @@ import {
   Tags,
   UserCircle,
   UserCog,
-  UserPlus,
+  Users,
 } from "lucide-react";
 import { isStudioOrProjectManager } from "@/lib/roles";
 import {
@@ -41,8 +41,8 @@ const navCeo = [
   { href: "/projects", label: "Pipeline proyek", icon: GitBranch },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
   { href: "/approvals", label: "Persetujuan CEO", icon: ShieldCheck },
+  { href: "/admin/users", label: "Pengguna", icon: Users },
   { href: "/admin/access", label: "Hak akses", icon: UserCog },
-  { href: "/admin/users/new", label: "Tambah pengguna", icon: UserPlus },
 ] as const;
 
 const navAdministrator = [

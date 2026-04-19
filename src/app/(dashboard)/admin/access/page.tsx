@@ -27,12 +27,20 @@ export default async function AdminAccessPage() {
             Peran lain juga dapat disesuaikan di sini.
           </p>
         </div>
-        <Link
-          href="/admin/users/new"
-          className={cn(buttonVariants({ size: "sm" }), "shrink-0")}
-        >
-          Tambah pengguna
-        </Link>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Link
+            href="/admin/users"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            Semua pengguna
+          </Link>
+          <Link
+            href="/admin/users/new"
+            className={cn(buttonVariants({ size: "sm" }))}
+          >
+            Tambah pengguna
+          </Link>
+        </div>
       </div>
       <AdminAccessClient users={users} />
     </div>
