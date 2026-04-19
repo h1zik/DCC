@@ -1,0 +1,344 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StockLogType {
+  IN
+  OUT
+}
+
+/** Tahap pipeline produk (urutan alur bisnis). */
+enum PipelineStage {
+  MARKET_RESEARCH
+  PRODUCT_DEVELOPMENT
+  BRAND_AND_DESIGN
+  PANEL_TESTING
+  PRODUCTION
+  PRELAUNCH
+  LAUNCH
+}
+
+enum UserRole {
+  CEO
+  /** Mengelola master brand & ruang kerja; ditetapkan oleh CEO. */
+  ADMINISTRATOR
+  LOGISTICS
+  MARKETING
+  CREATIVE_DIRECTOR
+  BUSINESS_ANALYST
+  COPYWRITER
+  PROJECT_MANAGER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  OVERDUE
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum NotificationType {
+  TASK_COMPLETED
+  TASK_OVERDUE
+  CEO_APPROVAL_REQUESTED
+  /** Pengajuan pindah tahap pipeline proyek menunggu CEO. */
+  PROJECT_PIPELINE_APPROVAL_REQUESTED
+}
+
+/** Pengelompokan ruangan di menu Tugas & Kanban (ditetapkan CEO). */
+enum RoomWorkspaceSection {
+  HQ
+  TEAM
+  ROOMS
+}
+
+/** Peran anggota di dalam satu ruangan (ditetapkan CEO). */
+enum RoomMemberRole {
+  /** Mengelola tugas di fase yang ditetapkan (`allowedRoomProcesses`). */
+  ROOM_MANAGER
+  /** Bekerja pada tugas di fase yang ditetapkan. */
+  ROOM_CONTRIBUTOR
+  /** Akses semua fase proses tugas di ruangan ini (setara kuasa kelola tugas). */
+  ROOM_PROJECT_MANAGER
+}
+
+/** Tahap alur kerja per ruangan — memisahkan tugas di hub ruangan. */
+enum RoomTaskProcess {
+  MARKET_RESEARCH
+  PRODUCT_DEVELOPMENT
+  BRAND_AND_DESIGN
+  PANEL_TESTING
+  PRE_LAUNCH
+  PRODUCTION
+}
+
+enum ContentPlanJenis {
+  REELS
+  CAROUSEL
+  SINGLE_FEED
+}
+
+/** Status alur copywriting & design di content planning. */
+enum ContentPlanStatusKerja {
+  BARU
+  DALAM_PROSES
+  DALAM_PENINJAUAN
+  DIPUBLIKASIKAN
+  DITANGGUHKAN
+  DIJEDA
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  /** Deskripsi singkat / bio (opsional, untuk profil). */
+  bio           String?
+  passwordHash  String
+  role          UserRole  @default(LOGISTICS)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  assignedTasks Task[]    @relation("TaskAssignee")
+  notifications Notification[]
+  taskComments      TaskComment[]
+  taskAttachments   TaskAttachment[]
+  roomMessages      RoomMessage[]
+  roomDocuments     RoomDocument[]
+  roomMembers               RoomMember[]
+  contentPlanItemsCreated   RoomContentPlanItem[] @relation("ContentPlanItemCreator")
+  contentPlanItemsAsPic     RoomContentPlanItem[] @relation("ContentPlanItemPic")
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  name      String
+  logo      String?
+  colorCode String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+  projects  Project[]
+  rooms     Room[]
+}
+
+/** Ruang kerja tim (mis. Room Archipelago) — konteks sebelum Kanban. */
+model Room {
+  id         String         @id @default(cuid())
+  name       String
+  /** Bagian di menu Tugas: HQ, Team, atau Ruangan. */
+  workspaceSection RoomWorkspaceSection @default(ROOMS)
+  brandId    String?
+  brand      Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  projects   Project[]
+  messages   RoomMessage[]
+  documents        RoomDocument[]
+  members          RoomMember[]
+  contentPlanItems RoomContentPlanItem[]
+}
+
+/** Baris content planning per ruangan (tabel kolom lengkap). */
+model RoomContentPlanItem {
+  id                    String                 @id @default(cuid())
+  roomId                String
+  room                  Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  konten                String                 @default("")
+  jenisKonten           ContentPlanJenis       @default(REELS)
+  detailKonten          String?
+  copywritingFilePath   String?
+  copywritingLink       String?
+  /** Beberapa file design (mis. slide carousel); urutan = urutan tayang. */
+  designFilePaths       String[]               @default([])
+  designLink            String?
+  picUserId             String?
+  pic                   User?                  @relation("ContentPlanItemPic", fields: [picUserId], references: [id], onDelete: SetNull)
+  statusCopywriting     ContentPlanStatusKerja @default(BARU)
+  statusDesign          ContentPlanStatusKerja @default(BARU)
+  deadlineCopywriting   DateTime?
+  deadlineDesign        DateTime?
+  tanggalPosting        DateTime?
+  catatan               String?
+  sortOrder             Int                    @default(0)
+  createdById           String
+  createdBy             User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+}
+
+model RoomMember {
+  id        String         @id @default(cuid())
+  roomId    String
+  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      RoomMemberRole
+  /** Fase tugas yang boleh diakses (manager & kontributor). Kosong untuk `ROOM_PROJECT_MANAGER` (diabaikan). */
+  allowedRoomProcesses RoomTaskProcess[] @default([])
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([roomId, userId])
+}
+
+model RoomMessage {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model RoomDocument {
+  id           String   @id @default(cuid())
+  roomId       String
+  room         Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  title        String?
+  fileName     String
+  mimeType     String
+  size         Int
+  /** Path publik, mis. /uploads/rooms/{roomId}/... */
+  publicPath   String
+  createdAt    DateTime @default(now())
+}
+
+model Project {
+  id             String         @id @default(cuid())
+  roomId         String
+  room           Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /** Kosong untuk papan tugas internal ruangan HQ/Team tanpa brand. */
+  brandId        String?
+  brand          Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  name           String
+  currentStage   PipelineStage  @default(MARKET_RESEARCH)
+  stageEnteredAt DateTime       @default(now())
+  /** Tahap tujuan yang diajukan tim — `currentStage` tidak berubah sampai CEO menyetujui. */
+  pendingPipelineStage     PipelineStage?
+  pipelineStageRequestedAt DateTime?
+  totalProgress  Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  tasks          Task[]
+}
+
+model Task {
+  id                 String        @id @default(cuid())
+  projectId          String
+  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /** Fase alur di ruangan kerja (filter Kanban/List/Gantt per proses). */
+  roomProcess        RoomTaskProcess @default(MARKET_RESEARCH)
+  title              String
+  description        String?
+  assigneeId         String?
+  assignee           User?         @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  status             TaskStatus    @default(TODO)
+  priority           TaskPriority  @default(MEDIUM)
+  dueDate            DateTime?
+  isApprovalRequired Boolean       @default(false)
+  isApproved         Boolean       @default(false)
+  vendorId           String?
+  vendor             Vendor?       @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  leadTimeDays       Int?
+  sortOrder          Int           @default(0)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  checklistItems     TaskChecklistItem[]
+  comments           TaskComment[]
+  attachments        TaskAttachment[]
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model TaskAttachment {
+  id           String   @id @default(cuid())
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  fileName     String
+  mimeType     String
+  size         Int
+  /** Path publik, mis. /uploads/tasks/{taskId}/... */
+  publicPath   String
+  createdAt    DateTime @default(now())
+}
+
+model TaskChecklistItem {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title     String
+  done      Boolean  @default(false)
+  sortOrder Int      @default(0)
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  type      NotificationType
+  isRead    Boolean            @default(false)
+  createdAt DateTime           @default(now())
+}
+
+model Vendor {
+  id        String   @id @default(cuid())
+  name      String
+  picName   String?
+  contact   String?
+  specialty String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tasks     Task[]
+}
+
+model Product {
+  id            String        @id @default(cuid())
+  brandId       String
+  brand         Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name          String
+  sku           String        @unique
+  currentStock  Int           @default(0)
+  minStock      Int           @default(0)
+  category      String?
+  pipelineStage PipelineStage @default(MARKET_RESEARCH)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  stockLogs     StockLog[]
+}
+
+model StockLog {
+  id        String       @id @default(cuid())
+  productId String
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  amount    Int
+  type      StockLogType
+  note      String?
+  createdAt DateTime     @default(now())
+}

@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# unggahan lampiran tugas (lokal)
+/public/uploads/tasks/**
+!/public/uploads/tasks/.gitkeep
+/public/uploads/rooms/**
+!/public/uploads/rooms/.gitkeep
+/public/uploads/avatars/**
+!/public/uploads/avatars/.gitkeep

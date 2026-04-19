@@ -1,0 +1,664 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import {
+  RoomTaskProcess,
+  TaskPriority,
+  TaskStatus,
+  type Brand,
+  type Project,
+  type User,
+  type Vendor,
+} from "@prisma/client";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { createTask, deleteTask } from "@/actions/tasks";
+import { DataTable } from "@/components/data-table";
+import { TasksGantt, type GanttTask } from "./tasks-gantt";
+import { TasksKanban, type KanbanTask } from "./tasks-kanban";
+import { TaskDetailSheet } from "./task-detail-sheet";
+import type { TaskRow } from "./task-types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { roomTaskProcessLabel } from "@/lib/room-task-process";
+import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import type { SelectItemDef } from "@/lib/select-option-items";
+
+function priorityLabel(p: TaskPriority) {
+  switch (p) {
+    case TaskPriority.HIGH:
+      return "Tinggi";
+    case TaskPriority.MEDIUM:
+      return "Sedang";
+    case TaskPriority.LOW:
+      return "Rendah";
+    default:
+      return p;
+  }
+}
+
+function statusLabel(s: TaskStatus) {
+  switch (s) {
+    case TaskStatus.TODO:
+      return "To-Do";
+    case TaskStatus.IN_PROGRESS:
+      return "Berjalan";
+    case TaskStatus.OVERDUE:
+      return "Overdue";
+    case TaskStatus.DONE:
+      return "Selesai";
+    default:
+      return s;
+  }
+}
+
+function projectSelectLabel(p: Project & { brand: Brand | null }) {
+  return p.brand ? `${p.brand.name} — ${p.name}` : p.name;
+}
+
+export function TasksWorkspace({
+  roomTitle,
+  activeRoomProcess,
+  simpleHub = false,
+  tasks,
+  projects,
+  users,
+  vendors,
+  isRoomManager,
+  currentUserId,
+}: {
+  roomTitle?: string;
+  /** Tab proses aktif di hub ruangan — tugas baru mengikuti fase ini. */
+  activeRoomProcess?: RoomTaskProcess;
+  /** Ruangan HQ/Team tanpa brand: UI tanpa fase proses / pipeline. */
+  simpleHub?: boolean;
+  tasks: TaskRow[];
+  projects: (Project & { brand: Brand | null })[];
+  users: Pick<User, "id" | "name" | "email">[];
+  vendors: Pick<Vendor, "id" | "name">[];
+  /** Manager ruangan: buat/hapus tugas, ubah PIC, moderasi lampiran & komentar. */
+  isRoomManager: boolean;
+  currentUserId: string;
+}) {
+  const router = useRouter();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assigneeId, setAssigneeId] = useState<string>("");
+  const [vendorId, setVendorId] = useState<string>("");
+  const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
+  const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
+  const [dueDate, setDueDate] = useState("");
+  const [leadTimeDays, setLeadTimeDays] = useState("");
+  const [approval, setApproval] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  const detailId = detailTask?.id;
+  useEffect(() => {
+    if (!detailId) return;
+    const next = tasks.find((t) => t.id === detailId);
+    if (next) setDetailTask(next);
+    else {
+      setDetailOpen(false);
+      setDetailTask(null);
+    }
+  }, [tasks, detailId]);
+
+  function openCreate() {
+    if (projects.length === 0) {
+      toast.error(
+        simpleHub
+          ? "Papan tugas ruangan belum siap. Muat ulang halaman atau hubungi CEO."
+          : "Belum ada proyek di ruangan ini. Tugas harus terikat ke proyek — tambahkan proyek ke ruangan ini lewat menu Pipeline (CEO atau akun yang punya akses editor proyek).",
+      );
+      return;
+    }
+    setProjectId(projects[0]!.id);
+    setTitle("");
+    setDescription("");
+    setAssigneeId("");
+    setVendorId("");
+    setPriority(TaskPriority.MEDIUM);
+    setStatus(TaskStatus.TODO);
+    setDueDate("");
+    setLeadTimeDays("");
+    setApproval(false);
+    setCreateOpen(true);
+  }
+
+  const openDetail = useCallback((task: TaskRow) => {
+    setDetailTask(task);
+    setDetailOpen(true);
+  }, []);
+
+  async function onSaveCreate() {
+    setPending(true);
+    try {
+      const due = dueDate ? new Date(dueDate) : null;
+      const lead =
+        leadTimeDays.trim() === "" ? null : Math.max(0, parseInt(leadTimeDays, 10));
+      const payload = {
+        projectId,
+        title,
+        description: description || null,
+        assigneeId: isRoomManager ? assigneeId || null : null,
+        vendorId: vendorId || null,
+        priority,
+        dueDate: due,
+        leadTimeDays: lead,
+        isApprovalRequired: approval,
+        ...(activeRoomProcess !== undefined
+          ? { roomProcess: activeRoomProcess }
+          : {}),
+      };
+      await createTask(payload);
+      toast.success("Tugas dibuat.");
+      setCreateOpen(false);
+      router.refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Gagal menyimpan.";
+      toast.error(msg);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const onDeleteTask = useCallback(
+    async (id: string) => {
+      if (!confirm("Hapus tugas ini?")) return;
+      try {
+        await deleteTask(id);
+        toast.success("Tugas dihapus.");
+        if (detailTask?.id === id) {
+          setDetailOpen(false);
+          setDetailTask(null);
+        }
+        router.refresh();
+      } catch {
+        toast.error("Gagal menghapus.");
+      }
+    },
+    [router, detailTask?.id],
+  );
+
+  const kanbanTasks: KanbanTask[] = useMemo(
+    () =>
+      tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        priority: priorityLabel(t.priority),
+        dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+        project: {
+          name: t.project.name,
+          brand: { name: taskProjectContextLabel(t.project) },
+        },
+        assignee: t.assignee
+          ? {
+              image: t.assignee.image ?? null,
+              name: t.assignee.name,
+              email: t.assignee.email,
+            }
+          : null,
+      })),
+    [tasks],
+  );
+
+  const ganttTasks: GanttTask[] = useMemo(
+    () =>
+      tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+        createdAt: t.createdAt.toISOString(),
+        brandName: taskProjectContextLabel(t.project),
+      })),
+    [tasks],
+  );
+
+  const createDialogProjectItems = useMemo((): SelectItemDef[] => {
+    return projects.map((p) => ({
+      value: p.id,
+      label: projectSelectLabel(p),
+    }));
+  }, [projects]);
+  const createDialogAssigneeItems = useMemo((): SelectItemDef[] => {
+    return [
+      { value: "__none__", label: "—" },
+      ...users.map((u) => ({ value: u.id, label: u.name ?? u.email })),
+    ];
+  }, [users]);
+  const createDialogPriorityItems = useMemo((): SelectItemDef[] => {
+    return (Object.values(TaskPriority) as TaskPriority[]).map((p) => ({
+      value: p,
+      label: priorityLabel(p),
+    }));
+  }, []);
+  const createDialogStatusItems = useMemo((): SelectItemDef[] => {
+    return (Object.values(TaskStatus) as TaskStatus[]).map((s) => ({
+      value: s,
+      label: statusLabel(s),
+    }));
+  }, []);
+  const createDialogVendorItems = useMemo((): SelectItemDef[] => {
+    return [
+      { value: "__none__", label: "—" },
+      ...vendors.map((v) => ({ value: v.id, label: v.name })),
+    ];
+  }, [vendors]);
+
+  const columns = useMemo<ColumnDef<TaskRow>[]>(
+    () => [
+      {
+        accessorKey: "title",
+        header: "Tugas",
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.title}</span>
+        ),
+      },
+      {
+        id: "brand",
+        header: simpleHub ? "Konteks" : "Brand",
+        cell: ({ row }) =>
+          simpleHub
+            ? taskProjectContextLabel(row.original.project)
+            : (row.original.project.brand?.name ?? "—"),
+      },
+      {
+        id: "project",
+        header: "Proyek",
+        cell: ({ row }) => row.original.project.name,
+      },
+      {
+        id: "pic",
+        header: "PIC",
+        cell: ({ row }) => {
+          const a = row.original.assignee;
+          if (!a) {
+            return <span className="text-muted-foreground">—</span>;
+          }
+          const label = a.name ?? a.email;
+          const initial = label.slice(0, 1).toUpperCase();
+          return (
+            <div className="flex items-center gap-2">
+              {a.image ? (
+                <Image
+                  src={a.image}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="border-border size-6 shrink-0 rounded-full border object-cover"
+                  unoptimized
+                />
+              ) : (
+                <div
+                  className="border-border bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold"
+                  aria-hidden
+                >
+                  {initial}
+                </div>
+              )}
+              <span className="truncate">{label}</span>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "priority",
+        header: "Prioritas",
+        cell: ({ row }) => priorityLabel(row.original.priority),
+      },
+      {
+        id: "due",
+        header: "Deadline",
+        cell: ({ row }) =>
+          row.original.dueDate
+            ? row.original.dueDate.toLocaleDateString("id-ID")
+            : "—",
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant="outline">{statusLabel(row.original.status)}</Badge>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => (
+          <div className="flex gap-1">
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                openDetail(row.original);
+              }}
+            >
+              Buka
+            </Button>
+            {isRoomManager ? (
+              <Button
+                size="xs"
+                variant="destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteTask(row.original.id);
+                }}
+              >
+                Hapus
+              </Button>
+            ) : null}
+          </div>
+        ),
+      },
+    ],
+    [isRoomManager, onDeleteTask, openDetail, simpleHub],
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <TaskDetailSheet
+        task={detailTask}
+        open={detailOpen}
+        onOpenChange={(o) => {
+          setDetailOpen(o);
+          if (!o) setDetailTask(null);
+        }}
+        projects={projects}
+        users={users}
+        vendors={vendors}
+        isRoomManager={isRoomManager}
+        currentUserId={currentUserId}
+        simpleHub={simpleHub}
+      />
+
+      {roomTitle ? (
+        <div className="bg-muted/50 border-border rounded-lg border px-3 py-2 text-sm">
+          <p>
+            Ruangan aktif: <span className="font-semibold">{roomTitle}</span>
+          </p>
+          {activeRoomProcess !== undefined ? (
+            <p className="text-muted-foreground mt-1">
+              Proses alur:{" "}
+              <span className="text-foreground font-medium">
+                {roomTaskProcessLabel(activeRoomProcess)}
+              </span>
+              {" — "}
+              tugas baru ditambahkan ke fase ini.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {roomTitle && isRoomManager && projects.length === 0 && !simpleHub ? (
+        <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-50">
+          <p className="font-medium">Belum ada proyek di ruangan ini</p>
+          <p className="text-muted-foreground mt-1 text-pretty">
+            Setiap tugas harus terikat ke proyek. Tambahkan proyek ke ruangan ini
+            dari menu{" "}
+            <Link
+              href="/projects"
+              className="text-accent-foreground font-medium underline-offset-2 hover:underline"
+            >
+              Pipeline
+            </Link>{" "}
+            (CEO atau akun dengan akses editor proyek), lalu kembali ke sini untuk
+            membuat tugas.
+          </p>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap justify-end gap-2">
+        {isRoomManager ? (
+          <Button type="button" onClick={openCreate}>
+            Tugas baru
+          </Button>
+        ) : null}
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Tugas baru</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 py-2">
+              <div className="space-y-2">
+                <Label>Proyek</Label>
+                <Select
+                  value={projectId}
+                  items={createDialogProjectItems}
+                  onValueChange={(v) => {
+                    if (v) setProjectId(v);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {projectSelectLabel(p)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tt">Judul</Label>
+                <Input id="tt" value={title} onChange={(e) => setTitle(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="td">Deskripsi</Label>
+                <Textarea
+                  id="td"
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label>PIC</Label>
+                  <Select
+                    value={assigneeId || "__none__"}
+                    items={createDialogAssigneeItems}
+                    disabled={!isRoomManager}
+                    onValueChange={(v) => {
+                      if (!v || v === "__none__") setAssigneeId("");
+                      else setAssigneeId(v);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">—</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name ?? u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!isRoomManager ? (
+                    <p className="text-muted-foreground text-xs">
+                      PIC ditetapkan oleh manager ruangan lewat detail tugas setelah
+                      tugas dibuat.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <Label>Prioritas</Label>
+                  <Select
+                    value={priority}
+                    items={createDialogPriorityItems}
+                    onValueChange={(v) => {
+                      if (v) setPriority(v as TaskPriority);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.values(TaskPriority) as TaskPriority[]).map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {priorityLabel(p)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="dd">Deadline</Label>
+                  <Input
+                    id="dd"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={status}
+                    items={createDialogStatusItems}
+                    onValueChange={(v) => {
+                      if (v) setStatus(v as TaskStatus);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.values(TaskStatus) as TaskStatus[]).map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {statusLabel(s)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label>Vendor (opsional)</Label>
+                  <Select
+                    value={vendorId || "__none__"}
+                    items={createDialogVendorItems}
+                    onValueChange={(v) => {
+                      if (!v || v === "__none__") setVendorId("");
+                      else setVendorId(v);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">—</SelectItem>
+                      {vendors.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lt">Lead time (hari)</Label>
+                  <Input
+                    id="lt"
+                    type="number"
+                    min={0}
+                    value={leadTimeDays}
+                    onChange={(e) => setLeadTimeDays(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="appr"
+                  checked={approval}
+                  onCheckedChange={(c) => setApproval(c === true)}
+                />
+                <Label htmlFor="appr" className="text-sm font-normal">
+                  Perlu persetujuan CEO
+                </Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                Batal
+              </Button>
+              <Button
+                onClick={onSaveCreate}
+                disabled={pending || !title.trim() || !projectId}
+              >
+                Simpan
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Tabs defaultValue="kanban">
+        <TabsList>
+          <TabsTrigger value="kanban">Kanban</TabsTrigger>
+          <TabsTrigger value="list">Daftar</TabsTrigger>
+          <TabsTrigger value="gantt">Gantt</TabsTrigger>
+        </TabsList>
+        <TabsContent value="kanban" className="mt-4">
+          <TasksKanban
+            tasks={kanbanTasks}
+            onTaskClick={(id) => {
+              const t = tasks.find((x) => x.id === id);
+              if (t) openDetail(t);
+            }}
+          />
+        </TabsContent>
+        <TabsContent value="list" className="mt-4">
+          <DataTable
+            columns={columns}
+            data={tasks}
+            empty="Belum ada tugas."
+            onRowClick={(row) => openDetail(row)}
+          />
+        </TabsContent>
+        <TabsContent value="gantt" className="mt-4">
+          <TasksGantt
+            tasks={ganttTasks}
+            onTaskClick={(id) => {
+              const t = tasks.find((x) => x.id === id);
+              if (t) openDetail(t);
+            }}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

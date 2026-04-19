@@ -1,0 +1,786 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import {
+  RoomTaskProcess,
+  TaskPriority,
+  TaskStatus,
+  type Brand,
+  type Project,
+  type User,
+  type Vendor,
+} from "@prisma/client";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  addChecklistItem,
+  deleteChecklistItem,
+  deleteTask,
+  toggleChecklistItem,
+  updateTask,
+} from "@/actions/tasks";
+import { addTaskComment, deleteTaskComment } from "@/actions/task-comments";
+import {
+  deleteTaskAttachment,
+  uploadTaskAttachment,
+} from "@/actions/task-attachments";
+import type { TaskRow } from "./task-types";
+import {
+  roomTaskProcessLabel,
+  ROOM_TASK_PROCESS_ORDER,
+} from "@/lib/room-task-process";
+import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import { cn } from "@/lib/utils";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Paperclip, Trash2 } from "lucide-react";
+
+function priorityLabel(p: TaskPriority) {
+  switch (p) {
+    case TaskPriority.HIGH:
+      return "Tinggi";
+    case TaskPriority.MEDIUM:
+      return "Sedang";
+    case TaskPriority.LOW:
+      return "Rendah";
+    default:
+      return p;
+  }
+}
+
+function statusLabel(s: TaskStatus) {
+  switch (s) {
+    case TaskStatus.TODO:
+      return "To-Do";
+    case TaskStatus.IN_PROGRESS:
+      return "Berjalan";
+    case TaskStatus.OVERDUE:
+      return "Overdue";
+    case TaskStatus.DONE:
+      return "Selesai";
+    default:
+      return s;
+  }
+}
+
+type Props = {
+  task: TaskRow | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projects: (Project & { brand: Brand | null })[];
+  users: Pick<User, "id" | "name" | "email">[];
+  vendors: Pick<Vendor, "id" | "name">[];
+  isRoomManager: boolean;
+  currentUserId: string;
+  /** Ruangan HQ/Team tanpa brand: sembunyikan fase proses alur. */
+  simpleHub?: boolean;
+};
+
+function projectSelectLabel(p: Project & { brand: Brand | null }) {
+  return p.brand ? `${p.brand.name} — ${p.name}` : p.name;
+}
+
+function formatFileSize(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+export function TaskDetailSheet({
+  task,
+  open,
+  onOpenChange,
+  projects,
+  users,
+  vendors,
+  isRoomManager,
+  currentUserId,
+  simpleHub = false,
+}: Props) {
+  const router = useRouter();
+
+  const [projectId, setProjectId] = useState("");
+  const [roomProcess, setRoomProcess] = useState<RoomTaskProcess>(
+    RoomTaskProcess.MARKET_RESEARCH,
+  );
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assigneeId, setAssigneeId] = useState("");
+  const [vendorId, setVendorId] = useState("");
+  const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
+  const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
+  const [dueDate, setDueDate] = useState("");
+  const [leadTimeDays, setLeadTimeDays] = useState("");
+  const [approval, setApproval] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+
+  const [newCheck, setNewCheck] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [commentPending, setCommentPending] = useState(false);
+  const [uploadPending, setUploadPending] = useState(false);
+
+  useEffect(() => {
+    if (!task) return;
+    setProjectId(task.projectId);
+    setRoomProcess(task.roomProcess);
+    setTitle(task.title);
+    setDescription(task.description ?? "");
+    setAssigneeId(task.assigneeId ?? "");
+    setVendorId(task.vendorId ?? "");
+    setPriority(task.priority);
+    setStatus(task.status);
+    setDueDate(task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "");
+    setLeadTimeDays(task.leadTimeDays != null ? String(task.leadTimeDays) : "");
+    setApproval(task.isApprovalRequired);
+    setCommentBody("");
+  }, [task]);
+
+  const refresh = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
+  const projectSelectItems = useMemo(
+    () =>
+      projects.map((p) => ({
+        value: p.id,
+        label: projectSelectLabel(p),
+      })),
+    [projects],
+  );
+  const roomProcessSelectItems = useMemo(
+    () =>
+      ROOM_TASK_PROCESS_ORDER.map((p) => ({
+        value: p,
+        label: roomTaskProcessLabel(p),
+      })),
+    [],
+  );
+  const assigneeSelectItems = useMemo(
+    () => [
+      { value: "__none__", label: "—" },
+      ...users.map((u) => ({
+        value: u.id,
+        label: u.name ?? u.email,
+      })),
+    ],
+    [users],
+  );
+  const prioritySelectItems = useMemo(
+    () =>
+      (Object.values(TaskPriority) as TaskPriority[]).map((p) => ({
+        value: p,
+        label: priorityLabel(p),
+      })),
+    [],
+  );
+  const statusSelectItems = useMemo(
+    () =>
+      (Object.values(TaskStatus) as TaskStatus[]).map((s) => ({
+        value: s,
+        label: statusLabel(s),
+      })),
+    [],
+  );
+  const vendorSelectItems = useMemo(
+    () => [
+      { value: "__none__", label: "—" },
+      ...vendors.map((v) => ({ value: v.id, label: v.name })),
+    ],
+    [vendors],
+  );
+
+  async function onSaveFields() {
+    if (!task) return;
+    setSavePending(true);
+    try {
+      const due = dueDate ? new Date(dueDate) : null;
+      const lead =
+        leadTimeDays.trim() === "" ? null : Math.max(0, parseInt(leadTimeDays, 10));
+      await updateTask({
+        taskId: task.id,
+        projectId,
+        roomProcess,
+        title,
+        description: description || null,
+        assigneeId: assigneeId || null,
+        vendorId: vendorId || null,
+        priority,
+        dueDate: due,
+        leadTimeDays: lead,
+        isApprovalRequired: approval,
+        status,
+      });
+      toast.success("Tugas disimpan.");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+    } finally {
+      setSavePending(false);
+    }
+  }
+
+  async function onAddComment() {
+    if (!task || !commentBody.trim()) return;
+    setCommentPending(true);
+    try {
+      await addTaskComment(task.id, commentBody.trim());
+      setCommentBody("");
+      toast.success("Komentar ditambahkan.");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal.");
+    } finally {
+      setCommentPending(false);
+    }
+  }
+
+  async function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const input = e.target;
+    /** `FileList` hidup: reset `value` mengosongkan `files` — salin dulu. */
+    const files = input.files?.length ? Array.from(input.files) : [];
+    input.value = "";
+    if (!files.length || !task) return;
+    setUploadPending(true);
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        await uploadTaskAttachment(task.id, fd);
+      }
+      toast.success(
+        files.length === 1
+          ? "Lampiran diunggah."
+          : `${files.length} lampiran diunggah.`,
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unggah gagal.");
+    } finally {
+      setUploadPending(false);
+    }
+  }
+
+  async function onAddCheck() {
+    if (!task || !newCheck.trim()) return;
+    try {
+      await addChecklistItem(task.id, newCheck.trim());
+      setNewCheck("");
+      refresh();
+    } catch {
+      toast.error("Gagal menambah sub-tugas.");
+    }
+  }
+
+  async function onDeleteTask() {
+    if (!task) return;
+    if (!confirm("Hapus tugas ini beserta komentar & lampiran?")) return;
+    try {
+      await deleteTask(task.id);
+      toast.success("Tugas dihapus.");
+      onOpenChange(false);
+      refresh();
+    } catch {
+      toast.error("Gagal menghapus.");
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        showCloseButton
+        className="data-[side=right]:sm:max-w-lg flex h-full w-full max-w-full flex-col gap-0 p-0"
+      >
+        {task ? (
+          <>
+            <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pb-2">
+              <SheetTitle className="pr-10 leading-snug">{task.title}</SheetTitle>
+              <SheetDescription>
+                {taskProjectContextLabel(task.project)} · {task.project.name}
+              </SheetDescription>
+            </SheetHeader>
+
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="flex flex-col gap-6 px-4 py-4">
+                <section className="space-y-3">
+                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                    Ringkasan
+                  </h3>
+                  <div className="space-y-2">
+                    <Label>Proyek</Label>
+                    <Select
+                      value={projectId}
+                      items={projectSelectItems}
+                      disabled={!isRoomManager}
+                      onValueChange={(v) => {
+                        if (v) setProjectId(v);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {projectSelectLabel(p)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {!simpleHub ? (
+                    <div className="space-y-2">
+                      <Label>Proses alur ruangan</Label>
+                      <Select
+                        value={roomProcess}
+                        items={roomProcessSelectItems}
+                        onValueChange={(v) => {
+                          if (v) setRoomProcess(v as RoomTaskProcess);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ROOM_TASK_PROCESS_ORDER.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {roomTaskProcessLabel(p)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-muted-foreground text-xs">
+                        Memindahkan tugas ke tab proses lain: ubah nilai ini lalu
+                        simpan — kartu akan muncul di tab yang sesuai setelah
+                        penyegaran.
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="space-y-2">
+                    <Label htmlFor="td-title">Judul</Label>
+                    <Input
+                      id="td-title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="td-desc">Deskripsi</Label>
+                    <Textarea
+                      id="td-desc"
+                      rows={3}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label>PIC</Label>
+                      <Select
+                        value={assigneeId || "__none__"}
+                        items={assigneeSelectItems}
+                        disabled={!isRoomManager}
+                        onValueChange={(v) => {
+                          if (!v || v === "__none__") setAssigneeId("");
+                          else setAssigneeId(v);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">—</SelectItem>
+                          {users.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.name ?? u.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!isRoomManager ? (
+                        <p className="text-muted-foreground text-xs">
+                          Hanya manager ruangan yang dapat mengubah PIC (kontributor
+                          di ruangan ini).
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Prioritas</Label>
+                      <Select
+                        value={priority}
+                        items={prioritySelectItems}
+                        onValueChange={(v) => {
+                          if (v) setPriority(v as TaskPriority);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.values(TaskPriority) as TaskPriority[]).map(
+                            (p) => (
+                              <SelectItem key={p} value={p}>
+                                {priorityLabel(p)}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="td-due">Deadline</Label>
+                      <Input
+                        id="td-due"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select
+                        value={status}
+                        items={statusSelectItems}
+                        onValueChange={(v) => {
+                          if (v) setStatus(v as TaskStatus);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.values(TaskStatus) as TaskStatus[]).map(
+                            (s) => (
+                              <SelectItem key={s} value={s}>
+                                {statusLabel(s)}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label>Vendor</Label>
+                      <Select
+                        value={vendorId || "__none__"}
+                        items={vendorSelectItems}
+                        onValueChange={(v) => {
+                          if (!v || v === "__none__") setVendorId("");
+                          else setVendorId(v);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">—</SelectItem>
+                          {vendors.map((v) => (
+                            <SelectItem key={v.id} value={v.id}>
+                              {v.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="td-lt">Lead time (hari)</Label>
+                      <Input
+                        id="td-lt"
+                        type="number"
+                        min={0}
+                        value={leadTimeDays}
+                        onChange={(e) => setLeadTimeDays(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="td-appr"
+                      checked={approval}
+                      disabled={!isRoomManager}
+                      onCheckedChange={(c) => setApproval(c === true)}
+                    />
+                    <Label htmlFor="td-appr" className="text-sm font-normal">
+                      Perlu persetujuan CEO
+                    </Label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{statusLabel(status)}</Badge>
+                    <Badge variant="secondary">{priorityLabel(priority)}</Badge>
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                    Sub-tugas
+                  </h3>
+                  <ul className="space-y-2">
+                    {task.checklistItems.map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <label className="flex flex-1 items-center gap-2">
+                          <Checkbox
+                            checked={c.done}
+                            onCheckedChange={async (v) => {
+                              await toggleChecklistItem(c.id, v === true);
+                              refresh();
+                            }}
+                          />
+                          <span
+                            className={
+                              c.done ? "text-muted-foreground line-through" : ""
+                            }
+                          >
+                            {c.title}
+                          </span>
+                        </label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          onClick={async () => {
+                            await deleteChecklistItem(c.id);
+                            refresh();
+                          }}
+                        >
+                          ×
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Sub-tugas baru…"
+                      value={newCheck}
+                      onChange={(e) => setNewCheck(e.target.value)}
+                    />
+                    <Button type="button" variant="secondary" onClick={onAddCheck}>
+                      Tambah
+                    </Button>
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                    Komentar
+                  </h3>
+                  <div className="max-h-48 space-y-3 overflow-y-auto rounded-md border border-border p-2">
+                    {task.comments.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">
+                        Belum ada komentar.
+                      </p>
+                    ) : (
+                      task.comments.map((c) => (
+                        <div
+                          key={c.id}
+                          className="border-border/80 space-y-1 border-b pb-2 text-sm last:border-0"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-medium">
+                              {c.author.name ?? c.author.email}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <span className="text-muted-foreground text-xs">
+                                {new Date(c.createdAt).toLocaleString("id-ID")}
+                              </span>
+                              {(c.author.id === currentUserId || isRoomManager) && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="text-muted-foreground h-7 w-7"
+                                  aria-label="Hapus komentar"
+                                  onClick={async () => {
+                                    try {
+                                      await deleteTaskComment(c.id);
+                                      toast.success("Komentar dihapus.");
+                                      refresh();
+                                    } catch (e) {
+                                      toast.error(
+                                        e instanceof Error
+                                          ? e.message
+                                          : "Gagal.",
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-muted-foreground whitespace-pre-wrap">
+                            {c.body}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <Textarea
+                    rows={2}
+                    placeholder="Tulis komentar…"
+                    value={commentBody}
+                    onChange={(e) => setCommentBody(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={commentPending || !commentBody.trim()}
+                    onClick={onAddComment}
+                  >
+                    Kirim komentar
+                  </Button>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                    Lampiran
+                  </h3>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor={`task-attach-${task.id}`}
+                      className="text-foreground flex items-center gap-2 text-sm font-medium"
+                    >
+                      <Paperclip className="text-muted-foreground size-4" />
+                      Sisipkan file
+                    </Label>
+                    <input
+                      id={`task-attach-${task.id}`}
+                      type="file"
+                      multiple
+                      disabled={uploadPending}
+                      onChange={onFileSelected}
+                      className={cn(
+                        "border-input bg-background text-foreground file:bg-muted file:text-foreground flex min-h-9 w-full cursor-pointer rounded-lg border px-2.5 py-2 text-sm transition-colors outline-none",
+                        "file:mr-3 file:inline-flex file:h-8 file:cursor-pointer file:items-center file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium",
+                        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-3",
+                        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+                      )}
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      {uploadPending
+                        ? "Mengunggah…"
+                        : "Satu atau beberapa file sekaligus. Pratinjau gambar ditampilkan di bawah. Batas ukuran mengikuti pengaturan server."}
+                    </p>
+                  </div>
+                  <ul className="space-y-3">
+                    {task.attachments.map((a) => (
+                      <li
+                        key={a.id}
+                        className="flex flex-col gap-2 rounded-md border border-border px-2 py-2 text-sm"
+                      >
+                        {a.mimeType.startsWith("image/") ? (
+                          <a
+                            href={a.publicPath}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="border-border relative block max-h-40 max-w-full self-start overflow-hidden rounded-md border"
+                          >
+                            <Image
+                              src={a.publicPath}
+                              alt={a.fileName}
+                              width={400}
+                              height={280}
+                              unoptimized
+                              className="max-h-40 w-auto max-w-full object-contain"
+                            />
+                          </a>
+                        ) : null}
+                        <div className="flex items-center justify-between gap-2">
+                          <a
+                            href={a.publicPath}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent-foreground min-w-0 flex-1 truncate underline-offset-2 hover:underline"
+                          >
+                            {a.fileName}
+                          </a>
+                          <span className="text-muted-foreground shrink-0 text-xs">
+                            {formatFileSize(a.size)}
+                          </span>
+                          {(a.uploadedBy.id === currentUserId || isRoomManager) && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="shrink-0"
+                              aria-label="Hapus lampiran"
+                              onClick={async () => {
+                                try {
+                                  await deleteTaskAttachment(a.id);
+                                  toast.success("Lampiran dihapus.");
+                                  refresh();
+                                } catch (e) {
+                                  toast.error(
+                                    e instanceof Error ? e.message : "Gagal.",
+                                  );
+                                }
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            </ScrollArea>
+
+            <SheetFooter className="border-border shrink-0 flex-row flex-wrap gap-2 border-t">
+              {isRoomManager ? (
+                <Button variant="destructive" size="sm" onClick={onDeleteTask}>
+                  Hapus tugas
+                </Button>
+              ) : null}
+              <Button
+                className="ml-auto"
+                disabled={savePending || !title.trim() || !projectId}
+                onClick={onSaveFields}
+              >
+                Simpan perubahan
+              </Button>
+            </SheetFooter>
+          </>
+        ) : null}
+      </SheetContent>
+    </Sheet>
+  );
+}
