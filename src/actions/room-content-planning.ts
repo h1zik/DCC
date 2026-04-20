@@ -216,8 +216,8 @@ export async function uploadContentPlanCopywritingFile(
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `copywriting-${randomUUID()}-${base}`;
-  const relDir = path.join("public", "uploads", "room-content-plan", itemId);
-  const absDir = path.join(process.cwd(), relDir);
+  const relDir = path.join("uploads", "room-content-plan", itemId);
+  const absDir = path.join(process.cwd(), "public", relDir);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
@@ -263,8 +263,8 @@ export async function uploadContentPlanDesignFile(
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `design-${randomUUID()}-${base}`;
-  const relDir = path.join("public", "uploads", "room-content-plan", itemId);
-  const absDir = path.join(process.cwd(), relDir);
+  const relDir = path.join("uploads", "room-content-plan", itemId);
+  const absDir = path.join(process.cwd(), "public", relDir);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
