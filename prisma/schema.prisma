@@ -138,6 +138,8 @@ model Brand {
 model Room {
   id         String         @id @default(cuid())
   name       String
+  /** Banner visual ruangan (path publik di /uploads/rooms/{roomId}/...). */
+  bannerImage String?
   /** Bagian di menu Tugas: HQ, Team, atau Ruangan. */
   workspaceSection RoomWorkspaceSection @default(ROOMS)
   brandId    String?

@@ -41,14 +41,14 @@ const navCeo = [
   { href: "/projects", label: "Pipeline proyek", icon: GitBranch },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
   { href: "/approvals", label: "Persetujuan CEO", icon: ShieldCheck },
-  { href: "/admin/users", label: "Pengguna", icon: Users },
-  { href: "/admin/access", label: "Hak akses", icon: UserCog },
 ] as const;
 
 const navAdministrator = [
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
   { href: "/rooms", label: "Ruang kerja", icon: DoorOpen },
   { href: "/brands", label: "Brand", icon: Tags },
+  { href: "/admin/users", label: "Pengguna", icon: Users },
+  { href: "/admin/access", label: "Hak akses", icon: UserCog },
 ] as const;
 
 const navLogistics = [

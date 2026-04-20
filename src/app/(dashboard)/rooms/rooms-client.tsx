@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   RoomMemberRole,
   RoomTaskProcess,
@@ -110,6 +110,12 @@ export function RoomsClient({
   ]);
   const [memberPending, setMemberPending] = useState(false);
 
+  useEffect(() => {
+    if (!membersRoom) return;
+    const next = rooms.find((r) => r.id === membersRoom.id);
+    if (next) setMembersRoom(next);
+  }, [rooms, membersRoom]);
+
   function reset() {
     setEditing(null);
     setName("");
@@ -212,11 +218,23 @@ export function RoomsClient({
       return;
     }
     setMemberPending(true);
+    setMembersRoom((prev) => {
+      if (!prev || prev.id !== roomId) return prev;
+      return {
+        ...prev,
+        members: prev.members.map((m) =>
+          m.userId === userId
+            ? { ...m, allowedRoomProcesses: next }
+            : m,
+        ),
+      };
+    });
     try {
       await upsertRoomMember(roomId, userId, role, next);
       toast.success("Akses fase diperbarui.");
       router.refresh();
     } catch (e) {
+      router.refresh();
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
     } finally {
       setMemberPending(false);
@@ -487,7 +505,7 @@ export function RoomsClient({
             if (!v) setMembersRoom(null);
           }}
         >
-          <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+          <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>
                 Anggota ruangan
@@ -518,7 +536,7 @@ export function RoomsClient({
                       key={m.id}
                       className="flex flex-col gap-2 rounded-md border border-border p-3"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">
                             {m.user.name ?? m.user.email}
@@ -527,7 +545,7 @@ export function RoomsClient({
                             {m.user.email}
                           </p>
                         </div>
-                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                           <Select
                             value={m.role}
                             items={roomMemberRoleItems}
@@ -542,7 +560,7 @@ export function RoomsClient({
                               );
                             }}
                           >
-                            <SelectTrigger className="h-8 w-[200px]">
+                            <SelectTrigger className="h-8 w-full sm:w-[240px]">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -561,6 +579,7 @@ export function RoomsClient({
                             type="button"
                             variant="ghost"
                             size="icon-sm"
+                            className="self-end sm:self-auto"
                             disabled={memberPending}
                             aria-label="Hapus anggota"
                             onClick={() =>
@@ -584,11 +603,11 @@ export function RoomsClient({
                           <p className="text-muted-foreground text-xs font-medium">
                             Fase tugas yang dapat diakses
                           </p>
-                          <div className="flex flex-wrap gap-x-3 gap-y-2">
+                          <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
                             {ROOM_TASK_PROCESS_ORDER.map((proc) => (
                               <label
                                 key={proc}
-                                className="flex cursor-pointer items-center gap-2 text-xs"
+                                className="flex min-w-0 cursor-pointer items-center gap-2 text-xs"
                               >
                                 <Checkbox
                                   checked={(m.allowedRoomProcesses ?? []).includes(
@@ -617,7 +636,7 @@ export function RoomsClient({
                                     );
                                   }}
                                 />
-                                <span>{roomTaskProcessLabel(proc)}</span>
+                                <span className="break-words">{roomTaskProcessLabel(proc)}</span>
                               </label>
                             ))}
                           </div>
@@ -657,30 +676,33 @@ export function RoomsClient({
                         </SelectContent>
                       </Select>
                     </div>
-                    <Select
-                      value={addRole}
-                      items={roomMemberRoleItems}
-                      onValueChange={(v) => {
-                        if (v) setAddRole(v as RoomMemberRole);
-                      }}
-                    >
-                      <SelectTrigger className="sm:w-[200px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={RoomMemberRole.ROOM_MANAGER}>
-                          {roomRoleLabel(RoomMemberRole.ROOM_MANAGER)}
-                        </SelectItem>
-                        <SelectItem value={RoomMemberRole.ROOM_CONTRIBUTOR}>
-                          {roomRoleLabel(RoomMemberRole.ROOM_CONTRIBUTOR)}
-                        </SelectItem>
-                        <SelectItem value={ROOM_PROJECT_MANAGER_ROLE}>
-                          {roomRoleLabel(ROOM_PROJECT_MANAGER_ROLE)}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="w-full sm:w-[240px]">
+                      <Select
+                        value={addRole}
+                        items={roomMemberRoleItems}
+                        onValueChange={(v) => {
+                          if (v) setAddRole(v as RoomMemberRole);
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={RoomMemberRole.ROOM_MANAGER}>
+                            {roomRoleLabel(RoomMemberRole.ROOM_MANAGER)}
+                          </SelectItem>
+                          <SelectItem value={RoomMemberRole.ROOM_CONTRIBUTOR}>
+                            {roomRoleLabel(RoomMemberRole.ROOM_CONTRIBUTOR)}
+                          </SelectItem>
+                          <SelectItem value={ROOM_PROJECT_MANAGER_ROLE}>
+                            {roomRoleLabel(ROOM_PROJECT_MANAGER_ROLE)}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Button
                       type="button"
+                      className="w-full sm:w-auto"
                       disabled={
                         memberPending ||
                         !addUserId ||
@@ -704,11 +726,11 @@ export function RoomsClient({
                         <Label className="text-xs">
                           Fase tugas untuk anggota baru
                         </Label>
-                        <div className="flex flex-wrap gap-x-3 gap-y-2">
+                        <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
                           {ROOM_TASK_PROCESS_ORDER.map((proc) => (
                             <label
                               key={proc}
-                              className="flex cursor-pointer items-center gap-2 text-xs"
+                              className="flex min-w-0 cursor-pointer items-center gap-2 text-xs"
                             >
                               <Checkbox
                                 checked={addProcesses.includes(proc)}
@@ -728,7 +750,7 @@ export function RoomsClient({
                                   });
                                 }}
                               />
-                              <span>{roomTaskProcessLabel(proc)}</span>
+                              <span className="break-words">{roomTaskProcessLabel(proc)}</span>
                             </label>
                           ))}
                         </div>

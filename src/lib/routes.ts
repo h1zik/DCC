@@ -25,24 +25,24 @@ export function isStudioWorkspaceRoute(pathname: string): boolean {
   );
 }
 
-/** Rute yang boleh diakses CEO (brand & ruang kerja di administrator). */
+/** Rute yang boleh diakses CEO (mode pemantauan). */
 export function isCeoAppRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/room") ||
-    pathname.startsWith("/approvals") ||
-    pathname.startsWith("/admin")
+    pathname.startsWith("/approvals")
   );
 }
 
-/** Brand, ruang kerja, tugas/Kanban (dukungan), profil — administrator. */
+/** Brand, ruang kerja, pengguna/hak akses, tugas/Kanban (dukungan), profil — administrator. */
 export function isAdministratorAppRoute(pathname: string): boolean {
   return (
     isProfileRoute(pathname) ||
     pathname.startsWith("/rooms") ||
     pathname.startsWith("/brands") ||
+    pathname.startsWith("/admin") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/room")
   );

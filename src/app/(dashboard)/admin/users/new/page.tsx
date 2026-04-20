@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ensureCeoAdminAccess } from "@/lib/ensure-ceo-admin-access";
+import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { AdminAddUserClient } from "./admin-add-user-client";
 
 export default async function AdminAddUserPage() {
-  await ensureCeoAdminAccess();
+  await ensureAdminUserAccess();
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-6">

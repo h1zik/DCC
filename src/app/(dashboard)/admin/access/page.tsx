@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureCeoAdminAccess } from "@/lib/ensure-ceo-admin-access";
+import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AdminAccessClient } from "./admin-access-client";
 
 export default async function AdminAccessPage() {
-  await ensureCeoAdminAccess();
+  await ensureAdminUserAccess();
 
   const users = await prisma.user.findMany({
     where: { role: { not: UserRole.CEO } },

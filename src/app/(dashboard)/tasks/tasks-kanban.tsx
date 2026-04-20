@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -17,7 +18,8 @@ import { moveTaskStatus } from "@/actions/tasks";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Check, GripVertical, Plus } from "lucide-react";
 
 const COLS = [
   TaskStatus.TODO,
@@ -94,15 +96,30 @@ function PicStrip({
 function DraggableTask({
   task,
   onTaskClick,
+  onQuickDone,
 }: {
   task: KanbanTask;
   onTaskClick?: (taskId: string) => void;
+  onQuickDone?: (taskId: string) => Promise<void>;
 }) {
+  const [quickPending, setQuickPending] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id });
   const style = {
     transform: CSS.Transform.toString(transform),
   };
+  const canQuickDone = task.status !== TaskStatus.DONE;
+
+  async function handleQuickDone(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    if (!onQuickDone || !canQuickDone || quickPending) return;
+    setQuickPending(true);
+    try {
+      await onQuickDone(task.id);
+    } finally {
+      setQuickPending(false);
+    }
+  }
 
   return (
     <div
@@ -122,6 +139,19 @@ function DraggableTask({
       >
         <GripVertical className="size-4" />
       </button>
+      {canQuickDone ? (
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="text-emerald-600 hover:bg-emerald-500/10 mt-2 h-6 w-6 self-start"
+          aria-label="Tandai selesai"
+          disabled={quickPending}
+          onClick={(e) => void handleQuickDone(e)}
+        >
+          <Check className="size-3.5" />
+        </Button>
+      ) : null}
       <button
         type="button"
         className="hover:bg-muted/30 min-w-0 flex-1 cursor-pointer rounded-r-md p-2.5 text-left"
@@ -150,9 +180,11 @@ function DraggableTask({
 function DroppableColumn({
   status,
   children,
+  onAddTask,
 }: {
   status: TaskStatus;
   children: React.ReactNode;
+  onAddTask?: (status: TaskStatus) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
@@ -165,6 +197,18 @@ function DroppableColumn({
     >
       <div className="text-muted-foreground flex items-center justify-between px-1 text-xs font-semibold tracking-wide uppercase">
         <span>{LABELS[status]}</span>
+        {onAddTask ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6"
+            onClick={() => onAddTask(status)}
+            aria-label={`Tambah tugas ${LABELS[status]}`}
+          >
+            <Plus className="size-3.5" />
+          </Button>
+        ) : null}
       </div>
       <div className="flex flex-1 flex-col gap-2">{children}</div>
     </div>
@@ -174,9 +218,11 @@ function DroppableColumn({
 export function TasksKanban({
   tasks,
   onTaskClick,
+  onAddTask,
 }: {
   tasks: KanbanTask[];
   onTaskClick?: (taskId: string) => void;
+  onAddTask?: (status: TaskStatus) => void;
 }) {
   const router = useRouter();
   const sensors = useSensors(
@@ -201,11 +247,25 @@ export function TasksKanban({
     }
   }
 
+  async function onQuickDone(taskId: string) {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.status === TaskStatus.DONE) return;
+    try {
+      await moveTaskStatus({ taskId, status: TaskStatus.DONE });
+      toast.success("Tugas dipindahkan ke Selesai.");
+      router.refresh();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Gagal memindahkan tugas ke Selesai.";
+      toast.error(msg);
+    }
+  }
+
   return (
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <div className="flex flex-col gap-4 lg:flex-row">
         {COLS.map((status) => (
-          <DroppableColumn key={status} status={status}>
+          <DroppableColumn key={status} status={status} onAddTask={onAddTask}>
             {tasks
               .filter((t) => t.status === status)
               .map((t) => (
@@ -213,6 +273,7 @@ export function TasksKanban({
                   key={t.id}
                   task={t}
                   onTaskClick={onTaskClick}
+                  onQuickDone={onQuickDone}
                 />
               ))}
           </DroppableColumn>

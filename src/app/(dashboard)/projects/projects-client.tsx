@@ -226,94 +226,98 @@ export function ProjectsPipeline({
 
       {canEdit ? (
         <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            onClick={() => {
-              const r = rooms[0];
-              setCreateRoomId(r?.id ?? "");
-              setBrandId(r?.brandId ?? brands[0]?.id ?? "");
-              setOpen(true);
-            }}
-            disabled={rooms.length === 0 || brands.length === 0}
-          >
-            <Plus className="size-4" />
-            Proyek baru
-          </Button>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Proyek pengembangan produk</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-3 py-2">
-                <div className="space-y-2">
-                  <Label>Ruangan kerja</Label>
-                  <Select
-                    value={createRoomId}
-                    items={dialogRoomSelectItems}
-                    onValueChange={(v) => {
-                      if (!v) return;
-                      setCreateRoomId(v);
-                      const room = rooms.find((x) => x.id === v);
-                      if (room?.brandId) setBrandId(room.brandId);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih room" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rooms.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Brand proyek</Label>
-                  <Select
-                    value={brandId}
-                    items={dialogBrandSelectItems}
-                    onValueChange={(v) => {
-                      if (v) setBrandId(v);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Brand" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {brands.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pname">Nama proyek</Label>
-                  <Input
-                    id="pname"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Contoh: Peluncuran serum baru Q3"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setOpen(false)}>
-                  Batal
-                </Button>
-                <Button
-                  onClick={onCreate}
-                  disabled={
-                    pending || !name.trim() || !brandId || !createRoomId
-                  }
-                >
-                  Simpan
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {isCeo ? (
+            <>
+              <Button
+                onClick={() => {
+                  const r = rooms[0];
+                  setCreateRoomId(r?.id ?? "");
+                  setBrandId(r?.brandId ?? brands[0]?.id ?? "");
+                  setOpen(true);
+                }}
+                disabled={rooms.length === 0 || brands.length === 0}
+              >
+                <Plus className="size-4" />
+                Proyek baru
+              </Button>
+              <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Proyek pengembangan produk</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-3 py-2">
+                    <div className="space-y-2">
+                      <Label>Ruangan kerja</Label>
+                      <Select
+                        value={createRoomId}
+                        items={dialogRoomSelectItems}
+                        onValueChange={(v) => {
+                          if (!v) return;
+                          setCreateRoomId(v);
+                          const room = rooms.find((x) => x.id === v);
+                          if (room?.brandId) setBrandId(room.brandId);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih room" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {rooms.map((r) => (
+                            <SelectItem key={r.id} value={r.id}>
+                              {r.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Brand proyek</Label>
+                      <Select
+                        value={brandId}
+                        items={dialogBrandSelectItems}
+                        onValueChange={(v) => {
+                          if (v) setBrandId(v);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="pname">Nama proyek</Label>
+                      <Input
+                        id="pname"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Contoh: Peluncuran serum baru Q3"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setOpen(false)}>
+                      Batal
+                    </Button>
+                    <Button
+                      onClick={onCreate}
+                      disabled={
+                        pending || !name.trim() || !brandId || !createRoomId
+                      }
+                    >
+                      Simpan
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </>
+          ) : null}
           <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
             <DialogContent>
               <DialogHeader>

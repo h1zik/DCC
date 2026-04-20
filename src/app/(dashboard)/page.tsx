@@ -34,6 +34,13 @@ export default async function ExecutiveDashboardPage() {
     include: { brand: true },
     orderBy: { name: "asc" },
   });
+  const pipelineProjects = await prisma.project.findMany({
+    where: { brandId: { not: null } },
+    select: {
+      currentStage: true,
+      pendingPipelineStage: true,
+    },
+  });
 
   const [
     activeSuppliers,
@@ -72,7 +79,9 @@ export default async function ExecutiveDashboardPage() {
   const pipelineCounts = PIPELINE_ORDER.map((stage) => ({
     stage,
     label: PIPELINE_LABELS[stage],
-    count: products.filter((p) => p.pipelineStage === stage).length,
+    count: pipelineProjects.filter((p) => p.currentStage === stage).length,
+    pendingCount: pipelineProjects.filter((p) => p.pendingPipelineStage === stage)
+      .length,
   }));
 
   return (
@@ -226,20 +235,25 @@ export default async function ExecutiveDashboardPage() {
           <CardHeader>
             <CardTitle>Pipeline produksi</CardTitle>
             <CardDescription>
-              Ringkasan SKU per fase: Idea → Launch.
+              Ringkasan proyek aktif per fase resmi pipeline.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2">
-              {pipelineCounts.map(({ stage, label, count }) => (
+              {pipelineCounts.map(({ stage, label, count, pendingCount }) => (
                 <div
                   key={stage}
                   className="bg-muted/40 flex items-center justify-between rounded-lg border border-border px-3 py-2"
                 >
-                  <span className="text-sm font-medium">{label}</span>
-                  <span className="text-muted-foreground font-mono text-sm">
-                    {count}
-                  </span>
+                  <div>
+                    <span className="text-sm font-medium">{label}</span>
+                    {pendingCount > 0 ? (
+                      <p className="text-muted-foreground text-[11px]">
+                        +{pendingCount} menunggu persetujuan
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="text-muted-foreground font-mono text-sm">{count}</span>
                 </div>
               ))}
             </div>

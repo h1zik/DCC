@@ -130,7 +130,7 @@ export function TasksWorkspace({
     }
   }, [tasks, detailId]);
 
-  function openCreate() {
+  function openCreate(initialStatus: TaskStatus = TaskStatus.TODO) {
     if (projects.length === 0) {
       toast.error(
         simpleHub
@@ -145,7 +145,7 @@ export function TasksWorkspace({
     setAssigneeId("");
     setVendorId("");
     setPriority(TaskPriority.MEDIUM);
-    setStatus(TaskStatus.TODO);
+    setStatus(initialStatus);
     setDueDate("");
     setLeadTimeDays("");
     setApproval(false);
@@ -170,6 +170,7 @@ export function TasksWorkspace({
         assigneeId: isRoomManager ? assigneeId || null : null,
         vendorId: vendorId || null,
         priority,
+        status,
         dueDate: due,
         leadTimeDays: lead,
         isApprovalRequired: approval,
@@ -639,6 +640,7 @@ export function TasksWorkspace({
               const t = tasks.find((x) => x.id === id);
               if (t) openDetail(t);
             }}
+            onAddTask={isRoomManager ? (taskStatus) => openCreate(taskStatus) : undefined}
           />
         </TabsContent>
         <TabsContent value="list" className="mt-4">

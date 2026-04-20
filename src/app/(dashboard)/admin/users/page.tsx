@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { ensureCeoAdminAccess } from "@/lib/ensure-ceo-admin-access";
+import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AdminUsersClient } from "./admin-users-client";
 
 export default async function AdminUsersPage() {
-  const session = await ensureCeoAdminAccess();
+  const session = await ensureAdminUserAccess();
   const currentUserId = session.user?.id;
   if (!currentUserId) {
     redirect("/login");
