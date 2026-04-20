@@ -58,8 +58,8 @@ export async function updateProfileAvatar(formData: FormData) {
   });
   if (me?.image?.startsWith("/uploads/avatars/")) {
     try {
-      const segs = me.image.split("/").filter(Boolean);
-      await unlink(path.join(process.cwd(), "public", ...segs));
+      const segs = me.image.split("/").filter(Boolean).slice(1);
+      await unlink(path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs));
     } catch {
       /* */
     }
@@ -74,7 +74,7 @@ export async function updateProfileAvatar(formData: FormData) {
           ? "webp"
           : "jpg";
   const stored = `${randomUUID()}.${ext}`;
-  const dir = path.join(process.cwd(), "public", "uploads", "avatars", session.user.id);
+  const dir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "avatars", session.user.id);
   await mkdir(dir, { recursive: true });
   const abs = path.join(dir, stored);
   await writeFile(abs, Buffer.from(await file.arrayBuffer()));
@@ -98,8 +98,8 @@ export async function clearProfileAvatar() {
   });
   if (me?.image?.startsWith("/uploads/avatars/")) {
     try {
-      const segs = me.image.split("/").filter(Boolean);
-      await unlink(path.join(process.cwd(), "public", ...segs));
+      const segs = me.image.split("/").filter(Boolean).slice(1);
+      await unlink(path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs));
     } catch {
       /* */
     }

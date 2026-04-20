@@ -57,8 +57,7 @@ export async function uploadTaskAttachment(taskId: string, formData: FormData) {
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `${randomUUID()}-${base}`;
-  const relDir = path.join("public", "uploads", "tasks", taskId);
-  const absDir = path.join(process.cwd(), relDir);
+  const absDir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "tasks", taskId);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
@@ -96,8 +95,8 @@ export async function deleteTaskAttachment(attachmentId: string) {
   if (!a.publicPath.startsWith("/uploads/tasks/")) {
     throw new Error("Path tidak valid.");
   }
-  const segs = a.publicPath.split("/").filter(Boolean);
-  const absFile = path.join(process.cwd(), "public", ...segs);
+  const segs = a.publicPath.split("/").filter(Boolean).slice(1);
+  const absFile = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs);
   try {
     await unlink(absFile);
   } catch {

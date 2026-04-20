@@ -35,8 +35,8 @@ function sanitizeBaseName(name: string): string {
 
 async function unlinkIfSafe(absPublicPath: string | null | undefined) {
   if (!absPublicPath?.startsWith("/uploads/room-content-plan/")) return;
-  const segs = absPublicPath.split("/").filter(Boolean);
-  const absFile = path.join(process.cwd(), "public", ...segs);
+  const segs = absPublicPath.split("/").filter(Boolean).slice(1);
+  const absFile = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs);
   try {
     await unlink(absFile);
   } catch {
@@ -216,8 +216,7 @@ export async function uploadContentPlanCopywritingFile(
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `copywriting-${randomUUID()}-${base}`;
-  const relDir = path.join("public", "uploads", "room-content-plan", itemId);
-  const absDir = path.join(process.cwd(), relDir);
+  const absDir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "room-content-plan", itemId);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
@@ -263,8 +262,7 @@ export async function uploadContentPlanDesignFile(
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `design-${randomUUID()}-${base}`;
-  const relDir = path.join("public", "uploads", "room-content-plan", itemId);
-  const absDir = path.join(process.cwd(), relDir);
+  const absDir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "room-content-plan", itemId);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
