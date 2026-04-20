@@ -49,7 +49,7 @@ export function AdminAccessClient({ users }: { users: Row[] }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground text-sm">
-        Hanya CEO yang dapat menetapkan atau mencabut peran{" "}
+        Hanya Administrator yang dapat menetapkan atau mencabut peran{" "}
         <span className="text-foreground font-medium">Administrator</span>{" "}
         (akses menu Brand dan Ruang kerja). Pengguna yang sedang masuk harus
         keluar lalu masuk lagi agar menu sesuai peran baru.

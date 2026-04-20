@@ -5,7 +5,7 @@ import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireCeo } from "@/lib/auth-helpers";
+import { requireAdministrator } from "@/lib/auth-helpers";
 import { CEO_ASSIGNABLE_USER_ROLES } from "@/lib/ceo-assignable-roles";
 
 const assignableSet = new Set<UserRole>(CEO_ASSIGNABLE_USER_ROLES);
@@ -35,7 +35,7 @@ const createUserSchema = z.object({
 export async function createUserByCeo(
   input: z.infer<typeof createUserSchema>,
 ) {
-  await requireCeo();
+  await requireAdministrator();
   const data = createUserSchema.parse(input);
 
   const exists = await prisma.user.findUnique({
@@ -76,7 +76,7 @@ const updateUserDetailsSchema = z.object({
 export async function updateUserDetailsByCeo(
   input: z.infer<typeof updateUserDetailsSchema>,
 ) {
-  await requireCeo();
+  await requireAdministrator();
   const data = updateUserDetailsSchema.parse(input);
 
   const target = await prisma.user.findUnique({
@@ -123,7 +123,7 @@ const resetPasswordSchema = z.object({
 export async function resetUserPasswordByCeo(
   input: z.infer<typeof resetPasswordSchema>,
 ) {
-  await requireCeo();
+  await requireAdministrator();
   const data = resetPasswordSchema.parse(input);
 
   const exists = await prisma.user.findUnique({
@@ -149,7 +149,7 @@ const deleteUserSchema = z.object({
 
 /** Menghapus pengguna. CEO tidak dapat menghapus diri sendiri atau akun CEO lain. */
 export async function deleteUserByCeo(input: z.infer<typeof deleteUserSchema>) {
-  const session = await requireCeo();
+  const session = await requireAdministrator();
   const { userId } = deleteUserSchema.parse(input);
 
   if (userId === session.user.id) {

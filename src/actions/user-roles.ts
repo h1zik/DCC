@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireCeo } from "@/lib/auth-helpers";
+import { requireAdministrator } from "@/lib/auth-helpers";
 
 const updateSchema = z.object({
   userId: z.string().min(1),
@@ -16,7 +16,7 @@ const updateSchema = z.object({
  * Hanya CEO — tidak dapat menetapkan CEO atau mengubah akun sendiri.
  */
 export async function updateUserRoleByCeo(input: z.infer<typeof updateSchema>) {
-  const session = await requireCeo();
+  const session = await requireAdministrator();
   const data = updateSchema.parse(input);
   if (data.role === UserRole.CEO) {
     throw new Error("Peran CEO tidak dapat ditetapkan lewat halaman ini.");
