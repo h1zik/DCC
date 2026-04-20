@@ -7,6 +7,10 @@ import { revalidatePath } from "next/cache";
 import { ContentPlanJenis, ContentPlanStatusKerja } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import {
+  absolutePathFromStoredPublicPath,
+  getUploadPublicDir,
+} from "@/lib/upload-storage";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
@@ -35,10 +39,9 @@ function sanitizeBaseName(name: string): string {
 
 async function unlinkIfSafe(absPublicPath: string | null | undefined) {
   if (!absPublicPath?.startsWith("/uploads/room-content-plan/")) return;
-  const segs = absPublicPath.split("/").filter(Boolean).slice(1);
-  const absFile = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs);
+  const absFile = absolutePathFromStoredPublicPath(absPublicPath);
   try {
-    await unlink(absFile);
+    if (absFile) await unlink(absFile);
   } catch {
     /* sudah hilang */
   }
@@ -216,7 +219,7 @@ export async function uploadContentPlanCopywritingFile(
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `copywriting-${randomUUID()}-${base}`;
-  const absDir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "room-content-plan", itemId);
+  const absDir = path.join(getUploadPublicDir(), "room-content-plan", itemId);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
@@ -262,7 +265,7 @@ export async function uploadContentPlanDesignFile(
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `design-${randomUUID()}-${base}`;
-  const absDir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "room-content-plan", itemId);
+  const absDir = path.join(getUploadPublicDir(), "room-content-plan", itemId);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);

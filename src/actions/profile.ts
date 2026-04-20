@@ -3,6 +3,10 @@
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  absolutePathFromStoredPublicPath,
+  getUploadPublicDir,
+} from "@/lib/upload-storage";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
@@ -58,8 +62,8 @@ export async function updateProfileAvatar(formData: FormData) {
   });
   if (me?.image?.startsWith("/uploads/avatars/")) {
     try {
-      const segs = me.image.split("/").filter(Boolean).slice(1);
-      await unlink(path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs));
+      const oldAbs = absolutePathFromStoredPublicPath(me.image);
+      if (oldAbs) await unlink(oldAbs);
     } catch {
       /* */
     }
@@ -74,7 +78,7 @@ export async function updateProfileAvatar(formData: FormData) {
           ? "webp"
           : "jpg";
   const stored = `${randomUUID()}.${ext}`;
-  const dir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "avatars", session.user.id);
+  const dir = path.join(getUploadPublicDir(), "avatars", session.user.id);
   await mkdir(dir, { recursive: true });
   const abs = path.join(dir, stored);
   await writeFile(abs, Buffer.from(await file.arrayBuffer()));
@@ -98,8 +102,8 @@ export async function clearProfileAvatar() {
   });
   if (me?.image?.startsWith("/uploads/avatars/")) {
     try {
-      const segs = me.image.split("/").filter(Boolean).slice(1);
-      await unlink(path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs));
+      const oldAbs = absolutePathFromStoredPublicPath(me.image);
+      if (oldAbs) await unlink(oldAbs);
     } catch {
       /* */
     }

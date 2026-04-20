@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
+import {
+  absolutePathFromStoredPublicPath,
+  getUploadPublicDir,
+} from "@/lib/upload-storage";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import {
@@ -57,7 +61,7 @@ export async function uploadTaskAttachment(taskId: string, formData: FormData) {
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `${randomUUID()}-${base}`;
-  const absDir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "tasks", taskId);
+  const absDir = path.join(getUploadPublicDir(), "tasks", taskId);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
@@ -95,10 +99,9 @@ export async function deleteTaskAttachment(attachmentId: string) {
   if (!a.publicPath.startsWith("/uploads/tasks/")) {
     throw new Error("Path tidak valid.");
   }
-  const segs = a.publicPath.split("/").filter(Boolean).slice(1);
-  const absFile = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs);
+  const absFile = absolutePathFromStoredPublicPath(a.publicPath);
   try {
-    await unlink(absFile);
+    if (absFile) await unlink(absFile);
   } catch {
     /* file mungkin sudah dihapus manual */
   }

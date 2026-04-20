@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
+import {
+  absolutePathFromStoredPublicPath,
+  getUploadPublicDir,
+} from "@/lib/upload-storage";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { assertRoomMember, isRoomHubManagerRole } from "@/lib/room-access";
@@ -56,7 +60,7 @@ export async function uploadRoomDocument(roomId: string, formData: FormData) {
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `${randomUUID()}-${base}`;
-  const absDir = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", "rooms", roomId);
+  const absDir = path.join(getUploadPublicDir(), "rooms", roomId);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
@@ -90,10 +94,9 @@ export async function deleteRoomDocument(documentId: string) {
   if (!doc.publicPath.startsWith("/uploads/rooms/")) {
     throw new Error("Path tidak valid.");
   }
-  const segs = doc.publicPath.split("/").filter(Boolean).slice(1);
-  const absFile = path.join(process.env.UPLOAD_PUBLIC_DIR || "/app/public/uploads", ...segs);
+  const absFile = absolutePathFromStoredPublicPath(doc.publicPath);
   try {
-    await unlink(absFile);
+    if (absFile) await unlink(absFile);
   } catch {
     /* file mungkin sudah hilang */
   }
