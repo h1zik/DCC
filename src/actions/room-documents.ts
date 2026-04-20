@@ -56,8 +56,8 @@ export async function uploadRoomDocument(roomId: string, formData: FormData) {
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
   const stored = `${randomUUID()}-${base}`;
-  const relDir = path.join("public", "uploads", "rooms", roomId);
-  const absDir = path.join(process.cwd(), relDir);
+  const relDir = path.join("uploads", "rooms", roomId);
+  const absDir = path.join(process.cwd(), "public", relDir);
   await mkdir(absDir, { recursive: true });
   const absFile = path.join(absDir, stored);
   await writeFile(absFile, buf);
