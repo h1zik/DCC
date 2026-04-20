@@ -437,7 +437,7 @@ export function TasksWorkspace({
       ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         {isRoomManager ? (
-          <Button type="button" onClick={openCreate}>
+          <Button type="button" onClick={() => openCreate()}>
             Tugas baru
           </Button>
         ) : null}
