@@ -7,6 +7,14 @@ import path from "node:path";
 export function getUploadPublicDir(): string {
   const fromEnv = process.env.UPLOAD_PUBLIC_DIR?.trim();
   if (fromEnv) return path.resolve(fromEnv);
+  const railwayMount = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
+  if (railwayMount) {
+    return path.resolve(path.join(railwayMount, "uploads"));
+  }
+  if (process.env.NODE_ENV === "production" && process.env.RAILWAY_ENVIRONMENT) {
+    // Railway default mount point for persistent volumes.
+    return "/data/uploads";
+  }
   return path.join(
     /* turbopackIgnore: true */ process.cwd(),
     "public",
