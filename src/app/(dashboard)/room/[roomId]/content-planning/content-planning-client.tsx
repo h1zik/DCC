@@ -48,6 +48,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   CalendarDays,
@@ -817,7 +818,7 @@ export function ContentPlanningClient({
                         className="text-muted-foreground cursor-pointer text-xs file:mr-3 file:rounded-md file:border-0 file:bg-accent/30 file:px-2 file:py-1 file:text-xs file:font-medium"
                       />
                       <p className="text-muted-foreground text-[11px]">
-                        Maks. 15 MB — dokumen, PDF, gambar, zip.
+                        Maks. {MAX_UPLOAD_LABEL} — dokumen, PDF, gambar, zip.
                       </p>
                     </div>
                     {editing?.copywritingFilePath ? (

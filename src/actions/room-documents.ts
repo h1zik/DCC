@@ -8,6 +8,7 @@ import {
   absolutePathFromStoredPublicPath,
   getUploadPublicDir,
 } from "@/lib/upload-storage";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { assertRoomMember, isRoomHubManagerRole } from "@/lib/room-access";
@@ -48,6 +49,9 @@ export async function uploadRoomDocument(roomId: string, formData: FormData) {
   const file = formData.get("file");
   if (!file || !(file instanceof File)) {
     throw new Error("Pilih file terlebih dahulu.");
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = file.type || "application/octet-stream";
   if (!isAllowedMime(mime)) {

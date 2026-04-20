@@ -11,11 +11,11 @@ import {
   absolutePathFromStoredPublicPath,
   getUploadPublicDir,
 } from "@/lib/upload-storage";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 
-const MAX_BYTES = 15 * 1024 * 1024;
 const MAX_DESIGN_SLIDES = 24;
 const ALLOWED_PREFIXES = [
   "image/",
@@ -203,8 +203,8 @@ export async function uploadContentPlanCopywritingFile(
   if (!file || !(file instanceof File)) {
     throw new Error("Pilih file copywriting.");
   }
-  if (file.size > MAX_BYTES) {
-    throw new Error("Ukuran file maksimal 15 MB.");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = file.type || "application/octet-stream";
   if (!isAllowedMime(mime)) {
@@ -242,8 +242,8 @@ export async function uploadContentPlanDesignFile(
   if (!file || !(file instanceof File)) {
     throw new Error("Pilih file design.");
   }
-  if (file.size > MAX_BYTES) {
-    throw new Error("Ukuran file maksimal 15 MB.");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = file.type || "application/octet-stream";
   if (!isAllowedMime(mime)) {

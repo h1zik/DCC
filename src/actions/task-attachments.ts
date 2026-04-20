@@ -8,6 +8,7 @@ import {
   absolutePathFromStoredPublicPath,
   getUploadPublicDir,
 } from "@/lib/upload-storage";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import {
@@ -49,6 +50,9 @@ export async function uploadTaskAttachment(taskId: string, formData: FormData) {
   const file = formData.get("file");
   if (!file || !(file instanceof File)) {
     throw new Error("Pilih file terlebih dahulu.");
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = file.type || "application/octet-stream";
   if (!isAllowedMime(mime)) {
