@@ -377,8 +377,13 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
 
   const prevAssigneeIds = prev.assignees.map((a) => a.userId);
   const addedAssigneeIds = assigneeIds.filter((id) => !prevAssigneeIds.includes(id));
+  const removedAssigneeIds = prevAssigneeIds.filter(
+    (id) => !assigneeIds.includes(id),
+  );
+  const assigneesChanged =
+    addedAssigneeIds.length > 0 || removedAssigneeIds.length > 0;
 
-  await prisma.task.update({
+  const task = await prisma.task.update({
     where: { id: data.taskId },
     data: {
       projectId,
@@ -397,15 +402,15 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
             whatsappReminder1dSentAt: null,
           }
         : {}),
-      assignees: {
-        deleteMany: {},
-        create: assigneeIds.map((userId) => ({ userId })),
-      },
+      ...(assigneesChanged
+        ? {
+            assignees: {
+              deleteMany: {},
+              create: assigneeIds.map((userId) => ({ userId })),
+            },
+          }
+        : {}),
     },
-  });
-
-  const task = await prisma.task.findUniqueOrThrow({
-    where: { id: data.taskId },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
       assignees: { include: { user: { select: { name: true } } } },
