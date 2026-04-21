@@ -33,7 +33,7 @@ export async function updateProfileBasics(input: {
 
   let whatsappPhone: string | null | undefined;
   if (input.whatsappPhone !== undefined) {
-    const t = input.whatsappPhone.trim();
+    const t = (input.whatsappPhone ?? "").trim();
     if (t === "") whatsappPhone = null;
     else if (!E164.test(t)) {
       throw new Error(
