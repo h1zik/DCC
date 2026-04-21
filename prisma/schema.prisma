@@ -227,8 +227,16 @@ model RoomMessage {
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  body      String
+  body      String   @default("")
+  /** URL gambar/GIF ter-hosting (Tenor, Giphy, dll.) — teks opsional di `body`. */
+  gifUrl    String?
+  replyToId String?
+  replyTo   RoomMessage?  @relation("RoomMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   RoomMessage[] @relation("RoomMessageReplies")
   createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@index([replyToId])
 }
 
 /** Folder logis untuk mengelompokkan dokumen bersama per ruangan (Logo, Legal, dll.). */

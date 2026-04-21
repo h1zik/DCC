@@ -31,7 +31,7 @@ export function RoomHubNav({
   const simpleLinks = [
     { href: `${base}/tasks`, label: "Tasks", icon: KanbanSquare },
     { href: `${base}/members`, label: "Anggota", icon: Users },
-    { href: `${base}/chat`, label: "Group chat", icon: MessageCircle },
+    { href: `${base}/chat`, label: "Grup", icon: MessageCircle },
     { href: `${base}/documents`, label: "Documents & file", icon: Files },
   ] as const;
   const fullLinks = [
@@ -42,7 +42,7 @@ export function RoomHubNav({
       icon: ClipboardList,
     },
     { href: `${base}/members`, label: "Anggota", icon: Users },
-    { href: `${base}/chat`, label: "Group chat", icon: MessageCircle },
+    { href: `${base}/chat`, label: "Grup", icon: MessageCircle },
     { href: `${base}/documents`, label: "Documents & file", icon: Files },
   ] as const;
   const links = simpleHub ? simpleLinks : fullLinks;
