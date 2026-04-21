@@ -29,21 +29,23 @@ export type KanbanTask = {
   priority: string;
   dueDate: string | null;
   project: { name: string; brand: { name: string } };
-  assignee: {
+  assignees: {
     image: string | null;
     name: string | null;
     email: string;
-  } | null;
+  }[];
 };
 
 function PicStrip({
-  assignee,
+  assignees,
 }: {
-  assignee: KanbanTask["assignee"];
+  assignees: KanbanTask["assignees"];
 }) {
-  if (assignee) {
+  if (assignees.length > 0) {
+    const assignee = assignees[0]!;
     const label = assignee.name?.trim() || assignee.email;
     const initial = label.slice(0, 1).toUpperCase() || "?";
+    const extra = assignees.length - 1;
     return (
       <div className="mt-2 flex items-center gap-1.5 border-t border-border/70 pt-2">
         {assignee.image ? (
@@ -65,6 +67,7 @@ function PicStrip({
         )}
         <span className="text-muted-foreground truncate text-[10px]" title={label}>
           PIC: {label}
+          {extra > 0 ? ` +${extra}` : ""}
         </span>
       </div>
     );
@@ -239,7 +242,7 @@ function DraggableTask({
             </span>
           ) : null}
         </div>
-        <PicStrip assignee={task.assignee} />
+        <PicStrip assignees={task.assignees} />
       </button>
     </div>
   );

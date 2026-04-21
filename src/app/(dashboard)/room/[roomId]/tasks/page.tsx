@@ -98,7 +98,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         ],
         include: {
           project: { include: { brand: true, room: { select: { name: true } } } },
-          assignee: { select: { id: true, name: true, email: true, image: true } },
+          assignees: {
+            include: {
+              user: { select: { id: true, name: true, email: true, image: true } },
+            },
+          },
           vendor: { select: { id: true, name: true } },
           checklistItems: { orderBy: { sortOrder: "asc" } },
           comments: {
@@ -201,7 +205,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       ],
       include: {
         project: { include: { brand: true, room: { select: { name: true } } } },
-        assignee: { select: { id: true, name: true, email: true, image: true } },
+        assignees: {
+          include: {
+            user: { select: { id: true, name: true, email: true, image: true } },
+          },
+        },
         vendor: { select: { id: true, name: true } },
         checklistItems: { orderBy: { sortOrder: "asc" } },
         comments: {
@@ -226,7 +234,16 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       orderBy: { name: "asc" },
     }),
     prisma.roomMember.findMany({
-      where: { roomId, role: RoomMemberRole.ROOM_CONTRIBUTOR },
+      where: {
+        roomId,
+        role: {
+          in: [
+            RoomMemberRole.ROOM_CONTRIBUTOR,
+            RoomMemberRole.ROOM_MANAGER,
+            RoomMemberRole.ROOM_PROJECT_MANAGER,
+          ],
+        },
+      },
       include: {
         user: { select: { id: true, name: true, email: true } },
       },

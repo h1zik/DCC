@@ -120,15 +120,22 @@ export async function assertRoomHubManager(roomId: string, userId: string) {
   return m;
 }
 
-/** PIC tugas: kontributor di ruangan yang sama dengan akses ke fase tugas tersebut. */
+/** PIC tugas: anggota ruangan dengan akses fase (kontributor/manager/project manager). */
 export async function assertRoomContributorForPic(
   roomId: string,
   userId: string,
   taskRoomProcess: RoomTaskProcess,
 ) {
   const m = await getRoomMember(roomId, userId);
-  if (!m || m.role !== RoomMemberRole.ROOM_CONTRIBUTOR) {
-    throw new Error("PIC harus berupa kontributor di ruangan ini.");
+  if (!m) {
+    throw new Error("PIC harus berupa anggota ruangan ini.");
+  }
+  if (
+    m.role !== RoomMemberRole.ROOM_CONTRIBUTOR &&
+    m.role !== RoomMemberRole.ROOM_MANAGER &&
+    m.role !== RoomMemberRole.ROOM_PROJECT_MANAGER
+  ) {
+    throw new Error("PIC harus berupa kontributor/manager di ruangan ini.");
   }
   if (
     !memberHasRoomProcessAccess(

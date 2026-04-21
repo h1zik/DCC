@@ -16,29 +16,38 @@ export async function syncTaskDeadlineWhatsAppReminders() {
     where: {
       status: { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] },
       dueDate: { not: null },
-      assigneeId: { not: null },
+      assignees: { some: {} },
       archivedAt: null,
     },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
-      assignee: { select: { name: true, whatsappPhone: true } },
+      assignees: {
+        include: {
+          user: { select: { name: true, whatsappPhone: true } },
+        },
+      },
     },
   });
 
   const now = new Date();
 
   for (const t of tasks) {
-    if (!t.dueDate || !t.assignee) continue;
+    if (!t.dueDate || t.assignees.length === 0) continue;
     const days = calendarDaysUntilDue(t.dueDate, now);
 
     if (days === 3 && !t.whatsappReminder3dSentAt) {
-      const ok = await notifyPicDeadlineReminderViaWhatsApp({
-        assignee: t.assignee,
-        whenLabel: "3 hari lagi",
-        taskTitle: t.title,
-        dueDate: t.dueDate,
-        project: t.project,
-      });
+      const sent = await Promise.all(
+        t.assignees.map((a) =>
+          notifyPicDeadlineReminderViaWhatsApp({
+            assignee: a.user,
+            whenLabel: "3 hari lagi",
+            taskTitle: t.title,
+            dueDate: t.dueDate!,
+            project: t.project,
+          }),
+        ),
+      );
+      const ok = sent.some(Boolean);
       if (ok) {
         await prisma.task.update({
           where: { id: t.id },
@@ -48,13 +57,18 @@ export async function syncTaskDeadlineWhatsAppReminders() {
     }
 
     if (days === 1 && !t.whatsappReminder1dSentAt) {
-      const ok = await notifyPicDeadlineReminderViaWhatsApp({
-        assignee: t.assignee,
-        whenLabel: "Besok (1 hari lagi)",
-        taskTitle: t.title,
-        dueDate: t.dueDate,
-        project: t.project,
-      });
+      const sent = await Promise.all(
+        t.assignees.map((a) =>
+          notifyPicDeadlineReminderViaWhatsApp({
+            assignee: a.user,
+            whenLabel: "Besok (1 hari lagi)",
+            taskTitle: t.title,
+            dueDate: t.dueDate!,
+            project: t.project,
+          }),
+        ),
+      );
+      const ok = sent.some(Boolean);
       if (ok) {
         await prisma.task.update({
           where: { id: t.id },

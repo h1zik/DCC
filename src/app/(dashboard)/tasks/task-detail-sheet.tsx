@@ -116,7 +116,7 @@ export function TaskDetailSheet({
   );
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assigneeId, setAssigneeId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [vendorId, setVendorId] = useState("");
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
@@ -137,7 +137,7 @@ export function TaskDetailSheet({
     setRoomProcess(task.roomProcess);
     setTitle(task.title);
     setDescription(task.description ?? "");
-    setAssigneeId(task.assigneeId ?? "");
+    setAssigneeIds(task.assignees.map((a) => a.user.id));
     setVendorId(task.vendorId ?? "");
     setPriority(task.priority);
     setStatus(task.status);
@@ -166,16 +166,6 @@ export function TaskDetailSheet({
         label: roomTaskProcessLabel(p),
       })),
     [],
-  );
-  const assigneeSelectItems = useMemo(
-    () => [
-      { value: "__none__", label: "—" },
-      ...users.map((u) => ({
-        value: u.id,
-        label: u.name ?? u.email,
-      })),
-    ],
-    [users],
   );
   const prioritySelectItems = useMemo(
     () =>
@@ -214,7 +204,7 @@ export function TaskDetailSheet({
         roomProcess,
         title,
         description: description || null,
-        assigneeId: assigneeId || null,
+        assigneeIds,
         vendorId: vendorId || null,
         priority,
         dueDate: due,
@@ -418,31 +408,32 @@ export function TaskDetailSheet({
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-2">
                       <Label>PIC</Label>
-                      <Select
-                        value={assigneeId || "__none__"}
-                        items={assigneeSelectItems}
-                        disabled={!isRoomManager}
-                        onValueChange={(v) => {
-                          if (!v || v === "__none__") setAssigneeId("");
-                          else setAssigneeId(v);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="—" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">—</SelectItem>
-                          {users.map((u) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              {u.name ?? u.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
+                        {users.map((u) => {
+                          const checked = assigneeIds.includes(u.id);
+                          return (
+                            <label key={u.id} className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                checked={checked}
+                                disabled={!isRoomManager}
+                                onCheckedChange={(v) => {
+                                  const next = v === true;
+                                  setAssigneeIds((prev) =>
+                                    next
+                                      ? [...prev, u.id]
+                                      : prev.filter((id) => id !== u.id),
+                                  );
+                                }}
+                              />
+                              <span>{u.name ?? u.email}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                       {!isRoomManager ? (
                         <p className="text-muted-foreground text-xs">
-                          Hanya manager ruangan yang dapat mengubah PIC (kontributor
-                          di ruangan ini).
+                          Hanya manager ruangan yang dapat mengubah PIC (anggota
+                          ruangan dengan akses fase ini).
                         </p>
                       ) : null}
                     </div>

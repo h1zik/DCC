@@ -462,7 +462,10 @@ async function main() {
   await prisma.task.upsert({
     where: { id: "seed-task-approval-1" },
     update: {
-      assigneeId: marketingUser.id,
+      assignees: {
+        deleteMany: {},
+        create: [{ userId: marketingUser.id }],
+      },
       roomProcess: RoomTaskProcess.PRE_LAUNCH,
     },
     create: {
@@ -471,7 +474,6 @@ async function main() {
       roomProcess: RoomTaskProcess.PRE_LAUNCH,
       title: "Final sample approval packaging",
       description: "Menunggu sign-off struktur karton premium",
-      assigneeId: marketingUser.id,
       status: TaskStatus.IN_PROGRESS,
       priority: TaskPriority.HIGH,
       dueDate: new Date(Date.now() + 3 * 86400000),
@@ -480,13 +482,19 @@ async function main() {
       vendorId: vendor1?.id ?? undefined,
       leadTimeDays: 14,
       sortOrder: 1,
+      assignees: {
+        create: [{ userId: marketingUser.id }],
+      },
     },
   });
 
   await prisma.task.upsert({
     where: { id: "seed-task-rd-1" },
     update: {
-      assigneeId: marketingUser.id,
+      assignees: {
+        deleteMany: {},
+        create: [{ userId: marketingUser.id }],
+      },
       roomProcess: RoomTaskProcess.PRODUCT_DEVELOPMENT,
     },
     create: {
@@ -494,18 +502,23 @@ async function main() {
       projectId: projArch.id,
       roomProcess: RoomTaskProcess.PRODUCT_DEVELOPMENT,
       title: "Stabilitas formula batch 3",
-      assigneeId: marketingUser.id,
       status: TaskStatus.DONE,
       priority: TaskPriority.MEDIUM,
       dueDate: new Date(Date.now() - 1 * 86400000),
       sortOrder: 2,
+      assignees: {
+        create: [{ userId: marketingUser.id }],
+      },
     },
   });
 
   await prisma.task.upsert({
     where: { id: "seed-task-um-1" },
     update: {
-      assigneeId: marketingUser.id,
+      assignees: {
+        deleteMany: {},
+        create: [{ userId: marketingUser.id }],
+      },
       roomProcess: RoomTaskProcess.PANEL_TESTING,
     },
     create: {
@@ -513,11 +526,13 @@ async function main() {
       projectId: projUm.id,
       roomProcess: RoomTaskProcess.PANEL_TESTING,
       title: "Pengujian panel konsumen",
-      assigneeId: marketingUser.id,
       status: TaskStatus.TODO,
       priority: TaskPriority.MEDIUM,
       dueDate: new Date(Date.now() + 10 * 86400000),
       sortOrder: 1,
+      assignees: {
+        create: [{ userId: marketingUser.id }],
+      },
     },
   });
 

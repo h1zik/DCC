@@ -20,7 +20,7 @@ export default async function ApprovalsPage() {
     where: { isApprovalRequired: true, isApproved: false },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
-      assignee: { select: { name: true, email: true } },
+      assignees: { include: { user: { select: { name: true, email: true } } } },
     },
     orderBy: { updatedAt: "desc" },
   });

@@ -26,7 +26,7 @@ export type TaskAttachmentRow = {
 
 export type TaskRow = Task & {
   project: Project & { brand: Brand | null; room?: { name: string } };
-  assignee: Pick<User, "id" | "name" | "email" | "image"> | null;
+  assignees: { user: Pick<User, "id" | "name" | "email" | "image"> }[];
   vendor: Pick<Vendor, "id" | "name"> | null;
   checklistItems: TaskChecklistItem[];
   comments: TaskCommentRow[];

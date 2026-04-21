@@ -14,7 +14,7 @@ export async function syncOverdueTasks() {
     },
     select: {
       id: true,
-      assigneeId: true,
+      assignees: { select: { userId: true } },
       title: true,
       project: { include: { brand: true, room: { select: { name: true } } } },
     },
@@ -29,10 +29,10 @@ export async function syncOverdueTasks() {
 
   await Promise.all(
     candidates
-      .filter((c) => c.assigneeId)
-      .map((c) =>
+      .flatMap((c) => c.assignees.map((a) => ({ userId: a.userId, c })))
+      .map(({ userId, c }) =>
         notifyUser(
-          c.assigneeId!,
+          userId,
           `Tugas overdue: ${c.title} (${taskProjectContextLabel(c.project)})`,
           NotificationType.TASK_OVERDUE,
         ),

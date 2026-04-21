@@ -123,7 +123,7 @@ export function TasksWorkspace({
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assigneeId, setAssigneeId] = useState<string>("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [vendorId, setVendorId] = useState<string>("");
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
@@ -155,7 +155,7 @@ export function TasksWorkspace({
     setProjectId(projects[0]!.id);
     setTitle("");
     setDescription("");
-    setAssigneeId("");
+    setAssigneeIds([]);
     setVendorId("");
     setPriority(TaskPriority.MEDIUM);
     setStatus(initialStatus);
@@ -180,7 +180,7 @@ export function TasksWorkspace({
         projectId,
         title,
         description: description || null,
-        assigneeId: isRoomManager ? assigneeId || null : null,
+        assigneeIds: isRoomManager ? assigneeIds : [],
         vendorId: vendorId || null,
         priority,
         status,
@@ -265,13 +265,11 @@ export function TasksWorkspace({
           name: t.project.name,
           brand: { name: taskProjectContextLabel(t.project) },
         },
-        assignee: t.assignee
-          ? {
-              image: t.assignee.image ?? null,
-              name: t.assignee.name,
-              email: t.assignee.email,
-            }
-          : null,
+        assignees: t.assignees.map((a) => ({
+          image: a.user.image ?? null,
+          name: a.user.name,
+          email: a.user.email,
+        })),
       })),
     [tasks],
   );
@@ -294,12 +292,6 @@ export function TasksWorkspace({
       label: projectSelectLabel(p),
     }));
   }, [projects]);
-  const createDialogAssigneeItems = useMemo((): SelectItemDef[] => {
-    return [
-      { value: "__none__", label: "—" },
-      ...users.map((u) => ({ value: u.id, label: u.name ?? u.email })),
-    ];
-  }, [users]);
   const createDialogPriorityItems = useMemo((): SelectItemDef[] => {
     return (Object.values(TaskPriority) as TaskPriority[]).map((p) => ({
       value: p,
@@ -345,10 +337,11 @@ export function TasksWorkspace({
         id: "pic",
         header: "PIC",
         cell: ({ row }) => {
-          const a = row.original.assignee;
-          if (!a) {
+          const assignees = row.original.assignees.map((a) => a.user);
+          if (assignees.length === 0) {
             return <span className="text-muted-foreground">—</span>;
           }
+          const a = assignees[0]!;
           const label = a.name ?? a.email;
           const initial = label.slice(0, 1).toUpperCase();
           return (
@@ -370,7 +363,10 @@ export function TasksWorkspace({
                   {initial}
                 </div>
               )}
-              <span className="truncate">{label}</span>
+              <span className="truncate">
+                {label}
+                {assignees.length > 1 ? ` +${assignees.length - 1}` : ""}
+              </span>
             </div>
           );
         },
@@ -588,27 +584,28 @@ export function TasksWorkspace({
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2">
                   <Label>PIC</Label>
-                  <Select
-                    value={assigneeId || "__none__"}
-                    items={createDialogAssigneeItems}
-                    disabled={!isRoomManager}
-                    onValueChange={(v) => {
-                      if (!v || v === "__none__") setAssigneeId("");
-                      else setAssigneeId(v);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="—" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">—</SelectItem>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name ?? u.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
+                    {users.map((u) => {
+                      const checked = assigneeIds.includes(u.id);
+                      return (
+                        <label key={u.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={checked}
+                            disabled={!isRoomManager}
+                            onCheckedChange={(v) => {
+                              const next = v === true;
+                              setAssigneeIds((prev) =>
+                                next
+                                  ? [...prev, u.id]
+                                  : prev.filter((id) => id !== u.id),
+                              );
+                            }}
+                          />
+                          <span>{u.name ?? u.email}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                   {!isRoomManager ? (
                     <p className="text-muted-foreground text-xs">
                       PIC ditetapkan oleh manager ruangan lewat detail tugas setelah

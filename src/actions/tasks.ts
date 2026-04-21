@@ -50,7 +50,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     where: { id: taskId },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
-      assignee: { select: { name: true } },
+      assignees: { include: { user: { select: { name: true } } } },
     },
   });
 
@@ -88,7 +88,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
       roomId: task.project.roomId,
       taskTitle: task.title,
       project: task.project,
-      picDisplayName: task.assignee?.name ?? null,
+      picDisplayName: task.assignees[0]?.user?.name ?? null,
     });
   }
 
@@ -172,7 +172,7 @@ const createSchema = z.object({
   projectId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional().nullable(),
-  assigneeId: z.string().optional().nullable(),
+  assigneeIds: z.array(z.string()).optional(),
   priority: z.nativeEnum(TaskPriority),
   status: z.nativeEnum(TaskStatus).optional(),
   dueDate: z.coerce.date().optional().nullable(),
@@ -205,8 +205,8 @@ export async function createTask(input: z.infer<typeof createSchema>) {
     );
   }
 
-  let assigneeId: string | undefined = data.assigneeId ?? undefined;
-  if (assigneeId) {
+  const assigneeIds = [...new Set(data.assigneeIds ?? [])].filter(Boolean);
+  for (const assigneeId of assigneeIds) {
     if (simpleHub) {
       await assertSimpleHubAssignee(roomId, assigneeId);
     } else {
@@ -225,7 +225,6 @@ export async function createTask(input: z.infer<typeof createSchema>) {
       roomProcess,
       title: data.title,
       description: data.description ?? undefined,
-      assigneeId,
       priority: data.priority,
       status: data.status ?? TaskStatus.TODO,
       dueDate: data.dueDate ?? undefined,
@@ -233,6 +232,9 @@ export async function createTask(input: z.infer<typeof createSchema>) {
       vendorId: data.vendorId || undefined,
       leadTimeDays: data.leadTimeDays ?? undefined,
       sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
+      assignees: {
+        create: assigneeIds.map((userId) => ({ userId })),
+      },
     },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
@@ -246,7 +248,7 @@ export async function createTask(input: z.infer<typeof createSchema>) {
     );
   }
 
-  if (assigneeId) {
+  for (const assigneeId of assigneeIds) {
     await notifyPicTaskViaWhatsApp({
       assigneeId,
       headline: "new",
@@ -282,7 +284,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       status: true,
       isApprovalRequired: true,
       isApproved: true,
-      assigneeId: true,
+      assignees: { select: { userId: true } },
       dueDate: true,
       archivedAt: true,
       project: { select: { roomId: true } },
@@ -318,7 +320,10 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
   }
 
   let projectId = data.projectId;
-  let assigneeId = (data.assigneeId ?? null) as string | null;
+  let assigneeIds =
+    data.assigneeIds !== undefined
+      ? [...new Set(data.assigneeIds)].filter(Boolean)
+      : prev.assignees.map((a) => a.userId);
   let isApprovalRequired = data.isApprovalRequired ?? false;
 
   let roomProcess =
@@ -337,14 +342,14 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
 
   if (!isHubManager) {
     projectId = prev.projectId;
-    assigneeId = prev.assigneeId ?? null;
+    assigneeIds = prev.assignees.map((a) => a.userId);
     isApprovalRequired = prev.isApprovalRequired;
   } else {
     const newProjectRoomId = await getProjectRoomId(projectId);
     if (newProjectRoomId !== roomId) {
       throw new Error("Proyek harus tetap dalam ruangan yang sama.");
     }
-    if (assigneeId) {
+    for (const assigneeId of assigneeIds) {
       if (simpleHub) {
         await assertSimpleHubAssignee(roomId, assigneeId);
       } else {
@@ -360,6 +365,9 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
   const markingDone =
     data.status === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
 
+  const prevAssigneeIds = prev.assignees.map((a) => a.userId);
+  const addedAssigneeIds = assigneeIds.filter((id) => !prevAssigneeIds.includes(id));
+
   await prisma.task.update({
     where: { id: data.taskId },
     data: {
@@ -367,7 +375,6 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       roomProcess,
       title: data.title,
       description: data.description ?? null,
-      assigneeId,
       priority: data.priority,
       dueDate: data.dueDate ?? null,
       isApprovalRequired,
@@ -380,6 +387,10 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
             whatsappReminder1dSentAt: null,
           }
         : {}),
+      assignees: {
+        deleteMany: {},
+        create: assigneeIds.map((userId) => ({ userId })),
+      },
     },
   });
 
@@ -387,7 +398,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
     where: { id: data.taskId },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
-      assignee: { select: { name: true } },
+      assignees: { include: { user: { select: { name: true } } } },
     },
   });
 
@@ -412,21 +423,15 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       roomId: task.project.roomId,
       taskTitle: task.title,
       project: task.project,
-      picDisplayName: task.assignee?.name ?? null,
+      picDisplayName: task.assignees[0]?.user?.name ?? null,
     });
   }
 
-  const assigneeChanged =
-    isHubManager &&
-    (assigneeId ?? null) !== (prev.assigneeId ?? null) &&
-    Boolean(assigneeId);
-  if (assigneeChanged) {
+  if (isHubManager) {
+    for (const assigneeId of addedAssigneeIds) {
     await notifyPicTaskViaWhatsApp({
-      assigneeId: assigneeId as string,
-      headline:
-        prev.assigneeId && prev.assigneeId !== assigneeId
-          ? "pic_changed"
-          : "new",
+      assigneeId,
+      headline: prevAssigneeIds.length > 0 ? "pic_changed" : "new",
       task: {
         title: task.title,
         priority: task.priority,
@@ -434,6 +439,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       },
       project: task.project,
     });
+    }
   }
 
   await recomputeProjectProgress(task.projectId);

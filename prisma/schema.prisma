@@ -117,7 +117,7 @@ model User {
   role          UserRole  @default(LOGISTICS)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  assignedTasks Task[]    @relation("TaskAssignee")
+  taskAssignments TaskAssignee[]
   notifications Notification[]
   taskComments      TaskComment[]
   taskAttachments   TaskAttachment[]
@@ -299,8 +299,6 @@ model Task {
   roomProcess        RoomTaskProcess @default(MARKET_RESEARCH)
   title              String
   description        String?
-  assigneeId         String?
-  assignee           User?         @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   status             TaskStatus    @default(TODO)
   priority           TaskPriority  @default(MEDIUM)
   dueDate            DateTime?
@@ -321,6 +319,18 @@ model Task {
   checklistItems     TaskChecklistItem[]
   comments           TaskComment[]
   attachments        TaskAttachment[]
+  assignees          TaskAssignee[]
+}
+
+model TaskAssignee {
+  taskId     String
+  task       Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([taskId, userId])
+  @@index([userId])
 }
 
 model TaskComment {

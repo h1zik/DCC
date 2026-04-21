@@ -25,7 +25,7 @@ type TaskRow = {
   title: string;
   description: string | null;
   project: { name: string; brand: { name: string } | null };
-  assignee: { name: string | null; email: string } | null;
+  assignees: { user: { name: string | null; email: string } }[];
   contextLabel: string;
 };
 
@@ -162,8 +162,10 @@ export function ApprovalsClient({
                     ) : null}
                     <p className="text-muted-foreground text-xs">
                       PIC:{" "}
-                      {t.assignee
-                        ? t.assignee.name ?? t.assignee.email
+                      {t.assignees.length > 0
+                        ? t.assignees
+                            .map((a) => a.user.name ?? a.user.email)
+                            .join(", ")
                         : "Belum ditetapkan"}
                     </p>
                   </CardContent>
