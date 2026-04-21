@@ -50,7 +50,9 @@ export default async function ExecutiveDashboardPage() {
     pendingPipelineApprovals,
   ] = await Promise.all([
     prisma.vendor.count(),
-    prisma.task.count({ where: { status: TaskStatus.OVERDUE } }),
+    prisma.task.count({
+      where: { status: TaskStatus.OVERDUE, archivedAt: null },
+    }),
     prisma.project.count({
       where: { totalProgress: 100, brandId: { not: null } },
     }),

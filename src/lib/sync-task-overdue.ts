@@ -10,6 +10,7 @@ export async function syncOverdueTasks() {
     where: {
       status: { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] },
       dueDate: { lte: now },
+      archivedAt: null,
     },
     select: {
       id: true,

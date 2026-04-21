@@ -15,9 +15,11 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   addChecklistItem,
+  archiveTask,
   deleteChecklistItem,
   deleteTask,
   toggleChecklistItem,
+  unarchiveTask,
   updateTask,
 } from "@/actions/tasks";
 import { addTaskComment, deleteTaskComment } from "@/actions/task-comments";
@@ -31,6 +33,7 @@ import {
   ROOM_TASK_PROCESS_ORDER,
 } from "@/lib/room-task-process";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import { taskStatusLabel } from "@/lib/task-status-ui";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -67,21 +70,6 @@ function priorityLabel(p: TaskPriority) {
       return "Rendah";
     default:
       return p;
-  }
-}
-
-function statusLabel(s: TaskStatus) {
-  switch (s) {
-    case TaskStatus.TODO:
-      return "To-Do";
-    case TaskStatus.IN_PROGRESS:
-      return "Berjalan";
-    case TaskStatus.OVERDUE:
-      return "Overdue";
-    case TaskStatus.DONE:
-      return "Selesai";
-    default:
-      return s;
   }
 }
 
@@ -141,6 +129,7 @@ export function TaskDetailSheet({
   const [commentBody, setCommentBody] = useState("");
   const [commentPending, setCommentPending] = useState(false);
   const [uploadPending, setUploadPending] = useState(false);
+  const [archivePending, setArchivePending] = useState(false);
 
   useEffect(() => {
     if (!task) return;
@@ -200,7 +189,7 @@ export function TaskDetailSheet({
     () =>
       (Object.values(TaskStatus) as TaskStatus[]).map((s) => ({
         value: s,
-        label: statusLabel(s),
+        label: taskStatusLabel(s),
       })),
     [],
   );
@@ -291,6 +280,36 @@ export function TaskDetailSheet({
       refresh();
     } catch {
       toast.error("Gagal menambah sub-tugas.");
+    }
+  }
+
+  async function onArchiveTask() {
+    if (!task) return;
+    setArchivePending(true);
+    try {
+      await archiveTask(task.id);
+      toast.success("Tugas diarsipkan.");
+      refresh();
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal mengarsipkan.");
+    } finally {
+      setArchivePending(false);
+    }
+  }
+
+  async function onUnarchiveTask() {
+    if (!task) return;
+    setArchivePending(true);
+    try {
+      await unarchiveTask(task.id);
+      toast.success("Tugas dipulihkan dari arsip.");
+      refresh();
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal memulihkan.");
+    } finally {
+      setArchivePending(false);
     }
   }
 
@@ -466,6 +485,7 @@ export function TaskDetailSheet({
                       <Select
                         value={status}
                         items={statusSelectItems}
+                        disabled={Boolean(task.archivedAt)}
                         onValueChange={(v) => {
                           if (v) setStatus(v as TaskStatus);
                         }}
@@ -477,12 +497,18 @@ export function TaskDetailSheet({
                           {(Object.values(TaskStatus) as TaskStatus[]).map(
                             (s) => (
                               <SelectItem key={s} value={s}>
-                                {statusLabel(s)}
+                                {taskStatusLabel(s)}
                               </SelectItem>
                             ),
                           )}
                         </SelectContent>
                       </Select>
+                      {task.archivedAt ? (
+                        <p className="text-muted-foreground text-xs">
+                          Status tidak dapat diubah selama tugas diarsipkan.
+                          Pulihkan dari Arsip untuk mengubah status.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -532,7 +558,7 @@ export function TaskDetailSheet({
                     </Label>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">{statusLabel(status)}</Badge>
+                    <Badge variant="outline">{taskStatusLabel(status)}</Badge>
                     <Badge variant="secondary">{priorityLabel(priority)}</Badge>
                   </div>
                 </section>
@@ -768,6 +794,28 @@ export function TaskDetailSheet({
               {isRoomManager ? (
                 <Button variant="destructive" size="sm" onClick={onDeleteTask}>
                   Hapus tugas
+                </Button>
+              ) : null}
+              {isRoomManager &&
+              task.status === TaskStatus.DONE &&
+              !task.archivedAt ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={archivePending}
+                  onClick={() => void onArchiveTask()}
+                >
+                  Arsipkan
+                </Button>
+              ) : null}
+              {isRoomManager && task.archivedAt ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={archivePending}
+                  onClick={() => void onUnarchiveTask()}
+                >
+                  Pulihkan dari arsip
                 </Button>
               ) : null}
               <Button

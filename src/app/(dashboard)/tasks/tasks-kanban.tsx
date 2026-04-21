@@ -14,26 +14,13 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { TaskStatus } from "@prisma/client";
-import { moveTaskStatus } from "@/actions/tasks";
+import { archiveTask, moveTaskStatus, unarchiveTask } from "@/actions/tasks";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, GripVertical, Plus } from "lucide-react";
-
-const COLS = [
-  TaskStatus.TODO,
-  TaskStatus.IN_PROGRESS,
-  TaskStatus.OVERDUE,
-  TaskStatus.DONE,
-] as const;
-
-const LABELS: Record<TaskStatus, string> = {
-  TODO: "To-Do",
-  IN_PROGRESS: "Berjalan",
-  OVERDUE: "Overdue",
-  DONE: "Selesai",
-};
+import { Archive, Check, GripVertical, Plus, RotateCcw } from "lucide-react";
 
 export type KanbanTask = {
   id: string;
@@ -97,18 +84,31 @@ function DraggableTask({
   task,
   onTaskClick,
   onQuickDone,
+  dragDisabled,
+  isRoomManager,
+  showArchived,
 }: {
   task: KanbanTask;
   onTaskClick?: (taskId: string) => void;
   onQuickDone?: (taskId: string) => Promise<void>;
+  dragDisabled?: boolean;
+  isRoomManager?: boolean;
+  showArchived?: boolean;
 }) {
+  const router = useRouter();
   const [quickPending, setQuickPending] = useState(false);
+  const [archivePending, setArchivePending] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id });
+    useDraggable({ id: task.id, disabled: dragDisabled });
   const style = {
     transform: CSS.Transform.toString(transform),
   };
-  const canQuickDone = task.status !== TaskStatus.DONE;
+  const canQuickDone = task.status !== TaskStatus.DONE && !showArchived;
+  const canArchive =
+    isRoomManager &&
+    !showArchived &&
+    task.status === TaskStatus.DONE;
+  const canUnarchive = isRoomManager && showArchived;
 
   async function handleQuickDone(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation();
@@ -118,6 +118,40 @@ function DraggableTask({
       await onQuickDone(task.id);
     } finally {
       setQuickPending(false);
+    }
+  }
+
+  async function handleArchive(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    if (!canArchive || archivePending) return;
+    setArchivePending(true);
+    try {
+      await archiveTask(task.id);
+      toast.success("Tugas diarsipkan.");
+      router.refresh();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Gagal mengarsipkan tugas.";
+      toast.error(msg);
+    } finally {
+      setArchivePending(false);
+    }
+  }
+
+  async function handleUnarchive(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    if (!canUnarchive || archivePending) return;
+    setArchivePending(true);
+    try {
+      await unarchiveTask(task.id);
+      toast.success("Tugas dipulihkan dari arsip.");
+      router.refresh();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Gagal memulihkan tugas.";
+      toast.error(msg);
+    } finally {
+      setArchivePending(false);
     }
   }
 
@@ -132,10 +166,16 @@ function DraggableTask({
     >
       <button
         type="button"
-        className="text-muted-foreground hover:bg-muted/80 touch-none shrink-0 cursor-grab rounded-l-md p-2 active:cursor-grabbing"
-        {...listeners}
-        {...attributes}
+        className={cn(
+          "text-muted-foreground shrink-0 rounded-l-md p-2 touch-none",
+          dragDisabled
+            ? "cursor-not-allowed opacity-40"
+            : "hover:bg-muted/80 cursor-grab active:cursor-grabbing",
+        )}
+        {...(dragDisabled ? {} : listeners)}
+        {...(dragDisabled ? {} : attributes)}
         aria-label="Seret tugas"
+        disabled={dragDisabled}
       >
         <GripVertical className="size-4" />
       </button>
@@ -150,6 +190,34 @@ function DraggableTask({
           onClick={(e) => void handleQuickDone(e)}
         >
           <Check className="size-3.5" />
+        </Button>
+      ) : null}
+      {canArchive ? (
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="text-muted-foreground hover:bg-muted/80 mt-2 h-6 w-6 self-start"
+          aria-label="Arsipkan tugas"
+          disabled={archivePending}
+          title="Arsipkan"
+          onClick={(e) => void handleArchive(e)}
+        >
+          <Archive className="size-3.5" />
+        </Button>
+      ) : null}
+      {canUnarchive ? (
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="text-muted-foreground hover:bg-muted/80 mt-2 h-6 w-6 self-start"
+          aria-label="Pulihkan dari arsip"
+          disabled={archivePending}
+          title="Pulihkan"
+          onClick={(e) => void handleUnarchive(e)}
+        >
+          <RotateCcw className="size-3.5" />
         </Button>
       ) : null}
       <button
@@ -178,33 +246,35 @@ function DraggableTask({
 }
 
 function DroppableColumn({
-  status,
+  column,
   children,
   onAddTask,
+  readOnly,
 }: {
-  status: TaskStatus;
+  column: Pick<RoomKanbanColumnDTO, "linkedStatus" | "title">;
   children: React.ReactNode;
   onAddTask?: (status: TaskStatus) => void;
+  readOnly?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
+  const { setNodeRef, isOver } = useDroppable({ id: column.linkedStatus });
   return (
     <div
       ref={setNodeRef}
       className={cn(
         "flex min-h-[300px] flex-1 flex-col gap-2 rounded-xl border border-dashed border-border bg-muted/15 p-2",
-        isOver && "border-accent bg-muted/40",
+        isOver && !readOnly && "border-accent bg-muted/40",
       )}
     >
       <div className="text-muted-foreground flex items-center justify-between px-1 text-xs font-semibold tracking-wide uppercase">
-        <span>{LABELS[status]}</span>
-        {onAddTask ? (
+        <span className="text-pretty">{column.title}</span>
+        {onAddTask && !readOnly ? (
           <Button
             type="button"
             size="icon"
             variant="ghost"
             className="h-6 w-6"
-            onClick={() => onAddTask(status)}
-            aria-label={`Tambah tugas ${LABELS[status]}`}
+            onClick={() => onAddTask(column.linkedStatus)}
+            aria-label={`Tambah tugas ${column.title}`}
           >
             <Plus className="size-3.5" />
           </Button>
@@ -217,24 +287,36 @@ function DroppableColumn({
 
 export function TasksKanban({
   tasks,
+  columns,
   onTaskClick,
   onAddTask,
+  kanbanReadOnly,
+  isRoomManager,
+  showArchived,
 }: {
   tasks: KanbanTask[];
+  columns: RoomKanbanColumnDTO[];
   onTaskClick?: (taskId: string) => void;
   onAddTask?: (status: TaskStatus) => void;
+  /** Mode arsip: tidak ada drag / pindah status dari papan. */
+  kanbanReadOnly?: boolean;
+  isRoomManager?: boolean;
+  showArchived?: boolean;
 }) {
   const router = useRouter();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
+  const statusSet = new Set(columns.map((c) => c.linkedStatus));
+
   async function onDragEnd(e: DragEndEvent) {
+    if (kanbanReadOnly) return;
     const { active, over } = e;
     if (!over) return;
     const taskId = String(active.id);
     const newStatus = over.id as TaskStatus;
-    if (!COLS.some((c) => c === newStatus)) return;
+    if (!statusSet.has(newStatus)) return;
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
     try {
@@ -261,19 +343,29 @@ export function TasksKanban({
     }
   }
 
+  const readOnly = Boolean(kanbanReadOnly);
+
   return (
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <div className="flex flex-col gap-4 lg:flex-row">
-        {COLS.map((status) => (
-          <DroppableColumn key={status} status={status} onAddTask={onAddTask}>
+        {columns.map((col) => (
+          <DroppableColumn
+            key={col.id}
+            column={col}
+            onAddTask={readOnly ? undefined : onAddTask}
+            readOnly={readOnly}
+          >
             {tasks
-              .filter((t) => t.status === status)
+              .filter((t) => t.status === col.linkedStatus)
               .map((t) => (
                 <DraggableTask
                   key={t.id}
                   task={t}
                   onTaskClick={onTaskClick}
-                  onQuickDone={onQuickDone}
+                  onQuickDone={readOnly ? undefined : onQuickDone}
+                  dragDisabled={readOnly}
+                  isRoomManager={isRoomManager}
+                  showArchived={showArchived}
                 />
               ))}
           </DroppableColumn>

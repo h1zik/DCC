@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function recomputeProjectProgress(projectId: string) {
   const tasks = await prisma.task.findMany({
-    where: { projectId },
+    where: { projectId, archivedAt: null },
     select: { status: true },
   });
   if (tasks.length === 0) {

@@ -40,6 +40,10 @@ enum TaskStatus {
   IN_PROGRESS
   OVERDUE
   DONE
+  /** Tertunda / menunggu pihak lain — kolom Kanban opsional per ruangan. */
+  BLOCKED
+  /** Siap ditinjau — kolom Kanban opsional per ruangan. */
+  IN_REVIEW
 }
 
 enum TaskPriority {
@@ -150,9 +154,28 @@ model Room {
   updatedAt  DateTime       @updatedAt
   projects   Project[]
   messages   RoomMessage[]
-  documents        RoomDocument[]
+  documents         RoomDocument[]
+  documentFolders   RoomDocumentFolder[]
   members          RoomMember[]
   contentPlanItems RoomContentPlanItem[]
+  /** Judul & urutan kolom Kanban per fase proses (diatur manager ruangan). */
+  kanbanColumns    RoomKanbanColumn[]
+}
+
+/** Kolom Kanban: memetakan `linkedStatus` ke judul tampilan & urutan. */
+model RoomKanbanColumn {
+  id           String          @id @default(cuid())
+  roomId       String
+  room         Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomProcess  RoomTaskProcess
+  linkedStatus TaskStatus
+  title        String
+  sortOrder    Int             @default(0)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([roomId, roomProcess, linkedStatus])
+  @@index([roomId, roomProcess, sortOrder])
 }
 
 /** Baris content planning per ruangan (tabel kolom lengkap). */
@@ -208,10 +231,26 @@ model RoomMessage {
   createdAt DateTime @default(now())
 }
 
+/** Folder logis untuk mengelompokkan dokumen bersama per ruangan (Logo, Legal, dll.). */
+model RoomDocumentFolder {
+  id        String         @id @default(cuid())
+  roomId    String
+  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+  documents RoomDocument[]
+
+  @@unique([roomId, name])
+  @@index([roomId, sortOrder])
+}
+
 model RoomDocument {
   id           String   @id @default(cuid())
   roomId       String
   room         Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  folderId     String?
+  folder       RoomDocumentFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
   uploadedById String
   uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   title        String?
@@ -221,6 +260,8 @@ model RoomDocument {
   /** Path publik, mis. /uploads/rooms/{roomId}/... */
   publicPath   String
   createdAt    DateTime @default(now())
+
+  @@index([roomId, folderId])
 }
 
 model Project {
@@ -265,6 +306,8 @@ model Task {
   whatsappReminder3dSentAt DateTime?
   /** Pengingat WA “1 hari lagi” sudah dikirim. */
   whatsappReminder1dSentAt DateTime?
+  /** Tugas selesai diarsipkan — disembunyikan dari papan utama. */
+  archivedAt         DateTime?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   checklistItems     TaskChecklistItem[]

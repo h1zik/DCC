@@ -54,6 +54,12 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     },
   });
 
+  if (task.archivedAt) {
+    throw new Error(
+      "Tugas diarsipkan. Buka tampilan Arsip dan pulihkan tugas ini untuk mengubah status.",
+    );
+  }
+
   if (status === TaskStatus.DONE && task.isApprovalRequired && !task.isApproved) {
     throw new Error(
       "Tugas ini memerlukan persetujuan CEO sebelum ditandai selesai.",
@@ -91,6 +97,75 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   revalidatePath("/projects");
   revalidatePath("/");
   revalidatePath("/approvals");
+}
+
+export async function archiveTask(taskId: string) {
+  const session = await requireTasksRoomHubSession();
+  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
+  const simpleHub = await isSimpleHubRoom(roomId);
+  const hubManager = await assertRoomHubManager(roomId, session.user.id);
+  if (
+    !simpleHub &&
+    hubManager.role === RoomMemberRole.ROOM_MANAGER &&
+    !memberHasRoomProcessAccess(
+      roomMemberToProcessAccess(hubManager),
+      roomProcess,
+    )
+  ) {
+    throw new Error("Anda tidak dapat mengarsipkan tugas di fase proses ini.");
+  }
+
+  const t = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    select: { status: true, archivedAt: true, projectId: true },
+  });
+  if (t.status !== TaskStatus.DONE) {
+    throw new Error("Hanya tugas berstatus Selesai yang dapat diarsipkan.");
+  }
+  if (t.archivedAt) {
+    throw new Error("Tugas ini sudah diarsipkan.");
+  }
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { archivedAt: new Date() },
+  });
+  await recomputeProjectProgress(t.projectId);
+  revalidateTasksAndRoomHub();
+  revalidatePath("/projects");
+  revalidatePath("/");
+}
+
+export async function unarchiveTask(taskId: string) {
+  const session = await requireTasksRoomHubSession();
+  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
+  const simpleHub = await isSimpleHubRoom(roomId);
+  const hubManager = await assertRoomHubManager(roomId, session.user.id);
+  if (
+    !simpleHub &&
+    hubManager.role === RoomMemberRole.ROOM_MANAGER &&
+    !memberHasRoomProcessAccess(
+      roomMemberToProcessAccess(hubManager),
+      roomProcess,
+    )
+  ) {
+    throw new Error("Anda tidak dapat memulihkan tugas di fase proses ini.");
+  }
+
+  const t = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    select: { archivedAt: true, projectId: true },
+  });
+  if (!t.archivedAt) {
+    throw new Error("Tugas ini tidak dalam arsip.");
+  }
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { archivedAt: null },
+  });
+  await recomputeProjectProgress(t.projectId);
+  revalidateTasksAndRoomHub();
+  revalidatePath("/projects");
+  revalidatePath("/");
 }
 
 const createSchema = z.object({
@@ -209,10 +284,21 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       isApproved: true,
       assigneeId: true,
       dueDate: true,
+      archivedAt: true,
       project: { select: { roomId: true } },
     },
   });
   const roomId = prev.project.roomId;
+
+  if (
+    prev.archivedAt &&
+    data.status !== undefined &&
+    data.status !== prev.status
+  ) {
+    throw new Error(
+      "Tugas diarsipkan. Pulihkan dari Arsip terlebih dahulu untuk mengubah status.",
+    );
+  }
   const simpleHub = await isSimpleHubRoom(roomId);
   const membership = await assertRoomMember(roomId, session.user.id);
   const isHubManager = isRoomHubManagerRole(membership.role);

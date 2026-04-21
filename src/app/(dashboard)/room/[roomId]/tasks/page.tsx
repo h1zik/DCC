@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { RoomMemberRole } from "@prisma/client";
+import {
+  RoomMemberRole,
+  RoomTaskProcess,
+  TaskStatus,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import {
@@ -24,11 +28,15 @@ import {
   TASK_LIST_COMMENTS_TAKE,
 } from "@/lib/task-list-query";
 import { cn } from "@/lib/utils";
+import { getRoomKanbanColumns } from "@/lib/room-kanban-columns";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
 
 type PageProps = {
   params: Promise<{ roomId: string }>;
-  searchParams: Promise<{ process?: string | string[] }>;
+  searchParams: Promise<{
+    process?: string | string[];
+    archived?: string | string[];
+  }>;
 };
 
 export default async function RoomTasksPage({ params, searchParams }: PageProps) {
@@ -67,12 +75,22 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     );
   }
 
+  const archivedParam = Array.isArray(sp.archived)
+    ? sp.archived[0]
+    : sp.archived;
+  const showArchived = archivedParam === "1" || archivedParam === "true";
+
   if (simpleHub) {
     const canManageRoomTasks = isRoomHubManagerRole(role);
 
-    const [tasks, projects, memberRows, vendors] = await Promise.all([
+    const archivedWhere = showArchived
+      ? { archivedAt: { not: null }, status: TaskStatus.DONE }
+      : { archivedAt: null };
+
+    const [tasks, projects, memberRows, vendors, kanbanColumns] =
+      await Promise.all([
       prisma.task.findMany({
-        where: { project: { roomId } },
+        where: { project: { roomId }, ...archivedWhere },
         orderBy: [
           { projectId: "asc" },
           { sortOrder: "asc" },
@@ -112,6 +130,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         orderBy: { user: { email: "asc" } },
       }),
       prisma.vendor.findMany({ orderBy: { name: "asc" } }),
+      getRoomKanbanColumns(roomId, RoomTaskProcess.MARKET_RESEARCH),
     ]);
 
     const seen = new Set<string>();
@@ -131,6 +150,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           obrolan dan dokumen ada di menu atas.
         </p>
         <TasksWorkspace
+          roomId={roomId}
           roomTitle={room.name}
           simpleHub
           projects={projects}
@@ -139,6 +159,8 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           isRoomManager={canManageRoomTasks}
           currentUserId={uid}
           tasks={tasks}
+          kanbanColumns={kanbanColumns}
+          showArchived={showArchived}
         />
       </div>
     );
@@ -152,14 +174,26 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     : accessibleProcesses[0]!;
 
   if (activeProcess !== requestedProcess) {
-    redirect(`/room/${roomId}/tasks?process=${activeProcess}`);
+    const qs = new URLSearchParams();
+    qs.set("process", activeProcess);
+    if (showArchived) qs.set("archived", "1");
+    redirect(`/room/${roomId}/tasks?${qs.toString()}`);
   }
 
   const canManageRoomTasks = isRoomHubManagerRole(role);
 
-  const [tasks, projects, contributorMembers, vendors] = await Promise.all([
+  const archivedWhere = showArchived
+    ? { archivedAt: { not: null }, status: TaskStatus.DONE }
+    : { archivedAt: null };
+
+  const [tasks, projects, contributorMembers, vendors, kanbanColumns] =
+    await Promise.all([
     prisma.task.findMany({
-      where: { project: { roomId }, roomProcess: activeProcess },
+      where: {
+        project: { roomId },
+        roomProcess: activeProcess,
+        ...archivedWhere,
+      },
       orderBy: [
         { projectId: "asc" },
         { sortOrder: "asc" },
@@ -199,6 +233,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       orderBy: { user: { email: "asc" } },
     }),
     prisma.vendor.findMany({ orderBy: { name: "asc" } }),
+    getRoomKanbanColumns(roomId, activeProcess),
   ]);
 
   const users = contributorMembers
@@ -246,6 +281,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         })}
       </nav>
       <TasksWorkspace
+        roomId={roomId}
         roomTitle={room.name}
         activeRoomProcess={activeProcess}
         projects={projects}
@@ -254,6 +290,8 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         isRoomManager={canManageRoomTasks}
         currentUserId={uid}
         tasks={tasks}
+        kanbanColumns={kanbanColumns}
+        showArchived={showArchived}
       />
     </div>
   );

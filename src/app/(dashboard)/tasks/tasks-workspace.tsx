@@ -22,7 +22,7 @@ import { TasksKanban, type KanbanTask } from "./tasks-kanban";
 import { TaskDetailSheet } from "./task-detail-sheet";
 import type { TaskRow } from "./task-types";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -44,7 +44,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { roomTaskProcessLabel } from "@/lib/room-task-process";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
+import { DEFAULT_KANBAN_STATUSES, taskStatusLabel } from "@/lib/task-status-ui";
+import { cn } from "@/lib/utils";
 import type { SelectItemDef } from "@/lib/select-option-items";
+import { RoomKanbanSettingsDialog } from "./room-kanban-settings-dialog";
 
 function priorityLabel(p: TaskPriority) {
   switch (p) {
@@ -59,26 +63,27 @@ function priorityLabel(p: TaskPriority) {
   }
 }
 
-function statusLabel(s: TaskStatus) {
-  switch (s) {
-    case TaskStatus.TODO:
-      return "To-Do";
-    case TaskStatus.IN_PROGRESS:
-      return "Berjalan";
-    case TaskStatus.OVERDUE:
-      return "Overdue";
-    case TaskStatus.DONE:
-      return "Selesai";
-    default:
-      return s;
-  }
-}
-
 function projectSelectLabel(p: Project & { brand: Brand | null }) {
   return p.brand ? `${p.brand.name} — ${p.name}` : p.name;
 }
 
+function roomTasksPath(opts: {
+  roomId: string;
+  simpleHub: boolean;
+  activeRoomProcess?: RoomTaskProcess;
+  archived: boolean;
+}) {
+  const qs = new URLSearchParams();
+  if (!opts.simpleHub && opts.activeRoomProcess) {
+    qs.set("process", opts.activeRoomProcess);
+  }
+  if (opts.archived) qs.set("archived", "1");
+  const q = qs.toString();
+  return `/room/${opts.roomId}/tasks${q ? `?${q}` : ""}`;
+}
+
 export function TasksWorkspace({
+  roomId,
   roomTitle,
   activeRoomProcess,
   simpleHub = false,
@@ -88,7 +93,10 @@ export function TasksWorkspace({
   vendors,
   isRoomManager,
   currentUserId,
+  kanbanColumns,
+  showArchived = false,
 }: {
+  roomId?: string;
   roomTitle?: string;
   /** Tab proses aktif di hub ruangan — tugas baru mengikuti fase ini. */
   activeRoomProcess?: RoomTaskProcess;
@@ -101,11 +109,16 @@ export function TasksWorkspace({
   /** Manager ruangan: buat/hapus tugas, ubah PIC, moderasi lampiran & komentar. */
   isRoomManager: boolean;
   currentUserId: string;
+  /** Kolom Kanban per ruangan + fase (dari server). */
+  kanbanColumns?: RoomKanbanColumnDTO[];
+  /** Tampilan arsip: hanya tugas selesai yang diarsipkan. */
+  showArchived?: boolean;
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
 
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [title, setTitle] = useState("");
@@ -208,6 +221,38 @@ export function TasksWorkspace({
     [router, detailTask?.id],
   );
 
+  const resolvedKanbanColumns = useMemo((): RoomKanbanColumnDTO[] => {
+    if (kanbanColumns?.length) return kanbanColumns;
+    return DEFAULT_KANBAN_STATUSES.map((linkedStatus, sortOrder) => ({
+      id: `fallback-${linkedStatus}`,
+      linkedStatus,
+      title: taskStatusLabel(linkedStatus),
+      sortOrder,
+    }));
+  }, [kanbanColumns]);
+
+  const kanbanRoomProcess =
+    activeRoomProcess ?? RoomTaskProcess.MARKET_RESEARCH;
+
+  const boardPath =
+    roomId != null
+      ? roomTasksPath({
+          roomId,
+          simpleHub,
+          activeRoomProcess,
+          archived: false,
+        })
+      : null;
+  const archivedPath =
+    roomId != null
+      ? roomTasksPath({
+          roomId,
+          simpleHub,
+          activeRoomProcess,
+          archived: true,
+        })
+      : null;
+
   const kanbanTasks: KanbanTask[] = useMemo(
     () =>
       tasks.map((t) => ({
@@ -264,7 +309,7 @@ export function TasksWorkspace({
   const createDialogStatusItems = useMemo((): SelectItemDef[] => {
     return (Object.values(TaskStatus) as TaskStatus[]).map((s) => ({
       value: s,
-      label: statusLabel(s),
+      label: taskStatusLabel(s),
     }));
   }, []);
   const createDialogVendorItems = useMemo((): SelectItemDef[] => {
@@ -347,7 +392,7 @@ export function TasksWorkspace({
         accessorKey: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge variant="outline">{statusLabel(row.original.status)}</Badge>
+          <Badge variant="outline">{taskStatusLabel(row.original.status)}</Badge>
         ),
       },
       {
@@ -401,6 +446,16 @@ export function TasksWorkspace({
         simpleHub={simpleHub}
       />
 
+      {roomId != null && (kanbanColumns?.length ?? 0) > 0 ? (
+        <RoomKanbanSettingsDialog
+          open={kanbanSettingsOpen}
+          onOpenChange={setKanbanSettingsOpen}
+          roomId={roomId}
+          roomProcess={kanbanRoomProcess}
+          columns={kanbanColumns!}
+        />
+      ) : null}
+
       {roomTitle ? (
         <div className="bg-muted/50 border-border rounded-lg border px-3 py-2 text-sm">
           <p>
@@ -435,8 +490,57 @@ export function TasksWorkspace({
           </p>
         </div>
       ) : null}
-      <div className="flex flex-wrap justify-end gap-2">
-        {isRoomManager ? (
+      {showArchived ? (
+        <p className="text-muted-foreground rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-sm">
+          Menampilkan tugas <span className="text-foreground font-medium">Selesai</span>{" "}
+          yang diarsipkan. Pulihkan jika perlu muncul lagi di papan utama.
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {roomId != null && boardPath != null && archivedPath != null ? (
+          <>
+            <Link
+              href={boardPath}
+              prefetch={false}
+              scroll={false}
+              className={cn(
+                buttonVariants({
+                  size: "sm",
+                  variant: showArchived ? "outline" : "secondary",
+                }),
+              )}
+            >
+              Papan tugas
+            </Link>
+            <Link
+              href={archivedPath}
+              prefetch={false}
+              scroll={false}
+              className={cn(
+                buttonVariants({
+                  size: "sm",
+                  variant: showArchived ? "secondary" : "outline",
+                }),
+              )}
+            >
+              Arsip
+            </Link>
+          </>
+        ) : null}
+        {roomId != null &&
+        isRoomManager &&
+        !showArchived &&
+        (kanbanColumns?.length ?? 0) > 0 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setKanbanSettingsOpen(true)}
+          >
+            Kolom Kanban…
+          </Button>
+        ) : null}
+        {isRoomManager && !showArchived ? (
           <Button type="button" onClick={() => openCreate()}>
             Tugas baru
           </Button>
@@ -559,7 +663,7 @@ export function TasksWorkspace({
                     <SelectContent>
                       {(Object.values(TaskStatus) as TaskStatus[]).map((s) => (
                         <SelectItem key={s} value={s}>
-                          {statusLabel(s)}
+                          {taskStatusLabel(s)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -636,11 +740,19 @@ export function TasksWorkspace({
         <TabsContent value="kanban" className="mt-4">
           <TasksKanban
             tasks={kanbanTasks}
+            columns={resolvedKanbanColumns}
+            kanbanReadOnly={showArchived}
+            isRoomManager={isRoomManager}
+            showArchived={showArchived}
             onTaskClick={(id) => {
               const t = tasks.find((x) => x.id === id);
               if (t) openDetail(t);
             }}
-            onAddTask={isRoomManager ? (taskStatus) => openCreate(taskStatus) : undefined}
+            onAddTask={
+              isRoomManager && !showArchived
+                ? (taskStatus) => openCreate(taskStatus)
+                : undefined
+            }
           />
         </TabsContent>
         <TabsContent value="list" className="mt-4">

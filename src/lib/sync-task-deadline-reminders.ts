@@ -17,6 +17,7 @@ export async function syncTaskDeadlineWhatsAppReminders() {
       status: { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] },
       dueDate: { not: null },
       assigneeId: { not: null },
+      archivedAt: null,
     },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
