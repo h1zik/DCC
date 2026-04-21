@@ -79,24 +79,34 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     },
   });
 
+  const notificationJobs: Promise<unknown>[] = [];
   if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
-    await notifyTaskCompletedForCeo(
-      task.title,
-      taskProjectContextLabel(task.project),
+    notificationJobs.push(
+      notifyTaskCompletedForCeo(
+        task.title,
+        taskProjectContextLabel(task.project),
+      ),
     );
-    await notifyRoomManagersTaskDoneViaWhatsApp({
-      roomId: task.project.roomId,
-      taskTitle: task.title,
-      project: task.project,
-      picDisplayName: task.assignees[0]?.user?.name ?? null,
-    });
+    notificationJobs.push(
+      notifyRoomManagersTaskDoneViaWhatsApp({
+        roomId: task.project.roomId,
+        taskTitle: task.title,
+        project: task.project,
+        picDisplayName: task.assignees[0]?.user?.name ?? null,
+      }),
+    );
   }
 
-  await recomputeProjectProgress(task.projectId);
+  if (task.status !== status) {
+    await recomputeProjectProgress(task.projectId);
+  }
   revalidateTasksAndRoomHub();
   revalidatePath("/projects");
   revalidatePath("/");
   revalidatePath("/approvals");
+  if (notificationJobs.length > 0) {
+    void Promise.allSettled(notificationJobs);
+  }
 }
 
 export async function archiveTask(taskId: string) {
@@ -407,46 +417,69 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
     !task.isApproved &&
     !prev.isApprovalRequired;
 
+  const notificationJobs: Promise<unknown>[] = [];
   if (becameApproval) {
-    await notifyCeo(
-      `Persetujuan diminta: ${task.title} (${taskProjectContextLabel(task.project)})`,
-      NotificationType.CEO_APPROVAL_REQUESTED,
+    notificationJobs.push(
+      notifyCeo(
+        `Persetujuan diminta: ${task.title} (${taskProjectContextLabel(task.project)})`,
+        NotificationType.CEO_APPROVAL_REQUESTED,
+      ),
     );
   }
 
   if (data.status === TaskStatus.DONE && prev.status !== TaskStatus.DONE) {
-    await notifyTaskCompletedForCeo(
-      task.title,
-      taskProjectContextLabel(task.project),
+    notificationJobs.push(
+      notifyTaskCompletedForCeo(
+        task.title,
+        taskProjectContextLabel(task.project),
+      ),
     );
-    await notifyRoomManagersTaskDoneViaWhatsApp({
-      roomId: task.project.roomId,
-      taskTitle: task.title,
-      project: task.project,
-      picDisplayName: task.assignees[0]?.user?.name ?? null,
-    });
+    notificationJobs.push(
+      notifyRoomManagersTaskDoneViaWhatsApp({
+        roomId: task.project.roomId,
+        taskTitle: task.title,
+        project: task.project,
+        picDisplayName: task.assignees[0]?.user?.name ?? null,
+      }),
+    );
   }
 
   if (isHubManager) {
     for (const assigneeId of addedAssigneeIds) {
-    await notifyPicTaskViaWhatsApp({
-      assigneeId,
-      headline: prevAssigneeIds.length > 0 ? "pic_changed" : "new",
-      task: {
-        title: task.title,
-        priority: task.priority,
-        dueDate: task.dueDate,
-      },
-      project: task.project,
-    });
+      notificationJobs.push(
+        notifyPicTaskViaWhatsApp({
+          assigneeId,
+          headline: prevAssigneeIds.length > 0 ? "pic_changed" : "new",
+          task: {
+            title: task.title,
+            priority: task.priority,
+            dueDate: task.dueDate,
+          },
+          project: task.project,
+        }),
+      );
     }
   }
 
-  await recomputeProjectProgress(task.projectId);
+  const progressAffected =
+    prev.status !== task.status ||
+    prev.projectId !== task.projectId ||
+    prev.archivedAt !== task.archivedAt;
+  if (progressAffected) {
+    await Promise.all([
+      recomputeProjectProgress(task.projectId),
+      ...(prev.projectId !== task.projectId
+        ? [recomputeProjectProgress(prev.projectId)]
+        : []),
+    ]);
+  }
   revalidateTasksAndRoomHub();
   revalidatePath("/projects");
   revalidatePath("/");
   revalidatePath("/approvals");
+  if (notificationJobs.length > 0) {
+    void Promise.allSettled(notificationJobs);
+  }
 }
 
 export async function deleteTask(taskId: string) {

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -307,8 +307,22 @@ export function TasksKanban({
   showArchived?: boolean;
 }) {
   const router = useRouter();
+  const [localStatuses, setLocalStatuses] = useState<Record<string, TaskStatus>>({});
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  useEffect(() => {
+    setLocalStatuses({});
+  }, [tasks]);
+
+  const viewTasks = useMemo(
+    () =>
+      tasks.map((t) => ({
+        ...t,
+        status: localStatuses[t.id] ?? t.status,
+      })),
+    [tasks, localStatuses],
   );
 
   const statusSet = new Set(columns.map((c) => c.linkedStatus));
@@ -320,26 +334,30 @@ export function TasksKanban({
     const taskId = String(active.id);
     const newStatus = over.id as TaskStatus;
     if (!statusSet.has(newStatus)) return;
-    const task = tasks.find((t) => t.id === taskId);
+    const task = viewTasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
+    setLocalStatuses((prev) => ({ ...prev, [taskId]: newStatus }));
     try {
       await moveTaskStatus({ taskId, status: newStatus });
       toast.success("Status tugas diperbarui.");
       router.refresh();
     } catch (err) {
+      setLocalStatuses((prev) => ({ ...prev, [taskId]: task.status }));
       const msg = err instanceof Error ? err.message : "Gagal memindahkan tugas.";
       toast.error(msg);
     }
   }
 
   async function onQuickDone(taskId: string) {
-    const task = tasks.find((t) => t.id === taskId);
+    const task = viewTasks.find((t) => t.id === taskId);
     if (!task || task.status === TaskStatus.DONE) return;
+    setLocalStatuses((prev) => ({ ...prev, [taskId]: TaskStatus.DONE }));
     try {
       await moveTaskStatus({ taskId, status: TaskStatus.DONE });
       toast.success("Tugas dipindahkan ke Selesai.");
       router.refresh();
     } catch (err) {
+      setLocalStatuses((prev) => ({ ...prev, [taskId]: task.status }));
       const msg =
         err instanceof Error ? err.message : "Gagal memindahkan tugas ke Selesai.";
       toast.error(msg);
@@ -358,7 +376,7 @@ export function TasksKanban({
             onAddTask={readOnly ? undefined : onAddTask}
             readOnly={readOnly}
           >
-            {tasks
+            {viewTasks
               .filter((t) => t.status === col.linkedStatus)
               .map((t) => (
                 <DraggableTask
