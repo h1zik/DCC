@@ -17,9 +17,12 @@ const basicsSchema = z.object({
   bio: z.string().max(2000).optional().nullable(),
 });
 
+const E164 = /^\+[1-9]\d{6,14}$/;
+
 export async function updateProfileBasics(input: {
   name?: string | null;
   bio?: string | null;
+  whatsappPhone?: string | null;
 }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Belum masuk.");
@@ -27,11 +30,24 @@ export async function updateProfileBasics(input: {
     name: input.name?.trim() ? input.name.trim() : null,
     bio: input.bio?.trim() ? input.bio.trim() : null,
   });
+
+  let whatsappPhone: string | null | undefined;
+  if (input.whatsappPhone !== undefined) {
+    const t = input.whatsappPhone.trim();
+    if (t === "") whatsappPhone = null;
+    else if (!E164.test(t)) {
+      throw new Error(
+        "Nomor WhatsApp pakai format E.164 (contoh +6281234567890).",
+      );
+    } else whatsappPhone = t;
+  }
+
   await prisma.user.update({
     where: { id: session.user.id },
     data: {
       name: data.name,
       bio: data.bio,
+      ...(whatsappPhone !== undefined ? { whatsappPhone } : {}),
     },
   });
   revalidatePath("/profile");

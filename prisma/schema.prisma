@@ -107,6 +107,8 @@ model User {
   image         String?
   /** Deskripsi singkat / bio (opsional, untuk profil). */
   bio           String?
+  /** Nomor WhatsApp format E.164 (mis. +6281234567890) untuk notifikasi Twilio. */
+  whatsappPhone String?
   passwordHash  String
   role          UserRole  @default(LOGISTICS)
   createdAt     DateTime  @default(now())
@@ -259,6 +261,10 @@ model Task {
   vendor             Vendor?       @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   leadTimeDays       Int?
   sortOrder          Int           @default(0)
+  /** Pengingat WA “3 hari lagi” sudah dikirim (hindari duplikat). */
+  whatsappReminder3dSentAt DateTime?
+  /** Pengingat WA “1 hari lagi” sudah dikirim. */
+  whatsappReminder1dSentAt DateTime?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   checklistItems     TaskChecklistItem[]

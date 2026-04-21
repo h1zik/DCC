@@ -62,3 +62,17 @@ export const getRoomMemberContextOrThrow = cache(
     };
   },
 );
+
+/** Anggota ruangan untuk nav hub — di-cache per request agar tidak dobel query dengan konteks lain. */
+export const getRoomHubMemberUsers = cache(async (roomId: string) => {
+  const members = await prisma.roomMember.findMany({
+    where: { roomId },
+    include: {
+      user: {
+        select: { id: true, name: true, email: true, image: true },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  return members.map((m) => m.user);
+});

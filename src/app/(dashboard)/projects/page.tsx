@@ -1,13 +1,11 @@
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ensurePipelineAccess } from "@/lib/ensure-pipeline-access";
-import { syncOverdueTasks } from "@/lib/sync-task-overdue";
 import { canManagePipelineProjects } from "@/lib/roles";
 import { ProjectsPipeline } from "./projects-client";
 
 export default async function ProjectsPage() {
   const session = await ensurePipelineAccess();
-  await syncOverdueTasks();
 
   const projects = await prisma.project.findMany({
     where: { brandId: { not: null } },

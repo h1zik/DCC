@@ -12,6 +12,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { notifyCeo, notifyTaskCompletedForCeo } from "@/lib/notify";
+import {
+  notifyPicTaskViaWhatsApp,
+  notifyRoomManagersTaskDoneViaWhatsApp,
+} from "@/lib/task-whatsapp-notify";
 import { recomputeProjectProgress } from "@/lib/project-progress";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import {
@@ -46,6 +50,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     where: { id: taskId },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
+      assignee: { select: { name: true } },
     },
   });
 
@@ -57,7 +62,15 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
 
   await prisma.task.update({
     where: { id: taskId },
-    data: { status },
+    data: {
+      status,
+      ...(status === TaskStatus.DONE && task.status !== TaskStatus.DONE
+        ? {
+            whatsappReminder3dSentAt: null,
+            whatsappReminder1dSentAt: null,
+          }
+        : {}),
+    },
   });
 
   if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
@@ -65,6 +78,12 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
       task.title,
       taskProjectContextLabel(task.project),
     );
+    await notifyRoomManagersTaskDoneViaWhatsApp({
+      roomId: task.project.roomId,
+      taskTitle: task.title,
+      project: task.project,
+      picDisplayName: task.assignee?.name ?? null,
+    });
   }
 
   await recomputeProjectProgress(task.projectId);
@@ -152,6 +171,19 @@ export async function createTask(input: z.infer<typeof createSchema>) {
     );
   }
 
+  if (assigneeId) {
+    await notifyPicTaskViaWhatsApp({
+      assigneeId,
+      headline: "new",
+      task: {
+        title: task.title,
+        priority: task.priority,
+        dueDate: task.dueDate,
+      },
+      project: task.project,
+    });
+  }
+
   await recomputeProjectProgress(data.projectId);
   revalidateTasksAndRoomHub();
   revalidatePath("/projects");
@@ -176,6 +208,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       isApprovalRequired: true,
       isApproved: true,
       assigneeId: true,
+      dueDate: true,
       project: { select: { roomId: true } },
     },
   });
@@ -234,6 +267,13 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
     }
   }
 
+  const nextDue = data.dueDate ?? null;
+  const prevDue = prev.dueDate;
+  const dueDateChanged =
+    (prevDue?.getTime() ?? null) !== (nextDue?.getTime() ?? null);
+  const markingDone =
+    data.status === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
+
   await prisma.task.update({
     where: { id: data.taskId },
     data: {
@@ -248,6 +288,12 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       vendorId: data.vendorId || null,
       leadTimeDays: data.leadTimeDays ?? null,
       ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(dueDateChanged || markingDone
+        ? {
+            whatsappReminder3dSentAt: null,
+            whatsappReminder1dSentAt: null,
+          }
+        : {}),
     },
   });
 
@@ -255,6 +301,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
     where: { id: data.taskId },
     include: {
       project: { include: { brand: true, room: { select: { name: true } } } },
+      assignee: { select: { name: true } },
     },
   });
 
@@ -275,6 +322,32 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
       task.title,
       taskProjectContextLabel(task.project),
     );
+    await notifyRoomManagersTaskDoneViaWhatsApp({
+      roomId: task.project.roomId,
+      taskTitle: task.title,
+      project: task.project,
+      picDisplayName: task.assignee?.name ?? null,
+    });
+  }
+
+  const assigneeChanged =
+    isHubManager &&
+    (assigneeId ?? null) !== (prev.assigneeId ?? null) &&
+    Boolean(assigneeId);
+  if (assigneeChanged) {
+    await notifyPicTaskViaWhatsApp({
+      assigneeId: assigneeId as string,
+      headline:
+        prev.assigneeId && prev.assigneeId !== assigneeId
+          ? "pic_changed"
+          : "new",
+      task: {
+        title: task.title,
+        priority: task.priority,
+        dueDate: task.dueDate,
+      },
+      project: task.project,
+    });
   }
 
   await recomputeProjectProgress(task.projectId);

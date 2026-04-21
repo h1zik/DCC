@@ -19,7 +19,6 @@ import {
   ensureSimpleRoomBoardProject,
   isSimpleTeamOrHqRoom,
 } from "@/lib/room-simple-hub";
-import { syncOverdueTasks } from "@/lib/sync-task-overdue";
 import { auth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
@@ -45,8 +44,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       redirect(`/room/${roomId}/tasks`);
     }
   }
-
-  await syncOverdueTasks();
 
   const accessMember = roomMemberToProcessAccess({ role, allowedRoomProcesses });
   const accessibleProcesses = ROOM_TASK_PROCESS_ORDER.filter((p) =>

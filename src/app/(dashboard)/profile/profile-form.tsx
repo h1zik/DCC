@@ -20,11 +20,13 @@ export function ProfileForm({
   email,
   initialName,
   initialBio,
+  initialWhatsappPhone,
   initialImage,
 }: {
   email: string;
   initialName: string;
   initialBio: string;
+  initialWhatsappPhone: string;
   initialImage: string | null;
 }) {
   const router = useRouter();
@@ -33,6 +35,7 @@ export function ProfileForm({
 
   const [name, setName] = useState(initialName);
   const [bio, setBio] = useState(initialBio);
+  const [whatsappPhone, setWhatsappPhone] = useState(initialWhatsappPhone);
   const [pendingBasics, startBasics] = useTransition();
   const [pendingAvatar, startAvatar] = useTransition();
   const [pendingClear, startClear] = useTransition();
@@ -40,7 +43,11 @@ export function ProfileForm({
   async function onSaveBasics() {
     startBasics(async () => {
       try {
-        await updateProfileBasics({ name: name.trim() || null, bio: bio.trim() || null });
+        await updateProfileBasics({
+          name: name.trim() || null,
+          bio: bio.trim() || null,
+          whatsappPhone: whatsappPhone.trim(),
+        });
         await update({
           user: {
             name: name.trim() || null,
@@ -150,6 +157,22 @@ export function ProfileForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="p-wa">WhatsApp (notifikasi tugas)</Label>
+            <Input
+              id="p-wa"
+              type="tel"
+              value={whatsappPhone}
+              onChange={(e) => setWhatsappPhone(e.target.value)}
+              placeholder="+6281234567890"
+              className="font-mono text-sm"
+              autoComplete="tel"
+            />
+            <p className="text-muted-foreground text-xs">
+              Format internasional E.164 (awalan + dan kode negara). Kosongkan
+              jika tidak ingin menerima pesan Twilio.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="p-name">Nama tampilan</Label>
             <Input

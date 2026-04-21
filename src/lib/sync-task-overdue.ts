@@ -11,22 +11,30 @@ export async function syncOverdueTasks() {
       status: { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] },
       dueDate: { lte: now },
     },
-    include: {
+    select: {
+      id: true,
+      assigneeId: true,
+      title: true,
       project: { include: { brand: true, room: { select: { name: true } } } },
     },
   });
+  if (candidates.length === 0) return;
 
-  for (const t of candidates) {
-    await prisma.task.update({
-      where: { id: t.id },
-      data: { status: TaskStatus.OVERDUE },
-    });
-    if (t.assigneeId) {
-      await notifyUser(
-        t.assigneeId,
-        `Tugas overdue: ${t.title} (${taskProjectContextLabel(t.project)})`,
-        NotificationType.TASK_OVERDUE,
-      );
-    }
-  }
+  const ids = candidates.map((c) => c.id);
+  await prisma.task.updateMany({
+    where: { id: { in: ids } },
+    data: { status: TaskStatus.OVERDUE },
+  });
+
+  await Promise.all(
+    candidates
+      .filter((c) => c.assigneeId)
+      .map((c) =>
+        notifyUser(
+          c.assigneeId!,
+          `Tugas overdue: ${c.title} (${taskProjectContextLabel(c.project)})`,
+          NotificationType.TASK_OVERDUE,
+        ),
+      ),
+  );
 }
