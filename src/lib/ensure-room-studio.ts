@@ -14,6 +14,8 @@ export type RoomMemberContext = {
   room: Room & { brand: Brand | null };
   role: RoomMemberRole;
   allowedRoomProcesses: RoomTaskProcess[];
+  /** Pengguna yang sedang melihat hub (untuk menghindari pemanggilan `auth()` ganda di halaman anak). */
+  viewerUserId: string;
 };
 
 /** Akses hub /room/[roomId]/*: CEO atau administrator (semua ruangan), atau tim studio/PM yang terdaftar sebagai anggota. */
@@ -40,6 +42,7 @@ export const getRoomMemberContextOrThrow = cache(
         room,
         role: ROOM_PROJECT_MANAGER_ROLE,
         allowedRoomProcesses: [],
+        viewerUserId: session.user.id,
       };
     }
 
@@ -59,6 +62,7 @@ export const getRoomMemberContextOrThrow = cache(
       room: member.room,
       role,
       allowedRoomProcesses,
+      viewerUserId: session.user.id,
     };
   },
 );

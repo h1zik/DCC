@@ -19,7 +19,10 @@ import {
   ensureSimpleRoomBoardProject,
   isSimpleTeamOrHqRoom,
 } from "@/lib/room-simple-hub";
-import { auth } from "@/lib/auth";
+import {
+  TASK_LIST_ATTACHMENTS_TAKE,
+  TASK_LIST_COMMENTS_TAKE,
+} from "@/lib/task-list-query";
 import { cn } from "@/lib/utils";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
 
@@ -29,12 +32,9 @@ type PageProps = {
 };
 
 export default async function RoomTasksPage({ params, searchParams }: PageProps) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  const { id: uid } = session.user;
   const { roomId } = await params;
   const sp = await searchParams;
-  const { room, role, allowedRoomProcesses } =
+  const { room, role, allowedRoomProcesses, viewerUserId: uid } =
     await getRoomMemberContextOrThrow(roomId);
   const simpleHub = isSimpleTeamOrHqRoom(room);
 
@@ -85,12 +85,14 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           checklistItems: { orderBy: { sortOrder: "asc" } },
           comments: {
             orderBy: { createdAt: "desc" },
+            take: TASK_LIST_COMMENTS_TAKE,
             include: {
               author: { select: { id: true, name: true, email: true } },
             },
           },
           attachments: {
             orderBy: { createdAt: "desc" },
+            take: TASK_LIST_ATTACHMENTS_TAKE,
             include: {
               uploadedBy: { select: { id: true, name: true, email: true } },
             },
@@ -170,12 +172,14 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         checklistItems: { orderBy: { sortOrder: "asc" } },
         comments: {
           orderBy: { createdAt: "desc" },
+          take: TASK_LIST_COMMENTS_TAKE,
           include: {
             author: { select: { id: true, name: true, email: true } },
           },
         },
         attachments: {
           orderBy: { createdAt: "desc" },
+          take: TASK_LIST_ATTACHMENTS_TAKE,
           include: {
             uploadedBy: { select: { id: true, name: true, email: true } },
           },
@@ -227,6 +231,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
             <Link
               key={p}
               href={`/room/${roomId}/tasks?process=${p}`}
+              prefetch={false}
               scroll={false}
               className={cn(
                 "focus-visible:ring-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
