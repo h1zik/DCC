@@ -160,6 +160,8 @@ model Room {
   contentPlanItems RoomContentPlanItem[]
   /** Judul & urutan kolom Kanban per fase proses (diatur manager ruangan). */
   kanbanColumns    RoomKanbanColumn[]
+
+  @@index([brandId])
 }
 
 /** Kolom Kanban: memetakan `linkedStatus` ke judul tampilan & urutan. */
@@ -204,6 +206,10 @@ model RoomContentPlanItem {
   createdBy             User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
+
+  @@index([roomId])
+  @@index([picUserId])
+  @@index([createdById])
 }
 
 model RoomMember {
@@ -219,6 +225,8 @@ model RoomMember {
   updatedAt DateTime       @updatedAt
 
   @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
 }
 
 model RoomMessage {
@@ -237,6 +245,8 @@ model RoomMessage {
 
   @@index([roomId, createdAt])
   @@index([replyToId])
+  @@index([roomId])
+  @@index([authorId])
 }
 
 /** Folder logis untuk mengelompokkan dokumen bersama per ruangan (Logo, Legal, dll.). */
@@ -270,6 +280,7 @@ model RoomDocument {
   createdAt    DateTime @default(now())
 
   @@index([roomId, folderId])
+  @@index([uploadedById])
 }
 
 model Project {
@@ -289,6 +300,9 @@ model Project {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   tasks          Task[]
+
+  @@index([roomId])
+  @@index([brandId])
 }
 
 model Task {
@@ -320,6 +334,9 @@ model Task {
   comments           TaskComment[]
   attachments        TaskAttachment[]
   assignees          TaskAssignee[]
+
+  @@index([projectId])
+  @@index([vendorId])
 }
 
 model TaskAssignee {
@@ -330,6 +347,7 @@ model TaskAssignee {
   createdAt  DateTime @default(now())
 
   @@id([taskId, userId])
+  @@index([taskId])
   @@index([userId])
 }
 
@@ -341,6 +359,9 @@ model TaskComment {
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   body      String
   createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@index([authorId])
 }
 
 model TaskAttachment {
@@ -355,6 +376,9 @@ model TaskAttachment {
   /** Path publik, mis. /uploads/tasks/{taskId}/... */
   publicPath   String
   createdAt    DateTime @default(now())
+
+  @@index([taskId])
+  @@index([uploadedById])
 }
 
 model TaskChecklistItem {
@@ -364,6 +388,8 @@ model TaskChecklistItem {
   title     String
   done      Boolean  @default(false)
   sortOrder Int      @default(0)
+
+  @@index([taskId])
 }
 
 model Notification {
@@ -374,6 +400,8 @@ model Notification {
   type      NotificationType
   isRead    Boolean            @default(false)
   createdAt DateTime           @default(now())
+
+  @@index([userId])
 }
 
 model Vendor {
@@ -400,6 +428,8 @@ model Product {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   stockLogs     StockLog[]
+
+  @@index([brandId])
 }
 
 model StockLog {
@@ -410,4 +440,6 @@ model StockLog {
   type      StockLogType
   note      String?
   createdAt DateTime     @default(now())
+
+  @@index([productId])
 }
