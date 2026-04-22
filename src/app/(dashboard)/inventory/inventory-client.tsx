@@ -136,7 +136,9 @@ export function InventoryClient({
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [amount, setAmount] = useState(1);
   const [type, setType] = useState<StockLogType>(StockLogType.IN);
-  const [salesCategory, setSalesCategory] = useState("");
+  const [salesCategory, setSalesCategory] = useState<
+    "" | "penjualan" | "sampling"
+  >("");
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -152,7 +154,12 @@ export function InventoryClient({
         productId,
         amount,
         type,
-        salesCategory: type === StockLogType.OUT ? salesCategory : null,
+        salesCategory:
+          type === StockLogType.OUT
+            ? salesCategory === ""
+              ? null
+              : salesCategory
+            : null,
         note: note || null,
       });
       toast.success("Pergerakan stok tercatat.");
