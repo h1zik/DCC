@@ -497,7 +497,6 @@ export function TasksWorkspace({
           <>
             <Link
               href={boardPath}
-              prefetch={false}
               scroll={false}
               className={cn(
                 buttonVariants({
@@ -510,7 +509,6 @@ export function TasksWorkspace({
             </Link>
             <Link
               href={archivedPath}
-              prefetch={false}
               scroll={false}
               className={cn(
                 buttonVariants({

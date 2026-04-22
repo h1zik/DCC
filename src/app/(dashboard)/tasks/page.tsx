@@ -99,7 +99,7 @@ export default async function TasksRoomSelectPage() {
                   <ul className="grid gap-4 sm:grid-cols-2">
                     {list.map((r) => (
                       <li key={r.id}>
-                        <Link href={`/room/${r.id}/tasks`} prefetch={false}>
+                        <Link href={`/room/${r.id}/tasks`}>
                           <Card className="hover:border-accent h-full transition-colors">
                             <CardHeader>
                               <div className="flex items-start justify-between gap-2">

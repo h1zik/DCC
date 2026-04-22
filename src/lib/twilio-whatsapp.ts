@@ -109,6 +109,19 @@ function assertContentSidForWhatsApp(contentSid: string): void {
 }
 
 /**
+ * Twilio error 21656: nilai variabel template tidak boleh berisi newline, tab,
+ * atau lebih dari empat spasi berturut-turut.
+ * @see https://www.twilio.com/docs/api/errors/21656
+ */
+function sanitizeTwilioContentVariableValue(value: string): string {
+  let s = value ?? "";
+  s = s.replace(/\r\n|\r|\n|\t/g, " · ");
+  s = s.replace(/ {2,}/g, " ");
+  s = s.trim();
+  return s.length > 0 ? s : "—";
+}
+
+/**
  * Kirim pesan bisnis WhatsApp memakai Twilio Content Template (Content SID).
  * Setelah Apr 2025, WhatsApp **wajib** `ContentSid` + `ContentVariables` — jangan kirim `Body`.
  *
@@ -139,7 +152,7 @@ export async function sendTwilioWhatsAppTemplate(options: {
   /** Kunci variabel string — sama seperti `JSON.stringify({ 1: "x" })` di dokumentasi Twilio. */
   const vars: Record<string, string> = {};
   for (const [k, v] of Object.entries(variables)) {
-    vars[String(k)] = v ?? "";
+    vars[String(k)] = sanitizeTwilioContentVariableValue(v ?? "");
   }
   const contentVariables = JSON.stringify(vars);
 

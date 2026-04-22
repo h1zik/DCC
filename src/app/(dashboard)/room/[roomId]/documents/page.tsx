@@ -2,17 +2,13 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { isRoomHubManagerRole } from "@/lib/room-access";
-import { auth } from "@/lib/auth";
 import { RoomDocumentsWorkspace } from "./room-documents-workspace";
 
 type PageProps = { params: Promise<{ roomId: string }> };
 
 export default async function RoomDocumentsPage({ params }: PageProps) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  const uid = session.user.id;
   const { roomId } = await params;
-  const { role } = await getRoomMemberContextOrThrow(roomId);
+  const { role, viewerUserId: uid } = await getRoomMemberContextOrThrow(roomId);
   const isRoomManager = isRoomHubManagerRole(role);
 
   const [folders, documents] = await Promise.all([
