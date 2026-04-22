@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   RoomTaskProcess,
@@ -115,7 +115,9 @@ export function TasksWorkspace({
   showArchived?: boolean;
 }) {
   const router = useRouter();
+  const [, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
+  const [localTasks, setLocalTasks] = useState<TaskRow[]>(tasks);
   const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
@@ -134,14 +136,18 @@ export function TasksWorkspace({
 
   const detailId = detailTask?.id;
   useEffect(() => {
+    setLocalTasks(tasks);
+  }, [tasks]);
+
+  useEffect(() => {
     if (!detailId) return;
-    const next = tasks.find((t) => t.id === detailId);
+    const next = localTasks.find((t) => t.id === detailId);
     if (next) setDetailTask(next);
     else {
       setDetailOpen(false);
       setDetailTask(null);
     }
-  }, [tasks, detailId]);
+  }, [localTasks, detailId]);
 
   function openCreate(initialStatus: TaskStatus = TaskStatus.TODO) {
     if (projects.length === 0) {
@@ -194,7 +200,9 @@ export function TasksWorkspace({
       await createTask(payload);
       toast.success("Tugas dibuat.");
       setCreateOpen(false);
-      router.refresh();
+      startTransition(() => {
+        router.refresh();
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Gagal menyimpan.";
       toast.error(msg);
@@ -209,16 +217,19 @@ export function TasksWorkspace({
       try {
         await deleteTask(id);
         toast.success("Tugas dihapus.");
+        setLocalTasks((prev) => prev.filter((t) => t.id !== id));
         if (detailTask?.id === id) {
           setDetailOpen(false);
           setDetailTask(null);
         }
-        router.refresh();
+        startTransition(() => {
+          router.refresh();
+        });
       } catch {
         toast.error("Gagal menghapus.");
       }
     },
-    [router, detailTask?.id],
+    [router, detailTask?.id, startTransition],
   );
 
   const resolvedKanbanColumns = useMemo((): RoomKanbanColumnDTO[] => {
@@ -255,7 +266,7 @@ export function TasksWorkspace({
 
   const kanbanTasks: KanbanTask[] = useMemo(
     () =>
-      tasks.map((t) => ({
+      localTasks.map((t) => ({
         id: t.id,
         title: t.title,
         status: t.status,
@@ -271,19 +282,19 @@ export function TasksWorkspace({
           email: a.user.email,
         })),
       })),
-    [tasks],
+    [localTasks],
   );
 
   const ganttTasks: GanttTask[] = useMemo(
     () =>
-      tasks.map((t) => ({
+      localTasks.map((t) => ({
         id: t.id,
         title: t.title,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
         createdAt: t.createdAt.toISOString(),
         brandName: taskProjectContextLabel(t.project),
       })),
-    [tasks],
+    [localTasks],
   );
 
   const createDialogProjectItems = useMemo((): SelectItemDef[] => {
@@ -433,6 +444,16 @@ export function TasksWorkspace({
         onOpenChange={(o) => {
           setDetailOpen(o);
           if (!o) setDetailTask(null);
+        }}
+        onTaskPatched={(taskId, patch) => {
+          setLocalTasks((prev) =>
+            prev.map((task) =>
+              task.id === taskId ? ({ ...task, ...patch } as TaskRow) : task,
+            ),
+          );
+          setDetailTask((prev) =>
+            prev && prev.id === taskId ? ({ ...prev, ...patch } as TaskRow) : prev,
+          );
         }}
         projects={projects}
         users={users}
@@ -740,7 +761,7 @@ export function TasksWorkspace({
             isRoomManager={isRoomManager}
             showArchived={showArchived}
             onTaskClick={(id) => {
-              const t = tasks.find((x) => x.id === id);
+              const t = localTasks.find((x) => x.id === id);
               if (t) openDetail(t);
             }}
             onAddTask={
@@ -753,7 +774,7 @@ export function TasksWorkspace({
         <TabsContent value="list" className="mt-4">
           <DataTable
             columns={columns}
-            data={tasks}
+            data={localTasks}
             empty="Belum ada tugas."
             onRowClick={(row) => openDetail(row)}
           />
@@ -762,7 +783,7 @@ export function TasksWorkspace({
           <TasksGantt
             tasks={ganttTasks}
             onTaskClick={(id) => {
-              const t = tasks.find((x) => x.id === id);
+              const t = localTasks.find((x) => x.id === id);
               if (t) openDetail(t);
             }}
           />

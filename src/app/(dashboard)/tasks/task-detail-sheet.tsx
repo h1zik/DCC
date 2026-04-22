@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import {
   RoomTaskProcess,
@@ -77,6 +77,7 @@ type Props = {
   task: TaskRow | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onTaskPatched?: (taskId: string, patch: Partial<TaskRow>) => void;
   projects: (Project & { brand: Brand | null })[];
   users: Pick<User, "id" | "name" | "email">[];
   vendors: Pick<Vendor, "id" | "name">[];
@@ -101,6 +102,7 @@ export function TaskDetailSheet({
   task,
   open,
   onOpenChange,
+  onTaskPatched,
   projects,
   users,
   vendors,
@@ -109,6 +111,7 @@ export function TaskDetailSheet({
   simpleHub = false,
 }: Props) {
   const router = useRouter();
+  const [, startTransition] = useTransition();
 
   const [projectId, setProjectId] = useState("");
   const [roomProcess, setRoomProcess] = useState<RoomTaskProcess>(
@@ -148,8 +151,10 @@ export function TaskDetailSheet({
   }, [task]);
 
   const refresh = useCallback(() => {
-    router.refresh();
-  }, [router]);
+    startTransition(() => {
+      router.refresh();
+    });
+  }, [router, startTransition]);
 
   const projectSelectItems = useMemo(
     () =>
@@ -213,6 +218,23 @@ export function TaskDetailSheet({
         status,
       });
       toast.success("Tugas disimpan.");
+      onTaskPatched?.(task.id, {
+        projectId,
+        roomProcess,
+        title,
+        description: description || null,
+        vendorId: vendorId || null,
+        priority,
+        dueDate: due,
+        leadTimeDays: lead,
+        isApprovalRequired: approval,
+        status,
+        assignees: isRoomManager
+          ? users
+              .filter((u) => assigneeIds.includes(u.id))
+              .map((u) => ({ user: { ...u, image: null } }))
+          : task.assignees,
+      });
       refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");

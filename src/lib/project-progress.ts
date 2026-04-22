@@ -2,19 +2,22 @@ import { TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export async function recomputeProjectProgress(projectId: string) {
-  const tasks = await prisma.task.findMany({
-    where: { projectId, archivedAt: null },
-    select: { status: true },
-  });
-  if (tasks.length === 0) {
+  const [totalTasks, doneTasks] = await prisma.$transaction([
+    prisma.task.count({
+      where: { projectId, archivedAt: null },
+    }),
+    prisma.task.count({
+      where: { projectId, archivedAt: null, status: TaskStatus.DONE },
+    }),
+  ]);
+  if (totalTasks === 0) {
     await prisma.project.update({
       where: { id: projectId },
       data: { totalProgress: 0 },
     });
     return 0;
   }
-  const done = tasks.filter((t) => t.status === TaskStatus.DONE).length;
-  const pct = Math.round((done / tasks.length) * 100);
+  const pct = Math.round((doneTasks / totalTasks) * 100);
   await prisma.project.update({
     where: { id: projectId },
     data: { totalProgress: pct },

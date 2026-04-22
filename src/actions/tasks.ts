@@ -17,17 +17,18 @@ import {
   notifyRoomManagersTaskDoneViaWhatsApp,
 } from "@/lib/task-whatsapp-notify";
 import { recomputeProjectProgress } from "@/lib/project-progress";
-import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
+import {
+  revalidateRoomWorkspace,
+  revalidateTasksAndRoomHub,
+} from "@/lib/revalidate-workspace";
 import {
   isSimpleHubRoom,
   taskProjectContextLabel,
 } from "@/lib/room-simple-hub";
 import {
-  assertRoomContributorForPic,
   assertRoomHubManager,
   assertRoomMember,
   assertRoomMemberHasTaskProcess,
-  assertSimpleHubAssignee,
   getProjectRoomId,
   getTaskRoomContext,
   isRoomHubManagerRole,
@@ -39,6 +40,42 @@ const moveSchema = z.object({
   taskId: z.string().min(1),
   status: z.nativeEnum(TaskStatus),
 });
+
+async function validateAssigneesForRoom(params: {
+  roomId: string;
+  assigneeIds: string[];
+  roomProcess: RoomTaskProcess;
+  simpleHub: boolean;
+}) {
+  const { roomId, assigneeIds, roomProcess, simpleHub } = params;
+  if (assigneeIds.length === 0) return;
+
+  const members = await prisma.roomMember.findMany({
+    where: { roomId, userId: { in: assigneeIds } },
+    select: {
+      userId: true,
+      role: true,
+      allowedRoomProcesses: true,
+    },
+  });
+  const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+
+  for (const assigneeId of assigneeIds) {
+    const member = memberByUserId.get(assigneeId);
+    if (!member) {
+      throw new Error("PIC harus berupa anggota ruangan ini.");
+    }
+    if (
+      !simpleHub &&
+      !memberHasRoomProcessAccess(
+        roomMemberToProcessAccess(member),
+        roomProcess,
+      )
+    ) {
+      throw new Error("PIC tidak memiliki akses ke fase proses tugas ini.");
+    }
+  }
+}
 
 export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   const session = await requireTasksRoomHubSession();
@@ -100,7 +137,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   if (task.status !== status) {
     await recomputeProjectProgress(task.projectId);
   }
-  revalidateTasksAndRoomHub();
+  revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
   revalidatePath("/");
   revalidatePath("/approvals");
@@ -140,7 +177,7 @@ export async function archiveTask(taskId: string) {
     data: { archivedAt: new Date() },
   });
   await recomputeProjectProgress(t.projectId);
-  revalidateTasksAndRoomHub();
+  revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
   revalidatePath("/");
 }
@@ -173,7 +210,7 @@ export async function unarchiveTask(taskId: string) {
     data: { archivedAt: null },
   });
   await recomputeProjectProgress(t.projectId);
-  revalidateTasksAndRoomHub();
+  revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
   revalidatePath("/");
 }
@@ -216,13 +253,12 @@ export async function createTask(input: z.infer<typeof createSchema>) {
   }
 
   const assigneeIds = [...new Set(data.assigneeIds ?? [])].filter(Boolean);
-  for (const assigneeId of assigneeIds) {
-    if (simpleHub) {
-      await assertSimpleHubAssignee(roomId, assigneeId);
-    } else {
-      await assertRoomContributorForPic(roomId, assigneeId, roomProcess);
-    }
-  }
+  await validateAssigneesForRoom({
+    roomId,
+    assigneeIds,
+    roomProcess,
+    simpleHub,
+  });
 
   const maxSort = await prisma.task.aggregate({
     where: { projectId: data.projectId, roomProcess },
@@ -251,30 +287,38 @@ export async function createTask(input: z.infer<typeof createSchema>) {
     },
   });
 
+  const notificationJobs: Promise<unknown>[] = [];
   if (task.isApprovalRequired && !task.isApproved) {
-    await notifyCeo(
-      `Persetujuan diminta: ${task.title} (${taskProjectContextLabel(task.project)})`,
-      NotificationType.CEO_APPROVAL_REQUESTED,
+    notificationJobs.push(
+      notifyCeo(
+        `Persetujuan diminta: ${task.title} (${taskProjectContextLabel(task.project)})`,
+        NotificationType.CEO_APPROVAL_REQUESTED,
+      ),
     );
   }
 
   for (const assigneeId of assigneeIds) {
-    await notifyPicTaskViaWhatsApp({
-      assigneeId,
-      headline: "new",
-      task: {
-        title: task.title,
-        priority: task.priority,
-        dueDate: task.dueDate,
-      },
-      project: task.project,
-    });
+    notificationJobs.push(
+      notifyPicTaskViaWhatsApp({
+        assigneeId,
+        headline: "new",
+        task: {
+          title: task.title,
+          priority: task.priority,
+          dueDate: task.dueDate,
+        },
+        project: task.project,
+      }),
+    );
   }
 
   await recomputeProjectProgress(data.projectId);
-  revalidateTasksAndRoomHub();
+  revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
   revalidatePath("/approvals");
+  if (notificationJobs.length > 0) {
+    void Promise.allSettled(notificationJobs);
+  }
 }
 
 const updateSchema = createSchema.extend({
@@ -359,13 +403,12 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
     if (newProjectRoomId !== roomId) {
       throw new Error("Proyek harus tetap dalam ruangan yang sama.");
     }
-    for (const assigneeId of assigneeIds) {
-      if (simpleHub) {
-        await assertSimpleHubAssignee(roomId, assigneeId);
-      } else {
-        await assertRoomContributorForPic(roomId, assigneeId, roomProcess);
-      }
-    }
+    await validateAssigneesForRoom({
+      roomId,
+      assigneeIds,
+      roomProcess,
+      simpleHub,
+    });
   }
 
   const nextDue = data.dueDate ?? null;
@@ -478,7 +521,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
         : []),
     ]);
   }
-  revalidateTasksAndRoomHub();
+  revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
   revalidatePath("/");
   revalidatePath("/approvals");
@@ -511,7 +554,7 @@ export async function deleteTask(taskId: string) {
   });
   await prisma.task.delete({ where: { id: taskId } });
   await recomputeProjectProgress(task.projectId);
-  revalidateTasksAndRoomHub();
+  revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
   revalidatePath("/");
 }
