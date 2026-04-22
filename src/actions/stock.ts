@@ -6,10 +6,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireLogisticsStaff } from "@/lib/auth-helpers";
 
+const salesCategorySchema = z.enum(["penjualan", "sampling"]);
+
 const logSchema = z.object({
   productId: z.string().min(1),
   amount: z.coerce.number().int().positive(),
   type: z.nativeEnum(StockLogType),
+  salesCategory: salesCategorySchema.optional().nullable(),
   note: z.string().optional().nullable(),
 });
 
@@ -21,6 +24,10 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
     const product = await tx.product.findUniqueOrThrow({
       where: { id: data.productId },
     });
+    const salesCategory = data.salesCategory ?? null;
+    if (data.type === StockLogType.OUT && !salesCategory) {
+      throw new Error("Kategori stok keluar wajib dipilih (penjualan/sampling).");
+    }
 
     const delta = data.type === StockLogType.IN ? data.amount : -data.amount;
     const next = product.currentStock + delta;
@@ -33,6 +40,7 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
         productId: data.productId,
         amount: data.amount,
         type: data.type,
+        salesCategory: data.type === StockLogType.OUT ? salesCategory : null,
         note: data.note ?? undefined,
       },
     });

@@ -59,6 +59,15 @@ function printStockMutationReport(logs: LogRow[]) {
   <td>${escapeHtml(log.product.sku)}</td>
   <td>${log.type === StockLogType.IN ? "Masuk" : "Keluar"}</td>
   <td style="text-align:right">${log.amount}</td>
+  <td>${
+    log.type === StockLogType.OUT
+      ? log.salesCategory === "penjualan"
+        ? "Penjualan"
+        : log.salesCategory === "sampling"
+          ? "Sampling"
+          : "—"
+      : "—"
+  }</td>
   <td>${escapeHtml(log.note ?? "—")}</td>
 </tr>`,
     )
@@ -94,10 +103,11 @@ function printStockMutationReport(logs: LogRow[]) {
         <th>SKU</th>
         <th>Tipe</th>
         <th>Qty</th>
+        <th>Kategori jual</th>
         <th>Catatan</th>
       </tr>
     </thead>
-    <tbody>${rows || `<tr><td colspan="7">Tidak ada data.</td></tr>`}</tbody>
+    <tbody>${rows || `<tr><td colspan="8">Tidak ada data.</td></tr>`}</tbody>
   </table>
 </body>
 </html>`);
@@ -126,6 +136,7 @@ export function InventoryClient({
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [amount, setAmount] = useState(1);
   const [type, setType] = useState<StockLogType>(StockLogType.IN);
+  const [salesCategory, setSalesCategory] = useState("");
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -141,10 +152,12 @@ export function InventoryClient({
         productId,
         amount,
         type,
+        salesCategory: type === StockLogType.OUT ? salesCategory : null,
         note: note || null,
       });
       toast.success("Pergerakan stok tercatat.");
       setNote("");
+      setSalesCategory("");
       setAmount(1);
     } catch (err) {
       const msg =
@@ -163,8 +176,8 @@ export function InventoryClient({
   }, [products]);
   const stockTypeSelectItems = useMemo((): SelectItemDef[] => {
     return [
-      { value: StockLogType.IN, label: "Masuk (dari vendor / produksi)" },
-      { value: StockLogType.OUT, label: "Keluar (penjualan / sampling)" },
+      { value: StockLogType.IN, label: "Masuk" },
+      { value: StockLogType.OUT, label: "Keluar" },
     ];
   }, []);
 
@@ -259,6 +272,21 @@ export function InventoryClient({
           </span>
         ),
       },
+      {
+        id: "salesCategory",
+        header: "Kategori keluar",
+        cell: ({ row }) => (
+          <span className="text-xs">
+            {row.original.type === StockLogType.OUT
+              ? row.original.salesCategory === "penjualan"
+                ? "Penjualan"
+                : row.original.salesCategory === "sampling"
+                  ? "Sampling"
+                  : "—"
+              : "—"}
+          </span>
+        ),
+      },
     ],
     [],
   );
@@ -266,16 +294,30 @@ export function InventoryClient({
   return (
     <div className="flex flex-col gap-10">
       <section>
-        <h2 className="mb-3 text-lg font-medium tracking-tight">
-          Ringkasan stok
-        </h2>
-        {products.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Belum ada produk. Tambahkan di menu Produk & SKU.
-          </p>
-        ) : (
-          <DataTable columns={stockColumns} data={products} />
-        )}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-medium tracking-tight">Riwayat mutasi</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={logs.length === 0}
+            onClick={() => printStockMutationReport(logs)}
+          >
+            <Printer className="size-4" />
+            Cetak laporan
+          </Button>
+        </div>
+        <p className="text-muted-foreground mb-3 text-xs">
+          Laporan berisi tabel yang sama seperti di bawah (hingga 1.000 entri
+          terakhir). Setelah klik, gunakan dialog cetak browser untuk PDF atau
+          kertas.
+        </p>
+        <DataTable
+          columns={logColumns}
+          data={logs}
+          empty="Belum ada log stok."
+        />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
@@ -320,12 +362,8 @@ export function InventoryClient({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={StockLogType.IN}>
-                        Masuk (dari vendor / produksi)
-                      </SelectItem>
-                      <SelectItem value={StockLogType.OUT}>
-                        Keluar (penjualan / sampling)
-                      </SelectItem>
+                      <SelectItem value={StockLogType.IN}>Masuk</SelectItem>
+                      <SelectItem value={StockLogType.OUT}>Keluar</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -340,6 +378,29 @@ export function InventoryClient({
                   />
                 </div>
               </div>
+              {type === StockLogType.OUT ? (
+                <div className="space-y-2">
+                  <Label htmlFor="sales-category">Kategori stok keluar</Label>
+                  <Select
+                    value={salesCategory}
+                    onValueChange={(v) => {
+                      if (v) setSalesCategory(v);
+                    }}
+                    items={[
+                      { value: "penjualan", label: "Penjualan" },
+                      { value: "sampling", label: "Sampling" },
+                    ]}
+                  >
+                    <SelectTrigger id="sales-category">
+                      <SelectValue placeholder="Pilih kategori keluar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="penjualan">Penjualan</SelectItem>
+                      <SelectItem value="sampling">Sampling</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="note">Catatan (opsional)</Label>
                 <Textarea
@@ -350,7 +411,14 @@ export function InventoryClient({
                   placeholder="Referensi PO, channel penjualan…"
                 />
               </div>
-              <Button type="submit" disabled={pending || products.length === 0}>
+              <Button
+                type="submit"
+                disabled={
+                  pending ||
+                  products.length === 0 ||
+                  (type === StockLogType.OUT && !salesCategory.trim())
+                }
+              >
                 Simpan ke buku stok
               </Button>
             </form>
@@ -358,30 +426,14 @@ export function InventoryClient({
         </Card>
 
         <div>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-medium tracking-tight">Riwayat mutasi</h2>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              disabled={logs.length === 0}
-              onClick={() => printStockMutationReport(logs)}
-            >
-              <Printer className="size-4" />
-              Cetak laporan
-            </Button>
-          </div>
-          <p className="text-muted-foreground mb-3 text-xs">
-            Laporan berisi tabel yang sama seperti di bawah (hingga 1.000 entri
-            terakhir). Setelah klik, gunakan dialog cetak browser untuk PDF atau
-            kertas.
-          </p>
-          <DataTable
-            columns={logColumns}
-            data={logs}
-            empty="Belum ada log stok."
-          />
+          <h2 className="mb-3 text-lg font-medium tracking-tight">Daftar stok</h2>
+          {products.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Belum ada produk. Tambahkan di menu Produk & SKU.
+            </p>
+          ) : (
+            <DataTable columns={stockColumns} data={products} />
+          )}
         </div>
       </section>
     </div>

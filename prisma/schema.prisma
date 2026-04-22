@@ -408,6 +408,8 @@ model StockLog {
   product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
   amount    Int
   type      StockLogType
+  /** Kategori penjualan saat barang keluar (contoh: marketplace, reseller, retail). */
+  salesCategory String?
   note      String?
   createdAt DateTime     @default(now())
 }
