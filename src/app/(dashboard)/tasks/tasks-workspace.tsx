@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   RoomTaskProcess,
@@ -13,7 +13,6 @@ import {
 } from "@prisma/client";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createTask, deleteTask } from "@/actions/tasks";
 import { DataTable } from "@/components/data-table";
@@ -114,8 +113,6 @@ export function TasksWorkspace({
   /** Tampilan arsip: hanya tugas selesai yang diarsipkan. */
   showArchived?: boolean;
 }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
   const [localTasks, setLocalTasks] = useState<TaskRow[]>(tasks);
   const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
@@ -202,7 +199,15 @@ export function TasksWorkspace({
       setCreateOpen(false);
       setLocalTasks((prev) => {
         if (prev.some((t) => t.id === created.id)) return prev;
-        return [...prev, created];
+        return [
+          ...prev,
+          {
+            ...created,
+            checklistItems: [],
+            comments: [],
+            attachments: [],
+          },
+        ];
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Gagal menyimpan.";
@@ -215,22 +220,23 @@ export function TasksWorkspace({
   const onDeleteTask = useCallback(
     async (id: string) => {
       if (!confirm("Hapus tugas ini?")) return;
+      const removedTask = localTasks.find((t) => t.id === id) ?? null;
+      setLocalTasks((prev) => prev.filter((t) => t.id !== id));
+      if (detailTask?.id === id) {
+        setDetailOpen(false);
+        setDetailTask(null);
+      }
       try {
         await deleteTask(id);
         toast.success("Tugas dihapus.");
-        setLocalTasks((prev) => prev.filter((t) => t.id !== id));
-        if (detailTask?.id === id) {
-          setDetailOpen(false);
-          setDetailTask(null);
-        }
-        startTransition(() => {
-          router.refresh();
-        });
       } catch {
+        if (removedTask) {
+          setLocalTasks((prev) => [...prev, removedTask]);
+        }
         toast.error("Gagal menghapus.");
       }
     },
-    [router, detailTask?.id, startTransition],
+    [detailTask?.id, localTasks],
   );
 
   const resolvedKanbanColumns = useMemo((): RoomKanbanColumnDTO[] => {

@@ -86,9 +86,21 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
 
   const task = await prisma.task.findUniqueOrThrow({
     where: { id: taskId },
-    include: {
-      project: { include: { brand: true, room: { select: { name: true } } } },
-      assignees: { include: { user: { select: { name: true } } } },
+    select: {
+      id: true,
+      projectId: true,
+      title: true,
+      status: true,
+      isApprovalRequired: true,
+      isApproved: true,
+      archivedAt: true,
+      project: {
+        include: { brand: true, room: { select: { name: true } } },
+      },
+      assignees: {
+        take: 1,
+        include: { user: { select: { name: true } } },
+      },
     },
   });
 
@@ -136,11 +148,10 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   }
 
   if (task.status !== status) {
-    await recomputeProjectProgress(task.projectId);
+    void recomputeProjectProgress(task.projectId);
   }
   revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
-  revalidatePath("/");
   revalidatePath("/approvals");
   if (notificationJobs.length > 0) {
     void Promise.allSettled(notificationJobs);
@@ -177,10 +188,9 @@ export async function archiveTask(taskId: string) {
     where: { id: taskId },
     data: { archivedAt: new Date() },
   });
-  await recomputeProjectProgress(t.projectId);
+  void recomputeProjectProgress(t.projectId);
   revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
-  revalidatePath("/");
 }
 
 export async function unarchiveTask(taskId: string) {
@@ -210,10 +220,9 @@ export async function unarchiveTask(taskId: string) {
     where: { id: taskId },
     data: { archivedAt: null },
   });
-  await recomputeProjectProgress(t.projectId);
+  void recomputeProjectProgress(t.projectId);
   revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
-  revalidatePath("/");
 }
 
 const createSchema = z.object({
@@ -238,17 +247,6 @@ const taskMutationInclude = {
     },
   },
   vendor: { select: { id: true, name: true } },
-  checklistItems: { orderBy: { sortOrder: "asc" } },
-  comments: {
-    orderBy: { createdAt: "desc" },
-    take: 80,
-    include: { author: { select: { id: true, name: true, email: true } } },
-  },
-  attachments: {
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: { uploadedBy: { select: { id: true, name: true, email: true } } },
-  },
 } satisfies Prisma.TaskInclude;
 
 export type TaskMutationResult = Prisma.TaskGetPayload<{
@@ -549,7 +547,6 @@ export async function updateTask(
   }
   revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
-  revalidatePath("/");
   revalidatePath("/approvals");
   if (notificationJobs.length > 0) {
     void Promise.allSettled(notificationJobs);
@@ -580,10 +577,9 @@ export async function deleteTask(taskId: string) {
     select: { projectId: true },
   });
   await prisma.task.delete({ where: { id: taskId } });
-  await recomputeProjectProgress(task.projectId);
+  void recomputeProjectProgress(task.projectId);
   revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
-  revalidatePath("/");
 }
 
 async function checklistTaskContextOrThrow(checklistItemId: string) {

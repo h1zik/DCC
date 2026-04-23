@@ -337,10 +337,9 @@ export function TasksKanban({
     const task = viewTasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
     setLocalStatuses((prev) => ({ ...prev, [taskId]: newStatus }));
+    toast.success("Status tugas diperbarui.");
     try {
       await moveTaskStatus({ taskId, status: newStatus });
-      toast.success("Status tugas diperbarui.");
-      router.refresh();
     } catch (err) {
       setLocalStatuses((prev) => ({ ...prev, [taskId]: task.status }));
       const msg = err instanceof Error ? err.message : "Gagal memindahkan tugas.";
@@ -352,10 +351,9 @@ export function TasksKanban({
     const task = viewTasks.find((t) => t.id === taskId);
     if (!task || task.status === TaskStatus.DONE) return;
     setLocalStatuses((prev) => ({ ...prev, [taskId]: TaskStatus.DONE }));
+    toast.success("Tugas dipindahkan ke Selesai.");
     try {
       await moveTaskStatus({ taskId, status: TaskStatus.DONE });
-      toast.success("Tugas dipindahkan ke Selesai.");
-      router.refresh();
     } catch (err) {
       setLocalStatuses((prev) => ({ ...prev, [taskId]: task.status }));
       const msg =

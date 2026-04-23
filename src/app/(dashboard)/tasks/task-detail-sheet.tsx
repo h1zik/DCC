@@ -649,7 +649,11 @@ export function TaskDetailSheet({
                                     try {
                                       await deleteTaskComment(c.id);
                                       toast.success("Komentar dihapus.");
-                                      refresh();
+                                      onTaskPatched?.(task.id, {
+                                        comments: task.comments.filter(
+                                          (item) => item.id !== c.id,
+                                        ),
+                                      });
                                     } catch (e) {
                                       toast.error(
                                         e instanceof Error
@@ -767,7 +771,11 @@ export function TaskDetailSheet({
                                 try {
                                   await deleteTaskAttachment(a.id);
                                   toast.success("Lampiran dihapus.");
-                                  refresh();
+                                  onTaskPatched?.(task.id, {
+                                    attachments: task.attachments.filter(
+                                      (item) => item.id !== a.id,
+                                    ),
+                                  });
                                 } catch (e) {
                                   toast.error(
                                     e instanceof Error ? e.message : "Gagal.",
