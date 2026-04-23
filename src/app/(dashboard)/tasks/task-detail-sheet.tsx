@@ -203,7 +203,7 @@ export function TaskDetailSheet({
       const due = dueDate ? new Date(dueDate) : null;
       const lead =
         leadTimeDays.trim() === "" ? null : Math.max(0, parseInt(leadTimeDays, 10));
-      await updateTask({
+      const updated = await updateTask({
         taskId: task.id,
         projectId,
         roomProcess,
@@ -218,24 +218,7 @@ export function TaskDetailSheet({
         status,
       });
       toast.success("Tugas disimpan.");
-      onTaskPatched?.(task.id, {
-        projectId,
-        roomProcess,
-        title,
-        description: description || null,
-        vendorId: vendorId || null,
-        priority,
-        dueDate: due,
-        leadTimeDays: lead,
-        isApprovalRequired: approval,
-        status,
-        assignees: isRoomManager
-          ? users
-              .filter((u) => assigneeIds.includes(u.id))
-              .map((u) => ({ user: { ...u, image: null } }))
-          : task.assignees,
-      });
-      refresh();
+      onTaskPatched?.(task.id, updated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
     } finally {

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   NotificationType,
+  type Prisma,
   RoomMemberRole,
   RoomTaskProcess,
   TaskPriority,
@@ -229,7 +230,34 @@ const createSchema = z.object({
   roomProcess: z.nativeEnum(RoomTaskProcess).optional(),
 });
 
-export async function createTask(input: z.infer<typeof createSchema>) {
+const taskMutationInclude = {
+  project: { include: { brand: true, room: { select: { name: true } } } },
+  assignees: {
+    include: {
+      user: { select: { id: true, name: true, email: true, image: true } },
+    },
+  },
+  vendor: { select: { id: true, name: true } },
+  checklistItems: { orderBy: { sortOrder: "asc" } },
+  comments: {
+    orderBy: { createdAt: "desc" },
+    take: 80,
+    include: { author: { select: { id: true, name: true, email: true } } },
+  },
+  attachments: {
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: { uploadedBy: { select: { id: true, name: true, email: true } } },
+  },
+} satisfies Prisma.TaskInclude;
+
+export type TaskMutationResult = Prisma.TaskGetPayload<{
+  include: typeof taskMutationInclude;
+}>;
+
+export async function createTask(
+  input: z.infer<typeof createSchema>,
+): Promise<TaskMutationResult> {
   const session = await requireTasksRoomHubSession();
   const data = createSchema.parse(input);
   const roomId = await getProjectRoomId(data.projectId);
@@ -282,9 +310,7 @@ export async function createTask(input: z.infer<typeof createSchema>) {
         create: assigneeIds.map((userId) => ({ userId })),
       },
     },
-    include: {
-      project: { include: { brand: true, room: { select: { name: true } } } },
-    },
+    include: taskMutationInclude,
   });
 
   const notificationJobs: Promise<unknown>[] = [];
@@ -312,13 +338,14 @@ export async function createTask(input: z.infer<typeof createSchema>) {
     );
   }
 
-  await recomputeProjectProgress(data.projectId);
+  void recomputeProjectProgress(data.projectId);
   revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
   revalidatePath("/approvals");
   if (notificationJobs.length > 0) {
     void Promise.allSettled(notificationJobs);
   }
+  return task;
 }
 
 const updateSchema = createSchema.extend({
@@ -326,7 +353,9 @@ const updateSchema = createSchema.extend({
   status: z.nativeEnum(TaskStatus).optional(),
 });
 
-export async function updateTask(input: z.infer<typeof updateSchema>) {
+export async function updateTask(
+  input: z.infer<typeof updateSchema>,
+): Promise<TaskMutationResult> {
   const session = await requireTasksRoomHubSession();
   const data = updateSchema.parse(input);
   const prev = await prisma.task.findUniqueOrThrow({
@@ -454,10 +483,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
           }
         : {}),
     },
-    include: {
-      project: { include: { brand: true, room: { select: { name: true } } } },
-      assignees: { include: { user: { select: { name: true } } } },
-    },
+    include: taskMutationInclude,
   });
 
   const becameApproval =
@@ -514,7 +540,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
     prev.projectId !== task.projectId ||
     prev.archivedAt !== task.archivedAt;
   if (progressAffected) {
-    await Promise.all([
+    void Promise.allSettled([
       recomputeProjectProgress(task.projectId),
       ...(prev.projectId !== task.projectId
         ? [recomputeProjectProgress(prev.projectId)]
@@ -528,6 +554,7 @@ export async function updateTask(input: z.infer<typeof updateSchema>) {
   if (notificationJobs.length > 0) {
     void Promise.allSettled(notificationJobs);
   }
+  return task;
 }
 
 export async function deleteTask(taskId: string) {

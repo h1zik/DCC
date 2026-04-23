@@ -320,6 +320,10 @@ model Task {
   comments           TaskComment[]
   attachments        TaskAttachment[]
   assignees          TaskAssignee[]
+
+  @@index([projectId, roomProcess, archivedAt, sortOrder])
+  @@index([projectId, archivedAt, status])
+  @@index([projectId, createdAt])
 }
 
 model TaskAssignee {
@@ -341,6 +345,8 @@ model TaskComment {
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   body      String
   createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
 }
 
 model TaskAttachment {
@@ -355,6 +361,8 @@ model TaskAttachment {
   /** Path publik, mis. /uploads/tasks/{taskId}/... */
   publicPath   String
   createdAt    DateTime @default(now())
+
+  @@index([taskId, createdAt])
 }
 
 model TaskChecklistItem {
@@ -364,6 +372,8 @@ model TaskChecklistItem {
   title     String
   done      Boolean  @default(false)
   sortOrder Int      @default(0)
+
+  @@index([taskId, sortOrder])
 }
 
 model Notification {

@@ -197,11 +197,12 @@ export function TasksWorkspace({
           ? { roomProcess: activeRoomProcess }
           : {}),
       };
-      await createTask(payload);
+      const created = await createTask(payload);
       toast.success("Tugas dibuat.");
       setCreateOpen(false);
-      startTransition(() => {
-        router.refresh();
+      setLocalTasks((prev) => {
+        if (prev.some((t) => t.id === created.id)) return prev;
+        return [...prev, created];
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Gagal menyimpan.";
