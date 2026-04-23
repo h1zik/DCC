@@ -1,9 +1,6 @@
-import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
-import {
-  RoomChatExperience,
-  type RoomChatMessageView,
-} from "./room-chat-experience";
+import { loadRoomChatMessagesForRoom } from "@/lib/room-chat-message-view";
+import { RoomChatExperience } from "./room-chat-experience";
 
 type PageProps = { params: Promise<{ roomId: string }> };
 
@@ -11,38 +8,7 @@ export default async function RoomChatPage({ params }: PageProps) {
   const { roomId } = await params;
   const { viewerUserId } = await getRoomMemberContextOrThrow(roomId);
 
-  const rows = await prisma.roomMessage.findMany({
-    where: { roomId },
-    orderBy: { createdAt: "asc" },
-    include: {
-      author: { select: { id: true, name: true, email: true, image: true } },
-      replyTo: {
-        select: {
-          id: true,
-          body: true,
-          gifUrl: true,
-          author: { select: { name: true, email: true } },
-        },
-      },
-    },
-  });
-
-  const messages: RoomChatMessageView[] = rows.map((m) => ({
-    id: m.id,
-    body: m.body,
-    gifUrl: m.gifUrl,
-    replyToId: m.replyToId,
-    createdAt: m.createdAt.toISOString(),
-    author: m.author,
-    replyTo: m.replyTo
-      ? {
-          id: m.replyTo.id,
-          body: m.replyTo.body,
-          gifUrl: m.replyTo.gifUrl,
-          author: m.replyTo.author,
-        }
-      : null,
-  }));
+  const messages = await loadRoomChatMessagesForRoom(roomId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,6 +19,7 @@ export default async function RoomChatPage({ params }: PageProps) {
         URL Giphy/Tenor). Riwayat tersimpan di server.
       </p>
       <RoomChatExperience
+        key={roomId}
         roomId={roomId}
         currentUserId={viewerUserId}
         messages={messages}

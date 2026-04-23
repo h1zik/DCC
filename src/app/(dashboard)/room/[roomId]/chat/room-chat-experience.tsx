@@ -3,8 +3,8 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { addRoomMessage } from "@/actions/room-messages";
+import type { RoomChatMessageView } from "@/lib/room-chat-message-view";
 import { assertSafeGifUrl } from "@/lib/room-chat-gif";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -36,26 +36,6 @@ const EmojiPicker = dynamic(
     ),
   },
 );
-
-export type RoomChatMessageView = {
-  id: string;
-  body: string;
-  gifUrl: string | null;
-  replyToId: string | null;
-  createdAt: string;
-  author: {
-    id: string;
-    name: string | null;
-    email: string;
-    image: string | null;
-  };
-  replyTo: null | {
-    id: string;
-    body: string;
-    gifUrl: string | null;
-    author: { name: string | null; email: string };
-  };
-};
 
 function authorInitial(name: string | null, email: string) {
   const s = (name?.trim() || email).trim();
@@ -107,13 +87,14 @@ function insertAtCursor(
 export function RoomChatExperience({
   roomId,
   currentUserId,
-  messages,
+  messages: initialMessages,
 }: {
   roomId: string;
   currentUserId: string;
   messages: RoomChatMessageView[];
 }) {
-  const router = useRouter();
+  const [messages, setMessages] =
+    useState<RoomChatMessageView[]>(initialMessages);
   const [body, setBody] = useState("");
   const [reply, setReply] = useState<ReplyTarget | null>(null);
   const [pendingGifUrl, setPendingGifUrl] = useState<string | null>(null);
@@ -129,6 +110,8 @@ export function RoomChatExperience({
   const [pending, startTransition] = useTransition();
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyRef = useRef(body);
   bodyRef.current = body;
@@ -138,9 +121,70 @@ export function RoomChatExperience({
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 
+  const onScrollList = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottomRef.current = gap < 120;
+  }, []);
+
+  /** Live updates: poll server for new messages (no WebSocket required). */
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [messages.length]);
+    let cancelled = false;
+    async function pull() {
+      if (typeof document !== "undefined" && document.hidden) return;
+      try {
+        const r = await fetch(`/api/room-chat/${roomId}/messages`, {
+          credentials: "include",
+        });
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as { messages?: RoomChatMessageView[] };
+        if (!Array.isArray(j.messages) || cancelled) return;
+        const incoming = j.messages;
+        setMessages((prev) => {
+          if (incoming.length < prev.length) {
+            return incoming;
+          }
+          const byId = new Map(incoming.map((m) => [m.id, m]));
+          for (const m of prev) {
+            if (!byId.has(m.id)) byId.set(m.id, m);
+          }
+          const merged = [...byId.values()].sort(
+            (a, b) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          );
+          if (
+            merged.length === prev.length &&
+            merged[merged.length - 1]?.id === prev[prev.length - 1]?.id
+          ) {
+            return prev;
+          }
+          return merged;
+        });
+      } catch {
+        /* offline / transient */
+      }
+    }
+    const id = window.setInterval(() => void pull(), 2500);
+    void pull();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [roomId]);
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    const own = last?.author.id === currentUserId;
+    if (own || nearBottomRef.current) {
+      requestAnimationFrame(() => {
+        endRef.current?.scrollIntoView({
+          behavior: own ? "smooth" : "auto",
+          block: "end",
+        });
+      });
+    }
+  }, [messages, currentUserId]);
 
   useEffect(() => {
     if (!gifOpen) return;
@@ -194,7 +238,7 @@ export function RoomChatExperience({
     }
     startTransition(async () => {
       try {
-        await addRoomMessage({
+        const created = await addRoomMessage({
           roomId,
           body: text,
           gifUrl: gifUrl ?? undefined,
@@ -203,7 +247,11 @@ export function RoomChatExperience({
         setBody("");
         setPendingGifUrl(null);
         setReply(null);
-        router.refresh();
+        nearBottomRef.current = true;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === created.id)) return prev;
+          return [...prev, created];
+        });
         taRef.current?.focus();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Gagal mengirim.");
@@ -227,7 +275,11 @@ export function RoomChatExperience({
   return (
     <div className="flex flex-col gap-3">
       <div className="border-border bg-muted/10 flex max-h-[min(520px,58vh)] min-h-[280px] flex-col rounded-xl border">
-        <div className="overflow-y-auto p-3">
+        <div
+          ref={scrollRef}
+          onScroll={onScrollList}
+          className="overflow-y-auto p-3"
+        >
           <div className="flex flex-col gap-2">
             {messages.length === 0 ? (
               <p className="text-muted-foreground text-sm">

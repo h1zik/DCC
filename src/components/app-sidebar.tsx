@@ -33,7 +33,6 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const navCeo = [
@@ -90,12 +89,30 @@ export function AppSidebar() {
     >
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex flex-col gap-1 px-2 py-3">
-          <span className="text-sidebar-primary font-semibold tracking-tight">
-            Dominatus
-          </span>
-          <span className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
-            Control Center
-          </span>
+          <div
+            className={cn(
+              "flex flex-col gap-1 transition-opacity duration-200",
+              "group-data-[collapsible=icon]:hidden",
+            )}
+          >
+            <span className="text-sidebar-primary font-semibold tracking-tight">
+              Dominatus
+            </span>
+            <span className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
+              Control Center
+            </span>
+          </div>
+          <div
+            className={cn(
+              "hidden items-center justify-center py-1",
+              "group-data-[collapsible=icon]:flex",
+            )}
+            aria-hidden
+          >
+            <span className="text-sidebar-primary flex size-8 items-center justify-center rounded-md border border-sidebar-border text-sm font-bold">
+              D
+            </span>
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -106,6 +123,7 @@ export function AppSidebar() {
               {nav.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
+                    tooltip={item.label}
                     isActive={
                       item.href === "/"
                         ? pathname === "/"
@@ -123,29 +141,38 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border">
-        <div className="flex flex-col gap-2 px-2 py-2">
-          <p className="text-muted-foreground truncate px-2 text-xs">
-            {session?.user?.email}
-          </p>
-          <Link
-            href="/profile"
-            className={cn(
-              buttonVariants({ variant: "ghost", size: "sm" }),
-              "justify-start gap-2",
-            )}
-          >
-            <UserCircle className="size-4" />
-            Profil
-          </Link>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="justify-start gap-2"
-            onClick={() => signOut({ callbackUrl: "/login" })}
-          >
-            <LogOut className="size-4" />
-            Keluar
-          </Button>
+        <div className="flex flex-col gap-2 px-0 py-0">
+          {session?.user?.email ? (
+            <p
+              className={cn(
+                "text-muted-foreground truncate px-2 text-xs",
+                "group-data-[collapsible=icon]:hidden",
+              )}
+            >
+              {session.user.email}
+            </p>
+          ) : null}
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Profil"
+                isActive={pathname.startsWith("/profile")}
+                render={<Link href="/profile" />}
+              >
+                <UserCircle />
+                <span>Profil</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Keluar"
+                onClick={() => signOut({ callbackUrl: "/login" })}
+              >
+                <LogOut />
+                <span>Keluar</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </div>
       </SidebarFooter>
       <SidebarRail />

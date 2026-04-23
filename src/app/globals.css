@@ -132,3 +132,86 @@
     @apply font-sans;
   }
 }
+
+/* Login page — ambient motion (respects reduced motion) */
+@keyframes login-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(6%, -4%) scale(1.08);
+  }
+}
+
+@keyframes login-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate(-8%, 6%) scale(1);
+  }
+}
+
+@keyframes login-drift-c {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  50% {
+    transform: translate(-50%, -50%) rotate(180deg);
+  }
+}
+
+@keyframes login-fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes login-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@layer utilities {
+  .animate-login-drift-a {
+    animation: login-drift-a 16s ease-in-out infinite;
+  }
+  .animate-login-drift-b {
+    animation: login-drift-b 20s ease-in-out infinite;
+  }
+  .animate-login-drift-c {
+    animation: login-drift-c 28s linear infinite;
+  }
+  .animate-login-fade-rise {
+    animation: login-fade-rise 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .animate-login-shimmer {
+    animation: login-shimmer 3.2s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-login-drift-a,
+  .animate-login-drift-b,
+  .animate-login-drift-c,
+  .animate-login-shimmer {
+    animation: none !important;
+  }
+  .animate-login-fade-rise {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
