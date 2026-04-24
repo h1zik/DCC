@@ -36,6 +36,12 @@ import type { SelectItemDef } from "@/lib/select-option-items";
 
 type ProductRow = Product & { brand: Brand };
 type LogRow = StockLog & { product: ProductRow };
+type SystemMeta = {
+  action: "REVERSAL" | "REPLACEMENT" | "VOID" | null;
+  targetId: string | null;
+  reason: string;
+  extraNote: string;
+};
 
 function escapeHtml(text: string): string {
   return text
@@ -126,6 +132,88 @@ function printStockMutationReport(logs: LogRow[]) {
   }, 200);
 }
 
+/** Cetak laporan audit koreksi/void dalam jendela print browser. */
+function printStockCorrectionReport(logs: LogRow[]) {
+  const w = window.open("", "_blank");
+  if (!w) {
+    toast.error(
+      "Pop-up diblokir. Izinkan pop-up untuk situs ini lalu coba lagi.",
+    );
+    return;
+  }
+  const title = "Laporan log koreksi & void stok";
+  const generated = format(new Date(), "d MMMM yyyy, HH:mm", {
+    locale: idLocale,
+  });
+  const rows = logs
+    .map((log) => {
+      const meta = parseSystemMeta(log);
+      const actionLabel =
+        meta.action === "REPLACEMENT"
+          ? "Koreksi"
+          : meta.action === "VOID"
+            ? "Void"
+            : "Pembalik";
+      const shortRef = meta.targetId
+        ? meta.targetId.length > 10
+          ? `${meta.targetId.slice(0, 6)}...${meta.targetId.slice(-4)}`
+          : meta.targetId
+        : "-";
+      const reason = [meta.reason, meta.extraNote].filter(Boolean).join(" - ") || "—";
+      return `<tr>
+  <td>${escapeHtml(format(log.createdAt, "dd/MM/yyyy HH:mm", { locale: idLocale }))}</td>
+  <td>${escapeHtml(actionLabel)}</td>
+  <td>${escapeHtml(log.product.brand.name)}</td>
+  <td>${escapeHtml(log.product.name)}</td>
+  <td>${escapeHtml(shortRef)}</td>
+  <td>${escapeHtml(reason)}</td>
+</tr>`;
+    })
+    .join("");
+
+  w.document.write(`<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8"/>
+<title>${escapeHtml(title)}</title>
+<style>
+  body { font-family: system-ui, Segoe UI, sans-serif; padding: 20px; color: #111; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .meta { color: #444; font-size: 12px; margin: 0 0 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th, td { border: 1px solid #bbb; padding: 7px 9px; vertical-align: top; }
+  th { background: #eee; text-align: left; }
+  @media print {
+    body { padding: 12px; }
+    @page { margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <p class="meta">Dominatus Control Center · Dicetak: ${escapeHtml(generated)} · ${logs.length} baris</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Waktu</th>
+        <th>Aksi</th>
+        <th>Brand</th>
+        <th>Produk</th>
+        <th>Ref mutasi</th>
+        <th>Alasan</th>
+      </tr>
+    </thead>
+    <tbody>${rows || `<tr><td colspan="6">Tidak ada data.</td></tr>`}</tbody>
+  </table>
+</body>
+</html>`);
+  w.document.close();
+  setTimeout(() => {
+    w.focus();
+    w.print();
+  }, 200);
+}
+
 function statusBadge(stock: number, min: number) {
   const h = getStockHealth(stock, min);
   if (h === "CRITICAL")
@@ -136,6 +224,42 @@ function statusBadge(stock: number, min: number) {
 
 function isSystemLog(log: LogRow): boolean {
   return (log.note ?? "").startsWith("[SYS]");
+}
+
+function parseSystemMeta(log: LogRow): SystemMeta {
+  const raw = (log.note ?? "").trim();
+  if (!raw.startsWith("[SYS]")) {
+    return { action: null, targetId: null, reason: "", extraNote: "" };
+  }
+  if (raw.startsWith("[SYS] |")) {
+    const parts = raw.split("|").map((x) => x.trim());
+    const action = parts.find((p) => p.startsWith("action="))?.slice(7) ?? "";
+    const targetId = parts.find((p) => p.startsWith("target="))?.slice(7) ?? "";
+    const reason = parts.find((p) => p.startsWith("reason="))?.slice(7) ?? "";
+    const extraNote = parts.find((p) => p.startsWith("note="))?.slice(5) ?? "";
+    return {
+      action:
+        action === "REVERSAL" || action === "REPLACEMENT" || action === "VOID"
+          ? action
+          : null,
+      targetId: targetId || null,
+      reason,
+      extraNote,
+    };
+  }
+  const body = raw.replace(/^\[SYS\]\s*/i, "").trim();
+  const m = body.match(
+    /^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)(?:\s+oleh\s+[^:]+:\s*)?([\s\S]*)$/i,
+  );
+  if (!m) return { action: null, targetId: null, reason: body, extraNote: "" };
+  const rest = (m[3] ?? "").trim();
+  const [reason, extraNote] = rest.split("|").map((x) => x.trim());
+  return {
+    action: m[1]!.toUpperCase() as "REVERSAL" | "REPLACEMENT" | "VOID",
+    targetId: m[2]!.trim() || null,
+    reason: reason ?? "",
+    extraNote: extraNote ?? "",
+  };
 }
 
 function formatSystemLogNote(raw: string): string {
@@ -344,6 +468,44 @@ export function InventoryClient({
     ];
   }, []);
 
+  const businessLogs = useMemo(
+    () => logs.filter((l) => !isSystemLog(l)),
+    [logs],
+  );
+  const correctionLogs = useMemo(
+    () => logs.filter((l) => isSystemLog(l)),
+    [logs],
+  );
+  const businessLogStatusById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of correctionLogs) {
+      const meta = parseSystemMeta(row);
+      if (!meta.targetId || !meta.action) continue;
+      const current = map.get(meta.targetId);
+      const next =
+        meta.action === "VOID"
+          ? "Di-void"
+          : meta.action === "REPLACEMENT"
+            ? "Dikoreksi"
+            : "Dibalik";
+      if (current === "Di-void") continue;
+      map.set(meta.targetId, next);
+    }
+    return map;
+  }, [correctionLogs]);
+  const replacementByTargetId = useMemo(() => {
+    const map = new Map<string, LogRow>();
+    for (const row of correctionLogs) {
+      const meta = parseSystemMeta(row);
+      if (meta.action !== "REPLACEMENT" || !meta.targetId) continue;
+      const prev = map.get(meta.targetId);
+      if (!prev || row.createdAt > prev.createdAt) {
+        map.set(meta.targetId, row);
+      }
+    }
+    return map;
+  }, [correctionLogs]);
+
   const stockColumns = useMemo<ColumnDef<ProductRow>[]>(
     () => [
       {
@@ -410,45 +572,58 @@ export function InventoryClient({
       {
         id: "type",
         header: "Tipe",
-        cell: ({ row }) =>
-          row.original.type === StockLogType.IN ? (
+        cell: ({ row }) => {
+          const effective = replacementByTargetId.get(row.original.id) ?? row.original;
+          return effective.type === StockLogType.IN ? (
             <Badge className="bg-emerald-600 text-white hover:bg-emerald-600/90">
               Masuk
             </Badge>
           ) : (
             <Badge variant="secondary">Keluar</Badge>
-          ),
+          );
+        },
       },
       {
         accessorKey: "amount",
         header: "Qty",
-        cell: ({ row }) => (
-          <span className="tabular-nums">{row.original.amount}</span>
-        ),
+        cell: ({ row }) => {
+          const effective = replacementByTargetId.get(row.original.id) ?? row.original;
+          return <span className="tabular-nums">{effective.amount}</span>;
+        },
       },
       {
         accessorKey: "note",
         header: "Catatan",
         cell: ({ row }) => (
-          <span className="text-muted-foreground max-w-[200px] truncate text-xs">
-            {formatLogNote(row.original)}
-          </span>
+          <div className="space-y-1">
+            <span className="text-muted-foreground block max-w-[200px] truncate text-xs">
+              {formatLogNote(row.original)}
+            </span>
+            {businessLogStatusById.get(row.original.id) ? (
+              <Badge variant="outline" className="text-[10px]">
+                {businessLogStatusById.get(row.original.id)}
+              </Badge>
+            ) : null}
+          </div>
         ),
       },
       {
         id: "salesCategory",
         header: "Kategori keluar",
-        cell: ({ row }) => (
+        cell: ({ row }) => {
+          const effective = replacementByTargetId.get(row.original.id) ?? row.original;
+          return (
           <span className="text-xs">
-            {row.original.type === StockLogType.OUT
-              ? row.original.salesCategory === "penjualan"
+            {effective.type === StockLogType.OUT
+              ? effective.salesCategory === "penjualan"
                 ? "Penjualan"
-                : row.original.salesCategory === "sampling"
+                : effective.salesCategory === "sampling"
                   ? "Sampling"
                   : "—"
               : "—"}
           </span>
-        ),
+          );
+        },
       },
       {
         id: "actions",
@@ -483,7 +658,65 @@ export function InventoryClient({
         ),
       },
     ],
-    [deletePendingId],
+    [deletePendingId, businessLogStatusById, replacementByTargetId],
+  );
+
+  const correctionColumns = useMemo<ColumnDef<LogRow>[]>(
+    () => [
+      {
+        accessorKey: "createdAt",
+        header: "Waktu",
+        cell: ({ row }) =>
+          format(row.original.createdAt, "d MMM yyyy, HH:mm", {
+            locale: idLocale,
+          }),
+      },
+      {
+        id: "action",
+        header: "Aksi",
+        cell: ({ row }) => {
+          const action = parseSystemMeta(row.original).action;
+          const label =
+            action === "VOID"
+              ? "Void"
+              : action === "REPLACEMENT"
+                ? "Koreksi"
+                : "Pembalik";
+          return <Badge variant="secondary">{label}</Badge>;
+        },
+      },
+      {
+        id: "product",
+        header: "Produk",
+        cell: ({ row }) => row.original.product.name,
+      },
+      {
+        id: "target",
+        header: "Ref mutasi",
+        cell: ({ row }) => {
+          const targetId = parseSystemMeta(row.original).targetId ?? "-";
+          const shortRef =
+            targetId.length > 10
+              ? `${targetId.slice(0, 6)}...${targetId.slice(-4)}`
+              : targetId;
+          return <span className="font-mono text-xs">{shortRef}</span>;
+        },
+      },
+      {
+        id: "reason",
+        header: "Alasan",
+        cell: ({ row }) => {
+          const meta = parseSystemMeta(row.original);
+          const parts = [meta.reason, meta.extraNote].filter(Boolean);
+          return (
+            <span className="text-muted-foreground max-w-[320px] text-xs">
+              {parts.join(" - ") || formatLogNote(row.original)}
+            </span>
+          );
+        },
+      },
+    ],
+    [],
   );
 
   return (
@@ -496,21 +729,46 @@ export function InventoryClient({
             variant="outline"
             size="sm"
             className="gap-1.5"
-            disabled={logs.length === 0}
-            onClick={() => printStockMutationReport(logs)}
+            disabled={businessLogs.length === 0}
+            onClick={() => printStockMutationReport(businessLogs)}
           >
             <Printer className="size-4" />
             Cetak laporan
           </Button>
         </div>
         <p className="text-muted-foreground mb-3 text-xs">
-          Laporan berisi tabel yang sama seperti di bawah (hingga 1.000 entri terakhir).
-          Koreksi/void disimpan sebagai entri baru agar jejak audit tetap aman.
+          Riwayat ini hanya menampilkan mutasi utama (IN/OUT). Koreksi dan void
+          ditampilkan terpisah di tabel audit agar tidak membingungkan operasional.
         </p>
         <DataTable
           columns={logColumns}
-          data={logs}
+          data={businessLogs}
           empty="Belum ada log stok."
+        />
+      </section>
+
+      <section>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-medium tracking-tight">Log koreksi & void</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={correctionLogs.length === 0}
+            onClick={() => printStockCorrectionReport(correctionLogs)}
+          >
+            <Printer className="size-4" />
+            Cetak log
+          </Button>
+        </div>
+        <p className="text-muted-foreground mb-3 text-xs">
+          Jejak audit koreksi/void tersimpan sebagai entri sistem terpisah.
+        </p>
+        <DataTable
+          columns={correctionColumns}
+          data={correctionLogs}
+          empty="Belum ada koreksi/void."
         />
       </section>
 
