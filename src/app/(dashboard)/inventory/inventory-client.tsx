@@ -345,6 +345,7 @@ export function InventoryClient({
   const [editReason, setEditReason] = useState("");
   const [editPending, setEditPending] = useState(false);
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
+  const [showCorrectionLogs, setShowCorrectionLogs] = useState(false);
 
   function openEditLog(log: LogRow) {
     if (isSystemLog(log)) {
@@ -750,26 +751,46 @@ export function InventoryClient({
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-medium tracking-tight">Log koreksi & void</h2>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            disabled={correctionLogs.length === 0}
-            onClick={() => printStockCorrectionReport(correctionLogs)}
-          >
-            <Printer className="size-4" />
-            Cetak log
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCorrectionLogs((v) => !v)}
+            >
+              {showCorrectionLogs ? "Hide log" : "Show log"}
+            </Button>
+            {showCorrectionLogs ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={correctionLogs.length === 0}
+                onClick={() => printStockCorrectionReport(correctionLogs)}
+              >
+                <Printer className="size-4" />
+                Cetak log
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <p className="text-muted-foreground mb-3 text-xs">
-          Jejak audit koreksi/void tersimpan sebagai entri sistem terpisah.
-        </p>
-        <DataTable
-          columns={correctionColumns}
-          data={correctionLogs}
-          empty="Belum ada koreksi/void."
-        />
+        {showCorrectionLogs ? (
+          <>
+            <p className="text-muted-foreground mb-3 text-xs">
+              Jejak audit koreksi/void tersimpan sebagai entri sistem terpisah.
+            </p>
+            <DataTable
+              columns={correctionColumns}
+              data={correctionLogs}
+              empty="Belum ada koreksi/void."
+            />
+          </>
+        ) : (
+          <p className="text-muted-foreground text-xs">
+            Log audit disembunyikan. Klik <span className="font-medium">Show log</span> untuk melihat.
+          </p>
+        )}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">

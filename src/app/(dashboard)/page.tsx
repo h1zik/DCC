@@ -45,8 +45,7 @@ export default async function ExecutiveDashboardPage() {
     where: { type: StockLogType.OUT },
     select: {
       amount: true,
-      salesCategory: true,
-      product: { select: { category: true } },
+      product: { select: { brand: { select: { name: true } } } },
     },
   });
 
@@ -93,20 +92,12 @@ export default async function ExecutiveDashboardPage() {
     pendingCount: pipelineProjects.filter((p) => p.pendingPipelineStage === stage)
       .length,
   }));
-  const totalSoldPcs = salesLogs
-    .filter((row) => row.salesCategory === "penjualan")
-    .reduce((sum, row) => sum + row.amount, 0);
-  const pcsByCategory = salesLogs.reduce<Record<string, number>>((acc, row) => {
-    const key =
-      row.salesCategory === "penjualan"
-        ? "Penjualan"
-        : row.salesCategory === "sampling"
-          ? "Sampling"
-          : row.product.category?.trim() || "Tanpa kategori";
+  const pcsByBrand = salesLogs.reduce<Record<string, number>>((acc, row) => {
+    const key = row.product.brand.name.trim() || "Tanpa brand";
     acc[key] = (acc[key] ?? 0) + row.amount;
     return acc;
   }, {});
-  const salesCategoryRows = Object.entries(pcsByCategory).sort(
+  const salesByBrandRows = Object.entries(pcsByBrand).sort(
     (a, b) => b[1] - a[1],
   );
 
@@ -214,40 +205,37 @@ export default async function ExecutiveDashboardPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total PCS terjual
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {totalSoldPcs.toLocaleString("id-ID")} PCS
-            </p>
-            <CardDescription>
-              Akumulasi stok keluar dengan kategori Penjualan.
-            </CardDescription>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Kategori penjualan aktif
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {salesCategoryRows.length}
-            </p>
-            <CardDescription>
-              Jumlah kategori yang sudah menghasilkan transaksi keluar.
-            </CardDescription>
-          </CardContent>
-        </Card>
-      </section>
-
       <section className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Penjualan per brand</CardTitle>
+            <CardDescription>
+              Akumulasi PCS dari seluruh mutasi stok keluar per brand.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {salesByBrandRows.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Belum ada transaksi barang keluar.
+              </p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {salesByBrandRows.map(([brand, value]) => (
+                  <div
+                    key={brand}
+                    className="bg-muted/40 flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                  >
+                    <span className="text-sm font-medium">{brand}</span>
+                    <span className="font-mono text-sm tabular-nums">
+                      {value.toLocaleString("id-ID")} PCS
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="min-h-[280px]">
           <CardHeader>
             <CardTitle>Stok kritis</CardTitle>
@@ -316,38 +304,6 @@ export default async function ExecutiveDashboardPage() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section>
-        <Card>
-          <CardHeader>
-            <CardTitle>Penjualan per kategori</CardTitle>
-            <CardDescription>
-              Akumulasi PCS dari mutasi stok keluar.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {salesCategoryRows.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Belum ada transaksi barang keluar.
-              </p>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {salesCategoryRows.map(([category, value]) => (
-                  <div
-                    key={category}
-                    className="bg-muted/40 flex items-center justify-between rounded-lg border border-border px-3 py-2"
-                  >
-                    <span className="text-sm font-medium">{category}</span>
-                    <span className="font-mono text-sm tabular-nums">
-                      {value.toLocaleString("id-ID")} PCS
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </CardContent>
         </Card>
       </section>
