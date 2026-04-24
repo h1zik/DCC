@@ -104,7 +104,7 @@ function DraggableTask({
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id, disabled: dragDisabled });
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
   };
   const canQuickDone = task.status !== TaskStatus.DONE && !showArchived;
   const canArchive =

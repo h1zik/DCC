@@ -16,6 +16,9 @@ export type GanttTask = {
   brandName: string;
 };
 
+/** Lebar satu kolom hari (px); cukup untuk label D/M tanpa overlap. */
+const DAY_COLUMN_PX = 52;
+
 export function TasksGantt({
   tasks,
   onTaskClick,
@@ -40,23 +43,42 @@ export function TasksGantt({
     7,
     differenceInCalendarDays(rangeEnd, rangeStart) + 1,
   );
+  const visibleDays = Math.min(totalDays, 45);
+  const timelineWidthPx = visibleDays * DAY_COLUMN_PX;
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
-      <div className="min-w-[720px] space-y-2 p-4">
-        <div className="text-muted-foreground mb-3 flex text-xs">
-          {Array.from({ length: Math.min(totalDays, 45) }).map((_, i) => {
-            const d = addDays(rangeStart, i);
-            return (
-              <div
-                key={i}
-                className="border-border shrink-0 border-r px-1 text-center"
-                style={{ width: `${100 / Math.min(totalDays, 45)}%` }}
-              >
-                {d.getDate()}/{d.getMonth() + 1}
-              </div>
-            );
-          })}
+      <div className="space-y-2 p-4">
+        <div className="text-muted-foreground mb-3 flex text-xs tabular-nums">
+          <div className="border-border w-40 shrink-0 border-b pb-2 pr-2" aria-hidden />
+          <div
+            className="flex shrink-0 border-b border-border"
+            style={{ width: timelineWidthPx }}
+          >
+            {Array.from({ length: visibleDays }).map((_, i) => {
+              const d = addDays(rangeStart, i);
+              return (
+                <div
+                  key={i}
+                  className="border-border box-border flex shrink-0 items-center justify-center border-r px-0.5 py-2 text-center leading-none last:border-r-0"
+                  style={{
+                    width: DAY_COLUMN_PX,
+                    minWidth: DAY_COLUMN_PX,
+                  }}
+                  title={d.toLocaleDateString("id-ID", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                >
+                  <span className="block max-w-full truncate">
+                    {d.getDate()}/{d.getMonth() + 1}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
         {dated.map((t) => {
           const start = startOfDay(new Date(t.createdAt));
@@ -66,7 +88,8 @@ export function TasksGantt({
             1,
             differenceInCalendarDays(end, start) + 1,
           );
-          const pct = 100 / Math.min(totalDays, 45);
+          const barLeftPx = offset * DAY_COLUMN_PX;
+          const barWidthPx = Math.max(len * DAY_COLUMN_PX, 28);
           return (
             <div
               key={t.id}
@@ -75,14 +98,16 @@ export function TasksGantt({
               <span className="text-muted-foreground w-40 shrink-0 truncate px-2 text-xs">
                 {t.brandName}
               </span>
-              <div className="relative h-6 flex-1">
+              <div
+                className="relative h-6 shrink-0"
+                style={{ width: timelineWidthPx }}
+              >
                 <button
                   type="button"
-                  className="bg-accent absolute top-1 h-4 cursor-pointer rounded-md border border-border/50 text-left text-[10px] leading-4 text-accent-foreground shadow-sm hover:bg-accent/90"
+                  className="bg-accent absolute top-1 h-4 max-w-full cursor-pointer rounded-md border border-border/50 text-left text-[10px] leading-4 text-accent-foreground shadow-sm hover:bg-accent/90"
                   style={{
-                    left: `${offset * pct}%`,
-                    width: `${len * pct}%`,
-                    minWidth: "8%",
+                    left: barLeftPx,
+                    width: barWidthPx,
                   }}
                   title={t.title}
                   onClick={() => onTaskClick?.(t.id)}

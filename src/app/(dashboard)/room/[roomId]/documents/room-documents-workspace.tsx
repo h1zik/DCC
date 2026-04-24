@@ -400,9 +400,9 @@ export function RoomDocumentsWorkspace({
           ) : null}
         </div>
 
-        <ul className="divide-border divide-y rounded-xl border border-border">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {visibleDocuments.length === 0 ? (
-            <li className="text-muted-foreground p-4 text-sm">
+            <li className="text-muted-foreground border-border bg-card col-span-full rounded-xl border border-dashed p-6 text-center text-sm">
               {browseKey === "all"
                 ? "Belum ada dokumen."
                 : browseKey === "ungrouped"
@@ -413,7 +413,7 @@ export function RoomDocumentsWorkspace({
             visibleDocuments.map((d) => (
               <li
                 key={d.id}
-                className="flex flex-col gap-2 p-3 text-sm sm:flex-row sm:flex-wrap sm:items-start sm:justify-between"
+                className="border-border bg-card flex min-h-0 min-w-0 flex-col gap-2 rounded-xl border p-3 text-sm shadow-sm"
               >
                 <div className="min-w-0 flex-1 space-y-2">
                   {browseKey === "all" ? (
@@ -438,29 +438,29 @@ export function RoomDocumentsWorkspace({
                       />
                     </a>
                   ) : null}
-                  <div>
+                  <div className="min-w-0">
                     <a
                       href={d.publicPath}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-accent-foreground font-medium hover:underline"
+                      className="text-accent-foreground line-clamp-2 font-medium hover:underline"
                     >
                       {d.title?.trim() ? d.title : d.fileName}
                     </a>
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-muted-foreground mt-1 text-xs break-words">
                       {d.uploadedBy.name ?? d.uploadedBy.email} ·{" "}
                       {formatFileSize(d.size)} ·{" "}
                       {new Date(d.createdAt).toLocaleDateString("id-ID")}
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="mt-auto flex flex-col gap-2 border-t border-border/60 pt-2">
                   {(d.uploadedBy.id === currentUserId || isRoomManager) && (
                     <>
-                      <label className="text-muted-foreground flex items-center gap-1.5 text-xs whitespace-nowrap">
-                        Folder
+                      <label className="text-muted-foreground flex min-w-0 flex-col gap-1 text-xs">
+                        <span className="shrink-0">Folder</span>
                         <select
-                          className="border-input bg-background h-8 min-w-[8.5rem] rounded-md border px-1.5 text-xs"
+                          className="border-input bg-background h-8 w-full min-w-0 rounded-md border px-1.5 text-xs"
                           value={d.folderId ?? ""}
                           onChange={async (e) => {
                             const v = e.target.value;
@@ -492,6 +492,7 @@ export function RoomDocumentsWorkspace({
                         type="button"
                         variant="ghost"
                         size="icon-sm"
+                        className="self-start"
                         aria-label="Hapus dokumen"
                         onClick={async () => {
                           if (!confirm("Hapus dokumen ini?")) return;
