@@ -45,10 +45,11 @@ const navCeo = [
 ] as const;
 
 const navAdministrator = [
-  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/rooms", label: "Ruang kerja", icon: DoorOpen },
+  { href: "/projects", label: "Pipeline", icon: GitBranch },
+  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/brands", label: "Brand", icon: Tags },
+  { href: "/rooms", label: "Ruang kerja", icon: DoorOpen },
   { href: "/admin/users", label: "Pengguna", icon: Users },
   { href: "/admin/access", label: "Hak akses", icon: UserCog },
 ] as const;
@@ -61,9 +62,9 @@ const navLogistics = [
 ] as const;
 
 const navStudio = [
-  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
-  { href: "/projects", label: "Pipeline", icon: GitBranch },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
+  { href: "/projects", label: "Pipeline", icon: GitBranch },
+  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
 ] as const;
 
 function navForRole(role: UserRole | undefined) {

@@ -51,6 +51,7 @@ export function isAdministratorAppRoute(pathname: string): boolean {
   return (
     isProfileRoute(pathname) ||
     isScheduleRoute(pathname) ||
+    pathname.startsWith("/projects") ||
     pathname.startsWith("/rooms") ||
     pathname.startsWith("/brands") ||
     pathname.startsWith("/admin") ||

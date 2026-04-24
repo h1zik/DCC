@@ -12,7 +12,7 @@ import { NextResponse } from "next/server";
 
 function defaultHomeForRole(role: UserRole | undefined): string {
   if (role === UserRole.CEO) return "/";
-  if (role === UserRole.ADMINISTRATOR) return "/rooms";
+  if (role === UserRole.ADMINISTRATOR) return "/tasks";
   if (isStudioOrProjectManager(role)) return "/tasks";
   return "/inventory";
 }
@@ -50,10 +50,10 @@ export default auth((req) => {
 
   if (role === UserRole.ADMINISTRATOR) {
     if (pathname === "/") {
-      return NextResponse.redirect(new URL("/rooms", req.nextUrl));
+      return NextResponse.redirect(new URL("/tasks", req.nextUrl));
     }
     if (!isAdministratorAppRoute(pathname)) {
-      return NextResponse.redirect(new URL("/rooms", req.nextUrl));
+      return NextResponse.redirect(new URL("/tasks", req.nextUrl));
     }
     return NextResponse.next();
   }
