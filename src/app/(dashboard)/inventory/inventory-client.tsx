@@ -159,7 +159,7 @@ function formatSystemLogNote(raw: string): string {
 function formatLegacySystemLogNote(raw: string): string {
   const body = raw.replace(/^\[SYS\]\s*/i, "").trim();
   const m = body.match(
-    /^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)(?:\s+oleh\s+[^:]+:\s*)?(.*)$/is,
+    /^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)(?:\s+oleh\s+[^:]+:\s*)?([\s\S]*)$/i,
   );
   if (!m) {
     return body.replace(/\s+/g, " ").trim() || "Mutasi sistem";
@@ -257,7 +257,11 @@ export function InventoryClient({
         logId: editingLog.id,
         amount: editAmount,
         type: editType,
-        salesCategory: editType === StockLogType.OUT ? editSalesCategory : null,
+        salesCategory:
+          editType === StockLogType.OUT &&
+          (editSalesCategory === "penjualan" || editSalesCategory === "sampling")
+            ? editSalesCategory
+            : null,
         note: editNote || null,
         reason: editReason.trim(),
       });
