@@ -25,6 +25,49 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+type SalesLogRow = {
+  id: string;
+  amount: number;
+  type: StockLogType;
+  note: string | null;
+  product: { brand: { name: string } };
+};
+
+function isSystemLog(row: SalesLogRow): boolean {
+  return (row.note ?? "").startsWith("[SYS]");
+}
+
+function parseSystemMeta(row: SalesLogRow): {
+  action: "REVERSAL" | "REPLACEMENT" | "VOID" | null;
+  targetId: string | null;
+} {
+  const raw = (row.note ?? "").trim();
+  if (!raw.startsWith("[SYS]")) return { action: null, targetId: null };
+
+  if (raw.startsWith("[SYS] |")) {
+    const parts = raw.split("|").map((x) => x.trim());
+    const action = parts.find((p) => p.startsWith("action="))?.slice(7) ?? "";
+    const targetId = parts.find((p) => p.startsWith("target="))?.slice(7) ?? "";
+    return {
+      action:
+        action === "REVERSAL" || action === "REPLACEMENT" || action === "VOID"
+          ? action
+          : null,
+      targetId: targetId || null,
+    };
+  }
+
+  const m = raw
+    .replace(/^\[SYS\]\s*/i, "")
+    .match(/^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)/i);
+  return {
+    action: m?.[1]
+      ? (m[1].toUpperCase() as "REVERSAL" | "REPLACEMENT" | "VOID")
+      : null,
+    targetId: m?.[2] ?? null,
+  };
+}
+
 export default async function ExecutiveDashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -44,7 +87,10 @@ export default async function ExecutiveDashboardPage() {
   const salesLogs = await prisma.stockLog.findMany({
     where: { type: StockLogType.OUT },
     select: {
+      id: true,
       amount: true,
+      type: true,
+      note: true,
       product: { select: { brand: { select: { name: true } } } },
     },
   });
@@ -92,7 +138,24 @@ export default async function ExecutiveDashboardPage() {
     pendingCount: pipelineProjects.filter((p) => p.pendingPipelineStage === stage)
       .length,
   }));
-  const pcsByBrand = salesLogs.reduce<Record<string, number>>((acc, row) => {
+  const businessLogs = salesLogs.filter((row): row is SalesLogRow => !isSystemLog(row));
+  const correctionLogs = salesLogs.filter((row): row is SalesLogRow => isSystemLog(row));
+
+  const replacementByTargetId = new Map<string, SalesLogRow>();
+  const voidTargetIds = new Set<string>();
+  for (const row of correctionLogs) {
+    const meta = parseSystemMeta(row);
+    if (!meta.targetId) continue;
+    if (meta.action === "REPLACEMENT") replacementByTargetId.set(meta.targetId, row);
+    if (meta.action === "VOID") voidTargetIds.add(meta.targetId);
+  }
+
+  const effectiveSalesLogs = businessLogs
+    .filter((row) => !voidTargetIds.has(row.id))
+    .map((row) => replacementByTargetId.get(row.id) ?? row)
+    .filter((row) => row.type === StockLogType.OUT);
+
+  const pcsByBrand = effectiveSalesLogs.reduce<Record<string, number>>((acc, row) => {
     const key = row.product.brand.name.trim() || "Tanpa brand";
     acc[key] = (acc[key] ?? 0) + row.amount;
     return acc;
