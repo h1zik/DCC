@@ -11,7 +11,7 @@ import { NotificationBell } from "@/components/notification-bell";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <AppSidebar />
       <SidebarInset className="overflow-x-hidden">
         <header className="bg-background/80 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 backdrop-blur-md">

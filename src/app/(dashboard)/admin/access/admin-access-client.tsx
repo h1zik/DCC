@@ -54,7 +54,43 @@ export function AdminAccessClient({ users }: { users: Row[] }) {
         (akses menu Brand dan Ruang kerja). Pengguna yang sedang masuk harus
         keluar lalu masuk lagi agar menu sesuai peran baru.
       </p>
-      <div className="rounded-lg border border-border">
+      <div className="space-y-3 md:hidden">
+        {users.map((u) => (
+          <div key={u.id} className="rounded-lg border border-border bg-card p-3 text-sm">
+            <div className="space-y-2">
+              <p className="font-mono text-xs break-all">{u.email}</p>
+              <p>{u.name ?? "—"}</p>
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor={`role-mobile-${u.id}`}>
+                  Peran
+                </Label>
+                <Select
+                  value={u.role}
+                  items={ceoRoleSelectItems}
+                  disabled={pendingId === u.id}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    void onRoleChange(u.id, v as UserRole);
+                  }}
+                >
+                  <SelectTrigger id={`role-mobile-${u.id}`} className="h-9 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CEO_ASSIGNABLE_USER_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ceoAssignableRoleLabel(r)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden rounded-lg border border-border md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">

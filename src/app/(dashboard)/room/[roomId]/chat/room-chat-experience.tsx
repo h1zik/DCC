@@ -98,6 +98,7 @@ export function RoomChatExperience({
   const [body, setBody] = useState("");
   const [reply, setReply] = useState<ReplyTarget | null>(null);
   const [pendingGifUrl, setPendingGifUrl] = useState<string | null>(null);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
   const [gifQuery, setGifQuery] = useState("happy");
@@ -114,11 +115,15 @@ export function RoomChatExperience({
   const nearBottomRef = useRef(true);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyRef = useRef(body);
+  const lastTypingPingRef = useRef(0);
   bodyRef.current = body;
 
   const scrollToMessage = useCallback((id: string) => {
     const el = messageRefs.current.get(id);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const container = scrollRef.current;
+    if (!el || !container) return;
+    const top = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
+    container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   }, []);
 
   const onScrollList = useCallback(() => {
@@ -138,8 +143,16 @@ export function RoomChatExperience({
           credentials: "include",
         });
         if (!r.ok || cancelled) return;
-        const j = (await r.json()) as { messages?: RoomChatMessageView[] };
+        const j = (await r.json()) as {
+          messages?: RoomChatMessageView[];
+          typingUsers?: string[];
+        };
         if (!Array.isArray(j.messages) || cancelled) return;
+        setTypingUsers(
+          Array.isArray(j.typingUsers)
+            ? j.typingUsers.filter((x): x is string => typeof x === "string")
+            : [],
+        );
         const incoming = j.messages;
         setMessages((prev) => {
           if (incoming.length < prev.length) {
@@ -174,13 +187,32 @@ export function RoomChatExperience({
   }, [roomId]);
 
   useEffect(() => {
+    if (!body.trim()) return;
+    const id = window.setTimeout(() => {
+      const now = Date.now();
+      // Batasi ping agar tidak flood saat user mengetik cepat.
+      if (now - lastTypingPingRef.current < 1800) return;
+      lastTypingPingRef.current = now;
+      void fetch(`/api/room-chat/${roomId}/messages`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ typing: true }),
+      }).catch(() => undefined);
+    }, 350);
+    return () => window.clearTimeout(id);
+  }, [body, roomId]);
+
+  useEffect(() => {
     const last = messages[messages.length - 1];
     const own = last?.author.id === currentUserId;
+    const container = scrollRef.current;
     if (own || nearBottomRef.current) {
       requestAnimationFrame(() => {
-        endRef.current?.scrollIntoView({
+        if (!container) return;
+        container.scrollTo({
+          top: container.scrollHeight,
           behavior: own ? "smooth" : "auto",
-          block: "end",
         });
       });
     }
@@ -436,6 +468,12 @@ export function RoomChatExperience({
               <X className="size-3.5" />
             </Button>
           </div>
+        ) : null}
+        {typingUsers.length > 0 ? (
+          <p className="text-muted-foreground text-xs">
+            {typingUsers[0]} sedang mengetik
+            {typingUsers.length > 1 ? ` +${typingUsers.length - 1} lainnya` : ""}
+          </p>
         ) : null}
         <Textarea
           ref={taRef}

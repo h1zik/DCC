@@ -1,19 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Brand, Product, StockLog } from "@prisma/client";
 import { StockLogType } from "@prisma/client";
 import type { ColumnDef } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
-import { Printer } from "lucide-react";
+import { Pencil, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { createStockLog } from "@/actions/stock";
+import { createStockLog, deleteStockLog, updateStockLog } from "@/actions/stock";
 import { getStockHealth } from "@/lib/stock-status";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -68,7 +76,7 @@ function printStockMutationReport(logs: LogRow[]) {
           : "—"
       : "—"
   }</td>
-  <td>${escapeHtml(log.note ?? "—")}</td>
+  <td>${escapeHtml(formatLogNote(log))}</td>
 </tr>`,
     )
     .join("");
@@ -126,6 +134,66 @@ function statusBadge(stock: number, min: number) {
   return <Badge variant="outline">OK</Badge>;
 }
 
+function isSystemLog(log: LogRow): boolean {
+  return (log.note ?? "").startsWith("[SYS]");
+}
+
+function formatSystemLogNote(raw: string): string {
+  const parts = raw.split("|").map((x) => x.trim());
+  const action = parts.find((p) => p.startsWith("action="))?.slice(7) ?? "";
+  const reason = parts.find((p) => p.startsWith("reason="))?.slice(7) ?? "";
+  const note = parts.find((p) => p.startsWith("note="))?.slice(5) ?? "";
+  const actionLabel =
+    action === "REVERSAL"
+      ? "Pembalik otomatis"
+      : action === "REPLACEMENT"
+        ? "Koreksi data"
+        : action === "VOID"
+          ? "Void mutasi"
+          : "Mutasi sistem";
+  const detail = [reason, note].filter(Boolean).join(" - ");
+  return detail ? `${actionLabel}: ${detail}` : actionLabel;
+}
+
+/** Format catatan sistem versi lama (sebelum key-value `action=|target=`). */
+function formatLegacySystemLogNote(raw: string): string {
+  const body = raw.replace(/^\[SYS\]\s*/i, "").trim();
+  const m = body.match(
+    /^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)(?:\s+oleh\s+[^:]+:\s*)?(.*)$/is,
+  );
+  if (!m) {
+    return body.replace(/\s+/g, " ").trim() || "Mutasi sistem";
+  }
+  const kind = m[1]!.toUpperCase();
+  const targetId = m[2]!.trim();
+  const rest = (m[3] ?? "").trim();
+  const reason = rest.replace(/\s*\|\s*/g, " — ").trim();
+  const shortRef =
+    targetId.length > 10 ? `${targetId.slice(0, 6)}…${targetId.slice(-4)}` : targetId;
+  const actionLabel =
+    kind === "REVERSAL"
+      ? "Pembalik otomatis"
+      : kind === "REPLACEMENT"
+        ? "Koreksi data"
+        : kind === "VOID"
+          ? "Void mutasi"
+          : "Mutasi sistem";
+  const detail = [reason ? `Alasan: ${reason}` : null, `Ref: ${shortRef}`]
+    .filter(Boolean)
+    .join(" · ");
+  return `${actionLabel} · ${detail}`;
+}
+
+function formatLogNote(log: LogRow): string {
+  const raw = (log.note ?? "").trim();
+  if (!raw) return "—";
+  if (raw.startsWith("[SYS] |")) return formatSystemLogNote(raw);
+  if (raw.startsWith("[SYS]")) {
+    return formatLegacySystemLogNote(raw);
+  }
+  return raw;
+}
+
 export function InventoryClient({
   products,
   logs,
@@ -133,6 +201,7 @@ export function InventoryClient({
   products: ProductRow[];
   logs: LogRow[];
 }) {
+  const router = useRouter();
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [amount, setAmount] = useState(1);
   const [type, setType] = useState<StockLogType>(StockLogType.IN);
@@ -141,6 +210,88 @@ export function InventoryClient({
   >("");
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState<LogRow | null>(null);
+  const [editAmount, setEditAmount] = useState(1);
+  const [editType, setEditType] = useState<StockLogType>(StockLogType.IN);
+  const [editSalesCategory, setEditSalesCategory] = useState<
+    "" | "penjualan" | "sampling"
+  >("");
+  const [editNote, setEditNote] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [editPending, setEditPending] = useState(false);
+  const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
+
+  function openEditLog(log: LogRow) {
+    if (isSystemLog(log)) {
+      toast.error("Mutasi sistem tidak dapat dikoreksi ulang langsung.");
+      return;
+    }
+    setEditingLog(log);
+    setEditAmount(log.amount);
+    setEditType(log.type);
+    setEditSalesCategory(
+      log.type === StockLogType.OUT && log.salesCategory
+        ? (log.salesCategory as "penjualan" | "sampling")
+        : "",
+    );
+    setEditNote(log.note ?? "");
+    setEditReason("");
+    setEditOpen(true);
+  }
+
+  async function onSaveEditLog(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingLog) return;
+    if (editType === StockLogType.OUT && !editSalesCategory.trim()) {
+      toast.error("Kategori stok keluar wajib dipilih.");
+      return;
+    }
+    if (editReason.trim().length < 3) {
+      toast.error("Alasan koreksi minimal 3 karakter.");
+      return;
+    }
+    setEditPending(true);
+    try {
+      await updateStockLog({
+        logId: editingLog.id,
+        amount: editAmount,
+        type: editType,
+        salesCategory: editType === StockLogType.OUT ? editSalesCategory : null,
+        note: editNote || null,
+        reason: editReason.trim(),
+      });
+      toast.success("Koreksi mutasi berhasil dicatat.");
+      setEditOpen(false);
+      setEditingLog(null);
+      router.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal memperbarui mutasi.";
+      toast.error(msg);
+    } finally {
+      setEditPending(false);
+    }
+  }
+
+  async function onDeleteLog(row: LogRow) {
+    if (isSystemLog(row)) {
+      toast.error("Mutasi sistem tidak dapat di-void langsung.");
+      return;
+    }
+    const reason = prompt("Alasan void mutasi (minimal 3 karakter):")?.trim() ?? "";
+    if (reason.length < 3) return;
+    setDeletePendingId(row.id);
+    try {
+      await deleteStockLog({ logId: row.id, reason });
+      toast.success("Mutasi di-void dengan jejak audit.");
+      router.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal mem-void mutasi.";
+      toast.error(msg);
+    } finally {
+      setDeletePendingId(null);
+    }
+  }
 
   async function onSubmitLog(e: React.FormEvent) {
     e.preventDefault();
@@ -166,6 +317,7 @@ export function InventoryClient({
       setNote("");
       setSalesCategory("");
       setAmount(1);
+      router.refresh();
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Gagal mencatat stok.";
@@ -275,7 +427,7 @@ export function InventoryClient({
         header: "Catatan",
         cell: ({ row }) => (
           <span className="text-muted-foreground max-w-[200px] truncate text-xs">
-            {row.original.note ?? "—"}
+            {formatLogNote(row.original)}
           </span>
         ),
       },
@@ -294,8 +446,40 @@ export function InventoryClient({
           </span>
         ),
       },
+      {
+        id: "actions",
+        header: "Aksi",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              className="size-8"
+              disabled={isSystemLog(row.original)}
+              aria-label="Edit mutasi"
+              title={isSystemLog(row.original) ? "Mutasi sistem" : "Koreksi mutasi"}
+              onClick={() => openEditLog(row.original)}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              className="text-destructive hover:bg-destructive/10 size-8"
+              disabled={deletePendingId === row.original.id || isSystemLog(row.original)}
+              aria-label="Void mutasi"
+              title={isSystemLog(row.original) ? "Mutasi sistem" : "Void mutasi"}
+              onClick={() => void onDeleteLog(row.original)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ),
+      },
     ],
-    [],
+    [deletePendingId],
   );
 
   return (
@@ -316,9 +500,8 @@ export function InventoryClient({
           </Button>
         </div>
         <p className="text-muted-foreground mb-3 text-xs">
-          Laporan berisi tabel yang sama seperti di bawah (hingga 1.000 entri
-          terakhir). Setelah klik, gunakan dialog cetak browser untuk PDF atau
-          kertas.
+          Laporan berisi tabel yang sama seperti di bawah (hingga 1.000 entri terakhir).
+          Koreksi/void disimpan sebagai entri baru agar jejak audit tetap aman.
         </p>
         <DataTable
           columns={logColumns}
@@ -443,6 +626,114 @@ export function InventoryClient({
           )}
         </div>
       </section>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-md">
+          <form onSubmit={onSaveEditLog} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Koreksi riwayat mutasi</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-log-type">Tipe</Label>
+                <Select
+                  value={editType}
+                  items={stockTypeSelectItems}
+                  onValueChange={(v) => {
+                    if (v) setEditType(v as StockLogType);
+                  }}
+                  disabled={editPending}
+                >
+                  <SelectTrigger id="edit-log-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={StockLogType.IN}>Masuk</SelectItem>
+                    <SelectItem value={StockLogType.OUT}>Keluar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-log-qty">Jumlah unit</Label>
+                <Input
+                  id="edit-log-qty"
+                  type="number"
+                  min={1}
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(Number(e.target.value))}
+                  disabled={editPending}
+                />
+              </div>
+            </div>
+            {editType === StockLogType.OUT ? (
+              <div className="space-y-2">
+                <Label htmlFor="edit-log-sales-category">Kategori stok keluar</Label>
+                <Select
+                  value={editSalesCategory}
+                  onValueChange={(v) => {
+                    if (v) setEditSalesCategory(v as "penjualan" | "sampling");
+                  }}
+                  items={[
+                    { value: "penjualan", label: "Penjualan" },
+                    { value: "sampling", label: "Sampling" },
+                  ]}
+                  disabled={editPending}
+                >
+                  <SelectTrigger id="edit-log-sales-category">
+                    <SelectValue placeholder="Pilih kategori keluar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="penjualan">Penjualan</SelectItem>
+                    <SelectItem value="sampling">Sampling</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="edit-log-note">Catatan (opsional)</Label>
+              <Textarea
+                id="edit-log-note"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                rows={2}
+                disabled={editPending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-log-reason">Alasan koreksi</Label>
+              <Textarea
+                id="edit-log-reason"
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                rows={2}
+                placeholder="Contoh: Salah input, harusnya stok keluar"
+                disabled={editPending}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+                disabled={editPending}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  editPending ||
+                  editAmount <= 0 ||
+                  editReason.trim().length < 3 ||
+                  (editType === StockLogType.OUT && !editSalesCategory.trim())
+                }
+              >
+                {editPending ? "Menyimpan..." : "Simpan koreksi"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

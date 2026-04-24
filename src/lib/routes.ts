@@ -10,15 +10,24 @@ export function isProfileRoute(pathname: string): boolean {
   return pathname === "/profile" || pathname.startsWith("/profile/");
 }
 
+/** Jadwal & pengingat meeting (umum, tidak per ruangan). */
+export function isScheduleRoute(pathname: string): boolean {
+  return pathname === "/schedule" || pathname.startsWith("/schedule/");
+}
+
 export function isLogisticsRoute(pathname: string): boolean {
-  return LOGISTICS_ROUTE_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  return (
+    isScheduleRoute(pathname) ||
+    LOGISTICS_ROUTE_PREFIXES.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    )
   );
 }
 
 /** Pipeline & tugas — tim studio / PM. */
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
+    isScheduleRoute(pathname) ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/room")
@@ -29,6 +38,7 @@ export function isStudioWorkspaceRoute(pathname: string): boolean {
 export function isCeoAppRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
+    isScheduleRoute(pathname) ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/room") ||
@@ -40,6 +50,7 @@ export function isCeoAppRoute(pathname: string): boolean {
 export function isAdministratorAppRoute(pathname: string): boolean {
   return (
     isProfileRoute(pathname) ||
+    isScheduleRoute(pathname) ||
     pathname.startsWith("/rooms") ||
     pathname.startsWith("/brands") ||
     pathname.startsWith("/admin") ||

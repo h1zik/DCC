@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { UserRole } from "@prisma/client";
 import {
   Boxes,
+  CalendarDays,
   DoorOpen,
   Factory,
   GitBranch,
@@ -37,12 +38,14 @@ import { cn } from "@/lib/utils";
 
 const navCeo = [
   { href: "/", label: "Dashboard eksekutif", icon: LayoutDashboard },
+  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/projects", label: "Pipeline proyek", icon: GitBranch },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
   { href: "/approvals", label: "Persetujuan CEO", icon: ShieldCheck },
 ] as const;
 
 const navAdministrator = [
+  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
   { href: "/rooms", label: "Ruang kerja", icon: DoorOpen },
   { href: "/brands", label: "Brand", icon: Tags },
@@ -51,12 +54,14 @@ const navAdministrator = [
 ] as const;
 
 const navLogistics = [
+  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/products", label: "Produk & SKU", icon: Package },
   { href: "/vendors", label: "Vendor Maklon", icon: Factory },
   { href: "/inventory", label: "Inventori", icon: Boxes },
 ] as const;
 
 const navStudio = [
+  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/projects", label: "Pipeline", icon: GitBranch },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
 ] as const;

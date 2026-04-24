@@ -160,7 +160,53 @@ export function AdminUsersClient({
         </Link>
       </div>
 
-      <div className="rounded-lg border border-border">
+      <div className="space-y-3 md:hidden">
+        {users.map((u) => (
+          <div key={u.id} className="rounded-lg border border-border bg-card p-3 text-sm">
+            <div className="space-y-1">
+              <p className="font-mono text-xs break-all">{u.email}</p>
+              <p>{u.name ?? "—"}</p>
+              <p className="text-muted-foreground text-xs">
+                {ceoAssignableRoleLabel(u.role)} ·{" "}
+                {new Date(u.createdAt).toLocaleDateString("id-ID", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className="size-8"
+                aria-label={`Edit ${u.email}`}
+                onClick={() => openEdit(u)}
+              >
+                <Pencil className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className="text-destructive hover:bg-destructive/10 size-8"
+                disabled={
+                  u.id === currentUserId ||
+                  u.role === UserRole.CEO ||
+                  deletePendingId === u.id
+                }
+                aria-label={`Hapus ${u.email}`}
+                onClick={() => void onDelete(u)}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden rounded-lg border border-border md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-left">

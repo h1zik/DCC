@@ -74,7 +74,7 @@ export function NotificationBell() {
         <div className="border-b border-border px-3 py-2">
           <p className="text-sm font-medium">Notifikasi</p>
           <p className="text-muted-foreground text-xs">
-            Tugas selesai, overdue, dan permintaan persetujuan CEO.
+            Tugas, persetujuan CEO, dan pengingat jadwal meeting.
           </p>
         </div>
         <ScrollArea className="h-[min(320px,50vh)]">
