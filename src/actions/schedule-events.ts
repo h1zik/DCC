@@ -1,10 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { UserRole } from "@prisma/client";
+import { NotificationType, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { notifyUser } from "@/lib/notify";
 import { prisma } from "@/lib/prisma";
+import {
+  isWhatsAppConfigured,
+  normalizeWhatsAppE164,
+  sendWhatsAppMessage,
+} from "@/lib/whatsapp-gateway";
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -28,6 +34,46 @@ function assertFuture(startsAt: Date) {
   }
 }
 
+function formatWhen(d: Date): string {
+  return d.toLocaleString("id-ID", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+async function notifyScheduleUsers(params: {
+  userIds: string[];
+  message: string;
+}): Promise<void> {
+  const uniq = [...new Set(params.userIds)];
+  if (uniq.length === 0) return;
+  await Promise.all(
+    uniq.map((userId) =>
+      notifyUser(userId, params.message, NotificationType.SCHEDULE_REMINDER),
+    ),
+  );
+  if (!isWhatsAppConfigured()) return;
+  const users = await prisma.user.findMany({
+    where: { id: { in: uniq } },
+    select: { id: true, name: true, whatsappPhone: true },
+  });
+  await Promise.all(
+    users.map(async (u) => {
+      const phone = normalizeWhatsAppE164(u.whatsappPhone);
+      if (!phone) return;
+      const name = u.name?.trim() || "Rekan";
+      try {
+        await sendWhatsAppMessage({
+          toE164: phone,
+          message: `Halo ${name},\n\n${params.message}`,
+        });
+      } catch (err) {
+        console.error("[schedule] whatsapp notify failed", err);
+      }
+    }),
+  );
+}
+
 export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Belum masuk.");
@@ -37,13 +83,13 @@ export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
   const uniq = [...new Set(data.participantUserIds)];
   const users = await prisma.user.findMany({
     where: { id: { in: uniq } },
-    select: { id: true },
+    select: { id: true, name: true, whatsappPhone: true },
   });
   if (users.length !== uniq.length) {
     throw new Error("Ada peserta yang tidak valid.");
   }
 
-  await prisma.scheduleEvent.create({
+  const created = await prisma.scheduleEvent.create({
     data: {
       title: data.title.trim(),
       description: data.description?.trim() || null,
@@ -55,6 +101,11 @@ export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
       },
     },
   });
+
+  // Notifikasi langsung saat jadwal dibuat.
+  const loc = created.location?.trim() ? ` · ${created.location.trim()}` : "";
+  const msg = `📅 Jadwal baru: ${created.title}\n🕒 Mulai: ${formatWhen(created.startsAt)}${loc}`;
+  await notifyScheduleUsers({ userIds: uniq, message: msg });
   revalidatePath("/schedule");
 }
 
@@ -82,14 +133,24 @@ export async function updateScheduleEvent(input: z.infer<typeof updateSchema>) {
     throw new Error("Ada peserta yang tidak valid.");
   }
 
-  await prisma.$transaction(async (tx) => {
+  const prev = await prisma.scheduleEvent.findUnique({
+    where: { id: event.id },
+    select: {
+      title: true,
+      startsAt: true,
+      location: true,
+      participants: { select: { userId: true } },
+    },
+  });
+
+  const updated = await prisma.$transaction(async (tx) => {
     await tx.scheduleEventParticipant.deleteMany({
       where: { eventId: event.id },
     });
     await tx.scheduleReminderSent.deleteMany({
       where: { eventId: event.id },
     });
-    await tx.scheduleEvent.update({
+    return tx.scheduleEvent.update({
       where: { id: event.id },
       data: {
         title: data.title.trim(),
@@ -102,6 +163,16 @@ export async function updateScheduleEvent(input: z.infer<typeof updateSchema>) {
       },
     });
   });
+  const oldLoc = prev?.location?.trim() ? ` · ${prev.location.trim()}` : "";
+  const newLoc = updated.location?.trim() ? ` · ${updated.location.trim()}` : "";
+  const msg =
+    `🔄 Jadwal diperbarui: ${updated.title}\n` +
+    `⏮️ Sebelumnya: ${prev ? formatWhen(prev.startsAt) : "-"}${oldLoc}\n` +
+    `⏭️ Menjadi: ${formatWhen(updated.startsAt)}${newLoc}`;
+  await notifyScheduleUsers({
+    userIds: [...new Set([...(prev?.participants.map((p) => p.userId) ?? []), ...uniq])],
+    message: msg,
+  });
   revalidatePath("/schedule");
 }
 
@@ -112,7 +183,14 @@ export async function deleteScheduleEvent(input: z.infer<typeof deleteSchema>) {
 
   const event = await prisma.scheduleEvent.findUnique({
     where: { id: data.eventId },
-    select: { id: true, createdById: true },
+    select: {
+      id: true,
+      createdById: true,
+      title: true,
+      startsAt: true,
+      location: true,
+      participants: { select: { userId: true } },
+    },
   });
   if (!event) throw new Error("Jadwal tidak ditemukan.");
   const canDelete =
@@ -120,5 +198,10 @@ export async function deleteScheduleEvent(input: z.infer<typeof deleteSchema>) {
   if (!canDelete) throw new Error("Anda tidak dapat menghapus jadwal ini.");
 
   await prisma.scheduleEvent.delete({ where: { id: event.id } });
+  const loc = event.location?.trim() ? ` · ${event.location.trim()}` : "";
+  await notifyScheduleUsers({
+    userIds: event.participants.map((p) => p.userId),
+    message: `❌ Jadwal dibatalkan: ${event.title}\n🕒 Sebelumnya: ${formatWhen(event.startsAt)}${loc}`,
+  });
   revalidatePath("/schedule");
 }

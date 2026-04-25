@@ -2,6 +2,7 @@ import { NotificationType, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import { notifyPicTaskOverdueViaWhatsApp } from "@/lib/task-whatsapp-notify";
 
 /** Menandai tugas lewat tenggat sebagai OVERDUE dan mengirim notifikasi ke PIC. */
 export async function syncOverdueTasks() {
@@ -14,7 +15,9 @@ export async function syncOverdueTasks() {
     },
     select: {
       id: true,
-      assignees: { select: { userId: true } },
+      assignees: {
+        select: { userId: true, user: { select: { name: true, whatsappPhone: true } } },
+      },
       title: true,
       project: { include: { brand: true, room: { select: { name: true } } } },
     },
@@ -37,5 +40,17 @@ export async function syncOverdueTasks() {
           NotificationType.TASK_OVERDUE,
         ),
       ),
+  );
+
+  await Promise.all(
+    candidates.flatMap((c) =>
+      c.assignees.map((a) =>
+        notifyPicTaskOverdueViaWhatsApp({
+          assignee: a.user,
+          taskTitle: c.title,
+          project: c.project,
+        }),
+      ),
+    ),
   );
 }

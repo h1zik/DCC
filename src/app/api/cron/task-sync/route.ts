@@ -1,9 +1,10 @@
 import { syncTaskDeadlineWhatsAppReminders } from "@/lib/sync-task-deadline-reminders";
+import { syncTaskDailyDigest } from "@/lib/sync-task-daily-digest";
 import { syncOverdueTasks } from "@/lib/sync-task-overdue";
 import { syncScheduleReminders } from "@/lib/sync-schedule-reminders";
 
 /**
- * Cron harian / beberapa kali sehari: overdue tugas + pengingat WA deadline + jadwal meeting.
+ * Cron harian / beberapa kali sehari: overdue tugas + reminder WA + digest harian.
  * **Wajib** dijadwalkan di Railway (atau penyedia lain): sinkron ini tidak lagi
  * dijalankan saat load halaman tugas/proyek agar UI tetap ringan.
  *
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
     syncOverdueTasks(),
     syncTaskDeadlineWhatsAppReminders(),
     syncScheduleReminders(),
+    syncTaskDailyDigest(),
   ]);
 
   return Response.json({ ok: true });

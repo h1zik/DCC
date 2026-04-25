@@ -1,6 +1,11 @@
 import { NotificationType, ScheduleReminderKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
+import {
+  isWhatsAppConfigured,
+  normalizeWhatsAppE164,
+  sendWhatsAppMessage,
+} from "@/lib/whatsapp-gateway";
 
 function formatWhen(d: Date): string {
   return d.toLocaleString("id-ID", {
@@ -25,7 +30,12 @@ export async function syncScheduleReminders(): Promise<void> {
       },
     },
     include: {
-      participants: { select: { userId: true } },
+      participants: {
+        select: {
+          userId: true,
+          user: { select: { name: true, whatsappPhone: true } },
+        },
+      },
     },
   });
 
@@ -45,16 +55,20 @@ export async function syncScheduleReminders(): Promise<void> {
         await trySendReminder(
           ev.id,
           p.userId,
+          p.user.name,
+          p.user.whatsappPhone,
           ScheduleReminderKind.DAY_BEFORE,
-          `Besok: ${ev.title} — mulai ${formatWhen(ev.startsAt)}${suffixLocation(ev.location)}`,
+          `📆 Besok: ${ev.title}\n🕒 Mulai: ${formatWhen(ev.startsAt)}${suffixLocation(ev.location)}`,
         );
       }
       if (inHourWindow) {
         await trySendReminder(
           ev.id,
           p.userId,
+          p.user.name,
+          p.user.whatsappPhone,
           ScheduleReminderKind.HOUR_BEFORE,
-          `±1 jam lagi: ${ev.title} — mulai ${formatWhen(ev.startsAt)}${suffixLocation(ev.location)}`,
+          `⏰ ±1 jam lagi: ${ev.title}\n🕒 Mulai: ${formatWhen(ev.startsAt)}${suffixLocation(ev.location)}`,
         );
       }
     }
@@ -69,6 +83,8 @@ function suffixLocation(loc: string | null): string {
 async function trySendReminder(
   eventId: string,
   userId: string,
+  userName: string | null,
+  userWhatsappPhone: string | null,
   kind: ScheduleReminderKind,
   message: string,
 ): Promise<void> {
@@ -78,4 +94,17 @@ async function trySendReminder(
   });
   if (inserted.count === 0) return;
   await notifyUser(userId, message, NotificationType.SCHEDULE_REMINDER);
+  if (isWhatsAppConfigured()) {
+    const phone = normalizeWhatsAppE164(userWhatsappPhone);
+    if (!phone) return;
+    const name = userName?.trim() || "Rekan";
+    try {
+      await sendWhatsAppMessage({
+        toE164: phone,
+        message: `Halo ${name} 👋\n\n${message}`,
+      });
+    } catch (err) {
+      console.error("[schedule] reminder whatsapp failed", err);
+    }
+  }
 }
