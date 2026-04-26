@@ -22,8 +22,13 @@ const createSchema = z.object({
   recurrenceUntil: z.coerce.date().optional().nullable(),
 });
 
-const updateSchema = createSchema.extend({
+const updateSchema = z.object({
   eventId: z.string().min(1),
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).optional().nullable(),
+  location: z.string().max(200).optional().nullable(),
+  startsAt: z.coerce.date(),
+  participantUserIds: z.array(z.string().min(1)).min(1).max(200),
 });
 
 const deleteSchema = z.object({
