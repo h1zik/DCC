@@ -118,6 +118,7 @@ export default async function TasksRoomSelectPage() {
                                 </p>
                                 <RoomMemberAvatarStack
                                   users={r.members.map((m) => m.user)}
+                                  linkProfiles={false}
                                 />
                               </div>
                             </CardHeader>

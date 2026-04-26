@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { addRoomMessage } from "@/actions/room-messages";
 import type { RoomChatMessageView } from "@/lib/room-chat-message-view";
@@ -333,7 +334,12 @@ export function RoomChatExperience({
                       own ? "flex-row-reverse" : "flex-row",
                     )}
                   >
-                    <div className="shrink-0 pt-0.5">
+                    <Link
+                      href={`/profile/${m.author.id}`}
+                      className="shrink-0 rounded-full pt-0.5"
+                      title={`Lihat profil ${authorLabel(m.author.name, m.author.email)}`}
+                      aria-label={`Lihat profil ${authorLabel(m.author.name, m.author.email)}`}
+                    >
                       {m.author.image ? (
                         <Image
                           src={m.author.image}
@@ -351,7 +357,7 @@ export function RoomChatExperience({
                           {authorInitial(m.author.name, m.author.email)}
                         </div>
                       )}
-                    </div>
+                    </Link>
                     <div
                       className={cn(
                         "max-w-[min(100%,520px)] min-w-0 rounded-2xl border px-3 py-2 text-sm shadow-sm",
@@ -361,9 +367,12 @@ export function RoomChatExperience({
                       )}
                     >
                       <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <span className="font-semibold text-foreground">
+                        <Link
+                          href={`/profile/${m.author.id}`}
+                          className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline"
+                        >
                           {authorLabel(m.author.name, m.author.email)}
-                        </span>
+                        </Link>
                         <time dateTime={m.createdAt}>
                           {new Date(m.createdAt).toLocaleString("id-ID", {
                             dateStyle: "short",

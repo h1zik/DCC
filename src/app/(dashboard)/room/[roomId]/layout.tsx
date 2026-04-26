@@ -19,7 +19,7 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
   const memberUsers = await getRoomHubMemberUsers(roomId);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-1 pb-8 sm:px-0">
+    <div className="mx-auto flex min-w-0 w-full max-w-[1400px] flex-col gap-6 px-1 pb-8 sm:px-0">
       <RoomHubNav
         roomId={roomId}
         roomName={room.name}

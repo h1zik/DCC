@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export type RoomMemberAvatarUser = {
@@ -20,10 +21,12 @@ export function RoomMemberAvatarStack({
   users,
   maxVisible = 6,
   className,
+  linkProfiles = true,
 }: {
   users: RoomMemberAvatarUser[];
   maxVisible?: number;
   className?: string;
+  linkProfiles?: boolean;
 }) {
   const unique = [...new Map(users.map((u) => [u.id, u])).values()].sort(
     (a, b) =>
@@ -52,31 +55,49 @@ export function RoomMemberAvatarStack({
       <div className="flex shrink-0 -space-x-2">
         {shown.map((u, i) => {
           const label = u.name?.trim() || u.email;
+          const avatarContent = u.image ? (
+            <Image
+              src={u.image}
+              alt={label}
+              width={36}
+              height={36}
+              unoptimized
+              className="border-border size-9 rounded-full border object-cover"
+            />
+          ) : (
+            <span
+              className="border-border bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-full border text-xs font-semibold"
+              aria-hidden
+            >
+              {initialFrom(u)}
+            </span>
+          );
+
+          if (!linkProfiles) {
+            return (
+              <div
+                key={u.id}
+                className="ring-background relative inline-flex size-9 rounded-full ring-2"
+                style={{ zIndex: shown.length - i }}
+                title={label}
+                aria-label={label}
+              >
+                {avatarContent}
+              </div>
+            );
+          }
+
           return (
-            <div
+            <Link
               key={u.id}
+              href={`/profile/${u.id}`}
               className="ring-background relative inline-flex size-9 rounded-full ring-2"
               style={{ zIndex: shown.length - i }}
-              title={label}
+              title={`Lihat profil ${label}`}
+              aria-label={`Lihat profil ${label}`}
             >
-              {u.image ? (
-                <Image
-                  src={u.image}
-                  alt={label}
-                  width={36}
-                  height={36}
-                  unoptimized
-                  className="border-border size-9 rounded-full border object-cover"
-                />
-              ) : (
-                <span
-                  className="border-border bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-full border text-xs font-semibold"
-                  aria-hidden
-                >
-                  {initialFrom(u)}
-                </span>
-              )}
-            </div>
+              {avatarContent}
+            </Link>
           );
         })}
       </div>

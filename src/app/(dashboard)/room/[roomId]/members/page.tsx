@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { RoomMemberRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
@@ -81,7 +82,12 @@ export default async function RoomMembersPage({ params }: PageProps) {
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{displayName}</p>
+                      <Link
+                        href={`/profile/${member.user.id}`}
+                        className="truncate text-sm font-semibold underline-offset-4 hover:underline focus-visible:underline"
+                      >
+                        {displayName}
+                      </Link>
                       <p className="text-muted-foreground truncate text-xs">
                         {member.user.email}
                       </p>

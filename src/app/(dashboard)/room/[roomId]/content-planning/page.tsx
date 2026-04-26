@@ -32,7 +32,7 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
   const picUserOptions = memberRows.map((m) => m.user);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <p className="text-muted-foreground text-sm">
         Tabel perencanaan konten per ruangan. PIC dipilih dari anggota ruangan;
         status copywriting & design mengikuti alur kerja tim.

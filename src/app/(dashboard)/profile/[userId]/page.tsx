@@ -1,26 +1,37 @@
 import Image from "next/image";
-import { redirect } from "next/navigation";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ceoAssignableRoleLabel } from "@/lib/ceo-assignable-roles";
 import { UserProfileHero, profileMemberTenure } from "@/components/profile";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { isProfileBannerPreset } from "@/lib/profile-appearance";
-import { ProfileForm } from "./profile-form";
+import { User } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export default async function ProfilePage() {
+type PageProps = { params: Promise<{ userId: string }> };
+
+function userInitial(name: string | null, email: string): string {
+  return (name?.trim() || email).slice(0, 1).toUpperCase() || "?";
+}
+
+export default async function OtherUserProfilePage({ params }: PageProps) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
+  const { userId } = await params;
+  if (userId === session.user.id) redirect("/profile");
+
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: userId },
     select: {
       id: true,
       name: true,
       email: true,
       image: true,
       bio: true,
-      whatsappPhone: true,
       role: true,
       createdAt: true,
       profileBannerPreset: true,
@@ -28,7 +39,8 @@ export default async function ProfilePage() {
       profileAccentHex: true,
     },
   });
-  if (!user) redirect("/login");
+
+  if (!user) notFound();
 
   const displayName = user.name?.trim() || user.email;
   const bannerPreset = isProfileBannerPreset(user.profileBannerPreset)
@@ -38,8 +50,8 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-      <p className="text-muted-foreground text-sm">
-        Atur tampilan publik (tema, warna aksen, slogan) lalu bagikan tautan profil ke teman — pratinjau langsung di bawah.
+      <p className="text-muted-foreground text-center text-sm sm:text-left">
+        Profil publik — temanmu lihat tema, slogan, dan bio yang kamu atur di pengaturan profil.
       </p>
 
       <UserProfileHero
@@ -56,7 +68,23 @@ export default async function ProfilePage() {
             <Badge variant="secondary" className="font-normal tabular-nums">
               {tenure.shortLabel}
             </Badge>
+            <span className="text-muted-foreground text-xs">
+              Bergabung{" "}
+              {new Date(user.createdAt).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </span>
+            {!user.image ? (
+              <span className="text-muted-foreground text-xs">Inisial: {userInitial(user.name, user.email)}</span>
+            ) : null}
           </>
+        }
+        trailing={
+          <Link href="/profile" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+            Profil saya
+          </Link>
         }
         avatar={
           user.image ? (
@@ -69,35 +97,21 @@ export default async function ProfilePage() {
               unoptimized
             />
           ) : (
-            <div className="text-muted-foreground flex size-full items-center justify-center bg-muted text-lg font-semibold">
-              {displayName.slice(0, 1).toUpperCase()}
+            <div className="text-muted-foreground flex size-full items-center justify-center bg-muted">
+              <User className="size-14 sm:size-16" aria-hidden />
             </div>
           )
         }
       >
-        {user.bio?.trim() ? (
-          <div>
-            <p className="text-muted-foreground mb-2 text-[11px] font-semibold uppercase tracking-wider">
-              Bio tersimpan
-            </p>
-            <p className="text-foreground text-sm leading-relaxed whitespace-pre-wrap">{user.bio.trim()}</p>
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">Belum ada bio — isi di bawah lalu simpan.</p>
-        )}
+        <div>
+          <p className="text-muted-foreground mb-2 text-[11px] font-semibold uppercase tracking-wider">
+            Bio
+          </p>
+          <p className="text-foreground text-sm leading-relaxed whitespace-pre-wrap">
+            {user.bio?.trim() || "Belum ada bio."}
+          </p>
+        </div>
       </UserProfileHero>
-
-      <ProfileForm
-        email={user.email}
-        initialName={user.name ?? ""}
-        initialBio={user.bio ?? ""}
-        initialWhatsappPhone={user.whatsappPhone ?? ""}
-        initialImage={user.image}
-        initialBannerPreset={bannerPreset}
-        initialTagline={user.profileTagline ?? ""}
-        initialAccentHex={user.profileAccentHex}
-        profileSharePath={`/profile/${user.id}`}
-      />
     </div>
   );
 }

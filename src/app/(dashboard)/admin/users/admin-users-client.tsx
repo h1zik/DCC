@@ -165,7 +165,9 @@ export function AdminUsersClient({
           <div key={u.id} className="rounded-lg border border-border bg-card p-3 text-sm">
             <div className="space-y-1">
               <p className="font-mono text-xs break-all">{u.email}</p>
-              <p>{u.name ?? "—"}</p>
+              <Link href={`/profile/${u.id}`} className="underline-offset-4 hover:underline">
+                {u.name ?? "—"}
+              </Link>
               <p className="text-muted-foreground text-xs">
                 {ceoAssignableRoleLabel(u.role)} ·{" "}
                 {new Date(u.createdAt).toLocaleDateString("id-ID", {
@@ -221,7 +223,14 @@ export function AdminUsersClient({
             {users.map((u) => (
               <tr key={u.id} className="border-b border-border last:border-0">
                 <td className="p-3 font-mono text-xs">{u.email}</td>
-                <td className="p-3">{u.name ?? "—"}</td>
+                <td className="p-3">
+                  <Link
+                    href={`/profile/${u.id}`}
+                    className="underline-offset-4 hover:underline"
+                  >
+                    {u.name ?? "—"}
+                  </Link>
+                </td>
                 <td className="p-3">{ceoAssignableRoleLabel(u.role)}</td>
                 <td className="text-muted-foreground p-3 text-xs">
                   {new Date(u.createdAt).toLocaleDateString("id-ID", {

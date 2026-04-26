@@ -10,6 +10,10 @@ import {
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import {
+  normalizeProfileAccentHex,
+  profileAppearanceSchema,
+} from "@/lib/profile-appearance";
 import { prisma } from "@/lib/prisma";
 
 const basicsSchema = z.object({
@@ -106,6 +110,28 @@ export async function updateProfileAvatar(formData: FormData) {
   });
   revalidatePath("/profile");
   return { image: publicPath };
+}
+
+export async function updateProfileAppearance(input: unknown) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Belum masuk.");
+
+  const parsed = profileAppearanceSchema.parse(input);
+  const taglineRaw = (parsed.profileTagline ?? "").trim();
+  const tagline = taglineRaw ? taglineRaw.slice(0, 160) : null;
+  const accent = normalizeProfileAccentHex(parsed.profileAccentHex ?? null);
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: {
+      profileBannerPreset: parsed.profileBannerPreset,
+      profileTagline: tagline,
+      profileAccentHex: accent,
+    },
+  });
+
+  revalidatePath("/profile");
+  revalidatePath(`/profile/${session.user.id}`);
 }
 
 export async function clearProfileAvatar() {

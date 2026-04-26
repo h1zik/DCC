@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ContentPlanJenis,
@@ -79,6 +79,43 @@ const STATUS_LABEL: Record<ContentPlanStatusKerja, string> = {
   [ContentPlanStatusKerja.DIJEDA]: "Dijeda",
 };
 
+const JENIS_BADGE_CLASS: Record<ContentPlanJenis, string> = {
+  [ContentPlanJenis.REELS]:
+    "border-fuchsia-500/35 bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300",
+  [ContentPlanJenis.CAROUSEL]:
+    "border-sky-500/35 bg-sky-500/12 text-sky-700 dark:text-sky-300",
+  [ContentPlanJenis.SINGLE_FEED]:
+    "border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-300",
+};
+
+/** Select inline di tabel: tanpa kotak border agar mirip spreadsheet. */
+const INLINE_SELECT_TRIGGER =
+  "h-auto min-h-8 w-full max-w-full min-w-0 justify-start whitespace-normal border-0 bg-transparent shadow-none px-0.5 hover:bg-muted/40 dark:bg-transparent dark:hover:bg-muted/40 focus-visible:border-transparent focus-visible:ring-0 aria-invalid:ring-0";
+
+/** Trigger status: max 2 baris di badge; tinggi/teks selaras kolom jenis konten. */
+const STATUS_SELECT_TRIGGER = cn(
+  INLINE_SELECT_TRIGGER,
+  "items-start gap-1 py-0 pl-0.5 pr-0.5 [&>svg]:mt-0.5 [&>svg]:shrink-0",
+);
+
+/** Lebar kolom status tetap — isi tidak menindih kolom DL / lainnya. */
+const STATUS_COL_BOX = "w-[11rem] max-w-full shrink-0 overflow-hidden";
+
+const STATUS_BADGE_CLASS: Record<ContentPlanStatusKerja, string> = {
+  [ContentPlanStatusKerja.BARU]:
+    "border-slate-500/35 bg-slate-500/12 text-slate-700 dark:text-slate-300",
+  [ContentPlanStatusKerja.DALAM_PROSES]:
+    "border-blue-500/35 bg-blue-500/12 text-blue-700 dark:text-blue-300",
+  [ContentPlanStatusKerja.DALAM_PENINJAUAN]:
+    "border-violet-500/35 bg-violet-500/12 text-violet-700 dark:text-violet-300",
+  [ContentPlanStatusKerja.DIPUBLIKASIKAN]:
+    "border-emerald-500/35 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+  [ContentPlanStatusKerja.DITANGGUHKAN]:
+    "border-rose-500/35 bg-rose-500/12 text-rose-700 dark:text-rose-300",
+  [ContentPlanStatusKerja.DIJEDA]:
+    "border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-300",
+};
+
 export type ContentPlanTableRow = {
   id: string;
   konten: string;
@@ -132,7 +169,7 @@ function ExternalOrText({ value }: { value: string | null }) {
         href={t}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-accent-foreground max-w-[min(140px,22vw)] truncate text-xs underline-offset-2 hover:underline"
+        className="text-accent-foreground block min-w-0 truncate text-xs underline-offset-2 hover:underline"
         title={t}
       >
         Link
@@ -140,10 +177,7 @@ function ExternalOrText({ value }: { value: string | null }) {
     );
   }
   return (
-    <span
-      className="text-muted-foreground block max-w-[min(140px,22vw)] truncate text-xs"
-      title={t}
-    >
+    <span className="text-muted-foreground block min-w-0 truncate text-xs" title={t}>
       {t}
     </span>
   );
@@ -164,10 +198,87 @@ function FileLink({ path, short }: { path: string | null; short: string }) {
 }
 
 function StatusBadge({ status }: { status: ContentPlanStatusKerja }) {
+  const label = STATUS_LABEL[status];
   return (
-    <Badge variant="outline" className="whitespace-nowrap text-[10px] font-normal">
-      {STATUS_LABEL[status]}
+    <Badge
+      variant="outline"
+      title={label}
+      className={cn(
+        "inline-flex h-auto min-h-0 min-w-0 w-full max-w-full flex-1 shrink items-start justify-start overflow-visible whitespace-normal px-1.5 py-0.5 text-left text-[9px] leading-tight font-medium sm:text-[10px]",
+        STATUS_BADGE_CLASS[status],
+      )}
+    >
+      <span className="min-w-0 flex-1 break-words text-left line-clamp-2">{label}</span>
     </Badge>
+  );
+}
+
+function JenisBadge({ jenis }: { jenis: ContentPlanJenis }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "max-w-full whitespace-normal px-1.5 py-0.5 text-left text-[9px] leading-tight font-medium sm:text-[10px]",
+        JENIS_BADGE_CLASS[jenis],
+      )}
+    >
+      {JENIS_LABEL[jenis]}
+    </Badge>
+  );
+}
+
+function InlineTextCell({
+  value,
+  placeholder,
+  active,
+  onActivate,
+  onCommit,
+}: {
+  value: string;
+  placeholder?: string;
+  active: boolean;
+  onActivate: () => void;
+  onCommit: (next: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value, active]);
+
+  if (!active) {
+    return (
+      <button
+        type="button"
+        onClick={onActivate}
+        className="hover:bg-muted/40 min-h-7 w-full rounded px-1 py-0.5 text-left"
+        title="Klik untuk edit"
+      >
+        <span className="line-clamp-2 min-w-0 break-words text-sm">
+          {value || <span className="text-muted-foreground">{placeholder || "—"}</span>}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <Input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => onCommit(draft)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onCommit(draft);
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onCommit(value);
+        }
+      }}
+      className="h-8"
+    />
   );
 }
 
@@ -178,7 +289,7 @@ function PicCell({ pic }: { pic: ContentPlanTableRow["pic"] }) {
   const label = pic.name?.trim() || pic.email;
   const initial = label.slice(0, 1).toUpperCase();
   return (
-    <div className="flex max-w-[min(160px,24vw)] items-center gap-1.5">
+    <div className="flex min-w-0 max-w-full items-center gap-1">
       {pic.image ? (
         <Image
           src={pic.image}
@@ -196,7 +307,7 @@ function PicCell({ pic }: { pic: ContentPlanTableRow["pic"] }) {
           {initial}
         </div>
       )}
-      <span className="truncate text-xs">{label}</span>
+      <span className="min-w-0 truncate text-xs">{label}</span>
     </div>
   );
 }
@@ -206,7 +317,7 @@ function DesignTableCell({ row }: { row: ContentPlanTableRow }) {
   const isCarousel = row.jenisKonten === ContentPlanJenis.CAROUSEL;
   if (paths.length === 0) {
     return (
-      <div className="flex max-w-[min(200px,28vw)] flex-col gap-1 text-xs">
+      <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
         <span className="text-muted-foreground">—</span>
         <ExternalOrText value={row.designLink} />
       </div>
@@ -214,8 +325,8 @@ function DesignTableCell({ row }: { row: ContentPlanTableRow }) {
   }
   if (isCarousel && paths.length > 1) {
     return (
-      <div className="flex max-w-[min(220px,32vw)] flex-col gap-2">
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1.5">
+        <div className="flex flex-wrap gap-1">
           {paths.map((p, i) => (
             <a
               key={p}
@@ -223,21 +334,21 @@ function DesignTableCell({ row }: { row: ContentPlanTableRow }) {
               target="_blank"
               rel="noopener noreferrer"
               title={`Slide ${i + 1}`}
-              className="border-border bg-muted/40 shrink-0 overflow-hidden rounded-lg border shadow-sm"
+              className="border-border bg-muted/40 overflow-hidden rounded-md border"
             >
               {isImagePath(p) ? (
                 <Image
                   src={p}
                   alt={`Slide ${i + 1}`}
-                  width={44}
-                  height={56}
-                  className="size-11 object-cover sm:h-14 sm:w-11"
+                  width={32}
+                  height={40}
+                  className="size-8 object-cover"
                   unoptimized
                 />
               ) : (
-                <div className="text-muted-foreground flex size-11 flex-col items-center justify-center gap-0.5 sm:h-14 sm:w-11">
-                  <FileText className="size-4" />
-                  <span className="text-[9px] font-medium">{i + 1}</span>
+                <div className="text-muted-foreground flex size-8 flex-col items-center justify-center gap-0.5">
+                  <FileText className="size-3" />
+                  <span className="text-[8px] font-medium">{i + 1}</span>
                 </div>
               )}
             </a>
@@ -248,7 +359,7 @@ function DesignTableCell({ row }: { row: ContentPlanTableRow }) {
     );
   }
   return (
-    <div className="flex max-w-[min(180px,26vw)] flex-col gap-1 text-xs">
+    <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
       <FileLink path={paths[0] ?? null} short="Unduh file" />
       <ExternalOrText value={row.designLink} />
     </div>
@@ -394,6 +505,13 @@ export function ContentPlanningClient({
   const [tanggalPosting, setTanggalPosting] = useState("");
   const [catatan, setCatatan] = useState("");
   const [pending, setPending] = useState(false);
+  const [tableRows, setTableRows] = useState<ContentPlanTableRow[]>(items);
+  const [activeCell, setActiveCell] = useState<string | null>(null);
+  const [inlineSavingCell, setInlineSavingCell] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTableRows(items);
+  }, [items]);
 
   const isCarousel = jenisKonten === ContentPlanJenis.CAROUSEL;
 
@@ -536,33 +654,121 @@ export function ContentPlanningClient({
     }
   }
 
+  async function saveInlineRow(
+    rowId: string,
+    patch: Partial<ContentPlanTableRow>,
+    cellKey: string,
+  ) {
+    const prev = tableRows.find((r) => r.id === rowId);
+    if (!prev) return;
+    const nextRow = { ...prev, ...patch };
+    setInlineSavingCell(cellKey);
+    setTableRows((rows) => rows.map((r) => (r.id === rowId ? nextRow : r)));
+    try {
+      await upsertRoomContentPlanItem({
+        id: nextRow.id,
+        roomId,
+        konten: nextRow.konten,
+        jenisKonten: nextRow.jenisKonten,
+        detailKonten: nextRow.detailKonten ?? null,
+        copywritingLink: nextRow.copywritingLink ?? null,
+        designLink: nextRow.designLink ?? null,
+        picUserId: nextRow.picUserId ?? null,
+        statusCopywriting: nextRow.statusCopywriting,
+        statusDesign: nextRow.statusDesign,
+        deadlineCopywriting: nextRow.deadlineCopywriting
+          ? new Date(nextRow.deadlineCopywriting)
+          : null,
+        deadlineDesign: nextRow.deadlineDesign
+          ? new Date(nextRow.deadlineDesign)
+          : null,
+        tanggalPosting: nextRow.tanggalPosting
+          ? new Date(nextRow.tanggalPosting)
+          : null,
+        catatan: nextRow.catatan ?? null,
+      });
+    } catch (e) {
+      setTableRows((rows) => rows.map((r) => (r.id === rowId ? prev : r)));
+      toast.error(e instanceof Error ? e.message : "Gagal menyimpan perubahan.");
+    } finally {
+      setInlineSavingCell(null);
+      setActiveCell(null);
+    }
+  }
+
   const columns = useMemo<ColumnDef<ContentPlanTableRow>[]>(
     () => [
       {
         accessorKey: "konten",
-        header: "Konten",
-        cell: ({ row }) => (
-          <span className="font-medium">{row.original.konten}</span>
-        ),
+        header: () => <span title="Konten (nama)">Konten</span>,
+        cell: ({ row }) => {
+          const cellKey = `${row.original.id}:konten`;
+          return (
+            <InlineTextCell
+              value={row.original.konten}
+              active={activeCell === cellKey}
+              onActivate={() => setActiveCell(cellKey)}
+              onCommit={(next) => {
+                if (next.trim() && next.trim() !== row.original.konten) {
+                  void saveInlineRow(
+                    row.original.id,
+                    { konten: next.trim() },
+                    cellKey,
+                  );
+                  return;
+                }
+                setActiveCell(null);
+              }}
+            />
+          );
+        },
       },
       {
         id: "jenis",
-        header: "Jenis konten",
-        cell: ({ row }) => (
-          <span className="text-muted-foreground text-xs whitespace-nowrap">
-            {JENIS_LABEL[row.original.jenisKonten]}
-          </span>
-        ),
+        header: () => <span title="Jenis konten">Jenis</span>,
+        cell: ({ row }) => {
+          const cellKey = `${row.original.id}:jenis`;
+          return (
+            <div className="min-w-0">
+              <Select
+                value={row.original.jenisKonten}
+                items={jenisKontenSelectItems}
+                disabled={inlineSavingCell === cellKey}
+                onValueChange={(v) => {
+                  if (!v || v === row.original.jenisKonten) return;
+                  void saveInlineRow(
+                    row.original.id,
+                    { jenisKonten: v as ContentPlanJenis },
+                    cellKey,
+                  );
+                }}
+              >
+                <SelectTrigger className={INLINE_SELECT_TRIGGER}>
+                  <JenisBadge jenis={row.original.jenisKonten} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.values(ContentPlanJenis) as ContentPlanJenis[]).map((j) => (
+                    <SelectItem key={j} value={j}>
+                      <div className="py-0.5">
+                        <JenisBadge jenis={j} />
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        },
       },
       {
         id: "detail",
-        header: "Detail konten",
+        header: () => <span title="Detail konten">Detail</span>,
         cell: ({ row }) => {
           const t = row.original.detailKonten;
           if (!t?.trim()) return <span className="text-muted-foreground">—</span>;
           return (
             <span
-              className="text-muted-foreground line-clamp-2 max-w-[min(200px,28vw)] text-xs"
+              className="text-muted-foreground line-clamp-3 min-w-0 max-w-full break-words text-xs"
               title={t}
             >
               {t}
@@ -572,9 +778,9 @@ export function ContentPlanningClient({
       },
       {
         id: "cw",
-        header: "File copywriting",
+        header: () => <span title="File copywriting">Copy</span>,
         cell: ({ row }) => (
-          <div className="flex max-w-[min(180px,26vw)] flex-col gap-1 text-xs">
+          <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
             <FileLink path={row.original.copywritingFilePath} short="Unduh file" />
             <ExternalOrText value={row.original.copywritingLink} />
           </div>
@@ -582,60 +788,148 @@ export function ContentPlanningClient({
       },
       {
         id: "design",
-        header: "Link file design",
+        header: () => <span title="Link / pratinjau file design">Design</span>,
         cell: ({ row }) => <DesignTableCell row={row.original} />,
       },
       {
         id: "pic",
-        header: "PIC",
+        header: () => <span title="Penanggung jawab">PIC</span>,
         cell: ({ row }) => <PicCell pic={row.original.pic} />,
       },
       {
         id: "stCw",
-        header: "Status copywriting",
-        cell: ({ row }) => <StatusBadge status={row.original.statusCopywriting} />,
+        header: () => (
+          <span
+            className={cn(STATUS_COL_BOX, "inline-block pr-5 leading-tight sm:pr-6")}
+            title="Status copywriting"
+          >
+            Status
+            <br />
+            copy
+          </span>
+        ),
+        cell: ({ row }) => {
+          const cellKey = `${row.original.id}:stCw`;
+          return (
+            <div className={cn(STATUS_COL_BOX, "pr-5 sm:pr-6")}>
+              <Select
+                value={row.original.statusCopywriting}
+                items={statusKerjaSelectItems}
+                disabled={inlineSavingCell === cellKey}
+                onValueChange={(v) => {
+                  if (!v || v === row.original.statusCopywriting) return;
+                  void saveInlineRow(
+                    row.original.id,
+                    { statusCopywriting: v as ContentPlanStatusKerja },
+                    cellKey,
+                  );
+                }}
+              >
+                <SelectTrigger className={STATUS_SELECT_TRIGGER}>
+                  <StatusBadge status={row.original.statusCopywriting} />
+                </SelectTrigger>
+                <SelectContent hideScrollButtons align="start" side="bottom" sideOffset={6}>
+                  {(Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[]).map((s) => (
+                    <SelectItem key={s} value={s}>
+                      <div className="py-0.5">
+                        <StatusBadge status={s} />
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        },
       },
       {
         id: "stDes",
-        header: "Status design",
-        cell: ({ row }) => <StatusBadge status={row.original.statusDesign} />,
+        header: () => (
+          <span
+            className={cn(STATUS_COL_BOX, "inline-block pl-3 leading-tight sm:pl-4")}
+            title="Status design"
+          >
+            Status
+            <br />
+            design
+          </span>
+        ),
+        cell: ({ row }) => {
+          const cellKey = `${row.original.id}:stDes`;
+          return (
+            <div className={cn(STATUS_COL_BOX, "pl-3 sm:pl-4")}>
+              <Select
+                value={row.original.statusDesign}
+                items={statusKerjaSelectItems}
+                disabled={inlineSavingCell === cellKey}
+                onValueChange={(v) => {
+                  if (!v || v === row.original.statusDesign) return;
+                  void saveInlineRow(
+                    row.original.id,
+                    { statusDesign: v as ContentPlanStatusKerja },
+                    cellKey,
+                  );
+                }}
+              >
+                <SelectTrigger className={STATUS_SELECT_TRIGGER}>
+                  <StatusBadge status={row.original.statusDesign} />
+                </SelectTrigger>
+                <SelectContent hideScrollButtons align="start" side="bottom" sideOffset={6}>
+                  {(Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[]).map((s) => (
+                    <SelectItem key={s} value={s}>
+                      <div className="py-0.5">
+                        <StatusBadge status={s} />
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        },
       },
       {
         id: "dlCw",
-        header: "Deadline copywriting",
-        cell: ({ row }) => (
-          <span className="text-muted-foreground text-xs whitespace-nowrap">
-            {formatDateShort(row.original.deadlineCopywriting)}
+        header: () => (
+          <span className="inline-block max-w-[3.75rem] leading-tight" title="Deadline copywriting">
+            DL
+            <br />
+            copy
           </span>
+        ),
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-xs">{formatDateShort(row.original.deadlineCopywriting)}</span>
         ),
       },
       {
         id: "dlDes",
-        header: "Deadline design",
-        cell: ({ row }) => (
-          <span className="text-muted-foreground text-xs whitespace-nowrap">
-            {formatDateShort(row.original.deadlineDesign)}
+        header: () => (
+          <span className="inline-block max-w-[3.75rem] leading-tight" title="Deadline design">
+            DL
+            <br />
+            design
           </span>
+        ),
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-xs">{formatDateShort(row.original.deadlineDesign)}</span>
         ),
       },
       {
         id: "post",
-        header: "Tanggal postingan",
+        header: () => <span title="Tanggal postingan">Posting</span>,
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-xs whitespace-nowrap">
-            {formatDateShort(row.original.tanggalPosting)}
-          </span>
+          <span className="text-muted-foreground text-xs">{formatDateShort(row.original.tanggalPosting)}</span>
         ),
       },
       {
         id: "catatan",
-        header: "Catatan",
+        header: () => <span title="Catatan internal">Cat.</span>,
         cell: ({ row }) => {
           const t = row.original.catatan;
           if (!t?.trim()) return <span className="text-muted-foreground">—</span>;
           return (
             <span
-              className="text-muted-foreground line-clamp-2 max-w-[min(160px,22vw)] text-xs"
+              className="text-muted-foreground line-clamp-2 min-w-0 max-w-full break-words text-xs"
               title={t}
             >
               {t}
@@ -675,14 +969,23 @@ export function ContentPlanningClient({
         ),
       },
     ],
-    [onDelete, openEdit],
+    [
+      activeCell,
+      inlineSavingCell,
+      jenisKontenSelectItems,
+      onDelete,
+      openEdit,
+      roomId,
+      saveInlineRow,
+      statusKerjaSelectItems,
+    ],
   );
 
   const editingPaths = editing?.designFilePaths ?? [];
   const editingId = editing?.id;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" onClick={openCreate}>
           <Plus className="size-4" />
@@ -1080,12 +1383,12 @@ export function ContentPlanningClient({
         </Sheet>
       </div>
 
-      <div className="w-full max-w-full overflow-x-auto">
+      <div className="min-w-0 max-w-full">
         <DataTable
           columns={columns}
-          data={items}
+          data={tableRows}
           empty="Belum ada baris. Tambahkan konten lewat tombol Baris baru."
-          onRowClick={(row) => openEdit(row)}
+          fitViewport
         />
       </div>
     </div>

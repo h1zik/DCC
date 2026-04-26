@@ -123,6 +123,15 @@ model User {
   bio           String?
   /** Nomor WhatsApp format E.164 (mis. +6281234567890) untuk notifikasi Twilio. */
   whatsappPhone String?
+  /**
+   * Tema banner profil publik (slug preset gradien).
+   * @see `PROFILE_BANNER_PRESETS` di kode.
+   */
+  profileBannerPreset String @default("twilight")
+  /** Slogan singkat di bawah nama (dipublikasikan ke profil publik). */
+  profileTagline      String? @db.VarChar(160)
+  /** Warna aksen hex `#RRGGBB` untuk ring avatar & aksen; null = pakai default tema. */
+  profileAccentHex    String? @db.VarChar(7)
   passwordHash  String
   role          UserRole  @default(LOGISTICS)
   createdAt     DateTime  @default(now())

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   RoomTaskProcess,
   TaskPriority,
@@ -654,9 +655,12 @@ export function TaskDetailSheet({
                           className="border-border/80 space-y-1 border-b pb-2 text-sm last:border-0"
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <span className="font-medium">
+                            <Link
+                              href={`/profile/${c.author.id}`}
+                              className="font-medium underline-offset-4 hover:underline focus-visible:underline"
+                            >
                               {c.author.name ?? c.author.email}
-                            </span>
+                            </Link>
                             <div className="flex shrink-0 items-center gap-1">
                               <span className="text-muted-foreground text-xs">
                                 {new Date(c.createdAt).toLocaleString("id-ID")}

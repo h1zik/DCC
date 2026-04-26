@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import {
   type ColumnDef,
   flexRender,
@@ -20,6 +21,8 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   empty?: string;
   onRowClick?: (row: TData) => void;
+  /** Tabel mengisi lebar area; kolom wrap — hindari scroll horizontal. */
+  fitViewport?: boolean;
 }
 
 export function DataTable<TData, TValue>({
@@ -27,6 +30,7 @@ export function DataTable<TData, TValue>({
   data,
   empty = "Tidak ada data.",
   onRowClick,
+  fitViewport = false,
 }: DataTableProps<TData, TValue>) {
   const table = useReactTable({
     data,
@@ -35,8 +39,16 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border">
-      <Table>
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border border-border",
+        fitViewport && "min-w-0",
+      )}
+    >
+      <Table
+        fitViewport={fitViewport}
+        className={fitViewport ? "text-[11px] leading-snug" : undefined}
+      >
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
