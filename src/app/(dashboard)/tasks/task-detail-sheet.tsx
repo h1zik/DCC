@@ -50,6 +50,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -133,6 +141,8 @@ export function TaskDetailSheet({
   const [commentPending, setCommentPending] = useState(false);
   const [uploadPending, setUploadPending] = useState(false);
   const [archivePending, setArchivePending] = useState(false);
+  const [doneWarningOpen, setDoneWarningOpen] = useState(false);
+  const [doneWarningCount, setDoneWarningCount] = useState(0);
 
   useEffect(() => {
     if (!task) return;
@@ -196,7 +206,7 @@ export function TaskDetailSheet({
     [vendors],
   );
 
-  async function onSaveFields() {
+  async function persistSave() {
     if (!task) return;
     setSavePending(true);
     try {
@@ -224,6 +234,18 @@ export function TaskDetailSheet({
     } finally {
       setSavePending(false);
     }
+  }
+
+  async function onSaveFields() {
+    if (!task) return;
+    const unfinishedChecklist = task.checklistItems.filter((item) => !item.done).length;
+    const markingDoneNow = task.status !== TaskStatus.DONE && status === TaskStatus.DONE;
+    if (markingDoneNow && unfinishedChecklist > 0) {
+      setDoneWarningCount(unfinishedChecklist);
+      setDoneWarningOpen(true);
+      return;
+    }
+    await persistSave();
   }
 
   async function onAddComment() {
@@ -322,14 +344,15 @@ export function TaskDetailSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        showCloseButton
-        className="data-[side=right]:sm:max-w-lg flex h-full w-full max-w-full flex-col gap-0 p-0"
-      >
-        {task ? (
-          <>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="right"
+          showCloseButton
+          className="data-[side=right]:sm:max-w-lg flex h-full w-full max-w-full flex-col gap-0 p-0"
+        >
+          {task ? (
+            <>
             <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pb-2">
               <SheetTitle className="pr-10 leading-snug">{task.title}</SheetTitle>
               <SheetDescription>
@@ -830,9 +853,40 @@ export function TaskDetailSheet({
                 Simpan perubahan
               </Button>
             </SheetFooter>
-          </>
-        ) : null}
-      </SheetContent>
-    </Sheet>
+            </>
+          ) : null}
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={doneWarningOpen} onOpenChange={setDoneWarningOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sub-tugas belum selesai</DialogTitle>
+            <DialogDescription>
+              Masih ada {doneWarningCount} sub-tugas yang belum selesai. Tetap ubah
+              status menjadi <b>Selesai</b>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDoneWarningOpen(false)}
+            >
+              Batalkan
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                setDoneWarningOpen(false);
+                await persistSave();
+              }}
+            >
+              Tetap Selesaikan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

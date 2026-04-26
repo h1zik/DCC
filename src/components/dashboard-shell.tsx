@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { NotificationBell } from "@/components/notification-bell";
+import { OnlinePresence } from "@/components/online-presence";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
@@ -20,6 +21,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Command Center
           </span>
+          <OnlinePresence />
           <div className="ml-auto flex items-center gap-1">
             <NotificationBell />
           </div>

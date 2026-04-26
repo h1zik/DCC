@@ -18,6 +18,8 @@ const createSchema = z.object({
   location: z.string().max(200).optional().nullable(),
   startsAt: z.coerce.date(),
   participantUserIds: z.array(z.string().min(1)).min(1).max(200),
+  recurrence: z.enum(["NONE", "DAILY", "WEEKLY", "MONTHLY"]).default("NONE"),
+  recurrenceUntil: z.coerce.date().optional().nullable(),
 });
 
 const updateSchema = createSchema.extend({
@@ -39,6 +41,50 @@ function formatWhen(d: Date): string {
     dateStyle: "short",
     timeStyle: "short",
   });
+}
+
+function addMonthsKeepingDay(source: Date, monthsToAdd: number): Date {
+  const next = new Date(source);
+  const wantedDay = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + monthsToAdd);
+  const end = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(wantedDay, end));
+  return next;
+}
+
+function buildRecurrenceStarts(input: {
+  startsAt: Date;
+  recurrence: "NONE" | "DAILY" | "WEEKLY" | "MONTHLY";
+  recurrenceUntil?: Date | null;
+}): Date[] {
+  if (input.recurrence === "NONE") return [input.startsAt];
+  if (!input.recurrenceUntil) {
+    throw new Error("Tanggal selesai pengulangan wajib diisi.");
+  }
+  if (input.recurrenceUntil.getTime() < input.startsAt.getTime()) {
+    throw new Error("Tanggal selesai pengulangan harus setelah waktu mulai.");
+  }
+
+  const MAX_OCCURRENCES = 120;
+  const starts: Date[] = [];
+  let cursor = new Date(input.startsAt);
+  while (cursor.getTime() <= input.recurrenceUntil.getTime()) {
+    starts.push(new Date(cursor));
+    if (starts.length > MAX_OCCURRENCES) {
+      throw new Error("Pengulangan terlalu banyak (maksimal 120 jadwal).");
+    }
+    if (input.recurrence === "DAILY") {
+      cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+      continue;
+    }
+    if (input.recurrence === "WEEKLY") {
+      cursor = new Date(cursor.getTime() + 7 * 24 * 60 * 60 * 1000);
+      continue;
+    }
+    cursor = addMonthsKeepingDay(cursor, 1);
+  }
+  return starts;
 }
 
 async function notifyScheduleUsers(params: {
@@ -79,6 +125,9 @@ export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
   if (!session?.user?.id) throw new Error("Belum masuk.");
   const data = createSchema.parse(input);
   assertFuture(data.startsAt);
+  if (data.recurrence !== "NONE" && !data.recurrenceUntil) {
+    throw new Error("Tanggal selesai pengulangan wajib diisi.");
+  }
 
   const uniq = [...new Set(data.participantUserIds)];
   const users = await prisma.user.findMany({
@@ -89,22 +138,44 @@ export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
     throw new Error("Ada peserta yang tidak valid.");
   }
 
-  const created = await prisma.scheduleEvent.create({
-    data: {
-      title: data.title.trim(),
-      description: data.description?.trim() || null,
-      location: data.location?.trim() || null,
-      startsAt: data.startsAt,
-      createdById: session.user.id,
-      participants: {
-        create: uniq.map((userId) => ({ userId })),
-      },
-    },
+  const startsList = buildRecurrenceStarts({
+    startsAt: data.startsAt,
+    recurrence: data.recurrence,
+    recurrenceUntil: data.recurrenceUntil,
+  });
+  const title = data.title.trim();
+  const description = data.description?.trim() || null;
+  const location = data.location?.trim() || null;
+  const created = await prisma.$transaction(async (tx) => {
+    const rows = await Promise.all(
+      startsList.map((startsAt) =>
+        tx.scheduleEvent.create({
+          data: {
+            title,
+            description,
+            location,
+            startsAt,
+            createdById: session.user.id,
+            participants: {
+              create: uniq.map((userId) => ({ userId })),
+            },
+          },
+        }),
+      ),
+    );
+    return rows;
   });
 
   // Notifikasi langsung saat jadwal dibuat.
-  const loc = created.location?.trim() ? ` · ${created.location.trim()}` : "";
-  const msg = `📅 Jadwal baru: ${created.title}\n🕒 Mulai: ${formatWhen(created.startsAt)}${loc}`;
+  const first = created[0];
+  const loc = first.location?.trim() ? ` · ${first.location.trim()}` : "";
+  const recurrenceLabel =
+    created.length > 1
+      ? `\n🔁 Berulang: ${created.length} kali sampai ${formatWhen(created[created.length - 1].startsAt)}`
+      : "";
+  const msg =
+    `📅 Jadwal baru: ${first.title}\n🕒 Mulai: ${formatWhen(first.startsAt)}${loc}` +
+    recurrenceLabel;
   await notifyScheduleUsers({ userIds: uniq, message: msg });
   revalidatePath("/schedule");
 }

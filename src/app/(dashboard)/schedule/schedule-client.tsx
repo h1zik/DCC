@@ -101,6 +101,10 @@ export function ScheduleClient({
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [startsAtLocal, setStartsAtLocal] = useState("");
+  const [recurrence, setRecurrence] = useState<"NONE" | "DAILY" | "WEEKLY" | "MONTHLY">(
+    "NONE",
+  );
+  const [recurrenceUntilLocal, setRecurrenceUntilLocal] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
     const s = new Set<string>();
     s.add(currentUserId);
@@ -156,6 +160,8 @@ export function ScheduleClient({
     setParticipantFilter("");
     setSelectedIds(new Set([currentUserId]));
     setStartsAtLocal(prefillDay ? defaultSlotOnDay(prefillDay) : "");
+    setRecurrence("NONE");
+    setRecurrenceUntilLocal("");
   }
 
   function openCreateDialog(prefillDay?: Date) {
@@ -206,6 +212,10 @@ export function ScheduleClient({
       toast.error("Pilih minimal satu peserta untuk pengingat.");
       return;
     }
+    if (recurrence !== "NONE" && !recurrenceUntilLocal) {
+      toast.error("Pilih tanggal selesai pengulangan.");
+      return;
+    }
     startTransition(async () => {
       try {
         await createScheduleEvent({
@@ -214,6 +224,9 @@ export function ScheduleClient({
           location: location.trim() || null,
           startsAt: new Date(startsAtLocal),
           participantUserIds: ids,
+          recurrence,
+          recurrenceUntil:
+            recurrence === "NONE" ? null : new Date(`${recurrenceUntilLocal}T23:59`),
         });
         toast.success("Jadwal dibuat.");
         setCreateOpen(false);
@@ -454,6 +467,38 @@ export function ScheduleClient({
                 disabled={pending}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="sch-recur">Pengulangan</Label>
+              <select
+                id="sch-recur"
+                value={recurrence}
+                onChange={(e) =>
+                  setRecurrence(e.target.value as "NONE" | "DAILY" | "WEEKLY" | "MONTHLY")
+                }
+                disabled={pending}
+                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="NONE">Sekali saja</option>
+                <option value="DAILY">Setiap hari</option>
+                <option value="WEEKLY">Setiap minggu</option>
+                <option value="MONTHLY">Setiap bulan</option>
+              </select>
+            </div>
+            {recurrence !== "NONE" ? (
+              <div className="space-y-2">
+                <Label htmlFor="sch-recur-until">Ulangi sampai tanggal</Label>
+                <Input
+                  id="sch-recur-until"
+                  type="date"
+                  value={recurrenceUntilLocal}
+                  onChange={(e) => setRecurrenceUntilLocal(e.target.value)}
+                  disabled={pending}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Event akan dibuat otomatis sampai tanggal ini (maksimal 120 kejadian).
+                </p>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="sch-loc">Lokasi / link (opsional)</Label>
               <Input

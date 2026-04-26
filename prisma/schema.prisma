@@ -117,6 +117,8 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
+  /** Aktivitas terakhir user di aplikasi (untuk indikator online). */
+  lastSeenAt    DateTime?
   /** Deskripsi singkat / bio (opsional, untuk profil). */
   bio           String?
   /** Nomor WhatsApp format E.164 (mis. +6281234567890) untuk notifikasi Twilio. */

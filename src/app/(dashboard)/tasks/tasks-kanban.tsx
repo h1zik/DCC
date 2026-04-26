@@ -20,6 +20,14 @@ import { cn } from "@/lib/utils";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Archive, Check, GripVertical, Plus, RotateCcw } from "lucide-react";
 
 export type KanbanTask = {
@@ -28,6 +36,8 @@ export type KanbanTask = {
   status: TaskStatus;
   priority: string;
   dueDate: string | null;
+  checklistTotal: number;
+  checklistDone: number;
   project: { name: string; brand: { name: string } };
   assignees: {
     image: string | null;
@@ -308,6 +318,10 @@ export function TasksKanban({
 }) {
   const router = useRouter();
   const [localStatuses, setLocalStatuses] = useState<Record<string, TaskStatus>>({});
+  const [doneConfirmTaskId, setDoneConfirmTaskId] = useState<string | null>(null);
+  const [doneConfirmUnfinished, setDoneConfirmUnfinished] = useState(0);
+  const [doneConfirmPreviousStatus, setDoneConfirmPreviousStatus] =
+    useState<TaskStatus | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -327,6 +341,31 @@ export function TasksKanban({
 
   const statusSet = new Set(columns.map((c) => c.linkedStatus));
 
+  async function persistStatusChange(
+    taskId: string,
+    newStatus: TaskStatus,
+    previousStatus: TaskStatus,
+  ) {
+    setLocalStatuses((prev) => ({ ...prev, [taskId]: newStatus }));
+    toast.success(
+      newStatus === TaskStatus.DONE
+        ? "Tugas dipindahkan ke Selesai."
+        : "Status tugas diperbarui.",
+    );
+    try {
+      await moveTaskStatus({ taskId, status: newStatus });
+    } catch (err) {
+      setLocalStatuses((prev) => ({ ...prev, [taskId]: previousStatus }));
+      const msg =
+        err instanceof Error
+          ? err.message
+          : newStatus === TaskStatus.DONE
+            ? "Gagal memindahkan tugas ke Selesai."
+            : "Gagal memindahkan tugas.";
+      toast.error(msg);
+    }
+  }
+
   async function onDragEnd(e: DragEndEvent) {
     if (kanbanReadOnly) return;
     const { active, over } = e;
@@ -336,60 +375,109 @@ export function TasksKanban({
     if (!statusSet.has(newStatus)) return;
     const task = viewTasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
-    setLocalStatuses((prev) => ({ ...prev, [taskId]: newStatus }));
-    toast.success("Status tugas diperbarui.");
-    try {
-      await moveTaskStatus({ taskId, status: newStatus });
-    } catch (err) {
-      setLocalStatuses((prev) => ({ ...prev, [taskId]: task.status }));
-      const msg = err instanceof Error ? err.message : "Gagal memindahkan tugas.";
-      toast.error(msg);
+    if (newStatus === TaskStatus.DONE) {
+      const unfinished = task.checklistTotal - task.checklistDone;
+      if (unfinished > 0) {
+        setDoneConfirmTaskId(task.id);
+        setDoneConfirmUnfinished(unfinished);
+        setDoneConfirmPreviousStatus(task.status);
+        return;
+      }
     }
+    await persistStatusChange(taskId, newStatus, task.status);
   }
 
   async function onQuickDone(taskId: string) {
     const task = viewTasks.find((t) => t.id === taskId);
     if (!task || task.status === TaskStatus.DONE) return;
-    setLocalStatuses((prev) => ({ ...prev, [taskId]: TaskStatus.DONE }));
-    toast.success("Tugas dipindahkan ke Selesai.");
-    try {
-      await moveTaskStatus({ taskId, status: TaskStatus.DONE });
-    } catch (err) {
-      setLocalStatuses((prev) => ({ ...prev, [taskId]: task.status }));
-      const msg =
-        err instanceof Error ? err.message : "Gagal memindahkan tugas ke Selesai.";
-      toast.error(msg);
+    const unfinished = task.checklistTotal - task.checklistDone;
+    if (unfinished > 0) {
+      setDoneConfirmTaskId(task.id);
+      setDoneConfirmUnfinished(unfinished);
+      setDoneConfirmPreviousStatus(task.status);
+      return;
     }
+    await persistStatusChange(taskId, TaskStatus.DONE, task.status);
   }
 
   const readOnly = Boolean(kanbanReadOnly);
 
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-      <div className="flex flex-col gap-4 lg:flex-row">
-        {columns.map((col) => (
-          <DroppableColumn
-            key={col.id}
-            column={col}
-            onAddTask={readOnly ? undefined : onAddTask}
-            readOnly={readOnly}
-          >
-            {viewTasks
-              .filter((t) => t.status === col.linkedStatus)
-              .map((t) => (
-                <DraggableTask
-                  key={t.id}
-                  task={t}
-                  onTaskClick={onTaskClick}
-                  onQuickDone={readOnly ? undefined : onQuickDone}
-                  dragDisabled={readOnly}
-                  isRoomManager={isRoomManager}
-                  showArchived={showArchived}
-                />
-              ))}
-          </DroppableColumn>
-        ))}
-      </div>
-    </DndContext>
+    <>
+      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        <div className="flex flex-col gap-4 lg:flex-row">
+          {columns.map((col) => (
+            <DroppableColumn
+              key={col.id}
+              column={col}
+              onAddTask={readOnly ? undefined : onAddTask}
+              readOnly={readOnly}
+            >
+              {viewTasks
+                .filter((t) => t.status === col.linkedStatus)
+                .map((t) => (
+                  <DraggableTask
+                    key={t.id}
+                    task={t}
+                    onTaskClick={onTaskClick}
+                    onQuickDone={readOnly ? undefined : onQuickDone}
+                    dragDisabled={readOnly}
+                    isRoomManager={isRoomManager}
+                    showArchived={showArchived}
+                  />
+                ))}
+            </DroppableColumn>
+          ))}
+        </div>
+      </DndContext>
+
+      <Dialog
+        open={doneConfirmTaskId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDoneConfirmTaskId(null);
+            setDoneConfirmUnfinished(0);
+            setDoneConfirmPreviousStatus(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sub-tugas belum selesai</DialogTitle>
+            <DialogDescription>
+              Masih ada {doneConfirmUnfinished} sub-tugas yang belum selesai.
+              Tetap tandai tugas ini sebagai <b>Selesai</b>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDoneConfirmTaskId(null);
+                setDoneConfirmUnfinished(0);
+                setDoneConfirmPreviousStatus(null);
+              }}
+            >
+              Batalkan
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                if (!doneConfirmTaskId || doneConfirmPreviousStatus === null) return;
+                const taskId = doneConfirmTaskId;
+                const previous = doneConfirmPreviousStatus;
+                setDoneConfirmTaskId(null);
+                setDoneConfirmUnfinished(0);
+                setDoneConfirmPreviousStatus(null);
+                await persistStatusChange(taskId, TaskStatus.DONE, previous);
+              }}
+            >
+              Tetap Selesaikan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

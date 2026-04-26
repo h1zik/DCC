@@ -52,7 +52,8 @@ export default async function SchedulePage() {
         <p className="text-muted-foreground mt-1 text-sm">
           Meeting dan acara umum (tidak terikat ruangan). Pilih peserta — mereka
           mendapat notifikasi di aplikasi pada H-1 (±24 jam sebelum mulai) dan
-          sekitar 1 jam sebelum mulai. Pastikan job cron memanggil{" "}
+          sekitar 1 jam sebelum mulai. Jadwal juga bisa dibuat berulang (harian,
+          mingguan, bulanan) dari form tambah. Pastikan job cron memanggil{" "}
           <code className="text-foreground rounded bg-muted px-1 py-0.5 text-xs">
             /api/cron/task-sync
           </code>{" "}

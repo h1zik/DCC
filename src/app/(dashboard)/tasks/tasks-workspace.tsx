@@ -279,6 +279,8 @@ export function TasksWorkspace({
         status: t.status,
         priority: priorityLabel(t.priority),
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+        checklistTotal: t.checklistItems.length,
+        checklistDone: t.checklistItems.filter((item) => item.done).length,
         project: {
           name: t.project.name,
           brand: { name: taskProjectContextLabel(t.project) },
