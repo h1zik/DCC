@@ -152,7 +152,7 @@ export function OnlinePresence() {
               preview.map((u) => <PresenceAvatar key={u.id} user={u} />)
             )}
           </div>
-          <span className="text-muted-foreground ml-2 text-xs">
+          <span className="text-muted-foreground ml-2 hidden text-xs sm:inline">
             {loading ? "..." : `${data.onlineCount} online`}
           </span>
         </div>
