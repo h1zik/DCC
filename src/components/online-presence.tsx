@@ -67,6 +67,7 @@ function PresenceAvatar({
           height={size}
           unoptimized
           className="rounded-full border border-border object-cover"
+          style={{ width: size, height: size }}
         />
       ) : (
         <div
