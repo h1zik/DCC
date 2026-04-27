@@ -1,14 +1,26 @@
 import Image from "next/image";
 import Link from "next/link";
-import { RoomMemberRole } from "@prisma/client";
+import { RoomMemberRole, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import {
   ROOM_PROJECT_MANAGER_ROLE,
   roomMemberToProcessAccess,
 } from "@/lib/room-member-process-access";
 import { roomTaskProcessLabel } from "@/lib/room-task-process";
+import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
+import { isAdministrator, isProjectManager } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { RoomMembersAdminPanel } from "./room-members-admin-panel";
 
 type PageProps = { params: Promise<{ roomId: string }> };
 
@@ -30,23 +42,75 @@ function userInitial(name: string | null, email: string): string {
 
 export default async function RoomMembersPage({ params }: PageProps) {
   const { roomId } = await params;
-  await getRoomMemberContextOrThrow(roomId);
+  const [{ room }, session] = await Promise.all([
+    getRoomMemberContextOrThrow(roomId),
+    auth(),
+  ]);
+  const canManageMembers =
+    isProjectManager(session?.user?.role) || isAdministrator(session?.user?.role);
+  const simpleRoom = isSimpleTeamOrHqRoom(room);
 
-  const members = await prisma.roomMember.findMany({
-    where: { roomId },
-    include: {
-      user: {
-        select: { id: true, name: true, email: true, image: true, role: true },
+  const [members, studioUsers] = await Promise.all([
+    prisma.roomMember.findMany({
+      where: { roomId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, image: true, role: true },
+        },
       },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    }),
+    canManageMembers
+      ? prisma.user.findMany({
+          where: { role: { notIn: [UserRole.LOGISTICS, UserRole.CEO] } },
+          orderBy: { email: "asc" },
+          select: { id: true, name: true, email: true, role: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const membersForAdmin = members.map((m) => ({
+    id: m.id,
+    roomId: m.roomId,
+    userId: m.userId,
+    role: m.role,
+    allowedRoomProcesses: m.allowedRoomProcesses,
+    user: {
+      id: m.user.id,
+      name: m.user.name,
+      email: m.user.email,
+      role: m.user.role,
     },
-    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
-  });
+  }));
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground text-sm">
         Daftar anggota aktif di ruangan ini beserta peran dan akses fase tugasnya.
+        {canManageMembers
+          ? " Pengaturan anggota/peran ada langsung di halaman ini."
+          : ""}
       </p>
+      {canManageMembers ? (
+        <Dialog>
+          <DialogTrigger
+            render={<Button type="button" variant="outline" size="sm" />}
+          >
+            Kelola Anggota & Peran
+          </DialogTrigger>
+          <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-x-hidden overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Kelola Anggota & Peran</DialogTitle>
+            </DialogHeader>
+            <RoomMembersAdminPanel
+              roomId={roomId}
+              members={membersForAdmin}
+              studioUsers={studioUsers}
+              simpleRoom={simpleRoom}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : null}
       {members.length === 0 ? (
         <div className="text-muted-foreground rounded-xl border border-dashed p-4 text-sm">
           Belum ada anggota di ruangan ini.

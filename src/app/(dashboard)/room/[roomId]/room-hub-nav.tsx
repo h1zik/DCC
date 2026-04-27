@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { RoomWorkspaceSection, type Brand } from "@prisma/client";
 import { ClipboardList, Files, KanbanSquare, MessageCircle, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoomBannerEditor } from "./room-banner-editor";
+import { RoomEditorButton } from "./room-editor-button";
 import {
   RoomMemberAvatarStack,
   type RoomMemberAvatarUser,
@@ -16,6 +18,10 @@ export function RoomHubNav({
   simpleHub = false,
   bannerImage,
   canEditBanner = false,
+  canEditRoom = false,
+  roomBrandId = null,
+  roomWorkspaceSection = RoomWorkspaceSection.ROOMS,
+  brands = [],
   memberUsers = [],
 }: {
   roomId: string;
@@ -24,6 +30,10 @@ export function RoomHubNav({
   simpleHub?: boolean;
   bannerImage?: string | null;
   canEditBanner?: boolean;
+  canEditRoom?: boolean;
+  roomBrandId?: string | null;
+  roomWorkspaceSection?: RoomWorkspaceSection;
+  brands?: Brand[];
   memberUsers?: RoomMemberAvatarUser[];
 }) {
   const pathname = usePathname();
@@ -79,8 +89,21 @@ export function RoomHubNav({
               <RoomMemberAvatarStack users={memberUsers} maxVisible={8} />
             </div>
           </div>
-          {canEditBanner ? (
-            <RoomBannerEditor roomId={roomId} hasBanner={!!bannerImage} />
+          {canEditBanner || canEditRoom ? (
+            <div className="flex flex-col gap-2">
+              {canEditBanner ? (
+                <RoomBannerEditor roomId={roomId} hasBanner={!!bannerImage} />
+              ) : null}
+              {canEditRoom ? (
+                <RoomEditorButton
+                  roomId={roomId}
+                  initialName={roomName}
+                  initialBrandId={roomBrandId}
+                  initialWorkspaceSection={roomWorkspaceSection}
+                  brands={brands}
+                />
+              ) : null}
+            </div>
           ) : null}
         </div>
         <nav className="flex flex-wrap gap-1 sm:justify-end" aria-label="Menu ruangan">

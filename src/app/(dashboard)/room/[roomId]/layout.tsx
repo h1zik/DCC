@@ -1,10 +1,13 @@
 import { RoomHubNav } from "./room-hub-nav";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import {
   getRoomHubMemberUsers,
   getRoomMemberContextOrThrow,
 } from "@/lib/ensure-room-studio";
 import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
 import { isRoomHubManagerRole } from "@/lib/room-access";
+import { isAdministrator } from "@/lib/roles";
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -13,10 +16,17 @@ type LayoutProps = {
 
 export default async function RoomHubLayout({ children, params }: LayoutProps) {
   const { roomId } = await params;
-  const { room, role } = await getRoomMemberContextOrThrow(roomId);
+  const [{ room, role }, session] = await Promise.all([
+    getRoomMemberContextOrThrow(roomId),
+    auth(),
+  ]);
   const simpleHub = isSimpleTeamOrHqRoom(room);
   const bannerImage = (room as { bannerImage?: string | null }).bannerImage ?? null;
-  const memberUsers = await getRoomHubMemberUsers(roomId);
+  const canEditRoom = isAdministrator(session?.user?.role);
+  const [memberUsers, brands] = await Promise.all([
+    getRoomHubMemberUsers(roomId),
+    canEditRoom ? prisma.brand.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="mx-auto flex min-w-0 w-full max-w-[1400px] flex-col gap-6 px-1 pb-8 sm:px-0">
@@ -26,6 +36,10 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
         simpleHub={simpleHub}
         bannerImage={bannerImage}
         canEditBanner={isRoomHubManagerRole(role)}
+        canEditRoom={canEditRoom}
+        roomBrandId={room.brandId}
+        roomWorkspaceSection={room.workspaceSection}
+        brands={brands}
         memberUsers={memberUsers}
       />
       {children}

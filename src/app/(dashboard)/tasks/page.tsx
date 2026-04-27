@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UserRole } from "@prisma/client";
+import { RoomWorkspaceSection, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ensureTasksAndRoomHubAccess } from "@/lib/ensure-studio-team";
 import { isStudioOrProjectManager } from "@/lib/roles";
@@ -19,29 +19,36 @@ import {
 } from "@/lib/room-workspace-section";
 import { RoomMemberAvatarStack } from "@/components/room-member-avatar-stack";
 import { DoorOpen, LayoutGrid } from "lucide-react";
+import { SectionCreateRoomButton } from "./section-create-room-button";
 
 export default async function TasksRoomSelectPage() {
   const session = await ensureTasksAndRoomHubAccess();
   const showAllRooms =
     session.user.role === UserRole.CEO ||
     session.user.role === UserRole.ADMINISTRATOR;
+  const canManageRooms = session.user.role === UserRole.ADMINISTRATOR;
 
-  const rooms = await prisma.room.findMany({
-    where: showAllRooms
-      ? {}
-      : { members: { some: { userId: session.user.id } } },
-    include: {
-      brand: true,
-      members: {
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, image: true },
+  const [rooms, brands] = await Promise.all([
+    prisma.room.findMany({
+      where: showAllRooms
+        ? {}
+        : { members: { some: { userId: session.user.id } } },
+      include: {
+        brand: true,
+        members: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, image: true },
+            },
           },
         },
       },
-    },
-    orderBy: { name: "asc" },
-  });
+      orderBy: { name: "asc" },
+    }),
+    canManageRooms
+      ? prisma.brand.findMany({ orderBy: { name: "asc" } })
+      : Promise.resolve([]),
+  ]);
 
   const sorted = [...rooms].sort((a, b) => {
     const oa = ROOM_WORKSPACE_SECTION_ORDER.indexOf(a.workspaceSection);
@@ -59,9 +66,9 @@ export default async function TasksRoomSelectPage() {
         <p className="text-muted-foreground mt-1 text-sm">
           {showAllRooms
             ? session.user.role === UserRole.CEO
-              ? "Ruangan dikelompokkan ke HQ, Team, atau Ruangan. CEO menetapkan administrator di menu Pengguna; administrator mengatur ruangan di menu Ruang kerja."
-              : "Ruangan dikelompokkan ke HQ, Team, atau Ruangan. Atur bagian tiap ruangan di menu Ruang kerja saat membuat atau mengedit ruangan."
-            : "Hanya ruangan tempat Anda ditetapkan administrator (sebagai manager atau kontributor) yang muncul di sini. Administrator mengatur nama ruangan, bagian (HQ / Team / Ruangan), dan peran di menu Ruang kerja."}
+              ? "Ruangan dikelompokkan ke HQ, Team, atau Ruangan. CEO menetapkan administrator di menu Pengguna."
+              : "Ruangan dikelompokkan ke HQ, Team, atau Ruangan. Tambah ruangan langsung dari tombol per bagian."
+            : "Hanya ruangan tempat Anda ditetapkan administrator (sebagai manager atau kontributor) yang muncul di sini. Pengaturan anggota/peran dilakukan dari menu Anggota setiap ruangan."}
         </p>
       </div>
 
@@ -83,13 +90,24 @@ export default async function TasksRoomSelectPage() {
             if (!showAllRooms && list.length === 0) return null;
             return (
               <section key={section} className="space-y-4">
-                <div>
-                  <h2 className="text-lg font-semibold tracking-tight">
-                    {roomWorkspaceSectionTitle(section)}
-                  </h2>
-                  <p className="text-muted-foreground text-sm">
-                    {roomWorkspaceSectionBlurb(section)}
-                  </p>
+                <div className="space-y-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-lg font-bold tracking-tight text-foreground">
+                        {roomWorkspaceSectionTitle(section)}
+                      </h2>
+                      <span className="bg-border h-px flex-1" aria-hidden />
+                      {canManageRooms ? (
+                        <SectionCreateRoomButton
+                          section={section as RoomWorkspaceSection}
+                          brands={brands}
+                        />
+                      ) : null}
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-sm">
+                      {roomWorkspaceSectionBlurb(section)}
+                    </p>
+                  </div>
                 </div>
                 {list.length === 0 ? (
                   <p className="text-muted-foreground text-sm">

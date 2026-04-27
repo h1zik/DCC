@@ -74,6 +74,18 @@ export async function requireProjectManager() {
   return session;
 }
 
+/** Administrator atau Project Manager. */
+export async function requireAdministratorOrProjectManager() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Belum masuk.");
+  }
+  if (!isAdministrator(session.user.role) && !isProjectManager(session.user.role)) {
+    throw new Error("Hanya administrator atau project manager yang dapat melakukan aksi ini.");
+  }
+  return session;
+}
+
 /** CEO atau tim studio / project manager — CRUD proyek pipeline. */
 export async function requireProjectEditor() {
   const session = await auth();

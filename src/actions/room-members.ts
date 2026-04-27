@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { RoomMemberRole, RoomTaskProcess, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdministrator } from "@/lib/auth-helpers";
+import { requireAdministratorOrProjectManager } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { ROOM_PROJECT_MANAGER_ROLE } from "@/lib/room-member-process-access";
 
@@ -27,7 +27,7 @@ export async function upsertRoomMember(
   role: RoomMemberRole,
   allowedRoomProcesses?: RoomTaskProcess[],
 ) {
-  await requireAdministrator();
+  await requireAdministratorOrProjectManager();
   upsertInputSchema.parse({
     roomId,
     userId,
@@ -74,7 +74,7 @@ export async function upsertRoomMember(
 }
 
 export async function removeRoomMember(roomId: string, userId: string) {
-  await requireAdministrator();
+  await requireAdministratorOrProjectManager();
   await prisma.roomMember.delete({
     where: { roomId_userId: { roomId, userId } },
   });

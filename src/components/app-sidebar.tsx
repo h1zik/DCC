@@ -7,7 +7,6 @@ import { UserRole } from "@prisma/client";
 import {
   Boxes,
   CalendarDays,
-  DoorOpen,
   Factory,
   GitBranch,
   LayoutDashboard,
@@ -48,7 +47,6 @@ const navAdministrator = [
   { href: "/projects", label: "Pipeline", icon: GitBranch },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/brands", label: "Brand", icon: Tags },
-  { href: "/rooms", label: "Ruang kerja", icon: DoorOpen },
   { href: "/admin/users", label: "Pengguna", icon: Users },
 ] as const;
 
