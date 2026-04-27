@@ -80,8 +80,26 @@ export async function requireAdministratorOrProjectManager() {
   if (!session?.user?.id) {
     throw new Error("Belum masuk.");
   }
-  if (!isAdministrator(session.user.role) && !isProjectManager(session.user.role)) {
-    throw new Error("Hanya administrator atau project manager yang dapat melakukan aksi ini.");
+  if (
+    session.user.role !== UserRole.CEO &&
+    !isAdministrator(session.user.role) &&
+    !isProjectManager(session.user.role)
+  ) {
+    throw new Error(
+      "Hanya CEO, administrator, atau project manager yang dapat melakukan aksi ini.",
+    );
+  }
+  return session;
+}
+
+/** CEO atau Administrator. */
+export async function requireCeoOrAdministrator() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Belum masuk.");
+  }
+  if (session.user.role !== UserRole.CEO && !isAdministrator(session.user.role)) {
+    throw new Error("Hanya CEO atau administrator yang dapat melakukan aksi ini.");
   }
   return session;
 }

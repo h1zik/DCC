@@ -8,7 +8,7 @@ import { RoomWorkspaceSection } from "@prisma/client";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAdministrator, requireTasksRoomHubSession } from "@/lib/auth-helpers";
+import { requireCeoOrAdministrator, requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { ensureSimpleRoomBoardProject } from "@/lib/room-simple-hub";
 import { assertRoomHubManager } from "@/lib/room-access";
 import {
@@ -26,7 +26,7 @@ const roomSchema = z.object({
 });
 
 export async function createRoom(input: z.infer<typeof roomSchema>) {
-  await requireAdministrator();
+  await requireCeoOrAdministrator();
   const data = roomSchema.parse(input);
   const created = await prisma.room.create({
     data: {
@@ -45,7 +45,7 @@ export async function updateRoom(
   id: string,
   input: z.infer<typeof roomSchema>,
 ) {
-  await requireAdministrator();
+  await requireCeoOrAdministrator();
   const data = roomSchema.parse(input);
   await prisma.room.update({
     where: { id },
@@ -62,7 +62,7 @@ export async function updateRoom(
 }
 
 export async function deleteRoom(id: string) {
-  await requireAdministrator();
+  await requireCeoOrAdministrator();
   const count = await prisma.project.count({ where: { roomId: id } });
   if (count > 0) {
     throw new Error(

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ScheduleRecurrence, UserRole } from "@prisma/client";
+import { UserRole } from "@prisma/client";
 import {
   addMonths,
   eachDayOfInterval,
@@ -40,13 +40,21 @@ import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 
 type UserPick = { id: string; name: string | null; email: string };
 
+const RECURRENCE = {
+  NONE: "NONE",
+  DAILY: "DAILY",
+  WEEKLY: "WEEKLY",
+  MONTHLY: "MONTHLY",
+} as const;
+type ScheduleRecurrenceValue = (typeof RECURRENCE)[keyof typeof RECURRENCE];
+
 export type ScheduleEventRow = {
   id: string;
   title: string;
   description: string | null;
   location: string | null;
   startsAt: string;
-  recurrence: ScheduleRecurrence;
+  recurrence: ScheduleRecurrenceValue;
   recurrenceUntil: string | null;
   seriesId: string | null;
   createdById: string;
@@ -105,7 +113,9 @@ export function ScheduleClient({
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [startsAtLocal, setStartsAtLocal] = useState("");
-  const [recurrence, setRecurrence] = useState<ScheduleRecurrence>(ScheduleRecurrence.NONE);
+  const [recurrence, setRecurrence] = useState<ScheduleRecurrenceValue>(
+    RECURRENCE.NONE,
+  );
   const [recurrenceUntilLocal, setRecurrenceUntilLocal] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
     const s = new Set<string>();
@@ -120,8 +130,8 @@ export function ScheduleClient({
   const [editDescription, setEditDescription] = useState("");
   const [editStartsAtLocal, setEditStartsAtLocal] = useState("");
   const [editSelectedIds, setEditSelectedIds] = useState<Set<string>>(new Set());
-  const [editRecurrence, setEditRecurrence] = useState<ScheduleRecurrence>(
-    ScheduleRecurrence.NONE,
+  const [editRecurrence, setEditRecurrence] = useState<ScheduleRecurrenceValue>(
+    RECURRENCE.NONE,
   );
   const [editRecurrenceUntilLocal, setEditRecurrenceUntilLocal] = useState("");
   const [editApplyTo, setEditApplyTo] = useState<"SINGLE" | "SERIES">("SINGLE");
@@ -210,7 +220,7 @@ export function ScheduleClient({
     setParticipantFilter("");
     setSelectedIds(new Set([currentUserId]));
     setStartsAtLocal(prefillDay ? defaultSlotOnDay(prefillDay) : "");
-    setRecurrence(ScheduleRecurrence.NONE);
+    setRecurrence(RECURRENCE.NONE);
     setRecurrenceUntilLocal("");
   }
 
@@ -267,7 +277,7 @@ export function ScheduleClient({
       toast.error("Pilih minimal satu peserta untuk pengingat.");
       return;
     }
-    if (recurrence !== ScheduleRecurrence.NONE && !recurrenceUntilLocal) {
+    if (recurrence !== RECURRENCE.NONE && !recurrenceUntilLocal) {
       toast.error("Pilih tanggal selesai pengulangan.");
       return;
     }
@@ -281,7 +291,7 @@ export function ScheduleClient({
           participantUserIds: ids,
           recurrence,
           recurrenceUntil:
-            recurrence === ScheduleRecurrence.NONE
+            recurrence === RECURRENCE.NONE
               ? null
               : new Date(`${recurrenceUntilLocal}T23:59`),
         });
@@ -313,7 +323,7 @@ export function ScheduleClient({
     }
     if (
       editApplyTo === "SERIES" &&
-      editRecurrence !== ScheduleRecurrence.NONE &&
+      editRecurrence !== RECURRENCE.NONE &&
       !editRecurrenceUntilLocal
     ) {
       toast.error("Pilih tanggal selesai pengulangan untuk seri.");
@@ -330,7 +340,7 @@ export function ScheduleClient({
           participantUserIds: ids,
           recurrence: editRecurrence,
           recurrenceUntil:
-            editRecurrence === ScheduleRecurrence.NONE
+            editRecurrence === RECURRENCE.NONE
               ? null
               : new Date(`${editRecurrenceUntilLocal}T23:59`),
           applyTo: editApplyTo,
@@ -591,7 +601,7 @@ export function ScheduleClient({
                 id="sch-recur"
                 value={recurrence}
                 onChange={(e) =>
-                  setRecurrence(e.target.value as ScheduleRecurrence)
+                  setRecurrence(e.target.value as ScheduleRecurrenceValue)
                 }
                 disabled={pending}
                 className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
@@ -602,7 +612,7 @@ export function ScheduleClient({
                 <option value="MONTHLY">Setiap bulan</option>
               </select>
             </div>
-            {recurrence !== ScheduleRecurrence.NONE ? (
+            {recurrence !== RECURRENCE.NONE ? (
               <div className="space-y-2">
                 <Label htmlFor="sch-recur-until">Ulangi sampai tanggal</Label>
                 <Input
@@ -738,13 +748,15 @@ export function ScheduleClient({
                   <select
                     id="ed-recur"
                     value={editRecurrence}
-                    onChange={(e) => setEditRecurrence(e.target.value as ScheduleRecurrence)}
+                    onChange={(e) =>
+                      setEditRecurrence(e.target.value as ScheduleRecurrenceValue)
+                    }
                     disabled={pending}
                     className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <option value={ScheduleRecurrence.DAILY}>Setiap hari</option>
-                    <option value={ScheduleRecurrence.WEEKLY}>Setiap minggu</option>
-                    <option value={ScheduleRecurrence.MONTHLY}>Setiap bulan</option>
+                    <option value={RECURRENCE.DAILY}>Setiap hari</option>
+                    <option value={RECURRENCE.WEEKLY}>Setiap minggu</option>
+                    <option value={RECURRENCE.MONTHLY}>Setiap bulan</option>
                   </select>
                 </div>
                 <div className="space-y-2">

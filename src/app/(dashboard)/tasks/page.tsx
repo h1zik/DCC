@@ -26,7 +26,9 @@ export default async function TasksRoomSelectPage() {
   const showAllRooms =
     session.user.role === UserRole.CEO ||
     session.user.role === UserRole.ADMINISTRATOR;
-  const canManageRooms = session.user.role === UserRole.ADMINISTRATOR;
+  const canManageRooms =
+    session.user.role === UserRole.ADMINISTRATOR ||
+    session.user.role === UserRole.CEO;
 
   const [rooms, brands] = await Promise.all([
     prisma.room.findMany({

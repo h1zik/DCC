@@ -47,7 +47,9 @@ export default async function RoomMembersPage({ params }: PageProps) {
     auth(),
   ]);
   const canManageMembers =
-    isProjectManager(session?.user?.role) || isAdministrator(session?.user?.role);
+    session?.user?.role === UserRole.CEO ||
+    isProjectManager(session?.user?.role) ||
+    isAdministrator(session?.user?.role);
   const simpleRoom = isSimpleTeamOrHqRoom(room);
 
   const [members, studioUsers] = await Promise.all([

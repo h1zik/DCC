@@ -8,6 +8,7 @@ import {
 import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
 import { isRoomHubManagerRole } from "@/lib/room-access";
 import { isAdministrator } from "@/lib/roles";
+import { UserRole } from "@prisma/client";
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -22,7 +23,8 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
   ]);
   const simpleHub = isSimpleTeamOrHqRoom(room);
   const bannerImage = (room as { bannerImage?: string | null }).bannerImage ?? null;
-  const canEditRoom = isAdministrator(session?.user?.role);
+  const canEditRoom =
+    session?.user?.role === UserRole.CEO || isAdministrator(session?.user?.role);
   const [memberUsers, brands] = await Promise.all([
     getRoomHubMemberUsers(roomId),
     canEditRoom ? prisma.brand.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
