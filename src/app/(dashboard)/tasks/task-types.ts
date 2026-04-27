@@ -19,7 +19,8 @@ export type TaskAttachmentRow = {
   fileName: string;
   mimeType: string;
   size: number;
-  publicPath: string;
+  publicPath: string | null;
+  linkUrl: string | null;
   createdAt: Date;
   uploadedBy: Pick<User, "id" | "name" | "email">;
 };

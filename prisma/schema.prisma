@@ -380,8 +380,10 @@ model TaskAttachment {
   fileName     String
   mimeType     String
   size         Int
-  /** Path publik, mis. /uploads/tasks/{taskId}/... */
-  publicPath   String
+  /** Path publik untuk unggahan file, mis. /uploads/tasks/{taskId}/... */
+  publicPath   String?
+  /** Tautan eksternal (Drive, Figma, dll.); jika terisi, tidak ada berkas di disk. */
+  linkUrl      String?
   createdAt    DateTime @default(now())
 
   @@index([taskId, createdAt])

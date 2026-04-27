@@ -25,6 +25,7 @@ import {
 } from "@/actions/tasks";
 import { addTaskComment, deleteTaskComment } from "@/actions/task-comments";
 import {
+  addTaskLinkAttachment,
   deleteTaskAttachment,
   uploadTaskAttachment,
 } from "@/actions/task-attachments";
@@ -67,7 +68,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { Paperclip, Trash2 } from "lucide-react";
+import { Link2, Paperclip, Trash2 } from "lucide-react";
 
 function priorityLabel(p: TaskPriority) {
   switch (p) {
@@ -141,6 +142,9 @@ export function TaskDetailSheet({
   const [commentBody, setCommentBody] = useState("");
   const [commentPending, setCommentPending] = useState(false);
   const [uploadPending, setUploadPending] = useState(false);
+  const [attachLinkUrl, setAttachLinkUrl] = useState("");
+  const [attachLinkTitle, setAttachLinkTitle] = useState("");
+  const [linkAttachPending, setLinkAttachPending] = useState(false);
   const [archivePending, setArchivePending] = useState(false);
   const [doneWarningOpen, setDoneWarningOpen] = useState(false);
   const [doneWarningCount, setDoneWarningCount] = useState(0);
@@ -159,6 +163,8 @@ export function TaskDetailSheet({
     setLeadTimeDays(task.leadTimeDays != null ? String(task.leadTimeDays) : "");
     setApproval(task.isApprovalRequired);
     setCommentBody("");
+    setAttachLinkUrl("");
+    setAttachLinkTitle("");
   }, [task]);
 
   const refresh = useCallback(() => {
@@ -261,6 +267,25 @@ export function TaskDetailSheet({
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
       setCommentPending(false);
+    }
+  }
+
+  async function onAddLinkAttachment() {
+    if (!task || !attachLinkUrl.trim()) return;
+    setLinkAttachPending(true);
+    try {
+      await addTaskLinkAttachment(task.id, {
+        url: attachLinkUrl.trim(),
+        title: attachLinkTitle.trim() || null,
+      });
+      setAttachLinkUrl("");
+      setAttachLinkTitle("");
+      toast.success("Tautan ditambahkan.");
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menambah tautan.");
+    } finally {
+      setLinkAttachPending(false);
     }
   }
 
@@ -752,13 +777,53 @@ export function TaskDetailSheet({
                         : "Satu atau beberapa file sekaligus. Pratinjau gambar ditampilkan di bawah. Batas ukuran mengikuti pengaturan server."}
                     </p>
                   </div>
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <Label className="text-foreground flex items-center gap-2 text-sm font-medium">
+                      <Link2 className="text-muted-foreground size-4" />
+                      Sisipkan tautan
+                    </Label>
+                    <Input
+                      id={`task-attach-link-url-${task.id}`}
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://…"
+                      value={attachLinkUrl}
+                      onChange={(e) => setAttachLinkUrl(e.target.value)}
+                      disabled={linkAttachPending}
+                      className="font-mono text-sm"
+                    />
+                    <Input
+                      id={`task-attach-link-title-${task.id}`}
+                      type="text"
+                      placeholder="Judul tampilan (opsional)"
+                      value={attachLinkTitle}
+                      onChange={(e) => setAttachLinkTitle(e.target.value)}
+                      disabled={linkAttachPending}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={
+                        linkAttachPending || !attachLinkUrl.trim() || uploadPending
+                      }
+                      onClick={() => void onAddLinkAttachment()}
+                    >
+                      {linkAttachPending ? "Menyimpan…" : "Tambah tautan"}
+                    </Button>
+                    <p className="text-muted-foreground text-xs">
+                      Tautan http/https (mis. Drive, Figma, Notion). Tanpa{" "}
+                      <code className="text-foreground">https://</code> akan ditambahkan
+                      otomatis.
+                    </p>
+                  </div>
                   <ul className="space-y-3">
                     {task.attachments.map((a) => (
                       <li
                         key={a.id}
                         className="flex flex-col gap-2 rounded-md border border-border px-2 py-2 text-sm"
                       >
-                        {a.mimeType.startsWith("image/") ? (
+                        {a.publicPath && a.mimeType.startsWith("image/") ? (
                           <a
                             href={a.publicPath}
                             target="_blank"
@@ -777,15 +842,18 @@ export function TaskDetailSheet({
                         ) : null}
                         <div className="flex items-center justify-between gap-2">
                           <a
-                            href={a.publicPath}
+                            href={a.linkUrl ?? a.publicPath ?? "#"}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-accent-foreground min-w-0 flex-1 truncate underline-offset-2 hover:underline"
+                            className="text-accent-foreground flex min-w-0 flex-1 items-center gap-1.5 truncate underline-offset-2 hover:underline"
                           >
-                            {a.fileName}
+                            {a.linkUrl ? (
+                              <Link2 className="text-muted-foreground size-3.5 shrink-0" />
+                            ) : null}
+                            <span className="truncate">{a.fileName}</span>
                           </a>
                           <span className="text-muted-foreground shrink-0 text-xs">
-                            {formatFileSize(a.size)}
+                            {a.linkUrl ? "Tautan" : formatFileSize(a.size)}
                           </span>
                           {(a.uploadedBy.id === currentUserId || isRoomManager) && (
                             <Button
