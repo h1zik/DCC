@@ -111,6 +111,13 @@ enum ContentPlanStatusKerja {
   DIJEDA
 }
 
+enum ScheduleRecurrence {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -455,6 +462,9 @@ model ScheduleEvent {
   description String?
   location    String?
   startsAt    DateTime
+  recurrence  ScheduleRecurrence @default(NONE)
+  recurrenceUntil DateTime?
+  seriesId    String?
   createdById String
   createdBy   User     @relation("ScheduleEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
@@ -463,6 +473,7 @@ model ScheduleEvent {
   remindersSent ScheduleReminderSent[]
 
   @@index([startsAt])
+  @@index([seriesId, startsAt])
 }
 
 model ScheduleEventParticipant {

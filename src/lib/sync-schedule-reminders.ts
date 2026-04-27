@@ -11,6 +11,7 @@ function formatWhen(d: Date): string {
   return d.toLocaleString("id-ID", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "Asia/Jakarta",
   });
 }
 

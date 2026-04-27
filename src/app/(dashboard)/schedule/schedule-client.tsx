@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { UserRole } from "@prisma/client";
+import { ScheduleRecurrence, UserRole } from "@prisma/client";
 import {
   addMonths,
   eachDayOfInterval,
@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import {
   createScheduleEvent,
   deleteScheduleEvent,
+  deleteScheduleEventsBulk,
   updateScheduleEvent,
 } from "@/actions/schedule-events";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,9 @@ export type ScheduleEventRow = {
   description: string | null;
   location: string | null;
   startsAt: string;
+  recurrence: ScheduleRecurrence;
+  recurrenceUntil: string | null;
+  seriesId: string | null;
   createdById: string;
   createdBy: { name: string | null; email: string };
   participants: { user: UserPick }[];
@@ -101,9 +105,7 @@ export function ScheduleClient({
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [startsAtLocal, setStartsAtLocal] = useState("");
-  const [recurrence, setRecurrence] = useState<"NONE" | "DAILY" | "WEEKLY" | "MONTHLY">(
-    "NONE",
-  );
+  const [recurrence, setRecurrence] = useState<ScheduleRecurrence>(ScheduleRecurrence.NONE);
   const [recurrenceUntilLocal, setRecurrenceUntilLocal] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
     const s = new Set<string>();
@@ -118,6 +120,15 @@ export function ScheduleClient({
   const [editDescription, setEditDescription] = useState("");
   const [editStartsAtLocal, setEditStartsAtLocal] = useState("");
   const [editSelectedIds, setEditSelectedIds] = useState<Set<string>>(new Set());
+  const [editRecurrence, setEditRecurrence] = useState<ScheduleRecurrence>(
+    ScheduleRecurrence.NONE,
+  );
+  const [editRecurrenceUntilLocal, setEditRecurrenceUntilLocal] = useState("");
+  const [editApplyTo, setEditApplyTo] = useState<"SINGLE" | "SERIES">("SINGLE");
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkSelectedEventIds, setBulkSelectedEventIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const filteredUsers = useMemo(() => {
     const q = participantFilter.trim().toLowerCase();
@@ -153,6 +164,18 @@ export function ScheduleClient({
     return map;
   }, [initialEvents]);
 
+  const manageableEventsInMonth = useMemo(() => {
+    return initialEvents
+      .filter(
+        (ev) =>
+          isSameMonth(new Date(ev.startsAt), viewMonth) &&
+          canManageEvent(currentRole, currentUserId, ev.createdById),
+      )
+      .sort(
+        (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+      );
+  }, [currentRole, currentUserId, initialEvents, viewMonth]);
+
   function resetCreateForm(prefillDay?: Date) {
     setTitle("");
     setLocation("");
@@ -160,7 +183,7 @@ export function ScheduleClient({
     setParticipantFilter("");
     setSelectedIds(new Set([currentUserId]));
     setStartsAtLocal(prefillDay ? defaultSlotOnDay(prefillDay) : "");
-    setRecurrence("NONE");
+    setRecurrence(ScheduleRecurrence.NONE);
     setRecurrenceUntilLocal("");
   }
 
@@ -194,6 +217,11 @@ export function ScheduleClient({
     setEditDescription(ev.description ?? "");
     setEditStartsAtLocal(toDatetimeLocalValue(new Date(ev.startsAt)));
     setEditSelectedIds(new Set(ev.participants.map((p) => p.user.id)));
+    setEditRecurrence(ev.recurrence);
+    setEditRecurrenceUntilLocal(
+      ev.recurrenceUntil ? ev.recurrenceUntil.slice(0, 10) : "",
+    );
+    setEditApplyTo("SINGLE");
     setEditOpen(true);
   }
 
@@ -212,7 +240,7 @@ export function ScheduleClient({
       toast.error("Pilih minimal satu peserta untuk pengingat.");
       return;
     }
-    if (recurrence !== "NONE" && !recurrenceUntilLocal) {
+    if (recurrence !== ScheduleRecurrence.NONE && !recurrenceUntilLocal) {
       toast.error("Pilih tanggal selesai pengulangan.");
       return;
     }
@@ -226,7 +254,9 @@ export function ScheduleClient({
           participantUserIds: ids,
           recurrence,
           recurrenceUntil:
-            recurrence === "NONE" ? null : new Date(`${recurrenceUntilLocal}T23:59`),
+            recurrence === ScheduleRecurrence.NONE
+              ? null
+              : new Date(`${recurrenceUntilLocal}T23:59`),
         });
         toast.success("Jadwal dibuat.");
         setCreateOpen(false);
@@ -254,6 +284,14 @@ export function ScheduleClient({
       toast.error("Pilih minimal satu peserta untuk pengingat.");
       return;
     }
+    if (
+      editApplyTo === "SERIES" &&
+      editRecurrence !== ScheduleRecurrence.NONE &&
+      !editRecurrenceUntilLocal
+    ) {
+      toast.error("Pilih tanggal selesai pengulangan untuk seri.");
+      return;
+    }
     startTransition(async () => {
       try {
         await updateScheduleEvent({
@@ -263,6 +301,12 @@ export function ScheduleClient({
           location: editLocation.trim() || null,
           startsAt: new Date(editStartsAtLocal),
           participantUserIds: ids,
+          recurrence: editRecurrence,
+          recurrenceUntil:
+            editRecurrence === ScheduleRecurrence.NONE
+              ? null
+              : new Date(`${editRecurrenceUntilLocal}T23:59`),
+          applyTo: editApplyTo,
         });
         toast.success("Jadwal diperbarui.");
         setEditOpen(false);
@@ -286,6 +330,40 @@ export function ScheduleClient({
         router.refresh();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Gagal menghapus.");
+      }
+    });
+  }
+
+  function openBulkDelete() {
+    setBulkSelectedEventIds(new Set());
+    setBulkDeleteOpen(true);
+  }
+
+  function toggleBulkEvent(eventId: string) {
+    setBulkSelectedEventIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+  }
+
+  function onConfirmBulkDelete() {
+    const ids = [...bulkSelectedEventIds];
+    if (ids.length === 0) {
+      toast.error("Pilih minimal satu jadwal.");
+      return;
+    }
+    if (!confirm(`Hapus ${ids.length} jadwal terpilih?`)) return;
+    startTransition(async () => {
+      try {
+        await deleteScheduleEventsBulk({ eventIds: ids });
+        toast.success(`${ids.length} jadwal dihapus.`);
+        setBulkDeleteOpen(false);
+        setBulkSelectedEventIds(new Set());
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Gagal hapus massal.");
       }
     });
   }
@@ -333,15 +411,27 @@ export function ScheduleClient({
             Hari ini
           </Button>
         </div>
-        <Button
-          type="button"
-          className="gap-2"
-          disabled={pending}
-          onClick={() => openCreateDialog()}
-        >
-          <Plus className="size-4" />
-          Tambah jadwal
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="destructive"
+            className="gap-2"
+            disabled={pending || manageableEventsInMonth.length === 0}
+            onClick={() => openBulkDelete()}
+          >
+            <Trash2 className="size-4" />
+            Hapus massal
+          </Button>
+          <Button
+            type="button"
+            className="gap-2"
+            disabled={pending}
+            onClick={() => openCreateDialog()}
+          >
+            <Plus className="size-4" />
+            Tambah jadwal
+          </Button>
+        </div>
       </div>
 
       {/* Grid kalender */}
@@ -473,7 +563,7 @@ export function ScheduleClient({
                 id="sch-recur"
                 value={recurrence}
                 onChange={(e) =>
-                  setRecurrence(e.target.value as "NONE" | "DAILY" | "WEEKLY" | "MONTHLY")
+                  setRecurrence(e.target.value as ScheduleRecurrence)
                 }
                 disabled={pending}
                 className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
@@ -484,7 +574,7 @@ export function ScheduleClient({
                 <option value="MONTHLY">Setiap bulan</option>
               </select>
             </div>
-            {recurrence !== "NONE" ? (
+            {recurrence !== ScheduleRecurrence.NONE ? (
               <div className="space-y-2">
                 <Label htmlFor="sch-recur-until">Ulangi sampai tanggal</Label>
                 <Input
@@ -598,6 +688,49 @@ export function ScheduleClient({
                 disabled={pending}
               />
             </div>
+            {editing?.seriesId ? (
+              <div className="space-y-2">
+                <Label htmlFor="ed-apply">Terapkan perubahan ke</Label>
+                <select
+                  id="ed-apply"
+                  value={editApplyTo}
+                  onChange={(e) => setEditApplyTo(e.target.value as "SINGLE" | "SERIES")}
+                  disabled={pending}
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="SINGLE">Acara ini saja</option>
+                  <option value="SERIES">Seluruh seri pengulangan</option>
+                </select>
+              </div>
+            ) : null}
+            {editApplyTo === "SERIES" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="ed-recur">Pengulangan</Label>
+                  <select
+                    id="ed-recur"
+                    value={editRecurrence}
+                    onChange={(e) => setEditRecurrence(e.target.value as ScheduleRecurrence)}
+                    disabled={pending}
+                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value={ScheduleRecurrence.DAILY}>Setiap hari</option>
+                    <option value={ScheduleRecurrence.WEEKLY}>Setiap minggu</option>
+                    <option value={ScheduleRecurrence.MONTHLY}>Setiap bulan</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ed-recur-until">Ulangi sampai tanggal</Label>
+                  <Input
+                    id="ed-recur-until"
+                    type="date"
+                    value={editRecurrenceUntilLocal}
+                    onChange={(e) => setEditRecurrenceUntilLocal(e.target.value)}
+                    disabled={pending}
+                  />
+                </div>
+              </>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="ed-loc">Lokasi / link</Label>
               <Input
@@ -673,6 +806,71 @@ export function ScheduleClient({
               </div>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent className="max-h-[min(90vh,640px)] max-w-md overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Hapus jadwal massal</DialogTitle>
+            <DialogDescription>
+              Pilih jadwal di bulan {format(viewMonth, "MMMM yyyy", { locale: idLocale })} yang
+              ingin dihapus sekaligus.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <ScrollArea className="h-72 rounded-md border border-border p-2">
+              {manageableEventsInMonth.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  Tidak ada jadwal yang bisa Anda hapus di bulan ini.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {manageableEventsInMonth.map((ev) => (
+                    <li key={ev.id} className="flex items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        id={`bulk-${ev.id}`}
+                        className="mt-1"
+                        checked={bulkSelectedEventIds.has(ev.id)}
+                        onChange={() => toggleBulkEvent(ev.id)}
+                        disabled={pending}
+                      />
+                      <label
+                        htmlFor={`bulk-${ev.id}`}
+                        className="min-w-0 cursor-pointer leading-snug"
+                      >
+                        <span className="font-medium">{ev.title}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {format(new Date(ev.startsAt), "dd MMM yyyy HH:mm", {
+                            locale: idLocale,
+                          })}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ScrollArea>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBulkDeleteOpen(false)}
+              disabled={pending}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => onConfirmBulkDelete()}
+              disabled={pending || bulkSelectedEventIds.size === 0}
+            >
+              {pending ? "Menghapus…" : `Hapus (${bulkSelectedEventIds.size})`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

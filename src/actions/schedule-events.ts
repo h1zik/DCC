@@ -1,7 +1,8 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { NotificationType, UserRole } from "@prisma/client";
+import { NotificationType, ScheduleRecurrence, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { notifyUser } from "@/lib/notify";
@@ -18,7 +19,7 @@ const createSchema = z.object({
   location: z.string().max(200).optional().nullable(),
   startsAt: z.coerce.date(),
   participantUserIds: z.array(z.string().min(1)).min(1).max(200),
-  recurrence: z.enum(["NONE", "DAILY", "WEEKLY", "MONTHLY"]).default("NONE"),
+  recurrence: z.nativeEnum(ScheduleRecurrence).default(ScheduleRecurrence.NONE),
   recurrenceUntil: z.coerce.date().optional().nullable(),
 });
 
@@ -29,10 +30,17 @@ const updateSchema = z.object({
   location: z.string().max(200).optional().nullable(),
   startsAt: z.coerce.date(),
   participantUserIds: z.array(z.string().min(1)).min(1).max(200),
+  recurrence: z.nativeEnum(ScheduleRecurrence).optional(),
+  recurrenceUntil: z.coerce.date().optional().nullable(),
+  applyTo: z.enum(["SINGLE", "SERIES"]).default("SINGLE"),
 });
 
 const deleteSchema = z.object({
   eventId: z.string().min(1),
+});
+
+const bulkDeleteSchema = z.object({
+  eventIds: z.array(z.string().min(1)).min(1).max(500),
 });
 
 function assertFuture(startsAt: Date) {
@@ -45,6 +53,7 @@ function formatWhen(d: Date): string {
   return d.toLocaleString("id-ID", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "Asia/Jakarta",
   });
 }
 
@@ -60,10 +69,10 @@ function addMonthsKeepingDay(source: Date, monthsToAdd: number): Date {
 
 function buildRecurrenceStarts(input: {
   startsAt: Date;
-  recurrence: "NONE" | "DAILY" | "WEEKLY" | "MONTHLY";
+  recurrence: ScheduleRecurrence;
   recurrenceUntil?: Date | null;
 }): Date[] {
-  if (input.recurrence === "NONE") return [input.startsAt];
+  if (input.recurrence === ScheduleRecurrence.NONE) return [input.startsAt];
   if (!input.recurrenceUntil) {
     throw new Error("Tanggal selesai pengulangan wajib diisi.");
   }
@@ -79,11 +88,11 @@ function buildRecurrenceStarts(input: {
     if (starts.length > MAX_OCCURRENCES) {
       throw new Error("Pengulangan terlalu banyak (maksimal 120 jadwal).");
     }
-    if (input.recurrence === "DAILY") {
+    if (input.recurrence === ScheduleRecurrence.DAILY) {
       cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
       continue;
     }
-    if (input.recurrence === "WEEKLY") {
+    if (input.recurrence === ScheduleRecurrence.WEEKLY) {
       cursor = new Date(cursor.getTime() + 7 * 24 * 60 * 60 * 1000);
       continue;
     }
@@ -130,7 +139,7 @@ export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
   if (!session?.user?.id) throw new Error("Belum masuk.");
   const data = createSchema.parse(input);
   assertFuture(data.startsAt);
-  if (data.recurrence !== "NONE" && !data.recurrenceUntil) {
+  if (data.recurrence !== ScheduleRecurrence.NONE && !data.recurrenceUntil) {
     throw new Error("Tanggal selesai pengulangan wajib diisi.");
   }
 
@@ -148,6 +157,8 @@ export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
     recurrence: data.recurrence,
     recurrenceUntil: data.recurrenceUntil,
   });
+  const seriesId =
+    data.recurrence === ScheduleRecurrence.NONE ? null : randomUUID();
   const title = data.title.trim();
   const description = data.description?.trim() || null;
   const location = data.location?.trim() || null;
@@ -160,6 +171,9 @@ export async function createScheduleEvent(input: z.infer<typeof createSchema>) {
             description,
             location,
             startsAt,
+            recurrence: data.recurrence,
+            recurrenceUntil: data.recurrenceUntil ?? null,
+            seriesId,
             createdById: session.user.id,
             participants: {
               create: uniq.map((userId) => ({ userId })),
@@ -193,7 +207,13 @@ export async function updateScheduleEvent(input: z.infer<typeof updateSchema>) {
 
   const event = await prisma.scheduleEvent.findUnique({
     where: { id: data.eventId },
-    select: { id: true, createdById: true },
+    select: {
+      id: true,
+      createdById: true,
+      seriesId: true,
+      recurrence: true,
+      recurrenceUntil: true,
+    },
   });
   if (!event) throw new Error("Jadwal tidak ditemukan.");
   const canEdit =
@@ -219,6 +239,84 @@ export async function updateScheduleEvent(input: z.infer<typeof updateSchema>) {
     },
   });
 
+  if (data.applyTo === "SERIES") {
+    const targetSeriesId = event.seriesId;
+    if (!targetSeriesId || event.recurrence === ScheduleRecurrence.NONE) {
+      throw new Error("Jadwal ini bukan bagian dari pengulangan.");
+    }
+    const nextRecurrence = data.recurrence ?? event.recurrence;
+    const nextRecurrenceUntil =
+      data.recurrenceUntil === undefined
+        ? event.recurrenceUntil
+        : data.recurrenceUntil;
+    const startsList = buildRecurrenceStarts({
+      startsAt: data.startsAt,
+      recurrence: nextRecurrence,
+      recurrenceUntil: nextRecurrenceUntil ?? null,
+    });
+    const title = data.title.trim();
+    const description = data.description?.trim() || null;
+    const location = data.location?.trim() || null;
+
+    const { updatedRows, oldParticipantIds } = await prisma.$transaction(async (tx) => {
+      const existingRows = await tx.scheduleEvent.findMany({
+        where: { seriesId: targetSeriesId },
+        select: {
+          id: true,
+          participants: { select: { userId: true } },
+        },
+      });
+      const oldParticipantIds = [
+        ...new Set(
+          existingRows.flatMap((row) => row.participants.map((p) => p.userId)),
+        ),
+      ];
+      const existingIds = existingRows.map((row) => row.id);
+      if (existingIds.length > 0) {
+        await tx.scheduleReminderSent.deleteMany({
+          where: { eventId: { in: existingIds } },
+        });
+        await tx.scheduleEventParticipant.deleteMany({
+          where: { eventId: { in: existingIds } },
+        });
+        await tx.scheduleEvent.deleteMany({ where: { id: { in: existingIds } } });
+      }
+      const updatedRows = await Promise.all(
+        startsList.map((startsAt) =>
+          tx.scheduleEvent.create({
+            data: {
+              title,
+              description,
+              location,
+              startsAt,
+              recurrence: nextRecurrence,
+              recurrenceUntil: nextRecurrenceUntil ?? null,
+              seriesId: targetSeriesId,
+              createdById: event.createdById,
+              participants: {
+                create: uniq.map((userId) => ({ userId })),
+              },
+            },
+          }),
+        ),
+      );
+      return { updatedRows, oldParticipantIds };
+    });
+    const first = updatedRows[0];
+    const last = updatedRows[updatedRows.length - 1];
+    const loc = first.location?.trim() ? ` · ${first.location.trim()}` : "";
+    const msg =
+      `🔄 Jadwal pengulangan diperbarui: ${first.title}\n` +
+      `🕒 Mulai: ${formatWhen(first.startsAt)}${loc}\n` +
+      `🔁 Total: ${updatedRows.length} kali sampai ${formatWhen(last.startsAt)}`;
+    await notifyScheduleUsers({
+      userIds: [...new Set([...oldParticipantIds, ...uniq])],
+      message: msg,
+    });
+    revalidatePath("/schedule");
+    return;
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     await tx.scheduleEventParticipant.deleteMany({
       where: { eventId: event.id },
@@ -233,6 +331,9 @@ export async function updateScheduleEvent(input: z.infer<typeof updateSchema>) {
         description: data.description?.trim() || null,
         location: data.location?.trim() || null,
         startsAt: data.startsAt,
+        recurrence: event.recurrence,
+        recurrenceUntil: event.recurrenceUntil,
+        seriesId: event.seriesId,
         participants: {
           create: uniq.map((userId) => ({ userId })),
         },
@@ -279,5 +380,55 @@ export async function deleteScheduleEvent(input: z.infer<typeof deleteSchema>) {
     userIds: event.participants.map((p) => p.userId),
     message: `❌ Jadwal dibatalkan: ${event.title}\n🕒 Sebelumnya: ${formatWhen(event.startsAt)}${loc}`,
   });
+  revalidatePath("/schedule");
+}
+
+export async function deleteScheduleEventsBulk(
+  input: z.infer<typeof bulkDeleteSchema>,
+) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Belum masuk.");
+  const data = bulkDeleteSchema.parse(input);
+  const uniqIds = [...new Set(data.eventIds)];
+
+  const events = await prisma.scheduleEvent.findMany({
+    where: { id: { in: uniqIds } },
+    select: {
+      id: true,
+      title: true,
+      startsAt: true,
+      createdById: true,
+      participants: { select: { userId: true } },
+    },
+  });
+  if (events.length !== uniqIds.length) {
+    throw new Error("Sebagian jadwal tidak ditemukan.");
+  }
+
+  const unauthorized = events.some(
+    (ev) =>
+      session.user.role !== UserRole.CEO && ev.createdById !== session.user.id,
+  );
+  if (unauthorized) {
+    throw new Error("Ada jadwal yang tidak bisa Anda hapus.");
+  }
+
+  await prisma.scheduleEvent.deleteMany({
+    where: { id: { in: uniqIds } },
+  });
+
+  const allUsers = [
+    ...new Set(events.flatMap((ev) => ev.participants.map((p) => p.userId))),
+  ];
+  const previewTitles = events
+    .slice(0, 3)
+    .map((ev) => ev.title)
+    .join(", ");
+  const more = events.length > 3 ? ` dan ${events.length - 3} lainnya` : "";
+  await notifyScheduleUsers({
+    userIds: allUsers,
+    message: `❌ ${events.length} jadwal dibatalkan sekaligus.\n📝 ${previewTitles}${more}`,
+  });
+
   revalidatePath("/schedule");
 }
