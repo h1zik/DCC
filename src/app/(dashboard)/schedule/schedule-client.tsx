@@ -129,6 +129,7 @@ export function ScheduleClient({
   const [bulkSelectedEventIds, setBulkSelectedEventIds] = useState<Set<string>>(
     new Set(),
   );
+  const [bulkFilter, setBulkFilter] = useState("");
 
   const filteredUsers = useMemo(() => {
     const q = participantFilter.trim().toLowerCase();
@@ -175,6 +176,32 @@ export function ScheduleClient({
         (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
       );
   }, [currentRole, currentUserId, initialEvents, viewMonth]);
+
+  const manageableEventsAll = useMemo(() => {
+    return initialEvents
+      .filter((ev) => canManageEvent(currentRole, currentUserId, ev.createdById))
+      .sort(
+        (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+      );
+  }, [currentRole, currentUserId, initialEvents]);
+
+  const manageableEventsFiltered = useMemo(() => {
+    const q = bulkFilter.trim().toLowerCase();
+    if (!q) return manageableEventsAll;
+    return manageableEventsAll.filter((ev) => {
+      const starts = new Date(ev.startsAt);
+      const haystack = [
+        ev.title,
+        ev.location ?? "",
+        ev.createdBy.name ?? "",
+        ev.createdBy.email,
+        format(starts, "dd MMM yyyy HH:mm", { locale: idLocale }),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [bulkFilter, manageableEventsAll]);
 
   function resetCreateForm(prefillDay?: Date) {
     setTitle("");
@@ -336,6 +363,7 @@ export function ScheduleClient({
 
   function openBulkDelete() {
     setBulkSelectedEventIds(new Set());
+    setBulkFilter("");
     setBulkDeleteOpen(true);
   }
 
@@ -416,7 +444,7 @@ export function ScheduleClient({
             type="button"
             variant="destructive"
             className="gap-2"
-            disabled={pending || manageableEventsInMonth.length === 0}
+            disabled={pending || manageableEventsAll.length === 0}
             onClick={() => openBulkDelete()}
           >
             <Trash2 className="size-4" />
@@ -814,19 +842,24 @@ export function ScheduleClient({
           <DialogHeader>
             <DialogTitle>Hapus jadwal massal</DialogTitle>
             <DialogDescription>
-              Pilih jadwal di bulan {format(viewMonth, "MMMM yyyy", { locale: idLocale })} yang
-              ingin dihapus sekaligus.
+              Pilih jadwal dari seluruh data yang ingin dihapus sekaligus.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
+            <Input
+              placeholder="Cari judul, lokasi, pembuat, tanggal…"
+              value={bulkFilter}
+              onChange={(e) => setBulkFilter(e.target.value)}
+              disabled={pending}
+            />
             <ScrollArea className="h-72 rounded-md border border-border p-2">
-              {manageableEventsInMonth.length === 0 ? (
+              {manageableEventsFiltered.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  Tidak ada jadwal yang bisa Anda hapus di bulan ini.
+                  Tidak ada jadwal yang cocok dengan filter.
                 </p>
               ) : (
                 <ul className="space-y-2">
-                  {manageableEventsInMonth.map((ev) => (
+                  {manageableEventsFiltered.map((ev) => (
                     <li key={ev.id} className="flex items-start gap-2 text-sm">
                       <input
                         type="checkbox"
