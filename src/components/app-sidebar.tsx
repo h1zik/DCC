@@ -17,7 +17,6 @@ import {
   ShieldCheck,
   Tags,
   UserCircle,
-  UserCog,
   Users,
 } from "lucide-react";
 import { isStudioOrProjectManager } from "@/lib/roles";
@@ -51,7 +50,6 @@ const navAdministrator = [
   { href: "/brands", label: "Brand", icon: Tags },
   { href: "/rooms", label: "Ruang kerja", icon: DoorOpen },
   { href: "/admin/users", label: "Pengguna", icon: Users },
-  { href: "/admin/access", label: "Hak akses", icon: UserCog },
 ] as const;
 
 const navLogistics = [

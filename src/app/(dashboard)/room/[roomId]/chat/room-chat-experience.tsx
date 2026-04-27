@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { addRoomMessage } from "@/actions/room-messages";
 import type { RoomChatMessageView } from "@/lib/room-chat-message-view";
 import { assertSafeGifUrl } from "@/lib/room-chat-gif";
@@ -64,6 +64,33 @@ type ReplyTarget = {
   snippet: string;
 };
 
+type MentionableUser = {
+  id: string;
+  name: string | null;
+  email: string;
+};
+
+type MentionDraft = {
+  start: number;
+  end: number;
+  query: string;
+};
+
+function mentionTokenOf(user: MentionableUser): string {
+  const source = user.name?.trim() || user.email.split("@")[0] || user.email;
+  return source.replace(/\s+/g, "");
+}
+
+function detectMentionDraft(body: string, cursorPos: number): MentionDraft | null {
+  const before = body.slice(0, cursorPos);
+  const m = before.match(/(^|[\s(])@([a-zA-Z0-9._-]{0,40})$/);
+  if (!m) return null;
+  const query = m[2] ?? "";
+  const start = before.length - query.length - 1;
+  if (start < 0) return null;
+  return { start, end: cursorPos, query };
+}
+
 function insertAtCursor(
   el: HTMLTextAreaElement | null,
   text: string,
@@ -89,10 +116,12 @@ export function RoomChatExperience({
   roomId,
   currentUserId,
   messages: initialMessages,
+  mentionableUsers,
 }: {
   roomId: string;
   currentUserId: string;
   messages: RoomChatMessageView[];
+  mentionableUsers: MentionableUser[];
 }) {
   const [messages, setMessages] =
     useState<RoomChatMessageView[]>(initialMessages);
@@ -109,6 +138,8 @@ export function RoomChatExperience({
   const [gifLoading, setGifLoading] = useState(false);
   const [giphyConfigured, setGiphyConfigured] = useState<boolean | null>(null);
   const [pasteGif, setPasteGif] = useState("");
+  const [mentionDraft, setMentionDraft] = useState<MentionDraft | null>(null);
+  const [mentionPickIndex, setMentionPickIndex] = useState(0);
   const [pending, startTransition] = useTransition();
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -118,6 +149,29 @@ export function RoomChatExperience({
   const bodyRef = useRef(body);
   const lastTypingPingRef = useRef(0);
   bodyRef.current = body;
+
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionDraft) return [];
+    const q = mentionDraft.query.trim().toLowerCase();
+    const sorted = [...mentionableUsers].sort((a, b) => {
+      const an = (a.name?.trim() || a.email).toLowerCase();
+      const bn = (b.name?.trim() || b.email).toLowerCase();
+      return an.localeCompare(bn);
+    });
+    const filtered = !q
+      ? sorted
+      : sorted.filter((u) => {
+          const n = (u.name ?? "").toLowerCase();
+          const e = u.email.toLowerCase();
+          const local = e.split("@")[0] ?? "";
+          return n.includes(q) || e.includes(q) || local.includes(q);
+        });
+    return filtered.slice(0, 8);
+  }, [mentionDraft, mentionableUsers]);
+
+  useEffect(() => {
+    setMentionPickIndex((prev) => Math.min(prev, Math.max(0, mentionSuggestions.length - 1)));
+  }, [mentionSuggestions.length]);
 
   const scrollToMessage = useCallback((id: string) => {
     const el = messageRefs.current.get(id);
@@ -305,6 +359,27 @@ export function RoomChatExperience({
     }
   }
 
+  function applyMentionSuggestion(user: MentionableUser) {
+    const draft = mentionDraft;
+    if (!draft) return;
+    const token = mentionTokenOf(user);
+    const mentionText = `@${token} `;
+    const next =
+      bodyRef.current.slice(0, draft.start) +
+      mentionText +
+      bodyRef.current.slice(draft.end);
+    setBody(next);
+    setMentionDraft(null);
+    setMentionPickIndex(0);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      const pos = draft.start + mentionText.length;
+      ta.setSelectionRange(pos, pos);
+    });
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="border-border bg-muted/10 flex max-h-[min(520px,58vh)] min-h-[280px] flex-col rounded-xl border">
@@ -484,21 +559,83 @@ export function RoomChatExperience({
             {typingUsers.length > 1 ? ` +${typingUsers.length - 1} lainnya` : ""}
           </p>
         ) : null}
-        <Textarea
+        <div className="relative">
+          {mentionDraft && mentionSuggestions.length > 0 ? (
+            <div className="border-border bg-popover absolute bottom-[calc(100%+0.5rem)] left-0 z-20 w-full max-w-sm overflow-hidden rounded-md border shadow-lg">
+              <ul className="max-h-56 overflow-y-auto p-1">
+                {mentionSuggestions.map((u, idx) => {
+                  const displayName = u.name?.trim() || u.email;
+                  const active = idx === mentionPickIndex;
+                  return (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        className={cn(
+                          "w-full rounded px-2 py-1.5 text-left text-sm transition-colors",
+                          active ? "bg-accent text-accent-foreground" : "hover:bg-muted/70",
+                        )}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyMentionSuggestion(u)}
+                      >
+                        <p className="truncate font-medium">{displayName}</p>
+                        <p className="text-muted-foreground truncate text-xs">@{mentionTokenOf(u)}</p>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+          <Textarea
           ref={taRef}
           rows={3}
           placeholder="Tulis pesan… (@emoji & GIF dari toolbar)"
           value={body}
           disabled={pending}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setBody(next);
+            const cursor = e.target.selectionStart ?? next.length;
+            setMentionDraft(detectMentionDraft(next, cursor));
+          }}
+          onClick={(e) => {
+            const el = e.currentTarget;
+            const cursor = el.selectionStart ?? bodyRef.current.length;
+            setMentionDraft(detectMentionDraft(bodyRef.current, cursor));
+          }}
           onKeyDown={(e) => {
+            if (mentionDraft && mentionSuggestions.length > 0) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setMentionPickIndex((prev) => (prev + 1) % mentionSuggestions.length);
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setMentionPickIndex((prev) =>
+                  prev === 0 ? mentionSuggestions.length - 1 : prev - 1,
+                );
+                return;
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                applyMentionSuggestion(mentionSuggestions[mentionPickIndex] ?? mentionSuggestions[0]);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setMentionDraft(null);
+                return;
+              }
+            }
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               submit();
             }
           }}
           className="min-h-[88px] resize-y"
-        />
+          />
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1">
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
@@ -623,7 +760,7 @@ export function RoomChatExperience({
           </Button>
         </div>
         <p className="text-muted-foreground text-xs">
-          Enter kirim · Shift+Enter baris baru · Balas seperti Discord dengan kutipan di atas pesan
+          Enter kirim · Shift+Enter baris baru · Pakai @Nama untuk summon (kirim notif WA)
         </p>
       </div>
     </div>

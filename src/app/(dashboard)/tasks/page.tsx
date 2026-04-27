@@ -59,7 +59,7 @@ export default async function TasksRoomSelectPage() {
         <p className="text-muted-foreground mt-1 text-sm">
           {showAllRooms
             ? session.user.role === UserRole.CEO
-              ? "Ruangan dikelompokkan ke HQ, Team, atau Ruangan. CEO menetapkan administrator di menu Hak akses; administrator mengatur ruangan di menu Ruang kerja."
+              ? "Ruangan dikelompokkan ke HQ, Team, atau Ruangan. CEO menetapkan administrator di menu Pengguna; administrator mengatur ruangan di menu Ruang kerja."
               : "Ruangan dikelompokkan ke HQ, Team, atau Ruangan. Atur bagian tiap ruangan di menu Ruang kerja saat membuat atau mengedit ruangan."
             : "Hanya ruangan tempat Anda ditetapkan administrator (sebagai manager atau kontributor) yang muncul di sini. Administrator mengatur nama ruangan, bagian (HQ / Team / Ruangan), dan peran di menu Ruang kerja."}
         </p>

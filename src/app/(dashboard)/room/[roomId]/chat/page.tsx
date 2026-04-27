@@ -1,4 +1,5 @@
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
+import { prisma } from "@/lib/prisma";
 import { loadRoomChatMessagesForRoom } from "@/lib/room-chat-message-view";
 import { RoomChatExperience } from "./room-chat-experience";
 
@@ -9,6 +10,15 @@ export default async function RoomChatPage({ params }: PageProps) {
   const { viewerUserId } = await getRoomMemberContextOrThrow(roomId);
 
   const messages = await loadRoomChatMessagesForRoom(roomId);
+  const mentionableUsers = await prisma.roomMember.findMany({
+    where: { roomId },
+    select: {
+      user: {
+        select: { id: true, name: true, email: true },
+      },
+    },
+    orderBy: [{ user: { name: "asc" } }, { user: { email: "asc" } }],
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -23,6 +33,7 @@ export default async function RoomChatPage({ params }: PageProps) {
         roomId={roomId}
         currentUserId={viewerUserId}
         messages={messages}
+        mentionableUsers={mentionableUsers.map((m) => m.user)}
       />
     </div>
   );

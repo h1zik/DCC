@@ -20,9 +20,15 @@ import {
 } from "@/components/ui/select";
 import type { SelectItemDef } from "@/lib/select-option-items";
 
-type Row = Pick<User, "id" | "email" | "name" | "role">;
+export type AdminAccessRow = Pick<User, "id" | "email" | "name" | "role">;
 
-export function AdminAccessClient({ users }: { users: Row[] }) {
+export function AdminAccessClient({
+  users,
+  hideBackButton = false,
+}: {
+  users: AdminAccessRow[];
+  hideBackButton?: boolean;
+}) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
 
@@ -139,9 +145,11 @@ export function AdminAccessClient({ users }: { users: Row[] }) {
       {users.length === 0 ? (
         <p className="text-muted-foreground text-sm">Tidak ada pengguna.</p>
       ) : null}
-      <Button type="button" variant="outline" onClick={() => router.push("/")}>
-        Kembali ke dashboard
-      </Button>
+      {!hideBackButton ? (
+        <Button type="button" variant="outline" onClick={() => router.push("/")}>
+          Kembali ke dashboard
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -48,7 +48,7 @@ export default async function RoomsPage() {
           pengelompokan di menu Tugas & Kanban sesuai. Project manager ruangan
           melihat semua fase; manager dan kontributor hanya fase yang Anda
           centang. Tim membuka ruangan dari menu Tugas. CEO menetapkan siapa
-          yang memiliki peran administrator di menu Hak akses.
+          yang memiliki peran administrator di menu Pengguna.
         </p>
       </div>
       <RoomsClient rooms={rooms} brands={brands} studioUsers={studioUsers} />
