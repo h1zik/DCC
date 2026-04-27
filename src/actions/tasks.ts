@@ -140,6 +140,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     notificationJobs.push(
       notifyRoomManagersTaskDoneViaWhatsApp({
         roomId: task.project.roomId,
+        roomProcess,
         taskTitle: task.title,
         project: task.project,
         picDisplayName: task.assignees[0]?.user?.name ?? null,
@@ -509,6 +510,7 @@ export async function updateTask(
     notificationJobs.push(
       notifyRoomManagersTaskDoneViaWhatsApp({
         roomId: task.project.roomId,
+        roomProcess: task.roomProcess,
         taskTitle: task.title,
         project: task.project,
         picDisplayName: task.assignees[0]?.user?.name ?? null,

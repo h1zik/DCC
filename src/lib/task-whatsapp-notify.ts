@@ -1,8 +1,12 @@
-import { RoomMemberRole, TaskPriority } from "@prisma/client";
+import { RoomMemberRole, RoomTaskProcess, TaskPriority } from "@prisma/client";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { prisma } from "@/lib/prisma";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import {
+  memberHasRoomProcessAccess,
+  roomMemberToProcessAccess,
+} from "@/lib/room-member-process-access";
 import {
   isWhatsAppConfigured,
   normalizeWhatsAppE164,
@@ -85,6 +89,7 @@ export async function notifyPicTaskViaWhatsApp(params: {
 /** Tugas selesai — manager / PM ruangan: **{{1}}**, **{{2}}** saja. */
 export async function notifyRoomManagersTaskDoneViaWhatsApp(params: {
   roomId: string;
+  roomProcess: RoomTaskProcess;
   taskTitle: string;
   project: ProjectForLabel;
   picDisplayName: string | null;
@@ -110,6 +115,14 @@ export async function notifyRoomManagersTaskDoneViaWhatsApp(params: {
   const pic = params.picDisplayName?.trim() || "—";
 
   for (const m of managers) {
+    if (
+      !memberHasRoomProcessAccess(
+        roomMemberToProcessAccess(m),
+        params.roomProcess,
+      )
+    ) {
+      continue;
+    }
     const phone = normalizeWhatsAppE164(m.user.whatsappPhone);
     if (!phone) continue;
     const mgrName = m.user.name?.trim() || "Manager";

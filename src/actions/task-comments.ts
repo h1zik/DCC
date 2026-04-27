@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { notifyTaskCommentViaWhatsApp } from "@/lib/task-whatsapp-notify";
-import { RoomMemberRole } from "@prisma/client";
 import {
   assertRoomMemberHasTaskProcess,
   getTaskRoomContext,
@@ -40,26 +39,12 @@ export async function addTaskComment(taskId: string, body: string) {
     },
   });
   if (task) {
-    const managers = await prisma.roomMember.findMany({
-      where: {
-        roomId,
-        role: {
-          in: [RoomMemberRole.ROOM_MANAGER, RoomMemberRole.ROOM_PROJECT_MANAGER],
-        },
-      },
-      select: {
-        user: { select: { id: true, name: true, whatsappPhone: true } },
-      },
-    });
     const recipientMap = new Map<
       string,
       { id: string; name: string | null; whatsappPhone: string | null }
     >();
     for (const a of task.assignees) {
       recipientMap.set(a.user.id, a.user);
-    }
-    for (const m of managers) {
-      recipientMap.set(m.user.id, m.user);
     }
     recipientMap.delete(session.user.id);
     const recipients = [...recipientMap.values()];
