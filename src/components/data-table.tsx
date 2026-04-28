@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import {
+  type Column,
   type ColumnDef,
   flexRender,
   getCoreRowModel,
@@ -23,6 +24,21 @@ interface DataTableProps<TData, TValue> {
   onRowClick?: (row: TData) => void;
   /** Tabel mengisi lebar area; kolom wrap — hindari scroll horizontal. */
   fitViewport?: boolean;
+}
+
+function columnWidthStyle<TData>(
+  column: Column<TData, unknown>,
+  fitViewport: boolean,
+) {
+  if (fitViewport) return undefined;
+  const def = column.columnDef;
+  const width = typeof def.size === "number" ? def.size : undefined;
+  const minWidth = typeof def.minSize === "number" ? def.minSize : undefined;
+  const maxWidth = typeof def.maxSize === "number" ? def.maxSize : undefined;
+  if (width === undefined && minWidth === undefined && maxWidth === undefined) {
+    return undefined;
+  }
+  return { width, minWidth, maxWidth };
 }
 
 export function DataTable<TData, TValue>({
@@ -53,7 +69,10 @@ export function DataTable<TData, TValue>({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
+                <TableHead
+                  key={header.id}
+                  style={columnWidthStyle(header.column, fitViewport)}
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(
@@ -76,7 +95,10 @@ export function DataTable<TData, TValue>({
                 }
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
+                  <TableCell
+                    key={cell.id}
+                    style={columnWidthStyle(cell.column, fitViewport)}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}

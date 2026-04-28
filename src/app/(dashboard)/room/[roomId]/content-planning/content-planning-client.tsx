@@ -98,8 +98,8 @@ const STATUS_SELECT_TRIGGER = cn(
   "items-start gap-1 py-0 pl-0.5 pr-0.5 [&>svg]:mt-0.5 [&>svg]:shrink-0",
 );
 
-/** Lebar kolom status tetap — isi tidak menindih kolom DL / lainnya. */
-const STATUS_COL_BOX = "w-[11rem] max-w-full shrink-0 overflow-hidden";
+/** Lebar kolom status diperbesar agar label status lebih lega. */
+const STATUS_COL_BOX = "w-[10.5rem] max-w-full shrink-0 overflow-hidden";
 
 const STATUS_BADGE_CLASS: Record<ContentPlanStatusKerja, string> = {
   [ContentPlanStatusKerja.BARU]:
@@ -148,11 +148,10 @@ function formatDateShort(v: Date | string | null | undefined): string {
   if (!v) return "—";
   const d = typeof v === "string" ? new Date(v) : v;
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
 }
 
 function isImagePath(publicPath: string): boolean {
@@ -800,7 +799,7 @@ export function ContentPlanningClient({
         id: "stCw",
         header: () => (
           <span
-            className={cn(STATUS_COL_BOX, "inline-block pr-5 leading-tight sm:pr-6")}
+            className={cn(STATUS_COL_BOX, "inline-block leading-tight")}
             title="Status copywriting"
           >
             Status
@@ -811,7 +810,7 @@ export function ContentPlanningClient({
         cell: ({ row }) => {
           const cellKey = `${row.original.id}:stCw`;
           return (
-            <div className={cn(STATUS_COL_BOX, "pr-5 sm:pr-6")}>
+            <div className={STATUS_COL_BOX}>
               <Select
                 value={row.original.statusCopywriting}
                 items={statusKerjaSelectItems}
@@ -846,7 +845,7 @@ export function ContentPlanningClient({
         id: "stDes",
         header: () => (
           <span
-            className={cn(STATUS_COL_BOX, "inline-block pl-3 leading-tight sm:pl-4")}
+            className={cn(STATUS_COL_BOX, "inline-block leading-tight")}
             title="Status design"
           >
             Status
@@ -857,7 +856,7 @@ export function ContentPlanningClient({
         cell: ({ row }) => {
           const cellKey = `${row.original.id}:stDes`;
           return (
-            <div className={cn(STATUS_COL_BOX, "pl-3 sm:pl-4")}>
+            <div className={STATUS_COL_BOX}>
               <Select
                 value={row.original.statusDesign}
                 items={statusKerjaSelectItems}
@@ -1383,7 +1382,94 @@ export function ContentPlanningClient({
         </Sheet>
       </div>
 
-      <div className="min-w-0 max-w-full">
+      <div className="min-w-0 max-w-full md:hidden">
+        {tableRows.length === 0 ? (
+          <div className="text-muted-foreground rounded-xl border border-border px-4 py-8 text-center text-sm">
+            Belum ada baris. Tambahkan konten lewat tombol Baris baru.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {tableRows.map((row) => (
+              <Card key={row.id} size="sm" className="shadow-none ring-border/60">
+                <div className="space-y-3 px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-sm font-semibold">{row.konten || "—"}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <JenisBadge jenis={row.jenisKonten} />
+                        {row.pic ? (
+                          <span className="text-muted-foreground text-xs">
+                            PIC: {row.pic.name?.trim() || row.pic.email}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">PIC: —</span>
+                        )}
+                      </div>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className={cn(
+                            buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                            "size-8",
+                          )}
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(row)}>
+                            <Pencil className="size-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => onDelete(row.id)}
+                          >
+                            <Trash2 className="size-4" />
+                            Hapus
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-[11px] uppercase">Status Copy</p>
+                      <StatusBadge status={row.statusCopywriting} />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-muted-foreground text-[11px] uppercase">Status Design</p>
+                      <StatusBadge status={row.statusDesign} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">DL Copy</p>
+                      <p>{formatDateShort(row.deadlineCopywriting)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">DL Design</p>
+                      <p>{formatDateShort(row.deadlineDesign)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Posting</p>
+                      <p>{formatDateShort(row.tanggalPosting)}</p>
+                    </div>
+                  </div>
+
+                  {row.detailKonten?.trim() ? (
+                    <p className="text-muted-foreground line-clamp-2 text-xs">{row.detailKonten}</p>
+                  ) : null}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="hidden min-w-0 max-w-full md:block">
         <DataTable
           columns={columns}
           data={tableRows}
