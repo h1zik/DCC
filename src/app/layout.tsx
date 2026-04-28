@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { auth } from "@/lib/auth";
+import { getAppBranding } from "@/lib/app-branding";
 import { Providers } from "@/components/providers";
 
 const geistSans = Geist({
@@ -14,11 +15,21 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Dominatus Control Center",
-  description:
-    "ERP internal PT Dominatus Clean Solution — inventori, master data, dan dashboard eksekutif.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await getAppBranding();
+  return {
+    title: branding.appName || "Dominatus Control Center",
+    description:
+      "ERP internal PT Dominatus Clean Solution — inventori, master data, dan dashboard eksekutif.",
+    icons: branding.faviconPath
+      ? {
+          icon: branding.faviconPath,
+          shortcut: branding.faviconPath,
+          apple: branding.faviconPath,
+        }
+      : undefined,
+  };
+}
 
 export default async function RootLayout({
   children,

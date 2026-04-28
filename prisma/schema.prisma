@@ -534,3 +534,15 @@ model ScheduleReminderSent {
   @@unique([eventId, userId, kind])
   @@index([eventId])
 }
+
+/** Konfigurasi branding aplikasi (singleton). */
+model AppBranding {
+  id            String   @id
+  appName       String   @default("Dominatus Control Center")
+  navTitle      String   @default("Dominatus")
+  navSubtitle   String   @default("Control Center")
+  logoImagePath String?
+  faviconPath   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { UserRole } from "@prisma/client";
@@ -18,6 +19,7 @@ import {
   Tags,
   UserCircle,
   Users,
+  WandSparkles,
 } from "lucide-react";
 import { isStudioOrProjectManager } from "@/lib/roles";
 import {
@@ -51,6 +53,7 @@ const navAdministrator = [
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/brands", label: "Brand", icon: Tags },
   { href: "/admin/users", label: "Pengguna", icon: Users },
+  { href: "/admin/branding", label: "Web Setting", icon: WandSparkles },
 ] as const;
 
 const navLogistics = [
@@ -87,6 +90,36 @@ export function AppSidebar() {
   const role = session?.user?.role;
   const nav = navForRole(role);
   const groupLabel = groupLabelForRole(role);
+  const [branding, setBranding] = useState<{
+    navTitle: string;
+    navSubtitle: string;
+    logoImagePath: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/app-branding", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setBranding({
+          navTitle: data?.navTitle || "Dominatus",
+          navSubtitle: data?.navSubtitle || "Control Center",
+          logoImagePath: data?.logoImagePath ?? null,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBranding({
+          navTitle: "Dominatus",
+          navSubtitle: "Control Center",
+          logoImagePath: null,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <Sidebar
@@ -97,15 +130,22 @@ export function AppSidebar() {
         <div className="flex flex-col gap-1 px-2 py-3">
           <div
             className={cn(
-              "flex flex-col gap-1 transition-opacity duration-200",
+              "flex flex-col items-center gap-1 text-center transition-opacity duration-200",
               "group-data-[collapsible=icon]:hidden",
             )}
           >
+            {branding?.logoImagePath ? (
+              <img
+                src={branding.logoImagePath}
+                alt={branding.navTitle}
+                className="h-8 w-auto max-w-full object-contain"
+              />
+            ) : null}
             <span className="text-sidebar-primary font-semibold tracking-tight">
-              Dominatus
+              {branding?.navTitle || "Dominatus"}
             </span>
             <span className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
-              Control Center
+              {branding?.navSubtitle || "Control Center"}
             </span>
           </div>
           <div
@@ -115,9 +155,17 @@ export function AppSidebar() {
             )}
             aria-hidden
           >
-            <span className="text-sidebar-primary flex size-8 items-center justify-center rounded-md border border-sidebar-border text-sm font-bold">
-              D
-            </span>
+            {branding?.logoImagePath ? (
+              <img
+                src={branding.logoImagePath}
+                alt={branding.navTitle}
+                className="h-8 w-8 rounded-md border border-sidebar-border object-contain p-0.5"
+              />
+            ) : (
+              <span className="text-sidebar-primary flex size-8 items-center justify-center rounded-md border border-sidebar-border text-sm font-bold">
+                {(branding?.navTitle || "Dominatus").slice(0, 1).toUpperCase()}
+              </span>
+            )}
           </div>
         </div>
       </SidebarHeader>
