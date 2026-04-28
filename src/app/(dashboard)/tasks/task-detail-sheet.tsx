@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import {
   addChecklistItem,
   archiveTask,
+  createTaskTag,
   deleteChecklistItem,
   deleteTask,
   toggleChecklistItem,
@@ -91,6 +92,8 @@ type Props = {
   projects: (Project & { brand: Brand | null })[];
   users: Pick<User, "id" | "name" | "email">[];
   vendors: Pick<Vendor, "id" | "name">[];
+  roomId?: string;
+  roomTaskTags?: { id: string; roomId: string; name: string; colorHex: string }[];
   isRoomManager: boolean;
   currentUserId: string;
   /** Ruangan HQ/Team tanpa brand: sembunyikan fase proses alur. */
@@ -116,6 +119,8 @@ export function TaskDetailSheet({
   projects,
   users,
   vendors,
+  roomId,
+  roomTaskTags = [],
   isRoomManager,
   currentUserId,
   simpleHub = false,
@@ -132,6 +137,11 @@ export function TaskDetailSheet({
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [vendorId, setVendorId] = useState("");
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState(roomTaskTags);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColorHex, setNewTagColorHex] = useState("#6B7280");
+  const [createTagPending, setCreateTagPending] = useState(false);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   const [dueDate, setDueDate] = useState("");
   const [leadTimeDays, setLeadTimeDays] = useState("");
@@ -150,6 +160,10 @@ export function TaskDetailSheet({
   const [doneWarningCount, setDoneWarningCount] = useState(0);
 
   useEffect(() => {
+    setAvailableTags(roomTaskTags);
+  }, [roomTaskTags]);
+
+  useEffect(() => {
     if (!task) return;
     setProjectId(task.projectId);
     setRoomProcess(task.roomProcess);
@@ -158,6 +172,7 @@ export function TaskDetailSheet({
     setAssigneeIds(task.assignees.map((a) => a.user.id));
     setVendorId(task.vendorId ?? "");
     setPriority(task.priority);
+    setSelectedTagIds(task.tags.map((t) => t.tagId));
     setStatus(task.status);
     setDueDate(task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "");
     setLeadTimeDays(task.leadTimeDays != null ? String(task.leadTimeDays) : "");
@@ -227,6 +242,7 @@ export function TaskDetailSheet({
         title,
         description: description || null,
         assigneeIds,
+        tagIds: selectedTagIds,
         vendorId: vendorId || null,
         priority,
         dueDate: due,
@@ -240,6 +256,31 @@ export function TaskDetailSheet({
       toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
     } finally {
       setSavePending(false);
+    }
+  }
+
+  async function onCreateTag() {
+    if (!roomId || !newTagName.trim()) return;
+    setCreateTagPending(true);
+    try {
+      const created = await createTaskTag({
+        roomId,
+        name: newTagName.trim(),
+        colorHex: newTagColorHex,
+      });
+      setAvailableTags((prev) => {
+        if (prev.some((t) => t.id === created.id)) return prev;
+        return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setSelectedTagIds((prev) =>
+        prev.includes(created.id) ? prev : [...prev, created.id],
+      );
+      setNewTagName("");
+      toast.success("Tag ditambahkan.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal membuat tag.");
+    } finally {
+      setCreateTagPending(false);
     }
   }
 
@@ -589,6 +630,81 @@ export function TaskDetailSheet({
                         value={leadTimeDays}
                         onChange={(e) => setLeadTimeDays(e.target.value)}
                       />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tag</Label>
+                    {availableTags.length === 0 ? (
+                      <p className="text-muted-foreground text-xs">
+                        Belum ada tag di ruangan ini.
+                      </p>
+                    ) : (
+                      <div className="max-h-36 space-y-1 overflow-auto rounded-md border p-2">
+                        {availableTags.map((tag) => (
+                          <label key={tag.id} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={selectedTagIds.includes(tag.id)}
+                              onCheckedChange={(v) => {
+                                const next = v === true;
+                                setSelectedTagIds((prev) =>
+                                  next
+                                    ? [...prev, tag.id]
+                                    : prev.filter((id) => id !== tag.id),
+                                );
+                              }}
+                            />
+                            <span
+                              className="inline-block size-3 rounded-sm border border-border"
+                              style={{ backgroundColor: tag.colorHex }}
+                              aria-hidden
+                            />
+                            <span>{tag.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    {isRoomManager ? (
+                      <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-md border p-2">
+                        <Input
+                          placeholder="Tag baru…"
+                          value={newTagName}
+                          onChange={(e) => setNewTagName(e.target.value)}
+                          maxLength={40}
+                          disabled={createTagPending || !roomId}
+                        />
+                        <Input
+                          type="color"
+                          value={newTagColorHex}
+                          onChange={(e) => setNewTagColorHex(e.target.value.toUpperCase())}
+                          className="h-9 w-12 p-1"
+                          disabled={createTagPending || !roomId}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={
+                            createTagPending || !roomId || newTagName.trim().length === 0
+                          }
+                          onClick={() => void onCreateTag()}
+                        >
+                          {createTagPending ? "..." : "Tambah"}
+                        </Button>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      {availableTags
+                        .filter((tag) => selectedTagIds.includes(tag.id))
+                        .map((tag) => (
+                          <Badge key={tag.id} variant="secondary">
+                            <span
+                              className="mr-1 inline-block size-2 rounded-full"
+                              style={{ backgroundColor: tag.colorHex }}
+                              aria-hidden
+                            />
+                            {tag.name}
+                          </Badge>
+                        ))}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

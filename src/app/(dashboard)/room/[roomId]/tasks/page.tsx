@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   RoomMemberRole,
   RoomTaskProcess,
+  TaskWorkspaceView,
   TaskStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -44,6 +45,12 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
   const sp = await searchParams;
   const { room, role, allowedRoomProcesses, viewerUserId: uid } =
     await getRoomMemberContextOrThrow(roomId);
+  const viewerPreference = await prisma.user.findUnique({
+    where: { id: uid },
+    select: { taskDefaultWorkspaceView: true },
+  });
+  const defaultTaskView =
+    viewerPreference?.taskDefaultWorkspaceView ?? TaskWorkspaceView.KANBAN;
   const simpleHub = isSimpleTeamOrHqRoom(room);
 
   if (simpleHub) {
@@ -87,7 +94,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       ? { archivedAt: { not: null }, status: TaskStatus.DONE }
       : { archivedAt: null };
 
-    const [tasks, projects, memberRows, vendors, kanbanColumns] =
+    const [tasks, projects, memberRows, vendors, kanbanColumns, roomTaskTags] =
       await Promise.all([
       prisma.task.findMany({
         where: { project: { roomId }, ...archivedWhere },
@@ -119,6 +126,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
               uploadedBy: { select: { id: true, name: true, email: true } },
             },
           },
+          tags: {
+            include: {
+              tag: { select: { id: true, roomId: true, name: true, colorHex: true } },
+            },
+          },
         },
       }),
       prisma.project.findMany({
@@ -135,6 +147,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       }),
       prisma.vendor.findMany({ orderBy: { name: "asc" } }),
       getRoomKanbanColumns(roomId, RoomTaskProcess.MARKET_RESEARCH),
+      prisma.taskTag.findMany({
+        where: { roomId },
+        orderBy: [{ name: "asc" }],
+        select: { id: true, roomId: true, name: true, colorHex: true },
+      }),
     ]);
 
     const seen = new Set<string>();
@@ -165,6 +182,8 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           tasks={tasks}
           kanbanColumns={kanbanColumns}
           showArchived={showArchived}
+          defaultTaskView={defaultTaskView}
+          roomTaskTags={roomTaskTags}
         />
       </div>
     );
@@ -190,7 +209,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     ? { archivedAt: { not: null }, status: TaskStatus.DONE }
     : { archivedAt: null };
 
-  const [tasks, projects, contributorMembers, vendors, kanbanColumns] =
+  const [tasks, projects, contributorMembers, vendors, kanbanColumns, roomTaskTags] =
     await Promise.all([
     prisma.task.findMany({
       where: {
@@ -226,6 +245,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
             uploadedBy: { select: { id: true, name: true, email: true } },
           },
         },
+        tags: {
+          include: {
+            tag: { select: { id: true, roomId: true, name: true, colorHex: true } },
+          },
+        },
       },
     }),
     prisma.project.findMany({
@@ -251,6 +275,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     }),
     prisma.vendor.findMany({ orderBy: { name: "asc" } }),
     getRoomKanbanColumns(roomId, activeProcess),
+    prisma.taskTag.findMany({
+      where: { roomId },
+      orderBy: [{ name: "asc" }],
+      select: { id: true, roomId: true, name: true, colorHex: true },
+    }),
   ]);
 
   const users = contributorMembers
@@ -308,6 +337,8 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         tasks={tasks}
         kanbanColumns={kanbanColumns}
         showArchived={showArchived}
+        defaultTaskView={defaultTaskView}
+        roomTaskTags={roomTaskTags}
       />
     </div>
   );

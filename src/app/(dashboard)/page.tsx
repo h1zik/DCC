@@ -29,6 +29,7 @@ type SalesLogRow = {
   id: string;
   amount: number;
   type: StockLogType;
+  salesCategory: string | null;
   note: string | null;
   product: { brand: { name: string } };
 };
@@ -90,6 +91,7 @@ export default async function ExecutiveDashboardPage() {
       id: true,
       amount: true,
       type: true,
+      salesCategory: true,
       note: true,
       product: { select: { brand: { select: { name: true } } } },
     },
@@ -155,13 +157,19 @@ export default async function ExecutiveDashboardPage() {
     .map((row) => replacementByTargetId.get(row.id) ?? row)
     .filter((row) => row.type === StockLogType.OUT);
 
-  const pcsByBrand = effectiveSalesLogs.reduce<Record<string, number>>((acc, row) => {
+  const pcsByBrand = effectiveSalesLogs.reduce<
+    Record<string, { total: number; sales: number; sampling: number }>
+  >((acc, row) => {
     const key = row.product.brand.name.trim() || "Tanpa brand";
-    acc[key] = (acc[key] ?? 0) + row.amount;
+    const current = acc[key] ?? { total: 0, sales: 0, sampling: 0 };
+    current.total += row.amount;
+    if (row.salesCategory === "sampling") current.sampling += row.amount;
+    else current.sales += row.amount;
+    acc[key] = current;
     return acc;
   }, {});
-  const salesByBrandRows = Object.entries(pcsByBrand).sort(
-    (a, b) => b[1] - a[1],
+  const outgoingByBrandRows = Object.entries(pcsByBrand).sort(
+    (a, b) => b[1].total - a[1].total,
   );
 
   return (
@@ -271,27 +279,39 @@ export default async function ExecutiveDashboardPage() {
       <section className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Penjualan per brand</CardTitle>
+            <CardTitle>Barang keluar per brand</CardTitle>
             <CardDescription>
-              Akumulasi PCS dari seluruh mutasi stok keluar per brand.
+              Akumulasi PCS stok keluar, dipisah antara penjualan dan sampling.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {salesByBrandRows.length === 0 ? (
+            {outgoingByBrandRows.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 Belum ada transaksi barang keluar.
               </p>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
-                {salesByBrandRows.map(([brand, value]) => (
+                {outgoingByBrandRows.map(([brand, value]) => (
                   <div
                     key={brand}
-                    className="bg-muted/40 flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                    className="bg-muted/40 rounded-lg border border-border px-3 py-2"
                   >
-                    <span className="text-sm font-medium">{brand}</span>
-                    <span className="font-mono text-sm tabular-nums">
-                      {value.toLocaleString("id-ID")} PCS
-                    </span>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{brand}</span>
+                      <span className="font-mono text-sm tabular-nums">
+                        {value.total.toLocaleString("id-ID")} PCS
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      Penjualan:{" "}
+                      <span className="font-mono tabular-nums">
+                        {value.sales.toLocaleString("id-ID")} PCS
+                      </span>{" "}
+                      · Sampling:{" "}
+                      <span className="font-mono tabular-nums">
+                        {value.sampling.toLocaleString("id-ID")} PCS
+                      </span>
+                    </p>
                   </div>
                 ))}
               </div>

@@ -13,7 +13,6 @@ export type GanttTask = {
   title: string;
   dueDate: string | null;
   createdAt: string;
-  brandName: string;
 };
 
 /** Lebar satu kolom hari (px); cukup untuk label D/M tanpa overlap. */
@@ -96,7 +95,7 @@ export function TasksGantt({
               className="relative flex h-9 items-center rounded-md bg-muted/40"
             >
               <span className="text-muted-foreground w-40 shrink-0 truncate px-2 text-xs">
-                {t.brandName}
+                {t.title}
               </span>
               <div
                 className="relative h-6 shrink-0"

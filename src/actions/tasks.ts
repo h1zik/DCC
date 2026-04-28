@@ -231,6 +231,7 @@ const createSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().nullable(),
   assigneeIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string().min(1)).optional(),
   priority: z.nativeEnum(TaskPriority),
   status: z.nativeEnum(TaskStatus).optional(),
   dueDate: z.coerce.date().optional().nullable(),
@@ -248,6 +249,13 @@ const taskMutationInclude = {
     },
   },
   vendor: { select: { id: true, name: true } },
+  tags: {
+    include: {
+      tag: {
+        select: { id: true, name: true, colorHex: true, roomId: true },
+      },
+    },
+  },
 } satisfies Prisma.TaskInclude;
 
 export type TaskMutationResult = Prisma.TaskGetPayload<{
@@ -280,12 +288,21 @@ export async function createTask(
   }
 
   const assigneeIds = [...new Set(data.assigneeIds ?? [])].filter(Boolean);
+  const tagIds = [...new Set(data.tagIds ?? [])].filter(Boolean);
   await validateAssigneesForRoom({
     roomId,
     assigneeIds,
     roomProcess,
     simpleHub,
   });
+  if (tagIds.length > 0) {
+    const validTagCount = await prisma.taskTag.count({
+      where: { id: { in: tagIds }, roomId },
+    });
+    if (validTagCount !== tagIds.length) {
+      throw new Error("Sebagian tag tidak valid untuk ruangan ini.");
+    }
+  }
 
   const maxSort = await prisma.task.aggregate({
     where: { projectId: data.projectId, roomProcess },
@@ -308,6 +325,13 @@ export async function createTask(
       assignees: {
         create: assigneeIds.map((userId) => ({ userId })),
       },
+      ...(tagIds.length > 0
+        ? {
+            tags: {
+              create: tagIds.map((tagId) => ({ tagId })),
+            },
+          }
+        : {}),
     },
     include: taskMutationInclude,
   });
@@ -367,6 +391,7 @@ export async function updateTask(
       isApprovalRequired: true,
       isApproved: true,
       assignees: { select: { userId: true } },
+      tags: { select: { tagId: true } },
       dueDate: true,
       archivedAt: true,
       project: { select: { roomId: true } },
@@ -406,6 +431,10 @@ export async function updateTask(
     data.assigneeIds !== undefined
       ? [...new Set(data.assigneeIds)].filter(Boolean)
       : prev.assignees.map((a) => a.userId);
+  let tagIds =
+    data.tagIds !== undefined
+      ? [...new Set(data.tagIds)].filter(Boolean)
+      : prev.tags.map((t) => t.tagId);
   let isApprovalRequired = data.isApprovalRequired ?? false;
 
   let roomProcess =
@@ -425,6 +454,7 @@ export async function updateTask(
   if (!isHubManager) {
     projectId = prev.projectId;
     assigneeIds = prev.assignees.map((a) => a.userId);
+    tagIds = prev.tags.map((t) => t.tagId);
     isApprovalRequired = prev.isApprovalRequired;
   } else {
     const newProjectRoomId = await getProjectRoomId(projectId);
@@ -437,6 +467,14 @@ export async function updateTask(
       roomProcess,
       simpleHub,
     });
+    if (tagIds.length > 0) {
+      const validTagCount = await prisma.taskTag.count({
+        where: { id: { in: tagIds }, roomId },
+      });
+      if (validTagCount !== tagIds.length) {
+        throw new Error("Sebagian tag tidak valid untuk ruangan ini.");
+      }
+    }
   }
 
   const nextDue = data.dueDate ?? null;
@@ -453,6 +491,10 @@ export async function updateTask(
   );
   const assigneesChanged =
     addedAssigneeIds.length > 0 || removedAssigneeIds.length > 0;
+  const prevTagIds = prev.tags.map((t) => t.tagId);
+  const tagsChanged =
+    tagIds.length !== prevTagIds.length ||
+    tagIds.some((id) => !prevTagIds.includes(id));
 
   const task = await prisma.task.update({
     where: { id: data.taskId },
@@ -478,6 +520,14 @@ export async function updateTask(
             assignees: {
               deleteMany: {},
               create: assigneeIds.map((userId) => ({ userId })),
+            },
+          }
+        : {}),
+      ...(tagsChanged
+        ? {
+            tags: {
+              deleteMany: {},
+              create: tagIds.map((tagId) => ({ tagId })),
             },
           }
         : {}),
@@ -582,6 +632,36 @@ export async function deleteTask(taskId: string) {
   void recomputeProjectProgress(task.projectId);
   revalidateRoomWorkspace(roomId);
   revalidatePath("/projects");
+}
+
+const createTaskTagSchema = z.object({
+  roomId: z.string().min(1),
+  name: z.string().min(1).max(40),
+  colorHex: z
+    .string()
+    .trim()
+    .regex(/^#[0-9A-Fa-f]{6}$/, "Warna harus format hex #RRGGBB."),
+});
+
+export async function createTaskTag(input: z.infer<typeof createTaskTagSchema>) {
+  const session = await requireTasksRoomHubSession();
+  const data = createTaskTagSchema.parse(input);
+  await assertRoomHubManager(data.roomId, session.user.id);
+
+  try {
+    const tag = await prisma.taskTag.create({
+      data: {
+        roomId: data.roomId,
+        name: data.name.trim(),
+        colorHex: data.colorHex.toUpperCase(),
+      },
+      select: { id: true, name: true, colorHex: true, roomId: true },
+    });
+    revalidateRoomWorkspace(data.roomId);
+    return tag;
+  } catch {
+    throw new Error("Nama tag sudah dipakai di ruangan ini.");
+  }
 }
 
 async function checklistTaskContextOrThrow(checklistItemId: string) {

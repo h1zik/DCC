@@ -44,6 +44,7 @@ export type KanbanTask = {
     name: string | null;
     email: string;
   }[];
+  tags: { id: string; name: string; colorHex: string }[];
 };
 
 function PicStrip({
@@ -252,6 +253,22 @@ function DraggableTask({
             </span>
           ) : null}
         </div>
+        {task.tags.length > 0 ? (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {task.tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center rounded-full border border-border/70 px-2 py-1 text-[11px] leading-none font-medium"
+                style={{
+                  backgroundColor: `${tag.colorHex}22`,
+                  color: tag.colorHex,
+                }}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <PicStrip assignees={task.assignees} />
       </button>
     </div>

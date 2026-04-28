@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   RoomTaskProcess,
+  TaskWorkspaceView,
   TaskPriority,
   TaskStatus,
   type Brand,
@@ -15,7 +16,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
 import { createTask, deleteTask } from "@/actions/tasks";
+import { setDefaultTaskWorkspaceView } from "@/actions/task-view-preference";
 import { DataTable } from "@/components/data-table";
+import { TasksCalendar, type CalendarTask } from "./tasks-calendar";
 import { TasksGantt, type GanttTask } from "./tasks-gantt";
 import { TasksKanban, type KanbanTask } from "./tasks-kanban";
 import { TaskDetailSheet } from "./task-detail-sheet";
@@ -48,6 +51,36 @@ import { DEFAULT_KANBAN_STATUSES, taskStatusLabel } from "@/lib/task-status-ui";
 import { cn } from "@/lib/utils";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { RoomKanbanSettingsDialog } from "./room-kanban-settings-dialog";
+
+type TaskViewTab = "kanban" | "list" | "gantt" | "calendar";
+
+function taskWorkspaceViewToTab(view: TaskWorkspaceView): TaskViewTab {
+  switch (view) {
+    case TaskWorkspaceView.LIST:
+      return "list";
+    case TaskWorkspaceView.GANTT:
+      return "gantt";
+    case TaskWorkspaceView.CALENDAR:
+      return "calendar";
+    case TaskWorkspaceView.KANBAN:
+    default:
+      return "kanban";
+  }
+}
+
+function tabToTaskWorkspaceView(tab: TaskViewTab): TaskWorkspaceView {
+  switch (tab) {
+    case "list":
+      return TaskWorkspaceView.LIST;
+    case "gantt":
+      return TaskWorkspaceView.GANTT;
+    case "calendar":
+      return TaskWorkspaceView.CALENDAR;
+    case "kanban":
+    default:
+      return TaskWorkspaceView.KANBAN;
+  }
+}
 
 function priorityLabel(p: TaskPriority) {
   switch (p) {
@@ -94,6 +127,8 @@ export function TasksWorkspace({
   currentUserId,
   kanbanColumns,
   showArchived = false,
+  defaultTaskView = TaskWorkspaceView.KANBAN,
+  roomTaskTags = [],
 }: {
   roomId?: string;
   roomTitle?: string;
@@ -112,12 +147,19 @@ export function TasksWorkspace({
   kanbanColumns?: RoomKanbanColumnDTO[];
   /** Tampilan arsip: hanya tugas selesai yang diarsipkan. */
   showArchived?: boolean;
+  /** Preferensi tampilan default per-user untuk modul Tasks. */
+  defaultTaskView?: TaskWorkspaceView;
+  /** Tag tugas reusable khusus ruangan aktif. */
+  roomTaskTags?: { id: string; roomId: string; name: string; colorHex: string }[];
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [localTasks, setLocalTasks] = useState<TaskRow[]>(tasks);
   const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
+  const [activeView, setActiveView] = useState<TaskViewTab>(
+    taskWorkspaceViewToTab(defaultTaskView),
+  );
 
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [title, setTitle] = useState("");
@@ -132,6 +174,10 @@ export function TasksWorkspace({
   const [pending, setPending] = useState(false);
 
   const detailId = detailTask?.id;
+  useEffect(() => {
+    setActiveView(taskWorkspaceViewToTab(defaultTaskView));
+  }, [defaultTaskView]);
+
   useEffect(() => {
     setLocalTasks(tasks);
   }, [tasks]);
@@ -206,6 +252,7 @@ export function TasksWorkspace({
             checklistItems: [],
             comments: [],
             attachments: [],
+            tags: [],
           },
         ];
       });
@@ -290,6 +337,11 @@ export function TasksWorkspace({
           name: a.user.name,
           email: a.user.email,
         })),
+        tags: t.tags.map((row) => ({
+          id: row.tag.id,
+          name: row.tag.name,
+          colorHex: row.tag.colorHex,
+        })),
       })),
     [localTasks],
   );
@@ -301,7 +353,15 @@ export function TasksWorkspace({
         title: t.title,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
         createdAt: t.createdAt.toISOString(),
-        brandName: taskProjectContextLabel(t.project),
+      })),
+    [localTasks],
+  );
+  const calendarTasks: CalendarTask[] = useMemo(
+    () =>
+      localTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        dueDate: t.dueDate ? t.dueDate.toISOString() : null,
       })),
     [localTasks],
   );
@@ -445,6 +505,16 @@ export function TasksWorkspace({
     [isRoomManager, onDeleteTask, openDetail, simpleHub],
   );
 
+  const onChangeView = useCallback((nextValue: string) => {
+    const next = nextValue as TaskViewTab;
+    setActiveView(next);
+    void setDefaultTaskWorkspaceView({
+      view: tabToTaskWorkspaceView(next),
+    }).catch(() => {
+      // Biarkan tetap berpindah tab walau simpan preferensi gagal.
+    });
+  }, []);
+
   return (
     <div className="flex flex-col gap-4">
       <TaskDetailSheet
@@ -467,6 +537,8 @@ export function TasksWorkspace({
         projects={projects}
         users={users}
         vendors={vendors}
+        roomId={roomId}
+        roomTaskTags={roomTaskTags}
         isRoomManager={isRoomManager}
         currentUserId={currentUserId}
         simpleHub={simpleHub}
@@ -756,11 +828,12 @@ export function TasksWorkspace({
         </Dialog>
       </div>
 
-      <Tabs defaultValue="kanban">
+      <Tabs value={activeView} onValueChange={onChangeView}>
         <TabsList>
           <TabsTrigger value="kanban">Kanban</TabsTrigger>
           <TabsTrigger value="list">Daftar</TabsTrigger>
           <TabsTrigger value="gantt">Gantt</TabsTrigger>
+          <TabsTrigger value="calendar">Kalender</TabsTrigger>
         </TabsList>
         <TabsContent value="kanban" className="mt-4">
           <TasksKanban
@@ -791,6 +864,15 @@ export function TasksWorkspace({
         <TabsContent value="gantt" className="mt-4">
           <TasksGantt
             tasks={ganttTasks}
+            onTaskClick={(id) => {
+              const t = localTasks.find((x) => x.id === id);
+              if (t) openDetail(t);
+            }}
+          />
+        </TabsContent>
+        <TabsContent value="calendar" className="mt-4">
+          <TasksCalendar
+            tasks={calendarTasks}
             onTaskClick={(id) => {
               const t = localTasks.find((x) => x.id === id);
               if (t) openDetail(t);

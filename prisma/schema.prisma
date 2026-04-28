@@ -118,6 +118,13 @@ enum ScheduleRecurrence {
   MONTHLY
 }
 
+enum TaskWorkspaceView {
+  KANBAN
+  LIST
+  GANTT
+  CALENDAR
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -139,6 +146,8 @@ model User {
   profileTagline      String? @db.VarChar(160)
   /** Warna aksen hex `#RRGGBB` untuk ring avatar & aksen; null = pakai default tema. */
   profileAccentHex    String? @db.VarChar(7)
+  /** Tampilan default modul Tasks saat membuka ruangan. */
+  taskDefaultWorkspaceView TaskWorkspaceView @default(KANBAN)
   passwordHash  String
   role          UserRole  @default(LOGISTICS)
   createdAt     DateTime  @default(now())
@@ -189,6 +198,7 @@ model Room {
   contentPlanItems RoomContentPlanItem[]
   /** Judul & urutan kolom Kanban per fase proses (diatur manager ruangan). */
   kanbanColumns    RoomKanbanColumn[]
+  taskTags         TaskTag[]
 }
 
 /** Kolom Kanban: memetakan `linkedStatus` ke judul tampilan & urutan. */
@@ -349,10 +359,35 @@ model Task {
   comments           TaskComment[]
   attachments        TaskAttachment[]
   assignees          TaskAssignee[]
+  tags               TaskTagOnTask[]
 
   @@index([projectId, roomProcess, archivedAt, sortOrder])
   @@index([projectId, archivedAt, status])
   @@index([projectId, createdAt])
+}
+
+model TaskTag {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name      String
+  colorHex  String   @db.VarChar(7)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tasks     TaskTagOnTask[]
+
+  @@unique([roomId, name])
+  @@index([roomId, createdAt])
+}
+
+model TaskTagOnTask {
+  taskId String
+  task   Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    TaskTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@index([tagId])
 }
 
 model TaskAssignee {

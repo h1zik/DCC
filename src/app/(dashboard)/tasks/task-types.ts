@@ -25,6 +25,17 @@ export type TaskAttachmentRow = {
   uploadedBy: Pick<User, "id" | "name" | "email">;
 };
 
+export type TaskTagRow = {
+  taskId: string;
+  tagId: string;
+  tag: {
+    id: string;
+    roomId: string;
+    name: string;
+    colorHex: string;
+  };
+};
+
 export type TaskRow = Task & {
   project: Project & { brand: Brand | null; room?: { name: string } };
   assignees: { user: Pick<User, "id" | "name" | "email" | "image"> }[];
@@ -32,4 +43,5 @@ export type TaskRow = Task & {
   checklistItems: TaskChecklistItem[];
   comments: TaskCommentRow[];
   attachments: TaskAttachmentRow[];
+  tags: TaskTagRow[];
 };
