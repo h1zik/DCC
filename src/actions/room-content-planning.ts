@@ -57,6 +57,20 @@ async function assertPicInRoom(roomId: string, picUserId: string | null) {
   }
 }
 
+async function assertPicsInRoom(roomId: string, picUserIds: string[]) {
+  if (!picUserIds.length) return;
+  const uniqueIds = [...new Set(picUserIds.filter(Boolean))];
+  const count = await prisma.roomMember.count({
+    where: {
+      roomId,
+      userId: { in: uniqueIds },
+    },
+  });
+  if (count !== uniqueIds.length) {
+    throw new Error("PIC harus dipilih dari anggota ruangan ini.");
+  }
+}
+
 async function assertItemRoom(roomId: string, itemId: string) {
   const session = await requireTasksRoomHubSession();
   await assertRoomMember(roomId, session.user.id);
@@ -94,6 +108,7 @@ const upsertSchema = z.object({
   copywritingLink: z.string().optional().nullable(),
   designLink: z.string().optional().nullable(),
   picUserId: z.string().optional().nullable(),
+  picUserIds: z.array(z.string()).optional().default([]),
   statusCopywriting: z.nativeEnum(ContentPlanStatusKerja),
   statusDesign: z.nativeEnum(ContentPlanStatusKerja),
   deadlineCopywriting: z.coerce.date().optional().nullable(),
@@ -108,7 +123,11 @@ export async function upsertRoomContentPlanItem(
   const session = await requireTasksRoomHubSession();
   const data = upsertSchema.parse(input);
   await assertRoomMember(data.roomId, session.user.id);
-  await assertPicInRoom(data.roomId, data.picUserId ?? null);
+  const normalizedPicIds = [...new Set((data.picUserIds ?? []).filter(Boolean))];
+  const fallbackPicId =
+    normalizedPicIds[0] ?? (data.picUserId && data.picUserId.trim() ? data.picUserId : null);
+  await assertPicInRoom(data.roomId, fallbackPicId);
+  await assertPicsInRoom(data.roomId, normalizedPicIds);
 
   if (data.id) {
     const existing = await prisma.roomContentPlanItem.findUniqueOrThrow({
@@ -126,7 +145,8 @@ export async function upsertRoomContentPlanItem(
         detailKonten: data.detailKonten ?? null,
         copywritingLink: data.copywritingLink?.trim() || null,
         designLink: data.designLink?.trim() || null,
-        picUserId: data.picUserId || null,
+        picUserId: fallbackPicId || null,
+        picUserIds: normalizedPicIds,
         statusCopywriting: data.statusCopywriting,
         statusDesign: data.statusDesign,
         deadlineCopywriting: data.deadlineCopywriting ?? null,
@@ -153,7 +173,8 @@ export async function upsertRoomContentPlanItem(
       detailKonten: data.detailKonten ?? null,
       copywritingLink: data.copywritingLink?.trim() || null,
       designLink: data.designLink?.trim() || null,
-      picUserId: data.picUserId || null,
+      picUserId: fallbackPicId || null,
+      picUserIds: normalizedPicIds,
       statusCopywriting: data.statusCopywriting,
       statusDesign: data.statusDesign,
       deadlineCopywriting: data.deadlineCopywriting ?? null,

@@ -62,6 +62,27 @@ export default async function ForMePage() {
       }),
   })).sort((a, b) => taskStatusOrder(a.status) - taskStatusOrder(b.status));
 
+  const contentPlanningItems = await prisma.roomContentPlanItem.findMany({
+    where: {
+      OR: [{ picUserId: session.user.id }, { picUserIds: { has: session.user.id } }],
+    },
+    orderBy: [{ tanggalPosting: "asc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      konten: true,
+      jenisKonten: true,
+      tanggalPosting: true,
+      statusCopywriting: true,
+      statusDesign: true,
+      room: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div>
@@ -109,6 +130,52 @@ export default async function ForMePage() {
             </CardContent>
           </Card>
         ))}
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Content Planning PIC</h2>
+          <p className="text-muted-foreground text-sm">
+            Daftar baris content planning yang Anda pegang sebagai PIC.
+          </p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Item Content Planning</CardTitle>
+            <CardDescription>{contentPlanningItems.length} item</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {contentPlanningItems.length === 0 ? (
+              <p className="text-muted-foreground text-sm">Tidak ada item content planning.</p>
+            ) : (
+              contentPlanningItems.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/room/${item.room.id}/content-planning`}
+                  className="hover:bg-muted/50 block rounded-md border border-border px-3 py-2 transition-colors"
+                >
+                  <p className="font-medium leading-snug">{item.konten || "(Tanpa judul konten)"}</p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    {item.room.name} · {item.jenisKonten.replaceAll("_", " ")}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="text-[10px]">
+                      CW: {item.statusCopywriting.replaceAll("_", " ")}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      Design: {item.statusDesign.replaceAll("_", " ")}
+                    </Badge>
+                    <span className="text-muted-foreground ml-auto text-xs">
+                      {item.tanggalPosting
+                        ? `Posting ${item.tanggalPosting.toLocaleDateString("id-ID")}`
+                        : "Tanggal posting belum diatur"}
+                    </span>
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

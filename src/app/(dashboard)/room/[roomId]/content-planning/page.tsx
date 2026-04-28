@@ -24,7 +24,7 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
     }),
     prisma.roomMember.findMany({
       where: { roomId },
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: { user: { select: { id: true, name: true, email: true, image: true } } },
       orderBy: { createdAt: "asc" },
     }),
   ]);

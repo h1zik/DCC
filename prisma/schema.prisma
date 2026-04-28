@@ -231,6 +231,8 @@ model RoomContentPlanItem {
   designFilePaths       String[]               @default([])
   designLink            String?
   picUserId             String?
+  /** Multi PIC (utama pakai ini). `picUserId` dipertahankan untuk kompatibilitas data lama. */
+  picUserIds            String[]               @default([])
   pic                   User?                  @relation("ContentPlanItemPic", fields: [picUserId], references: [id], onDelete: SetNull)
   statusCopywriting     ContentPlanStatusKerja @default(BARU)
   statusDesign          ContentPlanStatusKerja @default(BARU)

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -126,6 +127,7 @@ export type ContentPlanTableRow = {
   designFilePaths: string[];
   designLink: string | null;
   picUserId: string | null;
+  picUserIds: string[];
   statusCopywriting: ContentPlanStatusKerja;
   statusDesign: ContentPlanStatusKerja;
   deadlineCopywriting: Date | string | null;
@@ -133,10 +135,11 @@ export type ContentPlanTableRow = {
   tanggalPosting: Date | string | null;
   catatan: string | null;
   pic: Pick<User, "id" | "name" | "email" | "image"> | null;
+  pics?: Pick<User, "id" | "name" | "email" | "image">[];
   createdBy: Pick<User, "id" | "name" | "email">;
 };
 
-type PicOption = Pick<User, "id" | "name" | "email">;
+type PicOption = Pick<User, "id" | "name" | "email" | "image">;
 
 function toDateInput(v: Date | string | null | undefined): string {
   if (!v) return "";
@@ -281,17 +284,18 @@ function InlineTextCell({
   );
 }
 
-function PicCell({ pic }: { pic: ContentPlanTableRow["pic"] }) {
-  if (!pic) {
+function PicCell({ pics }: { pics: Pick<User, "id" | "name" | "email" | "image">[] }) {
+  if (!pics.length) {
     return <span className="text-muted-foreground text-xs">—</span>;
   }
-  const label = pic.name?.trim() || pic.email;
+  const first = pics[0]!;
+  const label = first.name?.trim() || first.email;
   const initial = label.slice(0, 1).toUpperCase();
   return (
     <div className="flex min-w-0 max-w-full items-center gap-1">
-      {pic.image ? (
+      {first.image ? (
         <Image
-          src={pic.image}
+          src={first.image}
           alt=""
           width={22}
           height={22}
@@ -306,7 +310,10 @@ function PicCell({ pic }: { pic: ContentPlanTableRow["pic"] }) {
           {initial}
         </div>
       )}
-      <span className="min-w-0 truncate text-xs">{label}</span>
+      <span className="min-w-0 truncate text-xs">
+        {label}
+        {pics.length > 1 ? ` +${pics.length - 1}` : ""}
+      </span>
     </div>
   );
 }
@@ -492,7 +499,7 @@ export function ContentPlanningClient({
   const [detailKonten, setDetailKonten] = useState("");
   const [copywritingLink, setCopywritingLink] = useState("");
   const [designLink, setDesignLink] = useState("");
-  const [picUserId, setPicUserId] = useState<string>("");
+  const [picUserIds, setPicUserIds] = useState<string[]>([]);
   const [statusCopywriting, setStatusCopywriting] = useState<ContentPlanStatusKerja>(
     ContentPlanStatusKerja.BARU,
   );
@@ -508,9 +515,32 @@ export function ContentPlanningClient({
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [inlineSavingCell, setInlineSavingCell] = useState<string | null>(null);
 
+  const picUserById = useMemo(() => {
+    return new Map(picUserOptions.map((u) => [u.id, u]));
+  }, [picUserOptions]);
+
+  const withResolvedPics = useCallback(
+    (row: ContentPlanTableRow): ContentPlanTableRow => {
+      const ids = row.picUserIds?.length
+        ? row.picUserIds
+        : row.picUserId
+          ? [row.picUserId]
+          : [];
+      const pics = ids
+        .map((id) => picUserById.get(id))
+        .filter((u): u is PicOption => Boolean(u));
+      return {
+        ...row,
+        picUserIds: ids,
+        pics: pics.length ? pics : row.pic ? [row.pic] : [],
+      };
+    },
+    [picUserById],
+  );
+
   useEffect(() => {
-    setTableRows(items);
-  }, [items]);
+    setTableRows(items.map(withResolvedPics));
+  }, [items, withResolvedPics]);
 
   const isCarousel = jenisKonten === ContentPlanJenis.CAROUSEL;
 
@@ -527,16 +557,6 @@ export function ContentPlanningClient({
     ).map((s) => ({ value: s, label: STATUS_LABEL[s] }));
   }, []);
 
-  const picUserSelectItems = useMemo((): SelectItemDef[] => {
-    return [
-      { value: "__none__", label: "—" },
-      ...picUserOptions.map((u) => ({
-        value: u.id,
-        label: u.name ?? u.email,
-      })),
-    ];
-  }, [picUserOptions]);
-
   const reset = useCallback(() => {
     setEditing(null);
     setKonten("");
@@ -544,7 +564,7 @@ export function ContentPlanningClient({
     setDetailKonten("");
     setCopywritingLink("");
     setDesignLink("");
-    setPicUserId("");
+    setPicUserIds([]);
     setStatusCopywriting(ContentPlanStatusKerja.BARU);
     setStatusDesign(ContentPlanStatusKerja.BARU);
     setDeadlineCopywriting("");
@@ -567,7 +587,7 @@ export function ContentPlanningClient({
     setDetailKonten(row.detailKonten ?? "");
     setCopywritingLink(row.copywritingLink ?? "");
     setDesignLink(row.designLink ?? "");
-    setPicUserId(row.picUserId ?? "");
+    setPicUserIds(row.picUserIds?.length ? row.picUserIds : row.picUserId ? [row.picUserId] : []);
     setStatusCopywriting(row.statusCopywriting);
     setStatusDesign(row.statusDesign);
     setDeadlineCopywriting(toDateInput(row.deadlineCopywriting));
@@ -611,7 +631,7 @@ export function ContentPlanningClient({
         detailKonten: detailKonten.trim() || null,
         copywritingLink: copywritingLink.trim() || null,
         designLink: designLink.trim() || null,
-        picUserId: picUserId || null,
+        picUserIds,
         statusCopywriting,
         statusDesign,
         deadlineCopywriting: dc,
@@ -672,7 +692,7 @@ export function ContentPlanningClient({
         detailKonten: nextRow.detailKonten ?? null,
         copywritingLink: nextRow.copywritingLink ?? null,
         designLink: nextRow.designLink ?? null,
-        picUserId: nextRow.picUserId ?? null,
+        picUserIds: nextRow.picUserIds ?? [],
         statusCopywriting: nextRow.statusCopywriting,
         statusDesign: nextRow.statusDesign,
         deadlineCopywriting: nextRow.deadlineCopywriting
@@ -793,7 +813,7 @@ export function ContentPlanningClient({
       {
         id: "pic",
         header: () => <span title="Penanggung jawab">PIC</span>,
-        cell: ({ row }) => <PicCell pic={row.original.pic} />,
+        cell: ({ row }) => <PicCell pics={row.original.pics ?? []} />,
       },
       {
         id: "stCw",
@@ -1059,26 +1079,31 @@ export function ContentPlanningClient({
                       <UserCircle className="size-3.5 opacity-70" />
                       PIC
                     </Label>
-                    <Select
-                      value={picUserId || "__none__"}
-                      items={picUserSelectItems}
-                      onValueChange={(v) => {
-                        if (!v || v === "__none__") setPicUserId("");
-                        else setPicUserId(v);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">—</SelectItem>
-                        {picUserOptions.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.name ?? u.email}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="border-border bg-muted/20 max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
+                      {picUserOptions.map((u) => {
+                        const checked = picUserIds.includes(u.id);
+                        return (
+                          <label
+                            key={u.id}
+                            className="hover:bg-muted flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => {
+                                setPicUserIds((prev) => {
+                                  if (v) return [...prev, u.id];
+                                  return prev.filter((id) => id !== u.id);
+                                });
+                              }}
+                            />
+                            <span>{u.name ?? u.email}</span>
+                          </label>
+                        );
+                      })}
+                      {picUserOptions.length === 0 ? (
+                        <p className="text-muted-foreground px-2 py-1 text-xs">Belum ada anggota.</p>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="cp-detail">Detail konten</Label>
@@ -1397,9 +1422,11 @@ export function ContentPlanningClient({
                       <p className="truncate text-sm font-semibold">{row.konten || "—"}</p>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <JenisBadge jenis={row.jenisKonten} />
-                        {row.pic ? (
+                        {(row.pics?.length ?? 0) > 0 ? (
                           <span className="text-muted-foreground text-xs">
-                            PIC: {row.pic.name?.trim() || row.pic.email}
+                            PIC: {(row.pics ?? [])
+                              .map((p) => p.name?.trim() || p.email)
+                              .join(", ")}
                           </span>
                         ) : (
                           <span className="text-muted-foreground text-xs">PIC: —</span>
