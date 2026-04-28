@@ -165,6 +165,7 @@ export function TasksWorkspace({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const [vendorId, setVendorId] = useState<string>("");
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
@@ -205,6 +206,7 @@ export function TasksWorkspace({
     setTitle("");
     setDescription("");
     setAssigneeIds([]);
+    setTagIds([]);
     setVendorId("");
     setPriority(TaskPriority.MEDIUM);
     setStatus(initialStatus);
@@ -230,6 +232,7 @@ export function TasksWorkspace({
         title,
         description: description || null,
         assigneeIds: isRoomManager ? assigneeIds : [],
+        tagIds,
         vendorId: vendorId || null,
         priority,
         status,
@@ -252,7 +255,7 @@ export function TasksWorkspace({
             checklistItems: [],
             comments: [],
             attachments: [],
-            tags: [],
+            tags: created.tags ?? [],
           },
         ];
       });
@@ -642,7 +645,7 @@ export function TasksWorkspace({
           </Button>
         ) : null}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+          <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Tugas baru</DialogTitle>
             </DialogHeader>
@@ -714,6 +717,41 @@ export function TasksWorkspace({
                   ) : null}
                 </div>
                 <div className="space-y-2">
+                  <Label>Tag</Label>
+                  <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
+                    {roomTaskTags.length === 0 ? (
+                      <p className="text-muted-foreground text-xs">Belum ada tag ruangan.</p>
+                    ) : (
+                      roomTaskTags.map((tag) => {
+                        const checked = tagIds.includes(tag.id);
+                        return (
+                          <label key={tag.id} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => {
+                                const next = v === true;
+                                setTagIds((prev) =>
+                                  next
+                                    ? [...prev, tag.id]
+                                    : prev.filter((id) => id !== tag.id),
+                                );
+                              }}
+                            />
+                            <span
+                              className="inline-block size-3 rounded-sm border border-border"
+                              style={{ backgroundColor: tag.colorHex }}
+                              aria-hidden
+                            />
+                            <span>{tag.name}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
                   <Label>Prioritas</Label>
                   <Select
                     value={priority}
@@ -733,17 +771,6 @@ export function TasksWorkspace({
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <Label htmlFor="dd">Deadline</Label>
-                  <Input
-                    id="dd"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Status</Label>
@@ -766,6 +793,18 @@ export function TasksWorkspace({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="dd">Deadline</Label>
+                  <Input
+                    id="dd"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2">

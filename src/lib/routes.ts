@@ -28,6 +28,7 @@ export function isLogisticsRoute(pathname: string): boolean {
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isScheduleRoute(pathname) ||
+    pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/room")
@@ -39,6 +40,7 @@ export function isCeoAppRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
     isScheduleRoute(pathname) ||
+    pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/room") ||
@@ -51,6 +53,7 @@ export function isAdministratorAppRoute(pathname: string): boolean {
   return (
     isProfileRoute(pathname) ||
     isScheduleRoute(pathname) ||
+    pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/rooms") ||
     pathname.startsWith("/brands") ||
