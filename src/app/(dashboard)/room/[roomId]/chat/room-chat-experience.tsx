@@ -138,6 +138,7 @@ export function RoomChatExperience({
   const [gifLoading, setGifLoading] = useState(false);
   const [giphyConfigured, setGiphyConfigured] = useState<boolean | null>(null);
   const [pasteGif, setPasteGif] = useState("");
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
   const [mentionDraft, setMentionDraft] = useState<MentionDraft | null>(null);
   const [mentionPickIndex, setMentionPickIndex] = useState(0);
   const [pending, startTransition] = useTransition();
@@ -146,6 +147,7 @@ export function RoomChatExperience({
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const messagesRef = useRef<RoomChatMessageView[]>(initialMessages);
   const bodyRef = useRef(body);
   const lastTypingPingRef = useRef(0);
   bodyRef.current = body;
@@ -172,6 +174,55 @@ export function RoomChatExperience({
   useEffect(() => {
     setMentionPickIndex((prev) => Math.min(prev, Math.max(0, mentionSuggestions.length - 1)));
   }, [mentionSuggestions.length]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      return;
+    }
+    setNotificationPermission(Notification.permission);
+  }, []);
+
+  const notifyIncomingMessage = useCallback(
+    (message: RoomChatMessageView) => {
+      if (typeof window === "undefined" || !("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      if (document.visibilityState === "visible") return;
+      const author = authorLabel(message.author.name, message.author.email);
+      const content = message.body.trim();
+      const preview = content
+        ? content.length > 120
+          ? `${content.slice(0, 120)}…`
+          : content
+        : message.gifUrl
+          ? "Mengirim GIF"
+          : "Pesan baru";
+      new Notification(`Pesan baru dari ${author}`, {
+        body: preview,
+        tag: `room-chat-${roomId}`,
+      });
+    },
+    [roomId],
+  );
+
+  const enableBrowserNotification = useCallback(async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      toast.error("Browser ini belum mendukung notifikasi.");
+      return;
+    }
+    try {
+      const next = await Notification.requestPermission();
+      setNotificationPermission(next);
+      if (next === "granted") toast.success("Notifikasi chat browser aktif.");
+      else toast.error("Izin notifikasi belum diberikan.");
+    } catch {
+      toast.error("Gagal meminta izin notifikasi browser.");
+    }
+  }, []);
 
   const scrollToMessage = useCallback((id: string) => {
     const el = messageRefs.current.get(id);
@@ -209,6 +260,12 @@ export function RoomChatExperience({
             : [],
         );
         const incoming = j.messages;
+        const knownIds = new Set(messagesRef.current.map((m) => m.id));
+        const freshIncoming = incoming.filter(
+          (m) => !knownIds.has(m.id) && m.author.id !== currentUserId,
+        );
+        const newestIncoming = freshIncoming[freshIncoming.length - 1];
+        if (newestIncoming) notifyIncomingMessage(newestIncoming);
         setMessages((prev) => {
           if (incoming.length < prev.length) {
             return incoming;
@@ -239,7 +296,7 @@ export function RoomChatExperience({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [roomId]);
+  }, [currentUserId, notifyIncomingMessage, roomId]);
 
   useEffect(() => {
     if (!body.trim()) return;
@@ -558,6 +615,17 @@ export function RoomChatExperience({
             {typingUsers[0]} sedang mengetik
             {typingUsers.length > 1 ? ` +${typingUsers.length - 1} lainnya` : ""}
           </p>
+        ) : null}
+        {notificationPermission !== "unsupported" &&
+        notificationPermission !== "granted" ? (
+          <div className="bg-muted/60 flex items-center justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5 text-xs">
+            <p className="text-muted-foreground">
+              Aktifkan notifikasi browser agar pesan baru muncul sebagai push notification.
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void enableBrowserNotification()}>
+              Aktifkan
+            </Button>
+          </div>
         ) : null}
         <div className="relative">
           {mentionDraft && mentionSuggestions.length > 0 ? (

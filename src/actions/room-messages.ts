@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { NotificationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
@@ -121,6 +122,42 @@ async function notifyMentionedUsersViaWhatsApp(params: {
   );
 }
 
+async function notifyRoomMembersInApp(params: {
+  roomId: string;
+  roomName: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+  hasGif: boolean;
+}) {
+  const members = await prisma.roomMember.findMany({
+    where: {
+      roomId: params.roomId,
+      userId: { not: params.authorId },
+    },
+    select: { userId: true },
+  });
+  if (members.length === 0) return;
+  const preview = params.body.trim();
+  const snippet = preview
+    ? preview.length > 90
+      ? `${preview.slice(0, 90)}…`
+      : preview
+    : params.hasGif
+      ? "Mengirim GIF"
+      : "Pesan baru";
+  const sender = params.authorName.trim() || "Rekan tim";
+  const roomLabel = params.roomName.trim() || "ruangan";
+  const message = `[Chat ${roomLabel}] ${sender}: ${snippet}`;
+  await prisma.notification.createMany({
+    data: members.map((m) => ({
+      userId: m.userId,
+      message,
+      type: NotificationType.SCHEDULE_REMINDER,
+    })),
+  });
+}
+
 export async function addRoomMessage(
   input: z.infer<typeof sendMessageSchema>,
 ): Promise<RoomChatMessageView> {
@@ -167,6 +204,14 @@ export async function addRoomMessage(
     body,
     authorId: session.user.id,
     authorName: session.user.name || session.user.email || "Rekan tim",
+  });
+  await notifyRoomMembersInApp({
+    roomId: room.id,
+    roomName: room.name,
+    authorId: session.user.id,
+    authorName: session.user.name || session.user.email || "Rekan tim",
+    body,
+    hasGif: Boolean(gifUrl),
   });
   revalidateTasksAndRoomHub();
   return mapRoomMessageToView(created);

@@ -174,7 +174,7 @@ function DraggableTask({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "bg-card flex gap-0.5 rounded-lg border border-border text-sm shadow-sm",
+        "bg-card flex min-w-0 gap-0.5 rounded-lg border border-border text-sm shadow-sm",
         isDragging && "z-10 opacity-70 ring-2 ring-primary",
       )}
     >
@@ -236,11 +236,11 @@ function DraggableTask({
       ) : null}
       <button
         type="button"
-        className="hover:bg-muted/30 min-w-0 flex-1 cursor-pointer rounded-r-md p-2.5 text-left"
+        className="hover:bg-muted/30 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-r-md p-2.5 text-left"
         onClick={() => onTaskClick?.(task.id)}
       >
-        <p className="font-medium leading-snug">{task.title}</p>
-        <p className="text-muted-foreground mt-1 text-xs">
+        <p className="break-words font-medium leading-snug">{task.title}</p>
+        <p className="text-muted-foreground mt-1 break-words text-xs">
           {task.project.brand.name} · {task.project.name}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -258,7 +258,7 @@ function DraggableTask({
             {task.tags.map((tag) => (
               <span
                 key={tag.id}
-                className="inline-flex items-center rounded-full border border-border/70 px-2 py-1 text-[11px] leading-none font-medium"
+                className="inline-flex max-w-full items-center rounded-full border border-border/70 px-2 py-1 text-[11px] leading-none font-medium break-words"
                 style={{
                   backgroundColor: `${tag.colorHex}22`,
                   color: tag.colorHex,
@@ -291,7 +291,7 @@ function DroppableColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-[300px] flex-1 flex-col gap-2 rounded-xl border border-dashed border-border bg-muted/15 p-2",
+        "flex min-h-[300px] min-w-0 flex-1 flex-col gap-2 rounded-xl border border-dashed border-border bg-muted/15 p-2",
         isOver && !readOnly && "border-accent bg-muted/40",
       )}
     >
@@ -310,7 +310,7 @@ function DroppableColumn({
           </Button>
         ) : null}
       </div>
-      <div className="flex flex-1 flex-col gap-2">{children}</div>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
     </div>
   );
 }
@@ -422,7 +422,8 @@ export function TasksKanban({
   return (
     <>
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="w-full overflow-x-auto">
+          <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
           {columns.map((col) => (
             <DroppableColumn
               key={col.id}
@@ -445,6 +446,7 @@ export function TasksKanban({
                 ))}
             </DroppableColumn>
           ))}
+          </div>
         </div>
       </DndContext>
 
