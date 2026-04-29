@@ -36,6 +36,7 @@ export async function updateAppBranding(formData: FormData) {
   const navSubtitleRaw = formData.get("navSubtitle");
   const logoFile = formData.get("logoFile");
   const faviconFile = formData.get("faviconFile");
+  const pushIconFile = formData.get("pushIconFile");
 
   const appName =
     typeof appNameRaw === "string" && appNameRaw.trim()
@@ -54,11 +55,12 @@ export async function updateAppBranding(formData: FormData) {
     where: { id: BRANDING_ID },
     update: {},
     create: { id: BRANDING_ID },
-    select: { logoImagePath: true, faviconPath: true },
+    select: { logoImagePath: true, faviconPath: true, pushIconPath: true },
   });
 
   let nextLogoPath = current.logoImagePath;
   let nextFaviconPath = current.faviconPath;
+  let nextPushIconPath = current.pushIconPath;
 
   const brandingDir = path.join(getUploadPublicDir(), "branding");
   await mkdir(brandingDir, { recursive: true });
@@ -81,6 +83,21 @@ export async function updateAppBranding(formData: FormData) {
     await removeIfOwned(current.faviconPath);
   }
 
+  if (pushIconFile instanceof File && pushIconFile.size > 0) {
+    const ext =
+      path.extname(pushIconFile.name || "").toLowerCase() || ".png";
+    const stored = `${randomUUID()}-${sanitizeBaseName(
+      `pushIcon${ext}`,
+    )}`;
+    const absFile = path.join(brandingDir, stored);
+    await writeFile(absFile, Buffer.from(await pushIconFile.arrayBuffer()));
+    nextPushIconPath = `/uploads/branding/${stored}`;
+    // Hapus file lama jika dimiliki (biar storage tidak menumpuk).
+    if (current.pushIconPath) {
+      await removeIfOwned(current.pushIconPath);
+    }
+  }
+
   await prisma.appBranding.update({
     where: { id: BRANDING_ID },
     data: {
@@ -89,6 +106,7 @@ export async function updateAppBranding(formData: FormData) {
       navSubtitle,
       logoImagePath: nextLogoPath,
       faviconPath: nextFaviconPath,
+      pushIconPath: nextPushIconPath,
     },
   });
 

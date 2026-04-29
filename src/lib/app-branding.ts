@@ -13,6 +13,7 @@ export async function getAppBranding() {
       navSubtitle: true,
       logoImagePath: true,
       faviconPath: true,
+      pushIconPath: true,
     },
   });
 }

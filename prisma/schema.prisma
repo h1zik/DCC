@@ -561,6 +561,8 @@ model AppBranding {
   navSubtitle   String   @default("Control Center")
   logoImagePath String?
   faviconPath   String?
+  /** Icon untuk web push notification (chat, dsb). */
+  pushIconPath String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

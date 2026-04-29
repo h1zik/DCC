@@ -17,6 +17,7 @@ import {
   type RoomChatMessageView,
 } from "@/lib/room-chat-message-view";
 import { sendWebPushMessage } from "@/lib/web-push";
+import { getAppBranding } from "@/lib/app-branding";
 
 const sendMessageSchema = z.object({
   roomId: z.string().min(1),
@@ -130,6 +131,8 @@ async function notifyRoomMembersViaPush(params: {
   body: string;
   hasGif: boolean;
 }) {
+  const branding = await getAppBranding();
+  const pushIconPath = branding.pushIconPath ?? "/next.svg";
   const subscriptions = await prisma.pushSubscription.findMany({
     where: {
       userId: {
@@ -173,6 +176,7 @@ async function notifyRoomMembersViaPush(params: {
           title: `${sender} di ${roomLabel}`,
           body: snippet,
           url: `/room/${params.roomId}/chat`,
+          icon: pushIconPath,
         },
       });
       if (!sent.ok && sent.reason === "gone") {

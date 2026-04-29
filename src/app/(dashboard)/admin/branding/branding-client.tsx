@@ -16,6 +16,7 @@ export function BrandingClient({
     navSubtitle: string;
     logoImagePath: string | null;
     faviconPath: string | null;
+    pushIconPath: string | null;
   };
 }) {
   const [pending, startTransition] = useTransition();
@@ -24,6 +25,7 @@ export function BrandingClient({
   const [navSubtitle, setNavSubtitle] = useState(initial.navSubtitle);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
+  const [pushIconFile, setPushIconFile] = useState<File | null>(null);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,6 +35,7 @@ export function BrandingClient({
     fd.append("navSubtitle", navSubtitle);
     if (logoFile) fd.append("logoFile", logoFile);
     if (faviconFile) fd.append("faviconFile", faviconFile);
+    if (pushIconFile) fd.append("pushIconFile", pushIconFile);
 
     startTransition(async () => {
       try {
@@ -103,6 +106,22 @@ export function BrandingClient({
           ) : null}
         </div>
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="push-icon-file">Icon push notification (Web Push)</Label>
+        <Input
+          id="push-icon-file"
+          type="file"
+          accept="image/*"
+          onChange={(ev) => setPushIconFile(ev.target.files?.[0] ?? null)}
+        />
+        {initial.pushIconPath ? (
+          <p className="text-muted-foreground text-xs">Saat ini: {initial.pushIconPath}</p>
+        ) : (
+          <p className="text-muted-foreground text-xs">Belum ada icon push yang diset.</p>
+        )}
+      </div>
+
       <Button type="submit" disabled={pending}>
         {pending ? "Menyimpan..." : "Simpan branding"}
       </Button>
