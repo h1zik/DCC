@@ -1,7 +1,6 @@
 "use server";
 
 import { z } from "zod";
-import { NotificationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
@@ -17,6 +16,7 @@ import {
   roomChatMessageInclude,
   type RoomChatMessageView,
 } from "@/lib/room-chat-message-view";
+import { sendWebPushMessage } from "@/lib/web-push";
 
 const sendMessageSchema = z.object({
   roomId: z.string().min(1),
@@ -122,7 +122,7 @@ async function notifyMentionedUsersViaWhatsApp(params: {
   );
 }
 
-async function notifyRoomMembersInApp(params: {
+async function notifyRoomMembersViaPush(params: {
   roomId: string;
   roomName: string;
   authorId: string;
@@ -130,14 +130,28 @@ async function notifyRoomMembersInApp(params: {
   body: string;
   hasGif: boolean;
 }) {
-  const members = await prisma.roomMember.findMany({
+  const subscriptions = await prisma.pushSubscription.findMany({
     where: {
-      roomId: params.roomId,
-      userId: { not: params.authorId },
+      userId: {
+        in: (
+          await prisma.roomMember.findMany({
+            where: {
+              roomId: params.roomId,
+              userId: { not: params.authorId },
+            },
+            select: { userId: true },
+          })
+        ).map((m) => m.userId),
+      },
     },
-    select: { userId: true },
+    select: {
+      id: true,
+      endpoint: true,
+      p256dh: true,
+      auth: true,
+    },
   });
-  if (members.length === 0) return;
+  if (subscriptions.length === 0) return;
   const preview = params.body.trim();
   const snippet = preview
     ? preview.length > 90
@@ -148,14 +162,29 @@ async function notifyRoomMembersInApp(params: {
       : "Pesan baru";
   const sender = params.authorName.trim() || "Rekan tim";
   const roomLabel = params.roomName.trim() || "ruangan";
-  const message = `[Chat ${roomLabel}] ${sender}: ${snippet}`;
-  await prisma.notification.createMany({
-    data: members.map((m) => ({
-      userId: m.userId,
-      message,
-      type: NotificationType.SCHEDULE_REMINDER,
-    })),
-  });
+  const invalidSubscriptionIds: string[] = [];
+  await Promise.all(
+    subscriptions.map(async (sub) => {
+      const sent = await sendWebPushMessage({
+        endpoint: sub.endpoint,
+        p256dh: sub.p256dh,
+        auth: sub.auth,
+        payload: {
+          title: `${sender} di ${roomLabel}`,
+          body: snippet,
+          url: `/room/${params.roomId}/chat`,
+        },
+      });
+      if (!sent.ok && sent.reason === "gone") {
+        invalidSubscriptionIds.push(sub.id);
+      }
+    }),
+  );
+  if (invalidSubscriptionIds.length > 0) {
+    await prisma.pushSubscription.deleteMany({
+      where: { id: { in: invalidSubscriptionIds } },
+    });
+  }
 }
 
 export async function addRoomMessage(
@@ -205,7 +234,7 @@ export async function addRoomMessage(
     authorId: session.user.id,
     authorName: session.user.name || session.user.email || "Rekan tim",
   });
-  await notifyRoomMembersInApp({
+  await notifyRoomMembersViaPush({
     roomId: room.id,
     roomName: room.name,
     authorId: session.user.id,

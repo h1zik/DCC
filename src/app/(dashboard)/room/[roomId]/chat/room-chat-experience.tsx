@@ -112,6 +112,12 @@ function insertAtCursor(
   });
 }
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const safeBase64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(safeBase64), (c) => c.charCodeAt(0));
+}
+
 export function RoomChatExperience({
   roomId,
   currentUserId,
@@ -138,7 +144,9 @@ export function RoomChatExperience({
   const [gifLoading, setGifLoading] = useState(false);
   const [giphyConfigured, setGiphyConfigured] = useState<boolean | null>(null);
   const [pasteGif, setPasteGif] = useState("");
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [pushState, setPushState] = useState<
+    "checking" | "ready" | "blocked" | "unsupported" | "not-configured"
+  >("checking");
   const [mentionDraft, setMentionDraft] = useState<MentionDraft | null>(null);
   const [mentionPickIndex, setMentionPickIndex] = useState(0);
   const [pending, startTransition] = useTransition();
@@ -147,7 +155,6 @@ export function RoomChatExperience({
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const messagesRef = useRef<RoomChatMessageView[]>(initialMessages);
   const bodyRef = useRef(body);
   const lastTypingPingRef = useRef(0);
   bodyRef.current = body;
@@ -175,54 +182,90 @@ export function RoomChatExperience({
     setMentionPickIndex((prev) => Math.min(prev, Math.max(0, mentionSuggestions.length - 1)));
   }, [mentionSuggestions.length]);
 
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      setNotificationPermission("unsupported");
+  const syncPushSubscription = useCallback(async () => {
+    if (
+      typeof window === "undefined" ||
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window)
+    ) {
+      setPushState("unsupported");
       return;
     }
-    setNotificationPermission(Notification.permission);
+    if (Notification.permission === "denied") {
+      setPushState("blocked");
+      return;
+    }
+    const keyRes = await fetch("/api/push/subscription", { credentials: "include" });
+    if (!keyRes.ok) {
+      setPushState("not-configured");
+      return;
+    }
+    const keyData = (await keyRes.json()) as { configured?: boolean; publicKey?: string };
+    if (!keyData.configured || !keyData.publicKey) {
+      setPushState("not-configured");
+      return;
+    }
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      await fetch("/api/push/subscription", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(existing.toJSON()),
+      });
+      setPushState("ready");
+      return;
+    }
+    setPushState(Notification.permission === "granted" ? "ready" : "blocked");
   }, []);
 
-  const notifyIncomingMessage = useCallback(
-    (message: RoomChatMessageView) => {
-      if (typeof window === "undefined" || !("Notification" in window)) return;
-      if (Notification.permission !== "granted") return;
-      if (document.visibilityState === "visible") return;
-      const author = authorLabel(message.author.name, message.author.email);
-      const content = message.body.trim();
-      const preview = content
-        ? content.length > 120
-          ? `${content.slice(0, 120)}…`
-          : content
-        : message.gifUrl
-          ? "Mengirim GIF"
-          : "Pesan baru";
-      new Notification(`Pesan baru dari ${author}`, {
-        body: preview,
-        tag: `room-chat-${roomId}`,
-      });
-    },
-    [roomId],
-  );
-
-  const enableBrowserNotification = useCallback(async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      toast.error("Browser ini belum mendukung notifikasi.");
+  const enablePushNotification = useCallback(async () => {
+    if (
+      typeof window === "undefined" ||
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window)
+    ) {
+      setPushState("unsupported");
+      toast.error("Browser ini belum mendukung push notification.");
       return;
     }
     try {
-      const next = await Notification.requestPermission();
-      setNotificationPermission(next);
-      if (next === "granted") toast.success("Notifikasi chat browser aktif.");
-      else toast.error("Izin notifikasi belum diberikan.");
+      const keyRes = await fetch("/api/push/subscription", { credentials: "include" });
+      const keyData = (await keyRes.json()) as { configured?: boolean; publicKey?: string };
+      if (!keyRes.ok || !keyData.configured || !keyData.publicKey) {
+        setPushState("not-configured");
+        toast.error("Push notification belum dikonfigurasi di server.");
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushState("blocked");
+        toast.error("Izin notifikasi belum diberikan.");
+        return;
+      }
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      const serverKey = urlBase64ToUint8Array(keyData.publicKey);
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: serverKey,
+      });
+      await fetch("/api/push/subscription", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+      setPushState("ready");
+      toast.success("Push notification chat aktif.");
     } catch {
-      toast.error("Gagal meminta izin notifikasi browser.");
+      toast.error("Gagal mengaktifkan push notification.");
     }
   }, []);
+
+  useEffect(() => {
+    void syncPushSubscription();
+  }, [syncPushSubscription]);
 
   const scrollToMessage = useCallback((id: string) => {
     const el = messageRefs.current.get(id);
@@ -260,12 +303,6 @@ export function RoomChatExperience({
             : [],
         );
         const incoming = j.messages;
-        const knownIds = new Set(messagesRef.current.map((m) => m.id));
-        const freshIncoming = incoming.filter(
-          (m) => !knownIds.has(m.id) && m.author.id !== currentUserId,
-        );
-        const newestIncoming = freshIncoming[freshIncoming.length - 1];
-        if (newestIncoming) notifyIncomingMessage(newestIncoming);
         setMessages((prev) => {
           if (incoming.length < prev.length) {
             return incoming;
@@ -296,7 +333,7 @@ export function RoomChatExperience({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [currentUserId, notifyIncomingMessage, roomId]);
+  }, [roomId]);
 
   useEffect(() => {
     if (!body.trim()) return;
@@ -616,13 +653,22 @@ export function RoomChatExperience({
             {typingUsers.length > 1 ? ` +${typingUsers.length - 1} lainnya` : ""}
           </p>
         ) : null}
-        {notificationPermission !== "unsupported" &&
-        notificationPermission !== "granted" ? (
+        {pushState !== "ready" ? (
           <div className="bg-muted/60 flex items-center justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5 text-xs">
             <p className="text-muted-foreground">
-              Aktifkan notifikasi browser agar pesan baru muncul sebagai push notification.
+              {pushState === "unsupported"
+                ? "Browser ini belum mendukung push notification."
+                : pushState === "not-configured"
+                  ? "Push notification belum dikonfigurasi di server."
+                  : "Aktifkan push notification agar chat bisa bunyi/getar di device."}
             </p>
-            <Button type="button" variant="outline" size="sm" onClick={() => void enableBrowserNotification()}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void enablePushNotification()}
+              disabled={pushState === "unsupported" || pushState === "not-configured"}
+            >
               Aktifkan
             </Button>
           </div>

@@ -154,6 +154,7 @@ model User {
   updatedAt     DateTime  @updatedAt
   taskAssignments TaskAssignee[]
   notifications Notification[]
+  pushSubscriptions PushSubscription[]
   taskComments      TaskComment[]
   taskAttachments   TaskAttachment[]
   roomMessages      RoomMessage[]
@@ -164,6 +165,21 @@ model User {
   scheduleEventsCreated     ScheduleEvent[]       @relation("ScheduleEventCreator")
   scheduleParticipations    ScheduleEventParticipant[]
   scheduleReminderLogs      ScheduleReminderSent[]
+}
+
+model PushSubscription {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint     String   @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastUsedAt   DateTime?
+
+  @@index([userId])
 }
 
 model Brand {
