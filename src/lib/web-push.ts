@@ -53,9 +53,12 @@ export async function sendWebPushMessage(params: {
       typeof (error as { statusCode?: unknown }).statusCode === "number"
         ? (error as { statusCode: number }).statusCode
         : null;
+    const reason =
+      statusCode === 404 || statusCode === 410 ? "gone" as const : "failed" as const;
     return {
       ok: false as const,
-      reason: statusCode === 404 || statusCode === 410 ? "gone" as const : "failed" as const,
+      reason,
+      statusCode,
     };
   }
 }

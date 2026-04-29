@@ -177,6 +177,13 @@ async function notifyRoomMembersViaPush(params: {
       });
       if (!sent.ok && sent.reason === "gone") {
         invalidSubscriptionIds.push(sub.id);
+      } else if (!sent.ok) {
+        console.error("[room-chat] push send failed", {
+          roomId: params.roomId,
+          subscriptionId: sub.id,
+          reason: sent.reason,
+          statusCode: sent.statusCode ?? null,
+        });
       }
     }),
   );

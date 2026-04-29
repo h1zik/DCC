@@ -145,7 +145,7 @@ export function RoomChatExperience({
   const [giphyConfigured, setGiphyConfigured] = useState<boolean | null>(null);
   const [pasteGif, setPasteGif] = useState("");
   const [pushState, setPushState] = useState<
-    "checking" | "ready" | "blocked" | "unsupported" | "not-configured"
+    "checking" | "ready" | "needs-activation" | "blocked" | "unsupported" | "not-configured"
   >("checking");
   const [mentionDraft, setMentionDraft] = useState<MentionDraft | null>(null);
   const [mentionPickIndex, setMentionPickIndex] = useState(0);
@@ -217,7 +217,7 @@ export function RoomChatExperience({
       setPushState("ready");
       return;
     }
-    setPushState(Notification.permission === "granted" ? "ready" : "blocked");
+    setPushState("needs-activation");
   }, []);
 
   const enablePushNotification = useCallback(async () => {
@@ -246,6 +246,10 @@ export function RoomChatExperience({
       }
       const registration = await navigator.serviceWorker.register("/sw.js");
       const serverKey = urlBase64ToUint8Array(keyData.publicKey);
+      const currentSub = await registration.pushManager.getSubscription();
+      if (currentSub) {
+        await currentSub.unsubscribe();
+      }
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: serverKey,
@@ -259,6 +263,7 @@ export function RoomChatExperience({
       setPushState("ready");
       toast.success("Push notification chat aktif.");
     } catch {
+      setPushState("needs-activation");
       toast.error("Gagal mengaktifkan push notification.");
     }
   }, []);
@@ -660,6 +665,8 @@ export function RoomChatExperience({
                 ? "Browser ini belum mendukung push notification."
                 : pushState === "not-configured"
                   ? "Push notification belum dikonfigurasi di server."
+                  : pushState === "blocked"
+                    ? "Izin notifikasi diblokir. Ubah ke Allow di setting browser, lalu refresh."
                   : "Aktifkan push notification agar chat bisa bunyi/getar di device."}
             </p>
             <Button
