@@ -206,6 +206,7 @@ export function RoomChatExperience({
       return;
     }
     const registration = await navigator.serviceWorker.register("/sw.js");
+    await registration.update();
     const existing = await registration.pushManager.getSubscription();
     if (existing) {
       await fetch("/api/push/subscription", {
@@ -245,6 +246,7 @@ export function RoomChatExperience({
         return;
       }
       const registration = await navigator.serviceWorker.register("/sw.js");
+      await registration.update();
       const serverKey = urlBase64ToUint8Array(keyData.publicKey);
       const currentSub = await registration.pushManager.getSubscription();
       if (currentSub) {

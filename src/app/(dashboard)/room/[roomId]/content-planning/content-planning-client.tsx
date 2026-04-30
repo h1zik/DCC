@@ -46,19 +46,27 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
+  Bookmark,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
   FileText,
+  Heart,
   Layers,
   LayoutList,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
   Plus,
+  Send,
   Sparkles,
   Trash2,
   UserCircle,
@@ -318,7 +326,13 @@ function PicCell({ pics }: { pics: Pick<User, "id" | "name" | "email" | "image">
   );
 }
 
-function DesignTableCell({ row }: { row: ContentPlanTableRow }) {
+function DesignTableCell({
+  row,
+  onPreview,
+}: {
+  row: ContentPlanTableRow;
+  onPreview?: (row: ContentPlanTableRow) => void;
+}) {
   const paths = row.designFilePaths ?? [];
   const isCarousel = row.jenisKonten === ContentPlanJenis.CAROUSEL;
   if (paths.length === 0) {
@@ -360,6 +374,19 @@ function DesignTableCell({ row }: { row: ContentPlanTableRow }) {
             </a>
           ))}
         </div>
+        {onPreview ? (
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => onPreview(row)}
+            >
+              <Eye className="size-3.5" />
+              Preview
+            </Button>
+          </div>
+        ) : null}
         <ExternalOrText value={row.designLink} />
       </div>
     );
@@ -477,6 +504,125 @@ function CarouselDesignRail({
   );
 }
 
+function CarouselPreviewDialog({
+  row,
+  index,
+  onIndexChange,
+}: {
+  row: ContentPlanTableRow | null;
+  index: number;
+  onIndexChange: (next: number) => void;
+}) {
+  if (!row) return null;
+  const slides = row.designFilePaths ?? [];
+  if (slides.length === 0) return null;
+  const safeIndex = Math.max(0, Math.min(index, slides.length - 1));
+  const current = slides[safeIndex]!;
+  const isImage = isImagePath(current);
+  const caption = row.detailKonten?.trim() || "Preview caption untuk simulasi posting.";
+  const creator = row.createdBy.name?.trim() || row.createdBy.email;
+  return (
+    <div className="mx-auto w-full max-w-sm space-y-3">
+      <div className="border-border overflow-hidden rounded-[1.2rem] border bg-card shadow-sm">
+        <div className="flex items-center justify-between px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold">
+              {creator.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold">{creator}</p>
+              <p className="text-muted-foreground truncate text-[10px]">
+                {row.konten || "Konten carousel"}
+              </p>
+            </div>
+          </div>
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Lainnya">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </div>
+        <div className="bg-muted/30 relative aspect-[4/5] w-full">
+          {isImage ? (
+            <Image
+              src={current}
+              alt={`Slide ${safeIndex + 1}`}
+              fill
+              className="object-cover"
+              unoptimized
+            />
+          ) : (
+            <div className="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-2">
+              <FileText className="size-10" />
+              <p className="text-sm">Pratinjau file non-gambar</p>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between px-3 pt-2">
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="ghost" size="icon-xs" aria-label="Like">
+              <Heart className="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon-xs" aria-label="Comment">
+              <MessageCircle className="size-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon-xs" aria-label="Share">
+              <Send className="size-4" />
+            </Button>
+          </div>
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Save">
+            <Bookmark className="size-4" />
+          </Button>
+        </div>
+        <div className="flex items-center justify-between px-4 py-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-xs"
+            disabled={safeIndex <= 0}
+            onClick={() => onIndexChange(safeIndex - 1)}
+            aria-label="Slide sebelumnya"
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <div className="flex items-center gap-1.5">
+            {slides.map((s, i) => (
+              <button
+                key={`${s}-${i}`}
+                type="button"
+                onClick={() => onIndexChange(i)}
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full transition-all",
+                  i === safeIndex ? "bg-foreground w-4" : "bg-muted-foreground/40",
+                )}
+                aria-label={`Buka slide ${i + 1}`}
+              />
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-xs"
+            disabled={safeIndex >= slides.length - 1}
+            onClick={() => onIndexChange(safeIndex + 1)}
+            aria-label="Slide berikutnya"
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+        <div className="space-y-1 px-3 pb-3">
+          <p className="text-[11px] font-semibold">Disukai 128 akun</p>
+          <p className="text-muted-foreground line-clamp-2 text-[11px]">
+            <span className="text-foreground font-semibold">{creator}</span>{" "}
+            {caption}
+          </p>
+        </div>
+      </div>
+      <p className="text-muted-foreground text-center text-xs">
+        Simulasi tampilan carousel saat sudah diposting.
+      </p>
+    </div>
+  );
+}
+
 export function ContentPlanningClient({
   roomId,
   items,
@@ -514,6 +660,9 @@ export function ContentPlanningClient({
   const [tableRows, setTableRows] = useState<ContentPlanTableRow[]>(items);
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [inlineSavingCell, setInlineSavingCell] = useState<string | null>(null);
+  const [queuedDesignFiles, setQueuedDesignFiles] = useState<File[]>([]);
+  const [previewRow, setPreviewRow] = useState<ContentPlanTableRow | null>(null);
+  const [previewIndex, setPreviewIndex] = useState(0);
 
   const picUserById = useMemo(() => {
     return new Map(picUserOptions.map((u) => [u.id, u]));
@@ -571,6 +720,7 @@ export function ContentPlanningClient({
     setDeadlineDesign("");
     setTanggalPosting("");
     setCatatan("");
+    setQueuedDesignFiles([]);
     if (copyFileRef.current) copyFileRef.current.value = "";
     if (designFileRef.current) designFileRef.current.value = "";
   }, []);
@@ -649,17 +799,16 @@ export function ContentPlanningClient({
         copyInput.value = "";
       }
 
-      const designInput = designFileRef.current;
-      const files = designInput?.files;
-      if (files && files.length > 0) {
-        const list = isCarousel ? Array.from(files) : [files[0]!];
+      if (queuedDesignFiles.length > 0) {
+        const list = isCarousel ? queuedDesignFiles : [queuedDesignFiles[0]!];
         for (const file of list) {
           const fd = new FormData();
           fd.append("file", file);
           fd.append("replaceSingle", isCarousel ? "0" : "1");
           await uploadContentPlanDesignFile(roomId, id, fd);
         }
-        designInput.value = "";
+        setQueuedDesignFiles([]);
+        if (designFileRef.current) designFileRef.current.value = "";
       }
 
       toast.success(editing ? "Baris diperbarui." : "Baris ditambahkan.");
@@ -808,7 +957,15 @@ export function ContentPlanningClient({
       {
         id: "design",
         header: () => <span title="Link / pratinjau file design">Design</span>,
-        cell: ({ row }) => <DesignTableCell row={row.original} />,
+        cell: ({ row }) => (
+          <DesignTableCell
+            row={row.original}
+            onPreview={(previewTarget) => {
+              setPreviewRow(previewTarget);
+              setPreviewIndex(0);
+            }}
+          />
+        ),
       },
       {
         id: "pic",
@@ -1282,13 +1439,63 @@ export function ContentPlanningClient({
                         multiple={isCarousel}
                         accept="image/*,.pdf,.doc,.docx,application/pdf"
                         className="text-muted-foreground cursor-pointer text-xs file:mr-3 file:rounded-md file:border-0 file:bg-accent/30 file:px-2 file:py-1 file:text-xs file:font-medium"
+                        onChange={(e) => {
+                          const picked = Array.from(e.target.files ?? []);
+                          if (picked.length === 0) return;
+                          setQueuedDesignFiles((prev) =>
+                            isCarousel ? [...prev, ...picked] : [picked[0]!],
+                          );
+                          e.currentTarget.value = "";
+                        }}
                       />
                       <p className="text-muted-foreground text-[11px]">
                         {isCarousel
-                          ? "Pilih beberapa gambar sekaligus untuk urutan slide. Simpan form dulu jika ini baris baru, lalu unggah lagi bila perlu."
+                          ? "Pilih file berkali-kali untuk menambah antrean slide. Semua file di bawah akan diunggah saat klik Simpan."
                           : "Satu file menggantikan file sebelumnya. Simpan form setelah memilih file."}
                       </p>
                     </div>
+                    {queuedDesignFiles.length > 0 ? (
+                      <div className="bg-background border-border space-y-2 rounded-lg border p-2.5">
+                        <p className="text-muted-foreground text-[11px] font-medium">
+                          Antrean upload ({queuedDesignFiles.length} file)
+                        </p>
+                        <div className="max-h-40 space-y-1 overflow-y-auto">
+                          {queuedDesignFiles.map((file, idx) => (
+                            <div
+                              key={`${file.name}-${file.size}-${idx}`}
+                              className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-2 py-1.5"
+                            >
+                              <span className="min-w-0 truncate text-xs">
+                                {idx + 1}. {file.name}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label={`Hapus antrean ${file.name}`}
+                                onClick={() =>
+                                  setQueuedDesignFiles((prev) =>
+                                    prev.filter((_, i) => i !== idx),
+                                  )
+                                }
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            onClick={() => setQueuedDesignFiles([])}
+                          >
+                            Kosongkan antrean
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </Card>
@@ -1489,6 +1696,23 @@ export function ContentPlanningClient({
                   {row.detailKonten?.trim() ? (
                     <p className="text-muted-foreground line-clamp-2 text-xs">{row.detailKonten}</p>
                   ) : null}
+                  {row.jenisKonten === ContentPlanJenis.CAROUSEL &&
+                  (row.designFilePaths?.length ?? 0) > 0 ? (
+                    <div className="pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        onClick={() => {
+                          setPreviewRow(row);
+                          setPreviewIndex(0);
+                        }}
+                      >
+                        <Eye className="size-3.5" />
+                        Preview
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               </Card>
             ))}
@@ -1504,6 +1728,27 @@ export function ContentPlanningClient({
           fitViewport
         />
       </div>
+
+      <Dialog
+        open={previewRow !== null}
+        onOpenChange={(openState) => {
+          if (!openState) {
+            setPreviewRow(null);
+            setPreviewIndex(0);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Preview Carousel</DialogTitle>
+          </DialogHeader>
+          <CarouselPreviewDialog
+            row={previewRow}
+            index={previewIndex}
+            onIndexChange={setPreviewIndex}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

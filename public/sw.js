@@ -1,3 +1,11 @@
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -8,12 +16,16 @@ self.addEventListener("push", (event) => {
   const title = typeof data.title === "string" && data.title ? data.title : "Pesan baru";
   const body = typeof data.body === "string" ? data.body : "Ada pesan chat baru.";
   const url = typeof data.url === "string" && data.url ? data.url : "/";
-  const icon = typeof data.icon === "string" && data.icon ? data.icon : "/next.svg";
+  const rawIcon = typeof data.icon === "string" && data.icon ? data.icon : "/next.svg";
+  const icon = rawIcon.startsWith("http")
+    ? rawIcon
+    : new URL(rawIcon, self.location.origin).toString();
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
       icon,
       badge: icon,
+      image: icon,
       vibrate: [200, 120, 200],
       data: { url },
       tag: "dcc-chat-message",
