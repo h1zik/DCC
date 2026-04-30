@@ -363,3 +363,71 @@ export async function clearContentPlanDesignFiles(roomId: string, itemId: string
   revalidateTasksAndRoomHub();
   revalidatePath(`/room/${roomId}/content-planning`);
 }
+
+/**
+ * Tugas Kanban dari Content Planning: saat tugas **Selesai**, salin lampiran file dari
+ * tugas ke `designFilePaths` baris CP (urutan = urutan unggah di tugas) dan set
+ * `statusDesign` ke Dipublikasikan. File design lama di folder CP
+ * (`/uploads/room-content-plan/...`) dihapus dari disk; path `/uploads/tasks/...`
+ * disimpan apa adanya agar carousel/reels tetap bisa dibuka dari CP.
+ */
+export async function syncContentPlanRowFromCompletedKanbanTask(params: {
+  roomId: string;
+  itemId: string;
+  taskId: string;
+  jenisKonten: ContentPlanJenis;
+}) {
+  const attachments = await prisma.taskAttachment.findMany({
+    where: { taskId: params.taskId, publicPath: { not: null } },
+    orderBy: { createdAt: "asc" },
+    select: { publicPath: true, mimeType: true },
+  });
+  const fileRows = attachments.filter((a) =>
+    Boolean(a.publicPath?.startsWith("/uploads/tasks/")),
+  );
+
+  let nextPaths: string[] = [];
+  switch (params.jenisKonten) {
+    case ContentPlanJenis.CAROUSEL: {
+      const imgs = fileRows.filter((a) => a.mimeType.startsWith("image/"));
+      nextPaths = imgs.map((a) => a.publicPath!).slice(0, MAX_DESIGN_SLIDES);
+      break;
+    }
+    case ContentPlanJenis.REELS: {
+      const v =
+        fileRows.find((a) => a.mimeType.startsWith("video/")) ??
+        fileRows.find((a) => a.mimeType.startsWith("image/"));
+      nextPaths = v?.publicPath ? [v.publicPath] : [];
+      break;
+    }
+    case ContentPlanJenis.SINGLE_FEED: {
+      const f = fileRows.find(
+        (a) => a.mimeType.startsWith("image/") || a.mimeType.startsWith("video/"),
+      );
+      nextPaths = f?.publicPath ? [f.publicPath] : [];
+      break;
+    }
+    default:
+      nextPaths = [];
+  }
+
+  const row = await prisma.roomContentPlanItem.findUnique({
+    where: { id: params.itemId },
+    select: { roomId: true, designFilePaths: true },
+  });
+  if (!row || row.roomId !== params.roomId) return;
+
+  for (const p of row.designFilePaths) {
+    await unlinkIfSafe(p);
+  }
+
+  await prisma.roomContentPlanItem.update({
+    where: { id: params.itemId },
+    data: {
+      designFilePaths: nextPaths,
+      statusDesign: ContentPlanStatusKerja.DIPUBLIKASIKAN,
+    },
+  });
+  revalidateTasksAndRoomHub();
+  revalidatePath(`/room/${params.roomId}/content-planning`);
+}

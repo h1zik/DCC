@@ -13,7 +13,7 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
     redirect(`/room/${roomId}/tasks`);
   }
 
-  const [items, memberRows] = await Promise.all([
+  const [items, memberRows, projects] = await Promise.all([
     prisma.roomContentPlanItem.findMany({
       where: { roomId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -27,9 +27,15 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
       include: { user: { select: { id: true, name: true, email: true, image: true } } },
       orderBy: { createdAt: "asc" },
     }),
+    prisma.project.findMany({
+      where: { roomId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    }),
   ]);
 
   const picUserOptions = memberRows.map((m) => m.user);
+  const kanbanProjectId = projects[0]?.id ?? null;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -41,6 +47,7 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
         roomId={roomId}
         items={items}
         picUserOptions={picUserOptions}
+        kanbanProjectId={kanbanProjectId}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ContentPlanJenis,
@@ -9,6 +9,7 @@ import {
   type User,
 } from "@prisma/client";
 import { toast } from "sonner";
+import { createKanbanTasksFromContentPlanDesign } from "@/actions/content-plan-to-kanban";
 import {
   clearContentPlanCopywritingFile,
   clearContentPlanDesignFiles,
@@ -60,6 +61,7 @@ import {
   Eye,
   FileText,
   Heart,
+  LayoutGrid,
   Layers,
   LayoutList,
   MessageCircle,
@@ -343,37 +345,13 @@ function DesignTableCell({
       </div>
     );
   }
-  if (isCarousel && paths.length > 1) {
+  /** Di tabel: carousel tidak tampilkan strip thumbnail (hemat tinggi baris). */
+  if (isCarousel) {
     return (
-      <div className="flex min-w-0 max-w-full flex-col gap-1.5">
-        <div className="flex flex-wrap gap-1">
-          {paths.map((p, i) => (
-            <a
-              key={p}
-              href={p}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={`Slide ${i + 1}`}
-              className="border-border bg-muted/40 overflow-hidden rounded-md border"
-            >
-              {isImagePath(p) ? (
-                <Image
-                  src={p}
-                  alt={`Slide ${i + 1}`}
-                  width={32}
-                  height={40}
-                  className="size-8 object-cover"
-                  unoptimized
-                />
-              ) : (
-                <div className="text-muted-foreground flex size-8 flex-col items-center justify-center gap-0.5">
-                  <FileText className="size-3" />
-                  <span className="text-[8px] font-medium">{i + 1}</span>
-                </div>
-              )}
-            </a>
-          ))}
-        </div>
+      <div className="flex min-w-0 max-w-full flex-col gap-1.5 text-xs">
+        <p className="text-muted-foreground">
+          {paths.length} slide
+        </p>
         {onPreview ? (
           <div>
             <Button
@@ -627,10 +605,12 @@ export function ContentPlanningClient({
   roomId,
   items,
   picUserOptions,
+  kanbanProjectId,
 }: {
   roomId: string;
   items: ContentPlanTableRow[];
   picUserOptions: PicOption[];
+  kanbanProjectId: string | null;
 }) {
   const router = useRouter();
   const copyFileRef = useRef<HTMLInputElement>(null);
@@ -657,6 +637,7 @@ export function ContentPlanningClient({
   const [tanggalPosting, setTanggalPosting] = useState("");
   const [catatan, setCatatan] = useState("");
   const [pending, setPending] = useState(false);
+  const [kanbanPending, startKanban] = useTransition();
   const [tableRows, setTableRows] = useState<ContentPlanTableRow[]>(items);
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [inlineSavingCell, setInlineSavingCell] = useState<string | null>(null);
@@ -1163,6 +1144,36 @@ export function ContentPlanningClient({
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!kanbanProjectId || kanbanPending}
+          title={
+            !kanbanProjectId
+              ? "Butuh minimal satu proyek di ruangan ini untuk membuat tugas Kanban."
+              : "Buat tugas design di Kanban untuk baris dengan deadline design ≤ 7 hari."
+          }
+          onClick={() => {
+            if (!kanbanProjectId) return;
+            startKanban(async () => {
+              try {
+                const { created, skipped } = await createKanbanTasksFromContentPlanDesign({
+                  roomId,
+                  projectId: kanbanProjectId,
+                });
+                toast.success(
+                  `Kanban: ${created} tugas design dibuat${skipped ? `, ${skipped} dilewati (sudah ada / tidak memenuhi syarat).` : "."}`,
+                );
+                router.refresh();
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Gagal menambahkan ke Kanban.");
+              }
+            });
+          }}
+        >
+          <LayoutGrid className="size-4" />
+          {kanbanPending ? "Memproses…" : "Tambahkan ke Kanban"}
+        </Button>
         <Button type="button" onClick={openCreate}>
           <Plus className="size-4" />
           Baris baru

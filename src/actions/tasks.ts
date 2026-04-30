@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  ContentPlanJenis,
   NotificationType,
   type Prisma,
   RoomMemberRole,
@@ -36,11 +37,29 @@ import {
   memberHasRoomProcessAccess,
   roomMemberToProcessAccess,
 } from "@/lib/room-access";
+import { syncContentPlanRowFromCompletedKanbanTask } from "@/actions/room-content-planning";
 
 const moveSchema = z.object({
   taskId: z.string().min(1),
   status: z.nativeEnum(TaskStatus),
 });
+
+async function markContentPlanDesignPublishedIfTaskDone(params: {
+  roomId: string;
+  taskId: string;
+  contentPlanItemId: string | null;
+  contentPlanJenis: ContentPlanJenis | null;
+}) {
+  const { roomId, taskId, contentPlanItemId, contentPlanJenis } = params;
+  if (!contentPlanItemId || !contentPlanJenis) return;
+
+  await syncContentPlanRowFromCompletedKanbanTask({
+    roomId,
+    itemId: contentPlanItemId,
+    taskId,
+    jenisKonten: contentPlanJenis,
+  });
+}
 
 async function validateAssigneesForRoom(params: {
   roomId: string;
@@ -91,11 +110,13 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
       projectId: true,
       title: true,
       status: true,
+      contentPlanItemId: true,
+      contentPlanJenis: true,
       isApprovalRequired: true,
       isApproved: true,
       archivedAt: true,
       project: {
-        include: { brand: true, room: { select: { name: true } } },
+        include: { brand: true, room: { select: { name: true, id: true } } },
       },
       assignees: {
         take: 1,
@@ -128,6 +149,15 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
         : {}),
     },
   });
+
+  if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
+    await markContentPlanDesignPublishedIfTaskDone({
+      roomId: task.project.room.id,
+      taskId: task.id,
+      contentPlanItemId: task.contentPlanItemId,
+      contentPlanJenis: task.contentPlanJenis,
+    });
+  }
 
   const notificationJobs: Promise<unknown>[] = [];
   if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
@@ -226,20 +256,35 @@ export async function unarchiveTask(taskId: string) {
   revalidatePath("/projects");
 }
 
-const createSchema = z.object({
-  projectId: z.string().min(1),
-  title: z.string().min(1),
-  description: z.string().optional().nullable(),
-  assigneeIds: z.array(z.string()).optional(),
-  tagIds: z.array(z.string().min(1)).optional(),
-  priority: z.nativeEnum(TaskPriority),
-  status: z.nativeEnum(TaskStatus).optional(),
-  dueDate: z.coerce.date().optional().nullable(),
-  isApprovalRequired: z.boolean().optional(),
-  vendorId: z.string().optional().nullable(),
-  leadTimeDays: z.coerce.number().int().min(0).optional().nullable(),
-  roomProcess: z.nativeEnum(RoomTaskProcess).optional(),
-});
+const createSchema = z
+  .object({
+    projectId: z.string().min(1),
+    title: z.string().min(1),
+    description: z.string().optional().nullable(),
+    assigneeIds: z.array(z.string()).optional(),
+    tagIds: z.array(z.string().min(1)).optional(),
+    priority: z.nativeEnum(TaskPriority),
+    status: z.nativeEnum(TaskStatus).optional(),
+    dueDate: z.coerce.date().optional().nullable(),
+    isApprovalRequired: z.boolean().optional(),
+    vendorId: z.string().optional().nullable(),
+    leadTimeDays: z.coerce.number().int().min(0).optional().nullable(),
+    roomProcess: z.nativeEnum(RoomTaskProcess).optional(),
+    contentPlanItemId: z.string().min(1).optional().nullable(),
+    contentPlanJenis: z.nativeEnum(ContentPlanJenis).optional().nullable(),
+  })
+  .superRefine((val, ctx) => {
+    const hasId = Boolean(val.contentPlanItemId);
+    const hasJenis = val.contentPlanJenis != null;
+    if (hasId !== hasJenis) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Tautan Content Planning tidak lengkap: isi id baris dan jenis konten, atau kosongkan keduanya.",
+        path: hasId ? ["contentPlanJenis"] : ["contentPlanItemId"],
+      });
+    }
+  });
 
 const taskMutationInclude = {
   project: { include: { brand: true, room: { select: { name: true } } } },
@@ -289,6 +334,20 @@ export async function createTask(
 
   const assigneeIds = [...new Set(data.assigneeIds ?? [])].filter(Boolean);
   const tagIds = [...new Set(data.tagIds ?? [])].filter(Boolean);
+
+  if (data.contentPlanItemId && data.contentPlanJenis) {
+    const row = await prisma.roomContentPlanItem.findFirst({
+      where: { id: data.contentPlanItemId, roomId },
+      select: { id: true, jenisKonten: true },
+    });
+    if (!row) {
+      throw new Error("Baris Content Planning tidak ditemukan di ruangan ini.");
+    }
+    if (row.jenisKonten !== data.contentPlanJenis) {
+      throw new Error("Jenis konten tidak cocok dengan baris Content Planning.");
+    }
+  }
+
   await validateAssigneesForRoom({
     roomId,
     assigneeIds,
@@ -321,6 +380,8 @@ export async function createTask(
       isApprovalRequired: data.isApprovalRequired ?? false,
       vendorId: data.vendorId || undefined,
       leadTimeDays: data.leadTimeDays ?? undefined,
+      contentPlanItemId: data.contentPlanItemId ?? undefined,
+      contentPlanJenis: data.contentPlanJenis ?? undefined,
       sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
       assignees: {
         create: assigneeIds.map((userId) => ({ userId })),
@@ -371,7 +432,7 @@ export async function createTask(
   return task;
 }
 
-const updateSchema = createSchema.extend({
+const updateSchema = createSchema.safeExtend({
   taskId: z.string().min(1),
   status: z.nativeEnum(TaskStatus).optional(),
 });
@@ -388,6 +449,8 @@ export async function updateTask(
       projectId: true,
       roomProcess: true,
       status: true,
+      contentPlanItemId: true,
+      contentPlanJenis: true,
       isApprovalRequired: true,
       isApproved: true,
       assignees: { select: { userId: true } },
@@ -566,6 +629,15 @@ export async function updateTask(
         picDisplayName: task.assignees[0]?.user?.name ?? null,
       }),
     );
+  }
+
+  if (markingDone) {
+    await markContentPlanDesignPublishedIfTaskDone({
+      roomId,
+      taskId: data.taskId,
+      contentPlanItemId: prev.contentPlanItemId,
+      contentPlanJenis: prev.contentPlanJenis,
+    });
   }
 
   if (isHubManager) {

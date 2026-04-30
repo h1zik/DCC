@@ -261,6 +261,7 @@ model RoomContentPlanItem {
   createdBy             User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
+  tasksFromContentPlan  Task[]
 }
 
 model RoomMember {
@@ -378,10 +379,15 @@ model Task {
   attachments        TaskAttachment[]
   assignees          TaskAssignee[]
   tags               TaskTagOnTask[]
+  /** Jika diisi, tugas ini dibuat dari baris Content Planning (alur upload khusus). */
+  contentPlanItemId  String?
+  contentPlanItem    RoomContentPlanItem? @relation(fields: [contentPlanItemId], references: [id], onDelete: SetNull)
+  contentPlanJenis   ContentPlanJenis?
 
   @@index([projectId, roomProcess, archivedAt, sortOrder])
   @@index([projectId, archivedAt, status])
   @@index([projectId, createdAt])
+  @@index([contentPlanItemId])
 }
 
 model TaskTag {

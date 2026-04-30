@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import Image from "next/image";
 import Link from "next/link";
 import {
+  ContentPlanJenis,
   RoomTaskProcess,
   TaskPriority,
   TaskStatus,
@@ -81,6 +82,19 @@ function priorityLabel(p: TaskPriority) {
       return "Rendah";
     default:
       return p;
+  }
+}
+
+function contentPlanJenisLabel(j: ContentPlanJenis) {
+  switch (j) {
+    case ContentPlanJenis.CAROUSEL:
+      return "Carousel";
+    case ContentPlanJenis.REELS:
+      return "Reels";
+    case ContentPlanJenis.SINGLE_FEED:
+      return "Single feed";
+    default:
+      return j;
   }
 }
 
@@ -227,6 +241,47 @@ export function TaskDetailSheet({
     ],
     [vendors],
   );
+
+  const contentPlanAttachmentHint = useMemo(() => {
+    if (!task?.contentPlanItemId || !task.contentPlanJenis) {
+      return {
+        multiple: true as boolean,
+        accept: undefined as string | undefined,
+        helper:
+          "Satu atau beberapa file sekaligus. Pratinjau gambar ditampilkan di bawah. Batas ukuran mengikuti pengaturan server.",
+      };
+    }
+    switch (task.contentPlanJenis) {
+      case ContentPlanJenis.CAROUSEL:
+        return {
+          multiple: true,
+          accept: "image/*",
+          helper:
+            "Carousel: unggah beberapa gambar (disarankan urut slide = urutan unggah). Format gambar umum didukung; batas ukuran mengikuti pengaturan server.",
+        };
+      case ContentPlanJenis.REELS:
+        return {
+          multiple: false,
+          accept: "video/*,image/*",
+          helper:
+            "Reels: biasanya satu file video pendek (boleh juga gambar jika memang statis). Batas ukuran mengikuti pengaturan server.",
+        };
+      case ContentPlanJenis.SINGLE_FEED:
+        return {
+          multiple: false,
+          accept: "image/*,video/*",
+          helper:
+            "Single feed: satu aset utama (gambar atau video). Batas ukuran mengikuti pengaturan server.",
+        };
+      default:
+        return {
+          multiple: true,
+          accept: undefined,
+          helper:
+            "Satu atau beberapa file sekaligus. Pratinjau gambar ditampilkan di bawah. Batas ukuran mengikuti pengaturan server.",
+        };
+    }
+  }, [task?.contentPlanItemId, task?.contentPlanJenis]);
 
   async function persistSave() {
     if (!task) return;
@@ -426,6 +481,22 @@ export function TaskDetailSheet({
                 {taskProjectContextLabel(task.project)} · {task.project.name}
               </SheetDescription>
             </SheetHeader>
+
+            {task.contentPlanItemId && task.contentPlanJenis ? (
+              <div className="border-border bg-muted/40 shrink-0 border-b px-4 py-3 text-sm">
+                <p className="text-foreground font-medium">
+                  Tugas dari Content Planning ·{" "}
+                  {contentPlanJenisLabel(task.contentPlanJenis)}
+                </p>
+                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                  Lampiran di bagian bawah disesuaikan dengan jenis konten. Saat status
+                  tugas menjadi <span className="text-foreground font-medium">Selesai</span>
+                  , file design dari lampiran tugas disalin ke baris Content Planning
+                  (urutan slide = urutan unggah), lalu status design menjadi{" "}
+                  <span className="text-foreground font-medium">Dipublikasikan</span>.
+                </p>
+              </div>
+            ) : null}
 
             <ScrollArea className="min-h-0 flex-1">
               <div className="flex flex-col gap-6 px-4 py-4">
@@ -877,7 +948,8 @@ export function TaskDetailSheet({
                     <input
                       id={`task-attach-${task.id}`}
                       type="file"
-                      multiple
+                      multiple={contentPlanAttachmentHint.multiple}
+                      accept={contentPlanAttachmentHint.accept}
                       disabled={uploadPending}
                       onChange={onFileSelected}
                       className={cn(
@@ -888,9 +960,7 @@ export function TaskDetailSheet({
                       )}
                     />
                     <p className="text-muted-foreground text-xs">
-                      {uploadPending
-                        ? "Mengunggah…"
-                        : "Satu atau beberapa file sekaligus. Pratinjau gambar ditampilkan di bawah. Batas ukuran mengikuti pengaturan server."}
+                      {uploadPending ? "Mengunggah…" : contentPlanAttachmentHint.helper}
                     </p>
                   </div>
                   <div className="space-y-2 border-t border-border pt-3">
