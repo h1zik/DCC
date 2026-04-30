@@ -13,16 +13,6 @@ import { assertRoomMember } from "@/lib/room-access";
 import { isSimpleHubRoom } from "@/lib/room-simple-hub";
 import { createTask } from "@/actions/tasks";
 
-function addDays(d: Date, days: number): Date {
-  const x = new Date(d);
-  x.setDate(x.getDate() + days);
-  return x;
-}
-
-function startOfDayUtc(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
 function buildDesignTaskTitle(konten: string): string {
   const base = konten.trim() || "Konten";
   return `[Design] ${base}`;
@@ -44,18 +34,23 @@ function buildDesignTaskDescription(row: {
 }
 
 /**
- * Buat tugas Kanban (design) dari baris content planning yang:
- * - status design = Baru
- * - deadline design dalam window [hari ini, +7 hari] (inklusif, per hari kalender UTC)
+ * Buat tugas Kanban (design) dari baris Content Planning yang dipilih (`itemIds`).
+ * Hanya baris dengan **status design = Baru** yang diproses; lainnya dihitung lewat.
  *
  * Setelah tugas berhasil dibuat, status design baris diubah ke Dalam Proses.
  */
 export async function createKanbanTasksFromContentPlanDesign(params: {
   roomId: string;
   projectId: string;
+  itemIds: string[];
 }): Promise<{ created: number; skipped: number }> {
   const session = await requireTasksRoomHubSession();
   await assertRoomMember(params.roomId, session.user.id);
+
+  const requested = [...new Set(params.itemIds.map((id) => id.trim()).filter(Boolean))];
+  if (requested.length === 0) {
+    throw new Error("Pilih minimal satu baris content planning.");
+  }
 
   const project = await prisma.project.findFirst({
     where: { id: params.projectId, roomId: params.roomId },
@@ -70,15 +65,8 @@ export async function createKanbanTasksFromContentPlanDesign(params: {
     ? RoomTaskProcess.MARKET_RESEARCH
     : RoomTaskProcess.BRAND_AND_DESIGN;
 
-  const today = startOfDayUtc(new Date());
-  const weekEnd = addDays(today, 7);
-
-  const items = await prisma.roomContentPlanItem.findMany({
-    where: {
-      roomId: params.roomId,
-      statusDesign: ContentPlanStatusKerja.BARU,
-      deadlineDesign: { not: null, gte: today, lte: weekEnd },
-    },
+  const rows = await prisma.roomContentPlanItem.findMany({
+    where: { roomId: params.roomId, id: { in: requested } },
     select: {
       id: true,
       konten: true,
@@ -88,19 +76,27 @@ export async function createKanbanTasksFromContentPlanDesign(params: {
       picUserIds: true,
       picUserId: true,
       deadlineDesign: true,
+      statusDesign: true,
     },
   });
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
 
   let created = 0;
   let skipped = 0;
 
-  for (const row of items) {
-    const due = row.deadlineDesign;
-    if (!due) {
+  for (const id of requested) {
+    const row = byId.get(id);
+    if (!row) {
+      skipped += 1;
+      continue;
+    }
+    if (row.statusDesign !== ContentPlanStatusKerja.BARU) {
       skipped += 1;
       continue;
     }
 
+    const due = row.deadlineDesign ?? undefined;
     const title = buildDesignTaskTitle(row.konten);
     const description = buildDesignTaskDescription({
       id: row.id,
@@ -123,7 +119,7 @@ export async function createKanbanTasksFromContentPlanDesign(params: {
             projectId: params.projectId,
             roomProcess,
             title,
-            dueDate: due,
+            ...(due != null ? { dueDate: due } : { dueDate: null }),
           },
         ],
       },
@@ -141,7 +137,7 @@ export async function createKanbanTasksFromContentPlanDesign(params: {
       assigneeIds: picIds,
       priority: TaskPriority.MEDIUM,
       status: TaskStatus.TODO,
-      dueDate: due,
+      dueDate: due ?? null,
       isApprovalRequired: false,
       roomProcess,
       contentPlanItemId: row.id,

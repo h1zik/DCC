@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   type Column,
   type ColumnDef,
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
   useReactTable,
+  type SortingState,
 } from "@tanstack/react-table";
 import {
   Table,
@@ -24,6 +27,8 @@ interface DataTableProps<TData, TValue> {
   onRowClick?: (row: TData) => void;
   /** Tabel mengisi lebar area; kolom wrap — hindari scroll horizontal. */
   fitViewport?: boolean;
+  /** Urutkan baris di klien (klik header kolom). */
+  sortable?: boolean;
 }
 
 function columnWidthStyle<TData>(
@@ -47,11 +52,18 @@ export function DataTable<TData, TValue>({
   empty = "Tidak ada data.",
   onRowClick,
   fitViewport = false,
+  sortable = false,
 }: DataTableProps<TData, TValue>) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+
   const table = useReactTable({
     data,
     columns,
+    state: sortable ? { sorting } : undefined,
+    onSortingChange: sortable ? setSorting : undefined,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: sortable ? getSortedRowModel() : undefined,
+    enableSorting: sortable,
   });
 
   return (

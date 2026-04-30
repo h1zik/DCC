@@ -54,6 +54,9 @@ import { cn } from "@/lib/utils";
 import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Bookmark,
   CalendarDays,
   ChevronLeft,
@@ -73,7 +76,7 @@ import {
   Trash2,
   UserCircle,
 } from "lucide-react";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { Column, ColumnDef } from "@tanstack/react-table";
 
 const JENIS_LABEL: Record<ContentPlanJenis, string> = {
   [ContentPlanJenis.REELS]: "Reels",
@@ -165,6 +168,47 @@ function formatDateShort(v: Date | string | null | undefined): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yy = String(d.getFullYear()).slice(-2);
   return `${dd}/${mm}/${yy}`;
+}
+
+function cpDateSortValue(v: Date | string | null | undefined): number | null {
+  if (v == null || v === "") return null;
+  const d = typeof v === "string" ? new Date(v) : v;
+  const t = d.getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function CpColumnHeader({
+  column,
+  children,
+  className,
+}: {
+  column: Column<ContentPlanTableRow, unknown>;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  if (!column.getCanSort()) {
+    return <span className={className}>{children}</span>;
+  }
+  const sorted = column.getIsSorted();
+  return (
+    <button
+      type="button"
+      className={cn(
+        "text-foreground inline-flex max-w-full min-w-0 items-center gap-0.5 text-left font-medium hover:underline",
+        className,
+      )}
+      onClick={column.getToggleSortingHandler()}
+    >
+      <span className="min-w-0">{children}</span>
+      {sorted === "asc" ? (
+        <ArrowUp className="text-muted-foreground size-3 shrink-0" aria-hidden />
+      ) : sorted === "desc" ? (
+        <ArrowDown className="text-muted-foreground size-3 shrink-0" aria-hidden />
+      ) : (
+        <ArrowUpDown className="text-muted-foreground size-3 shrink-0 opacity-40" aria-hidden />
+      )}
+    </button>
+  );
 }
 
 function isImagePath(publicPath: string): boolean {
@@ -644,6 +688,21 @@ export function ContentPlanningClient({
   const [queuedDesignFiles, setQueuedDesignFiles] = useState<File[]>([]);
   const [previewRow, setPreviewRow] = useState<ContentPlanTableRow | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [kanbanSelectedIds, setKanbanSelectedIds] = useState<string[]>([]);
+
+  const kanbanSet = useMemo(() => new Set(kanbanSelectedIds), [kanbanSelectedIds]);
+
+  const kanbanEligibleIds = useMemo(
+    () =>
+      tableRows
+        .filter((r) => r.statusDesign === ContentPlanStatusKerja.BARU)
+        .map((r) => r.id),
+    [tableRows],
+  );
+
+  const kanbanEligibleCount = kanbanEligibleIds.length;
+  const allKanbanSelected =
+    kanbanEligibleCount > 0 && kanbanEligibleIds.every((id) => kanbanSet.has(id));
 
   const picUserById = useMemo(() => {
     return new Map(picUserOptions.map((u) => [u.id, u]));
@@ -671,6 +730,21 @@ export function ContentPlanningClient({
   useEffect(() => {
     setTableRows(items.map(withResolvedPics));
   }, [items, withResolvedPics]);
+
+  useEffect(() => {
+    const eligible = new Set(
+      tableRows
+        .filter((r) => r.statusDesign === ContentPlanStatusKerja.BARU)
+        .map((r) => r.id),
+    );
+    setKanbanSelectedIds((prev) => prev.filter((id) => eligible.has(id)));
+  }, [tableRows]);
+
+  const toggleKanbanSelect = useCallback((id: string) => {
+    setKanbanSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }, []);
 
   const isCarousel = jenisKonten === ContentPlanJenis.CAROUSEL;
 
@@ -848,8 +922,49 @@ export function ContentPlanningClient({
   const columns = useMemo<ColumnDef<ContentPlanTableRow>[]>(
     () => [
       {
+        id: "kanbanPick",
+        size: 40,
+        minSize: 36,
+        maxSize: 48,
+        enableSorting: false,
+        header: () => (
+          <div className="flex justify-center px-0.5">
+            <Checkbox
+              checked={kanbanEligibleCount > 0 && allKanbanSelected}
+              disabled={kanbanEligibleCount === 0}
+              aria-label="Pilih semua baris (status design Baru) untuk Kanban"
+              onCheckedChange={(v) => {
+                if (v === true) setKanbanSelectedIds([...kanbanEligibleIds]);
+                else setKanbanSelectedIds([]);
+              }}
+            />
+          </div>
+        ),
+        cell: ({ row }) => {
+          const eligible = row.original.statusDesign === ContentPlanStatusKerja.BARU;
+          if (!eligible) {
+            return (
+              <span className="text-muted-foreground flex justify-center text-xs">—</span>
+            );
+          }
+          return (
+            <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+              <Checkbox
+                checked={kanbanSet.has(row.original.id)}
+                aria-label={`Tambahkan "${row.original.konten || "baris"}" ke Kanban`}
+                onCheckedChange={() => toggleKanbanSelect(row.original.id)}
+              />
+            </div>
+          );
+        },
+      },
+      {
         accessorKey: "konten",
-        header: () => <span title="Konten (nama)">Konten</span>,
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Konten (nama)">Konten</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => {
           const cellKey = `${row.original.id}:konten`;
           return (
@@ -874,7 +989,13 @@ export function ContentPlanningClient({
       },
       {
         id: "jenis",
-        header: () => <span title="Jenis konten">Jenis</span>,
+        accessorFn: (row) => row.jenisKonten,
+        sortUndefined: "last",
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Jenis konten">Jenis</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => {
           const cellKey = `${row.original.id}:jenis`;
           return (
@@ -911,7 +1032,12 @@ export function ContentPlanningClient({
       },
       {
         id: "detail",
-        header: () => <span title="Detail konten">Detail</span>,
+        accessorFn: (row) => (row.detailKonten ?? "").toLowerCase(),
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Detail konten">Detail</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => {
           const t = row.original.detailKonten;
           if (!t?.trim()) return <span className="text-muted-foreground">—</span>;
@@ -927,7 +1053,13 @@ export function ContentPlanningClient({
       },
       {
         id: "cw",
-        header: () => <span title="File copywriting">Copy</span>,
+        accessorFn: (row) =>
+          [row.copywritingFilePath, row.copywritingLink].filter(Boolean).join(" "),
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="File copywriting">Copy</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => (
           <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
             <FileLink path={row.original.copywritingFilePath} short="Unduh file" />
@@ -937,7 +1069,13 @@ export function ContentPlanningClient({
       },
       {
         id: "design",
-        header: () => <span title="Link / pratinjau file design">Design</span>,
+        accessorFn: (row) =>
+          row.designFilePaths.length + (row.designLink?.trim() ? 1 : 0),
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Link / pratinjau file design">Design</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => (
           <DesignTableCell
             row={row.original}
@@ -950,20 +1088,31 @@ export function ContentPlanningClient({
       },
       {
         id: "pic",
-        header: () => <span title="Penanggung jawab">PIC</span>,
+        accessorFn: (row) =>
+          (row.pics ?? [])
+            .map((p) => (p.name?.trim() || p.email).toLowerCase())
+            .join(", "),
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Penanggung jawab">PIC</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => <PicCell pics={row.original.pics ?? []} />,
       },
       {
         id: "stCw",
-        header: () => (
-          <span
-            className={cn(STATUS_COL_BOX, "inline-block leading-tight")}
-            title="Status copywriting"
-          >
-            Status
-            <br />
-            copy
-          </span>
+        accessorFn: (row) => row.statusCopywriting,
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span
+              className={cn(STATUS_COL_BOX, "inline-block leading-tight")}
+              title="Status copywriting"
+            >
+              Status
+              <br />
+              copy
+            </span>
+          </CpColumnHeader>
         ),
         cell: ({ row }) => {
           const cellKey = `${row.original.id}:stCw`;
@@ -1001,15 +1150,18 @@ export function ContentPlanningClient({
       },
       {
         id: "stDes",
-        header: () => (
-          <span
-            className={cn(STATUS_COL_BOX, "inline-block leading-tight")}
-            title="Status design"
-          >
-            Status
-            <br />
-            design
-          </span>
+        accessorFn: (row) => row.statusDesign,
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span
+              className={cn(STATUS_COL_BOX, "inline-block leading-tight")}
+              title="Status design"
+            >
+              Status
+              <br />
+              design
+            </span>
+          </CpColumnHeader>
         ),
         cell: ({ row }) => {
           const cellKey = `${row.original.id}:stDes`;
@@ -1047,12 +1199,16 @@ export function ContentPlanningClient({
       },
       {
         id: "dlCw",
-        header: () => (
-          <span className="inline-block max-w-[3.75rem] leading-tight" title="Deadline copywriting">
-            DL
-            <br />
-            copy
-          </span>
+        accessorFn: (row) => cpDateSortValue(row.deadlineCopywriting),
+        sortUndefined: "last",
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span className="inline-block max-w-[3.75rem] leading-tight" title="Deadline copywriting">
+              DL
+              <br />
+              copy
+            </span>
+          </CpColumnHeader>
         ),
         cell: ({ row }) => (
           <span className="text-muted-foreground text-xs">{formatDateShort(row.original.deadlineCopywriting)}</span>
@@ -1060,12 +1216,16 @@ export function ContentPlanningClient({
       },
       {
         id: "dlDes",
-        header: () => (
-          <span className="inline-block max-w-[3.75rem] leading-tight" title="Deadline design">
-            DL
-            <br />
-            design
-          </span>
+        accessorFn: (row) => cpDateSortValue(row.deadlineDesign),
+        sortUndefined: "last",
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span className="inline-block max-w-[3.75rem] leading-tight" title="Deadline design">
+              DL
+              <br />
+              design
+            </span>
+          </CpColumnHeader>
         ),
         cell: ({ row }) => (
           <span className="text-muted-foreground text-xs">{formatDateShort(row.original.deadlineDesign)}</span>
@@ -1073,14 +1233,25 @@ export function ContentPlanningClient({
       },
       {
         id: "post",
-        header: () => <span title="Tanggal postingan">Posting</span>,
+        accessorFn: (row) => cpDateSortValue(row.tanggalPosting),
+        sortUndefined: "last",
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Tanggal postingan">Posting</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => (
           <span className="text-muted-foreground text-xs">{formatDateShort(row.original.tanggalPosting)}</span>
         ),
       },
       {
         id: "catatan",
-        header: () => <span title="Catatan internal">Cat.</span>,
+        accessorFn: (row) => (row.catatan ?? "").toLowerCase(),
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Catatan internal">Cat.</span>
+          </CpColumnHeader>
+        ),
         cell: ({ row }) => {
           const t = row.original.catatan;
           if (!t?.trim()) return <span className="text-muted-foreground">—</span>;
@@ -1096,6 +1267,7 @@ export function ContentPlanningClient({
       },
       {
         id: "actions",
+        enableSorting: false,
         header: "",
         cell: ({ row }) => (
           <div onClick={(e) => e.stopPropagation()}>
@@ -1128,13 +1300,18 @@ export function ContentPlanningClient({
     ],
     [
       activeCell,
+      allKanbanSelected,
       inlineSavingCell,
       jenisKontenSelectItems,
+      kanbanEligibleCount,
+      kanbanEligibleIds,
+      kanbanSet,
       onDelete,
       openEdit,
       roomId,
       saveInlineRow,
       statusKerjaSelectItems,
+      toggleKanbanSelect,
     ],
   );
 
@@ -1147,23 +1324,27 @@ export function ContentPlanningClient({
         <Button
           type="button"
           variant="outline"
-          disabled={!kanbanProjectId || kanbanPending}
+          disabled={!kanbanProjectId || kanbanPending || kanbanSelectedIds.length === 0}
           title={
             !kanbanProjectId
               ? "Butuh minimal satu proyek di ruangan ini untuk membuat tugas Kanban."
-              : "Buat tugas design di Kanban untuk baris dengan deadline design ≤ 7 hari."
+              : kanbanSelectedIds.length === 0
+                ? "Centang satu atau lebih baris (status design Baru), lalu tambahkan ke Kanban."
+                : "Buat tugas design di Kanban untuk baris yang dicentang."
           }
           onClick={() => {
-            if (!kanbanProjectId) return;
+            if (!kanbanProjectId || kanbanSelectedIds.length === 0) return;
             startKanban(async () => {
               try {
                 const { created, skipped } = await createKanbanTasksFromContentPlanDesign({
                   roomId,
                   projectId: kanbanProjectId,
+                  itemIds: kanbanSelectedIds,
                 });
                 toast.success(
-                  `Kanban: ${created} tugas design dibuat${skipped ? `, ${skipped} dilewati (sudah ada / tidak memenuhi syarat).` : "."}`,
+                  `Kanban: ${created} tugas design dibuat${skipped ? `, ${skipped} dilewati (bukan Baru / sudah ada tugas).` : "."}`,
                 );
+                setKanbanSelectedIds([]);
                 router.refresh();
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : "Gagal menambahkan ke Kanban.");
@@ -1636,7 +1817,20 @@ export function ContentPlanningClient({
               <Card key={row.id} size="sm" className="shadow-none ring-border/60">
                 <div className="space-y-3 px-4 py-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 space-y-1">
+                    {row.statusDesign === ContentPlanStatusKerja.BARU ? (
+                      <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={kanbanSet.has(row.id)}
+                          aria-label={`Tambahkan "${row.konten || "baris"}" ke Kanban`}
+                          onCheckedChange={() => toggleKanbanSelect(row.id)}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground w-5 shrink-0 text-center text-xs" title="Hanya status design Baru yang bisa ditambahkan ke Kanban">
+                        —
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1 space-y-1">
                       <p className="truncate text-sm font-semibold">{row.konten || "—"}</p>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <JenisBadge jenis={row.jenisKonten} />
@@ -1737,6 +1931,7 @@ export function ContentPlanningClient({
           data={tableRows}
           empty="Belum ada baris. Tambahkan konten lewat tombol Baris baru."
           fitViewport
+          sortable
         />
       </div>
 
