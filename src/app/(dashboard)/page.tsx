@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { StockLogType, TaskStatus, UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import {
   AlertTriangle,
   Boxes,
@@ -69,108 +70,145 @@ function parseSystemMeta(row: SalesLogRow): {
   };
 }
 
+const getExecutiveDashboardData = unstable_cache(
+  async () => {
+    const [
+      products,
+      pipelineProjects,
+      salesLogs,
+      activeSuppliers,
+      overdueTasks,
+      readyLaunchProjects,
+      pendingTaskApprovals,
+      pendingPipelineApprovals,
+    ] = await Promise.all([
+      prisma.product.findMany({
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          currentStock: true,
+          minStock: true,
+          brand: { select: { name: true } },
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.project.findMany({
+        where: { brandId: { not: null } },
+        select: {
+          currentStage: true,
+          pendingPipelineStage: true,
+        },
+      }),
+      prisma.stockLog.findMany({
+        where: { type: StockLogType.OUT },
+        select: {
+          id: true,
+          amount: true,
+          type: true,
+          salesCategory: true,
+          note: true,
+          product: { select: { brand: { select: { name: true } } } },
+        },
+      }),
+      prisma.vendor.count(),
+      prisma.task.count({
+        where: { status: TaskStatus.OVERDUE, archivedAt: null },
+      }),
+      prisma.project.count({
+        where: { totalProgress: 100, brandId: { not: null } },
+      }),
+      prisma.task.count({
+        where: { isApprovalRequired: true, isApproved: false },
+      }),
+      prisma.project.count({
+        where: {
+          pendingPipelineStage: { not: null },
+          brandId: { not: null },
+        } as never,
+      }),
+    ]);
+
+    const pendingApprovals = pendingTaskApprovals + pendingPipelineApprovals;
+    const activeSkus = products.length;
+    const attentionCount = products.filter(
+      (p) => getStockHealth(p.currentStock, p.minStock) !== "OK",
+    ).length;
+    const critical = products.filter((p) =>
+      needsUrgentReorder(p.currentStock, p.minStock),
+    );
+
+    const pipelineCounts = PIPELINE_ORDER.map((stage) => ({
+      stage,
+      label: PIPELINE_LABELS[stage],
+      count: pipelineProjects.filter((p) => p.currentStage === stage).length,
+      pendingCount: pipelineProjects.filter((p) => p.pendingPipelineStage === stage)
+        .length,
+    }));
+
+    const businessLogs = salesLogs.filter((row): row is SalesLogRow => !isSystemLog(row));
+    const correctionLogs = salesLogs.filter((row): row is SalesLogRow => isSystemLog(row));
+
+    const replacementByTargetId = new Map<string, SalesLogRow>();
+    const voidTargetIds = new Set<string>();
+    for (const row of correctionLogs) {
+      const meta = parseSystemMeta(row);
+      if (!meta.targetId) continue;
+      if (meta.action === "REPLACEMENT") replacementByTargetId.set(meta.targetId, row);
+      if (meta.action === "VOID") voidTargetIds.add(meta.targetId);
+    }
+
+    const effectiveSalesLogs = businessLogs
+      .filter((row) => !voidTargetIds.has(row.id))
+      .map((row) => replacementByTargetId.get(row.id) ?? row)
+      .filter((row) => row.type === StockLogType.OUT);
+
+    const pcsByBrand = effectiveSalesLogs.reduce<
+      Record<string, { total: number; sales: number; sampling: number }>
+    >((acc, row) => {
+      const key = row.product.brand.name.trim() || "Tanpa brand";
+      const current = acc[key] ?? { total: 0, sales: 0, sampling: 0 };
+      current.total += row.amount;
+      if (row.salesCategory === "sampling") current.sampling += row.amount;
+      else current.sales += row.amount;
+      acc[key] = current;
+      return acc;
+    }, {});
+    const outgoingByBrandRows = Object.entries(pcsByBrand).sort(
+      (a, b) => b[1].total - a[1].total,
+    );
+
+    return {
+      activeSkus,
+      activeSuppliers,
+      attentionCount,
+      overdueTasks,
+      readyLaunchProjects,
+      pendingApprovals,
+      critical,
+      pipelineCounts,
+      outgoingByBrandRows,
+    };
+  },
+  ["executive-dashboard-metrics"],
+  { revalidate: 60 },
+);
+
 export default async function ExecutiveDashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== UserRole.CEO) redirect("/inventory");
-
-  const products = await prisma.product.findMany({
-    include: { brand: true },
-    orderBy: { name: "asc" },
-  });
-  const pipelineProjects = await prisma.project.findMany({
-    where: { brandId: { not: null } },
-    select: {
-      currentStage: true,
-      pendingPipelineStage: true,
-    },
-  });
-  const salesLogs = await prisma.stockLog.findMany({
-    where: { type: StockLogType.OUT },
-    select: {
-      id: true,
-      amount: true,
-      type: true,
-      salesCategory: true,
-      note: true,
-      product: { select: { brand: { select: { name: true } } } },
-    },
-  });
-
-  const [
+  const {
+    activeSkus,
     activeSuppliers,
+    attentionCount,
     overdueTasks,
     readyLaunchProjects,
-    pendingTaskApprovals,
-    pendingPipelineApprovals,
-  ] = await Promise.all([
-    prisma.vendor.count(),
-    prisma.task.count({
-      where: { status: TaskStatus.OVERDUE, archivedAt: null },
-    }),
-    prisma.project.count({
-      where: { totalProgress: 100, brandId: { not: null } },
-    }),
-    prisma.task.count({
-      where: { isApprovalRequired: true, isApproved: false },
-    }),
-    prisma.project.count({
-      where: {
-        pendingPipelineStage: { not: null },
-        brandId: { not: null },
-      } as never,
-    }),
-  ]);
-  const pendingApprovals = pendingTaskApprovals + pendingPipelineApprovals;
-
-  const activeSkus = products.length;
-
-  const attentionCount = products.filter(
-    (p) => getStockHealth(p.currentStock, p.minStock) !== "OK",
-  ).length;
-
-  const critical = products.filter((p) =>
-    needsUrgentReorder(p.currentStock, p.minStock),
-  );
-
-  const pipelineCounts = PIPELINE_ORDER.map((stage) => ({
-    stage,
-    label: PIPELINE_LABELS[stage],
-    count: pipelineProjects.filter((p) => p.currentStage === stage).length,
-    pendingCount: pipelineProjects.filter((p) => p.pendingPipelineStage === stage)
-      .length,
-  }));
-  const businessLogs = salesLogs.filter((row): row is SalesLogRow => !isSystemLog(row));
-  const correctionLogs = salesLogs.filter((row): row is SalesLogRow => isSystemLog(row));
-
-  const replacementByTargetId = new Map<string, SalesLogRow>();
-  const voidTargetIds = new Set<string>();
-  for (const row of correctionLogs) {
-    const meta = parseSystemMeta(row);
-    if (!meta.targetId) continue;
-    if (meta.action === "REPLACEMENT") replacementByTargetId.set(meta.targetId, row);
-    if (meta.action === "VOID") voidTargetIds.add(meta.targetId);
-  }
-
-  const effectiveSalesLogs = businessLogs
-    .filter((row) => !voidTargetIds.has(row.id))
-    .map((row) => replacementByTargetId.get(row.id) ?? row)
-    .filter((row) => row.type === StockLogType.OUT);
-
-  const pcsByBrand = effectiveSalesLogs.reduce<
-    Record<string, { total: number; sales: number; sampling: number }>
-  >((acc, row) => {
-    const key = row.product.brand.name.trim() || "Tanpa brand";
-    const current = acc[key] ?? { total: 0, sales: 0, sampling: 0 };
-    current.total += row.amount;
-    if (row.salesCategory === "sampling") current.sampling += row.amount;
-    else current.sales += row.amount;
-    acc[key] = current;
-    return acc;
-  }, {});
-  const outgoingByBrandRows = Object.entries(pcsByBrand).sort(
-    (a, b) => b[1].total - a[1].total,
-  );
+    pendingApprovals,
+    critical,
+    pipelineCounts,
+    outgoingByBrandRows,
+  } = await getExecutiveDashboardData();
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
