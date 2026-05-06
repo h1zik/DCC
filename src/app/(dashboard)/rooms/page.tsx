@@ -24,7 +24,9 @@ export default async function RoomsPage() {
     }),
     prisma.brand.findMany({ orderBy: { name: "asc" } }),
     prisma.user.findMany({
-      where: { role: { notIn: [UserRole.LOGISTICS, UserRole.CEO] } },
+      where: {
+          role: { notIn: [UserRole.LOGISTICS, UserRole.FINANCE, UserRole.CEO] },
+        },
       orderBy: { email: "asc" },
       select: { id: true, name: true, email: true, role: true },
     }),

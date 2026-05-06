@@ -33,6 +33,8 @@ enum UserRole {
   BUSINESS_ANALYST
   COPYWRITER
   PROJECT_MANAGER
+  /** Akuntansi & treasury; akses modul keuangan. */
+  FINANCE
 }
 
 enum TaskStatus {
@@ -165,6 +167,11 @@ model User {
   scheduleEventsCreated     ScheduleEvent[]       @relation("ScheduleEventCreator")
   scheduleParticipations    ScheduleEventParticipant[]
   scheduleReminderLogs      ScheduleReminderSent[]
+  financeJournalEntries        FinanceJournalEntry[]
+  financeApPaymentsRecorded    FinanceApPayment[]    @relation("FinanceApPaymentRecorder")
+  financeArPaymentsRecorded    FinanceArPayment[]    @relation("FinanceArPaymentRecorder")
+  financeSpendRequests         FinanceSpendRequest[] @relation("FinanceSpendRequester")
+  financeSpendApprovals     FinanceSpendRequest[] @relation("FinanceSpendApprover")
 }
 
 model PushSubscription {
@@ -192,6 +199,11 @@ model Brand {
   products  Product[]
   projects  Project[]
   rooms     Room[]
+  financeJournalLines FinanceJournalLine[]
+  financeApBills      FinanceApBill[]
+  financeArInvoices   FinanceArInvoice[]
+  financeBudgetLines  FinanceBudgetLine[]
+  financeSpendRequests FinanceSpendRequest[]
 }
 
 /** Ruang kerja tim (mis. Room Archipelago) — konteks sebelum Kanban. */
@@ -485,6 +497,7 @@ model Vendor {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   tasks     Task[]
+  financeApBills FinanceApBill[]
 }
 
 model Product {
@@ -571,4 +584,284 @@ model AppBranding {
   pushIconPath String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// --- Modul keuangan (Finance) ---
+
+enum FinanceLedgerType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum FinanceJournalStatus {
+  DRAFT
+  POSTED
+}
+
+enum FinanceApArDocStatus {
+  OPEN
+  PARTIAL
+  PAID
+  VOID
+}
+
+enum FinanceSpendRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum FinanceDepreciationMethod {
+  STRAIGHT_LINE
+}
+
+model FinanceLedgerAccount {
+  id        String            @id @default(cuid())
+  code      String            @unique
+  name      String
+  type      FinanceLedgerType
+  parentId  String?
+  parent    FinanceLedgerAccount?  @relation("CoaHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  FinanceLedgerAccount[] @relation("CoaHierarchy")
+  isActive  Boolean           @default(true)
+  sortOrder Int               @default(0)
+  /** Untuk laporan arus kas (Kas, Bank, e-wallet operasional). */
+  tracksCashflow Boolean      @default(false)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  journalLines          FinanceJournalLine[]
+  bankAccounts          FinanceBankAccount[]
+  budgetLines           FinanceBudgetLine[]
+  fixedAssetsAsset      FinanceFixedAsset[] @relation("FaAssetCoa")
+  fixedAssetsAccum      FinanceFixedAsset[] @relation("FaAccumCoa")
+  fixedAssetsExpense    FinanceFixedAsset[] @relation("FaExpenseCoa")
+  spendRequestsExpense  FinanceSpendRequest[]
+}
+
+model FinanceFxRate {
+  id           String   @id @default(cuid())
+  currencyCode String   @db.VarChar(3)
+  rateToBase   Decimal  @db.Decimal(18, 6)
+  validFrom    DateTime
+  createdAt    DateTime @default(now())
+
+  @@unique([currencyCode, validFrom])
+  @@index([currencyCode])
+}
+
+model FinanceJournalEntry {
+  id          String               @id @default(cuid())
+  entryDate   DateTime
+  reference   String?
+  memo        String?
+  status      FinanceJournalStatus @default(DRAFT)
+  createdById String
+  createdBy   User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  postedAt    DateTime?
+  lines       FinanceJournalLine[]
+  apPayments  FinanceApPayment[]
+  arPayments  FinanceArPayment[]
+  spendPayouts FinanceSpendRequest[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([entryDate])
+  @@index([status])
+}
+
+model FinanceJournalLine {
+  id           String              @id @default(cuid())
+  entryId      String
+  entry        FinanceJournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId    String
+  account      FinanceLedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  memo         String?
+  debitBase    Decimal             @default(0) @db.Decimal(18, 2)
+  creditBase   Decimal             @default(0) @db.Decimal(18, 2)
+  currencyCode String              @default("IDR") @db.VarChar(3)
+  amountForeign Decimal?           @db.Decimal(18, 2)
+  fxRateSnapshot Decimal?         @db.Decimal(18, 6)
+  brandId      String?
+  brand        Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  bankMatches BankStatementLine[]
+
+  @@index([accountId])
+  @@index([entryId])
+}
+
+model FinanceBankAccount {
+  id              String   @id @default(cuid())
+  name            String
+  ledgerAccountId String
+  ledgerAccount   FinanceLedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  institution     String?
+  accountMask     String?
+  openingBalance  Decimal  @default(0) @db.Decimal(18, 2)
+  openingAsOf     DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  imports BankStatementImport[]
+
+  @@index([ledgerAccountId])
+}
+
+model BankStatementImport {
+  id              String   @id @default(cuid())
+  bankAccountId   String
+  bankAccount     FinanceBankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  fileName        String
+  importedAt      DateTime @default(now())
+  lines           BankStatementLine[]
+}
+
+model BankStatementLine {
+  id                   String   @id @default(cuid())
+  importId             String
+  import               BankStatementImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  txnDate              DateTime
+  description          String
+  /** Positif = uang masuk rekening; negatif = keluar. */
+  amount               Decimal  @db.Decimal(18, 2)
+  matchedJournalLineId String?
+  matchedJournalLine   FinanceJournalLine? @relation(fields: [matchedJournalLineId], references: [id], onDelete: SetNull)
+
+  @@index([importId])
+}
+
+model FinanceApBill {
+  id          String               @id @default(cuid())
+  vendorId    String?
+  vendor      Vendor?              @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  vendorName  String
+  billNumber  String?
+  billDate    DateTime
+  dueDate     DateTime
+  amount      Decimal              @db.Decimal(18, 2)
+  status      FinanceApArDocStatus @default(OPEN)
+  memo        String?
+  brandId     String?
+  brand       Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  payments    FinanceApPayment[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([dueDate])
+  @@index([status])
+}
+
+model FinanceApPayment {
+  id             String              @id @default(cuid())
+  billId         String
+  bill           FinanceApBill       @relation(fields: [billId], references: [id], onDelete: Cascade)
+  amount         Decimal             @db.Decimal(18, 2)
+  paidAt         DateTime            @default(now())
+  journalEntryId String
+  journalEntry   FinanceJournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  recordedById   String
+  recordedBy     User                @relation("FinanceApPaymentRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([billId])
+}
+
+model FinanceArInvoice {
+  id             String               @id @default(cuid())
+  customerName   String
+  customerEmail  String?
+  invoiceNumber  String?
+  invoiceDate    DateTime
+  dueDate        DateTime
+  amount         Decimal              @db.Decimal(18, 2)
+  status         FinanceApArDocStatus @default(OPEN)
+  memo           String?
+  brandId        String?
+  brand          Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  emailSentAt    DateTime?
+  payments       FinanceArPayment[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([dueDate])
+  @@index([status])
+}
+
+model FinanceArPayment {
+  id             String              @id @default(cuid())
+  invoiceId      String
+  invoice        FinanceArInvoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount         Decimal             @db.Decimal(18, 2)
+  receivedAt     DateTime            @default(now())
+  journalEntryId String
+  journalEntry   FinanceJournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  recordedById   String
+  recordedBy     User                @relation("FinanceArPaymentRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+}
+
+model FinanceBudgetLine {
+  id          String   @id @default(cuid())
+  year        Int
+  month       Int
+  brandId     String?
+  brand       Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  accountId   String?
+  account     FinanceLedgerAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  amountLimit Decimal  @db.Decimal(18, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([year, month])
+}
+
+model FinanceSpendRequest {
+  id             String                    @id @default(cuid())
+  title          String
+  description    String?
+  amount         Decimal                   @db.Decimal(18, 2)
+  expenseAccountId String?
+  expenseAccount FinanceLedgerAccount?     @relation(fields: [expenseAccountId], references: [id], onDelete: SetNull)
+  brandId        String?
+  brand          Brand?                    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  status         FinanceSpendRequestStatus @default(DRAFT)
+  requestedById  String
+  requestedBy    User                      @relation("FinanceSpendRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedById    String?
+  decidedBy      User?                     @relation("FinanceSpendApprover", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt      DateTime?
+  decisionNote   String?
+  payoutEntryId  String?
+  payoutEntry    FinanceJournalEntry?      @relation(fields: [payoutEntryId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@index([status])
+}
+
+model FinanceFixedAsset {
+  id                     String                  @id @default(cuid())
+  name                   String
+  category               String?
+  purchaseDate           DateTime
+  cost                   Decimal                 @db.Decimal(18, 2)
+  salvageValue           Decimal                 @default(0) @db.Decimal(18, 2)
+  usefulLifeMonths       Int
+  method                 FinanceDepreciationMethod @default(STRAIGHT_LINE)
+  assetAccountId         String
+  assetAccount           FinanceLedgerAccount    @relation("FaAssetCoa", fields: [assetAccountId], references: [id], onDelete: Restrict)
+  accumAccountId         String
+  accumAccount           FinanceLedgerAccount    @relation("FaAccumCoa", fields: [accumAccountId], references: [id], onDelete: Restrict)
+  expenseAccountId       String
+  expenseAccount         FinanceLedgerAccount    @relation("FaExpenseCoa", fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  accumulatedDepreciation Decimal                @default(0) @db.Decimal(18, 2)
+  disposedAt             DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 }

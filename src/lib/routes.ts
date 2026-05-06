@@ -24,6 +24,15 @@ export function isLogisticsRoute(pathname: string): boolean {
   );
 }
 
+/** Modul keuangan — hanya peran Finance (plus profil). */
+export function isFinanceAppRoute(pathname: string): boolean {
+  return (
+    isProfileRoute(pathname) ||
+    pathname === "/finance" ||
+    pathname.startsWith("/finance/")
+  );
+}
+
 /** Pipeline & tugas — tim studio / PM. */
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (

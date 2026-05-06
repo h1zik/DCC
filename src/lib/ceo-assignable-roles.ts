@@ -4,6 +4,7 @@ import { UserRole } from "@prisma/client";
 export const CEO_ASSIGNABLE_USER_ROLES = [
   UserRole.ADMINISTRATOR,
   UserRole.LOGISTICS,
+  UserRole.FINANCE,
   UserRole.MARKETING,
   UserRole.CREATIVE_DIRECTOR,
   UserRole.BUSINESS_ANALYST,
@@ -17,6 +18,8 @@ export function ceoAssignableRoleLabel(role: UserRole): string {
       return "Administrator";
     case UserRole.LOGISTICS:
       return "Logistik";
+    case UserRole.FINANCE:
+      return "Finance";
     case UserRole.MARKETING:
       return "Marketing";
     case UserRole.CREATIVE_DIRECTOR:

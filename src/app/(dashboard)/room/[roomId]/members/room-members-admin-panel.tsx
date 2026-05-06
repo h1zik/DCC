@@ -39,7 +39,7 @@ type StudioUserRow = Pick<User, "id" | "name" | "email" | "role">;
 
 function roomRoleLabel(role: RoomMemberRole): string {
   if (role === ROOM_PROJECT_MANAGER_ROLE) return "Project manager ruangan";
-  return role === RoomMemberRole.ROOM_MANAGER ? "Manager ruangan" : "Kontributor";
+  return role === RoomMemberRole.ROOM_MANAGER ? "Administrator ruangan" : "Kontributor";
 }
 
 export function RoomMembersAdminPanel({
@@ -96,7 +96,7 @@ export function RoomMembersAdminPanel({
     role: RoomMemberRole,
     next: RoomTaskProcess[],
   ) {
-    if (role === ROOM_PROJECT_MANAGER_ROLE || simpleRoom) return;
+    if (role !== RoomMemberRole.ROOM_MANAGER || simpleRoom) return;
     if (next.length === 0) {
       toast.error("Minimal satu fase harus aktif.");
       return;
@@ -115,7 +115,11 @@ export function RoomMembersAdminPanel({
 
   async function onAddMember() {
     if (!addUserId) return;
-    if (!simpleRoom && addRole !== ROOM_PROJECT_MANAGER_ROLE && addProcesses.length === 0) {
+    if (
+      !simpleRoom &&
+      addRole === RoomMemberRole.ROOM_MANAGER &&
+      addProcesses.length === 0
+    ) {
       toast.error("Pilih minimal satu fase proses.");
       return;
     }
@@ -127,6 +131,8 @@ export function RoomMembersAdminPanel({
         addRole,
         addRole === ROOM_PROJECT_MANAGER_ROLE
           ? undefined
+          : addRole === RoomMemberRole.ROOM_CONTRIBUTOR
+            ? [...ALL_ROOM_TASK_PROCESSES]
           : simpleRoom
             ? [...ALL_ROOM_TASK_PROCESSES]
             : addProcesses,
@@ -161,7 +167,7 @@ export function RoomMembersAdminPanel({
       <div>
         <h2 className="text-base font-semibold">Kelola anggota & peran</h2>
         <p className="text-muted-foreground text-xs">
-          Ubah peran atau akses fase langsung dari menu Anggota ruangan ini.
+          Hanya administrator ruangan yang memiliki pengaturan akses fase.
         </p>
       </div>
 
@@ -216,6 +222,10 @@ export function RoomMembersAdminPanel({
               {access.role === ROOM_PROJECT_MANAGER_ROLE ? (
                 <p className="text-muted-foreground text-xs">
                   Project manager ruangan: akses otomatis ke semua fase.
+                </p>
+              ) : access.role === RoomMemberRole.ROOM_CONTRIBUTOR ? (
+                <p className="text-muted-foreground text-xs">
+                  Kontributor: akses fase mengikuti pengaturan default.
                 </p>
               ) : simpleRoom ? (
                 <p className="text-muted-foreground text-xs">
@@ -297,14 +307,16 @@ export function RoomMembersAdminPanel({
             disabled={
               pending ||
               !addUserId ||
-              (!simpleRoom && addRole !== ROOM_PROJECT_MANAGER_ROLE && addProcesses.length === 0)
+              (!simpleRoom &&
+                addRole === RoomMemberRole.ROOM_MANAGER &&
+                addProcesses.length === 0)
             }
             onClick={() => void onAddMember()}
           >
             Tambah
           </Button>
         </div>
-        {addRole !== ROOM_PROJECT_MANAGER_ROLE && !simpleRoom ? (
+        {addRole === RoomMemberRole.ROOM_MANAGER && !simpleRoom ? (
           <div className="space-y-2">
             <Label className="text-xs">Fase tugas untuk anggota baru</Label>
             <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">

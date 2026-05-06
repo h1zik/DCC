@@ -7,6 +7,7 @@ import { getSession, signIn } from "next-auth/react";
 import {
   isAdministratorAppRoute,
   isCeoAppRoute,
+  isFinanceAppRoute,
   isLogisticsRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
@@ -69,6 +70,11 @@ export default function LoginPage() {
         isAdministratorAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
           : "/rooms";
+    } else if (userRole === UserRole.FINANCE) {
+      dest =
+        isFinanceAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
+          ? callbackUrl
+          : "/finance";
     } else if (isStudioOrProjectManager(userRole)) {
       dest =
         isStudioWorkspaceRoute(callbackUrl) || isProfileRoute(callbackUrl)

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import {
   isAdministratorAppRoute,
   isCeoAppRoute,
+  isFinanceAppRoute,
   isLogisticsRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
@@ -13,6 +14,7 @@ import { NextResponse } from "next/server";
 function defaultHomeForRole(role: UserRole | undefined): string {
   if (role === UserRole.CEO) return "/";
   if (role === UserRole.ADMINISTRATOR) return "/tasks";
+  if (role === UserRole.FINANCE) return "/finance";
   if (isStudioOrProjectManager(role)) return "/tasks";
   return "/inventory";
 }
@@ -64,6 +66,15 @@ export default auth((req) => {
     }
     if (!isLogisticsRoute(pathname)) {
       return NextResponse.redirect(new URL("/inventory", req.nextUrl));
+    }
+  }
+
+  if (role === UserRole.FINANCE) {
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/finance", req.nextUrl));
+    }
+    if (!isFinanceAppRoute(pathname)) {
+      return NextResponse.redirect(new URL("/finance", req.nextUrl));
     }
   }
 

@@ -35,3 +35,7 @@ export function isStudioTeamRole(role: UserRole | undefined): boolean {
   if (!role) return false;
   return STUDIO_TEAM_ROLES.includes(role);
 }
+
+export function isFinanceRole(role: UserRole | undefined): boolean {
+  return role === UserRole.FINANCE;
+}

@@ -2,6 +2,7 @@ import { UserRole } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import {
   isAdministrator,
+  isFinanceRole,
   isProjectManager,
   isStudioOrProjectManager,
 } from "@/lib/roles";
@@ -13,6 +14,18 @@ export async function requireLogisticsStaff() {
   }
   if (session.user.role !== UserRole.LOGISTICS) {
     throw new Error("Hanya staf logistik yang dapat melakukan aksi ini.");
+  }
+  return session;
+}
+
+/** Server actions & API modul keuangan. */
+export async function requireFinance() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Belum masuk.");
+  }
+  if (!isFinanceRole(session.user.role)) {
+    throw new Error("Hanya tim Finance yang dapat melakukan aksi ini.");
   }
   return session;
 }

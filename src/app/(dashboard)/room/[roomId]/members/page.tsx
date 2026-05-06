@@ -64,7 +64,9 @@ export default async function RoomMembersPage({ params }: PageProps) {
     }),
     canManageMembers
       ? prisma.user.findMany({
-          where: { role: { notIn: [UserRole.LOGISTICS, UserRole.CEO] } },
+          where: {
+          role: { notIn: [UserRole.LOGISTICS, UserRole.FINANCE, UserRole.CEO] },
+        },
           orderBy: { email: "asc" },
           select: { id: true, name: true, email: true, role: true },
         })

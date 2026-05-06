@@ -6,15 +6,23 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { UserRole } from "@prisma/client";
 import {
+  ArrowLeftRight,
+  BadgeCent,
   Boxes,
+  Calculator,
   CalendarDays,
+  Coins,
   Factory,
+  FileBarChart,
   Focus,
   GitBranch,
+  Landmark,
   LayoutDashboard,
   LayoutGrid,
   LogOut,
   Package,
+  PiggyBank,
+  ScrollText,
   ShieldCheck,
   Tags,
   UserCircle,
@@ -63,6 +71,22 @@ const navLogistics = [
   { href: "/vendors", label: "Vendor Maklon", icon: Factory },
 ] as const;
 
+const navFinance = [
+  { href: "/finance", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/finance/chart-of-accounts", label: "Chart of Accounts", icon: LayoutGrid },
+  { href: "/finance/journals", label: "Jurnal", icon: ScrollText },
+  { href: "/finance/general-ledger", label: "Buku Besar", icon: FileBarChart },
+  { href: "/finance/bank", label: "Rekonsiliasi Bank", icon: Landmark },
+  { href: "/finance/currencies", label: "Kurs Mata Uang", icon: Coins },
+  { href: "/finance/treasury", label: "Kas & Treasury", icon: ArrowLeftRight },
+  { href: "/finance/ap-ar", label: "AP & AR", icon: BadgeCent },
+  { href: "/finance/brands-costing", label: "Brand & Costing", icon: Tags },
+  { href: "/finance/budget", label: "Budget vs Aktual", icon: PiggyBank },
+  { href: "/finance/approvals", label: "Persetujuan Pengeluaran", icon: ShieldCheck },
+  { href: "/finance/reports", label: "Laporan", icon: FileBarChart },
+  { href: "/finance/fixed-assets", label: "Aset Tetap", icon: Calculator },
+] as const;
+
 const navStudio = [
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
   { href: "/for-me", label: "For Me", icon: Focus },
@@ -74,6 +98,7 @@ function navForRole(role: UserRole | undefined) {
   if (role === UserRole.CEO) return navCeo;
   if (role === UserRole.ADMINISTRATOR) return navAdministrator;
   if (isStudioOrProjectManager(role)) return navStudio;
+  if (role === UserRole.FINANCE) return navFinance;
   return navLogistics;
 }
 
@@ -81,6 +106,7 @@ function groupLabelForRole(role: UserRole | undefined) {
   if (role === UserRole.CEO) return "CEO";
   if (role === UserRole.ADMINISTRATOR) return "Administrator";
   if (isStudioOrProjectManager(role)) return "Tim studio & PM";
+  if (role === UserRole.FINANCE) return "Finance";
   return "Staf logistik";
 }
 
@@ -181,7 +207,9 @@ export function AppSidebar() {
                     isActive={
                       item.href === "/"
                         ? pathname === "/"
-                        : pathname.startsWith(item.href)
+                        : item.href === "/finance"
+                          ? pathname === "/finance"
+                          : pathname.startsWith(item.href)
                     }
                     render={<Link href={item.href} />}
                   >
