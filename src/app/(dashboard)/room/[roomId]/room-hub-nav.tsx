@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RoomWorkspaceSection, type Brand } from "@prisma/client";
@@ -15,17 +16,28 @@ import {
 import { cn } from "@/lib/utils";
 import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
 import { RoomBannerEditor } from "./room-banner-editor";
+import { RoomLogoEditor } from "./room-logo-editor";
 import { RoomEditorButton } from "./room-editor-button";
 import {
   RoomMemberAvatarStack,
   type RoomMemberAvatarUser,
 } from "@/components/room-member-avatar-stack";
 
+function roomNameInitials(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/u).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+}
+
 export function RoomHubNav({
   roomId,
   roomName,
   simpleHub = false,
   bannerImage,
+  logoImage = null,
   canEditBanner = false,
   canEditRoom = false,
   roomBrandId = null,
@@ -39,6 +51,7 @@ export function RoomHubNav({
   /** Ruangan HQ/Team tanpa brand: hanya tugas, chat, dokumen. */
   simpleHub?: boolean;
   bannerImage?: string | null;
+  logoImage?: string | null;
   canEditBanner?: boolean;
   canEditRoom?: boolean;
   roomBrandId?: string | null;
@@ -138,9 +151,35 @@ export function RoomHubNav({
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-foreground text-2xl font-semibold tracking-tight sm:text-3xl">
-                {roomName}
-              </h1>
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div
+                  className={cn(
+                    "border-border bg-background/85 relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border shadow-sm backdrop-blur-sm sm:size-14",
+                    !logoImage && "bg-primary/10",
+                  )}
+                >
+                  {logoImage ? (
+                    <Image
+                      src={logoImage}
+                      alt={`Logo ${roomName}`}
+                      fill
+                      sizes="(min-width: 640px) 56px, 48px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <span
+                      className="text-primary text-base font-semibold tracking-tight sm:text-lg"
+                      aria-hidden
+                    >
+                      {roomNameInitials(roomName)}
+                    </span>
+                  )}
+                </div>
+                <h1 className="text-foreground min-w-0 truncate text-2xl font-semibold tracking-tight sm:text-3xl">
+                  {roomName}
+                </h1>
+              </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <RoomMemberAvatarStack users={memberUsers} maxVisible={6} />
                 <span className="text-muted-foreground text-xs font-medium">
@@ -153,7 +192,14 @@ export function RoomHubNav({
           {canEditBanner || canEditRoom ? (
             <div className="flex shrink-0 flex-wrap items-start gap-2 sm:flex-col sm:items-end sm:gap-1.5">
               {canEditBanner ? (
-                <RoomBannerEditor roomId={roomId} hasBanner={!!bannerImage} />
+                <>
+                  <RoomLogoEditor
+                    roomId={roomId}
+                    logoImage={logoImage}
+                    roomName={roomName}
+                  />
+                  <RoomBannerEditor roomId={roomId} hasBanner={!!bannerImage} />
+                </>
               ) : null}
               {canEditRoom ? (
                 <RoomEditorButton

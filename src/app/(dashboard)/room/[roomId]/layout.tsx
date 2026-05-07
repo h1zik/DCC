@@ -23,6 +23,7 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
   ]);
   const simpleHub = isSimpleTeamOrHqRoom(room);
   const bannerImage = (room as { bannerImage?: string | null }).bannerImage ?? null;
+  const logoImage = (room as { logoImage?: string | null }).logoImage ?? null;
   const canEditRoom =
     session?.user?.role === UserRole.CEO || isAdministrator(session?.user?.role);
   const [memberUsers, brands] = await Promise.all([
@@ -37,6 +38,7 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
         roomName={room.name}
         simpleHub={simpleHub}
         bannerImage={bannerImage}
+        logoImage={logoImage}
         canEditBanner={isRoomHubManagerRole(role)}
         canEditRoom={canEditRoom}
         roomBrandId={room.brandId}

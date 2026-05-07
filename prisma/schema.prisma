@@ -212,6 +212,8 @@ model Room {
   name       String
   /** Banner visual ruangan (path publik di /uploads/rooms/{roomId}/...). */
   bannerImage String?
+  /** Logo persegi ruangan (path publik di /uploads/rooms/{roomId}/logos/...). */
+  logoImage  String?
   /** Bagian di menu Tugas: HQ, Team, atau Ruangan. */
   workspaceSection RoomWorkspaceSection @default(ROOMS)
   brandId    String?

@@ -6,6 +6,7 @@ import {
   TaskWorkspaceView,
   TaskStatus,
 } from "@prisma/client";
+import { KanbanSquare, Workflow } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import {
@@ -31,6 +32,51 @@ import {
 import { cn } from "@/lib/utils";
 import { getRoomKanbanColumns } from "@/lib/room-kanban-columns";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
+
+function TasksHero({
+  title,
+  subtitle,
+  hint,
+}: {
+  title: string;
+  subtitle: string;
+  hint: string;
+}) {
+  return (
+    <header className="border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm">
+      <div
+        className="bg-gradient-to-br from-primary/10 via-primary/5 absolute inset-0 to-transparent"
+        aria-hidden
+      />
+      <div
+        className="bg-gradient-to-r from-transparent via-primary/40 to-transparent absolute inset-x-0 top-0 h-px"
+        aria-hidden
+      />
+      <div className="relative flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className="border-primary/30 bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl border"
+            aria-hidden
+          >
+            <KanbanSquare className="size-5" />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <h2 className="text-foreground text-base font-semibold tracking-tight sm:text-lg">
+              {title}
+            </h2>
+            <p className="text-muted-foreground text-pretty text-sm leading-relaxed">
+              {subtitle}
+            </p>
+          </div>
+        </div>
+        <div className="border-primary/25 bg-primary/8 text-primary inline-flex max-w-md items-start gap-2 self-start rounded-lg border px-3 py-2 text-[12px] leading-relaxed sm:max-w-sm">
+          <Workflow className="mt-[1px] size-3.5 shrink-0" aria-hidden />
+          <span>{hint}</span>
+        </div>
+      </div>
+    </header>
+  );
+}
 
 type PageProps = {
   params: Promise<{ roomId: string }>;
@@ -165,11 +211,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
 
     return (
       <div className="flex flex-col gap-4">
-        <p className="text-muted-foreground text-sm">
-          Mode tugas sederhana untuk ruangan HQ/Team tanpa brand: tidak ada fase
-          Market Research dan seterusnya. Gunakan Kanban, daftar, atau Gantt;
-          obrolan dan dokumen ada di menu atas.
-        </p>
+        <TasksHero
+          title="Tasks ruangan"
+          subtitle="Mode sederhana tanpa fase proses — gunakan Kanban, daftar, atau Gantt untuk merencanakan pekerjaan."
+          hint="Obrolan grup dan dokumen tersedia di menu atas ruangan."
+        />
         <TasksWorkspace
           roomId={roomId}
           roomTitle={room.name}
@@ -291,39 +337,55 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     )
     .map((row) => row.user);
 
+  const roleHint =
+    role === ROOM_PROJECT_MANAGER_ROLE
+      ? "Sebagai project manager ruangan Anda memegang semua fase proses, membuat tugas, dan menetapkan PIC."
+      : role === RoomMemberRole.ROOM_MANAGER
+        ? "Sebagai manager ruangan Anda mengelola tugas pada fase yang diizinkan administrator."
+        : "Sebagai kontributor Anda dapat memindahkan status tugas, mengisi komentar, lampiran, dan sub-tugas.";
+
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-muted-foreground text-sm">
-        Kanban, daftar, dan Gantt untuk ruangan ini. Klik kartu (grip untuk seret
-        di Kanban) untuk detail tugas.{" "}
-        {role === ROOM_PROJECT_MANAGER_ROLE
-          ? "Sebagai project manager ruangan Anda memiliki akses semua fase proses, dapat membuat tugas, menetapkan PIC (kontributor dengan akses fase yang sama), serta moderasi."
-          : role === RoomMemberRole.ROOM_MANAGER
-            ? "Sebagai manager ruangan Anda dapat mengelola tugas pada fase yang ditetapkan administrator, termasuk membuat tugas dan menetapkan PIC (kontributor dengan akses fase tersebut)."
-            : "Sebagai kontributor Anda dapat memindahkan status tugas pada fase yang ditetapkan administrator serta mengisi komentar, lampiran, dan sub-tugas."}
-      </p>
+      <TasksHero
+        title="Tasks ruangan"
+        subtitle="Kanban, daftar, dan Gantt per fase proses. Klik kartu (grip untuk seret di Kanban) untuk detail tugas."
+        hint={roleHint}
+      />
       <nav
         aria-label="Proses alur ruangan"
-        className="flex flex-wrap gap-2 border-b pb-3"
+        className="border-border bg-background/85 supports-backdrop-filter:bg-background/65 sticky top-[8.5rem] z-10 rounded-xl border shadow-sm backdrop-blur-md"
       >
-        {accessibleProcesses.map((p) => {
-          const active = p === activeProcess;
-          return (
-            <Link
-              key={p}
-              href={`/room/${roomId}/tasks?process=${p}`}
-              scroll={false}
-              className={cn(
-                "focus-visible:ring-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
-                active
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted/60 border-border hover:text-foreground",
-              )}
-            >
-              {roomTaskProcessLabel(p)}
-            </Link>
-          );
-        })}
+        <div className="text-muted-foreground border-border/60 flex items-center gap-2 border-b px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide">
+          <Workflow className="size-3" aria-hidden />
+          Fase proses
+        </div>
+        <ul
+          role="list"
+          className="flex w-full items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {accessibleProcesses.map((p) => {
+            const active = p === activeProcess;
+            return (
+              <li key={p} className="shrink-0">
+                <Link
+                  href={`/room/${roomId}/tasks?process=${p}`}
+                  scroll={false}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "focus-visible:ring-ring inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <span className="whitespace-nowrap">
+                    {roomTaskProcessLabel(p)}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
       <TasksWorkspace
         roomId={roomId}

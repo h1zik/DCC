@@ -8,7 +8,6 @@ import {
   createRoomDocumentFolder,
   deleteRoomDocument,
   deleteRoomDocumentFolder,
-  moveRoomDocumentToFolder,
   renameRoomDocumentFolder,
   uploadRoomDocument,
 } from "@/actions/room-documents";
@@ -43,9 +42,9 @@ import {
   ArrowDownAZ,
   ArrowUpDown,
   Calendar,
-  Check,
   CloudUpload,
-  Copy,
+  Download,
+  Eye,
   ExternalLink,
   File as FileIcon,
   FileArchive,
@@ -192,6 +191,7 @@ export function RoomDocumentsWorkspace({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<RoomDocumentRow | null>(null);
 
   useEffect(() => {
     if (browseKey === "ungrouped") setUploadFolderId(null);
@@ -359,18 +359,6 @@ export function RoomDocumentsWorkspace({
     }
   }
 
-  async function onMoveDoc(d: RoomDocumentRow, folderId: string | null) {
-    if (d.folderId === folderId) return;
-    try {
-      await moveRoomDocumentToFolder({ documentId: d.id, folderId });
-      toast.success("Folder dokumen diperbarui.");
-      router.refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal.");
-      router.refresh();
-    }
-  }
-
   async function onDeleteDoc(d: RoomDocumentRow) {
     if (!confirm("Hapus dokumen ini?")) return;
     try {
@@ -379,21 +367,6 @@ export function RoomDocumentsWorkspace({
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal.");
-    }
-  }
-
-  function copyLink(d: RoomDocumentRow) {
-    const href =
-      typeof window !== "undefined"
-        ? new URL(d.publicPath, window.location.href).toString()
-        : d.publicPath;
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(href).then(
-        () => toast.success("Tautan disalin."),
-        () => toast.error("Gagal menyalin tautan."),
-      );
-    } else {
-      toast.error("Browser tidak mendukung salin otomatis.");
     }
   }
 
@@ -850,9 +823,8 @@ export function RoomDocumentsWorkspace({
                   folders={folders}
                   showFolderHint={browseKey === "all"}
                   canManage={d.uploadedBy.id === currentUserId || isRoomManager}
-                  onMove={onMoveDoc}
+                  onPreview={(doc) => setPreviewDoc(doc)}
                   onDelete={onDeleteDoc}
-                  onCopy={copyLink}
                 />
               ))}
             </ul>
@@ -864,13 +836,18 @@ export function RoomDocumentsWorkspace({
               isManagerOrOwner={(d) =>
                 d.uploadedBy.id === currentUserId || isRoomManager
               }
-              onMove={onMoveDoc}
+              onPreview={(doc) => setPreviewDoc(doc)}
               onDelete={onDeleteDoc}
-              onCopy={copyLink}
             />
           )}
         </div>
       </div>
+
+      {/* Preview dialog */}
+      <DocPreviewDialog
+        doc={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
 
       {/* Rename folder dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
@@ -966,17 +943,15 @@ function DocCard({
   folders,
   showFolderHint,
   canManage,
-  onMove,
+  onPreview,
   onDelete,
-  onCopy,
 }: {
   doc: RoomDocumentRow;
   folders: RoomDocumentFolderRow[];
   showFolderHint: boolean;
   canManage: boolean;
-  onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
-  onCopy: (d: RoomDocumentRow) => void;
 }) {
   const meta = fileTypeMeta(doc.mimeType);
   const Icon = meta.icon;
@@ -984,12 +959,11 @@ function DocCard({
 
   return (
     <li className="border-border bg-card group hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors">
-      <a
-        href={doc.publicPath}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="bg-muted/30 relative block aspect-[16/9] w-full overflow-hidden"
-        title={doc.title?.trim() || doc.fileName}
+      <button
+        type="button"
+        onClick={() => onPreview(doc)}
+        className="bg-muted/30 relative block aspect-[16/9] w-full overflow-hidden text-left"
+        title={`Pratinjau ${doc.title?.trim() || doc.fileName}`}
       >
         {isImage ? (
           <Image
@@ -1009,7 +983,7 @@ function DocCard({
           <Icon className={cn("size-3", meta.tone)} />
           {meta.label}
         </span>
-      </a>
+      </button>
 
       <div className="flex flex-1 flex-col gap-2 p-3">
         {showFolderHint ? (
@@ -1017,41 +991,73 @@ function DocCard({
             {folderLabelForDoc(doc.folderId, folders)}
           </p>
         ) : null}
-        <a
-          href={doc.publicPath}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-foreground line-clamp-2 text-sm font-medium hover:underline"
+        <button
+          type="button"
+          onClick={() => onPreview(doc)}
+          className="text-foreground line-clamp-2 text-left text-sm font-medium hover:underline"
           title={doc.title?.trim() || doc.fileName}
         >
           {doc.title?.trim() ? doc.title : doc.fileName}
-        </a>
+        </button>
         <p
           className="text-muted-foreground line-clamp-1 text-[11px]"
           title={doc.fileName}
         >
           {doc.fileName}
         </p>
-        <div className="text-muted-foreground mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
           <span className="truncate">{doc.uploadedBy.name ?? doc.uploadedBy.email}</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">{formatFileSize(doc.size)}</span>
           <span aria-hidden>·</span>
           <span>{formatDate(doc.createdAt)}</span>
         </div>
+
+        <div className="border-border/60 mt-auto flex items-center gap-2 border-t pt-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="flex-1"
+            onClick={() => onPreview(doc)}
+          >
+            <Eye className="size-3.5" />
+            Preview
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="flex-1"
+            nativeButton={false}
+            render={
+              <a
+                href={doc.publicPath}
+                download={doc.fileName}
+                rel="noopener noreferrer"
+                aria-label={`Unduh ${doc.fileName}`}
+              />
+            }
+          >
+            <Download className="size-3.5" />
+            Download
+          </Button>
+          {canManage ? (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              aria-label={`Hapus ${doc.fileName}`}
+              title="Hapus dokumen"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+              onClick={() => void onDelete(doc)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <DocActions
-          doc={doc}
-          folders={folders}
-          canManage={canManage}
-          onMove={onMove}
-          onDelete={onDelete}
-          onCopy={onCopy}
-          variant="card"
-        />
-      </div>
     </li>
   );
 }
@@ -1061,17 +1067,15 @@ function DocList({
   folders,
   showFolderHint,
   isManagerOrOwner,
-  onMove,
+  onPreview,
   onDelete,
-  onCopy,
 }: {
   docs: RoomDocumentRow[];
   folders: RoomDocumentFolderRow[];
   showFolderHint: boolean;
   isManagerOrOwner: (d: RoomDocumentRow) => boolean;
-  onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
-  onCopy: (d: RoomDocumentRow) => void;
 }) {
   return (
     <div className="border-border bg-card overflow-hidden rounded-xl border">
@@ -1096,15 +1100,14 @@ function DocList({
                   <Icon className={cn("size-4", meta.tone)} />
                 </div>
                 <div className="min-w-0">
-                  <a
-                    href={d.publicPath}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-foreground line-clamp-1 text-sm font-medium hover:underline"
+                  <button
+                    type="button"
+                    onClick={() => onPreview(d)}
+                    className="text-foreground line-clamp-1 text-left text-sm font-medium hover:underline"
                     title={d.title?.trim() || d.fileName}
                   >
                     {d.title?.trim() ? d.title : d.fileName}
-                  </a>
+                  </button>
                   <p className="text-muted-foreground line-clamp-1 text-[11px]">
                     {d.fileName} · {d.uploadedBy.name ?? d.uploadedBy.email}
                   </p>
@@ -1121,16 +1124,47 @@ function DocList({
               <span className="text-muted-foreground w-32 text-[11px]">
                 {formatDate(d.createdAt)}
               </span>
-              <div className="ml-auto md:ml-0">
-                <DocActions
-                  doc={d}
-                  folders={folders}
-                  canManage={isManagerOrOwner(d)}
-                  onMove={onMove}
-                  onDelete={onDelete}
-                  onCopy={onCopy}
-                  variant="list"
-                />
+              <div className="ml-auto flex items-center gap-1 md:ml-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Pratinjau ${d.fileName}`}
+                  title="Pratinjau"
+                  onClick={() => onPreview(d)}
+                >
+                  <Eye className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Unduh ${d.fileName}`}
+                  title="Unduh"
+                  nativeButton={false}
+                  render={
+                    <a
+                      href={d.publicPath}
+                      download={d.fileName}
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <Download className="size-4" />
+                </Button>
+                {isManagerOrOwner(d) ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Hapus ${d.fileName}`}
+                    title="Hapus dokumen"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => void onDelete(d)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                ) : null}
               </div>
             </li>
           );
@@ -1140,97 +1174,163 @@ function DocList({
   );
 }
 
-function DocActions({
+function DocPreviewDialog({
   doc,
-  folders,
-  canManage,
-  onMove,
-  onDelete,
-  onCopy,
-  variant,
+  onClose,
 }: {
-  doc: RoomDocumentRow;
-  folders: RoomDocumentFolderRow[];
-  canManage: boolean;
-  onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
-  onDelete: (d: RoomDocumentRow) => void | Promise<void>;
-  onCopy: (d: RoomDocumentRow) => void;
-  variant: "card" | "list";
+  doc: RoomDocumentRow | null;
+  onClose: () => void;
 }) {
+  const open = doc !== null;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            type="button"
-            variant={variant === "card" ? "secondary" : "ghost"}
-            size="icon-sm"
-            aria-label="Aksi dokumen"
-            className={cn(
-              variant === "card" &&
-                "bg-background/85 hover:bg-background border-border size-8 border shadow-sm backdrop-blur-sm",
-            )}
-          />
-        }
-      >
-        <MoreVertical className="size-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={4}>
-        <DropdownMenuItem
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              window.open(doc.publicPath, "_blank", "noopener,noreferrer");
-            }
-          }}
-        >
-          <ExternalLink className="size-3.5" />
-          Buka di tab baru
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onCopy(doc)}>
-          <Copy className="size-3.5" />
-          Salin tautan
-        </DropdownMenuItem>
-
-        {canManage ? (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent className="flex h-[min(90vh,820px)] w-[min(96vw,1100px)] max-w-none flex-col gap-3 p-4 sm:max-w-none">
+        {doc ? (
           <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Pindahkan ke folder</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => void onMove(doc, null)}
-              data-active={doc.folderId === null ? "" : undefined}
-            >
-              {doc.folderId === null ? (
-                <Check className="size-3.5" />
-              ) : (
-                <Folder className="size-3.5 opacity-60" />
-              )}
-              Tanpa folder
-            </DropdownMenuItem>
-            {folders.map((f) => (
-              <DropdownMenuItem
-                key={f.id}
-                onClick={() => void onMove(doc, f.id)}
-                data-active={doc.folderId === f.id ? "" : undefined}
-              >
-                {doc.folderId === f.id ? (
-                  <Check className="size-3.5" />
-                ) : (
-                  <Folder className="size-3.5 opacity-60" />
+            <DialogHeader className="flex flex-row items-start gap-3 pr-8">
+              <div
+                className={cn(
+                  "bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg",
                 )}
-                {f.name}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => void onDelete(doc)}
-            >
-              <Trash2 className="size-3.5" />
-              Hapus dokumen
-            </DropdownMenuItem>
+              >
+                {(() => {
+                  const meta = fileTypeMeta(doc.mimeType);
+                  const Icon = meta.icon;
+                  return <Icon className={cn("size-5", meta.tone)} />;
+                })()}
+              </div>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <DialogTitle className="truncate text-base">
+                  {doc.title?.trim() ? doc.title : doc.fileName}
+                </DialogTitle>
+                <p className="text-muted-foreground truncate text-xs">
+                  {doc.fileName} · {fileTypeMeta(doc.mimeType).label} ·{" "}
+                  {formatFileSize(doc.size)} ·{" "}
+                  {doc.uploadedBy.name ?? doc.uploadedBy.email}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  nativeButton={false}
+                  render={
+                    <a
+                      href={doc.publicPath}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <ExternalLink className="size-3.5" />
+                  Tab baru
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  nativeButton={false}
+                  render={
+                    <a
+                      href={doc.publicPath}
+                      download={doc.fileName}
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <Download className="size-3.5" />
+                  Download
+                </Button>
+              </div>
+            </DialogHeader>
+            <div className="border-border bg-muted/20 flex-1 overflow-hidden rounded-lg border">
+              <PreviewBody doc={doc} />
+            </div>
           </>
         ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PreviewBody({ doc }: { doc: RoomDocumentRow }) {
+  const m = doc.mimeType;
+  if (m.startsWith("image/")) {
+    return (
+      <div className="bg-muted/30 relative flex h-full w-full items-center justify-center overflow-auto p-2">
+        <Image
+          src={doc.publicPath}
+          alt={doc.fileName}
+          width={1600}
+          height={1200}
+          unoptimized
+          className="h-auto max-h-full w-auto max-w-full object-contain"
+        />
+      </div>
+    );
+  }
+  if (m === "application/pdf") {
+    return (
+      <iframe
+        src={doc.publicPath}
+        title={doc.fileName}
+        className="h-full w-full"
+      />
+    );
+  }
+  if (m.startsWith("video/")) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-black">
+        <video
+          src={doc.publicPath}
+          controls
+          className="h-full w-full"
+          preload="metadata"
+        />
+      </div>
+    );
+  }
+  if (m.startsWith("audio/")) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6">
+        <div className="bg-primary/10 text-primary flex size-16 items-center justify-center rounded-2xl">
+          <Music className="size-7" />
+        </div>
+        <p className="text-sm font-medium">{doc.fileName}</p>
+        <audio src={doc.publicPath} controls className="w-full max-w-md" />
+      </div>
+    );
+  }
+  if (m.startsWith("text/") || m === "application/json") {
+    return (
+      <iframe
+        src={doc.publicPath}
+        title={doc.fileName}
+        className="bg-background h-full w-full"
+      />
+    );
+  }
+  // Fallback
+  const meta = fileTypeMeta(m);
+  const Icon = meta.icon;
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
+      <div className="bg-muted text-muted-foreground flex size-16 items-center justify-center rounded-2xl">
+        <Icon className={cn("size-7", meta.tone)} />
+      </div>
+      <p className="text-sm font-medium">Pratinjau tidak tersedia</p>
+      <p className="text-muted-foreground max-w-sm text-xs">
+        Tipe file{" "}
+        <span className="text-foreground font-medium">{meta.label}</span> tidak
+        bisa ditampilkan di sini. Gunakan tombol{" "}
+        <span className="text-foreground font-medium">Download</span> atau{" "}
+        <span className="text-foreground font-medium">Tab baru</span>.
+      </p>
+    </div>
   );
 }
