@@ -148,6 +148,17 @@ model User {
   profileTagline      String? @db.VarChar(160)
   /** Warna aksen hex `#RRGGBB` untuk ring avatar & aksen; null = pakai default tema. */
   profileAccentHex    String? @db.VarChar(7)
+  /**
+   * Pola dekoratif di banner (slug). Lihat `PROFILE_BANNER_PATTERNS`.
+   */
+  profileBannerPattern String @default("noise")
+  /**
+   * Slug stiker / lambang kecil di samping nama (mahkota, bintang, dll). Null = tanpa stiker.
+   * Lihat `PROFILE_STICKERS`.
+   */
+  profileSticker       String? @db.VarChar(24)
+  /** Bentuk frame avatar (slug). Lihat `PROFILE_AVATAR_FRAMES`. */
+  profileAvatarFrame   String  @default("ring")
   /** Tampilan default modul Tasks saat membuka ruangan. */
   taskDefaultWorkspaceView TaskWorkspaceView @default(KANBAN)
   passwordHash  String

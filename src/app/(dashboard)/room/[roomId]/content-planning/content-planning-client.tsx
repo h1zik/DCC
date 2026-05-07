@@ -349,32 +349,55 @@ function PicCell({ pics }: { pics: Pick<User, "id" | "name" | "email" | "image">
   if (!pics.length) {
     return <span className="text-muted-foreground text-xs">—</span>;
   }
-  const first = pics[0]!;
-  const label = first.name?.trim() || first.email;
-  const initial = label.slice(0, 1).toUpperCase();
+  const MAX_VISIBLE = 4;
+  const visible = pics.slice(0, MAX_VISIBLE);
+  const extra = pics.length - visible.length;
+  const fullList = pics
+    .map((u) => u.name?.trim() || u.email)
+    .join(", ");
+
   return (
-    <div className="flex min-w-0 max-w-full items-center gap-1">
-      {first.image ? (
-        <Image
-          src={first.image}
-          alt=""
-          width={22}
-          height={22}
-          className="border-border size-[22px] shrink-0 rounded-full border object-cover"
-          unoptimized
-        />
-      ) : (
-        <div
-          className="border-border bg-muted text-muted-foreground flex size-[22px] shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold"
-          aria-hidden
+    <div
+      className="flex min-w-0 max-w-full items-center -space-x-1.5"
+      aria-label={`PIC: ${fullList}`}
+      title={fullList}
+    >
+      {visible.map((p, i) => {
+        const label = p.name?.trim() || p.email;
+        const initial = label.slice(0, 1).toUpperCase();
+        return p.image ? (
+          <Image
+            key={p.id}
+            src={p.image}
+            alt={label}
+            width={22}
+            height={22}
+            unoptimized
+            title={label}
+            className="ring-background border-border size-[22px] shrink-0 rounded-full border object-cover ring-2"
+            style={{ zIndex: visible.length - i }}
+          />
+        ) : (
+          <span
+            key={p.id}
+            title={label}
+            className="ring-background border-border bg-muted text-muted-foreground relative flex size-[22px] shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold ring-2"
+            style={{ zIndex: visible.length - i }}
+          >
+            {initial}
+          </span>
+        );
+      })}
+      {extra > 0 ? (
+        <span
+          className="ring-background border-border bg-muted text-muted-foreground relative flex size-[22px] shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold ring-2 tabular-nums"
+          aria-label={`+${extra} PIC lainnya`}
+          title={fullList}
+          style={{ zIndex: 0 }}
         >
-          {initial}
-        </div>
-      )}
-      <span className="min-w-0 truncate text-xs">
-        {label}
-        {pics.length > 1 ? ` +${pics.length - 1}` : ""}
-      </span>
+          +{extra}
+        </span>
+      ) : null}
     </div>
   );
 }

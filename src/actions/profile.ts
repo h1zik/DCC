@@ -12,6 +12,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import {
   normalizeProfileAccentHex,
+  normalizeProfileSticker,
   profileAppearanceSchema,
 } from "@/lib/profile-appearance";
 import { prisma } from "@/lib/prisma";
@@ -120,6 +121,7 @@ export async function updateProfileAppearance(input: unknown) {
   const taglineRaw = (parsed.profileTagline ?? "").trim();
   const tagline = taglineRaw ? taglineRaw.slice(0, 160) : null;
   const accent = normalizeProfileAccentHex(parsed.profileAccentHex ?? null);
+  const sticker = normalizeProfileSticker(parsed.profileSticker ?? null);
 
   await prisma.user.update({
     where: { id: session.user.id },
@@ -127,6 +129,9 @@ export async function updateProfileAppearance(input: unknown) {
       profileBannerPreset: parsed.profileBannerPreset,
       profileTagline: tagline,
       profileAccentHex: accent,
+      profileBannerPattern: parsed.profileBannerPattern,
+      profileSticker: sticker,
+      profileAvatarFrame: parsed.profileAvatarFrame,
     },
   });
 

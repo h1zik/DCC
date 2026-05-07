@@ -7,7 +7,12 @@ import { ceoAssignableRoleLabel } from "@/lib/ceo-assignable-roles";
 import { UserProfileHero, profileMemberTenure } from "@/components/profile";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { isProfileBannerPreset } from "@/lib/profile-appearance";
+import {
+  isProfileAvatarFrame,
+  isProfileBannerPattern,
+  isProfileBannerPreset,
+  isProfileSticker,
+} from "@/lib/profile-appearance";
 import { User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,8 +40,11 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
       role: true,
       createdAt: true,
       profileBannerPreset: true,
+      profileBannerPattern: true,
       profileTagline: true,
       profileAccentHex: true,
+      profileSticker: true,
+      profileAvatarFrame: true,
     },
   });
 
@@ -46,6 +54,12 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
   const bannerPreset = isProfileBannerPreset(user.profileBannerPreset)
     ? user.profileBannerPreset
     : "twilight";
+  const bannerPatternRaw = user.profileBannerPattern;
+  const bannerPattern = isProfileBannerPattern(bannerPatternRaw) ? bannerPatternRaw : "noise";
+  const stickerRaw = user.profileSticker;
+  const sticker = stickerRaw && isProfileSticker(stickerRaw) ? stickerRaw : null;
+  const avatarFrameRaw = user.profileAvatarFrame;
+  const avatarFrame = isProfileAvatarFrame(avatarFrameRaw) ? avatarFrameRaw : "ring";
   const tenure = profileMemberTenure(new Date(user.createdAt));
 
   return (
@@ -57,8 +71,11 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
       <UserProfileHero
         displayName={displayName}
         bannerPreset={bannerPreset}
+        bannerPattern={bannerPattern}
         accentHex={user.profileAccentHex}
         tagline={user.profileTagline}
+        sticker={sticker}
+        avatarFrame={avatarFrame}
         subtitle={<span className="font-mono text-xs sm:text-sm">{user.email}</span>}
         metaRow={
           <>

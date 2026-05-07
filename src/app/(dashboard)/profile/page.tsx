@@ -5,7 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { ceoAssignableRoleLabel } from "@/lib/ceo-assignable-roles";
 import { UserProfileHero, profileMemberTenure } from "@/components/profile";
 import { Badge } from "@/components/ui/badge";
-import { isProfileBannerPreset } from "@/lib/profile-appearance";
+import {
+  isProfileAvatarFrame,
+  isProfileBannerPattern,
+  isProfileBannerPreset,
+  isProfileSticker,
+} from "@/lib/profile-appearance";
 import { ProfileForm } from "./profile-form";
 
 export default async function ProfilePage() {
@@ -24,8 +29,11 @@ export default async function ProfilePage() {
       role: true,
       createdAt: true,
       profileBannerPreset: true,
+      profileBannerPattern: true,
       profileTagline: true,
       profileAccentHex: true,
+      profileSticker: true,
+      profileAvatarFrame: true,
     },
   });
   if (!user) redirect("/login");
@@ -34,19 +42,28 @@ export default async function ProfilePage() {
   const bannerPreset = isProfileBannerPreset(user.profileBannerPreset)
     ? user.profileBannerPreset
     : "twilight";
+  const bannerPatternRaw = user.profileBannerPattern;
+  const bannerPattern = isProfileBannerPattern(bannerPatternRaw) ? bannerPatternRaw : "noise";
+  const stickerRaw = user.profileSticker;
+  const sticker = stickerRaw && isProfileSticker(stickerRaw) ? stickerRaw : null;
+  const avatarFrameRaw = user.profileAvatarFrame;
+  const avatarFrame = isProfileAvatarFrame(avatarFrameRaw) ? avatarFrameRaw : "ring";
   const tenure = profileMemberTenure(new Date(user.createdAt));
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <p className="text-muted-foreground text-sm">
-        Atur tampilan publik (tema, warna aksen, slogan) lalu bagikan tautan profil ke teman — pratinjau langsung di bawah.
+        Atur tampilan publik (tema, pola, aksen, frame, stiker, slogan) — pratinjau langsung di bawah.
       </p>
 
       <UserProfileHero
         displayName={displayName}
         bannerPreset={bannerPreset}
+        bannerPattern={bannerPattern}
         accentHex={user.profileAccentHex}
         tagline={user.profileTagline}
+        sticker={sticker}
+        avatarFrame={avatarFrame}
         subtitle={<span className="font-mono text-xs sm:text-sm">{user.email}</span>}
         metaRow={
           <>
@@ -94,8 +111,11 @@ export default async function ProfilePage() {
         initialWhatsappPhone={user.whatsappPhone ?? ""}
         initialImage={user.image}
         initialBannerPreset={bannerPreset}
+        initialBannerPattern={bannerPattern}
         initialTagline={user.profileTagline ?? ""}
         initialAccentHex={user.profileAccentHex}
+        initialSticker={sticker}
+        initialAvatarFrame={avatarFrame}
         profileSharePath={`/profile/${user.id}`}
       />
     </div>
