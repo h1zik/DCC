@@ -48,7 +48,7 @@ import { cn } from "@/lib/utils";
 const navCeo = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/for-me", label: "For Me", icon: Focus },
+  { href: "/for-me", label: "My Tasks", icon: Focus },
   { href: "/projects", label: "Pipeline proyek", icon: GitBranch },
   { href: "/approvals", label: "Persetujuan CEO", icon: ShieldCheck },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
@@ -56,7 +56,7 @@ const navCeo = [
 
 const navAdministrator = [
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/for-me", label: "For Me", icon: Focus },
+  { href: "/for-me", label: "My Tasks", icon: Focus },
   { href: "/projects", label: "Pipeline", icon: GitBranch },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/brands", label: "Brand", icon: Tags },
@@ -89,7 +89,7 @@ const navFinance = [
 
 const navStudio = [
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/for-me", label: "For Me", icon: Focus },
+  { href: "/for-me", label: "My Tasks", icon: Focus },
   { href: "/projects", label: "Pipeline", icon: GitBranch },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
 ] as const;
