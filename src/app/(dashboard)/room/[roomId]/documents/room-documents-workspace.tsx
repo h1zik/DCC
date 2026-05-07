@@ -8,6 +8,7 @@ import {
   createRoomDocumentFolder,
   deleteRoomDocument,
   deleteRoomDocumentFolder,
+  moveRoomDocumentToFolder,
   renameRoomDocumentFolder,
   uploadRoomDocument,
 } from "@/actions/room-documents";
@@ -42,6 +43,7 @@ import {
   ArrowDownAZ,
   ArrowUpDown,
   Calendar,
+  Check,
   CloudUpload,
   Download,
   Eye,
@@ -53,6 +55,7 @@ import {
   FileText,
   Film,
   Folder,
+  FolderInput,
   FolderOpen,
   FolderPlus,
   Grid3x3,
@@ -370,6 +373,20 @@ export function RoomDocumentsWorkspace({
     }
   }
 
+  async function onMoveDoc(d: RoomDocumentRow, folderId: string | null) {
+    if (folderId === d.folderId) return;
+    try {
+      await moveRoomDocumentToFolder({ documentId: d.id, folderId });
+      const targetName = folderId
+        ? folders.find((f) => f.id === folderId)?.name ?? "folder"
+        : "Tanpa folder";
+      toast.success(`Dipindahkan ke ${targetName}.`);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal memindahkan.");
+    }
+  }
+
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(false);
@@ -441,10 +458,10 @@ export function RoomDocumentsWorkspace({
           <div className="border-border bg-muted/30 relative border-t px-5 py-3 text-xs leading-relaxed sm:px-6">
             Buat folder untuk mengelompokkan file (mis. <em>Logo</em>,{" "}
             <em>Legal</em>). Saat unggah, pilih <em>Simpan ke folder</em>; file
-            yang sudah ada bisa dipindahkan via menu titik tiga di kartunya.
-            Manager ruangan dapat mengganti nama atau menghapus folder — file
-            di folder yang dihapus akan otomatis pindah ke{" "}
-            <em>Tanpa folder</em>.
+            yang sudah ada bisa dipindahkan lewat tombol{" "}
+            <em>Pindahkan</em> di kartunya. Manager ruangan dapat mengganti
+            nama atau menghapus folder — file di folder yang dihapus akan
+            otomatis pindah ke <em>Tanpa folder</em>.
           </div>
         ) : null}
       </header>
@@ -825,6 +842,7 @@ export function RoomDocumentsWorkspace({
                   canManage={d.uploadedBy.id === currentUserId || isRoomManager}
                   onPreview={(doc) => setPreviewDoc(doc)}
                   onDelete={onDeleteDoc}
+                  onMove={onMoveDoc}
                 />
               ))}
             </ul>
@@ -838,6 +856,7 @@ export function RoomDocumentsWorkspace({
               }
               onPreview={(doc) => setPreviewDoc(doc)}
               onDelete={onDeleteDoc}
+              onMove={onMoveDoc}
             />
           )}
         </div>
@@ -886,6 +905,69 @@ export function RoomDocumentsWorkspace({
 }
 
 /* ----------------------------- Sub components ----------------------------- */
+
+function MoveFolderMenu({
+  doc,
+  folders,
+  onMove,
+  trigger,
+}: {
+  doc: RoomDocumentRow;
+  folders: RoomDocumentFolderRow[];
+  onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  trigger: React.ReactElement;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={trigger} />
+      <DropdownMenuContent align="end" sideOffset={4} className="min-w-56">
+        <div className="text-muted-foreground flex items-center gap-1.5 px-1.5 py-1 text-xs font-medium">
+          <FolderInput className="size-3.5 opacity-70" aria-hidden />
+          Pindahkan ke folder
+        </div>
+        <DropdownMenuSeparator />
+        <FolderChoiceItem
+          icon={<Folder className="size-3.5 opacity-70" />}
+          label="Tanpa folder"
+          active={doc.folderId == null}
+          onSelect={() => void onMove(doc, null)}
+        />
+        {folders.length > 0 ? <DropdownMenuSeparator /> : null}
+        {folders.map((f) => (
+          <FolderChoiceItem
+            key={f.id}
+            icon={<Folder className="size-3.5 opacity-70" />}
+            label={f.name}
+            active={doc.folderId === f.id}
+            onSelect={() => void onMove(doc, f.id)}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function FolderChoiceItem({
+  icon,
+  label,
+  active,
+  onSelect,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <DropdownMenuItem onClick={onSelect} disabled={active} className="gap-2">
+      {icon}
+      <span className="flex-1 truncate">{label}</span>
+      {active ? (
+        <Check className="text-primary size-3.5 shrink-0" aria-label="Folder saat ini" />
+      ) : null}
+    </DropdownMenuItem>
+  );
+}
 
 function FolderRow({
   icon: Icon,
@@ -945,6 +1027,7 @@ function DocCard({
   canManage,
   onPreview,
   onDelete,
+  onMove,
 }: {
   doc: RoomDocumentRow;
   folders: RoomDocumentFolderRow[];
@@ -952,10 +1035,12 @@ function DocCard({
   canManage: boolean;
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
+  onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
 }) {
   const meta = fileTypeMeta(doc.mimeType);
   const Icon = meta.icon;
   const isImage = doc.mimeType.startsWith("image/");
+  const currentFolderName = folderLabelForDoc(doc.folderId, folders);
 
   return (
     <li className="border-border bg-card group hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors">
@@ -987,9 +1072,27 @@ function DocCard({
 
       <div className="flex flex-1 flex-col gap-2 p-3">
         {showFolderHint ? (
-          <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
-            {folderLabelForDoc(doc.folderId, folders)}
-          </p>
+          canManage ? (
+            <MoveFolderMenu
+              doc={doc}
+              folders={folders}
+              onMove={onMove}
+              trigger={
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground hover:bg-muted/40 -mx-1 -my-0.5 inline-flex w-fit max-w-full items-center gap-1 truncate rounded px-1 py-0.5 text-[10px] font-semibold tracking-[0.06em] uppercase transition-colors"
+                  title="Pindahkan ke folder lain"
+                >
+                  <Folder className="size-3 shrink-0 opacity-70" aria-hidden />
+                  <span className="truncate">{currentFolderName}</span>
+                </button>
+              }
+            />
+          ) : (
+            <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+              {currentFolderName}
+            </p>
+          )
         ) : null}
         <button
           type="button"
@@ -1043,17 +1146,36 @@ function DocCard({
             Download
           </Button>
           {canManage ? (
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="outline"
-              aria-label={`Hapus ${doc.fileName}`}
-              title="Hapus dokumen"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
-              onClick={() => void onDelete(doc)}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
+            <>
+              <MoveFolderMenu
+                doc={doc}
+                folders={folders}
+                onMove={onMove}
+                trigger={
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    aria-label={`Pindahkan ${doc.fileName}`}
+                    title={`Pindah folder · sekarang: ${currentFolderName}`}
+                    className="shrink-0"
+                  >
+                    <FolderInput className="size-3.5" />
+                  </Button>
+                }
+              />
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                aria-label={`Hapus ${doc.fileName}`}
+                title="Hapus dokumen"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                onClick={() => void onDelete(doc)}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </>
           ) : null}
         </div>
       </div>
@@ -1069,6 +1191,7 @@ function DocList({
   isManagerOrOwner,
   onPreview,
   onDelete,
+  onMove,
 }: {
   docs: RoomDocumentRow[];
   folders: RoomDocumentFolderRow[];
@@ -1076,6 +1199,7 @@ function DocList({
   isManagerOrOwner: (d: RoomDocumentRow) => boolean;
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
+  onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
 }) {
   return (
     <div className="border-border bg-card overflow-hidden rounded-xl border">
@@ -1153,17 +1277,38 @@ function DocList({
                   <Download className="size-4" />
                 </Button>
                 {isManagerOrOwner(d) ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Hapus ${d.fileName}`}
-                    title="Hapus dokumen"
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => void onDelete(d)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <>
+                    <MoveFolderMenu
+                      doc={d}
+                      folders={folders}
+                      onMove={onMove}
+                      trigger={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Pindahkan ${d.fileName}`}
+                          title={`Pindah folder · sekarang: ${folderLabelForDoc(
+                            d.folderId,
+                            folders,
+                          )}`}
+                        >
+                          <FolderInput className="size-4" />
+                        </Button>
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Hapus ${d.fileName}`}
+                      title="Hapus dokumen"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => void onDelete(d)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </>
                 ) : null}
               </div>
             </li>
