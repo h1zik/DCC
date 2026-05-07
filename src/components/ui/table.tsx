@@ -26,7 +26,7 @@ function Table({
       className={cn(
         "relative w-full",
         fitViewport
-          ? "min-w-0 overflow-x-hidden [&_th]:whitespace-normal [&_td]:whitespace-normal [&_th]:break-words [&_td]:break-words [&_th]:align-top [&_td]:align-top [&_th]:px-1.5 [&_td]:px-1.5 [&_th]:py-1.5 [&_td]:py-1.5 [&_th]:h-auto [&_th]:min-h-8"
+          ? "min-w-0 overflow-x-auto [&_th]:whitespace-normal [&_td]:whitespace-normal [&_th]:break-words [&_td]:break-words [&_th]:align-top [&_td]:align-top [&_th]:px-1.5 [&_td]:px-1.5 [&_th]:py-1.5 [&_td]:py-1.5 [&_th]:h-auto [&_th]:min-h-8"
           : "overflow-x-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap",
         containerClassName,
       )}

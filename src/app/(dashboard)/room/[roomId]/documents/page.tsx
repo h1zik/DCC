@@ -27,23 +27,12 @@ export default async function RoomDocumentsPage({ params }: PageProps) {
   ]);
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-muted-foreground text-sm">
-        Arsip file bersama untuk ruangan ini (kontrak, PDF, logo, referensi,
-        dll.), terpisah dari lampiran pada tugas individu. Buat folder untuk
-        mengelompokkan (misalnya Logo, Legal); unggahan baru memakai pilihan
-        &quot;Simpan ke folder&quot;, dan file yang sudah ada dapat dipindahkan
-        lewat dropdown Folder di setiap baris. Manager ruangan dapat mengganti
-        nama atau menghapus folder — jika folder dihapus, file di dalamnya
-        otomatis pindah ke Tanpa folder.
-      </p>
-      <RoomDocumentsWorkspace
-        roomId={roomId}
-        folders={folders}
-        documents={documents}
-        currentUserId={uid}
-        isRoomManager={isRoomManager}
-      />
-    </div>
+    <RoomDocumentsWorkspace
+      roomId={roomId}
+      folders={folders}
+      documents={documents}
+      currentUserId={uid}
+      isRoomManager={isRoomManager}
+    />
   );
 }

@@ -35,7 +35,6 @@ function columnWidthStyle<TData>(
   column: Column<TData, unknown>,
   fitViewport: boolean,
 ) {
-  if (fitViewport) return undefined;
   const def = column.columnDef;
   const width = typeof def.size === "number" ? def.size : undefined;
   const minWidth = typeof def.minSize === "number" ? def.minSize : undefined;
@@ -43,6 +42,8 @@ function columnWidthStyle<TData>(
   if (width === undefined && minWidth === undefined && maxWidth === undefined) {
     return undefined;
   }
+  // TanStack stores px numbers; apply in both modes so `table-fixed` + fitViewport
+  // can reserve space for primary columns (e.g. judul konten).
   return { width, minWidth, maxWidth };
 }
 

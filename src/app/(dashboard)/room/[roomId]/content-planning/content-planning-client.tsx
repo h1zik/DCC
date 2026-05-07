@@ -303,15 +303,18 @@ function InlineTextCell({
   }, [value, active]);
 
   if (!active) {
+    const label = value?.trim() ? value : "";
     return (
       <button
         type="button"
         onClick={onActivate}
         className="hover:bg-muted/40 min-h-7 w-full rounded px-1 py-0.5 text-left"
-        title="Klik untuk edit"
+        title={label ? `${label}\n(Klik untuk edit)` : "Klik untuk edit"}
       >
-        <span className="line-clamp-2 min-w-0 break-words text-sm">
-          {value || <span className="text-muted-foreground">{placeholder || "—"}</span>}
+        <span className="min-w-0 whitespace-normal break-words text-left text-sm leading-snug">
+          {value || (
+            <span className="text-muted-foreground">{placeholder || "—"}</span>
+          )}
         </span>
       </button>
     );
@@ -960,6 +963,9 @@ export function ContentPlanningClient({
       },
       {
         accessorKey: "konten",
+        size: 280,
+        minSize: 200,
+        maxSize: 480,
         header: ({ column }) => (
           <CpColumnHeader column={column}>
             <span title="Konten (nama)">Konten</span>
@@ -991,6 +997,9 @@ export function ContentPlanningClient({
         id: "jenis",
         accessorFn: (row) => row.jenisKonten,
         sortUndefined: "last",
+        size: 104,
+        minSize: 92,
+        maxSize: 120,
         header: ({ column }) => (
           <CpColumnHeader column={column}>
             <span title="Jenis konten">Jenis</span>
@@ -1033,6 +1042,9 @@ export function ContentPlanningClient({
       {
         id: "detail",
         accessorFn: (row) => (row.detailKonten ?? "").toLowerCase(),
+        size: 200,
+        minSize: 140,
+        maxSize: 320,
         header: ({ column }) => (
           <CpColumnHeader column={column}>
             <span title="Detail konten">Detail</span>
@@ -1831,7 +1843,12 @@ export function ContentPlanningClient({
                       </span>
                     )}
                     <div className="min-w-0 flex-1 space-y-1">
-                      <p className="truncate text-sm font-semibold">{row.konten || "—"}</p>
+                      <p
+                        className="text-sm leading-snug font-semibold whitespace-normal break-words"
+                        title={row.konten?.trim() || undefined}
+                      >
+                        {row.konten || "—"}
+                      </p>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <JenisBadge jenis={row.jenisKonten} />
                         {(row.pics?.length ?? 0) > 0 ? (

@@ -3,8 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { RoomWorkspaceSection, type Brand } from "@prisma/client";
-import { ClipboardList, Files, KanbanSquare, MessageCircle, Users } from "lucide-react";
+import {
+  ClipboardList,
+  Files,
+  Hash,
+  KanbanSquare,
+  MessageCircle,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
 import { RoomBannerEditor } from "./room-banner-editor";
 import { RoomEditorButton } from "./room-editor-button";
 import {
@@ -22,6 +31,7 @@ export function RoomHubNav({
   roomBrandId = null,
   roomWorkspaceSection = RoomWorkspaceSection.ROOMS,
   brands = [],
+  brand = null,
   memberUsers = [],
 }: {
   roomId: string;
@@ -34,6 +44,7 @@ export function RoomHubNav({
   roomBrandId?: string | null;
   roomWorkspaceSection?: RoomWorkspaceSection;
   brands?: Brand[];
+  brand?: Pick<Brand, "id" | "name"> | null;
   memberUsers?: RoomMemberAvatarUser[];
 }) {
   const pathname = usePathname();
@@ -57,40 +68,90 @@ export function RoomHubNav({
   ] as const;
   const links = simpleHub ? simpleLinks : fullLinks;
 
+  const sectionLabel = roomWorkspaceSectionTitle(roomWorkspaceSection);
+
   return (
-    <div className="border-border bg-card/30 relative overflow-hidden rounded-xl border p-4">
-      {bannerImage ? (
+    <div className="flex flex-col gap-4">
+      <header
+        className={cn(
+          "border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm",
+        )}
+      >
+        {/* Background: banner image or decorative gradient */}
+        {bannerImage ? (
+          <>
+            <div
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: `url("${bannerImage}")` }}
+              aria-hidden
+            />
+            {/* Stronger overlay so judul/teks selalu terbaca di atas banner */}
+            <div
+              className="bg-gradient-to-t from-background via-background/85 to-background/40 absolute inset-0"
+              aria-hidden
+            />
+            <div
+              className="bg-gradient-to-r from-background/55 via-transparent to-background/30 absolute inset-0"
+              aria-hidden
+            />
+          </>
+        ) : (
+          <>
+            <div
+              className="bg-gradient-to-br from-primary/12 via-primary/4 absolute inset-0 to-transparent"
+              aria-hidden
+            />
+            <div
+              className="bg-primary/15 absolute -top-16 -right-16 size-56 rounded-full blur-3xl"
+              aria-hidden
+            />
+            <div
+              className="bg-primary/10 absolute -bottom-24 -left-10 size-48 rounded-full blur-3xl"
+              aria-hidden
+            />
+          </>
+        )}
+        {/* Aksen garis tipis di atas */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-75"
-          style={{ backgroundImage: `url("${bannerImage}")` }}
+          className="bg-gradient-to-r from-transparent via-primary/40 to-transparent absolute inset-x-0 top-0 h-px"
           aria-hidden
         />
-      ) : null}
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-0",
-          bannerImage
-            ? "bg-gradient-to-r from-background/25 via-background/15 to-background/25"
-            : "bg-background/70",
-        )}
-        aria-hidden
-      />
-      <div className="relative flex flex-col gap-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-              Ruangan
-            </p>
-            <h1 className="text-xl font-semibold tracking-tight">{roomName}</h1>
-            <div className="mt-2 space-y-1">
-              <p className="text-muted-foreground text-[11px] font-medium">
-                Anggota ruangan: {memberUsers.length} orang
-              </p>
-              <RoomMemberAvatarStack users={memberUsers} maxVisible={8} />
+
+        <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-6">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="border-primary/25 bg-primary/12 text-primary inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm">
+                <Hash className="size-3" aria-hidden />
+                {sectionLabel}
+              </span>
+              {brand ? (
+                <span className="border-border bg-background/85 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm">
+                  <span className="bg-primary size-1.5 rounded-full" aria-hidden />
+                  {brand.name}
+                </span>
+              ) : simpleHub ? (
+                <span className="border-border bg-background/70 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm">
+                  <Sparkles className="size-3" aria-hidden />
+                  Hub ringkas
+                </span>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-foreground text-2xl font-semibold tracking-tight sm:text-3xl">
+                {roomName}
+              </h1>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <RoomMemberAvatarStack users={memberUsers} maxVisible={6} />
+                <span className="text-muted-foreground text-xs font-medium">
+                  {memberUsers.length} anggota
+                </span>
+              </div>
             </div>
           </div>
+
           {canEditBanner || canEditRoom ? (
-            <div className="flex flex-col gap-2">
+            <div className="flex shrink-0 flex-wrap items-start gap-2 sm:flex-col sm:items-end sm:gap-1.5">
               {canEditBanner ? (
                 <RoomBannerEditor roomId={roomId} hasBanner={!!bannerImage} />
               ) : null}
@@ -106,28 +167,39 @@ export function RoomHubNav({
             </div>
           ) : null}
         </div>
-        <nav className="flex flex-wrap gap-1 sm:justify-end" aria-label="Menu ruangan">
+      </header>
+
+      <nav
+        aria-label="Menu ruangan"
+        className="border-border bg-background/85 supports-backdrop-filter:bg-background/65 sticky top-14 z-20 rounded-xl border shadow-sm backdrop-blur-md"
+      >
+        <ul
+          role="list"
+          className="flex w-full items-center gap-0.5 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {links.map((l) => {
             const active =
               pathname === l.href || pathname.startsWith(`${l.href}/`);
             return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                <l.icon className="size-4 shrink-0" />
-                {l.label}
-              </Link>
+              <li key={l.href} className="shrink-0">
+                <Link
+                  href={l.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <l.icon className="size-4 shrink-0" aria-hidden />
+                  <span className="whitespace-nowrap">{l.label}</span>
+                </Link>
+              </li>
             );
           })}
-        </nav>
-      </div>
+        </ul>
+      </nav>
     </div>
   );
 }

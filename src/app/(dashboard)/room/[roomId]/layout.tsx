@@ -42,6 +42,7 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
         roomBrandId={room.brandId}
         roomWorkspaceSection={room.workspaceSection}
         brands={brands}
+        brand={room.brand ? { id: room.brand.id, name: room.brand.name } : null}
         memberUsers={memberUsers}
       />
       {children}
