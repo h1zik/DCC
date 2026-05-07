@@ -25,10 +25,18 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   empty?: string;
   onRowClick?: (row: TData) => void;
-  /** Tabel mengisi lebar area; kolom wrap — hindari scroll horizontal. */
+  /** Tabel mengisi lebar area; kolom wrap — scroll dua arah di dalam viewport. */
   fitViewport?: boolean;
   /** Urutkan baris di klien (klik header kolom). */
   sortable?: boolean;
+  /**
+   * Aktifkan scroll internal (viewport) pada tabel: scrollbar horizontal
+   * tetap terlihat di bawah area tabel tanpa harus scroll halaman.
+   * Contoh nilai: `"calc(100dvh - 280px)"` atau `"60vh"`.
+   */
+  viewportMaxHeight?: string;
+  /** Sticky `<thead>` di atas saat scroll vertikal di dalam viewport. */
+  stickyHeader?: boolean;
 }
 
 function columnWidthStyle<TData>(
@@ -54,6 +62,8 @@ export function DataTable<TData, TValue>({
   onRowClick,
   fitViewport = false,
   sortable = false,
+  viewportMaxHeight,
+  stickyHeader = false,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
@@ -67,18 +77,24 @@ export function DataTable<TData, TValue>({
     enableSorting: sortable,
   });
 
+  const useInternalScroll = !!viewportMaxHeight;
+
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-border",
+        "rounded-xl border border-border",
+        useInternalScroll ? "overflow-hidden bg-card" : "overflow-hidden",
         fitViewport && "min-w-0",
       )}
     >
       <Table
         fitViewport={fitViewport}
         className={fitViewport ? "text-[11px] leading-snug" : undefined}
+        containerStyle={
+          useInternalScroll ? { maxHeight: viewportMaxHeight } : undefined
+        }
       >
-        <TableHeader>
+        <TableHeader sticky={stickyHeader}>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (

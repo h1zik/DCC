@@ -7,26 +7,30 @@ import { cn } from "@/lib/utils"
 type TableProps = React.ComponentProps<"table"> & {
   /**
    * Tabel mengisi lebar kontainer: `table-fixed`, teks boleh wrap,
-   * tanpa scroll horizontal di wrapper (cocok untuk grid lebar).
+   * dan kontainer mendukung scroll dua arah (cocok untuk grid lebar).
    */
   fitViewport?: boolean;
   /** Class tambahan pada wrapper di luar `<table>`. */
   containerClassName?: string;
+  /** Style inline untuk wrapper (mis. `maxHeight` untuk viewport scroll internal). */
+  containerStyle?: React.CSSProperties;
 };
 
 function Table({
   className,
   containerClassName,
+  containerStyle,
   fitViewport = false,
   ...props
 }: TableProps) {
   return (
     <div
       data-slot="table-container"
+      style={containerStyle}
       className={cn(
         "relative w-full",
         fitViewport
-          ? "min-w-0 overflow-x-auto [&_th]:whitespace-normal [&_td]:whitespace-normal [&_th]:break-words [&_td]:break-words [&_th]:align-top [&_td]:align-top [&_th]:px-1.5 [&_td]:px-1.5 [&_th]:py-1.5 [&_td]:py-1.5 [&_th]:h-auto [&_th]:min-h-8"
+          ? "min-w-0 overflow-auto [&_th]:whitespace-normal [&_td]:whitespace-normal [&_th]:break-words [&_td]:break-words [&_th]:align-top [&_td]:align-top [&_th]:px-1.5 [&_td]:px-1.5 [&_th]:py-1.5 [&_td]:py-1.5 [&_th]:h-auto [&_th]:min-h-8"
           : "overflow-x-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap",
         containerClassName,
       )}
@@ -44,11 +48,24 @@ function Table({
   )
 }
 
-function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+type TableHeaderProps = React.ComponentProps<"thead"> & {
+  /**
+   * Sticky kolom header di atas saat scroll vertikal di dalam viewport.
+   * Cocok dipakai berbarengan dengan `Table.containerStyle.maxHeight`.
+   */
+  sticky?: boolean;
+};
+
+function TableHeader({ className, sticky = false, ...props }: TableHeaderProps) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn(
+        "[&_tr]:border-b",
+        sticky &&
+          "[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card supports-backdrop-filter:[&_th]:bg-card/95 supports-backdrop-filter:[&_th]:backdrop-blur-sm [&_th]:shadow-[inset_0_-1px_0_var(--border)]",
+        className,
+      )}
       {...props}
     />
   )

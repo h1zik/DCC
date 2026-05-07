@@ -61,20 +61,24 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Eye,
   FileText,
   Heart,
   LayoutGrid,
   Layers,
   LayoutList,
+  ListFilter,
   MessageCircle,
   MoreHorizontal,
   Pencil,
   Plus,
+  Search,
   Send,
   Sparkles,
   Trash2,
   UserCircle,
+  X,
 } from "lucide-react";
 import type { Column, ColumnDef } from "@tanstack/react-table";
 
@@ -693,6 +697,13 @@ export function ContentPlanningClient({
   const [previewIndex, setPreviewIndex] = useState(0);
   const [kanbanSelectedIds, setKanbanSelectedIds] = useState<string[]>([]);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [jenisFilter, setJenisFilter] = useState<ContentPlanJenis | "all">("all");
+  const [statusCwFilter, setStatusCwFilter] = useState<ContentPlanStatusKerja | "all">("all");
+  const [statusDesignFilter, setStatusDesignFilter] = useState<ContentPlanStatusKerja | "all">("all");
+  const [picFilter, setPicFilter] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
+
   const kanbanSet = useMemo(() => new Set(kanbanSelectedIds), [kanbanSelectedIds]);
 
   const kanbanEligibleIds = useMemo(
@@ -706,6 +717,71 @@ export function ContentPlanningClient({
   const kanbanEligibleCount = kanbanEligibleIds.length;
   const allKanbanSelected =
     kanbanEligibleCount > 0 && kanbanEligibleIds.every((id) => kanbanSet.has(id));
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (jenisFilter !== "all") n += 1;
+    if (statusCwFilter !== "all") n += 1;
+    if (statusDesignFilter !== "all") n += 1;
+    if (picFilter !== "all") n += 1;
+    return n;
+  }, [jenisFilter, statusCwFilter, statusDesignFilter, picFilter]);
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return tableRows.filter((row) => {
+      if (q) {
+        const haystack = `${row.konten ?? ""} ${row.detailKonten ?? ""}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (jenisFilter !== "all" && row.jenisKonten !== jenisFilter) return false;
+      if (statusCwFilter !== "all" && row.statusCopywriting !== statusCwFilter) return false;
+      if (statusDesignFilter !== "all" && row.statusDesign !== statusDesignFilter)
+        return false;
+      if (picFilter !== "all") {
+        const ids = row.picUserIds?.length
+          ? row.picUserIds
+          : row.picUserId
+            ? [row.picUserId]
+            : [];
+        if (!ids.includes(picFilter)) return false;
+      }
+      return true;
+    });
+  }, [
+    tableRows,
+    searchQuery,
+    jenisFilter,
+    statusCwFilter,
+    statusDesignFilter,
+    picFilter,
+  ]);
+
+  const resetFilters = useCallback(() => {
+    setSearchQuery("");
+    setJenisFilter("all");
+    setStatusCwFilter("all");
+    setStatusDesignFilter("all");
+    setPicFilter("all");
+  }, []);
+
+  const stats = useMemo(() => {
+    const total = tableRows.length;
+    const published = tableRows.filter(
+      (r) => r.statusDesign === ContentPlanStatusKerja.DIPUBLIKASIKAN,
+    ).length;
+    const inProgress = tableRows.filter(
+      (r) =>
+        r.statusCopywriting === ContentPlanStatusKerja.DALAM_PROSES ||
+        r.statusDesign === ContentPlanStatusKerja.DALAM_PROSES ||
+        r.statusCopywriting === ContentPlanStatusKerja.DALAM_PENINJAUAN ||
+        r.statusDesign === ContentPlanStatusKerja.DALAM_PENINJAUAN,
+    ).length;
+    const fresh = tableRows.filter(
+      (r) => r.statusDesign === ContentPlanStatusKerja.BARU,
+    ).length;
+    return { total, published, inProgress, fresh };
+  }, [tableRows]);
 
   const picUserById = useMemo(() => {
     return new Map(picUserOptions.map((u) => [u.id, u]));
@@ -1330,12 +1406,112 @@ export function ContentPlanningClient({
   const editingPaths = editing?.designFilePaths ?? [];
   const editingId = editing?.id;
 
+  const hasActiveFilters = activeFilterCount > 0 || searchQuery.trim().length > 0;
+  const filteredCount = filteredRows.length;
+  const totalCount = tableRows.length;
+
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap justify-end gap-2">
+      {/* Hero header */}
+      <header className="border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm">
+        <div
+          className="from-primary/8 absolute inset-0 bg-gradient-to-br via-transparent to-transparent"
+          aria-hidden
+        />
+        <div
+          className="bg-primary/10 absolute -top-12 -right-12 size-40 rounded-full blur-3xl"
+          aria-hidden
+        />
+        <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="bg-primary/12 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
+              <ClipboardList className="size-5" aria-hidden />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-xl font-semibold tracking-tight">
+                Content planning
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                Tabel perencanaan konten per ruangan — PIC, status copywriting &amp;
+                design, deadline, dan posting.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="border-border bg-background/70 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
+              <Layers className="size-3.5 opacity-70" aria-hidden /> {stats.total} total
+            </span>
+            <span className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
+              ✓ {stats.published} terbit
+            </span>
+            <span className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
+              ↻ {stats.inProgress} proses
+            </span>
+            <span className="border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
+              • {stats.fresh} baru
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* Toolbar: search + filter toggle + actions */}
+      <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-xl border p-2">
+        <div className="border-input focus-within:border-ring focus-within:ring-ring/40 bg-background/40 flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 transition-colors focus-within:ring-2 sm:max-w-md">
+          <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari konten / detail…"
+            className="placeholder:text-muted-foreground h-8 min-w-0 flex-1 bg-transparent text-sm outline-none"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Bersihkan pencarian"
+              onClick={() => setSearchQuery("")}
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant={showFilters || activeFilterCount > 0 ? "secondary" : "outline"}
+          onClick={() => setShowFilters((v) => !v)}
+          aria-expanded={showFilters}
+        >
+          <ListFilter className="size-3.5" />
+          Filter
+          {activeFilterCount > 0 ? (
+            <span className="bg-primary text-primary-foreground ml-1 inline-flex size-4 items-center justify-center rounded-full text-[10px] font-semibold">
+              {activeFilterCount}
+            </span>
+          ) : null}
+        </Button>
+        {hasActiveFilters ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={resetFilters}
+          >
+            <X className="size-3.5" />
+            Reset
+          </Button>
+        ) : null}
+        {hasActiveFilters ? (
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {filteredCount} dari {totalCount}
+          </span>
+        ) : null}
+        <span className="ml-auto" />
         <Button
           type="button"
           variant="outline"
+          size="sm"
           disabled={!kanbanProjectId || kanbanPending || kanbanSelectedIds.length === 0}
           title={
             !kanbanProjectId
@@ -1367,7 +1543,7 @@ export function ContentPlanningClient({
           <LayoutGrid className="size-4" />
           {kanbanPending ? "Memproses…" : "Tambahkan ke Kanban"}
         </Button>
-        <Button type="button" onClick={openCreate}>
+        <Button type="button" size="sm" onClick={openCreate}>
           <Plus className="size-4" />
           Baris baru
         </Button>
@@ -1818,14 +1994,132 @@ export function ContentPlanningClient({
         </Sheet>
       </div>
 
+      {/* Filter pills (collapsible) */}
+      {showFilters ? (
+        <div className="border-border bg-muted/30 grid gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+              Jenis
+            </Label>
+            <Select
+              value={jenisFilter}
+              onValueChange={(v) =>
+                setJenisFilter((v ?? "all") as ContentPlanJenis | "all")
+              }
+            >
+              <SelectTrigger className="h-9 w-full">
+                <span>
+                  {jenisFilter === "all" ? "Semua jenis" : JENIS_LABEL[jenisFilter]}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua jenis</SelectItem>
+                {(Object.values(ContentPlanJenis) as ContentPlanJenis[]).map((j) => (
+                  <SelectItem key={j} value={j}>
+                    {JENIS_LABEL[j]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+              Status copy
+            </Label>
+            <Select
+              value={statusCwFilter}
+              onValueChange={(v) =>
+                setStatusCwFilter((v ?? "all") as ContentPlanStatusKerja | "all")
+              }
+            >
+              <SelectTrigger className="h-9 w-full">
+                <span>
+                  {statusCwFilter === "all"
+                    ? "Semua status"
+                    : STATUS_LABEL[statusCwFilter]}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua status</SelectItem>
+                {(
+                  Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[]
+                ).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+              Status design
+            </Label>
+            <Select
+              value={statusDesignFilter}
+              onValueChange={(v) =>
+                setStatusDesignFilter((v ?? "all") as ContentPlanStatusKerja | "all")
+              }
+            >
+              <SelectTrigger className="h-9 w-full">
+                <span>
+                  {statusDesignFilter === "all"
+                    ? "Semua status"
+                    : STATUS_LABEL[statusDesignFilter]}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua status</SelectItem>
+                {(
+                  Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[]
+                ).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+              PIC
+            </Label>
+            <Select
+              value={picFilter}
+              onValueChange={(v) => setPicFilter(v ?? "all")}
+            >
+              <SelectTrigger className="h-9 w-full">
+                <span>
+                  {picFilter === "all"
+                    ? "Semua PIC"
+                    : picUserOptions.find((u) => u.id === picFilter)?.name ??
+                      picUserOptions.find((u) => u.id === picFilter)?.email ??
+                      "PIC"}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua PIC</SelectItem>
+                {picUserOptions.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name?.trim() || u.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      ) : null}
+
       <div className="min-w-0 max-w-full md:hidden">
-        {tableRows.length === 0 ? (
+        {filteredRows.length === 0 ? (
           <div className="text-muted-foreground rounded-xl border border-border px-4 py-8 text-center text-sm">
-            Belum ada baris. Tambahkan konten lewat tombol Baris baru.
+            {hasActiveFilters
+              ? "Tidak ada baris yang cocok dengan filter / pencarian."
+              : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."}
           </div>
         ) : (
           <div className="space-y-3">
-            {tableRows.map((row) => (
+            {filteredRows.map((row) => (
               <Card key={row.id} size="sm" className="shadow-none ring-border/60">
                 <div className="space-y-3 px-4 py-3">
                   <div className="flex items-start justify-between gap-2">
@@ -1945,10 +2239,16 @@ export function ContentPlanningClient({
       <div className="hidden min-w-0 max-w-full md:block">
         <DataTable
           columns={columns}
-          data={tableRows}
-          empty="Belum ada baris. Tambahkan konten lewat tombol Baris baru."
+          data={filteredRows}
+          empty={
+            hasActiveFilters
+              ? "Tidak ada baris yang cocok dengan filter / pencarian."
+              : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."
+          }
           fitViewport
           sortable
+          stickyHeader
+          viewportMaxHeight="min(70vh, calc(100dvh - 320px))"
         />
       </div>
 

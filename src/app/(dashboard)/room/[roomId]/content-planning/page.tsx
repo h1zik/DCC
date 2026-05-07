@@ -38,17 +38,11 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
   const kanbanProjectId = projects[0]?.id ?? null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <p className="text-muted-foreground text-sm">
-        Tabel perencanaan konten per ruangan. PIC dipilih dari anggota ruangan;
-        status copywriting & design mengikuti alur kerja tim.
-      </p>
-      <ContentPlanningClient
-        roomId={roomId}
-        items={items}
-        picUserOptions={picUserOptions}
-        kanbanProjectId={kanbanProjectId}
-      />
-    </div>
+    <ContentPlanningClient
+      roomId={roomId}
+      items={items}
+      picUserOptions={picUserOptions}
+      kanbanProjectId={kanbanProjectId}
+    />
   );
 }
