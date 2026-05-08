@@ -29,7 +29,7 @@ import {
   Users,
   WandSparkles,
 } from "lucide-react";
-import { ceoAssignableRoleLabel } from "@/lib/ceo-assignable-roles";
+import { effectiveRoleLabel } from "@/lib/role-labels";
 import { isStudioOrProjectManager } from "@/lib/roles";
 import {
   Sidebar,
@@ -62,6 +62,7 @@ const navAdministrator = [
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/brands", label: "Brand", icon: Tags },
   { href: "/admin/users", label: "Pengguna", icon: Users },
+  { href: "/admin/roles", label: "Peran (role)", icon: ShieldCheck },
   { href: "/admin/branding", label: "Web Setting", icon: WandSparkles },
 ] as const;
 
@@ -167,7 +168,14 @@ export function AppSidebar() {
   const userName = session?.user?.name?.trim() || session?.user?.email || "Akun";
   const userImage = session?.user?.image ?? null;
   const initial = (userName || "?").slice(0, 1).toUpperCase();
-  const roleLabel = role ? ceoAssignableRoleLabel(role) : "";
+  const roleLabel = role
+    ? effectiveRoleLabel({
+        role,
+        customRole: session?.user?.customRoleName
+          ? { name: session.user.customRoleName }
+          : null,
+      })
+    : "";
 
   return (
     <Sidebar

@@ -208,45 +208,45 @@ async function main() {
 
   const marketingUser = await prisma.user.upsert({
     where: { email: "marketing@dominatus.local" },
-    update: { passwordHash, role: UserRole.MARKETING },
+    update: { passwordHash, role: UserRole.NORMAL_USER },
     create: {
       email: "marketing@dominatus.local",
       name: "Marketing Demo",
       passwordHash,
-      role: UserRole.MARKETING,
+      role: UserRole.NORMAL_USER,
     },
   });
 
   await prisma.user.upsert({
     where: { email: "creative@dominatus.local" },
-    update: { passwordHash, role: UserRole.CREATIVE_DIRECTOR },
+    update: { passwordHash, role: UserRole.NORMAL_USER },
     create: {
       email: "creative@dominatus.local",
       name: "Creative Director Demo",
       passwordHash,
-      role: UserRole.CREATIVE_DIRECTOR,
+      role: UserRole.NORMAL_USER,
     },
   });
 
   await prisma.user.upsert({
     where: { email: "analyst@dominatus.local" },
-    update: { passwordHash, role: UserRole.BUSINESS_ANALYST },
+    update: { passwordHash, role: UserRole.NORMAL_USER },
     create: {
       email: "analyst@dominatus.local",
       name: "Business Analyst Demo",
       passwordHash,
-      role: UserRole.BUSINESS_ANALYST,
+      role: UserRole.NORMAL_USER,
     },
   });
 
   await prisma.user.upsert({
     where: { email: "copywriter@dominatus.local" },
-    update: { passwordHash, role: UserRole.COPYWRITER },
+    update: { passwordHash, role: UserRole.NORMAL_USER },
     create: {
       email: "copywriter@dominatus.local",
       name: "Copywriter Demo",
       passwordHash,
-      role: UserRole.COPYWRITER,
+      role: UserRole.NORMAL_USER,
     },
   });
 

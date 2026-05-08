@@ -28,13 +28,19 @@ enum UserRole {
   /** Mengelola master brand & ruang kerja; ditetapkan oleh CEO. */
   ADMINISTRATOR
   LOGISTICS
-  MARKETING
-  CREATIVE_DIRECTOR
-  BUSINESS_ANALYST
-  COPYWRITER
+  /** Member umum — akses tugas, ruangan, dan pipeline (level studio). */
+  NORMAL_USER
   PROJECT_MANAGER
   /** Akuntansi & treasury; akses modul keuangan. */
   FINANCE
+  /** @deprecated dipindah ke NORMAL_USER. Disisakan agar data lama tidak rusak. */
+  MARKETING
+  /** @deprecated dipindah ke NORMAL_USER. */
+  CREATIVE_DIRECTOR
+  /** @deprecated dipindah ke NORMAL_USER. */
+  BUSINESS_ANALYST
+  /** @deprecated dipindah ke NORMAL_USER. */
+  COPYWRITER
 }
 
 enum TaskStatus {
@@ -162,7 +168,19 @@ model User {
   /** Tampilan default modul Tasks saat membuka ruangan. */
   taskDefaultWorkspaceView TaskWorkspaceView @default(KANBAN)
   passwordHash  String
+  /**
+   * Tier permission sistem (CEO/Administrator/Finance/Logistik/...) — tetap menjadi
+   * sumber kebenaran untuk middleware, sidebar, dan akses modul. Custom role
+   * (label peran) disimpan terpisah di `customRoleId` dan hanya untuk display.
+   */
   role          UserRole  @default(LOGISTICS)
+  /**
+   * Label peran kustom yang dipilih CEO/Admin (mis. "Creative Director",
+   * "DevOps Engineer"). Bila null, label peran berasal dari enum `role`.
+   * Permission tier sebenarnya tetap mengikuti `role`.
+   */
+  customRoleId  String?
+  customRole    CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   taskAssignments TaskAssignee[]
@@ -183,6 +201,42 @@ model User {
   financeArPaymentsRecorded    FinanceArPayment[]    @relation("FinanceArPaymentRecorder")
   financeSpendRequests         FinanceSpendRequest[] @relation("FinanceSpendRequester")
   financeSpendApprovals     FinanceSpendRequest[] @relation("FinanceSpendApprover")
+
+  @@index([customRoleId])
+}
+
+/**
+ * Label peran (job title) yang dapat dibuat dan diberi nama bebas oleh CEO/Admin.
+ * Menyimpan nama tampilan + tier permission sistem yang mendasarinya.
+ *
+ * - 4 role inti (CEO/Administrator/Finance/Logistik) dibuat sebagai `isProtected`
+ *   dan tidak dapat dihapus, hanya bisa diganti nama (opsional).
+ * - Role lain bisa dibuat bebas. Permission yang dipakai sistem ditentukan oleh
+ *   `permissionTier` (mis. role kustom "DevOps Engineer" dengan tier `LOGISTICS`).
+ */
+model CustomRole {
+  id             String   @id @default(cuid())
+  /** Nama tampilan (mis. "Creative Director"). Unik agar tidak ambigu. */
+  name           String   @unique @db.VarChar(80)
+  /**
+   * Tier permission sistem yang dipakai user dengan role ini.
+   * Saat user di-assign ke CustomRole, `User.role` di-set menyamai nilai ini.
+   */
+  permissionTier UserRole
+  /**
+   * Slug stabil (lowercase). Wajib unik agar bisa dipakai sebagai identifier
+   * default untuk seed/lookup. Tidak ditampilkan ke user.
+   */
+  slug           String   @unique @db.VarChar(80)
+  /**
+   * Role inti yang dipastikan selalu ada — tidak boleh dihapus oleh user.
+   */
+  isProtected    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  users          User[]
+
+  @@index([permissionTier])
 }
 
 model PushSubscription {

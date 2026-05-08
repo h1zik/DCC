@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
+import { UserRole } from "@prisma/client";
 import { Users } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
+import { ensureCustomRolesSeeded } from "@/lib/custom-roles";
 import { PageHero, PageHeroChip } from "@/components/page-hero";
 import { AdminUsersClient } from "./admin-users-client";
 
@@ -11,11 +13,34 @@ export default async function AdminUsersPage() {
   if (!currentUserId) {
     redirect("/login");
   }
+  await ensureCustomRolesSeeded();
 
-  const users = await prisma.user.findMany({
-    orderBy: { email: "asc" },
-    select: { id: true, email: true, name: true, role: true, createdAt: true },
-  });
+  const [users, roles] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: { email: "asc" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        customRoleId: true,
+        customRole: { select: { id: true, name: true, isProtected: true } },
+      },
+    }),
+    prisma.customRole.findMany({
+      // Sembunyikan role inti CEO dari pilihan reguler — peran CEO tidak dapat
+      // ditetapkan dari halaman ini.
+      where: { permissionTier: { not: UserRole.CEO } },
+      orderBy: [{ isProtected: "desc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        permissionTier: true,
+        isProtected: true,
+      },
+    }),
+  ]);
 
   const counts = users.reduce<Record<string, number>>((acc, u) => {
     acc[u.role] = (acc[u.role] ?? 0) + 1;
@@ -57,7 +82,11 @@ export default async function AdminUsersPage() {
           </>
         }
       />
-      <AdminUsersClient users={users} currentUserId={currentUserId} />
+      <AdminUsersClient
+        users={users}
+        roles={roles}
+        currentUserId={currentUserId}
+      />
     </div>
   );
 }

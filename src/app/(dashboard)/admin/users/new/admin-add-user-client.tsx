@@ -6,10 +6,6 @@ import { useRouter } from "next/navigation";
 import { UserRole } from "@prisma/client";
 import { toast } from "sonner";
 import { createUserByCeo } from "@/actions/users";
-import {
-  CEO_ASSIGNABLE_USER_ROLES,
-  ceoAssignableRoleLabel,
-} from "@/lib/ceo-assignable-roles";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,24 +19,40 @@ import {
 import { cn } from "@/lib/utils";
 import type { SelectItemDef } from "@/lib/select-option-items";
 
-export function AdminAddUserClient() {
+export type AddUserRoleOption = {
+  id: string;
+  name: string;
+  permissionTier: UserRole;
+  isProtected: boolean;
+};
+
+export function AdminAddUserClient({ roles }: { roles: AddUserRoleOption[] }) {
   const router = useRouter();
+  const defaultId = useMemo(
+    () =>
+      roles.find((r) => r.permissionTier === UserRole.LOGISTICS)?.id ??
+      roles[0]?.id ??
+      "",
+    [roles],
+  );
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [role, setRole] = useState<UserRole>(UserRole.LOGISTICS);
+  const [customRoleId, setCustomRoleId] = useState<string>(defaultId);
   const [pending, setPending] = useState(false);
 
-  const ceoRoleSelectItems = useMemo((): SelectItemDef[] => {
-    return CEO_ASSIGNABLE_USER_ROLES.map((r) => ({
-      value: r,
-      label: ceoAssignableRoleLabel(r),
-    }));
-  }, []);
+  const roleSelectItems = useMemo(
+    (): SelectItemDef[] => roles.map((r) => ({ value: r.id, label: r.name })),
+    [roles],
+  );
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!customRoleId) {
+      toast.error("Pilih peran terlebih dulu.");
+      return;
+    }
     if (password !== confirm) {
       toast.error("Konfirmasi kata sandi tidak cocok.");
       return;
@@ -51,7 +63,7 @@ export function AdminAddUserClient() {
         email,
         name: name.trim() || undefined,
         password,
-        role,
+        customRoleId,
       });
       toast.success("Pengguna berhasil dibuat. Sampaikan kredensial dengan saluran aman.");
       setEmail("");
@@ -95,23 +107,31 @@ export function AdminAddUserClient() {
       <div className="space-y-2">
         <Label htmlFor="nu-role">Peran awal</Label>
         <Select
-          value={role}
-          items={ceoRoleSelectItems}
-          onValueChange={(v) => {
-            if (v) setRole(v as UserRole);
-          }}
+          value={customRoleId}
+          items={roleSelectItems}
+          onValueChange={(v) => v && setCustomRoleId(v)}
         >
           <SelectTrigger id="nu-role" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CEO_ASSIGNABLE_USER_ROLES.map((r) => (
-              <SelectItem key={r} value={r}>
-                {ceoAssignableRoleLabel(r)}
+            {roles.map((r) => (
+              <SelectItem key={r.id} value={r.id}>
+                {r.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <p className="text-muted-foreground text-[11px]">
+          Daftar peran dikelola di{" "}
+          <Link
+            href="/admin/roles"
+            className="text-foreground underline-offset-4 hover:underline"
+          >
+            Peran (role)
+          </Link>
+          . Peran CEO tidak dapat dibuat dari halaman ini.
+        </p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="nu-password">Kata sandi awal</Label>
@@ -144,7 +164,7 @@ export function AdminAddUserClient() {
         diaktifkan). Beritahu mereka email dan sandi awal secara pribadi.
       </p>
       <div className="flex flex-wrap gap-2 pt-1">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || !customRoleId}>
           {pending ? "Menyimpan…" : "Buat pengguna"}
         </Button>
         <Link

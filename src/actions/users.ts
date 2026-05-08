@@ -6,9 +6,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdministrator } from "@/lib/auth-helpers";
-import { CEO_ASSIGNABLE_USER_ROLES } from "@/lib/ceo-assignable-roles";
-
-const assignableSet = new Set<UserRole>(CEO_ASSIGNABLE_USER_ROLES);
+import { ensureCustomRolesSeeded } from "@/lib/custom-roles";
 
 const createUserSchema = z.object({
   email: z
@@ -24,19 +22,28 @@ const createUserSchema = z.object({
     .string()
     .min(8, "Kata sandi minimal 8 karakter.")
     .max(128, "Kata sandi terlalu panjang."),
-  role: z.nativeEnum(UserRole).refine((r) => assignableSet.has(r), {
-    message: "Peran tidak diizinkan untuk pengguna baru.",
-  }),
+  customRoleId: z.string().min(1, "Pilih peran."),
 });
 
 /**
- * Membuat pengguna internal baru. Hanya CEO; peran CEO tidak tersedia.
+ * Membuat pengguna internal baru. Hanya CEO/Administrator. Peran CEO tidak
+ * dapat ditetapkan dari UI ini (perlindungan baseline).
  */
 export async function createUserByCeo(
   input: z.infer<typeof createUserSchema>,
 ) {
   await requireAdministrator();
+  await ensureCustomRolesSeeded();
   const data = createUserSchema.parse(input);
+
+  const role = await prisma.customRole.findUnique({
+    where: { id: data.customRoleId },
+    select: { id: true, permissionTier: true, name: true },
+  });
+  if (!role) throw new Error("Peran tidak ditemukan.");
+  if (role.permissionTier === UserRole.CEO) {
+    throw new Error("Peran CEO tidak dapat ditetapkan dari halaman ini.");
+  }
 
   const exists = await prisma.user.findUnique({
     where: { email: data.email },
@@ -52,7 +59,8 @@ export async function createUserByCeo(
       email: data.email,
       name: data.name ?? null,
       passwordHash,
-      role: data.role,
+      role: role.permissionTier,
+      customRoleId: role.id,
     },
   });
 

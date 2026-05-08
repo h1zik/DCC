@@ -2,7 +2,7 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ceoAssignableRoleLabel } from "@/lib/ceo-assignable-roles";
+import { effectiveRoleLabel } from "@/lib/role-labels";
 import { UserProfileHero, profileMemberTenure } from "@/components/profile";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -34,6 +34,7 @@ export default async function ProfilePage() {
       profileAccentHex: true,
       profileSticker: true,
       profileAvatarFrame: true,
+      customRole: { select: { name: true } },
     },
   });
   if (!user) redirect("/login");
@@ -68,7 +69,7 @@ export default async function ProfilePage() {
         metaRow={
           <>
             <Badge variant="outline" className="border-[color:var(--profile-accent)]/45 bg-background/70">
-              {ceoAssignableRoleLabel(user.role)}
+              {effectiveRoleLabel(user)}
             </Badge>
             <Badge variant="secondary" className="font-normal tabular-nums">
               {tenure.shortLabel}

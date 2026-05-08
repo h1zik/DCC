@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ceoAssignableRoleLabel } from "@/lib/ceo-assignable-roles";
+import { effectiveRoleLabel } from "@/lib/role-labels";
 import { UserProfileHero, profileMemberTenure } from "@/components/profile";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -45,6 +45,7 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
       profileAccentHex: true,
       profileSticker: true,
       profileAvatarFrame: true,
+      customRole: { select: { name: true } },
     },
   });
 
@@ -80,7 +81,7 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
         metaRow={
           <>
             <Badge variant="outline" className="border-[color:var(--profile-accent)]/45 bg-background/70">
-              {ceoAssignableRoleLabel(user.role)}
+              {effectiveRoleLabel(user)}
             </Badge>
             <Badge variant="secondary" className="font-normal tabular-nums">
               {tenure.shortLabel}

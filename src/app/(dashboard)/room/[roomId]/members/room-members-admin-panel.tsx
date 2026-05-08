@@ -96,7 +96,12 @@ export function RoomMembersAdminPanel({
     role: RoomMemberRole,
     next: RoomTaskProcess[],
   ) {
-    if (role !== RoomMemberRole.ROOM_MANAGER || simpleRoom) return;
+    if (
+      simpleRoom ||
+      (role !== RoomMemberRole.ROOM_MANAGER &&
+        role !== RoomMemberRole.ROOM_CONTRIBUTOR)
+    )
+      return;
     if (next.length === 0) {
       toast.error("Minimal satu fase harus aktif.");
       return;
@@ -117,7 +122,7 @@ export function RoomMembersAdminPanel({
     if (!addUserId) return;
     if (
       !simpleRoom &&
-      addRole === RoomMemberRole.ROOM_MANAGER &&
+      addRole !== ROOM_PROJECT_MANAGER_ROLE &&
       addProcesses.length === 0
     ) {
       toast.error("Pilih minimal satu fase proses.");
@@ -131,8 +136,6 @@ export function RoomMembersAdminPanel({
         addRole,
         addRole === ROOM_PROJECT_MANAGER_ROLE
           ? undefined
-          : addRole === RoomMemberRole.ROOM_CONTRIBUTOR
-            ? [...ALL_ROOM_TASK_PROCESSES]
           : simpleRoom
             ? [...ALL_ROOM_TASK_PROCESSES]
             : addProcesses,
@@ -167,7 +170,8 @@ export function RoomMembersAdminPanel({
       <div>
         <h2 className="text-base font-semibold">Kelola anggota & peran</h2>
         <p className="text-muted-foreground text-xs">
-          Hanya administrator ruangan yang memiliki pengaturan akses fase.
+          Administrator dan kontributor memiliki pengaturan fase proses yang sama:
+          centang fase mana saja yang boleh mereka akses di ruangan ini.
         </p>
       </div>
 
@@ -222,10 +226,6 @@ export function RoomMembersAdminPanel({
               {access.role === ROOM_PROJECT_MANAGER_ROLE ? (
                 <p className="text-muted-foreground text-xs">
                   Project manager ruangan: akses otomatis ke semua fase.
-                </p>
-              ) : access.role === RoomMemberRole.ROOM_CONTRIBUTOR ? (
-                <p className="text-muted-foreground text-xs">
-                  Kontributor: akses fase mengikuti pengaturan default.
                 </p>
               ) : simpleRoom ? (
                 <p className="text-muted-foreground text-xs">
@@ -308,7 +308,7 @@ export function RoomMembersAdminPanel({
               pending ||
               !addUserId ||
               (!simpleRoom &&
-                addRole === RoomMemberRole.ROOM_MANAGER &&
+                addRole !== ROOM_PROJECT_MANAGER_ROLE &&
                 addProcesses.length === 0)
             }
             onClick={() => void onAddMember()}
@@ -316,7 +316,7 @@ export function RoomMembersAdminPanel({
             Tambah
           </Button>
         </div>
-        {addRole === RoomMemberRole.ROOM_MANAGER && !simpleRoom ? (
+        {addRole !== ROOM_PROJECT_MANAGER_ROLE && !simpleRoom ? (
           <div className="space-y-2">
             <Label className="text-xs">Fase tugas untuk anggota baru</Label>
             <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">

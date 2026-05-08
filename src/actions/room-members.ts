@@ -7,7 +7,6 @@ import { prisma } from "@/lib/prisma";
 import { requireAdministratorOrProjectManager } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { ROOM_PROJECT_MANAGER_ROLE } from "@/lib/room-member-process-access";
-import { ALL_ROOM_TASK_PROCESSES } from "@/lib/room-task-process";
 
 const roomMemberRoleInput = z.enum([
   "ROOM_MANAGER",
@@ -48,16 +47,13 @@ export async function upsertRoomMember(
     throw new Error("CEO tidak perlu ditambahkan sebagai anggota ruangan.");
   }
 
-  let processesToStore: RoomTaskProcess[] = [];
+  let processesToStore: RoomTaskProcess[];
   if (role === ROOM_PROJECT_MANAGER_ROLE) {
     processesToStore = [];
-  } else if (role === RoomMemberRole.ROOM_CONTRIBUTOR) {
-    // Kontributor tidak lagi memakai pengaturan akses manual.
-    processesToStore = [...ALL_ROOM_TASK_PROCESSES];
   } else {
     if (!allowedRoomProcesses?.length) {
       throw new Error(
-        "Pilih minimal satu fase proses untuk administrator ruangan.",
+        "Pilih minimal satu fase proses untuk administrator atau kontributor ruangan.",
       );
     }
     processesToStore = allowedRoomProcesses;

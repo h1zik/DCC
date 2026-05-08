@@ -36,6 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
+          include: { customRole: { select: { name: true } } },
         });
         if (!user) return null;
 
@@ -49,6 +50,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           image: user.image ?? undefined,
           role: user.role as UserRole,
           bio: user.bio ?? undefined,
+          customRoleName: user.customRole?.name ?? null,
         };
       },
     }),
@@ -62,23 +64,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.name = user.name ?? undefined;
         token.picture = user.image ?? undefined;
         token.bio = user.bio ?? undefined;
+        token.customRoleName = user.customRoleName ?? null;
       }
       if (trigger === "update" && session && typeof session === "object") {
-        const u = (session as { user?: Partial<{ name: string | null; image: string | null; bio: string | null }> }).user;
+        const u = (session as {
+          user?: Partial<{
+            name: string | null;
+            image: string | null;
+            bio: string | null;
+            customRoleName: string | null;
+          }>;
+        }).user;
         if (u?.name !== undefined) token.name = u.name ?? undefined;
         if (u?.image !== undefined) token.picture = u.image ?? undefined;
         if (u?.bio !== undefined) token.bio = u.bio ?? undefined;
+        if (u?.customRoleName !== undefined)
+          token.customRoleName = u.customRoleName ?? null;
       }
       if (token.id && token.role === undefined) {
         const row = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { role: true, name: true, image: true, bio: true },
+          select: {
+            role: true,
+            name: true,
+            image: true,
+            bio: true,
+            customRole: { select: { name: true } },
+          },
         });
         if (row) {
           token.role = row.role;
           token.name = row.name ?? undefined;
           token.picture = row.image ?? undefined;
           token.bio = row.bio ?? undefined;
+          token.customRoleName = row.customRole?.name ?? null;
         }
       }
       return token;
@@ -92,6 +111,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.user.image = (token.picture as string | null) ?? null;
         session.user.bio =
           (token.bio as string | null | undefined) ?? null;
+        session.user.customRoleName =
+          (token.customRoleName as string | null | undefined) ?? null;
       }
       return session;
     },

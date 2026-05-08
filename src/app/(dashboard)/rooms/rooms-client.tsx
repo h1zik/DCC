@@ -524,9 +524,9 @@ export function RoomsClient({
                   ) : (
                     <>
                       Administrator menetapkan peran dan fase proses tugas (Market
-                      Research → Produksi) yang boleh diakses manager dan
-                      kontributor. Project manager ruangan melihat semua fase dan
-                      dapat mengelola tugas seperti manager.
+                      Research → Produksi) yang boleh diakses masing-masing
+                      manager ruangan dan kontributor. Project manager ruangan
+                      melihat semua fase dan dapat mengelola tugas seperti manager.
                     </>
                   )}
                 </p>

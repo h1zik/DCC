@@ -7,6 +7,8 @@ declare module "next-auth" {
       id: string;
       role?: UserRole;
       bio?: string | null;
+      /** Nama label peran kustom (mis. "DevOps Engineer"). Null = pakai enum role. */
+      customRoleName?: string | null;
     };
   }
 
@@ -16,6 +18,7 @@ declare module "next-auth" {
     role: UserRole;
     bio?: string | null;
     image?: string | null;
+    customRoleName?: string | null;
   }
 }
 
@@ -24,5 +27,6 @@ declare module "next-auth/jwt" {
     id?: string;
     role?: UserRole;
     bio?: string | null;
+    customRoleName?: string | null;
   }
 }

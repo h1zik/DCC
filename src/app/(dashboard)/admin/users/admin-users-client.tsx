@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UserRole, type User } from "@prisma/client";
+import { UserRole } from "@prisma/client";
 import { toast } from "sonner";
 import {
   deleteUserByCeo,
@@ -11,10 +11,7 @@ import {
   updateUserDetailsByCeo,
 } from "@/actions/users";
 import { updateUserRoleByCeo } from "@/actions/user-roles";
-import {
-  CEO_ASSIGNABLE_USER_ROLES,
-  ceoAssignableRoleLabel,
-} from "@/lib/ceo-assignable-roles";
+import { effectiveRoleLabel, enumRoleLabel } from "@/lib/role-labels";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,16 +33,30 @@ import type { SelectItemDef } from "@/lib/select-option-items";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type UserAdminRow = Pick<
-  User,
-  "id" | "email" | "name" | "role" | "createdAt"
->;
+export type UserAdminRow = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  createdAt: Date;
+  customRoleId: string | null;
+  customRole: { id: string; name: string; isProtected: boolean } | null;
+};
+
+export type CustomRoleOption = {
+  id: string;
+  name: string;
+  permissionTier: UserRole;
+  isProtected: boolean;
+};
 
 export function AdminUsersClient({
   users,
+  roles,
   currentUserId,
 }: {
   users: UserAdminRow[];
+  roles: CustomRoleOption[];
   currentUserId: string;
 }) {
   const router = useRouter();
@@ -53,29 +64,27 @@ export function AdminUsersClient({
   const [editing, setEditing] = useState<UserAdminRow | null>(null);
   const [draftEmail, setDraftEmail] = useState("");
   const [draftName, setDraftName] = useState("");
-  const [draftRole, setDraftRole] = useState<UserRole>(UserRole.LOGISTICS);
+  const [draftCustomRoleId, setDraftCustomRoleId] = useState<string>("");
   const [draftPassword, setDraftPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
 
-  const assignableRoleItems = useMemo((): SelectItemDef[] => {
-    return CEO_ASSIGNABLE_USER_ROLES.map((r) => ({
-      value: r,
-      label: ceoAssignableRoleLabel(r),
+  const roleSelectItems = useMemo((): SelectItemDef[] => {
+    return roles.map((r) => ({
+      value: r.id,
+      label: r.name,
     }));
-  }, []);
+  }, [roles]);
 
-  const ceoOnlyRoleItems = useMemo((): SelectItemDef[] => {
-    return [
-      { value: UserRole.CEO, label: ceoAssignableRoleLabel(UserRole.CEO) },
-    ];
-  }, []);
+  const fallbackRoleId = useMemo(() => {
+    return roles.find((r) => r.permissionTier === UserRole.LOGISTICS)?.id ?? roles[0]?.id ?? "";
+  }, [roles]);
 
   function openEdit(row: UserAdminRow) {
     setEditing(row);
     setDraftEmail(row.email);
     setDraftName(row.name ?? "");
-    setDraftRole(row.role);
+    setDraftCustomRoleId(row.customRoleId ?? fallbackRoleId);
     setDraftPassword("");
     setEditOpen(true);
   }
@@ -85,12 +94,6 @@ export function AdminUsersClient({
     setEditing(null);
     setDraftPassword("");
   }
-
-  const roleItemsForEdit = useMemo(() => {
-    if (!editing) return assignableRoleItems;
-    if (editing.role === UserRole.CEO) return ceoOnlyRoleItems;
-    return assignableRoleItems;
-  }, [editing, assignableRoleItems, ceoOnlyRoleItems]);
 
   async function onSaveEdit(e: React.FormEvent) {
     e.preventDefault();
@@ -108,8 +111,15 @@ export function AdminUsersClient({
         name: draftName,
       });
 
-      if (editing.role !== UserRole.CEO && draftRole !== editing.role) {
-        await updateUserRoleByCeo({ userId: editing.id, role: draftRole });
+      if (
+        editing.role !== UserRole.CEO &&
+        draftCustomRoleId &&
+        draftCustomRoleId !== editing.customRoleId
+      ) {
+        await updateUserRoleByCeo({
+          userId: editing.id,
+          customRoleId: draftCustomRoleId,
+        });
       }
 
       if (pwd) {
@@ -149,7 +159,11 @@ export function AdminUsersClient({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground text-sm">
           Kelola akun internal: ubah data, peran, kata sandi, atau hapus pengguna
-          (kecuali akun CEO).
+          (kecuali akun CEO). Untuk membuat peran baru, buka{" "}
+          <Link href="/admin/roles" className="text-foreground underline-offset-4 hover:underline">
+            Peran (role)
+          </Link>
+          .
         </p>
         <Link
           href="/admin/users/new"
@@ -169,7 +183,7 @@ export function AdminUsersClient({
                 {u.name ?? "—"}
               </Link>
               <p className="text-muted-foreground text-xs">
-                {ceoAssignableRoleLabel(u.role)} ·{" "}
+                {effectiveRoleLabel(u)} ·{" "}
                 {new Date(u.createdAt).toLocaleDateString("id-ID", {
                   day: "numeric",
                   month: "short",
@@ -231,7 +245,7 @@ export function AdminUsersClient({
                     {u.name ?? "—"}
                   </Link>
                 </td>
-                <td className="p-3">{ceoAssignableRoleLabel(u.role)}</td>
+                <td className="p-3">{effectiveRoleLabel(u)}</td>
                 <td className="text-muted-foreground p-3 text-xs">
                   {new Date(u.createdAt).toLocaleDateString("id-ID", {
                     day: "numeric",
@@ -313,28 +327,26 @@ export function AdminUsersClient({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="eu-role">Peran</Label>
-                <Select
-                  value={draftRole}
-                  items={roleItemsForEdit}
-                  disabled={editing?.role === UserRole.CEO}
-                  onValueChange={(v) => {
-                    if (v) setDraftRole(v as UserRole);
-                  }}
-                >
-                  <SelectTrigger id="eu-role" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(editing?.role === UserRole.CEO
-                      ? [UserRole.CEO]
-                      : [...CEO_ASSIGNABLE_USER_ROLES]
-                    ).map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {ceoAssignableRoleLabel(r)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {editing?.role === UserRole.CEO ? (
+                  <Input value={enumRoleLabel(UserRole.CEO)} disabled />
+                ) : (
+                  <Select
+                    value={draftCustomRoleId}
+                    items={roleSelectItems}
+                    onValueChange={(v) => v && setDraftCustomRoleId(v)}
+                  >
+                    <SelectTrigger id="eu-role" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roles.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="eu-password">Kata sandi baru (opsional)</Label>

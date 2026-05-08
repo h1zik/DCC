@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { UserRole } from "@prisma/client";
 import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
+import { ensureCustomRolesSeeded } from "@/lib/custom-roles";
+import { prisma } from "@/lib/prisma";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -13,6 +16,12 @@ import { AdminAddUserClient } from "./admin-add-user-client";
 
 export default async function AdminAddUserPage() {
   await ensureAdminUserAccess();
+  await ensureCustomRolesSeeded();
+  const roles = await prisma.customRole.findMany({
+    where: { permissionTier: { not: UserRole.CEO } },
+    orderBy: [{ isProtected: "desc" }, { name: "asc" }],
+    select: { id: true, name: true, permissionTier: true, isProtected: true },
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
@@ -41,7 +50,7 @@ export default async function AdminAddUserPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AdminAddUserClient />
+          <AdminAddUserClient roles={roles} />
         </CardContent>
       </Card>
       <Link
