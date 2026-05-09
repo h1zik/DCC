@@ -1,7 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -498,30 +505,40 @@ export function RoomDocumentsWorkspace({
     }
   }
 
-  async function onDeleteDoc(d: RoomDocumentRow) {
-    if (!confirm("Hapus dokumen ini?")) return;
-    try {
-      await deleteRoomDocument(d.id);
-      toast.success("Dokumen dihapus.");
-      router.refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal.");
-    }
-  }
+  const onDeleteDoc = useCallback(
+    async (d: RoomDocumentRow) => {
+      if (!confirm("Hapus dokumen ini?")) return;
+      try {
+        await deleteRoomDocument(d.id);
+        toast.success("Dokumen dihapus.");
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Gagal.");
+      }
+    },
+    [router],
+  );
 
-  async function onMoveDoc(d: RoomDocumentRow, folderId: string | null) {
-    if (folderId === d.folderId) return;
-    try {
-      await moveRoomDocumentToFolder({ documentId: d.id, folderId });
-      const targetName = folderId
-        ? folders.find((f) => f.id === folderId)?.name ?? "folder"
-        : "Tanpa folder";
-      toast.success(`Dipindahkan ke ${targetName}.`);
-      router.refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal memindahkan.");
-    }
-  }
+  const onMoveDoc = useCallback(
+    async (d: RoomDocumentRow, folderId: string | null) => {
+      if (folderId === d.folderId) return;
+      try {
+        await moveRoomDocumentToFolder({ documentId: d.id, folderId });
+        const targetName = folderId
+          ? folders.find((f) => f.id === folderId)?.name ?? "folder"
+          : "Tanpa folder";
+        toast.success(`Dipindahkan ke ${targetName}.`);
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Gagal memindahkan.");
+      }
+    },
+    [router, folders],
+  );
+
+  const onPreviewDoc = useCallback((d: RoomDocumentRow) => {
+    setPreviewDoc(d);
+  }, []);
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
@@ -1034,7 +1051,7 @@ export function RoomDocumentsWorkspace({
                   folders={folders}
                   showFolderHint={browseKey === "all"}
                   canManage={d.uploadedBy.id === currentUserId || isRoomManager}
-                  onPreview={(doc) => setPreviewDoc(doc)}
+                  onPreview={onPreviewDoc}
                   onDelete={onDeleteDoc}
                   onMove={onMoveDoc}
                 />
@@ -1048,7 +1065,7 @@ export function RoomDocumentsWorkspace({
               isManagerOrOwner={(d) =>
                 d.uploadedBy.id === currentUserId || isRoomManager
               }
-              onPreview={(doc) => setPreviewDoc(doc)}
+              onPreview={onPreviewDoc}
               onDelete={onDeleteDoc}
               onMove={onMoveDoc}
             />
@@ -1157,7 +1174,7 @@ export function RoomDocumentsWorkspace({
       <DocPreviewDialog
         doc={previewDoc}
         videoPlaylist={videoPlaylist}
-        onNavigateVideo={setPreviewDoc}
+        onNavigateVideo={onPreviewDoc}
         canManageTags={
           previewDoc
             ? previewDoc.uploadedBy.id === currentUserId || isRoomManager
@@ -1267,6 +1284,9 @@ function FolderChoiceItem({
   );
 }
 
+/** Jangan pasang ratusan <video> sekaligus — hanya saat dekat viewport, lepas saat jauh (hemat CPU/RAM). */
+const VIDEO_THUMB_HIDE_DELAY_MS = 420;
+
 function VideoThumbnail({
   src,
   className,
@@ -1276,19 +1296,65 @@ function VideoThumbnail({
   className?: string;
   "aria-label"?: string;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [mountVideo, setMountVideo] = useState(false);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((e) => e.isIntersecting);
+        if (visible) {
+          if (hideTimerRef.current != null) {
+            clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = null;
+          }
+          setMountVideo(true);
+        } else {
+          if (hideTimerRef.current != null) clearTimeout(hideTimerRef.current);
+          hideTimerRef.current = setTimeout(() => {
+            setMountVideo(false);
+            hideTimerRef.current = null;
+          }, VIDEO_THUMB_HIDE_DELAY_MS);
+        }
+      },
+      { root: null, rootMargin: "96px 72px", threshold: 0.01 },
+    );
+
+    obs.observe(el);
+    return () => {
+      obs.disconnect();
+      if (hideTimerRef.current != null) clearTimeout(hideTimerRef.current);
+    };
+  }, []);
+
   return (
     <div
+      ref={rootRef}
       className={cn("relative h-full w-full overflow-hidden bg-black", className)}
     >
-      <video
-        src={src}
-        muted
-        playsInline
-        preload="metadata"
-        className="h-full w-full object-cover"
-        aria-hidden={!ariaLabel}
-        aria-label={ariaLabel}
-      />
+      {mountVideo ? (
+        <video
+          key={src}
+          src={src}
+          muted
+          playsInline
+          preload="metadata"
+          className="pointer-events-none h-full w-full object-cover"
+          aria-hidden={!ariaLabel}
+          aria-label={ariaLabel}
+        />
+      ) : (
+        <div
+          className="flex h-full w-full items-center justify-center bg-neutral-950"
+          aria-hidden
+        >
+          <Film className="size-10 text-violet-500/65 dark:text-violet-400/70" />
+        </div>
+      )}
     </div>
   );
 }
@@ -1369,7 +1435,7 @@ function FolderRow({
   );
 }
 
-function DocCard({
+const DocCard = memo(function DocCard({
   doc,
   folders,
   showFolderHint,
@@ -1540,7 +1606,7 @@ function DocCard({
 
     </li>
   );
-}
+});
 
 function DocList({
   docs,
