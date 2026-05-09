@@ -4,6 +4,7 @@ import Image from "next/image";
 import {
   memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -155,6 +156,9 @@ type UploadJob = {
 
 const NO_FOLDER_VALUE = "__none__";
 
+/** Batasi DOM sekaligus — daftar besar jadi ringan; preview tetap penuh. */
+const DOCS_PAGE_SIZE = 40;
+
 function formatFileSize(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -251,6 +255,9 @@ export function RoomDocumentsWorkspace({
   const [uploadPanelExpanded, setUploadPanelExpanded] = useState(true);
   const [uploadTagsInput, setUploadTagsInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string>("__all__");
+  const [docDisplayLimit, setDocDisplayLimit] = useState(DOCS_PAGE_SIZE);
+
+  const deferredSearch = useDeferredValue(search);
 
   const uploadBusy = uploadJobs.some(
     (j) => j.status === "queued" || j.status === "uploading",
@@ -269,6 +276,10 @@ export function RoomDocumentsWorkspace({
     else if (browseKey !== "all") setUploadFolderId(browseKey);
   }, [browseKey]);
 
+  useEffect(() => {
+    setDocDisplayLimit(DOCS_PAGE_SIZE);
+  }, [browseKey, tagFilter, sortKey]);
+
   const totalSize = useMemo(
     () => documents.reduce((acc, d) => acc + (d.size ?? 0), 0),
     [documents],
@@ -286,13 +297,13 @@ export function RoomDocumentsWorkspace({
     } else if (browseKey !== "all") {
       rows = rows.filter((d) => d.folderId === browseKey);
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
+    const qSearch = deferredSearch.trim().toLowerCase();
+    if (qSearch) {
       rows = rows.filter((d) => {
         const t = (d.title ?? "").toLowerCase();
         const n = d.fileName.toLowerCase();
         const tagHay = (d.tags ?? []).join(" ").toLowerCase();
-        return t.includes(q) || n.includes(q) || tagHay.includes(q);
+        return t.includes(qSearch) || n.includes(qSearch) || tagHay.includes(qSearch);
       });
     }
     if (tagFilter && tagFilter !== "__all__") {
@@ -357,7 +368,12 @@ export function RoomDocumentsWorkspace({
         break;
     }
     return sorted;
-  }, [documents, browseKey, search, sortKey, tagFilter]);
+  }, [documents, browseKey, deferredSearch, sortKey, tagFilter]);
+
+  const pagedVisibleDocuments = useMemo(
+    () => visibleDocuments.slice(0, docDisplayLimit),
+    [visibleDocuments, docDisplayLimit],
+  );
 
   function updateJob(id: string, patch: Partial<UploadJob>) {
     setUploadJobs((prev) =>
@@ -1044,7 +1060,7 @@ export function RoomDocumentsWorkspace({
             </div>
           ) : view === "grid" ? (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {visibleDocuments.map((d) => (
+              {pagedVisibleDocuments.map((d) => (
                 <DocCard
                   key={d.id}
                   doc={d}
@@ -1059,17 +1075,41 @@ export function RoomDocumentsWorkspace({
             </ul>
           ) : (
             <DocList
-              docs={visibleDocuments}
+              docs={pagedVisibleDocuments}
               folders={folders}
               showFolderHint={browseKey === "all"}
-              isManagerOrOwner={(d) =>
-                d.uploadedBy.id === currentUserId || isRoomManager
-              }
+              currentUserId={currentUserId}
+              isRoomManager={isRoomManager}
               onPreview={onPreviewDoc}
               onDelete={onDeleteDoc}
               onMove={onMoveDoc}
             />
           )}
+          {visibleDocuments.length > 0 &&
+          docDisplayLimit < visibleDocuments.length ? (
+            <div className="flex flex-col items-center gap-2 pt-3">
+              <p className="text-muted-foreground text-center text-xs tabular-nums">
+                Menampilkan {pagedVisibleDocuments.length} dari{" "}
+                {visibleDocuments.length} file · ketuk untuk memuat lebih banyak
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setDocDisplayLimit((n) =>
+                    Math.min(
+                      n + DOCS_PAGE_SIZE,
+                      visibleDocuments.length,
+                    ),
+                  )
+                }
+              >
+                Muat {Math.min(DOCS_PAGE_SIZE, visibleDocuments.length - docDisplayLimit)}{" "}
+                lagi
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1284,77 +1324,22 @@ function FolderChoiceItem({
   );
 }
 
-/** Jangan pasang ratusan <video> sekaligus — hanya saat dekat viewport, lepas saat jauh (hemat CPU/RAM). */
-const VIDEO_THUMB_HIDE_DELAY_MS = 420;
-
-function VideoThumbnail({
-  src,
-  className,
-  "aria-label": ariaLabel,
-}: {
-  src: string;
-  className?: string;
-  "aria-label"?: string;
-}) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [mountVideo, setMountVideo] = useState(false);
-
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.some((e) => e.isIntersecting);
-        if (visible) {
-          if (hideTimerRef.current != null) {
-            clearTimeout(hideTimerRef.current);
-            hideTimerRef.current = null;
-          }
-          setMountVideo(true);
-        } else {
-          if (hideTimerRef.current != null) clearTimeout(hideTimerRef.current);
-          hideTimerRef.current = setTimeout(() => {
-            setMountVideo(false);
-            hideTimerRef.current = null;
-          }, VIDEO_THUMB_HIDE_DELAY_MS);
-        }
-      },
-      { root: null, rootMargin: "96px 72px", threshold: 0.01 },
-    );
-
-    obs.observe(el);
-    return () => {
-      obs.disconnect();
-      if (hideTimerRef.current != null) clearTimeout(hideTimerRef.current);
-    };
-  }, []);
-
+/**
+ * Tanpa <video> di daftar — decode + request metadata ratusan file membuat UI macet.
+ * Thumbnail asli hanya di dialog preview.
+ */
+function VideoTilePlaceholder({ className }: { className?: string }) {
   return (
     <div
-      ref={rootRef}
-      className={cn("relative h-full w-full overflow-hidden bg-black", className)}
-    >
-      {mountVideo ? (
-        <video
-          key={src}
-          src={src}
-          muted
-          playsInline
-          preload="metadata"
-          className="pointer-events-none h-full w-full object-cover"
-          aria-hidden={!ariaLabel}
-          aria-label={ariaLabel}
-        />
-      ) : (
-        <div
-          className="flex h-full w-full items-center justify-center bg-neutral-950"
-          aria-hidden
-        >
-          <Film className="size-10 text-violet-500/65 dark:text-violet-400/70" />
-        </div>
+      className={cn(
+        "flex h-full w-full items-center justify-center bg-gradient-to-br from-neutral-900 via-zinc-950 to-black",
+        className,
       )}
+    >
+      <Film
+        className="size-10 text-violet-500/50 dark:text-violet-400/60"
+        aria-hidden
+      />
     </div>
   );
 }
@@ -1459,7 +1444,12 @@ const DocCard = memo(function DocCard({
   const currentFolderName = folderLabelForDoc(doc.folderId, folders);
 
   return (
-    <li className="border-border bg-card group hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors">
+    <li
+      className={cn(
+        "border-border bg-card group hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors",
+        "[content-visibility:auto] [contain-intrinsic-block-size:280px]",
+      )}
+    >
       <button
         type="button"
         onClick={() => onPreview(doc)}
@@ -1476,11 +1466,7 @@ const DocCard = memo(function DocCard({
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
           />
         ) : isVideo ? (
-          <VideoThumbnail
-            src={doc.publicPath}
-            aria-label={doc.fileName}
-            className="transition-transform group-hover:scale-[1.02]"
-          />
+          <VideoTilePlaceholder className="transition-transform group-hover:scale-[1.02]" />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <Icon className={cn("size-10", meta.tone)} />
@@ -1608,11 +1594,153 @@ const DocCard = memo(function DocCard({
   );
 });
 
+const DocListRow = memo(function DocListRow({
+  doc,
+  folders,
+  showFolderHint,
+  canManage,
+  onPreview,
+  onDelete,
+  onMove,
+}: {
+  doc: RoomDocumentRow;
+  folders: RoomDocumentFolderRow[];
+  showFolderHint: boolean;
+  canManage: boolean;
+  onPreview: (d: RoomDocumentRow) => void;
+  onDelete: (d: RoomDocumentRow) => void | Promise<void>;
+  onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+}) {
+  const meta = fileTypeMeta(doc.mimeType);
+  const Icon = meta.icon;
+  const isImage = doc.mimeType.startsWith("image/");
+  const isVideo = doc.mimeType.startsWith("video/");
+
+  return (
+    <li
+      className={cn(
+        "hover:bg-muted/40 flex flex-col gap-2 px-3 py-2 transition-colors md:flex-row md:items-center md:gap-3",
+        "[content-visibility:auto] [contain-intrinsic-block-size:72px]",
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="bg-muted relative size-9 shrink-0 overflow-hidden rounded-md">
+          {isImage ? (
+            <Image
+              src={doc.publicPath}
+              alt=""
+              fill
+              unoptimized
+              className="object-cover"
+              sizes="36px"
+            />
+          ) : isVideo ? (
+            <VideoTilePlaceholder />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <Icon className={cn("size-4", meta.tone)} />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => onPreview(doc)}
+            className="text-foreground line-clamp-1 text-left text-sm font-medium hover:underline"
+            title={doc.title?.trim() || doc.fileName}
+          >
+            {doc.title?.trim() ? doc.title : doc.fileName}
+          </button>
+          <p className="text-muted-foreground line-clamp-1 text-[11px]">
+            {doc.fileName} · {doc.uploadedBy.name ?? doc.uploadedBy.email}
+          </p>
+          <DocTagChips tags={doc.tags ?? []} />
+        </div>
+      </div>
+      {showFolderHint ? (
+        <span className="text-muted-foreground line-clamp-1 w-32 text-[11px]">
+          {folderLabelForDoc(doc.folderId, folders)}
+        </span>
+      ) : null}
+      <span className="text-muted-foreground w-24 text-right text-[11px] tabular-nums">
+        {formatFileSize(doc.size)}
+      </span>
+      <span className="text-muted-foreground w-32 text-[11px]">
+        {formatDate(doc.createdAt)}
+      </span>
+      <div className="ml-auto flex items-center gap-1 md:ml-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Pratinjau ${doc.fileName}`}
+          title="Pratinjau"
+          onClick={() => onPreview(doc)}
+        >
+          <Eye className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Unduh ${doc.fileName}`}
+          title="Unduh"
+          nativeButton={false}
+          render={
+            <a
+              href={doc.publicPath}
+              download={doc.fileName}
+              rel="noopener noreferrer"
+            />
+          }
+        >
+          <Download className="size-4" />
+        </Button>
+        {canManage ? (
+          <>
+            <MoveFolderMenu
+              doc={doc}
+              folders={folders}
+              onMove={onMove}
+              trigger={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Pindahkan ${doc.fileName}`}
+                  title={`Pindah folder · sekarang: ${folderLabelForDoc(
+                    doc.folderId,
+                    folders,
+                  )}`}
+                >
+                  <FolderInput className="size-4" />
+                </Button>
+              }
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Hapus ${doc.fileName}`}
+              title="Hapus dokumen"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => void onDelete(doc)}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </>
+        ) : null}
+      </div>
+    </li>
+  );
+});
+
 function DocList({
   docs,
   folders,
   showFolderHint,
-  isManagerOrOwner,
+  currentUserId,
+  isRoomManager,
   onPreview,
   onDelete,
   onMove,
@@ -1620,7 +1748,8 @@ function DocList({
   docs: RoomDocumentRow[];
   folders: RoomDocumentFolderRow[];
   showFolderHint: boolean;
-  isManagerOrOwner: (d: RoomDocumentRow) => boolean;
+  currentUserId: string;
+  isRoomManager: boolean;
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
@@ -1635,131 +1764,18 @@ function DocList({
         <span className="w-8" />
       </div>
       <ul className="divide-border divide-y">
-        {docs.map((d) => {
-          const meta = fileTypeMeta(d.mimeType);
-          const Icon = meta.icon;
-          const isImage = d.mimeType.startsWith("image/");
-          const isVideo = d.mimeType.startsWith("video/");
-          return (
-            <li
-              key={d.id}
-              className="hover:bg-muted/40 flex flex-col gap-2 px-3 py-2 transition-colors md:flex-row md:items-center md:gap-3"
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div
-                  className={cn(
-                    "bg-muted relative size-9 shrink-0 overflow-hidden rounded-md",
-                  )}
-                >
-                  {isImage ? (
-                    <Image
-                      src={d.publicPath}
-                      alt=""
-                      fill
-                      unoptimized
-                      className="object-cover"
-                      sizes="36px"
-                    />
-                  ) : isVideo ? (
-                    <VideoThumbnail src={d.publicPath} />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <Icon className={cn("size-4", meta.tone)} />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => onPreview(d)}
-                    className="text-foreground line-clamp-1 text-left text-sm font-medium hover:underline"
-                    title={d.title?.trim() || d.fileName}
-                  >
-                    {d.title?.trim() ? d.title : d.fileName}
-                  </button>
-                  <p className="text-muted-foreground line-clamp-1 text-[11px]">
-                    {d.fileName} · {d.uploadedBy.name ?? d.uploadedBy.email}
-                  </p>
-                  <DocTagChips tags={d.tags ?? []} />
-                </div>
-              </div>
-              {showFolderHint ? (
-                <span className="text-muted-foreground line-clamp-1 w-32 text-[11px]">
-                  {folderLabelForDoc(d.folderId, folders)}
-                </span>
-              ) : null}
-              <span className="text-muted-foreground w-24 text-right text-[11px] tabular-nums">
-                {formatFileSize(d.size)}
-              </span>
-              <span className="text-muted-foreground w-32 text-[11px]">
-                {formatDate(d.createdAt)}
-              </span>
-              <div className="ml-auto flex items-center gap-1 md:ml-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Pratinjau ${d.fileName}`}
-                  title="Pratinjau"
-                  onClick={() => onPreview(d)}
-                >
-                  <Eye className="size-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Unduh ${d.fileName}`}
-                  title="Unduh"
-                  nativeButton={false}
-                  render={
-                    <a
-                      href={d.publicPath}
-                      download={d.fileName}
-                      rel="noopener noreferrer"
-                    />
-                  }
-                >
-                  <Download className="size-4" />
-                </Button>
-                {isManagerOrOwner(d) ? (
-                  <>
-                    <MoveFolderMenu
-                      doc={d}
-                      folders={folders}
-                      onMove={onMove}
-                      trigger={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Pindahkan ${d.fileName}`}
-                          title={`Pindah folder · sekarang: ${folderLabelForDoc(
-                            d.folderId,
-                            folders,
-                          )}`}
-                        >
-                          <FolderInput className="size-4" />
-                        </Button>
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Hapus ${d.fileName}`}
-                      title="Hapus dokumen"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => void onDelete(d)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </>
-                ) : null}
-              </div>
-            </li>
-          );
-        })}
+        {docs.map((d) => (
+          <DocListRow
+            key={d.id}
+            doc={d}
+            folders={folders}
+            showFolderHint={showFolderHint}
+            canManage={d.uploadedBy.id === currentUserId || isRoomManager}
+            onPreview={onPreview}
+            onDelete={onDelete}
+            onMove={onMove}
+          />
+        ))}
       </ul>
     </div>
   );
