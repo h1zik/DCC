@@ -10,9 +10,10 @@ import {
   deleteRoomDocumentFolder,
   moveRoomDocumentToFolder,
   renameRoomDocumentFolder,
-  uploadRoomDocument,
+  updateRoomDocumentTags,
 } from "@/actions/room-documents";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -40,10 +41,21 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
+  asyncPool,
+  uploadRoomDocumentViaApi,
+} from "@/lib/room-document-upload-xhr";
+import { normalizeRoomDocumentTags } from "@/lib/room-document-tags";
+import {
   ArrowDownAZ,
+  ArrowUpAZ,
   ArrowUpDown,
   Calendar,
   Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
   CloudUpload,
   Download,
   Eye,
@@ -67,7 +79,9 @@ import {
   Music,
   Pencil,
   Search,
+  Tag,
   Trash2,
+  User,
   X,
 } from "lucide-react";
 
@@ -87,18 +101,49 @@ export type RoomDocumentRow = {
   publicPath: string;
   createdAt: Date;
   folderId: string | null;
+  tags: string[];
   uploadedBy: { id: string; name: string | null; email: string };
 };
 
 type BrowseKey = "all" | "ungrouped" | string;
 type ViewMode = "grid" | "list";
-type SortKey = "newest" | "oldest" | "name" | "size";
+type SortKey =
+  | "newest"
+  | "oldest"
+  | "name"
+  | "name_desc"
+  | "size"
+  | "size_asc"
+  | "type"
+  | "uploader";
 
 const SORT_LABEL: Record<SortKey, string> = {
   newest: "Terbaru",
   oldest: "Terlama",
   name: "Nama A → Z",
-  size: "Ukuran",
+  name_desc: "Nama Z → A",
+  size: "Ukuran (besar)",
+  size_asc: "Ukuran (kecil)",
+  type: "Tipe file",
+  uploader: "Pengunggah",
+};
+
+function mimeSortCategory(mimeType: string): number {
+  if (mimeType.startsWith("video/")) return 0;
+  if (mimeType.startsWith("image/")) return 1;
+  if (mimeType.startsWith("audio/")) return 2;
+  if (mimeType === "application/pdf") return 3;
+  return 4;
+}
+
+type UploadJobStatus = "queued" | "uploading" | "done" | "error";
+
+type UploadJob = {
+  id: string;
+  fileName: string;
+  progress: number;
+  status: UploadJobStatus;
+  error?: string;
 };
 
 const NO_FOLDER_VALUE = "__none__";
@@ -195,6 +240,22 @@ export function RoomDocumentsWorkspace({
   const [showHelp, setShowHelp] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<RoomDocumentRow | null>(null);
+  const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
+  const [uploadPanelExpanded, setUploadPanelExpanded] = useState(true);
+  const [uploadTagsInput, setUploadTagsInput] = useState("");
+  const [tagFilter, setTagFilter] = useState<string>("__all__");
+
+  const uploadBusy = uploadJobs.some(
+    (j) => j.status === "queued" || j.status === "uploading",
+  );
+
+  const allTagsInRoom = useMemo(() => {
+    const s = new Set<string>();
+    for (const d of documents) {
+      for (const t of d.tags ?? []) s.add(t);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b, "id"));
+  }, [documents]);
 
   useEffect(() => {
     if (browseKey === "ungrouped") setUploadFolderId(null);
@@ -223,8 +284,12 @@ export function RoomDocumentsWorkspace({
       rows = rows.filter((d) => {
         const t = (d.title ?? "").toLowerCase();
         const n = d.fileName.toLowerCase();
-        return t.includes(q) || n.includes(q);
+        const tagHay = (d.tags ?? []).join(" ").toLowerCase();
+        return t.includes(q) || n.includes(q) || tagHay.includes(q);
       });
+    }
+    if (tagFilter && tagFilter !== "__all__") {
+      rows = rows.filter((d) => (d.tags ?? []).includes(tagFilter));
     }
     const sorted = [...rows];
     switch (sortKey) {
@@ -247,41 +312,112 @@ export function RoomDocumentsWorkspace({
           ),
         );
         break;
+      case "name_desc":
+        sorted.sort((a, b) =>
+          (b.title || b.fileName).localeCompare(
+            a.title || a.fileName,
+            "id",
+            { sensitivity: "base" },
+          ),
+        );
+        break;
       case "size":
         sorted.sort((a, b) => b.size - a.size);
         break;
+      case "size_asc":
+        sorted.sort((a, b) => a.size - b.size);
+        break;
+      case "type": {
+        sorted.sort((a, b) => {
+          const ca = mimeSortCategory(a.mimeType);
+          const cb = mimeSortCategory(b.mimeType);
+          if (ca !== cb) return ca - cb;
+          return (a.title || a.fileName).localeCompare(
+            b.title || b.fileName,
+            "id",
+            { sensitivity: "base" },
+          );
+        });
+        break;
+      }
+      case "uploader":
+        sorted.sort((a, b) =>
+          (a.uploadedBy.email ?? "").localeCompare(
+            b.uploadedBy.email ?? "",
+            "id",
+          ),
+        );
+        break;
     }
     return sorted;
-  }, [documents, browseKey, search, sortKey]);
+  }, [documents, browseKey, search, sortKey, tagFilter]);
+
+  function updateJob(id: string, patch: Partial<UploadJob>) {
+    setUploadJobs((prev) =>
+      prev.map((j) => (j.id === id ? { ...j, ...patch } : j)),
+    );
+  }
 
   async function handleUploadFiles(files: File[]) {
     if (!files.length) return;
-    setPending(true);
-    try {
-      let ok = 0;
-      for (const file of files) {
-        try {
-          const fd = new FormData();
-          fd.append("file", file);
-          if (title.trim()) fd.append("title", title.trim());
-          if (uploadFolderId) fd.append("folderId", uploadFolderId);
-          await uploadRoomDocument(roomId, fd);
-          ok += 1;
-        } catch (err) {
-          toast.error(
-            err instanceof Error
-              ? `${file.name}: ${err.message}`
-              : `${file.name}: unggah gagal.`,
-          );
-        }
+
+    const tagTokens = uploadTagsInput
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const batchTags = normalizeRoomDocumentTags(tagTokens);
+
+    const batchId = Date.now();
+    const jobs: UploadJob[] = files.map((f) => ({
+      id: `${batchId}-${Math.random().toString(36).slice(2, 9)}`,
+      fileName: f.name,
+      progress: 0,
+      status: "queued" as const,
+    }));
+    setUploadJobs((prev) => [...prev, ...jobs]);
+    setUploadPanelExpanded(true);
+
+    let ok = 0;
+    let fail = 0;
+
+    await asyncPool(files, 3, async (file, index) => {
+      const job = jobs[index];
+      if (!job) return;
+      updateJob(job.id, { status: "uploading", progress: 0 });
+      try {
+        await uploadRoomDocumentViaApi(
+          roomId,
+          file,
+          {
+            title: title.trim() || undefined,
+            folderId: uploadFolderId,
+            tags: batchTags,
+          },
+          (pct) => updateJob(job.id, { progress: pct }),
+        );
+        updateJob(job.id, { status: "done", progress: 100 });
+        ok += 1;
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Unggah gagal.";
+        updateJob(job.id, { status: "error", error: msg, progress: 0 });
+        fail += 1;
       }
-      if (ok > 0) {
-        setTitle("");
-        toast.success(ok === 1 ? "File diunggah." : `${ok} file diunggah.`);
-        router.refresh();
-      }
-    } finally {
-      setPending(false);
+    });
+
+    if (ok > 0) {
+      setTitle("");
+      setUploadTagsInput("");
+      toast.success(
+        fail > 0
+          ? `${ok} file berhasil, ${fail} gagal. Lihat panel unggah.`
+          : ok === 1
+            ? "File diunggah."
+            : `${ok} file diunggah.`,
+      );
+      router.refresh();
+    } else if (fail > 0) {
+      toast.error("Semua unggah gagal. Lihat panel di bawah.");
     }
   }
 
@@ -390,6 +526,7 @@ export function RoomDocumentsWorkspace({
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(false);
+    if (pending || uploadBusy) return;
     const files = Array.from(e.dataTransfer.files ?? []);
     if (files.length) void handleUploadFiles(files);
   }
@@ -403,6 +540,11 @@ export function RoomDocumentsWorkspace({
 
   const inputId = `room-doc-file-${roomId}`;
   const totalDocs = documents.length;
+
+  const videoPlaylist = useMemo(
+    () => visibleDocuments.filter((d) => d.mimeType.startsWith("video/")),
+    [visibleDocuments],
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -601,7 +743,7 @@ export function RoomDocumentsWorkspace({
                     : "bg-primary/10 text-primary",
                 )}
               >
-                {pending ? (
+                {pending || uploadBusy ? (
                   <Loader2 className="size-5 animate-spin" />
                 ) : (
                   <CloudUpload className="size-5" />
@@ -636,13 +778,13 @@ export function RoomDocumentsWorkspace({
                   type="file"
                   multiple
                   className="sr-only"
-                  disabled={pending}
+                  disabled={pending || uploadBusy}
                   onChange={(e) => void onFileInput(e)}
                 />
                 <Button
                   type="button"
                   size="sm"
-                  disabled={pending}
+                  disabled={pending || uploadBusy}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <CloudUpload className="size-4" />
@@ -680,19 +822,36 @@ export function RoomDocumentsWorkspace({
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Contoh: Briefing Q3"
-                    disabled={pending}
+                    disabled={pending || uploadBusy}
                     className="h-9"
                   />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="doc-upload-tags" className="text-xs">
+                    Tag batch (opsional, dipakai semua file ini)
+                  </Label>
+                  <Input
+                    id="doc-upload-tags"
+                    value={uploadTagsInput}
+                    onChange={(e) => setUploadTagsInput(e.target.value)}
+                    placeholder="footage, raw, approved — pisahkan koma atau spasi"
+                    disabled={pending || uploadBusy}
+                    className="h-9"
+                  />
+                  <p className="text-muted-foreground text-[11px]">
+                    Maks. 20 tag; huruf kecil otomatis. Berguna untuk batch footage.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Simpan ke folder</Label>
                   <Select
                     value={uploadFolderId ?? NO_FOLDER_VALUE}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
+                      const next = v ?? "";
                       setUploadFolderId(
-                        v === NO_FOLDER_VALUE || !v ? null : (v as string),
-                      )
-                    }
+                        !next || next === NO_FOLDER_VALUE ? null : next,
+                      );
+                    }}
                   >
                     <SelectTrigger className="h-9 w-full">
                       <span>
@@ -733,7 +892,7 @@ export function RoomDocumentsWorkspace({
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari nama / judul…"
+                placeholder="Cari nama / judul / tag…"
                 className="placeholder:text-muted-foreground h-8 w-44 bg-transparent text-sm outline-none"
               />
               {search ? (
@@ -747,6 +906,28 @@ export function RoomDocumentsWorkspace({
                 </button>
               ) : null}
             </div>
+            <Select
+              value={tagFilter}
+              onValueChange={(v) => setTagFilter(v ?? "__all__")}
+            >
+              <SelectTrigger
+                size="sm"
+                className="border-border h-8 w-[min(168px,42vw)] gap-1.5 text-xs"
+              >
+                <Tag className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">
+                  {tagFilter === "__all__" ? "Semua tag" : tagFilter}
+                </span>
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="__all__">Semua tag</SelectItem>
+                {allTagsInRoom.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -771,8 +952,21 @@ export function RoomDocumentsWorkspace({
                   <DropdownMenuRadioItem value="name">
                     <ArrowDownAZ className="size-3.5" /> {SORT_LABEL.name}
                   </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="name_desc">
+                    <ArrowUpAZ className="size-3.5" /> {SORT_LABEL.name_desc}
+                  </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="size">
-                    <FileIcon className="size-3.5" /> {SORT_LABEL.size}
+                    <HardDrive className="size-3.5" /> {SORT_LABEL.size}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="size_asc">
+                    <HardDrive className="size-3.5 opacity-60" />{" "}
+                    {SORT_LABEL.size_asc}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="type">
+                    <Film className="size-3.5" /> {SORT_LABEL.type}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="uploader">
+                    <User className="size-3.5" /> {SORT_LABEL.uploader}
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
@@ -862,9 +1056,113 @@ export function RoomDocumentsWorkspace({
         </div>
       </div>
 
+      {uploadJobs.length > 0 ? (
+        <div className="border-border bg-card shadow-lg fixed right-4 bottom-4 z-50 flex max-h-[min(440px,55vh)] w-[min(100vw-2rem,400px)] flex-col overflow-hidden rounded-xl border">
+          <button
+            type="button"
+            className="border-border hover:bg-muted/50 flex w-full items-center justify-between gap-2 border-b px-3 py-2.5 text-left text-sm font-medium"
+            onClick={() => setUploadPanelExpanded((v) => !v)}
+          >
+            <span className="min-w-0 truncate">
+              Unggah file
+              <span className="text-muted-foreground ml-1.5 font-normal tabular-nums">
+                (
+                {uploadJobs.filter((j) => j.status === "done").length}/
+                {uploadJobs.length} selesai)
+              </span>
+            </span>
+            <ChevronDown
+              className={cn(
+                "text-muted-foreground size-4 shrink-0 transition-transform",
+                uploadPanelExpanded ? "rotate-180" : "",
+              )}
+              aria-hidden
+            />
+          </button>
+          {uploadPanelExpanded ? (
+            <ul className="divide-border max-h-[min(340px,45vh)] divide-y overflow-y-auto overscroll-contain p-0">
+              {[...uploadJobs].reverse().map((job) => (
+                <li key={job.id} className="space-y-1.5 px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <span
+                      className="min-w-0 flex-1 truncate text-xs font-medium"
+                      title={job.fileName}
+                    >
+                      {job.fileName}
+                    </span>
+                    {job.status === "queued" ? (
+                      <span className="text-muted-foreground shrink-0 text-[10px]">
+                        Antre
+                      </span>
+                    ) : null}
+                    {job.status === "uploading" ? (
+                      <Loader2 className="text-primary size-3.5 shrink-0 animate-spin" />
+                    ) : null}
+                    {job.status === "done" ? (
+                      <CircleCheck className="text-emerald-600 size-3.5 shrink-0 dark:text-emerald-400" />
+                    ) : null}
+                    {job.status === "error" ? (
+                      <CircleAlert className="text-destructive size-3.5 shrink-0" />
+                    ) : null}
+                  </div>
+                  {job.status === "uploading" || job.status === "queued" ? (
+                    <Progress
+                      value={job.status === "queued" ? 0 : job.progress}
+                      className="h-1"
+                    />
+                  ) : null}
+                  {job.status === "error" && job.error ? (
+                    <p className="text-destructive text-[11px] leading-snug">
+                      {job.error}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="border-border bg-muted/20 flex flex-wrap items-center gap-2 border-t px-2 py-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 text-xs"
+              onClick={() =>
+                setUploadJobs((prev) =>
+                  prev.filter(
+                    (j) => j.status !== "done" && j.status !== "error",
+                  ),
+                )
+              }
+              disabled={!uploadJobs.some(
+                (j) => j.status === "done" || j.status === "error",
+              )}
+            >
+              Hapus yang selesai / gagal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive h-8 text-xs"
+              onClick={() => setUploadJobs([])}
+              disabled={uploadBusy}
+            >
+              Tutup panel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Preview dialog */}
       <DocPreviewDialog
         doc={previewDoc}
+        videoPlaylist={videoPlaylist}
+        onNavigateVideo={setPreviewDoc}
+        canManageTags={
+          previewDoc
+            ? previewDoc.uploadedBy.id === currentUserId || isRoomManager
+            : false
+        }
         onClose={() => setPreviewDoc(null)}
       />
 
@@ -969,6 +1267,57 @@ function FolderChoiceItem({
   );
 }
 
+function VideoThumbnail({
+  src,
+  className,
+  "aria-label": ariaLabel,
+}: {
+  src: string;
+  className?: string;
+  "aria-label"?: string;
+}) {
+  return (
+    <div
+      className={cn("relative h-full w-full overflow-hidden bg-black", className)}
+    >
+      <video
+        src={src}
+        muted
+        playsInline
+        preload="metadata"
+        className="h-full w-full object-cover"
+        aria-hidden={!ariaLabel}
+        aria-label={ariaLabel}
+      />
+    </div>
+  );
+}
+
+function DocTagChips({ tags }: { tags: string[] }) {
+  if (!tags.length) return null;
+  const max = 5;
+  const shown = tags.slice(0, max);
+  const more = tags.length - shown.length;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {shown.map((t) => (
+        <span
+          key={t}
+          className="bg-muted text-muted-foreground max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-medium"
+          title={t}
+        >
+          {t}
+        </span>
+      ))}
+      {more > 0 ? (
+        <span className="text-muted-foreground text-[10px] font-medium">
+          +{more}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function FolderRow({
   icon: Icon,
   label,
@@ -1040,6 +1389,7 @@ function DocCard({
   const meta = fileTypeMeta(doc.mimeType);
   const Icon = meta.icon;
   const isImage = doc.mimeType.startsWith("image/");
+  const isVideo = doc.mimeType.startsWith("video/");
   const currentFolderName = folderLabelForDoc(doc.folderId, folders);
 
   return (
@@ -1058,6 +1408,12 @@ function DocCard({
             unoptimized
             className="object-cover transition-transform group-hover:scale-[1.02]"
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
+          />
+        ) : isVideo ? (
+          <VideoThumbnail
+            src={doc.publicPath}
+            aria-label={doc.fileName}
+            className="transition-transform group-hover:scale-[1.02]"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
@@ -1115,23 +1471,25 @@ function DocCard({
           <span aria-hidden>·</span>
           <span>{formatDate(doc.createdAt)}</span>
         </div>
+        <DocTagChips tags={doc.tags ?? []} />
 
-        <div className="border-border/60 mt-auto flex items-center gap-2 border-t pt-2">
+        <div className="border-border/60 mt-auto flex flex-nowrap items-center justify-center gap-1 border-t pt-2">
           <Button
             type="button"
-            size="sm"
+            size="icon-sm"
             variant="secondary"
-            className="flex-1"
+            className="shrink-0"
+            aria-label={`Pratinjau ${doc.fileName}`}
+            title="Pratinjau"
             onClick={() => onPreview(doc)}
           >
             <Eye className="size-3.5" />
-            Preview
           </Button>
           <Button
             type="button"
-            size="sm"
+            size="icon-sm"
             variant="outline"
-            className="flex-1"
+            className="shrink-0"
             nativeButton={false}
             render={
               <a
@@ -1139,11 +1497,11 @@ function DocCard({
                 download={doc.fileName}
                 rel="noopener noreferrer"
                 aria-label={`Unduh ${doc.fileName}`}
+                title="Unduh"
               />
             }
           >
             <Download className="size-3.5" />
-            Download
           </Button>
           {canManage ? (
             <>
@@ -1214,14 +1572,35 @@ function DocList({
         {docs.map((d) => {
           const meta = fileTypeMeta(d.mimeType);
           const Icon = meta.icon;
+          const isImage = d.mimeType.startsWith("image/");
+          const isVideo = d.mimeType.startsWith("video/");
           return (
             <li
               key={d.id}
               className="hover:bg-muted/40 flex flex-col gap-2 px-3 py-2 transition-colors md:flex-row md:items-center md:gap-3"
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div className={cn("bg-muted flex size-9 shrink-0 items-center justify-center rounded-md")}>
-                  <Icon className={cn("size-4", meta.tone)} />
+                <div
+                  className={cn(
+                    "bg-muted relative size-9 shrink-0 overflow-hidden rounded-md",
+                  )}
+                >
+                  {isImage ? (
+                    <Image
+                      src={d.publicPath}
+                      alt=""
+                      fill
+                      unoptimized
+                      className="object-cover"
+                      sizes="36px"
+                    />
+                  ) : isVideo ? (
+                    <VideoThumbnail src={d.publicPath} />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <Icon className={cn("size-4", meta.tone)} />
+                    </div>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <button
@@ -1235,6 +1614,7 @@ function DocList({
                   <p className="text-muted-foreground line-clamp-1 text-[11px]">
                     {d.fileName} · {d.uploadedBy.name ?? d.uploadedBy.email}
                   </p>
+                  <DocTagChips tags={d.tags ?? []} />
                 </div>
               </div>
               {showFolderHint ? (
@@ -1321,12 +1701,63 @@ function DocList({
 
 function DocPreviewDialog({
   doc,
+  videoPlaylist,
+  onNavigateVideo,
+  canManageTags,
   onClose,
 }: {
   doc: RoomDocumentRow | null;
+  videoPlaylist: RoomDocumentRow[];
+  onNavigateVideo: (d: RoomDocumentRow) => void;
+  canManageTags: boolean;
   onClose: () => void;
 }) {
+  const router = useRouter();
+  const [tagDraft, setTagDraft] = useState("");
+  const [savingTags, setSavingTags] = useState(false);
+
+  useEffect(() => {
+    if (doc) setTagDraft((doc.tags ?? []).join(", "));
+  }, [doc]);
+
   const open = doc !== null;
+
+  const videoIndex =
+    doc && doc.mimeType.startsWith("video/")
+      ? videoPlaylist.findIndex((v) => v.id === doc.id)
+      : -1;
+  const prevVideo =
+    videoIndex > 0 ? videoPlaylist[videoIndex - 1]! : null;
+  const nextVideo =
+    videoIndex >= 0 && videoIndex < videoPlaylist.length - 1
+      ? videoPlaylist[videoIndex + 1]!
+      : null;
+  const hasVideoNav =
+    Boolean(doc?.mimeType.startsWith("video/")) &&
+    videoPlaylist.length > 1 &&
+    videoIndex >= 0;
+
+  async function saveTags() {
+    if (!doc) return;
+    const tokens = tagDraft
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const tags = normalizeRoomDocumentTags(tokens);
+    setSavingTags(true);
+    try {
+      await updateRoomDocumentTags({ documentId: doc.id, tags });
+      toast.success("Tag disimpan.");
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal menyimpan tag.",
+      );
+    } finally {
+      setSavingTags(false);
+    }
+  }
+
   return (
     <Dialog
       open={open}
@@ -1337,7 +1768,7 @@ function DocPreviewDialog({
       <DialogContent className="flex h-[min(90vh,820px)] w-[min(96vw,1100px)] max-w-none flex-col gap-3 p-4 sm:max-w-none">
         {doc ? (
           <>
-            <DialogHeader className="flex flex-row items-start gap-3 pr-8">
+            <DialogHeader className="flex flex-row flex-wrap items-start gap-3 pr-8">
               <div
                 className={cn(
                   "bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg",
@@ -1358,8 +1789,40 @@ function DocPreviewDialog({
                   {formatFileSize(doc.size)} ·{" "}
                   {doc.uploadedBy.name ?? doc.uploadedBy.email}
                 </p>
+                {hasVideoNav ? (
+                  <p className="text-muted-foreground text-[11px] tabular-nums">
+                    Video {videoIndex + 1} dari {videoPlaylist.length} (tampilan
+                    saat ini)
+                  </p>
+                ) : null}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                {hasVideoNav ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      disabled={!prevVideo}
+                      onClick={() => prevVideo && onNavigateVideo(prevVideo)}
+                      aria-label="Video sebelumnya"
+                      title="Video sebelumnya"
+                    >
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      disabled={!nextVideo}
+                      onClick={() => nextVideo && onNavigateVideo(nextVideo)}
+                      aria-label="Video berikutnya"
+                      title="Video berikutnya"
+                    >
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  </>
+                ) : null}
                 <Button
                   type="button"
                   size="sm"
@@ -1393,8 +1856,52 @@ function DocPreviewDialog({
                 </Button>
               </div>
             </DialogHeader>
-            <div className="border-border bg-muted/20 flex-1 overflow-hidden rounded-lg border">
-              <PreviewBody doc={doc} />
+
+            {canManageTags ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="preview-doc-tags" className="text-xs">
+                  Tag
+                </Label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    id="preview-doc-tags"
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    placeholder="footage, raw, approved — koma atau spasi"
+                    disabled={savingTags}
+                    className="h-9 sm:min-w-[240px] sm:flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => void saveTags()}
+                    disabled={savingTags}
+                  >
+                    {savingTags ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      "Simpan tag"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : (doc.tags ?? []).length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Tag className="text-muted-foreground size-3.5 shrink-0" />
+                {(doc.tags ?? []).map((t) => (
+                  <span
+                    key={t}
+                    className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs font-medium"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="border-border bg-muted/20 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
+              <PreviewBody key={doc.id} doc={doc} />
             </div>
           </>
         ) : null}
@@ -1432,9 +1939,10 @@ function PreviewBody({ doc }: { doc: RoomDocumentRow }) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-black">
         <video
+          key={doc.id}
           src={doc.publicPath}
           controls
-          className="h-full w-full"
+          className="h-full w-full max-h-full"
           preload="metadata"
         />
       </div>

@@ -13,6 +13,53 @@ function paths() {
   revalidatePath("/finance/ap-ar");
 }
 
+/**
+ * Bill yang masih ada sisa hutang. Dipakai oleh dropdown "PAY_BILL" pada
+ * editor jurnal saat akun AP control dipilih di sisi debit.
+ */
+export async function listOpenFinanceApBills() {
+  await requireFinance();
+  const bills = await prisma.financeApBill.findMany({
+    where: { status: { in: [FinanceApArDocStatus.OPEN, FinanceApArDocStatus.PARTIAL] } },
+    orderBy: { dueDate: "asc" },
+    include: { payments: { select: { amount: true } } },
+  });
+  return bills.map((b) => {
+    const paid = b.payments.reduce((s, p) => s.plus(p.amount), zeroDecimal());
+    const remaining = b.amount.minus(paid);
+    return {
+      id: b.id,
+      vendorName: b.vendorName,
+      billNumber: b.billNumber,
+      dueDateIso: b.dueDate.toISOString(),
+      amount: b.amount.toString(),
+      remaining: remaining.toString(),
+    };
+  });
+}
+
+/** Invoice yang masih ada sisa piutang. Dipakai dropdown "RECEIVE_INVOICE". */
+export async function listOpenFinanceArInvoices() {
+  await requireFinance();
+  const inv = await prisma.financeArInvoice.findMany({
+    where: { status: { in: [FinanceApArDocStatus.OPEN, FinanceApArDocStatus.PARTIAL] } },
+    orderBy: { dueDate: "asc" },
+    include: { payments: { select: { amount: true } } },
+  });
+  return inv.map((i) => {
+    const paid = i.payments.reduce((s, p) => s.plus(p.amount), zeroDecimal());
+    const remaining = i.amount.minus(paid);
+    return {
+      id: i.id,
+      customerName: i.customerName,
+      invoiceNumber: i.invoiceNumber,
+      dueDateIso: i.dueDate.toISOString(),
+      amount: i.amount.toString(),
+      remaining: remaining.toString(),
+    };
+  });
+}
+
 export async function listFinanceApBills() {
   await requireFinance();
   return prisma.financeApBill.findMany({

@@ -1,5 +1,7 @@
+import { BookOpen } from "lucide-react";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { queryGeneralLedger } from "@/actions/finance-ledger";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { GeneralLedgerClient } from "./general-ledger-client";
 
 export default async function GeneralLedgerPage({
@@ -46,13 +48,16 @@ export default async function GeneralLedgerPage({
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Buku besar</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Mutasi terposting per akun. Pilih satu akun untuk saldo berjalan.
-        </p>
-      </div>
+    <FinancePageShell
+      maxWidth="xl"
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Buku besar" },
+      ]}
+      icon={<BookOpen className="size-5" />}
+      title="Buku besar"
+      description="Mutasi seluruh akun yang sudah diposting. Pilih satu akun untuk melihat saldo berjalan dan filter periode untuk drill-down."
+    >
       <GeneralLedgerClient
         accounts={accounts.map((a) => ({
           id: a.id,
@@ -65,6 +70,6 @@ export default async function GeneralLedgerPage({
         fromIso={from.toISOString()}
         toIso={to.toISOString()}
       />
-    </div>
+    </FinancePageShell>
   );
 }

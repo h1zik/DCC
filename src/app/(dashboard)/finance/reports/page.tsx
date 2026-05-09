@@ -1,125 +1,197 @@
+import { FileBarChart, Sparkles } from "lucide-react";
 import {
-  reportBalanceSheet,
-  reportCashFlow,
-  reportProfitLoss,
+  reportBalanceSheetComparison,
+  reportCashFlowStatement,
+  reportProfitLossComparison,
   reportTaxBuckets,
+  reportTrialBalance,
 } from "@/actions/finance-reports";
-import { formatIdr } from "@/lib/finance-money";
-import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
+import {
+  ReportsClient,
+  type SerializedReports,
+} from "./reports-client";
+import { ReportFilterBar } from "@/components/finance/report-filter-bar";
 
-export default async function FinanceReportsPage() {
+type SearchParams = {
+  from?: string;
+  to?: string;
+  brandId?: string;
+  view?: string;
+};
+
+function defaultRange() {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth(), 1);
   const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-  const [pl, bs, cf, tax] = await Promise.all([
-    reportProfitLoss({ from, to, brandId: null }),
-    reportBalanceSheet(to, null),
-    reportCashFlow({ from, to, brandId: null }),
-    reportTaxBuckets({ from, to, brandId: null }),
-  ]);
-
-  return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Pelaporan keuangan</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Ringkasan bulan berjalan dari jurnal terposting (IDR).
-        </p>
-      </div>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Laba rugi</h2>
-        <ReportTable
-          rows={pl.rows.map((r) => ({
-            label: `${r.code} ${r.name}`,
-            value: r.amount,
-            type: r.type,
-          }))}
-        />
-        <p className="text-muted-foreground text-xs">
-          Pendapatan bersih segmen: {fmt(pl.revenue)} · Beban: {fmt(pl.expense)} · Laba:{" "}
-          <span className="text-foreground font-semibold">{fmt(pl.netIncome)}</span>
-        </p>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Neraca (posisi akhir periode)</h2>
-        <ReportTable
-          rows={[
-            ...bs.assets.map((r) => ({
-              label: `${r.code} ${r.name}`,
-              value: r.amount,
-              type: "ASSET" as const,
-            })),
-            ...bs.liabilities.map((r) => ({
-              label: `${r.code} ${r.name}`,
-              value: r.amount,
-              type: "LIABILITY" as const,
-            })),
-            ...bs.equity.map((r) => ({
-              label: `${r.code} ${r.name}`,
-              value: r.amount,
-              type: "EQUITY" as const,
-            })),
-            {
-              label: "Laba ditahan (dari L/R kumulatif)",
-              value: bs.retainedEarnings,
-              type: "EQUITY" as const,
-            },
-          ]}
-        />
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Arus kas (akun bertanda arus kas)</h2>
-        <p className="text-muted-foreground text-xs">
-          Perkiraan neto mutasi kas (aktiva debit − kredit pada akun arus kas):{" "}
-          {fmt(cf.netOperatingCashApprox)}
-        </p>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Rekapitulasi pajak (akun 2100 / 2200)</h2>
-        <ul className="text-muted-foreground text-sm">
-          {tax.rows.map((t) => (
-            <li key={t.code}>
-              {t.label}: {fmt(t.amount)}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
-  );
+  return { from, to };
 }
 
-function fmt(d: Prisma.Decimal) {
-  return formatIdr(d);
+function parseRange(sp: SearchParams) {
+  const def = defaultRange();
+  const from = sp.from ? new Date(sp.from) : def.from;
+  const to = sp.to ? new Date(sp.to + "T23:59:59") : def.to;
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return def;
+  return { from, to };
 }
 
-function ReportTable({
-  rows,
+export default async function FinanceReportsPage({
+  searchParams,
 }: {
-  rows: { label: string; value: Prisma.Decimal; type: string }[];
+  searchParams: Promise<SearchParams>;
 }) {
+  const sp = await searchParams;
+  const { from, to } = parseRange(sp);
+  const brandId = sp.brandId && sp.brandId !== "__all__" ? sp.brandId : null;
+  const initialView = (sp.view ?? "trial-balance") as SerializedReports["initialView"];
+
+  const [brands, trialBalance, profitLoss, balanceSheet, cashFlow, tax] =
+    await Promise.all([
+      prisma.brand.findMany({ orderBy: { name: "asc" } }),
+      reportTrialBalance({ asOf: to, brandId, hideZero: true }),
+      reportProfitLossComparison({ from, to, brandId }),
+      reportBalanceSheetComparison({ asOf: to, brandId }),
+      reportCashFlowStatement({ from, to, brandId }),
+      reportTaxBuckets({ from, to, brandId }),
+    ]);
+
+  const data: SerializedReports = {
+    initialView,
+    period: { from: from.toISOString(), to: to.toISOString() },
+    brandId: brandId ?? null,
+    brands: brands.map((b) => ({ id: b.id, name: b.name })),
+    trialBalance: {
+      asOf: trialBalance.asOf.toISOString(),
+      isBalanced: trialBalance.isBalanced,
+      totals: {
+        debit: trialBalance.totals.debit.toString(),
+        credit: trialBalance.totals.credit.toString(),
+      },
+      rows: trialBalance.rows.map((r) => ({
+        accountId: r.accountId,
+        code: r.code,
+        name: r.name,
+        type: r.type,
+        debit: r.debit.toString(),
+        credit: r.credit.toString(),
+      })),
+    },
+    profitLoss: {
+      period: {
+        from: profitLoss.period.from.toISOString(),
+        to: profitLoss.period.to.toISOString(),
+      },
+      previousPeriod: {
+        from: profitLoss.previousPeriod.from.toISOString(),
+        to: profitLoss.previousPeriod.to.toISOString(),
+      },
+      revenue: {
+        current: profitLoss.revenue.current.toString(),
+        previous: profitLoss.revenue.previous.toString(),
+      },
+      expense: {
+        current: profitLoss.expense.current.toString(),
+        previous: profitLoss.expense.previous.toString(),
+      },
+      netIncome: {
+        current: profitLoss.netIncome.current.toString(),
+        previous: profitLoss.netIncome.previous.toString(),
+      },
+      rows: profitLoss.rows.map((r) => ({
+        code: r.code,
+        name: r.name,
+        type: r.type,
+        current: r.current.toString(),
+        previous: r.previous.toString(),
+      })),
+    },
+    balanceSheet: {
+      asOf: balanceSheet.asOf.toISOString(),
+      previousAsOf: balanceSheet.previousAsOf.toISOString(),
+      current: serializeBs(balanceSheet.current),
+      previous: serializeBs(balanceSheet.previous),
+    },
+    cashFlow: {
+      from: cashFlow.from.toISOString(),
+      to: cashFlow.to.toISOString(),
+      totalInflow: cashFlow.totalInflow.toString(),
+      totalOutflow: cashFlow.totalOutflow.toString(),
+      netCash: cashFlow.netCash.toString(),
+      groups: cashFlow.groups.map((g) => ({
+        category: g.category,
+        label: g.label,
+        inflow: g.inflow.toString(),
+        outflow: g.outflow.toString(),
+        net: g.net.toString(),
+        byCounterAccount: g.byCounterAccount.map((c) => ({
+          accountId: c.accountId,
+          code: c.code,
+          name: c.name,
+          inflow: c.inflow.toString(),
+          outflow: c.outflow.toString(),
+          net: c.net.toString(),
+        })),
+      })),
+    },
+    tax: tax.rows.map((t) => ({
+      code: t.code,
+      label: t.label,
+      amount: t.amount.toString(),
+    })),
+  };
+
   return (
-    <div className="overflow-hidden rounded-xl border border-border">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 border-b text-left text-xs">
-          <tr>
-            <th className="p-2">Akun</th>
-            <th className="p-2 text-right">Nilai</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-b">
-              <td className="p-2 text-xs">{r.label}</td>
-              <td className="p-2 text-right font-mono text-xs tabular-nums">{fmt(r.value)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <FinancePageShell
+      maxWidth="2xl"
+      icon={<FileBarChart className="size-5" />}
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Laporan" },
+      ]}
+      title="Pelaporan keuangan"
+      description="Neraca saldo, laba rugi, neraca, arus kas, dan rekap pajak — dari jurnal terposting (IDR)."
+      actions={
+        <span className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full border border-primary/20 px-2.5 py-1 text-[11px] font-semibold">
+          <Sparkles className="size-3" /> Dengan perbandingan periode lalu
+        </span>
+      }
+    >
+      <ReportFilterBar
+        basePath="/finance/reports"
+        fromIso={from.toISOString()}
+        toIso={to.toISOString()}
+        brandId={brandId}
+        brands={brands.map((b) => ({ id: b.id, name: b.name }))}
+      />
+
+      <ReportsClient data={data} />
+    </FinancePageShell>
   );
+}
+
+function serializeBs(bs: {
+  assets: { code: string; name: string; amount: { toString(): string } }[];
+  liabilities: { code: string; name: string; amount: { toString(): string } }[];
+  equity: { code: string; name: string; amount: { toString(): string } }[];
+  retainedEarnings: { toString(): string };
+}) {
+  return {
+    assets: bs.assets.map((r) => ({
+      code: r.code,
+      name: r.name,
+      amount: r.amount.toString(),
+    })),
+    liabilities: bs.liabilities.map((r) => ({
+      code: r.code,
+      name: r.name,
+      amount: r.amount.toString(),
+    })),
+    equity: bs.equity.map((r) => ({
+      code: r.code,
+      name: r.name,
+      amount: r.amount.toString(),
+    })),
+    retainedEarnings: bs.retainedEarnings.toString(),
+  };
 }

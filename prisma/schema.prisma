@@ -12,7 +12,9 @@ enum StockLogType {
   OUT
 }
 
-/** Tahap pipeline produk (urutan alur bisnis). */
+/**
+ * Tahap pipeline produk (urutan alur bisnis).
+ */
 enum PipelineStage {
   MARKET_RESEARCH
   PRODUCT_DEVELOPMENT
@@ -25,21 +27,35 @@ enum PipelineStage {
 
 enum UserRole {
   CEO
-  /** Mengelola master brand & ruang kerja; ditetapkan oleh CEO. */
+  /**
+   * Mengelola master brand & ruang kerja; ditetapkan oleh CEO.
+   */
   ADMINISTRATOR
   LOGISTICS
-  /** Member umum — akses tugas, ruangan, dan pipeline (level studio). */
+  /**
+   * Member umum — akses tugas, ruangan, dan pipeline (level studio).
+   */
   NORMAL_USER
   PROJECT_MANAGER
-  /** Akuntansi & treasury; akses modul keuangan. */
+  /**
+   * Akuntansi & treasury; akses modul keuangan.
+   */
   FINANCE
-  /** @deprecated dipindah ke NORMAL_USER. Disisakan agar data lama tidak rusak. */
+  /**
+   * @deprecated dipindah ke NORMAL_USER. Disisakan agar data lama tidak rusak.
+   */
   MARKETING
-  /** @deprecated dipindah ke NORMAL_USER. */
+  /**
+   * @deprecated dipindah ke NORMAL_USER.
+   */
   CREATIVE_DIRECTOR
-  /** @deprecated dipindah ke NORMAL_USER. */
+  /**
+   * @deprecated dipindah ke NORMAL_USER.
+   */
   BUSINESS_ANALYST
-  /** @deprecated dipindah ke NORMAL_USER. */
+  /**
+   * @deprecated dipindah ke NORMAL_USER.
+   */
   COPYWRITER
 }
 
@@ -48,9 +64,13 @@ enum TaskStatus {
   IN_PROGRESS
   OVERDUE
   DONE
-  /** Tertunda / menunggu pihak lain — kolom Kanban opsional per ruangan. */
+  /**
+   * Tertunda / menunggu pihak lain — kolom Kanban opsional per ruangan.
+   */
   BLOCKED
-  /** Siap ditinjau — kolom Kanban opsional per ruangan. */
+  /**
+   * Siap ditinjau — kolom Kanban opsional per ruangan.
+   */
   IN_REVIEW
 }
 
@@ -64,36 +84,54 @@ enum NotificationType {
   TASK_COMPLETED
   TASK_OVERDUE
   CEO_APPROVAL_REQUESTED
-  /** Pengajuan pindah tahap pipeline proyek menunggu CEO. */
+  /**
+   * Pengajuan pindah tahap pipeline proyek menunggu CEO.
+   */
   PROJECT_PIPELINE_APPROVAL_REQUESTED
-  /** Pengingat jadwal acara / meeting (H-1 & ~1 jam sebelum mulai). */
+  /**
+   * Pengingat jadwal acara / meeting (H-1 & ~1 jam sebelum mulai).
+   */
   SCHEDULE_REMINDER
 }
 
-/** Jenis pengingat jadwal yang sudah dikirim (anti duplikat). */
+/**
+ * Jenis pengingat jadwal yang sudah dikirim (anti duplikat).
+ */
 enum ScheduleReminderKind {
   DAY_BEFORE
   HOUR_BEFORE
 }
 
-/** Pengelompokan ruangan di menu Tugas & Kanban (ditetapkan CEO). */
+/**
+ * Pengelompokan ruangan di menu Tugas & Kanban (ditetapkan CEO).
+ */
 enum RoomWorkspaceSection {
   HQ
   TEAM
   ROOMS
 }
 
-/** Peran anggota di dalam satu ruangan (ditetapkan CEO). */
+/**
+ * Peran anggota di dalam satu ruangan (ditetapkan CEO).
+ */
 enum RoomMemberRole {
-  /** Mengelola tugas di fase yang ditetapkan (`allowedRoomProcesses`). */
+  /**
+   * Mengelola tugas di fase yang ditetapkan (`allowedRoomProcesses`).
+   */
   ROOM_MANAGER
-  /** Bekerja pada tugas di fase yang ditetapkan. */
+  /**
+   * Bekerja pada tugas di fase yang ditetapkan.
+   */
   ROOM_CONTRIBUTOR
-  /** Akses semua fase proses tugas di ruangan ini (setara kuasa kelola tugas). */
+  /**
+   * Akses semua fase proses tugas di ruangan ini (setara kuasa kelola tugas).
+   */
   ROOM_PROJECT_MANAGER
 }
 
-/** Tahap alur kerja per ruangan — memisahkan tugas di hub ruangan. */
+/**
+ * Tahap alur kerja per ruangan — memisahkan tugas di hub ruangan.
+ */
 enum RoomTaskProcess {
   MARKET_RESEARCH
   PRODUCT_DEVELOPMENT
@@ -109,7 +147,9 @@ enum ContentPlanJenis {
   SINGLE_FEED
 }
 
-/** Status alur copywriting & design di content planning. */
+/**
+ * Status alur copywriting & design di content planning.
+ */
 enum ContentPlanStatusKerja {
   BARU
   DALAM_PROSES
@@ -134,73 +174,89 @@ enum TaskWorkspaceView {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  /** Aktivitas terakhir user di aplikasi (untuk indikator online). */
-  lastSeenAt    DateTime?
-  /** Deskripsi singkat / bio (opsional, untuk profil). */
-  bio           String?
-  /** Nomor WhatsApp format E.164 (mis. +6281234567890) untuk notifikasi Twilio. */
-  whatsappPhone String?
+  id                        String                         @id @default(cuid())
+  name                      String?
+  email                     String                         @unique
+  emailVerified             DateTime?
+  image                     String?
+  /**
+   * Aktivitas terakhir user di aplikasi (untuk indikator online).
+   */
+  lastSeenAt                DateTime?
+  /**
+   * Deskripsi singkat / bio (opsional, untuk profil).
+   */
+  bio                       String?
+  /**
+   * Nomor WhatsApp format E.164 (mis. +6281234567890) untuk notifikasi Twilio.
+   */
+  whatsappPhone             String?
   /**
    * Tema banner profil publik (slug preset gradien).
    * @see `PROFILE_BANNER_PRESETS` di kode.
    */
-  profileBannerPreset String @default("twilight")
-  /** Slogan singkat di bawah nama (dipublikasikan ke profil publik). */
-  profileTagline      String? @db.VarChar(160)
-  /** Warna aksen hex `#RRGGBB` untuk ring avatar & aksen; null = pakai default tema. */
-  profileAccentHex    String? @db.VarChar(7)
+  profileBannerPreset       String                         @default("twilight")
+  /**
+   * Slogan singkat di bawah nama (dipublikasikan ke profil publik).
+   */
+  profileTagline            String?                        @db.VarChar(160)
+  /**
+   * Warna aksen hex `#RRGGBB` untuk ring avatar & aksen; null = pakai default tema.
+   */
+  profileAccentHex          String?                        @db.VarChar(7)
   /**
    * Pola dekoratif di banner (slug). Lihat `PROFILE_BANNER_PATTERNS`.
    */
-  profileBannerPattern String @default("noise")
+  profileBannerPattern      String                         @default("noise")
   /**
    * Slug stiker / lambang kecil di samping nama (mahkota, bintang, dll). Null = tanpa stiker.
    * Lihat `PROFILE_STICKERS`.
    */
-  profileSticker       String? @db.VarChar(24)
-  /** Bentuk frame avatar (slug). Lihat `PROFILE_AVATAR_FRAMES`. */
-  profileAvatarFrame   String  @default("ring")
-  /** Tampilan default modul Tasks saat membuka ruangan. */
-  taskDefaultWorkspaceView TaskWorkspaceView @default(KANBAN)
-  passwordHash  String
+  profileSticker            String?                        @db.VarChar(24)
+  /**
+   * Bentuk frame avatar (slug). Lihat `PROFILE_AVATAR_FRAMES`.
+   */
+  profileAvatarFrame        String                         @default("ring")
+  /**
+   * Tampilan default modul Tasks saat membuka ruangan.
+   */
+  taskDefaultWorkspaceView  TaskWorkspaceView              @default(KANBAN)
+  passwordHash              String
   /**
    * Tier permission sistem (CEO/Administrator/Finance/Logistik/...) — tetap menjadi
    * sumber kebenaran untuk middleware, sidebar, dan akses modul. Custom role
    * (label peran) disimpan terpisah di `customRoleId` dan hanya untuk display.
    */
-  role          UserRole  @default(LOGISTICS)
+  role                      UserRole                       @default(LOGISTICS)
   /**
    * Label peran kustom yang dipilih CEO/Admin (mis. "Creative Director",
    * "DevOps Engineer"). Bila null, label peran berasal dari enum `role`.
    * Permission tier sebenarnya tetap mengikuti `role`.
    */
-  customRoleId  String?
-  customRole    CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  taskAssignments TaskAssignee[]
-  notifications Notification[]
-  pushSubscriptions PushSubscription[]
-  taskComments      TaskComment[]
-  taskAttachments   TaskAttachment[]
-  roomMessages      RoomMessage[]
-  roomDocuments     RoomDocument[]
+  customRoleId              String?
+  customRole                CustomRole?                    @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime                       @default(now())
+  updatedAt                 DateTime                       @updatedAt
+  taskAssignments           TaskAssignee[]
+  notifications             Notification[]
+  pushSubscriptions         PushSubscription[]
+  taskComments              TaskComment[]
+  taskAttachments           TaskAttachment[]
+  roomMessages              RoomMessage[]
+  roomDocuments             RoomDocument[]
   roomMembers               RoomMember[]
-  contentPlanItemsCreated   RoomContentPlanItem[] @relation("ContentPlanItemCreator")
-  contentPlanItemsAsPic     RoomContentPlanItem[] @relation("ContentPlanItemPic")
-  scheduleEventsCreated     ScheduleEvent[]       @relation("ScheduleEventCreator")
+  contentPlanItemsCreated   RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
+  contentPlanItemsAsPic     RoomContentPlanItem[]          @relation("ContentPlanItemPic")
+  scheduleEventsCreated     ScheduleEvent[]                @relation("ScheduleEventCreator")
   scheduleParticipations    ScheduleEventParticipant[]
   scheduleReminderLogs      ScheduleReminderSent[]
-  financeJournalEntries        FinanceJournalEntry[]
-  financeApPaymentsRecorded    FinanceApPayment[]    @relation("FinanceApPaymentRecorder")
-  financeArPaymentsRecorded    FinanceArPayment[]    @relation("FinanceArPaymentRecorder")
-  financeSpendRequests         FinanceSpendRequest[] @relation("FinanceSpendRequester")
-  financeSpendApprovals     FinanceSpendRequest[] @relation("FinanceSpendApprover")
+  financeJournalEntries     FinanceJournalEntry[]
+  financeApPaymentsRecorded FinanceApPayment[]             @relation("FinanceApPaymentRecorder")
+  financeArPaymentsRecorded FinanceArPayment[]             @relation("FinanceArPaymentRecorder")
+  financeSpendRequests      FinanceSpendRequest[]          @relation("FinanceSpendRequester")
+  financeSpendApprovals     FinanceSpendRequest[]          @relation("FinanceSpendApprover")
+  financePeriodLocks        FinancePeriodLock[]
+  financeJournalAttachments FinanceJournalLineAttachment[] @relation("FinanceJournalLineAttachmentUploader")
 
   @@index([customRoleId])
 }
@@ -208,15 +264,16 @@ model User {
 /**
  * Label peran (job title) yang dapat dibuat dan diberi nama bebas oleh CEO/Admin.
  * Menyimpan nama tampilan + tier permission sistem yang mendasarinya.
- *
  * - 4 role inti (CEO/Administrator/Finance/Logistik) dibuat sebagai `isProtected`
- *   dan tidak dapat dihapus, hanya bisa diganti nama (opsional).
+ * dan tidak dapat dihapus, hanya bisa diganti nama (opsional).
  * - Role lain bisa dibuat bebas. Permission yang dipakai sistem ditentukan oleh
- *   `permissionTier` (mis. role kustom "DevOps Engineer" dengan tier `LOGISTICS`).
+ * `permissionTier` (mis. role kustom "DevOps Engineer" dengan tier `LOGISTICS`).
  */
 model CustomRole {
   id             String   @id @default(cuid())
-  /** Nama tampilan (mis. "Creative Director"). Unik agar tidak ambigu. */
+  /**
+   * Nama tampilan (mis. "Creative Director"). Unik agar tidak ambigu.
+   */
   name           String   @unique @db.VarChar(80)
   /**
    * Tier permission sistem yang dipakai user dengan role ini.
@@ -240,63 +297,75 @@ model CustomRole {
 }
 
 model PushSubscription {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint     String   @unique
-  p256dh       String
-  auth         String
-  userAgent    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  lastUsedAt   DateTime?
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
 
   @@index([userId])
 }
 
 model Brand {
-  id        String    @id @default(cuid())
-  name      String
-  logo      String?
-  colorCode String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  products  Product[]
-  projects  Project[]
-  rooms     Room[]
-  financeJournalLines FinanceJournalLine[]
-  financeApBills      FinanceApBill[]
-  financeArInvoices   FinanceArInvoice[]
-  financeBudgetLines  FinanceBudgetLine[]
+  id                   String                @id @default(cuid())
+  name                 String
+  logo                 String?
+  colorCode            String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  products             Product[]
+  projects             Project[]
+  rooms                Room[]
+  financeJournalLines  FinanceJournalLine[]
+  financeApBills       FinanceApBill[]
+  financeArInvoices    FinanceArInvoice[]
+  financeBudgetLines   FinanceBudgetLine[]
   financeSpendRequests FinanceSpendRequest[]
 }
 
-/** Ruang kerja tim (mis. Room Archipelago) — konteks sebelum Kanban. */
+/**
+ * Ruang kerja tim (mis. Room Archipelago) — konteks sebelum Kanban.
+ */
 model Room {
-  id         String         @id @default(cuid())
-  name       String
-  /** Banner visual ruangan (path publik di /uploads/rooms/{roomId}/...). */
-  bannerImage String?
-  /** Logo persegi ruangan (path publik di /uploads/rooms/{roomId}/logos/...). */
-  logoImage  String?
-  /** Bagian di menu Tugas: HQ, Team, atau Ruangan. */
-  workspaceSection RoomWorkspaceSection @default(ROOMS)
-  brandId    String?
-  brand      Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  projects   Project[]
-  messages   RoomMessage[]
-  documents         RoomDocument[]
-  documentFolders   RoomDocumentFolder[]
+  id               String                @id @default(cuid())
+  name             String
+  /**
+   * Banner visual ruangan (path publik di /uploads/rooms/{roomId}/...).
+   */
+  bannerImage      String?
+  /**
+   * Logo persegi ruangan (path publik di /uploads/rooms/{roomId}/logos/...).
+   */
+  logoImage        String?
+  /**
+   * Bagian di menu Tugas: HQ, Team, atau Ruangan.
+   */
+  workspaceSection RoomWorkspaceSection  @default(ROOMS)
+  brandId          String?
+  brand            Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  projects         Project[]
+  messages         RoomMessage[]
+  documents        RoomDocument[]
+  documentFolders  RoomDocumentFolder[]
   members          RoomMember[]
   contentPlanItems RoomContentPlanItem[]
-  /** Judul & urutan kolom Kanban per fase proses (diatur manager ruangan). */
+  /**
+   * Judul & urutan kolom Kanban per fase proses (diatur manager ruangan).
+   */
   kanbanColumns    RoomKanbanColumn[]
   taskTags         TaskTag[]
 }
 
-/** Kolom Kanban: memetakan `linkedStatus` ke judul tampilan & urutan. */
+/**
+ * Kolom Kanban: memetakan `linkedStatus` ke judul tampilan & urutan.
+ */
 model RoomKanbanColumn {
   id           String          @id @default(cuid())
   roomId       String
@@ -312,71 +381,83 @@ model RoomKanbanColumn {
   @@index([roomId, roomProcess, sortOrder])
 }
 
-/** Baris content planning per ruangan (tabel kolom lengkap). */
+/**
+ * Baris content planning per ruangan (tabel kolom lengkap).
+ */
 model RoomContentPlanItem {
-  id                    String                 @id @default(cuid())
-  roomId                String
-  room                  Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  konten                String                 @default("")
-  jenisKonten           ContentPlanJenis       @default(REELS)
-  detailKonten          String?
-  copywritingFilePath   String?
-  copywritingLink       String?
-  /** Beberapa file design (mis. slide carousel); urutan = urutan tayang. */
-  designFilePaths       String[]               @default([])
-  designLink            String?
-  picUserId             String?
-  /** Multi PIC (utama pakai ini). `picUserId` dipertahankan untuk kompatibilitas data lama. */
-  picUserIds            String[]               @default([])
-  pic                   User?                  @relation("ContentPlanItemPic", fields: [picUserId], references: [id], onDelete: SetNull)
-  statusCopywriting     ContentPlanStatusKerja @default(BARU)
-  statusDesign          ContentPlanStatusKerja @default(BARU)
-  deadlineCopywriting   DateTime?
-  deadlineDesign        DateTime?
-  tanggalPosting        DateTime?
-  catatan               String?
-  sortOrder             Int                    @default(0)
-  createdById           String
-  createdBy             User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  tasksFromContentPlan  Task[]
+  id                   String                 @id @default(cuid())
+  roomId               String
+  room                 Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  konten               String                 @default("")
+  jenisKonten          ContentPlanJenis       @default(REELS)
+  detailKonten         String?
+  copywritingFilePath  String?
+  copywritingLink      String?
+  /**
+   * Beberapa file design (mis. slide carousel); urutan = urutan tayang.
+   */
+  designFilePaths      String[]               @default([])
+  designLink           String?
+  picUserId            String?
+  /**
+   * Multi PIC (utama pakai ini). `picUserId` dipertahankan untuk kompatibilitas data lama.
+   */
+  picUserIds           String[]               @default([])
+  pic                  User?                  @relation("ContentPlanItemPic", fields: [picUserId], references: [id], onDelete: SetNull)
+  statusCopywriting    ContentPlanStatusKerja @default(BARU)
+  statusDesign         ContentPlanStatusKerja @default(BARU)
+  deadlineCopywriting  DateTime?
+  deadlineDesign       DateTime?
+  tanggalPosting       DateTime?
+  catatan              String?
+  sortOrder            Int                    @default(0)
+  createdById          String
+  createdBy            User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  tasksFromContentPlan Task[]
 }
 
 model RoomMember {
-  id        String         @id @default(cuid())
-  roomId    String
-  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      RoomMemberRole
-  /** Fase tugas yang boleh diakses (manager & kontributor). Kosong untuk `ROOM_PROJECT_MANAGER` (diabaikan). */
+  id                   String            @id @default(cuid())
+  roomId               String
+  room                 Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                 RoomMemberRole
+  /**
+   * Fase tugas yang boleh diakses (manager & kontributor). Kosong untuk `ROOM_PROJECT_MANAGER` (diabaikan).
+   */
   allowedRoomProcesses RoomTaskProcess[] @default([])
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
   @@unique([roomId, userId])
 }
 
 model RoomMessage {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   roomId    String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room      Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
   authorId  String
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  body      String   @default("")
-  /** URL gambar/GIF ter-hosting (Tenor, Giphy, dll.) — teks opsional di `body`. */
+  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String        @default("")
+  /**
+   * URL gambar/GIF ter-hosting (Tenor, Giphy, dll.) — teks opsional di `body`.
+   */
   gifUrl    String?
   replyToId String?
   replyTo   RoomMessage?  @relation("RoomMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   RoomMessage[] @relation("RoomMessageReplies")
-  createdAt DateTime @default(now())
+  createdAt DateTime      @default(now())
 
   @@index([roomId, createdAt])
   @@index([replyToId])
 }
 
-/** Folder logis untuk mengelompokkan dokumen bersama per ruangan (Logo, Legal, dll.). */
+/**
+ * Folder logis untuk mengelompokkan dokumen bersama per ruangan (Logo, Legal, dll.).
+ */
 model RoomDocumentFolder {
   id        String         @id @default(cuid())
   roomId    String
@@ -391,77 +472,97 @@ model RoomDocumentFolder {
 }
 
 model RoomDocument {
-  id           String   @id @default(cuid())
+  id           String              @id @default(cuid())
   roomId       String
-  room         Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room         Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
   folderId     String?
   folder       RoomDocumentFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
   uploadedById String
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedBy   User                @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   title        String?
   fileName     String
   mimeType     String
   size         Int
-  /** Path publik, mis. /uploads/rooms/{roomId}/... */
+  /**
+   * Path publik, mis. /uploads/rooms/{roomId}/...
+   */
   publicPath   String
-  createdAt    DateTime @default(now())
+  /**
+   * Tag bebas (mis. footage, draft, approved) — dinormalisasi di aplikasi.
+   */
+  tags         String[]            @default([])
+  createdAt    DateTime            @default(now())
 
   @@index([roomId, folderId])
 }
 
 model Project {
-  id             String         @id @default(cuid())
-  roomId         String
-  room           Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  /** Kosong untuk papan tugas internal ruangan HQ/Team tanpa brand. */
-  brandId        String?
-  brand          Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  name           String
-  currentStage   PipelineStage  @default(MARKET_RESEARCH)
-  stageEnteredAt DateTime       @default(now())
-  /** Tahap tujuan yang diajukan tim — `currentStage` tidak berubah sampai CEO menyetujui. */
+  id                       String         @id @default(cuid())
+  roomId                   String
+  room                     Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /**
+   * Kosong untuk papan tugas internal ruangan HQ/Team tanpa brand.
+   */
+  brandId                  String?
+  brand                    Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  name                     String
+  currentStage             PipelineStage  @default(MARKET_RESEARCH)
+  stageEnteredAt           DateTime       @default(now())
+  /**
+   * Tahap tujuan yang diajukan tim — `currentStage` tidak berubah sampai CEO menyetujui.
+   */
   pendingPipelineStage     PipelineStage?
   pipelineStageRequestedAt DateTime?
-  totalProgress  Int            @default(0)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  tasks          Task[]
+  totalProgress            Int            @default(0)
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+  tasks                    Task[]
 }
 
 model Task {
-  id                 String        @id @default(cuid())
-  projectId          String
-  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  /** Fase alur di ruangan kerja (filter Kanban/List/Gantt per proses). */
-  roomProcess        RoomTaskProcess @default(MARKET_RESEARCH)
-  title              String
-  description        String?
-  status             TaskStatus    @default(TODO)
-  priority           TaskPriority  @default(MEDIUM)
-  dueDate            DateTime?
-  isApprovalRequired Boolean       @default(false)
-  isApproved         Boolean       @default(false)
-  vendorId           String?
-  vendor             Vendor?       @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  leadTimeDays       Int?
-  sortOrder          Int           @default(0)
-  /** Pengingat WA “3 hari lagi” sudah dikirim (hindari duplikat). */
+  id                       String               @id @default(cuid())
+  projectId                String
+  project                  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /**
+   * Fase alur di ruangan kerja (filter Kanban/List/Gantt per proses).
+   */
+  roomProcess              RoomTaskProcess      @default(MARKET_RESEARCH)
+  title                    String
+  description              String?
+  status                   TaskStatus           @default(TODO)
+  priority                 TaskPriority         @default(MEDIUM)
+  dueDate                  DateTime?
+  isApprovalRequired       Boolean              @default(false)
+  isApproved               Boolean              @default(false)
+  vendorId                 String?
+  vendor                   Vendor?              @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  leadTimeDays             Int?
+  sortOrder                Int                  @default(0)
+  /**
+   * Pengingat WA “3 hari lagi” sudah dikirim (hindari duplikat).
+   */
   whatsappReminder3dSentAt DateTime?
-  /** Pengingat WA “1 hari lagi” sudah dikirim. */
+  /**
+   * Pengingat WA “1 hari lagi” sudah dikirim.
+   */
   whatsappReminder1dSentAt DateTime?
-  /** Tugas selesai diarsipkan — disembunyikan dari papan utama. */
-  archivedAt         DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  checklistItems     TaskChecklistItem[]
-  comments           TaskComment[]
-  attachments        TaskAttachment[]
-  assignees          TaskAssignee[]
-  tags               TaskTagOnTask[]
-  /** Jika diisi, tugas ini dibuat dari baris Content Planning (alur upload khusus). */
-  contentPlanItemId  String?
-  contentPlanItem    RoomContentPlanItem? @relation(fields: [contentPlanItemId], references: [id], onDelete: SetNull)
-  contentPlanJenis   ContentPlanJenis?
+  /**
+   * Tugas selesai diarsipkan — disembunyikan dari papan utama.
+   */
+  archivedAt               DateTime?
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+  checklistItems           TaskChecklistItem[]
+  comments                 TaskComment[]
+  attachments              TaskAttachment[]
+  assignees                TaskAssignee[]
+  tags                     TaskTagOnTask[]
+  /**
+   * Jika diisi, tugas ini dibuat dari baris Content Planning (alur upload khusus).
+   */
+  contentPlanItemId        String?
+  contentPlanItem          RoomContentPlanItem? @relation(fields: [contentPlanItemId], references: [id], onDelete: SetNull)
+  contentPlanJenis         ContentPlanJenis?
 
   @@index([projectId, roomProcess, archivedAt, sortOrder])
   @@index([projectId, archivedAt, status])
@@ -470,13 +571,13 @@ model Task {
 }
 
 model TaskTag {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   roomId    String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room      Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
   name      String
-  colorHex  String   @db.VarChar(7)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  colorHex  String          @db.VarChar(7)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   tasks     TaskTagOnTask[]
 
   @@unique([roomId, name])
@@ -494,11 +595,11 @@ model TaskTagOnTask {
 }
 
 model TaskAssignee {
-  taskId     String
-  task       Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
   @@id([taskId, userId])
   @@index([userId])
@@ -525,9 +626,13 @@ model TaskAttachment {
   fileName     String
   mimeType     String
   size         Int
-  /** Path publik untuk unggahan file, mis. /uploads/tasks/{taskId}/... */
+  /**
+   * Path publik untuk unggahan file, mis. /uploads/tasks/{taskId}/...
+   */
   publicPath   String?
-  /** Tautan eksternal (Drive, Figma, dll.); jika terisi, tidak ada berkas di disk. */
+  /**
+   * Tautan eksternal (Drive, Figma, dll.); jika terisi, tidak ada berkas di disk.
+   */
   linkUrl      String?
   createdAt    DateTime @default(now())
 
@@ -535,36 +640,37 @@ model TaskAttachment {
 }
 
 model TaskChecklistItem {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   taskId    String
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   title     String
-  done      Boolean  @default(false)
-  sortOrder Int      @default(0)
+  done      Boolean @default(false)
+  sortOrder Int     @default(0)
 
   @@index([taskId, sortOrder])
 }
 
 model Notification {
-  id        String             @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   message   String
   type      NotificationType
-  isRead    Boolean            @default(false)
-  createdAt DateTime           @default(now())
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
 }
 
 model Vendor {
-  id        String   @id @default(cuid())
-  name      String
-  picName   String?
-  contact   String?
-  specialty String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tasks     Task[]
-  financeApBills FinanceApBill[]
+  id                      String                   @id @default(cuid())
+  name                    String
+  picName                 String?
+  contact                 String?
+  specialty               String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  tasks                   Task[]
+  financeApBills          FinanceApBill[]
+  financeJournalLineLinks FinanceJournalLineLink[]
 }
 
 model Product {
@@ -583,33 +689,37 @@ model Product {
 }
 
 model StockLog {
-  id        String       @id @default(cuid())
-  productId String
-  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  amount    Int
-  type      StockLogType
-  /** Kategori penjualan saat barang keluar (contoh: marketplace, reseller, retail). */
+  id            String       @id @default(cuid())
+  productId     String
+  product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  amount        Int
+  type          StockLogType
+  /**
+   * Kategori penjualan saat barang keluar (contoh: marketplace, reseller, retail).
+   */
   salesCategory String?
-  note      String?
-  createdAt DateTime     @default(now())
+  note          String?
+  createdAt     DateTime     @default(now())
 }
 
-/** Jadwal umum (meeting, acara) — tidak terikat ruangan. */
+/**
+ * Jadwal umum (meeting, acara) — tidak terikat ruangan.
+ */
 model ScheduleEvent {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  location    String?
-  startsAt    DateTime
-  recurrence  ScheduleRecurrence @default(NONE)
+  id              String                     @id @default(cuid())
+  title           String
+  description     String?
+  location        String?
+  startsAt        DateTime
+  recurrence      ScheduleRecurrence         @default(NONE)
   recurrenceUntil DateTime?
-  seriesId    String?
-  createdById String
-  createdBy   User     @relation("ScheduleEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  participants ScheduleEventParticipant[]
-  remindersSent ScheduleReminderSent[]
+  seriesId        String?
+  createdById     String
+  createdBy       User                       @relation("ScheduleEventCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  participants    ScheduleEventParticipant[]
+  remindersSent   ScheduleReminderSent[]
 
   @@index([startsAt])
   @@index([seriesId, startsAt])
@@ -639,7 +749,9 @@ model ScheduleReminderSent {
   @@index([eventId])
 }
 
-/** Konfigurasi branding aplikasi (singleton). */
+/**
+ * Konfigurasi branding aplikasi (singleton).
+ */
 model AppBranding {
   id            String   @id
   appName       String   @default("Dominatus Control Center")
@@ -647,8 +759,10 @@ model AppBranding {
   navSubtitle   String   @default("Control Center")
   logoImagePath String?
   faviconPath   String?
-  /** Icon untuk web push notification (chat, dsb). */
-  pushIconPath String?
+  /**
+   * Icon untuk web push notification (chat, dsb).
+   */
+  pushIconPath  String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -688,27 +802,40 @@ enum FinanceDepreciationMethod {
 }
 
 model FinanceLedgerAccount {
-  id        String            @id @default(cuid())
-  code      String            @unique
-  name      String
-  type      FinanceLedgerType
-  parentId  String?
-  parent    FinanceLedgerAccount?  @relation("CoaHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children  FinanceLedgerAccount[] @relation("CoaHierarchy")
-  isActive  Boolean           @default(true)
-  sortOrder Int               @default(0)
-  /** Untuk laporan arus kas (Kas, Bank, e-wallet operasional). */
-  tracksCashflow Boolean      @default(false)
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id             String                 @id @default(cuid())
+  code           String                 @unique
+  name           String
+  type           FinanceLedgerType
+  parentId       String?
+  parent         FinanceLedgerAccount?  @relation("CoaHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children       FinanceLedgerAccount[] @relation("CoaHierarchy")
+  isActive       Boolean                @default(true)
+  sortOrder      Int                    @default(0)
+  /**
+   * Untuk laporan arus kas (Kas, Bank, e-wallet operasional).
+   */
+  tracksCashflow Boolean                @default(false)
+  /**
+   * Menandai akun "Hutang Usaha" (AP control). Saat akun dengan flag ini dipilih
+   * pada baris jurnal, form akan menampilkan field tambahan untuk membuat tagihan
+   * baru atau melunasi tagihan yang ada.
+   */
+  isApControl    Boolean                @default(false)
+  /**
+   * Menandai akun "Piutang Usaha" (AR control). Sama seperti `isApControl`
+   * tetapi untuk invoice ke pelanggan.
+   */
+  isArControl    Boolean                @default(false)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
-  journalLines          FinanceJournalLine[]
-  bankAccounts          FinanceBankAccount[]
-  budgetLines           FinanceBudgetLine[]
-  fixedAssetsAsset      FinanceFixedAsset[] @relation("FaAssetCoa")
-  fixedAssetsAccum      FinanceFixedAsset[] @relation("FaAccumCoa")
-  fixedAssetsExpense    FinanceFixedAsset[] @relation("FaExpenseCoa")
-  spendRequestsExpense  FinanceSpendRequest[]
+  journalLines         FinanceJournalLine[]
+  bankAccounts         FinanceBankAccount[]
+  budgetLines          FinanceBudgetLine[]
+  fixedAssetsAsset     FinanceFixedAsset[]   @relation("FaAssetCoa")
+  fixedAssetsAccum     FinanceFixedAsset[]   @relation("FaAccumCoa")
+  fixedAssetsExpense   FinanceFixedAsset[]   @relation("FaExpenseCoa")
+  spendRequestsExpense FinanceSpendRequest[]
 }
 
 model FinanceFxRate {
@@ -723,57 +850,176 @@ model FinanceFxRate {
 }
 
 model FinanceJournalEntry {
-  id          String               @id @default(cuid())
-  entryDate   DateTime
-  reference   String?
-  memo        String?
-  status      FinanceJournalStatus @default(DRAFT)
-  createdById String
-  createdBy   User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  postedAt    DateTime?
-  lines       FinanceJournalLine[]
-  apPayments  FinanceApPayment[]
-  arPayments  FinanceArPayment[]
-  spendPayouts FinanceSpendRequest[]
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id              String                @id @default(cuid())
+  entryDate       DateTime
+  reference       String?
+  memo            String?
+  status          FinanceJournalStatus  @default(DRAFT)
+  createdById     String
+  createdBy       User                  @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  postedAt        DateTime?
+  /**
+   * Nomor jurnal sekuensial per tahun (mis. JE-2026-000123). Dibuat saat posting
+   * sehingga draf tidak menyita nomor (audit trail bersih). Unik agar gampang
+   * direferensikan di laporan & ekspor.
+   */
+  entryNumber     String?               @unique
+  /**
+   * Bila terisi, jurnal ini adalah jurnal pembalik (reversing entry) untuk
+   * jurnal terposting yang lain. Best practice: posted entries tidak boleh
+   * diedit/dihapus; koreksi dilakukan dengan jurnal pembalik.
+   */
+  reversesEntryId String?
+  reversesEntry   FinanceJournalEntry?  @relation("FinanceJournalReversal", fields: [reversesEntryId], references: [id], onDelete: SetNull)
+  reversedBy      FinanceJournalEntry[] @relation("FinanceJournalReversal")
+  lines           FinanceJournalLine[]
+  apPayments      FinanceApPayment[]
+  arPayments      FinanceArPayment[]
+  spendPayouts    FinanceSpendRequest[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@index([entryDate])
   @@index([status])
+  @@index([reversesEntryId])
+}
+
+/**
+ * Penguncian periode pembukuan (closing the books).
+ * Setelah periode dikunci, jurnal dengan tanggal di dalamnya tidak boleh
+ * diposting, dibalik, atau diedit. Hanya pengguna Finance yang dapat
+ * mengunci/membuka periode.
+ */
+model FinancePeriodLock {
+  id         String   @id @default(cuid())
+  year       Int
+  month      Int
+  lockedById String
+  lockedBy   User     @relation(fields: [lockedById], references: [id], onDelete: Restrict)
+  lockedAt   DateTime @default(now())
+  reason     String?  @db.VarChar(500)
+
+  @@unique([year, month])
+  @@index([year])
 }
 
 model FinanceJournalLine {
-  id           String              @id @default(cuid())
-  entryId      String
-  entry        FinanceJournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  accountId    String
-  account      FinanceLedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  memo         String?
-  debitBase    Decimal             @default(0) @db.Decimal(18, 2)
-  creditBase   Decimal             @default(0) @db.Decimal(18, 2)
-  currencyCode String              @default("IDR") @db.VarChar(3)
-  amountForeign Decimal?           @db.Decimal(18, 2)
-  fxRateSnapshot Decimal?         @db.Decimal(18, 6)
-  brandId      String?
-  brand        Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  id             String               @id @default(cuid())
+  entryId        String
+  entry          FinanceJournalEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        FinanceLedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  memo           String?
+  debitBase      Decimal              @default(0) @db.Decimal(18, 2)
+  creditBase     Decimal              @default(0) @db.Decimal(18, 2)
+  currencyCode   String               @default("IDR") @db.VarChar(3)
+  amountForeign  Decimal?             @db.Decimal(18, 2)
+  fxRateSnapshot Decimal?             @db.Decimal(18, 6)
+  brandId        String?
+  brand          Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
 
   bankMatches BankStatementLine[]
+  /**
+   * Link opsional ke bill/invoice (lihat FinanceJournalLineLink).
+   */
+  link        FinanceJournalLineLink?
+  /**
+   * Lampiran (struk/invoice/dokumen pendukung).
+   */
+  attachments FinanceJournalLineAttachment[]
 
   @@index([accountId])
   @@index([entryId])
 }
 
+/**
+ * Link dinamis antara satu baris jurnal dengan dokumen sub-ledger AP/AR.
+ * Mode menentukan cara backend memproses baris saat posting:
+ * - CREATE_BILL: line kredit ke akun AP control → buat FinanceApBill baru.
+ * - PAY_BILL: line debit ke akun AP control → buat FinanceApPayment ke billId.
+ * - CREATE_INVOICE: line debit ke akun AR control → buat FinanceArInvoice baru.
+ * - RECEIVE_INVOICE: line kredit ke akun AR control → buat FinanceArPayment ke invoiceId.
+ * Saat draft, link disimpan apa adanya. Saat posting, dokumen sub-ledger dibuat
+ * /diperbarui dan field `createdBillId` / `createdInvoiceId` dicatat agar
+ * relasi tetap dapat ditelusuri kalau kemudian jurnal di-reverse.
+ */
+model FinanceJournalLineLink {
+  id     String             @id @default(cuid())
+  lineId String             @unique
+  line   FinanceJournalLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  mode FinanceJournalLineLinkMode
+
+  // CREATE_BILL / CREATE_INVOICE
+  vendorId   String?
+  vendor     Vendor?   @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  partyName  String?
+  partyEmail String?
+  docNumber  String?
+  docDate    DateTime?
+  dueDate    DateTime?
+
+  // PAY_BILL / RECEIVE_INVOICE
+  billId    String?
+  bill      FinanceApBill?    @relation("FinanceJournalLineLinkBill", fields: [billId], references: [id], onDelete: SetNull)
+  invoiceId String?
+  invoice   FinanceArInvoice? @relation("FinanceJournalLineLinkInvoice", fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  // Hasil setelah posting (untuk audit & undo manual)
+  createdBillId    String?
+  createdInvoiceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([billId])
+  @@index([invoiceId])
+  @@index([mode])
+}
+
+enum FinanceJournalLineLinkMode {
+  CREATE_BILL
+  PAY_BILL
+  CREATE_INVOICE
+  RECEIVE_INVOICE
+}
+
+/**
+ * Lampiran (struk, invoice PDF, foto bukti) untuk satu baris jurnal.
+ * File disimpan di `/public/uploads/finance/<entryId>/<id>-<filename>` (lokal)
+ * — pindah ke object storage saat siap deploy multi-instance.
+ */
+model FinanceJournalLineAttachment {
+  id           String             @id @default(cuid())
+  lineId       String
+  line         FinanceJournalLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  fileName     String
+  mimeType     String             @db.VarChar(100)
+  size         Int
+  url          String             @db.VarChar(500)
+  /**
+   * SHA-256 hex dari isi file. Untuk deteksi duplikat upload.
+   */
+  hash         String?            @db.VarChar(64)
+  uploadedById String
+  uploadedBy   User               @relation("FinanceJournalLineAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedAt   DateTime           @default(now())
+
+  @@index([lineId])
+  @@index([hash])
+}
+
 model FinanceBankAccount {
-  id              String   @id @default(cuid())
+  id              String               @id @default(cuid())
   name            String
   ledgerAccountId String
   ledgerAccount   FinanceLedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
   institution     String?
   accountMask     String?
-  openingBalance  Decimal  @default(0) @db.Decimal(18, 2)
+  openingBalance  Decimal              @default(0) @db.Decimal(18, 2)
   openingAsOf     DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
   imports BankStatementImport[]
 
@@ -781,22 +1027,24 @@ model FinanceBankAccount {
 }
 
 model BankStatementImport {
-  id              String   @id @default(cuid())
-  bankAccountId   String
-  bankAccount     FinanceBankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  fileName        String
-  importedAt      DateTime @default(now())
-  lines           BankStatementLine[]
+  id            String              @id @default(cuid())
+  bankAccountId String
+  bankAccount   FinanceBankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  fileName      String
+  importedAt    DateTime            @default(now())
+  lines         BankStatementLine[]
 }
 
 model BankStatementLine {
-  id                   String   @id @default(cuid())
+  id                   String              @id @default(cuid())
   importId             String
   import               BankStatementImport @relation(fields: [importId], references: [id], onDelete: Cascade)
   txnDate              DateTime
   description          String
-  /** Positif = uang masuk rekening; negatif = keluar. */
-  amount               Decimal  @db.Decimal(18, 2)
+  /**
+   * Positif = uang masuk rekening; negatif = keluar.
+   */
+  amount               Decimal             @db.Decimal(18, 2)
   matchedJournalLineId String?
   matchedJournalLine   FinanceJournalLine? @relation(fields: [matchedJournalLineId], references: [id], onDelete: SetNull)
 
@@ -804,21 +1052,25 @@ model BankStatementLine {
 }
 
 model FinanceApBill {
-  id          String               @id @default(cuid())
-  vendorId    String?
-  vendor      Vendor?              @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  vendorName  String
-  billNumber  String?
-  billDate    DateTime
-  dueDate     DateTime
-  amount      Decimal              @db.Decimal(18, 2)
-  status      FinanceApArDocStatus @default(OPEN)
-  memo        String?
-  brandId     String?
-  brand       Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  payments    FinanceApPayment[]
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id           String                   @id @default(cuid())
+  vendorId     String?
+  vendor       Vendor?                  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  vendorName   String
+  billNumber   String?
+  billDate     DateTime
+  dueDate      DateTime
+  amount       Decimal                  @db.Decimal(18, 2)
+  status       FinanceApArDocStatus     @default(OPEN)
+  memo         String?
+  brandId      String?
+  brand        Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  payments     FinanceApPayment[]
+  /**
+   * Link dari baris jurnal (PAY_BILL) yang menargetkan tagihan ini.
+   */
+  journalLinks FinanceJournalLineLink[] @relation("FinanceJournalLineLinkBill")
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
 
   @@index([dueDate])
   @@index([status])
@@ -839,21 +1091,25 @@ model FinanceApPayment {
 }
 
 model FinanceArInvoice {
-  id             String               @id @default(cuid())
-  customerName   String
-  customerEmail  String?
-  invoiceNumber  String?
-  invoiceDate    DateTime
-  dueDate        DateTime
-  amount         Decimal              @db.Decimal(18, 2)
-  status         FinanceApArDocStatus @default(OPEN)
-  memo           String?
-  brandId        String?
-  brand          Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  emailSentAt    DateTime?
-  payments       FinanceArPayment[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  id            String                   @id @default(cuid())
+  customerName  String
+  customerEmail String?
+  invoiceNumber String?
+  invoiceDate   DateTime
+  dueDate       DateTime
+  amount        Decimal                  @db.Decimal(18, 2)
+  status        FinanceApArDocStatus     @default(OPEN)
+  memo          String?
+  brandId       String?
+  brand         Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  emailSentAt   DateTime?
+  payments      FinanceArPayment[]
+  /**
+   * Link dari baris jurnal (RECEIVE_INVOICE) yang menargetkan invoice ini.
+   */
+  journalLinks  FinanceJournalLineLink[] @relation("FinanceJournalLineLinkInvoice")
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
 
   @@index([dueDate])
   @@index([status])
@@ -874,61 +1130,61 @@ model FinanceArPayment {
 }
 
 model FinanceBudgetLine {
-  id          String   @id @default(cuid())
+  id          String                @id @default(cuid())
   year        Int
   month       Int
   brandId     String?
-  brand       Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  brand       Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
   accountId   String?
   account     FinanceLedgerAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  amountLimit Decimal  @db.Decimal(18, 2)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  amountLimit Decimal               @db.Decimal(18, 2)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
 
   @@index([year, month])
 }
 
 model FinanceSpendRequest {
-  id             String                    @id @default(cuid())
-  title          String
-  description    String?
-  amount         Decimal                   @db.Decimal(18, 2)
+  id               String                    @id @default(cuid())
+  title            String
+  description      String?
+  amount           Decimal                   @db.Decimal(18, 2)
   expenseAccountId String?
-  expenseAccount FinanceLedgerAccount?     @relation(fields: [expenseAccountId], references: [id], onDelete: SetNull)
-  brandId        String?
-  brand          Brand?                    @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  status         FinanceSpendRequestStatus @default(DRAFT)
-  requestedById  String
-  requestedBy    User                      @relation("FinanceSpendRequester", fields: [requestedById], references: [id], onDelete: Restrict)
-  decidedById    String?
-  decidedBy      User?                     @relation("FinanceSpendApprover", fields: [decidedById], references: [id], onDelete: SetNull)
-  decidedAt      DateTime?
-  decisionNote   String?
-  payoutEntryId  String?
-  payoutEntry    FinanceJournalEntry?      @relation(fields: [payoutEntryId], references: [id], onDelete: SetNull)
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
+  expenseAccount   FinanceLedgerAccount?     @relation(fields: [expenseAccountId], references: [id], onDelete: SetNull)
+  brandId          String?
+  brand            Brand?                    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  status           FinanceSpendRequestStatus @default(DRAFT)
+  requestedById    String
+  requestedBy      User                      @relation("FinanceSpendRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedById      String?
+  decidedBy        User?                     @relation("FinanceSpendApprover", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt        DateTime?
+  decisionNote     String?
+  payoutEntryId    String?
+  payoutEntry      FinanceJournalEntry?      @relation(fields: [payoutEntryId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 
   @@index([status])
 }
 
 model FinanceFixedAsset {
-  id                     String                  @id @default(cuid())
-  name                   String
-  category               String?
-  purchaseDate           DateTime
-  cost                   Decimal                 @db.Decimal(18, 2)
-  salvageValue           Decimal                 @default(0) @db.Decimal(18, 2)
-  usefulLifeMonths       Int
-  method                 FinanceDepreciationMethod @default(STRAIGHT_LINE)
-  assetAccountId         String
-  assetAccount           FinanceLedgerAccount    @relation("FaAssetCoa", fields: [assetAccountId], references: [id], onDelete: Restrict)
-  accumAccountId         String
-  accumAccount           FinanceLedgerAccount    @relation("FaAccumCoa", fields: [accumAccountId], references: [id], onDelete: Restrict)
-  expenseAccountId       String
-  expenseAccount         FinanceLedgerAccount    @relation("FaExpenseCoa", fields: [expenseAccountId], references: [id], onDelete: Restrict)
-  accumulatedDepreciation Decimal                @default(0) @db.Decimal(18, 2)
-  disposedAt             DateTime?
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  id                      String                    @id @default(cuid())
+  name                    String
+  category                String?
+  purchaseDate            DateTime
+  cost                    Decimal                   @db.Decimal(18, 2)
+  salvageValue            Decimal                   @default(0) @db.Decimal(18, 2)
+  usefulLifeMonths        Int
+  method                  FinanceDepreciationMethod @default(STRAIGHT_LINE)
+  assetAccountId          String
+  assetAccount            FinanceLedgerAccount      @relation("FaAssetCoa", fields: [assetAccountId], references: [id], onDelete: Restrict)
+  accumAccountId          String
+  accumAccount            FinanceLedgerAccount      @relation("FaAccumCoa", fields: [accumAccountId], references: [id], onDelete: Restrict)
+  expenseAccountId        String
+  expenseAccount          FinanceLedgerAccount      @relation("FaExpenseCoa", fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  accumulatedDepreciation Decimal                   @default(0) @db.Decimal(18, 2)
+  disposedAt              DateTime?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
 }

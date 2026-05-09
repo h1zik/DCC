@@ -1,6 +1,8 @@
+import { Banknote } from "lucide-react";
 import { FinanceLedgerType } from "@prisma/client";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { listFinanceBankAccounts } from "@/actions/finance-bank";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { BankClient } from "./bank-client";
 
 export default async function BankPage() {
@@ -12,13 +14,16 @@ export default async function BankPage() {
   const assetAccounts = accounts.filter((a) => a.type === FinanceLedgerType.ASSET);
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Rekonsiliasi bank</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Daftar rekening operasional dan impor mutasi untuk dicocokkan dengan jurnal.
-        </p>
-      </div>
+    <FinancePageShell
+      maxWidth="lg"
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Rekonsiliasi bank" },
+      ]}
+      icon={<Banknote className="size-5" />}
+      title="Rekonsiliasi bank"
+      description="Daftar rekening operasional dan impor mutasi untuk dicocokkan dengan jurnal — pastikan saldo bank sesuai dengan saldo buku."
+    >
       <BankClient
         banks={banks.map((b) => ({
           id: b.id,
@@ -35,6 +40,6 @@ export default async function BankPage() {
           name: a.name,
         }))}
       />
-    </div>
+    </FinancePageShell>
   );
 }

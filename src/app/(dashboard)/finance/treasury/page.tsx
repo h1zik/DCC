@@ -1,5 +1,7 @@
+import { Coins } from "lucide-react";
 import { listFinanceBankAccounts } from "@/actions/finance-bank";
 import { financeCashflowLines } from "@/actions/finance-treasury";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { TreasuryClient } from "./treasury-client";
 
 export default async function TreasuryPage() {
@@ -25,17 +27,20 @@ export default async function TreasuryPage() {
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Kas & treasury</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Transfer antar rekening bank dan pantau mutasi akun arus kas bulan berjalan.
-        </p>
-      </div>
+    <FinancePageShell
+      maxWidth="xl"
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Kas & treasury" },
+      ]}
+      icon={<Coins className="size-5" />}
+      title="Kas & treasury"
+      description="Transfer antar rekening bank dan pantau mutasi akun arus kas pada bulan berjalan."
+    >
       <TreasuryClient
         banks={banks.map((b) => ({ id: b.id, name: b.name }))}
         cashflow={cashflow}
       />
-    </div>
+    </FinancePageShell>
   );
 }

@@ -1,5 +1,7 @@
+import { Wallet } from "lucide-react";
 import { financeApAgingBuckets, listFinanceApBills, listFinanceArInvoices } from "@/actions/finance-ap-ar";
 import { listFinanceBankAccounts } from "@/actions/finance-bank";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { prisma } from "@/lib/prisma";
 import { ApArClient } from "./ap-ar-client";
 
@@ -21,13 +23,16 @@ export default async function ApArPage() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Hutang & piutang</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Tagihan supplier, invoice pelanggan, dan pencatatan pembayaran ke jurnal.
-        </p>
-      </div>
+    <FinancePageShell
+      maxWidth="xl"
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Hutang & piutang" },
+      ]}
+      icon={<Wallet className="size-5" />}
+      title="Hutang & piutang"
+      description="Kelola tagihan supplier (AP), invoice pelanggan (AR), pencatatan pembayaran, dan pantau aging untuk arus kas yang sehat."
+    >
       <ApArClient
         bills={bills.map((b) => ({
           id: b.id,
@@ -50,6 +55,6 @@ export default async function ApArPage() {
         brands={brands.map((b) => ({ id: b.id, name: b.name }))}
         aging={agingProps}
       />
-    </div>
+    </FinancePageShell>
   );
 }

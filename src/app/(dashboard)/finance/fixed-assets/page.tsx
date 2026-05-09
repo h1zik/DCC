@@ -1,5 +1,7 @@
+import { Building2 } from "lucide-react";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { listFinanceFixedAssets } from "@/actions/finance-assets";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { FixedAssetsClient } from "./fixed-assets-client";
 
 export default async function FixedAssetsPage() {
@@ -9,13 +11,16 @@ export default async function FixedAssetsPage() {
   ]);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Aset tetap</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Registrasi aset dan posting penyusutan garis lurus bulanan.
-        </p>
-      </div>
+    <FinancePageShell
+      maxWidth="xl"
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Aset tetap" },
+      ]}
+      icon={<Building2 className="size-5" />}
+      title="Aset tetap"
+      description="Registrasi aset, lacak nilai buku, dan posting penyusutan garis lurus secara bulanan."
+    >
       <FixedAssetsClient
         assets={assets.map((a) => ({
           id: a.id,
@@ -31,6 +36,6 @@ export default async function FixedAssetsPage() {
           name: a.name,
         }))}
       />
-    </div>
+    </FinancePageShell>
   );
 }

@@ -1,46 +1,17 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { unlink } from "node:fs/promises";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import {
-  absolutePathFromStoredPublicPath,
-  getUploadPublicDir,
-} from "@/lib/upload-storage";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
+import { absolutePathFromStoredPublicPath } from "@/lib/upload-storage";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { assertRoomMember, isRoomHubManagerRole } from "@/lib/room-access";
-
-const ALLOWED_PREFIXES = [
-  "image/",
-  "application/pdf",
-  "text/",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument",
-  "application/vnd.ms-",
-  "application/zip",
-  "application/x-zip",
-  "application/gzip",
-  "application/x-tar",
-  "application/json",
-  "application/xml",
-  "video/",
-  "audio/",
-];
-
-function isAllowedMime(mime: string): boolean {
-  const m = (mime || "application/octet-stream").toLowerCase();
-  if (m === "application/octet-stream") return true;
-  if (m.startsWith("text/")) return true;
-  return ALLOWED_PREFIXES.some((p) => m.startsWith(p));
-}
-
-function sanitizeBaseName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
-}
+import { saveRoomDocumentToStorageAndDb } from "@/lib/room-document-upload";
+import {
+  normalizeRoomDocumentTags,
+  ROOM_DOCUMENT_TAG_LIMITS,
+} from "@/lib/room-document-tags";
 
 const folderNameSchema = z.string().trim().min(1).max(80);
 
@@ -158,6 +129,21 @@ export async function moveRoomDocumentToFolder(
   revalidateTasksAndRoomHub();
 }
 
+async function resolveUploadFolderId(
+  roomId: string,
+  folderIdRaw: unknown,
+): Promise<string | null> {
+  if (typeof folderIdRaw !== "string" || !folderIdRaw.trim()) return null;
+  const fid = folderIdRaw.trim();
+  const f = await prisma.roomDocumentFolder.findFirst({
+    where: { id: fid, roomId },
+  });
+  if (!f) {
+    throw new Error("Folder tidak ditemukan di ruangan ini.");
+  }
+  return fid;
+}
+
 export async function uploadRoomDocument(roomId: string, formData: FormData) {
   const session = await requireTasksRoomHubSession();
   const titleRaw = formData.get("title");
@@ -167,50 +153,68 @@ export async function uploadRoomDocument(roomId: string, formData: FormData) {
   if (!file || !(file instanceof File)) {
     throw new Error("Pilih file terlebih dahulu.");
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
-  }
-  const mime = file.type || "application/octet-stream";
-  if (!isAllowedMime(mime)) {
-    throw new Error("Tipe file tidak diizinkan.");
-  }
 
   await assertRoomMember(roomId, session.user.id);
   await prisma.room.findUniqueOrThrow({ where: { id: roomId } });
 
-  const folderIdRaw = formData.get("folderId");
-  let folderId: string | null = null;
-  if (typeof folderIdRaw === "string" && folderIdRaw.trim()) {
-    const fid = folderIdRaw.trim();
-    const f = await prisma.roomDocumentFolder.findFirst({
-      where: { id: fid, roomId },
-    });
-    if (!f) {
-      throw new Error("Folder tidak ditemukan di ruangan ini.");
+  const folderId = await resolveUploadFolderId(roomId, formData.get("folderId"));
+
+  const tagsRaw = formData.get("tags");
+  let tags: string[] = [];
+  if (typeof tagsRaw === "string" && tagsRaw.trim()) {
+    try {
+      const parsed = JSON.parse(tagsRaw) as unknown;
+      if (Array.isArray(parsed)) {
+        tags = normalizeRoomDocumentTags(
+          parsed.filter((x): x is string => typeof x === "string"),
+        );
+      }
+    } catch {
+      /* abaikan JSON rusak */
     }
-    folderId = fid;
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const base = sanitizeBaseName(file.name);
-  const stored = `${randomUUID()}-${base}`;
-  const absDir = path.join(getUploadPublicDir(), "rooms", roomId);
-  await mkdir(absDir, { recursive: true });
-  const absFile = path.join(absDir, stored);
-  await writeFile(absFile, buf);
+  await saveRoomDocumentToStorageAndDb({
+    roomId,
+    uploadedById: session.user.id,
+    folderId,
+    title,
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    size: file.size,
+    buffer: buf,
+    tags: tags.length ? tags : undefined,
+  });
 
-  const publicPath = `/uploads/rooms/${roomId}/${stored}`;
-  await prisma.roomDocument.create({
-    data: {
-      roomId,
-      folderId,
-      uploadedById: session.user.id,
-      title,
-      fileName: file.name,
-      mimeType: mime,
-      size: file.size,
-      publicPath,
-    },
+  revalidateTasksAndRoomHub();
+}
+
+const updateTagsSchema = z.object({
+  documentId: z.string().min(1),
+  tags: z.array(z.string()).max(ROOM_DOCUMENT_TAG_LIMITS.maxTags),
+});
+
+export async function updateRoomDocumentTags(
+  input: z.infer<typeof updateTagsSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const data = updateTagsSchema.parse(input);
+  const tags = normalizeRoomDocumentTags(data.tags);
+
+  const doc = await prisma.roomDocument.findUniqueOrThrow({
+    where: { id: data.documentId },
+    select: { roomId: true, uploadedById: true },
+  });
+  const m = await assertRoomMember(doc.roomId, session.user.id);
+  const canModerate = isRoomHubManagerRole(m.role);
+  if (doc.uploadedById !== session.user.id && !canModerate) {
+    throw new Error("Anda tidak dapat mengubah tag dokumen ini.");
+  }
+
+  await prisma.roomDocument.update({
+    where: { id: data.documentId },
+    data: { tags },
   });
   revalidateTasksAndRoomHub();
 }

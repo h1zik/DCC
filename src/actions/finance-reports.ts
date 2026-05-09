@@ -5,6 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { signedBalanceForAccount } from "@/lib/finance-money";
+import { buildTrialBalance } from "@/lib/finance-trial-balance";
+import { buildCashFlowStatement } from "@/lib/finance-cashflow";
 
 const rangeSchema = z.object({
   from: z.coerce.date(),
@@ -226,6 +228,122 @@ export async function reportTaxBuckets(input: z.infer<typeof rangeSchema>) {
           : "Utang PPh (mutasi periode)",
       amount: sums.get(code) ?? new Prisma.Decimal(0),
     })),
+  };
+}
+
+/**
+ * Neraca Saldo (Trial Balance) — fundamental akuntansi.
+ * Total kolom debit harus = total kolom kredit; jika tidak, ada
+ * jurnal terposting yang tidak seimbang (data corruption).
+ */
+export async function reportTrialBalance(input: {
+  asOf: Date;
+  brandId?: string | null;
+  hideZero?: boolean;
+}) {
+  await requireFinance();
+  return buildTrialBalance(input);
+}
+
+/**
+ * Laporan Arus Kas terkategorisasi (operasi / investasi / pendanaan).
+ */
+export async function reportCashFlowStatement(input: z.infer<typeof rangeSchema>) {
+  await requireFinance();
+  const q = rangeSchema.parse(input);
+  return buildCashFlowStatement({
+    from: q.from,
+    to: q.to,
+    brandId: q.brandId ?? null,
+  });
+}
+
+/**
+ * Laporan L/R perbandingan (current vs prior period). Akun-akun digabung
+ * menggunakan `accountId` agar baris konsisten antar periode.
+ */
+export async function reportProfitLossComparison(input: {
+  from: Date;
+  to: Date;
+  brandId?: string | null;
+}) {
+  await requireFinance();
+  const periodLength = input.to.getTime() - input.from.getTime();
+  const prevTo = new Date(input.from.getTime() - 1);
+  const prevFrom = new Date(prevTo.getTime() - periodLength);
+
+  const [curr, prev] = await Promise.all([
+    reportProfitLoss({
+      from: input.from,
+      to: input.to,
+      brandId: input.brandId ?? null,
+    }),
+    reportProfitLoss({ from: prevFrom, to: prevTo, brandId: input.brandId ?? null }),
+  ]);
+
+  type Row = {
+    code: string;
+    name: string;
+    type: FinanceLedgerType;
+    current: Prisma.Decimal;
+    previous: Prisma.Decimal;
+  };
+
+  const map = new Map<string, Row>();
+  for (const r of curr.rows) {
+    map.set(`${r.type}|${r.code}`, {
+      code: r.code,
+      name: r.name,
+      type: r.type,
+      current: r.amount,
+      previous: new Prisma.Decimal(0),
+    });
+  }
+  for (const r of prev.rows) {
+    const key = `${r.type}|${r.code}`;
+    const existing = map.get(key);
+    if (existing) existing.previous = r.amount;
+    else
+      map.set(key, {
+        code: r.code,
+        name: r.name,
+        type: r.type,
+        current: new Prisma.Decimal(0),
+        previous: r.amount,
+      });
+  }
+
+  const rows = [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
+
+  return {
+    rows,
+    revenue: { current: curr.revenue, previous: prev.revenue },
+    expense: { current: curr.expense, previous: prev.expense },
+    netIncome: { current: curr.netIncome, previous: prev.netIncome },
+    period: { from: input.from, to: input.to },
+    previousPeriod: { from: prevFrom, to: prevTo },
+  };
+}
+
+/**
+ * Laporan Neraca perbandingan (current vs prior tanggal cut-off).
+ */
+export async function reportBalanceSheetComparison(input: {
+  asOf: Date;
+  brandId?: string | null;
+}) {
+  await requireFinance();
+  const previousAsOf = new Date(input.asOf);
+  previousAsOf.setMonth(previousAsOf.getMonth() - 1);
+  const [curr, prev] = await Promise.all([
+    reportBalanceSheet(input.asOf, input.brandId ?? null),
+    reportBalanceSheet(previousAsOf, input.brandId ?? null),
+  ]);
+  return {
+    asOf: input.asOf,
+    previousAsOf,
+    current: curr,
+    previous: prev,
   };
 }
 

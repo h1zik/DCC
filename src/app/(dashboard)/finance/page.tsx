@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock,
   Landmark,
+  Lock,
   Plus,
   ScrollText,
   Workflow,
@@ -18,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { loadFinanceDashboard } from "@/lib/finance-dashboard";
 import { periodLabel } from "@/lib/finance-period";
 import { PeriodSelector } from "./period-selector";
+import { PeriodLockPanel } from "./period-lock-panel";
+import { listFinancePeriodLocks } from "@/actions/finance-period-lock";
 
 type SearchParams = { period?: string | string[] };
 
@@ -73,7 +76,13 @@ function pctText(p: number | null): string {
 export default async function FinanceDashboardPage({ searchParams }: Props) {
   const sp = await searchParams;
   const period = parsePeriod(sp.period);
-  const data = await loadFinanceDashboard(period);
+  const [data, periodLocks] = await Promise.all([
+    loadFinanceDashboard(period),
+    listFinancePeriodLocks(8),
+  ]);
+  const isCurrentPeriodLocked = periodLocks.some(
+    (l) => l.year === period.year && l.month === period.month,
+  );
 
   const pendapatanProgress = (() => {
     const target = data.kpis.revenue.previous;
@@ -119,6 +128,11 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
               <span className="text-foreground font-medium">
                 {periodLabel(period.year, period.month)}
               </span>
+              {isCurrentPeriodLocked ? (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                  <Lock className="size-3" /> Periode terkunci
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -474,6 +488,19 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
           )}
         </Panel>
       </section>
+
+      {/* Period locks (close the books) */}
+      <PeriodLockPanel
+        currentPeriod={period}
+        locks={periodLocks.map((l) => ({
+          id: l.id,
+          year: l.year,
+          month: l.month,
+          lockedAtIso: l.lockedAt.toISOString(),
+          lockedByName: l.lockedBy?.name ?? l.lockedBy?.email ?? null,
+          reason: l.reason,
+        }))}
+      />
     </div>
   );
 }

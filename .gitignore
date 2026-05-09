@@ -47,3 +47,6 @@ next-env.d.ts
 !/public/uploads/rooms/.gitkeep
 /public/uploads/avatars/**
 !/public/uploads/avatars/.gitkeep
+
+# unggahan lampiran finance (lokal, di luar /public agar butuh auth untuk diakses)
+/uploads/

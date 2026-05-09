@@ -30,7 +30,10 @@ export default async function RoomDocumentsPage({ params }: PageProps) {
     <RoomDocumentsWorkspace
       roomId={roomId}
       folders={folders}
-      documents={documents}
+      documents={documents.map((d) => ({
+        ...d,
+        tags: d.tags ?? [],
+      }))}
       currentUserId={uid}
       isRoomManager={isRoomManager}
     />

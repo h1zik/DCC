@@ -34,10 +34,12 @@ type ReqRow = {
   title: string;
   amount: string;
   status: FinanceSpendRequestStatus;
+  requestedById: string;
   requestedBy: { name: string | null; email: string | null };
 };
 
 export function ApprovalsClient(props: {
+  currentUserId: string;
   requests: ReqRow[];
   expenseAccounts: { id: string; code: string; name: string }[];
   banks: { id: string; name: string }[];
@@ -169,6 +171,7 @@ export function ApprovalsClient(props: {
                   <RowActions
                     row={r}
                     banks={props.banks}
+                    isOwnRequest={r.requestedById === props.currentUserId}
                     onAction={() => router.refresh()}
                   />
                 </TableCell>
@@ -184,10 +187,12 @@ export function ApprovalsClient(props: {
 function RowActions({
   row,
   banks,
+  isOwnRequest,
   onAction,
 }: {
   row: ReqRow;
   banks: { id: string; name: string }[];
+  isOwnRequest: boolean;
   onAction: () => void;
 }) {
   const [bankId, setBankId] = useState(banks[0]?.id ?? "");
@@ -209,6 +214,10 @@ function RowActions({
       }
     });
   }
+
+  // Pesan tooltip ringkas untuk aksi yang tidak boleh dilakukan oleh requester.
+  const ownTitle =
+    "Tidak bisa: Anda adalah pembuat pengajuan ini (segregation of duties).";
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -232,7 +241,8 @@ function RowActions({
           <Button
             type="button"
             size="xs"
-            disabled={rowPending}
+            disabled={rowPending || isOwnRequest}
+            title={isOwnRequest ? ownTitle : undefined}
             onClick={() =>
               run(async () => {
                 await approveFinanceSpendRequest(row.id);
@@ -245,7 +255,8 @@ function RowActions({
             type="button"
             size="xs"
             variant="destructive"
-            disabled={rowPending}
+            disabled={rowPending || isOwnRequest}
+            title={isOwnRequest ? ownTitle : undefined}
             onClick={() =>
               run(async () => {
                 await rejectFinanceSpendRequest(row.id, "Ditolak dari aplikasi");
@@ -279,7 +290,13 @@ function RowActions({
           <Button
             type="button"
             size="xs"
-            disabled={rowPending || !bankId || bankId === "__none__"}
+            disabled={
+              rowPending ||
+              !bankId ||
+              bankId === "__none__" ||
+              isOwnRequest
+            }
+            title={isOwnRequest ? ownTitle : undefined}
             onClick={() =>
               run(async () => {
                 await recordFinanceSpendPayout({
@@ -292,6 +309,11 @@ function RowActions({
           >
             Bayar
           </Button>
+          {isOwnRequest ? (
+            <span className="text-muted-foreground text-[10px]">
+              Pengajuan sendiri — minta orang lain.
+            </span>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -1,6 +1,8 @@
+import { Target } from "lucide-react";
 import { FinanceLedgerType } from "@prisma/client";
 import { financeBudgetVsActual } from "@/actions/finance-budget";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { prisma } from "@/lib/prisma";
 import { BudgetClient } from "./budget-client";
 
@@ -17,13 +19,16 @@ export default async function BudgetPage() {
   const expenseAccounts = accounts.filter((a) => a.type === FinanceLedgerType.EXPENSE);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Anggaran</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Tetapkan plafon periode dan bandingkan dengan beban aktual dari jurnal.
-        </p>
-      </div>
+    <FinancePageShell
+      maxWidth="xl"
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Anggaran" },
+      ]}
+      icon={<Target className="size-5" />}
+      title="Anggaran"
+      description="Tetapkan plafon (budget) periode untuk akun beban dan bandingkan langsung dengan realisasi dari jurnal."
+    >
       <BudgetClient
         year={year}
         accounts={expenseAccounts.map((a) => ({
@@ -40,6 +45,6 @@ export default async function BudgetPage() {
           variance: r.variance.toString(),
         }))}
       />
-    </div>
+    </FinancePageShell>
   );
 }

@@ -1,17 +1,22 @@
+import { Globe2 } from "lucide-react";
 import { listFinanceFxRates } from "@/actions/finance-fx";
+import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { CurrencyClient } from "./currency-client";
 
 export default async function CurrenciesPage() {
   const rates = await listFinanceFxRates();
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-10">
-      <div className="border-b border-border pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Multi-mata uang</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Kurs terhadap IDR (1 unit valas = berapa Rupiah). Dipakai saat baris jurnal non-IDR.
-        </p>
-      </div>
+    <FinancePageShell
+      maxWidth="md"
+      breadcrumbs={[
+        { label: "Keuangan", href: "/finance" },
+        { label: "Multi-mata uang" },
+      ]}
+      icon={<Globe2 className="size-5" />}
+      title="Multi-mata uang"
+      description="Kurs terhadap IDR (1 unit valas = berapa Rupiah). Dipakai otomatis ketika baris jurnal menggunakan mata uang non-IDR."
+    >
       <CurrencyClient
         initialRates={rates.map((r) => ({
           id: r.id,
@@ -20,6 +25,6 @@ export default async function CurrenciesPage() {
           validFrom: r.validFrom.toISOString(),
         }))}
       />
-    </div>
+    </FinancePageShell>
   );
 }

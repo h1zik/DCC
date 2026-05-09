@@ -65,6 +65,12 @@ export async function approveFinanceSpendRequest(
   if (r.status !== FinanceSpendRequestStatus.SUBMITTED) {
     throw new Error("Pengajuan tidak menunggu persetujuan.");
   }
+  // Segregation of duties: requester ≠ approver.
+  if (r.requestedById === session.user.id) {
+    throw new Error(
+      "Anda tidak dapat menyetujui pengajuan yang Anda buat sendiri (segregation of duties).",
+    );
+  }
   await prisma.financeSpendRequest.update({
     where: { id: requestId },
     data: {
@@ -87,6 +93,11 @@ export async function rejectFinanceSpendRequest(
   });
   if (r.status !== FinanceSpendRequestStatus.SUBMITTED) {
     throw new Error("Pengajuan tidak menunggu persetujuan.");
+  }
+  if (r.requestedById === session.user.id) {
+    throw new Error(
+      "Anda tidak dapat menolak pengajuan yang Anda buat sendiri (segregation of duties).",
+    );
   }
   await prisma.financeSpendRequest.update({
     where: { id: requestId },
@@ -123,6 +134,14 @@ export async function recordFinanceSpendPayout(input: z.infer<typeof payoutSchem
   }
   if (!req.expenseAccountId || !req.expenseAccount) {
     throw new Error("Akun beban tidak valid.");
+  }
+  // Segregation of duties: pembayar tidak boleh sama dengan requester.
+  // (Approver boleh membayar — itu lazim di tim kecil; aturan ketat dibuat
+  // opsional di masa depan via threshold/policy.)
+  if (req.requestedById === session.user.id) {
+    throw new Error(
+      "Anda tidak dapat membayar pengajuan yang Anda buat sendiri (segregation of duties).",
+    );
   }
 
   const bank = await prisma.financeBankAccount.findUniqueOrThrow({
