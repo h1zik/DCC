@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -32,7 +32,7 @@ import {
   deleteTaskAttachment,
   uploadTaskAttachment,
 } from "@/actions/task-attachments";
-import type { TaskRow } from "./task-types";
+import type { TaskAttachmentRow, TaskCommentRow, TaskRow } from "./task-types";
 import {
   roomTaskProcessLabel,
   ROOM_TASK_PROCESS_ORDER,
@@ -174,44 +174,29 @@ export function TaskDetailSheet({
   const [doneWarningOpen, setDoneWarningOpen] = useState(false);
   const [doneWarningCount, setDoneWarningCount] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
-
   /**
-   * Komentar & lampiran TIDAK lagi datang lewat prop — daftar tugas server
-   * sengaja kosong agar payload SSR ringan. Saat sheet dibuka kita lazy-load
-   * detail-nya, lalu merge ke `localTasks` parent via `onTaskPatched` agar
-   * sheet (yang membaca `task.comments` / `task.attachments`) langsung
-   * mendapat data segar tanpa perlu re-render dari refresh().
-   *
-   * Update state dibungkus `startTransition` agar React Compiler tidak
-   * menandainya sebagai cascading render dari effect — ini memang fetch-on-
-   * open, bukan synchronous derive-state-from-prop.
+   * Komentar & lampiran disimpan di STATE LOKAL sheet — bukan di parent via
+   * `onTaskPatched`. Alasan: round-tripping ke parent membuat `task` prop
+   * berubah referensi pada setiap fetch, yang memicu form-reset effect
+   * di bawah dan jatuh ke loop tak henti `loadTaskDetail` (PIC yang baru
+   * di-check ikut hilang). Dengan local state, sheet self-contained.
    */
-  const loadDetail = useCallback(
-    async (taskId: string) => {
-      startTransition(() => setDetailLoading(true));
-      try {
-        const detail = await loadTaskDetail(taskId);
-        startTransition(() => {
-          onTaskPatched?.(taskId, {
-            comments: detail.comments,
-            attachments: detail.attachments,
-          });
-        });
-      } catch (e) {
-        toast.error(
-          e instanceof Error ? e.message : "Gagal memuat komentar & lampiran.",
-        );
-      } finally {
-        startTransition(() => setDetailLoading(false));
-      }
-    },
-    [onTaskPatched, startTransition],
-  );
+  const [detailComments, setDetailComments] = useState<TaskCommentRow[]>([]);
+  const [detailAttachments, setDetailAttachments] = useState<
+    TaskAttachmentRow[]
+  >([]);
 
   useEffect(() => {
     setAvailableTags(roomTaskTags);
   }, [roomTaskTags]);
 
+  /**
+   * Form-reset effect — HANYA jalan saat user pindah ke tugas lain (id
+   * berubah), BUKAN setiap kali object `task` di-replace oleh parent. Sebelum
+   * deps `[task]`, sehingga tiap patch dari parent ikut me-reset assignees
+   * dan menghapus check yang baru saja user tambahkan.
+   */
+  const taskId = task?.id;
   useEffect(() => {
     if (!task) return;
     setProjectId(task.projectId);
@@ -229,18 +214,45 @@ export function TaskDetailSheet({
     setCommentBody("");
     setAttachLinkUrl("");
     setAttachLinkTitle("");
-  }, [task]);
+    setDetailComments([]);
+    setDetailAttachments([]);
+    // Sengaja DEPS = [taskId] saja — patch task object lain (mis. setelah
+    // save) tidak boleh me-reset form draft yang sedang dikerjakan user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
 
   /**
-   * Saat sheet terbuka untuk tugas tertentu, fetch komentar & lampiran sekali.
-   * Mutasi (add/delete) memanggil `loadDetail` lagi langsung — tidak butuh
-   * `router.refresh()` yang akan menarik ulang seluruh halaman tugas.
+   * Lazy-load komentar + lampiran saat sheet terbuka untuk tugas tertentu.
+   * Inline di effect agar TIDAK ada `useCallback` dep — `loadTaskDetail`
+   * adalah server action yang stabil identitas-nya. Penanda `cancelled`
+   * mencegah race kalau user pindah tugas saat fetch masih berjalan.
    */
+  const loadDetail = useCallback(async (id: string): Promise<void> => {
+    setDetailLoading(true);
+    try {
+      const detail = await loadTaskDetail(id);
+      setDetailComments(detail.comments);
+      setDetailAttachments(detail.attachments);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Gagal memuat komentar & lampiran.",
+      );
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  const lastLoadedRef = useRef<string | null>(null);
   useEffect(() => {
-    const id = task?.id;
-    if (!id || !open) return;
-    void loadDetail(id);
-  }, [task?.id, open, loadDetail]);
+    if (!open) {
+      lastLoadedRef.current = null;
+      return;
+    }
+    if (!taskId) return;
+    if (lastLoadedRef.current === taskId) return;
+    lastLoadedRef.current = taskId;
+    void loadDetail(taskId);
+  }, [taskId, open, loadDetail]);
 
   const refresh = useCallback(() => {
     startTransition(() => {
@@ -902,19 +914,19 @@ export function TaskDetailSheet({
                 <section className="space-y-3">
                   <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Komentar
-                    {detailLoading && (task.comments?.length ?? 0) === 0 ? (
+                    {detailLoading && detailComments.length === 0 ? (
                       <span className="text-muted-foreground/70 ml-2 text-[10px] font-normal normal-case tracking-normal">
                         memuat…
                       </span>
                     ) : null}
                   </h3>
                   <div className="max-h-48 space-y-3 overflow-y-auto rounded-md border border-border p-2">
-                    {(task.comments?.length ?? 0) === 0 ? (
+                    {detailComments.length === 0 ? (
                       <p className="text-muted-foreground text-sm">
                         {detailLoading ? "Memuat komentar…" : "Belum ada komentar."}
                       </p>
                     ) : (
-                      (task.comments ?? []).map((c) => (
+                      detailComments.map((c) => (
                         <div
                           key={c.id}
                           className="border-border/80 space-y-1 border-b pb-2 text-sm last:border-0"
@@ -941,11 +953,9 @@ export function TaskDetailSheet({
                                     try {
                                       await deleteTaskComment(c.id);
                                       toast.success("Komentar dihapus.");
-                                      onTaskPatched?.(task.id, {
-                                        comments: (task.comments ?? []).filter(
-                                          (item) => item.id !== c.id,
-                                        ),
-                                      });
+                                      setDetailComments((prev) =>
+                                        prev.filter((item) => item.id !== c.id),
+                                      );
                                     } catch (e) {
                                       toast.error(
                                         e instanceof Error
@@ -1056,13 +1066,13 @@ export function TaskDetailSheet({
                       otomatis.
                     </p>
                   </div>
-                  {detailLoading && (task.attachments?.length ?? 0) === 0 ? (
+                  {detailLoading && detailAttachments.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       Memuat lampiran…
                     </p>
                   ) : null}
                   <ul className="space-y-3">
-                    {(task.attachments ?? []).map((a) => (
+                    {detailAttachments.map((a) => (
                       <li
                         key={a.id}
                         className="flex flex-col gap-2 rounded-md border border-border px-2 py-2 text-sm"
@@ -1110,11 +1120,9 @@ export function TaskDetailSheet({
                                 try {
                                   await deleteTaskAttachment(a.id);
                                   toast.success("Lampiran dihapus.");
-                                  onTaskPatched?.(task.id, {
-                                    attachments: (task.attachments ?? []).filter(
-                                      (item) => item.id !== a.id,
-                                    ),
-                                  });
+                                  setDetailAttachments((prev) =>
+                                    prev.filter((item) => item.id !== a.id),
+                                  );
                                 } catch (e) {
                                   toast.error(
                                     e instanceof Error ? e.message : "Gagal.",
