@@ -289,19 +289,32 @@ export function RoomChatExperience({
     nearBottomRef.current = gap < 120;
   }, []);
 
-  /** Live updates: poll server for new messages (no WebSocket required). */
+  /**
+   * Live updates: hanya menarik pesan baru sejak `lastSyncedAtRef`.
+   * Server menggunakan index `RoomMessage(roomId, createdAt)` jadi delta
+   * empty hanya menyentuh metadata index, bukan men-scan riwayat lengkap.
+   */
+  const lastSyncedAtRef = useRef<string>(
+    initialMessages.length > 0
+      ? initialMessages[initialMessages.length - 1]!.createdAt
+      : new Date(0).toISOString(),
+  );
   useEffect(() => {
     let cancelled = false;
     async function pull() {
       if (typeof document !== "undefined" && document.hidden) return;
       try {
-        const r = await fetch(`/api/room-chat/${roomId}/messages`, {
-          credentials: "include",
-        });
+        const url = new URL(
+          `/api/room-chat/${roomId}/messages`,
+          window.location.origin,
+        );
+        url.searchParams.set("since", lastSyncedAtRef.current);
+        const r = await fetch(url.toString(), { credentials: "include" });
         if (!r.ok || cancelled) return;
         const j = (await r.json()) as {
           messages?: RoomChatMessageView[];
           typingUsers?: string[];
+          mode?: "initial" | "delta";
         };
         if (!Array.isArray(j.messages) || cancelled) return;
         setTypingUsers(
@@ -310,25 +323,18 @@ export function RoomChatExperience({
             : [],
         );
         const incoming = j.messages;
+        if (incoming.length === 0) return;
+        const newest = incoming[incoming.length - 1]!;
+        if (newest.createdAt > lastSyncedAtRef.current) {
+          lastSyncedAtRef.current = newest.createdAt;
+        }
+        // Hanya tambahkan pesan yang belum kita kenal (id-based dedupe).
+        // Tidak perlu sort — server sudah ascending, client juga ascending.
         setMessages((prev) => {
-          if (incoming.length < prev.length) {
-            return incoming;
-          }
-          const byId = new Map(incoming.map((m) => [m.id, m]));
-          for (const m of prev) {
-            if (!byId.has(m.id)) byId.set(m.id, m);
-          }
-          const merged = [...byId.values()].sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          );
-          if (
-            merged.length === prev.length &&
-            merged[merged.length - 1]?.id === prev[prev.length - 1]?.id
-          ) {
-            return prev;
-          }
-          return merged;
+          const known = new Set(prev.map((m) => m.id));
+          const fresh = incoming.filter((m) => !known.has(m.id));
+          if (fresh.length === 0) return prev;
+          return [...prev, ...fresh];
         });
       } catch {
         /* offline / transient */
@@ -340,7 +346,7 @@ export function RoomChatExperience({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [roomId]);
+  }, [roomId, initialMessages]);
 
   useEffect(() => {
     if (!body.trim()) return;
@@ -440,6 +446,10 @@ export function RoomChatExperience({
           if (prev.some((m) => m.id === created.id)) return prev;
           return [...prev, created];
         });
+        // Geser cursor delta agar polling tidak menarik ulang pesan kita sendiri.
+        if (created.createdAt > lastSyncedAtRef.current) {
+          lastSyncedAtRef.current = created.createdAt;
+        }
         taRef.current?.focus();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Gagal mengirim.");

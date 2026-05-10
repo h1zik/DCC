@@ -21,6 +21,7 @@ import {
   createTaskTag,
   deleteChecklistItem,
   deleteTask,
+  loadTaskDetail,
   toggleChecklistItem,
   unarchiveTask,
   updateTask,
@@ -172,6 +173,40 @@ export function TaskDetailSheet({
   const [archivePending, setArchivePending] = useState(false);
   const [doneWarningOpen, setDoneWarningOpen] = useState(false);
   const [doneWarningCount, setDoneWarningCount] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  /**
+   * Komentar & lampiran TIDAK lagi datang lewat prop — daftar tugas server
+   * sengaja kosong agar payload SSR ringan. Saat sheet dibuka kita lazy-load
+   * detail-nya, lalu merge ke `localTasks` parent via `onTaskPatched` agar
+   * sheet (yang membaca `task.comments` / `task.attachments`) langsung
+   * mendapat data segar tanpa perlu re-render dari refresh().
+   *
+   * Update state dibungkus `startTransition` agar React Compiler tidak
+   * menandainya sebagai cascading render dari effect — ini memang fetch-on-
+   * open, bukan synchronous derive-state-from-prop.
+   */
+  const loadDetail = useCallback(
+    async (taskId: string) => {
+      startTransition(() => setDetailLoading(true));
+      try {
+        const detail = await loadTaskDetail(taskId);
+        startTransition(() => {
+          onTaskPatched?.(taskId, {
+            comments: detail.comments,
+            attachments: detail.attachments,
+          });
+        });
+      } catch (e) {
+        toast.error(
+          e instanceof Error ? e.message : "Gagal memuat komentar & lampiran.",
+        );
+      } finally {
+        startTransition(() => setDetailLoading(false));
+      }
+    },
+    [onTaskPatched, startTransition],
+  );
 
   useEffect(() => {
     setAvailableTags(roomTaskTags);
@@ -195,6 +230,17 @@ export function TaskDetailSheet({
     setAttachLinkUrl("");
     setAttachLinkTitle("");
   }, [task]);
+
+  /**
+   * Saat sheet terbuka untuk tugas tertentu, fetch komentar & lampiran sekali.
+   * Mutasi (add/delete) memanggil `loadDetail` lagi langsung — tidak butuh
+   * `router.refresh()` yang akan menarik ulang seluruh halaman tugas.
+   */
+  useEffect(() => {
+    const id = task?.id;
+    if (!id || !open) return;
+    void loadDetail(id);
+  }, [task?.id, open, loadDetail]);
 
   const refresh = useCallback(() => {
     startTransition(() => {
@@ -358,7 +404,9 @@ export function TaskDetailSheet({
       await addTaskComment(task.id, commentBody.trim());
       setCommentBody("");
       toast.success("Komentar ditambahkan.");
-      refresh();
+      // Refetch detail saja — daftar tugas tidak butuh refresh karena
+      // jumlah komentar tidak ditampilkan di kartu Kanban/list.
+      await loadDetail(task.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal.");
     } finally {
@@ -377,7 +425,7 @@ export function TaskDetailSheet({
       setAttachLinkUrl("");
       setAttachLinkTitle("");
       toast.success("Tautan ditambahkan.");
-      refresh();
+      await loadDetail(task.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal menambah tautan.");
     } finally {
@@ -403,7 +451,7 @@ export function TaskDetailSheet({
           ? "Lampiran diunggah."
           : `${files.length} lampiran diunggah.`,
       );
-      refresh();
+      await loadDetail(task.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unggah gagal.");
     } finally {
@@ -854,14 +902,19 @@ export function TaskDetailSheet({
                 <section className="space-y-3">
                   <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Komentar
+                    {detailLoading && (task.comments?.length ?? 0) === 0 ? (
+                      <span className="text-muted-foreground/70 ml-2 text-[10px] font-normal normal-case tracking-normal">
+                        memuat…
+                      </span>
+                    ) : null}
                   </h3>
                   <div className="max-h-48 space-y-3 overflow-y-auto rounded-md border border-border p-2">
-                    {task.comments.length === 0 ? (
+                    {(task.comments?.length ?? 0) === 0 ? (
                       <p className="text-muted-foreground text-sm">
-                        Belum ada komentar.
+                        {detailLoading ? "Memuat komentar…" : "Belum ada komentar."}
                       </p>
                     ) : (
-                      task.comments.map((c) => (
+                      (task.comments ?? []).map((c) => (
                         <div
                           key={c.id}
                           className="border-border/80 space-y-1 border-b pb-2 text-sm last:border-0"
@@ -889,7 +942,7 @@ export function TaskDetailSheet({
                                       await deleteTaskComment(c.id);
                                       toast.success("Komentar dihapus.");
                                       onTaskPatched?.(task.id, {
-                                        comments: task.comments.filter(
+                                        comments: (task.comments ?? []).filter(
                                           (item) => item.id !== c.id,
                                         ),
                                       });
@@ -1003,8 +1056,13 @@ export function TaskDetailSheet({
                       otomatis.
                     </p>
                   </div>
+                  {detailLoading && (task.attachments?.length ?? 0) === 0 ? (
+                    <p className="text-muted-foreground text-sm">
+                      Memuat lampiran…
+                    </p>
+                  ) : null}
                   <ul className="space-y-3">
-                    {task.attachments.map((a) => (
+                    {(task.attachments ?? []).map((a) => (
                       <li
                         key={a.id}
                         className="flex flex-col gap-2 rounded-md border border-border px-2 py-2 text-sm"
@@ -1048,12 +1106,12 @@ export function TaskDetailSheet({
                               size="icon-sm"
                               className="shrink-0"
                               aria-label="Hapus lampiran"
-                              onClick={async () => {
+                                onClick={async () => {
                                 try {
                                   await deleteTaskAttachment(a.id);
                                   toast.success("Lampiran dihapus.");
                                   onTaskPatched?.(task.id, {
-                                    attachments: task.attachments.filter(
+                                    attachments: (task.attachments ?? []).filter(
                                       (item) => item.id !== a.id,
                                     ),
                                   });

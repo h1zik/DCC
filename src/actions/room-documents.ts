@@ -174,7 +174,6 @@ export async function uploadRoomDocument(roomId: string, formData: FormData) {
     }
   }
 
-  const buf = Buffer.from(await file.arrayBuffer());
   await saveRoomDocumentToStorageAndDb({
     roomId,
     uploadedById: session.user.id,
@@ -183,7 +182,7 @@ export async function uploadRoomDocument(roomId: string, formData: FormData) {
     fileName: file.name,
     mimeType: file.type || "application/octet-stream",
     size: file.size,
-    buffer: buf,
+    body: file.stream(),
     tags: tags.length ? tags : undefined,
   });
 
@@ -223,7 +222,12 @@ export async function deleteRoomDocument(documentId: string) {
   const session = await requireTasksRoomHubSession();
   const doc = await prisma.roomDocument.findUniqueOrThrow({
     where: { id: documentId },
-    select: { publicPath: true, uploadedById: true, roomId: true },
+    select: {
+      publicPath: true,
+      thumbPath: true,
+      uploadedById: true,
+      roomId: true,
+    },
   });
   const member = await assertRoomMember(doc.roomId, session.user.id);
   const canModerate = isRoomHubManagerRole(member.role);
@@ -234,10 +238,20 @@ export async function deleteRoomDocument(documentId: string) {
     throw new Error("Path tidak valid.");
   }
   const absFile = absolutePathFromStoredPublicPath(doc.publicPath);
+  const absThumb = doc.thumbPath
+    ? absolutePathFromStoredPublicPath(doc.thumbPath)
+    : null;
   try {
     if (absFile) await unlink(absFile);
   } catch {
     /* file mungkin sudah hilang */
+  }
+  if (absThumb) {
+    try {
+      await unlink(absThumb);
+    } catch {
+      /* thumbnail mungkin sudah hilang / tidak pernah dibuat */
+    }
   }
   await prisma.roomDocument.delete({ where: { id: documentId } });
   revalidateTasksAndRoomHub();

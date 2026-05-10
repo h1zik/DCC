@@ -488,12 +488,28 @@ model RoomDocument {
    */
   publicPath   String
   /**
+   * Path thumbnail (webp ~480px) untuk grid/list — dibuat saat upload via
+   * `sharp`. Null untuk file yang bukan gambar atau saat dekode gagal.
+   * UI fallback ke `publicPath` (atau ikon tipe file) bila null.
+   */
+  thumbPath    String?
+  /**
    * Tag bebas (mis. footage, draft, approved) — dinormalisasi di aplikasi.
    */
   tags         String[]            @default([])
   createdAt    DateTime            @default(now())
 
   @@index([roomId, folderId])
+  /**
+   * Halaman dokumen mengurutkan `createdAt desc` setelah filter `roomId`.
+   * Index komposit ini membuat query tidak perlu sort di memori.
+   */
+  @@index([roomId, createdAt(sort: Desc)])
+  /**
+   * Untuk daftar di dalam folder spesifik (filter `roomId + folderId` lalu
+   * sort terbaru), composite ini mempercepat pemilihan halaman.
+   */
+  @@index([roomId, folderId, createdAt(sort: Desc)])
 }
 
 model Project {
@@ -658,6 +674,19 @@ model Notification {
   type      NotificationType
   isRead    Boolean          @default(false)
   createdAt DateTime         @default(now())
+
+  /**
+   * Bell notifikasi melakukan polling per ~45 detik dengan query
+   * `where userId order by createdAt desc take 40`. Index komposit ini
+   * mengubahnya jadi index-only scan dan menghilangkan sort runtime.
+   */
+  @@index([userId, createdAt(sort: Desc)])
+  /**
+   * Hitungan unread (`where userId AND isRead=false`) — partial index akan
+   * lebih hemat lagi, tapi Prisma belum mendukungnya secara native; index
+   * komposit biasa sudah cukup baik untuk kardinalitas yang ada.
+   */
+  @@index([userId, isRead])
 }
 
 model Vendor {
@@ -700,6 +729,12 @@ model StockLog {
   salesCategory String?
   note          String?
   createdAt     DateTime     @default(now())
+
+  /**
+   * Dashboard executive memfilter `type = OUT` dengan window 90 hari terakhir.
+   * Index komposit ini membuat query langsung skip baris yang tidak relevan.
+   */
+  @@index([type, createdAt(sort: Desc)])
 }
 
 /**

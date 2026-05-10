@@ -25,10 +25,6 @@ import {
   ensureSimpleRoomBoardProject,
   isSimpleTeamOrHqRoom,
 } from "@/lib/room-simple-hub";
-import {
-  TASK_LIST_ATTACHMENTS_TAKE,
-  TASK_LIST_COMMENTS_TAKE,
-} from "@/lib/task-list-query";
 import { cn } from "@/lib/utils";
 import { getRoomKanbanColumns } from "@/lib/room-kanban-columns";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
@@ -149,6 +145,9 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           { sortOrder: "asc" },
           { createdAt: "desc" },
         ],
+        // `comments` & `attachments` SENGAJA tidak di-include di SSR daftar
+        // tugas — terlalu berat (lihat `task-list-query.ts`). Detail sheet
+        // me-lazy-load via `loadTaskDetail()` saat dibuka.
         include: {
           project: { include: { brand: true, room: { select: { name: true } } } },
           assignees: {
@@ -158,20 +157,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           },
           vendor: { select: { id: true, name: true } },
           checklistItems: { orderBy: { sortOrder: "asc" } },
-          comments: {
-            orderBy: { createdAt: "desc" },
-            take: TASK_LIST_COMMENTS_TAKE,
-            include: {
-              author: { select: { id: true, name: true, email: true } },
-            },
-          },
-          attachments: {
-            orderBy: { createdAt: "desc" },
-            take: TASK_LIST_ATTACHMENTS_TAKE,
-            include: {
-              uploadedBy: { select: { id: true, name: true, email: true } },
-            },
-          },
           tags: {
             include: {
               tag: { select: { id: true, roomId: true, name: true, colorHex: true } },
@@ -268,6 +253,8 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         { sortOrder: "asc" },
         { createdAt: "desc" },
       ],
+      // Lihat catatan di blok `simpleHub` di atas: `comments`/`attachments`
+      // sengaja diabaikan agar payload SSR ringan.
       include: {
         project: { include: { brand: true, room: { select: { name: true } } } },
         assignees: {
@@ -277,20 +264,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         },
         vendor: { select: { id: true, name: true } },
         checklistItems: { orderBy: { sortOrder: "asc" } },
-        comments: {
-          orderBy: { createdAt: "desc" },
-          take: TASK_LIST_COMMENTS_TAKE,
-          include: {
-            author: { select: { id: true, name: true, email: true } },
-          },
-        },
-        attachments: {
-          orderBy: { createdAt: "desc" },
-          take: TASK_LIST_ATTACHMENTS_TAKE,
-          include: {
-            uploadedBy: { select: { id: true, name: true, email: true } },
-          },
-        },
         tags: {
           include: {
             tag: { select: { id: true, roomId: true, name: true, colorHex: true } },

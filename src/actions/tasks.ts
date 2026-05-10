@@ -783,3 +783,50 @@ export async function deleteChecklistItem(id: string) {
   await prisma.taskChecklistItem.delete({ where: { id } });
   revalidateTasksAndRoomHub();
 }
+
+/**
+ * Lazy-load komentar + lampiran satu tugas. Dipakai detail sheet — daftar
+ * tugas (Kanban/list/Gantt) tidak lagi membawa relasi berat ini di SSR.
+ */
+export async function loadTaskDetail(taskId: string) {
+  const session = await requireTasksRoomHubSession();
+  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+
+  const detail = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: {
+      id: true,
+      comments: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          body: true,
+          createdAt: true,
+          author: { select: { id: true, name: true, email: true } },
+        },
+      },
+      attachments: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          fileName: true,
+          mimeType: true,
+          size: true,
+          publicPath: true,
+          linkUrl: true,
+          createdAt: true,
+          uploadedBy: { select: { id: true, name: true, email: true } },
+        },
+      },
+    },
+  });
+  if (!detail) {
+    throw new Error("Tugas tidak ditemukan.");
+  }
+  return {
+    id: detail.id,
+    comments: detail.comments,
+    attachments: detail.attachments,
+  };
+}

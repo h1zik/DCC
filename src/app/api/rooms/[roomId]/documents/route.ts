@@ -62,7 +62,6 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     }
 
-    const buf = Buffer.from(await file.arrayBuffer());
     const row = await saveRoomDocumentToStorageAndDb({
       roomId,
       uploadedById: session.user.id,
@@ -71,7 +70,7 @@ export async function POST(req: Request, { params }: Ctx) {
       fileName: file.name,
       mimeType: file.type || "application/octet-stream",
       size: file.size,
-      buffer: buf,
+      body: file.stream(),
       tags: tags.length ? tags : undefined,
     });
 

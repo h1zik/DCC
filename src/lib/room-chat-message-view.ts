@@ -56,13 +56,57 @@ export function mapRoomMessageToView(m: RoomChatMessageRow): RoomChatMessageView
   };
 }
 
+/**
+ * Berapa banyak pesan terakhir yang dimuat saat membuka halaman chat.
+ * Polling berikutnya hanya menarik delta menggunakan cursor `?since`,
+ * sehingga ruangan dengan ribuan pesan tetap ringan untuk dibuka.
+ */
+export const ROOM_CHAT_INITIAL_MESSAGE_LIMIT = 200;
+
+/**
+ * Pengaman atas — setiap polling delta tidak akan menarik lebih dari ini
+ * sekaligus (mencegah spike memori jika ada burst pesan dalam satu detik).
+ */
+export const ROOM_CHAT_DELTA_MESSAGE_LIMIT = 500;
+
+/**
+ * Initial load — terakhir N pesan dari ruangan, dikembalikan dalam urutan
+ * waktu menaik (siap render dari atas ke bawah).
+ */
 export async function loadRoomChatMessagesForRoom(
   roomId: string,
+  limit: number = ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
 ): Promise<RoomChatMessageView[]> {
+  const take = Math.max(1, Math.min(limit, ROOM_CHAT_INITIAL_MESSAGE_LIMIT));
   const rows = await prisma.roomMessage.findMany({
     where: { roomId },
+    orderBy: { createdAt: "desc" },
+    take,
+    include: roomChatMessageInclude,
+  });
+  // Kembalikan ascending untuk konsumsi UI (timeline klasik atas → bawah).
+  return rows.map(mapRoomMessageToView).reverse();
+}
+
+/**
+ * Delta load — pesan dengan `createdAt > since`, ascending. Menggunakan index
+ * `RoomMessage(@@index([roomId, createdAt]))` sehingga sangat ringan.
+ */
+export async function loadRoomChatMessagesSince(
+  roomId: string,
+  since: Date,
+  limit: number = ROOM_CHAT_DELTA_MESSAGE_LIMIT,
+): Promise<RoomChatMessageView[]> {
+  const take = Math.max(1, Math.min(limit, ROOM_CHAT_DELTA_MESSAGE_LIMIT));
+  const rows = await prisma.roomMessage.findMany({
+    where: { roomId, createdAt: { gt: since } },
     orderBy: { createdAt: "asc" },
+    take,
     include: roomChatMessageInclude,
   });
   return rows.map(mapRoomMessageToView);
+}
+
+export async function countRoomChatMessages(roomId: string): Promise<number> {
+  return prisma.roomMessage.count({ where: { roomId } });
 }

@@ -6,7 +6,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { signedBalanceForAccount, zeroDecimal } from "@/lib/finance-money";
+import { zeroDecimal } from "@/lib/finance-money";
 
 export type DashboardPeriod = { year: number; month: number };
 
@@ -32,11 +32,25 @@ function pctChange(curr: Prisma.Decimal, prev: Prisma.Decimal): number | null {
   return ((c - p) / Math.abs(p)) * 100;
 }
 
+function toDecimal(value: unknown): Prisma.Decimal {
+  if (value == null) return D0();
+  if (value instanceof Prisma.Decimal) return value;
+  return new Prisma.Decimal(String(value));
+}
+
+/**
+ * Jumlahkan saldo bertanda untuk semua baris jurnal berstatus POSTED dengan
+ * akun bertipe `type`. Menggunakan agregat database — tidak menarik baris
+ * mentah ke memori Node.
+ *
+ * - ASSET / EXPENSE: signed = sum(debit) - sum(credit)
+ * - LIABILITY / EQUITY / REVENUE: signed = sum(credit) - sum(debit)
+ */
 async function ledgerSumByType(
   type: FinanceLedgerType,
   range: { gte?: Date; lte: Date },
 ): Promise<Prisma.Decimal> {
-  const lines = await prisma.financeJournalLine.findMany({
+  const agg = await prisma.financeJournalLine.aggregate({
     where: {
       entry: {
         status: FinanceJournalStatus.POSTED,
@@ -44,35 +58,58 @@ async function ledgerSumByType(
       },
       account: { type },
     },
-    select: { debitBase: true, creditBase: true, account: { select: { type: true } } },
+    _sum: { debitBase: true, creditBase: true },
   });
-  let total = D0();
-  for (const l of lines) {
-    total = total.plus(
-      signedBalanceForAccount(l.account.type, l.debitBase, l.creditBase),
-    );
+  const debit = toDecimal(agg._sum.debitBase);
+  const credit = toDecimal(agg._sum.creditBase);
+  switch (type) {
+    case FinanceLedgerType.ASSET:
+    case FinanceLedgerType.EXPENSE:
+      return debit.minus(credit);
+    case FinanceLedgerType.LIABILITY:
+    case FinanceLedgerType.EQUITY:
+    case FinanceLedgerType.REVENUE:
+      return credit.minus(debit);
+    default:
+      return debit.minus(credit);
   }
-  return total;
 }
 
+/**
+ * Inflow/outflow per baris arus kas: per-baris (debit - credit) dipisah
+ * positif (inflow) dan negatif (outflow). Karena pemisahan bersifat per-baris,
+ * dilakukan dengan single SQL `SUM(CASE WHEN ...)` agar tetap satu round-trip.
+ */
 async function cashFlowSums(range: { gte?: Date; lte: Date }) {
-  const lines = await prisma.financeJournalLine.findMany({
-    where: {
-      entry: {
-        status: FinanceJournalStatus.POSTED,
-        entryDate: range,
-      },
-      account: { tracksCashflow: true },
-    },
-    select: { debitBase: true, creditBase: true },
-  });
-  let inflow = D0();
-  let outflow = D0();
-  for (const l of lines) {
-    const delta = l.debitBase.minus(l.creditBase);
-    if (delta.greaterThan(0)) inflow = inflow.plus(delta);
-    else if (delta.lessThan(0)) outflow = outflow.plus(delta.abs());
-  }
+  const rows = await prisma.$queryRaw<
+    Array<{ inflow: Prisma.Decimal | null; outflow: Prisma.Decimal | null }>
+  >`
+    SELECT
+      SUM(
+        CASE
+          WHEN jl."debitBase" > jl."creditBase"
+          THEN jl."debitBase" - jl."creditBase"
+          ELSE 0
+        END
+      )::numeric AS inflow,
+      SUM(
+        CASE
+          WHEN jl."debitBase" < jl."creditBase"
+          THEN jl."creditBase" - jl."debitBase"
+          ELSE 0
+        END
+      )::numeric AS outflow
+    FROM "FinanceJournalLine" jl
+    JOIN "FinanceJournalEntry" je ON je."id" = jl."entryId"
+    JOIN "FinanceLedgerAccount" a ON a."id" = jl."accountId"
+    WHERE je."status" = 'POSTED'
+      AND je."entryDate" >= ${range.gte ?? new Date(0)}
+      AND je."entryDate" <= ${range.lte}
+      AND a."tracksCashflow" = TRUE
+  `;
+  const row = rows[0] ?? { inflow: null, outflow: null };
+  const inflow = toDecimal(row.inflow);
+  const outflow = toDecimal(row.outflow);
   return {
     inflow,
     outflow,
@@ -80,12 +117,19 @@ async function cashFlowSums(range: { gte?: Date; lte: Date }) {
   };
 }
 
-async function totalCashAndBank(asOf: Date) {
-  const [bankAccounts, lines] = await Promise.all([
+/**
+ * Saldo total kas + bank per tanggal `asOf`. Opening balance + (debit-credit)
+ * dari semua jurnal terposting sampai tanggal tsb, untuk akun `tracksCashflow`.
+ * Dua agregat terpisah — opening balance dari `FinanceBankAccount`, mutasi
+ * dari `FinanceJournalLine`. Tidak ada baris mentah yang ditarik.
+ */
+async function totalCashAndBank(asOf: Date): Promise<Prisma.Decimal> {
+  const [openingRows, mutationAgg] = await Promise.all([
     prisma.financeBankAccount.findMany({
-      select: { openingBalance: true, openingAsOf: true },
+      where: { openingAsOf: { lte: asOf } },
+      select: { openingBalance: true },
     }),
-    prisma.financeJournalLine.findMany({
+    prisma.financeJournalLine.aggregate({
       where: {
         entry: {
           status: FinanceJournalStatus.POSTED,
@@ -93,24 +137,78 @@ async function totalCashAndBank(asOf: Date) {
         },
         account: { tracksCashflow: true },
       },
-      select: {
-        debitBase: true,
-        creditBase: true,
-        entry: { select: { entryDate: true } },
-      },
+      _sum: { debitBase: true, creditBase: true },
     }),
   ]);
 
   let total = D0();
-  for (const bank of bankAccounts) {
-    if (bank.openingAsOf.getTime() <= asOf.getTime()) {
-      total = total.plus(bank.openingBalance);
-    }
-  }
-  for (const line of lines) {
-    total = total.plus(line.debitBase).minus(line.creditBase);
-  }
+  for (const r of openingRows) total = total.plus(r.openingBalance);
+  total = total
+    .plus(toDecimal(mutationAgg._sum.debitBase))
+    .minus(toDecimal(mutationAgg._sum.creditBase));
   return total;
+}
+
+/**
+ * P&L per brand untuk periode aktif, dilakukan via `groupBy` agar Postgres
+ * yang menjumlahkan — tidak men-stream baris ke aplikasi.
+ */
+async function brandPnlForPeriod(range: { gte: Date; lte: Date }) {
+  type GroupedRow = {
+    brandId: string | null;
+    _sum: { debitBase: Prisma.Decimal | null; creditBase: Prisma.Decimal | null };
+  };
+  const [revenueGrouped, expenseGrouped] = (await Promise.all([
+    prisma.financeJournalLine.groupBy({
+      by: ["brandId"],
+      where: {
+        entry: {
+          status: FinanceJournalStatus.POSTED,
+          entryDate: range,
+        },
+        account: { type: FinanceLedgerType.REVENUE },
+      },
+      _sum: { debitBase: true, creditBase: true },
+    }),
+    prisma.financeJournalLine.groupBy({
+      by: ["brandId"],
+      where: {
+        entry: {
+          status: FinanceJournalStatus.POSTED,
+          entryDate: range,
+        },
+        account: { type: FinanceLedgerType.EXPENSE },
+      },
+      _sum: { debitBase: true, creditBase: true },
+    }),
+  ])) as [GroupedRow[], GroupedRow[]];
+  return {
+    revenueGrouped,
+    expenseGrouped,
+  };
+}
+
+/**
+ * Statistik rekonsiliasi per akun bank (total baris vs. yang sudah cocok),
+ * dihitung di SQL via `GROUP BY` — tanpa harus menarik setiap
+ * `BankStatementLine`.
+ */
+async function bankReconciliationStats() {
+  return prisma.$queryRaw<
+    Array<{
+      bankAccountId: string;
+      totalLines: bigint;
+      matchedLines: bigint;
+    }>
+  >`
+    SELECT
+      bsi."bankAccountId" AS "bankAccountId",
+      COUNT(*)::bigint AS "totalLines",
+      COUNT(bsl."matchedJournalLineId")::bigint AS "matchedLines"
+    FROM "BankStatementLine" bsl
+    JOIN "BankStatementImport" bsi ON bsi."id" = bsl."importId"
+    GROUP BY bsi."bankAccountId"
+  `;
 }
 
 function ageInDays(due: Date, ref: Date): number {
@@ -147,10 +245,10 @@ export async function loadFinanceDashboard(period: DashboardPeriod) {
     apBills,
     arInvoices,
     bankAccounts,
+    reconciliationStats,
     recentJournals,
     brands,
-    brandRevenueLines,
-    brandExpenseLines,
+    brandPnlData,
   ] = await Promise.all([
     totalCashAndBank(asOf),
     ledgerSumByType(FinanceLedgerType.REVENUE, { gte: start, lte: end }),
@@ -175,18 +273,16 @@ export async function loadFinanceDashboard(period: DashboardPeriod) {
       orderBy: [{ dueDate: "asc" }],
     }),
     prisma.financeBankAccount.findMany({
-      include: {
+      select: {
+        id: true,
+        name: true,
+        institution: true,
+        accountMask: true,
         ledgerAccount: { select: { id: true, name: true } },
-        imports: {
-          include: {
-            lines: {
-              select: { id: true, matchedJournalLineId: true },
-            },
-          },
-        },
       },
       orderBy: { name: "asc" },
     }),
+    bankReconciliationStats(),
     prisma.financeJournalEntry.findMany({
       where: { status: FinanceJournalStatus.POSTED },
       orderBy: [{ entryDate: "desc" }, { postedAt: "desc" }],
@@ -198,26 +294,7 @@ export async function loadFinanceDashboard(period: DashboardPeriod) {
       },
     }),
     prisma.brand.findMany({ orderBy: { name: "asc" } }),
-    prisma.financeJournalLine.findMany({
-      where: {
-        entry: {
-          status: FinanceJournalStatus.POSTED,
-          entryDate: { gte: start, lte: end },
-        },
-        account: { type: FinanceLedgerType.REVENUE },
-      },
-      select: { brandId: true, debitBase: true, creditBase: true },
-    }),
-    prisma.financeJournalLine.findMany({
-      where: {
-        entry: {
-          status: FinanceJournalStatus.POSTED,
-          entryDate: { gte: start, lte: end },
-        },
-        account: { type: FinanceLedgerType.EXPENSE },
-      },
-      select: { brandId: true, debitBase: true, creditBase: true },
-    }),
+    brandPnlForPeriod({ gte: start, lte: end }),
   ]);
 
   const netCurr = revenueCurr.minus(expenseCurr);
@@ -254,24 +331,22 @@ export async function loadFinanceDashboard(period: DashboardPeriod) {
   const apTotal = apOutstanding.reduce((a, r) => a.plus(r.remaining), D0());
   const arTotal = arOutstanding.reduce((a, r) => a.plus(r.remaining), D0());
 
+  const reconByBank = new Map(
+    reconciliationStats.map((r) => [
+      r.bankAccountId,
+      { total: Number(r.totalLines), matched: Number(r.matchedLines) },
+    ]),
+  );
   const banks = bankAccounts.map((b) => {
-    let totalLines = 0;
-    let matchedLines = 0;
-    for (const imp of b.imports) {
-      for (const line of imp.lines) {
-        totalLines += 1;
-        if (line.matchedJournalLineId) matchedLines += 1;
-      }
-    }
+    const s = reconByBank.get(b.id) ?? { total: 0, matched: 0 };
     return {
       id: b.id,
       name: b.name,
       institution: b.institution ?? null,
       mask: b.accountMask ?? null,
-      totalLines,
-      matchedLines,
-      progress:
-        totalLines === 0 ? 0 : Math.round((matchedLines / totalLines) * 100),
+      totalLines: s.total,
+      matchedLines: s.matched,
+      progress: s.total === 0 ? 0 : Math.round((s.matched / s.total) * 100),
     };
   });
 
@@ -287,21 +362,30 @@ export async function loadFinanceDashboard(period: DashboardPeriod) {
     };
   });
 
-  type BrandRow = { id: string | null; name: string; revenue: Prisma.Decimal; expense: Prisma.Decimal };
+  type BrandRow = {
+    id: string | null;
+    name: string;
+    revenue: Prisma.Decimal;
+    expense: Prisma.Decimal;
+  };
   const brandMap = new Map<string | null, BrandRow>();
   brandMap.set(null, { id: null, name: "Tanpa brand", revenue: D0(), expense: D0() });
   for (const b of brands) {
     brandMap.set(b.id, { id: b.id, name: b.name, revenue: D0(), expense: D0() });
   }
-  for (const l of brandRevenueLines) {
-    const key = l.brandId;
-    const row = brandMap.get(key) ?? brandMap.get(null)!;
-    row.revenue = row.revenue.plus(l.creditBase).minus(l.debitBase);
+  for (const r of brandPnlData.revenueGrouped) {
+    const row = brandMap.get(r.brandId) ?? brandMap.get(null)!;
+    // REVENUE: signed = credit - debit
+    row.revenue = row.revenue
+      .plus(toDecimal(r._sum.creditBase))
+      .minus(toDecimal(r._sum.debitBase));
   }
-  for (const l of brandExpenseLines) {
-    const key = l.brandId;
-    const row = brandMap.get(key) ?? brandMap.get(null)!;
-    row.expense = row.expense.plus(l.debitBase).minus(l.creditBase);
+  for (const r of brandPnlData.expenseGrouped) {
+    const row = brandMap.get(r.brandId) ?? brandMap.get(null)!;
+    // EXPENSE: signed = debit - credit
+    row.expense = row.expense
+      .plus(toDecimal(r._sum.debitBase))
+      .minus(toDecimal(r._sum.creditBase));
   }
   const brandPnl = [...brandMap.values()]
     .map((r) => {

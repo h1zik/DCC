@@ -100,8 +100,17 @@ const getExecutiveDashboardData = unstable_cache(
           pendingPipelineStage: true,
         },
       }),
+      // Jendela 90 hari terakhir — dashboard executive hanya menampilkan
+      // ringkasan brand yang relevan untuk operasional saat ini. Tanpa batas
+      // waktu, query ini menarik SELURUH histori `OUT` setiap kali cache
+      // executive (revalidate 60s) hangus.
       prisma.stockLog.findMany({
-        where: { type: StockLogType.OUT },
+        where: {
+          type: StockLogType.OUT,
+          createdAt: {
+            gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+          },
+        },
         select: {
           id: true,
           amount: true,

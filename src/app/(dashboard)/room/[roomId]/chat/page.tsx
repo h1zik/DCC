@@ -1,7 +1,10 @@
 import { Info, MessageCircle } from "lucide-react";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { prisma } from "@/lib/prisma";
-import { loadRoomChatMessagesForRoom } from "@/lib/room-chat-message-view";
+import {
+  countRoomChatMessages,
+  loadRoomChatMessagesForRoom,
+} from "@/lib/room-chat-message-view";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -16,8 +19,11 @@ export default async function RoomChatPage({ params }: PageProps) {
   const { roomId } = await params;
   const { viewerUserId } = await getRoomMemberContextOrThrow(roomId);
 
-  const [messages, mentionableUsers] = await Promise.all([
+  // Hanya muat N pesan terakhir (`ROOM_CHAT_INITIAL_MESSAGE_LIMIT`); polling
+  // berikutnya menarik delta via `?since`. Hitungan total dipakai untuk badge.
+  const [messages, totalMessages, mentionableUsers] = await Promise.all([
     loadRoomChatMessagesForRoom(roomId),
+    countRoomChatMessages(roomId),
     prisma.roomMember.findMany({
       where: { roomId },
       select: {
@@ -28,6 +34,8 @@ export default async function RoomChatPage({ params }: PageProps) {
       orderBy: [{ user: { name: "asc" } }, { user: { email: "asc" } }],
     }),
   ]);
+
+  const hasMoreHistory = totalMessages > messages.length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -65,11 +73,23 @@ export default async function RoomChatPage({ params }: PageProps) {
               </span>
               anggota
             </span>
-            <span className="border-border bg-background text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm">
+            <span
+              className="border-border bg-background text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm"
+              title={
+                hasMoreHistory
+                  ? `Menampilkan ${messages.length} dari ${totalMessages} pesan terbaru`
+                  : `${totalMessages} pesan total`
+              }
+            >
               <span className="text-foreground font-semibold tabular-nums">
-                {messages.length}
+                {totalMessages}
               </span>
               pesan
+              {hasMoreHistory ? (
+                <span className="text-muted-foreground/80 text-[10px]">
+                  · {messages.length} terbaru
+                </span>
+              ) : null}
             </span>
             <Popover>
               <PopoverTrigger

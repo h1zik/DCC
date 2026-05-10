@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { UserRole } from "@prisma/client";
 import { auth } from "@/lib/auth";
-import { loadRoomChatMessagesForRoom } from "@/lib/room-chat-message-view";
+import {
+  loadRoomChatMessagesForRoom,
+  loadRoomChatMessagesSince,
+  ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
+} from "@/lib/room-chat-message-view";
 import { assertRoomMember } from "@/lib/room-access";
 import { isAdministrator, isStudioOrProjectManager } from "@/lib/roles";
 import { listRoomTyping, markRoomTyping } from "@/lib/room-chat-typing-state";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ roomId: string }> },
 ) {
   const session = await auth();
@@ -35,9 +39,36 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const messages = await loadRoomChatMessagesForRoom(roomId);
+  const url = new URL(request.url);
+  const sinceParam = url.searchParams.get("since");
+  const since = sinceParam ? new Date(sinceParam) : null;
+
+  let messages;
+  let mode: "delta" | "initial";
+  if (since && Number.isFinite(since.getTime())) {
+    messages = await loadRoomChatMessagesSince(roomId, since);
+    mode = "delta";
+  } else {
+    messages = await loadRoomChatMessagesForRoom(roomId);
+    mode = "initial";
+  }
+
   const typingUsers = listRoomTyping(roomId, session.user.id);
-  return NextResponse.json({ messages, typingUsers });
+  return NextResponse.json(
+    {
+      messages,
+      typingUsers,
+      mode,
+      initialLimit: ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
+      serverTime: new Date().toISOString(),
+    },
+    {
+      headers: {
+        // Polling chat tidak boleh di-cache oleh browser/CDN.
+        "Cache-Control": "no-store",
+      },
+    },
+  );
 }
 
 export async function POST(

@@ -86,6 +86,7 @@ import {
   MoreVertical,
   Music,
   Pencil,
+  Play,
   Search,
   Tag,
   Trash2,
@@ -107,6 +108,12 @@ export type RoomDocumentRow = {
   mimeType: string;
   size: number;
   publicPath: string;
+  /**
+   * Path thumbnail (webp ~480px) bila tersedia. Null untuk non-image atau
+   * gambar yang gagal didekode saat upload — UI fallback ke `publicPath`
+   * (atau ikon tipe file untuk non-image).
+   */
+  thumbPath: string | null;
   createdAt: Date;
   folderId: string | null;
   tags: string[];
@@ -1060,7 +1067,7 @@ export function RoomDocumentsWorkspace({
             </div>
           ) : view === "grid" ? (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {pagedVisibleDocuments.map((d) => (
+              {pagedVisibleDocuments.map((d, idx) => (
                 <DocCard
                   key={d.id}
                   doc={d}
@@ -1070,6 +1077,10 @@ export function RoomDocumentsWorkspace({
                   onPreview={onPreviewDoc}
                   onDelete={onDeleteDoc}
                   onMove={onMoveDoc}
+                  // 4 ubin pertama (1 baris di breakpoint 2xl) berada di atas
+                  // fold — beri `priority` agar Next.js set `loading="eager"`
+                  // + `fetchPriority="high"` dan tidak memunculkan warning LCP.
+                  priority={idx < 4}
                 />
               ))}
             </ul>
@@ -1325,10 +1336,65 @@ function FolderChoiceItem({
 }
 
 /**
- * Tanpa <video> di daftar — decode + request metadata ratusan file membuat UI macet.
- * Thumbnail asli hanya di dialog preview.
+ * Tile pratinjau video di daftar/grid.
+ *
+ * Kita TIDAK PERNAH memasang `<video>` di sini — dulu pendekatan itu
+ * menjatuhkan UI: ratusan elemen video memicu request metadata, mem-spawn
+ * decoder per tile, dan mengisi 6-koneksi-per-origin sampai antri.
+ *
+ * Sekarang server membuat satu frame `.thumb.webp` saat upload (lihat
+ * `room-document-upload.ts`). Bila `thumbPath` ada, kita render `<Image>`
+ * statis + overlay tombol play kecil sebagai indikator video. Bila tidak
+ * ada (file lama belum di-backfill, atau ekstraksi gagal), fallback ke
+ * gradient + ikon Film seperti perilaku lama.
  */
-function VideoTilePlaceholder({ className }: { className?: string }) {
+function VideoTilePlaceholder({
+  className,
+  thumbPath,
+  alt,
+  iconSize = "lg",
+  sizes,
+  priority = false,
+}: {
+  className?: string;
+  thumbPath?: string | null;
+  alt?: string;
+  iconSize?: "sm" | "lg";
+  sizes?: string;
+  priority?: boolean;
+}) {
+  if (thumbPath) {
+    return (
+      <div className={cn("relative h-full w-full overflow-hidden bg-black", className)}>
+        <Image
+          src={thumbPath}
+          alt={alt ?? ""}
+          fill
+          unoptimized
+          priority={priority}
+          className="object-cover"
+          sizes={sizes ?? "(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"}
+        />
+        {iconSize === "lg" ? (
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            aria-hidden
+          >
+            <span className="bg-black/55 text-white flex size-10 items-center justify-center rounded-full backdrop-blur-sm ring-1 ring-white/20">
+              <Play className="size-5 fill-white" />
+            </span>
+          </div>
+        ) : (
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            aria-hidden
+          >
+            <Play className="text-white/90 size-3 fill-white drop-shadow" />
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -1337,7 +1403,10 @@ function VideoTilePlaceholder({ className }: { className?: string }) {
       )}
     >
       <Film
-        className="size-10 text-violet-500/50 dark:text-violet-400/60"
+        className={cn(
+          "text-violet-500/50 dark:text-violet-400/60",
+          iconSize === "lg" ? "size-10" : "size-4",
+        )}
         aria-hidden
       />
     </div>
@@ -1428,6 +1497,7 @@ const DocCard = memo(function DocCard({
   onPreview,
   onDelete,
   onMove,
+  priority = false,
 }: {
   doc: RoomDocumentRow;
   folders: RoomDocumentFolderRow[];
@@ -1436,6 +1506,8 @@ const DocCard = memo(function DocCard({
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  /** Hint LCP — tile pertama yang berada di atas fold harus eager. */
+  priority?: boolean;
 }) {
   const meta = fileTypeMeta(doc.mimeType);
   const Icon = meta.icon;
@@ -1457,16 +1529,26 @@ const DocCard = memo(function DocCard({
         title={`Pratinjau ${doc.title?.trim() || doc.fileName}`}
       >
         {isImage ? (
+          // Pakai thumbnail webp (~480px) bila ada — 1 file mentah bisa
+          // puluhan MB (mis. PNG transparan), thumbnail biasanya <50 KB.
           <Image
-            src={doc.publicPath}
+            src={doc.thumbPath ?? doc.publicPath}
             alt={doc.fileName}
             fill
             unoptimized
+            priority={priority}
             className="object-cover transition-transform group-hover:scale-[1.02]"
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
           />
         ) : isVideo ? (
-          <VideoTilePlaceholder className="transition-transform group-hover:scale-[1.02]" />
+          <VideoTilePlaceholder
+            thumbPath={doc.thumbPath}
+            alt={doc.fileName}
+            className="transition-transform group-hover:scale-[1.02]"
+            iconSize="lg"
+            sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
+            priority={priority}
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <Icon className={cn("size-10", meta.tone)} />
@@ -1627,7 +1709,7 @@ const DocListRow = memo(function DocListRow({
         <div className="bg-muted relative size-9 shrink-0 overflow-hidden rounded-md">
           {isImage ? (
             <Image
-              src={doc.publicPath}
+              src={doc.thumbPath ?? doc.publicPath}
               alt=""
               fill
               unoptimized
@@ -1635,7 +1717,11 @@ const DocListRow = memo(function DocListRow({
               sizes="36px"
             />
           ) : isVideo ? (
-            <VideoTilePlaceholder />
+            <VideoTilePlaceholder
+              thumbPath={doc.thumbPath}
+              iconSize="sm"
+              sizes="36px"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <Icon className={cn("size-4", meta.tone)} />

@@ -36,12 +36,19 @@ export type TaskTagRow = {
   };
 };
 
+/**
+ * Bentuk baris tugas yang diteruskan ke workspace + detail sheet.
+ *
+ * `comments` & `attachments` bersifat OPSIONAL — daftar tugas tidak lagi
+ * memuatnya di SSR untuk menghemat payload. Detail sheet me-lazy-load via
+ * `loadTaskDetail()` lalu memerge ke `localTasks` lewat `onTaskPatched`.
+ */
 export type TaskRow = Task & {
   project: Project & { brand: Brand | null; room?: { name: string } };
   assignees: { user: Pick<User, "id" | "name" | "email" | "image"> }[];
   vendor: Pick<Vendor, "id" | "name"> | null;
   checklistItems: TaskChecklistItem[];
-  comments: TaskCommentRow[];
-  attachments: TaskAttachmentRow[];
+  comments?: TaskCommentRow[];
+  attachments?: TaskAttachmentRow[];
   tags: TaskTagRow[];
 };

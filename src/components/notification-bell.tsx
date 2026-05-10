@@ -35,12 +35,29 @@ export function NotificationBell() {
     setUnread(data.unread);
   }, []);
 
+  /**
+   * Polling 45 detik sekali, tapi hanya saat tab terlihat. Browser modern
+   * sudah men-throttle `setInterval` di tab background (>1s), tapi kita tetap
+   * skip eksplisit agar tidak boros DB query untuk tab yang tidak dilihat.
+   */
   useEffect(() => {
-    const t0 = window.setTimeout(() => void load(), 0);
-    const t = window.setInterval(() => void load(), 45_000);
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      void load();
+    };
+    const t0 = window.setTimeout(tick, 0);
+    const t = window.setInterval(tick, 45_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
+      cancelled = true;
       window.clearTimeout(t0);
       window.clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);
 
