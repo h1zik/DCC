@@ -12,25 +12,28 @@ import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
-import ffmpegStatic from "ffmpeg-static";
 import ffmpeg from "fluent-ffmpeg";
 import sharp from "sharp";
 
 /**
  * Set lokasi biner sekali saat modul di-load.
  *
- * - `ffmpeg-static` HANYA mengirim ffmpeg.exe — tidak termasuk ffprobe.
+ * - Kita pakai `@ffmpeg-installer/ffmpeg` + `@ffprobe-installer/ffprobe`
+ *   ALIH-ALIH `ffmpeg-static`. Alasan: `ffmpeg-static` mengunduh biner ~75 MB
+ *   dari satu CDN via postinstall script — di builder cloud (Railway, Vercel,
+ *   dst.) langkah ini sering hang sampai 10+ menit. Paket `@ffmpeg-installer`
+ *   versi yang sama tapi mengirim biner sebagai paket npm per-platform —
+ *   download mengalir lewat registry npm yang cepat & ter-cache.
  * - `fluent-ffmpeg.screenshots()` di belakang layar memanggil ffprobe untuk
  *   mengetahui durasi video (perlu untuk seek `"50%"`). Tanpa ffprobe muncul
  *   error "Cannot find ffprobe" yang dulu tertelan diam-diam.
- * - `@ffprobe-installer/ffprobe` menyediakan ffprobe.exe lintas platform.
  *
  * Bila salah satu biner tidak tersedia (lingkungan eksotis), thumbnail video
  * di-skip — fallback ke ikon/gradient di UI.
  */
-const FFMPEG_PATH: string | null =
-  typeof ffmpegStatic === "string" ? ffmpegStatic : null;
+const FFMPEG_PATH: string | null = ffmpegInstaller?.path ?? null;
 const FFPROBE_PATH: string | null = ffprobeInstaller?.path ?? null;
 if (FFMPEG_PATH) {
   ffmpeg.setFfmpegPath(FFMPEG_PATH);
