@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RoomWorkspaceSection, type Brand } from "@prisma/client";
+import { RoomViewType, RoomWorkspaceSection, type Brand } from "@prisma/client";
 import {
   ClipboardList,
   Files,
@@ -15,13 +15,21 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
+import { roomViewTypeIcon } from "@/lib/room-view-icon";
 import { RoomBannerEditor } from "./room-banner-editor";
 import { RoomLogoEditor } from "./room-logo-editor";
 import { RoomEditorButton } from "./room-editor-button";
+import { AddRoomViewButton } from "./add-room-view-button";
 import {
   RoomMemberAvatarStack,
   type RoomMemberAvatarUser,
 } from "@/components/room-member-avatar-stack";
+
+export type RoomHubNavView = {
+  id: string;
+  type: RoomViewType;
+  title: string;
+};
 
 function roomNameInitials(name: string): string {
   const trimmed = name.trim();
@@ -40,11 +48,13 @@ export function RoomHubNav({
   logoImage = null,
   canEditBanner = false,
   canEditRoom = false,
+  canManageViews = false,
   roomBrandId = null,
   roomWorkspaceSection = RoomWorkspaceSection.ROOMS,
   brands = [],
   brand = null,
   memberUsers = [],
+  customViews = [],
 }: {
   roomId: string;
   roomName: string;
@@ -54,21 +64,29 @@ export function RoomHubNav({
   logoImage?: string | null;
   canEditBanner?: boolean;
   canEditRoom?: boolean;
+  /** Manager ruangan: dapat menambah/menghapus custom view. */
+  canManageViews?: boolean;
   roomBrandId?: string | null;
   roomWorkspaceSection?: RoomWorkspaceSection;
   brands?: Brand[];
   brand?: Pick<Brand, "id" | "name"> | null;
   memberUsers?: RoomMemberAvatarUser[];
+  customViews?: RoomHubNavView[];
 }) {
   const pathname = usePathname();
   const base = `/room/${roomId}`;
-  const simpleLinks = [
+  type NavLink = {
+    href: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  };
+  const simpleLinks: NavLink[] = [
     { href: `${base}/tasks`, label: "Tasks", icon: KanbanSquare },
     { href: `${base}/members`, label: "Anggota", icon: Users },
     { href: `${base}/chat`, label: "Grup", icon: MessageCircle },
     { href: `${base}/documents`, label: "Documents & file", icon: Files },
-  ] as const;
-  const fullLinks = [
+  ];
+  const fullLinks: NavLink[] = [
     { href: `${base}/tasks`, label: "Tasks", icon: KanbanSquare },
     {
       href: `${base}/content-planning`,
@@ -78,8 +96,13 @@ export function RoomHubNav({
     { href: `${base}/members`, label: "Anggota", icon: Users },
     { href: `${base}/chat`, label: "Grup", icon: MessageCircle },
     { href: `${base}/documents`, label: "Documents & file", icon: Files },
-  ] as const;
-  const links = simpleHub ? simpleLinks : fullLinks;
+  ];
+  const customViewLinks: NavLink[] = customViews.map((v) => ({
+    href: `${base}/view/${v.id}`,
+    label: v.title,
+    icon: roomViewTypeIcon(v.type),
+  }));
+  const links: NavLink[] = [...(simpleHub ? simpleLinks : fullLinks), ...customViewLinks];
 
   const sectionLabel = roomWorkspaceSectionTitle(roomWorkspaceSection);
 
@@ -244,6 +267,11 @@ export function RoomHubNav({
               </li>
             );
           })}
+          {canManageViews ? (
+            <li className="shrink-0 pl-0.5">
+              <AddRoomViewButton roomId={roomId} />
+            </li>
+          ) : null}
         </ul>
       </nav>
     </div>

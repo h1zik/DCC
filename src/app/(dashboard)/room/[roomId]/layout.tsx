@@ -26,9 +26,15 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
   const logoImage = (room as { logoImage?: string | null }).logoImage ?? null;
   const canEditRoom =
     session?.user?.role === UserRole.CEO || isAdministrator(session?.user?.role);
-  const [memberUsers, brands] = await Promise.all([
+  const isHubManager = isRoomHubManagerRole(role);
+  const [memberUsers, brands, customViews] = await Promise.all([
     getRoomHubMemberUsers(roomId),
     canEditRoom ? prisma.brand.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
+    prisma.roomView.findMany({
+      where: { roomId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { id: true, type: true, title: true },
+    }),
   ]);
 
   return (
@@ -39,13 +45,15 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
         simpleHub={simpleHub}
         bannerImage={bannerImage}
         logoImage={logoImage}
-        canEditBanner={isRoomHubManagerRole(role)}
+        canEditBanner={isHubManager}
         canEditRoom={canEditRoom}
+        canManageViews={isHubManager}
         roomBrandId={room.brandId}
         roomWorkspaceSection={room.workspaceSection}
         brands={brands}
         brand={room.brand ? { id: room.brand.id, name: room.brand.name } : null}
         memberUsers={memberUsers}
+        customViews={customViews}
       />
       {children}
     </div>

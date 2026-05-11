@@ -173,6 +173,38 @@ enum TaskWorkspaceView {
   CALENDAR
 }
 
+/**
+ * Jenis view tambahan yang dapat ditambahkan room manager ke ruangan
+ * (di luar menu wajib: Tasks, Grup, Anggota, Content Planning, Documents).
+ */
+enum RoomViewType {
+  CALENDAR
+  TIMELINE
+  WIKI
+  LINKS
+  LIST
+  GLOSSARY
+}
+
+enum RoomTimelineStatus {
+  UPCOMING
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+/**
+ * Tipe kolom untuk view LIST generik (kolom kustom).
+ */
+enum RoomListColumnType {
+  TEXT
+  NUMBER
+  DATE
+  CHECKBOX
+  SELECT
+  URL
+}
+
 model User {
   id                        String                         @id @default(cuid())
   name                      String?
@@ -361,6 +393,170 @@ model Room {
    */
   kanbanColumns    RoomKanbanColumn[]
   taskTags         TaskTag[]
+  /**
+   * View tambahan kustom yang ditambahkan oleh manager ruangan
+   * (Kalender, Linimasa, Wiki, Hub tautan, List generik, Glosarium).
+   */
+  views            RoomView[]
+}
+
+/**
+ * View tambahan opsional di ruangan. Manager ruangan dapat menambahkan
+ * salah satu jenis view yang tersedia (lihat `RoomViewType`) dengan judul
+ * kustom. Setiap view memiliki data sendiri di model anak yang sesuai.
+ */
+model RoomView {
+  id        String       @id @default(cuid())
+  roomId    String
+  room      Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  type      RoomViewType
+  title     String       @db.VarChar(80)
+  /**
+   * Subjudul / deskripsi singkat (tampil sebagai meta di header view).
+   */
+  subtitle  String?      @db.VarChar(160)
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  calendarEvents      RoomCalendarEvent[]
+  timelineMilestones  RoomTimelineMilestone[]
+  wikiPages           RoomWikiPage[]
+  links               RoomLinkItem[]
+  listColumns         RoomListColumn[]
+  listRows            RoomListRow[]
+  glossaryEntries     RoomGlossaryEntry[]
+
+  @@index([roomId, sortOrder])
+}
+
+/** Event/acara di view CALENDAR per ruangan. */
+model RoomCalendarEvent {
+  id          String   @id @default(cuid())
+  viewId      String
+  view        RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(160)
+  description String?
+  location    String?  @db.VarChar(200)
+  startsAt    DateTime
+  endsAt      DateTime?
+  allDay      Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([viewId, startsAt])
+}
+
+/** Milestone di view TIMELINE per ruangan. */
+model RoomTimelineMilestone {
+  id          String             @id @default(cuid())
+  viewId      String
+  view        RoomView           @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title       String             @db.VarChar(160)
+  description String?
+  date        DateTime
+  status      RoomTimelineStatus @default(UPCOMING)
+  sortOrder   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([viewId, date])
+}
+
+/** Halaman wiki / catatan keputusan di view WIKI per ruangan. */
+model RoomWikiPage {
+  id            String   @id @default(cuid())
+  viewId        String
+  view          RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title         String   @db.VarChar(160)
+  /**
+   * Konten halaman dalam markdown sederhana.
+   */
+  content       String   @default("")
+  sortOrder     Int      @default(0)
+  updatedById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([viewId, sortOrder])
+}
+
+/** Item tautan di view LINKS per ruangan (hub of links). */
+model RoomLinkItem {
+  id          String   @id @default(cuid())
+  viewId      String
+  view        RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(160)
+  url         String   @db.VarChar(800)
+  description String?
+  /**
+   * Kategori bebas (mis. "Design", "Marketplace") untuk pengelompokan.
+   */
+  category    String?  @db.VarChar(80)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([viewId, sortOrder])
+}
+
+/** Definisi kolom kustom untuk view LIST generik. */
+model RoomListColumn {
+  id        String             @id @default(cuid())
+  viewId    String
+  view      RoomView           @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  /**
+   * Identifier stabil (slug), dipakai sebagai key di `RoomListRow.data`.
+   */
+  key       String             @db.VarChar(40)
+  label     String             @db.VarChar(80)
+  type      RoomListColumnType @default(TEXT)
+  /**
+   * Pilihan opsi untuk kolom bertipe SELECT (string array, dinormalisasi).
+   */
+  options   String[]           @default([])
+  sortOrder Int                @default(0)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([viewId, key])
+  @@index([viewId, sortOrder])
+}
+
+/** Baris data untuk view LIST generik (nilai per kolom disimpan di JSON). */
+model RoomListRow {
+  id        String   @id @default(cuid())
+  viewId    String
+  view      RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  /**
+   * Map dari `RoomListColumn.key` → nilai (string/number/bool/date ISO).
+   */
+  data      Json     @default("{}")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([viewId, sortOrder])
+}
+
+/** Entri istilah pada view GLOSSARY per ruangan. */
+model RoomGlossaryEntry {
+  id         String   @id @default(cuid())
+  viewId     String
+  view       RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  term       String   @db.VarChar(120)
+  definition String
+  examples   String?
+  /**
+   * Tag bebas, dinormalisasi di aplikasi (lowercase).
+   */
+  tags       String[] @default([])
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([viewId, term])
 }
 
 /**
