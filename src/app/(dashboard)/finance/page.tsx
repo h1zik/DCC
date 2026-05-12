@@ -11,7 +11,6 @@ import {
   ScrollText,
   Workflow,
 } from "lucide-react";
-import { Prisma } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { FinanceClearDemoButton } from "@/components/finance/finance-clear-demo-button";
 import { formatIdr } from "@/lib/finance-money";
@@ -52,19 +51,6 @@ function formatDateShort(d: Date) {
     day: "2-digit",
     month: "short",
   }).format(d);
-}
-
-function shortIdr(value: Prisma.Decimal | null | undefined): string {
-  if (value == null) return "—";
-  const n = Number(value.toString());
-  const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  if (abs >= 1_000_000_000)
-    return `${sign}Rp ${(abs / 1_000_000_000).toFixed(abs >= 10_000_000_000 ? 1 : 2)} M`;
-  if (abs >= 1_000_000)
-    return `${sign}Rp ${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)} Jt`;
-  if (abs >= 1_000) return `${sign}Rp ${(abs / 1_000).toFixed(0)} rb`;
-  return formatIdr(value);
 }
 
 function pctText(p: number | null): string {
@@ -176,7 +162,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
           }
           subtitle={
             data.alerts.overdueArCount + data.alerts.overdueApCount > 0
-              ? `Total ${shortIdr(data.alerts.overdueArTotal.plus(data.alerts.overdueApTotal))} — perlu follow-up`
+              ? `Total ${formatIdr(data.alerts.overdueArTotal.plus(data.alerts.overdueApTotal))} — perlu follow-up`
               : "Semua tagihan masih dalam jadwal."
           }
           href="/finance/ap-ar"
@@ -191,7 +177,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
           }
           subtitle={
             data.alerts.dueSoonCount > 0
-              ? `AP ${shortIdr(data.alerts.dueSoonAp)} · AR ${shortIdr(data.alerts.dueSoonAr)}`
+              ? `AP ${formatIdr(data.alerts.dueSoonAp)} · AR ${formatIdr(data.alerts.dueSoonAr)}`
               : "Aman untuk minggu ini."
           }
           href="/finance/ap-ar"
@@ -220,7 +206,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
       >
         <KpiCard
           label="Saldo Kas & Bank"
-          value={shortIdr(data.kpis.cashAndBank)}
+          value={formatIdr(data.kpis.cashAndBank)}
           delta={null}
           hint={
             data.bankAccountsCount > 0
@@ -230,38 +216,38 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
         />
         <KpiCard
           label="Pendapatan MTD"
-          value={shortIdr(data.kpis.revenue.current)}
+          value={formatIdr(data.kpis.revenue.current)}
           delta={data.kpis.revenue.deltaPct}
           progress={pendapatanProgress}
           hint={
             pendapatanProgress
-              ? `Target (per. lalu): ${shortIdr(data.kpis.revenue.previous)}`
+              ? `Target (per. lalu): ${formatIdr(data.kpis.revenue.previous)}`
               : "Belum ada periode pembanding"
           }
         />
         <KpiCard
           label="Total Beban MTD"
-          value={shortIdr(data.kpis.expense.current)}
+          value={formatIdr(data.kpis.expense.current)}
           delta={data.kpis.expense.deltaPct}
           deltaInverse
           progress={bebanProgress}
           hint={
             bebanProgress
-              ? `Budget ref. (per. lalu): ${shortIdr(data.kpis.expense.previous)}`
+              ? `Budget ref. (per. lalu): ${formatIdr(data.kpis.expense.previous)}`
               : "Belum ada periode pembanding"
           }
         />
         <KpiCard
           label="Laba Bersih"
-          value={shortIdr(data.kpis.net.current)}
+          value={formatIdr(data.kpis.net.current)}
           delta={data.kpis.net.deltaPct}
           hint={margin != null ? `Margin ${margin.toFixed(1)}%` : "—"}
         />
         <KpiCard
           label="Arus Kas Bersih"
-          value={shortIdr(data.kpis.cash.current)}
+          value={formatIdr(data.kpis.cash.current)}
           delta={data.kpis.cash.deltaPct}
-          hint={`Inflow ${shortIdr(data.kpis.cash.inflow)} · Outflow ${shortIdr(data.kpis.cash.outflow)}`}
+          hint={`Inflow ${formatIdr(data.kpis.cash.inflow)} · Outflow ${formatIdr(data.kpis.cash.outflow)}`}
         />
       </section>
 
@@ -273,7 +259,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
         <Panel
           title="Aging Hutang (AP)"
           accent="rose"
-          right={`Total ${shortIdr(data.aging.apTotal)}`}
+          right={`Total ${formatIdr(data.aging.apTotal)}`}
           href="/finance/ap-ar"
         >
           {data.aging.ap.length === 0 ? (
@@ -291,7 +277,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
                       {row.vendorName}
                     </span>,
                     <span key="a" className="text-foreground text-sm tabular-nums">
-                      {shortIdr(row.remaining)}
+                      {formatIdr(row.remaining)}
                     </span>,
                     <span key="u" className="text-muted-foreground text-xs">
                       {agingHumanLabel(row.status)}
@@ -306,7 +292,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
         <Panel
           title="Aging Piutang (AR)"
           accent="emerald"
-          right={`Total ${shortIdr(data.aging.arTotal)}`}
+          right={`Total ${formatIdr(data.aging.arTotal)}`}
           href="/finance/ap-ar"
         >
           {data.aging.ar.length === 0 ? (
@@ -324,7 +310,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
                       {row.customerName}
                     </span>,
                     <span key="a" className="text-foreground text-sm tabular-nums">
-                      {shortIdr(row.remaining)}
+                      {formatIdr(row.remaining)}
                     </span>,
                     <span key="u" className="text-muted-foreground text-xs">
                       {agingHumanLabel(row.status)}
@@ -435,7 +421,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
                     </Link>
                   </div>
                   <span className="text-foreground shrink-0 text-sm font-semibold tabular-nums">
-                    {shortIdr(row.total)}
+                    {formatIdr(row.total)}
                   </span>
                 </li>
               ))}
@@ -464,7 +450,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
                       {row.name}
                     </span>,
                     <span key="r" className="text-foreground text-sm tabular-nums">
-                      {shortIdr(row.revenue)}
+                      {formatIdr(row.revenue)}
                     </span>,
                     <span
                       key="m"
@@ -557,7 +543,7 @@ function KpiCard({
           </span>
         ) : null}
       </div>
-      <p className="text-foreground text-2xl font-semibold tracking-tight tabular-nums">
+      <p className="text-foreground text-xl font-semibold tracking-tight tabular-nums break-words sm:text-2xl">
         {value}
       </p>
       {progress ? (
@@ -631,7 +617,7 @@ function AlertCard({
       </span>
       <div className="min-w-0">
         <p className="text-sm font-semibold leading-tight">{title}</p>
-        <p className="text-foreground/80 truncate text-xs leading-relaxed">
+        <p className="text-foreground/80 break-words text-xs leading-relaxed">
           {subtitle}
         </p>
       </div>

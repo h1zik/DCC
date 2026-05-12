@@ -784,6 +784,26 @@ export async function deleteChecklistItem(id: string) {
   revalidateTasksAndRoomHub();
 }
 
+const updateChecklistTitleSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().trim().min(1).max(500),
+});
+
+export async function updateChecklistItemTitle(
+  input: z.infer<typeof updateChecklistTitleSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const data = updateChecklistTitleSchema.parse(input);
+  const { roomId, roomProcess } = await checklistTaskContextOrThrow(data.id);
+  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+
+  await prisma.taskChecklistItem.update({
+    where: { id: data.id },
+    data: { title: data.title },
+  });
+  revalidateTasksAndRoomHub();
+}
+
 /**
  * Lazy-load komentar + lampiran satu tugas. Dipakai detail sheet — daftar
  * tugas (Kanban/list/Gantt) tidak lagi membawa relasi berat ini di SSR.

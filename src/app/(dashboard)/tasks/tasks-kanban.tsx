@@ -31,12 +31,12 @@ import {
   Archive,
   CalendarDays,
   Check,
-  CheckSquare,
   Flag,
   GripVertical,
   Plus,
   RotateCcw,
 } from "lucide-react";
+import { TaskChecklistPopover } from "@/components/tasks/task-checklist-popover";
 
 export type KanbanTask = {
   id: string;
@@ -46,6 +46,7 @@ export type KanbanTask = {
   dueDate: string | null;
   checklistTotal: number;
   checklistDone: number;
+  checklistItems: { id: string; title: string; done: boolean }[];
   project: { name: string; brand: { name: string } };
   assignees: {
     image: string | null;
@@ -285,10 +286,18 @@ function DraggableTask({
           </Button>
         ) : null}
       </div>
-      <button
-        type="button"
-        className="hover:bg-muted/30 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-r-md p-2.5 text-left"
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Buka detail tugas: ${task.title}`}
+        className="hover:bg-muted/30 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-r-md p-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         onClick={() => onTaskClick?.(task.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onTaskClick?.(task.id);
+          }
+        }}
       >
         <p className="text-foreground break-words font-medium leading-snug">
           {task.title}
@@ -296,36 +305,36 @@ function DraggableTask({
         <p className="text-muted-foreground mt-1 line-clamp-1 text-xs">
           {task.project.brand.name} · {task.project.name}
         </p>
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold",
-              priorityTone,
-            )}
-          >
-            <Flag className="size-2.5" aria-hidden />
-            {task.priority}
-          </span>
-          {dueDateInfo ? (
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             <span
               className={cn(
-                "inline-flex items-center gap-1 text-[10px] font-medium",
-                dueDateInfo.tone,
+                "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold",
+                priorityTone,
               )}
             >
-              <CalendarDays className="size-2.5" aria-hidden />
-              {dueDateInfo.label}
+              <Flag className="size-2.5" aria-hidden />
+              {task.priority}
             </span>
-          ) : null}
-          {checklistPct != null ? (
-            <span
-              className="text-muted-foreground inline-flex items-center gap-1 text-[10px] font-medium tabular-nums"
-              title={`${task.checklistDone} dari ${task.checklistTotal} sub-tugas selesai`}
-            >
-              <CheckSquare className="size-2.5" aria-hidden />
-              {task.checklistDone}/{task.checklistTotal}
-            </span>
-          ) : null}
+            {dueDateInfo ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-[10px] font-medium",
+                  dueDateInfo.tone,
+                )}
+              >
+                <CalendarDays className="size-2.5" aria-hidden />
+                {dueDateInfo.label}
+              </span>
+            ) : null}
+          </div>
+          <TaskChecklistPopover
+            items={task.checklistItems}
+            doneCount={task.checklistDone}
+            totalCount={task.checklistTotal}
+            contentAlign="end"
+            triggerClassName="border-border/70 bg-muted/40 hover:bg-muted/70 rounded-full border px-2 py-0.5"
+          />
         </div>
         {checklistPct != null && task.checklistTotal > 0 ? (
           <div className="bg-muted/60 relative mt-1.5 h-1 w-full overflow-hidden rounded-full">
@@ -359,7 +368,7 @@ function DraggableTask({
           </div>
         ) : null}
         <PicStrip assignees={task.assignees} />
-      </button>
+      </div>
     </div>
   );
 }
@@ -472,7 +481,6 @@ export function TasksKanban({
   isRoomManager?: boolean;
   showArchived?: boolean;
 }) {
-  const router = useRouter();
   const [localStatuses, setLocalStatuses] = useState<Record<string, TaskStatus>>({});
   const [doneConfirmTaskId, setDoneConfirmTaskId] = useState<string | null>(null);
   const [doneConfirmUnfinished, setDoneConfirmUnfinished] = useState(0);

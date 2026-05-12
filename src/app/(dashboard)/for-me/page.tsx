@@ -3,7 +3,6 @@ import { TaskStatus } from "@prisma/client";
 import { redirect } from "next/navigation";
 import {
   AlertOctagon,
-  CalendarDays,
   CircleDashed,
   ClipboardList,
   ListChecks,
@@ -17,6 +16,7 @@ import { taskStatusLabel } from "@/lib/task-status-ui";
 import { Badge } from "@/components/ui/badge";
 import { PageHero, PageHeroChip } from "@/components/page-hero";
 import { cn } from "@/lib/utils";
+import { MyTasksTaskCard } from "./my-tasks-task-card";
 
 const FOR_ME_STATUSES: TaskStatus[] = [
   TaskStatus.TODO,
@@ -70,41 +70,6 @@ function formatShortDate(d: Date) {
   return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
 }
 
-function dueChip(due: Date | null, completed: boolean) {
-  if (!due) {
-    return (
-      <span className="text-muted-foreground inline-flex items-center gap-1 text-[11px]">
-        <CalendarDays className="size-3" aria-hidden /> Tanpa deadline
-      </span>
-    );
-  }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = new Date(due);
-  start.setHours(0, 0, 0, 0);
-  const diff = Math.floor((start.getTime() - today.getTime()) / 86_400_000);
-  let tone = "text-muted-foreground";
-  let label = `Due ${formatShortDate(due)}`;
-  if (!completed) {
-    if (diff < 0) {
-      tone = "text-rose-600 dark:text-rose-400";
-      label = `${Math.abs(diff)} hari lewat`;
-    } else if (diff === 0) {
-      tone = "text-amber-600 dark:text-amber-400";
-      label = "Hari ini";
-    } else if (diff <= 3) {
-      tone = "text-amber-600 dark:text-amber-400";
-      label = `${diff} hari lagi`;
-    }
-  }
-  return (
-    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", tone)}>
-      <CalendarDays className="size-3" aria-hidden />
-      {label}
-    </span>
-  );
-}
-
 export default async function MyTasksPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -123,6 +88,10 @@ export default async function MyTasksPage() {
         status: true,
         dueDate: true,
         roomProcess: true,
+        checklistItems: {
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, title: true, done: true },
+        },
         project: {
           select: {
             name: true,
@@ -254,31 +223,18 @@ export default async function MyTasksPage() {
                 <ul className="flex flex-col gap-2">
                   {group.items.map((task) => (
                     <li key={task.id}>
-                      <Link
+                      <MyTasksTaskCard
                         href={`/room/${task.project.roomId}/tasks?process=${task.roomProcess}`}
-                        className="bg-background hover:border-primary/40 hover:bg-muted/30 group flex flex-col gap-2 rounded-lg border border-border/70 px-3 py-2.5 transition-colors"
-                      >
-                        <p className="text-foreground line-clamp-2 text-sm font-medium leading-snug">
-                          {task.title}
-                        </p>
-                        <p className="text-muted-foreground line-clamp-1 text-[11px]">
-                          <span className="text-foreground/80 font-medium">
-                            {task.project.room.name}
-                          </span>{" "}
-                          · {roomTaskProcessLabel(task.roomProcess)}
-                        </p>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span
-                            className={cn(
-                              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                              tone.chip,
-                            )}
-                          >
-                            {taskStatusLabel(task.status)}
-                          </span>
-                          {dueChip(task.dueDate, false)}
-                        </div>
-                      </Link>
+                        title={task.title}
+                        roomName={task.project.room.name}
+                        processLabel={roomTaskProcessLabel(task.roomProcess)}
+                        status={task.status}
+                        statusChipClassName={tone.chip}
+                        dueDateIso={
+                          task.dueDate ? task.dueDate.toISOString() : null
+                        }
+                        checklistItems={task.checklistItems}
+                      />
                     </li>
                   ))}
                 </ul>

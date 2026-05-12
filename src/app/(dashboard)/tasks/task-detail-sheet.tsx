@@ -24,6 +24,7 @@ import {
   loadTaskDetail,
   toggleChecklistItem,
   unarchiveTask,
+  updateChecklistItemTitle,
   updateTask,
 } from "@/actions/tasks";
 import { addTaskComment, deleteTaskComment } from "@/actions/task-comments";
@@ -71,7 +72,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { Link2, Paperclip, Trash2 } from "lucide-react";
+import { Link2, Paperclip, Pencil, Trash2 } from "lucide-react";
 
 function priorityLabel(p: TaskPriority) {
   switch (p) {
@@ -164,6 +165,8 @@ export function TaskDetailSheet({
   const [savePending, setSavePending] = useState(false);
 
   const [newCheck, setNewCheck] = useState("");
+  const [checklistEditId, setChecklistEditId] = useState<string | null>(null);
+  const [checklistEditDraft, setChecklistEditDraft] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [commentPending, setCommentPending] = useState(false);
   const [uploadPending, setUploadPending] = useState(false);
@@ -211,6 +214,9 @@ export function TaskDetailSheet({
     setDueDate(task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "");
     setLeadTimeDays(task.leadTimeDays != null ? String(task.leadTimeDays) : "");
     setApproval(task.isApprovalRequired);
+    setNewCheck("");
+    setChecklistEditId(null);
+    setChecklistEditDraft("");
     setCommentBody("");
     setAttachLinkUrl("");
     setAttachLinkTitle("");
@@ -480,6 +486,34 @@ export function TaskDetailSheet({
     } catch {
       toast.error("Gagal menambah sub-tugas.");
     }
+  }
+
+  async function commitChecklistEdit(itemId: string) {
+    if (!task) return;
+    const title = checklistEditDraft.trim();
+    if (!title) {
+      toast.error("Judul sub-tugas tidak boleh kosong.");
+      return;
+    }
+    const prev = task.checklistItems.find((x) => x.id === itemId)?.title;
+    if (prev === title) {
+      setChecklistEditId(null);
+      return;
+    }
+    try {
+      await updateChecklistItemTitle({ id: itemId, title });
+      setChecklistEditId(null);
+      refresh();
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Gagal menyimpan sub-tugas.",
+      );
+    }
+  }
+
+  function cancelChecklistEdit() {
+    setChecklistEditId(null);
+    setChecklistEditDraft("");
   }
 
   async function onArchiveTask() {
@@ -865,35 +899,91 @@ export function TaskDetailSheet({
                     {task.checklistItems.map((c) => (
                       <li
                         key={c.id}
-                        className="flex items-center justify-between gap-2 text-sm"
+                        className="flex items-start justify-between gap-2 text-sm"
                       >
-                        <label className="flex flex-1 items-center gap-2">
-                          <Checkbox
-                            checked={c.done}
-                            onCheckedChange={async (v) => {
-                              await toggleChecklistItem(c.id, v === true);
+                        {checklistEditId === c.id ? (
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                checked={c.done}
+                                disabled
+                                className="mt-0.5 shrink-0"
+                              />
+                              <Input
+                                className="h-8 min-w-0 flex-1"
+                                value={checklistEditDraft}
+                                onChange={(e) =>
+                                  setChecklistEditDraft(e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void commitChecklistEdit(c.id);
+                                  }
+                                  if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    cancelChecklistEdit();
+                                  }
+                                }}
+                                onBlur={() => void commitChecklistEdit(c.id)}
+                                autoFocus
+                              />
+                            </div>
+                            <p className="text-muted-foreground px-1 text-[10px]">
+                              Enter simpan · Esc batal
+                            </p>
+                          </div>
+                        ) : (
+                          <label className="flex min-w-0 flex-1 items-center gap-2">
+                            <Checkbox
+                              checked={c.done}
+                              onCheckedChange={async (v) => {
+                                await toggleChecklistItem(c.id, v === true);
+                                refresh();
+                              }}
+                            />
+                            <span
+                              className={
+                                c.done
+                                  ? "text-muted-foreground line-through"
+                                  : ""
+                              }
+                            >
+                              {c.title}
+                            </span>
+                          </label>
+                        )}
+                        <div className="flex shrink-0 gap-0.5">
+                          {checklistEditId !== c.id ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="xs"
+                              aria-label="Edit sub-tugas"
+                              className="text-muted-foreground"
+                              onClick={() => {
+                                setChecklistEditId(c.id);
+                                setChecklistEditDraft(c.title);
+                              }}
+                            >
+                              <Pencil className="size-3.5" aria-hidden />
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            aria-label="Hapus sub-tugas"
+                            disabled={checklistEditId === c.id}
+                            onClick={async () => {
+                              await deleteChecklistItem(c.id);
+                              if (checklistEditId === c.id) cancelChecklistEdit();
                               refresh();
                             }}
-                          />
-                          <span
-                            className={
-                              c.done ? "text-muted-foreground line-through" : ""
-                            }
                           >
-                            {c.title}
-                          </span>
-                        </label>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          onClick={async () => {
-                            await deleteChecklistItem(c.id);
-                            refresh();
-                          }}
-                        >
-                          ×
-                        </Button>
+                            ×
+                          </Button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -902,6 +992,12 @@ export function TaskDetailSheet({
                       placeholder="Sub-tugas baru…"
                       value={newCheck}
                       onChange={(e) => setNewCheck(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void onAddCheck();
+                        }
+                      }}
                     />
                     <Button type="button" variant="secondary" onClick={onAddCheck}>
                       Tambah

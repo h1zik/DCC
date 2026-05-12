@@ -331,6 +331,11 @@ export function TasksWorkspace({
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
         checklistTotal: t.checklistItems.length,
         checklistDone: t.checklistItems.filter((item) => item.done).length,
+        checklistItems: t.checklistItems.map((c) => ({
+          id: c.id,
+          title: c.title,
+          done: c.done,
+        })),
         project: {
           name: t.project.name,
           brand: { name: taskProjectContextLabel(t.project) },
