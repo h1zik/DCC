@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import Image from "next/image";
 import { useRef, useState } from "react";
@@ -63,7 +64,7 @@ export function RoomLogoEditor({
       if (fileRef.current) fileRef.current.value = "";
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan logo.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan logo."));
     } finally {
       setPending(false);
     }
@@ -81,7 +82,7 @@ export function RoomLogoEditor({
       if (fileRef.current) fileRef.current.value = "";
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus logo.");
+      toast.error(actionErrorMessage(e, "Gagal menghapus logo."));
     } finally {
       setPending(false);
     }

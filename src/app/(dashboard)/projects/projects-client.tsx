@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -144,7 +145,7 @@ export function ProjectsPipeline({
       );
       router.refresh();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Gagal mengubah tahap.";
+      const msg = actionErrorMessage(e, "Gagal mengubah tahap.");
       toast.error(msg);
     }
   }
@@ -155,7 +156,7 @@ export function ProjectsPipeline({
       toast.success("Pengajuan pindah tahap dibatalkan.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal membatalkan.");
+      toast.error(actionErrorMessage(e, "Gagal membatalkan."));
     }
   }
 

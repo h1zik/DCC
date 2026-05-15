@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -153,7 +154,7 @@ export function TimelineViewClient({
         setOpen(false);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
       }
     });
   }
@@ -166,7 +167,7 @@ export function TimelineViewClient({
         toast.success("Milestone dihapus.");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menghapus.");
+        toast.error(actionErrorMessage(err, "Gagal menghapus."));
       }
     });
   }

@@ -40,6 +40,7 @@ import {
 } from "@/lib/room-task-process";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import { taskStatusLabel } from "@/lib/task-status-ui";
+import { actionErrorMessage } from "@/lib/action-error-message";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -241,8 +242,7 @@ export function TaskDetailSheet({
       setDetailAttachments(detail.attachments);
     } catch (e) {
       toast.error(
-        e instanceof Error ? e.message : "Gagal memuat komentar & lampiran.",
-      );
+        actionErrorMessage(e, "Gagal memuat komentar & lampiran."));
     } finally {
       setDetailLoading(false);
     }
@@ -372,7 +372,7 @@ export function TaskDetailSheet({
       toast.success("Tugas disimpan.");
       onTaskPatched?.(task.id, updated);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan."));
     } finally {
       setSavePending(false);
     }
@@ -397,7 +397,7 @@ export function TaskDetailSheet({
       setNewTagName("");
       toast.success("Tag ditambahkan.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal membuat tag.");
+      toast.error(actionErrorMessage(e, "Gagal membuat tag."));
     } finally {
       setCreateTagPending(false);
     }
@@ -426,7 +426,7 @@ export function TaskDetailSheet({
       // jumlah komentar tidak ditampilkan di kartu Kanban/list.
       await loadDetail(task.id);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal.");
+      toast.error(actionErrorMessage(e, "Gagal."));
     } finally {
       setCommentPending(false);
     }
@@ -445,7 +445,7 @@ export function TaskDetailSheet({
       toast.success("Tautan ditambahkan.");
       await loadDetail(task.id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menambah tautan.");
+      toast.error(actionErrorMessage(err, "Gagal menambah tautan."));
     } finally {
       setLinkAttachPending(false);
     }
@@ -471,7 +471,7 @@ export function TaskDetailSheet({
       );
       await loadDetail(task.id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unggah gagal.");
+      toast.error(actionErrorMessage(err, "Unggah gagal."));
     } finally {
       setUploadPending(false);
     }
@@ -506,8 +506,7 @@ export function TaskDetailSheet({
       refresh();
     } catch (e) {
       toast.error(
-        e instanceof Error ? e.message : "Gagal menyimpan sub-tugas.",
-      );
+        actionErrorMessage(e, "Gagal menyimpan sub-tugas."));
     }
   }
 
@@ -525,7 +524,7 @@ export function TaskDetailSheet({
       refresh();
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal mengarsipkan.");
+      toast.error(actionErrorMessage(e, "Gagal mengarsipkan."));
     } finally {
       setArchivePending(false);
     }
@@ -540,7 +539,7 @@ export function TaskDetailSheet({
       refresh();
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal memulihkan.");
+      toast.error(actionErrorMessage(e, "Gagal memulihkan."));
     } finally {
       setArchivePending(false);
     }
@@ -1054,9 +1053,7 @@ export function TaskDetailSheet({
                                       );
                                     } catch (e) {
                                       toast.error(
-                                        e instanceof Error
-                                          ? e.message
-                                          : "Gagal.",
+                                        actionErrorMessage(e, "Gagal."),
                                       );
                                     }
                                   }}
@@ -1221,7 +1218,7 @@ export function TaskDetailSheet({
                                   );
                                 } catch (e) {
                                   toast.error(
-                                    e instanceof Error ? e.message : "Gagal.",
+                                    actionErrorMessage(e, "Gagal."),
                                   );
                                 }
                               }}

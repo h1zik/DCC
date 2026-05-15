@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -114,7 +115,7 @@ export function ApArClient(props: {
         setApAmount("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }
@@ -137,7 +138,7 @@ export function ApArClient(props: {
         setArAmount("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }
@@ -243,7 +244,7 @@ export function ApArClient(props: {
                 toast.success("Pembayaran dicatat.");
                 router.refresh();
               } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Gagal.");
+                toast.error(actionErrorMessage(err, "Gagal."));
               }
             });
           }}
@@ -305,7 +306,7 @@ export function ApArClient(props: {
                 toast.success("Penerimaan dicatat.");
                 router.refresh();
               } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Gagal.");
+                toast.error(actionErrorMessage(err, "Gagal."));
               }
             });
           }}

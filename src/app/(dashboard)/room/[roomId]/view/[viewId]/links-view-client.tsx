@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -109,7 +110,7 @@ export function LinksViewClient({
         setOpen(false);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
       }
     });
   }
@@ -122,7 +123,7 @@ export function LinksViewClient({
         toast.success("Tautan dihapus.");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menghapus.");
+        toast.error(actionErrorMessage(err, "Gagal menghapus."));
       }
     });
   }

@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -130,7 +131,7 @@ export function AdminUsersClient({
       closeEdit();
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(err, "Gagal menyimpan."));
     } finally {
       setPending(false);
     }
@@ -148,7 +149,7 @@ export function AdminUsersClient({
       toast.success("Pengguna dihapus.");
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menghapus.");
+      toast.error(actionErrorMessage(err, "Gagal menghapus."));
     } finally {
       setDeletePendingId(null);
     }

@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState } from "react";
 import { RoomWorkspaceSection, type Brand } from "@prisma/client";
@@ -69,7 +70,7 @@ export function RoomEditorButton({
       setOpen(false);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal memperbarui ruangan.");
+      toast.error(actionErrorMessage(e, "Gagal memperbarui ruangan."));
     } finally {
       setPending(false);
     }

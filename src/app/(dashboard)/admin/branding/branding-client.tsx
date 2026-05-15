@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -44,7 +45,7 @@ export function BrandingClient({
         setLogoFile(null);
         setFaviconFile(null);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menyimpan branding.");
+        toast.error(actionErrorMessage(e, "Gagal menyimpan branding."));
       }
     });
   }

@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { createElement, useState, useTransition } from "react";
@@ -64,7 +65,7 @@ export function RoomViewHeader({ view, canManage }: Props) {
         setRenameOpen(false);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal memperbarui.");
+        toast.error(actionErrorMessage(err, "Gagal memperbarui."));
       }
     });
   }
@@ -78,7 +79,7 @@ export function RoomViewHeader({ view, canManage }: Props) {
         router.push(`/room/${view.roomId}/tasks`);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menghapus.");
+        toast.error(actionErrorMessage(err, "Gagal menghapus."));
       }
     });
   }

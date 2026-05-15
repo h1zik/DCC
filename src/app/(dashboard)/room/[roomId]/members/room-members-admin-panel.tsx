@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState } from "react";
 import { RoomMemberRole, RoomTaskProcess, type User } from "@prisma/client";
@@ -85,7 +86,7 @@ export function RoomMembersAdminPanel({
       toast.success("Peran diperbarui.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan peran.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan peran."));
     } finally {
       setPending(false);
     }
@@ -112,7 +113,7 @@ export function RoomMembersAdminPanel({
       toast.success("Akses fase diperbarui.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan akses fase.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan akses fase."));
     } finally {
       setPending(false);
     }
@@ -145,7 +146,7 @@ export function RoomMembersAdminPanel({
       setAddProcesses([...ALL_ROOM_TASK_PROCESSES]);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menambah anggota.");
+      toast.error(actionErrorMessage(e, "Gagal menambah anggota."));
     } finally {
       setPending(false);
     }
@@ -159,7 +160,7 @@ export function RoomMembersAdminPanel({
       toast.success("Anggota dihapus.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus anggota.");
+      toast.error(actionErrorMessage(e, "Gagal menghapus anggota."));
     } finally {
       setPending(false);
     }

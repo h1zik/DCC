@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -55,8 +56,7 @@ export function TaskChecklistPopover({
       router.refresh();
     } catch (e) {
       toast.error(
-        e instanceof Error ? e.message : "Gagal memperbarui sub-tugas.",
-      );
+        actionErrorMessage(e, "Gagal memperbarui sub-tugas."));
     } finally {
       setPendingId(null);
     }

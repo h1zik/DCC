@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -246,7 +247,7 @@ export function JournalEditorClient(props: Props) {
         toast.success("Header disimpan.");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(e, "Gagal menyimpan."));
       }
     });
   }
@@ -312,7 +313,7 @@ export function JournalEditorClient(props: Props) {
         toast.success("Baris ditambahkan.");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menambah baris.");
+        toast.error(actionErrorMessage(e, "Gagal menambah baris."));
       }
     });
   }
@@ -324,7 +325,7 @@ export function JournalEditorClient(props: Props) {
         toast.success("Baris dihapus.");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menghapus.");
+        toast.error(actionErrorMessage(e, "Gagal menghapus."));
       }
     });
   }
@@ -337,7 +338,7 @@ export function JournalEditorClient(props: Props) {
         router.push("/finance/journals");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Posting gagal.");
+        toast.error(actionErrorMessage(e, "Posting gagal."));
       }
     });
   }
@@ -350,7 +351,7 @@ export function JournalEditorClient(props: Props) {
         router.push("/finance/journals");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menghapus.");
+        toast.error(actionErrorMessage(e, "Gagal menghapus."));
       }
     });
   }
@@ -979,7 +980,7 @@ function ReverseDialog({ entryId }: { entryId: string }) {
         router.push(`/finance/journals/${r.id}`);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal membalik jurnal.");
+        toast.error(actionErrorMessage(err, "Gagal membalik jurnal."));
       }
     });
   }

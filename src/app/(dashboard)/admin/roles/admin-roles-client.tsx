@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -86,7 +87,7 @@ export function AdminRolesClient({ roles }: { roles: AdminRoleRow[] }) {
       setCreateTier(UserRole.LOGISTICS);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal membuat peran.");
+      toast.error(actionErrorMessage(err, "Gagal membuat peran."));
     } finally {
       setPending(false);
     }
@@ -115,7 +116,7 @@ export function AdminRolesClient({ roles }: { roles: AdminRoleRow[] }) {
       setEditing(null);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(err, "Gagal menyimpan."));
     } finally {
       setPending(false);
     }
@@ -138,7 +139,7 @@ export function AdminRolesClient({ roles }: { roles: AdminRoleRow[] }) {
       toast.success("Peran dihapus.");
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menghapus.");
+      toast.error(actionErrorMessage(err, "Gagal menghapus."));
     } finally {
       setPending(false);
     }

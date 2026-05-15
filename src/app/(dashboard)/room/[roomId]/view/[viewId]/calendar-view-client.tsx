@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
@@ -244,8 +245,7 @@ export function CalendarViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menyimpan acara.",
-        );
+          actionErrorMessage(err, "Gagal menyimpan acara."));
       } finally {
         setSubmitting(false);
       }
@@ -262,8 +262,7 @@ export function CalendarViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menghapus acara.",
-        );
+          actionErrorMessage(err, "Gagal menghapus acara."));
       }
     });
   }

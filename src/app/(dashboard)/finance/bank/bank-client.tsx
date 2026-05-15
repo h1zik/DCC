@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -73,7 +74,7 @@ export function BankClient(props: {
         setName("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
       }
     });
   }
@@ -95,7 +96,7 @@ export function BankClient(props: {
         setCsvText("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Import gagal.");
+        toast.error(actionErrorMessage(err, "Import gagal."));
       }
     });
   }

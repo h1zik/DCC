@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -57,8 +58,7 @@ export function AddRoomViewButton({ roomId }: { roomId: string }) {
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menambah view.",
-        );
+          actionErrorMessage(err, "Gagal menambah view."));
       }
     });
   }

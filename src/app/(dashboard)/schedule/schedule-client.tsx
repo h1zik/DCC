@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -300,7 +301,7 @@ export function ScheduleClient({
         resetCreateForm();
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
       }
     });
   }
@@ -350,7 +351,7 @@ export function ScheduleClient({
         setEditing(null);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
       }
     });
   }
@@ -366,7 +367,7 @@ export function ScheduleClient({
         setEditing(null);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menghapus.");
+        toast.error(actionErrorMessage(err, "Gagal menghapus."));
       }
     });
   }
@@ -401,7 +402,7 @@ export function ScheduleClient({
         setBulkSelectedEventIds(new Set());
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal hapus massal.");
+        toast.error(actionErrorMessage(err, "Gagal hapus massal."));
       }
     });
   }

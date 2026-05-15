@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import {
@@ -214,8 +215,7 @@ export function ListViewClient({
           });
         } catch (err) {
           toast.error(
-            err instanceof Error ? err.message : "Gagal menyimpan sel.",
-          );
+            actionErrorMessage(err, "Gagal menyimpan sel."));
         } finally {
           router.refresh();
         }
@@ -236,8 +236,7 @@ export function ListViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menambah baris.",
-        );
+          actionErrorMessage(err, "Gagal menambah baris."));
       }
     });
   }
@@ -249,8 +248,7 @@ export function ListViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menambah kolom.",
-        );
+          actionErrorMessage(err, "Gagal menambah kolom."));
       }
     });
   }
@@ -273,8 +271,7 @@ export function ListViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal mengubah label.",
-        );
+          actionErrorMessage(err, "Gagal mengubah label."));
       } finally {
         setEditingHeader(null);
       }
@@ -300,8 +297,7 @@ export function ListViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal mengubah tipe kolom.",
-        );
+          actionErrorMessage(err, "Gagal mengubah tipe kolom."));
       }
     });
   }
@@ -331,8 +327,7 @@ export function ListViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menyimpan opsi.",
-        );
+          actionErrorMessage(err, "Gagal menyimpan opsi."));
       }
     });
   }
@@ -350,8 +345,7 @@ export function ListViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menghapus kolom.",
-        );
+          actionErrorMessage(err, "Gagal menghapus kolom."));
       }
     });
   }
@@ -365,8 +359,7 @@ export function ListViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menghapus baris.",
-        );
+          actionErrorMessage(err, "Gagal menghapus baris."));
         router.refresh();
       }
     });

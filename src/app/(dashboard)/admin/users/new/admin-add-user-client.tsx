@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -73,7 +74,7 @@ export function AdminAddUserClient({ roles }: { roles: AddUserRoleOption[] }) {
       router.refresh();
       router.push("/admin/users");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal membuat pengguna.");
+      toast.error(actionErrorMessage(err, "Gagal membuat pengguna."));
     } finally {
       setPending(false);
     }

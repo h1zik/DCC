@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -87,7 +88,7 @@ export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
         toast.success("Bukti diunggah.");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal upload.");
+        toast.error(actionErrorMessage(err, "Gagal upload."));
       }
     });
   }
@@ -100,7 +101,7 @@ export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
         toast.success("Lampiran dihapus.");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal hapus.");
+        toast.error(actionErrorMessage(err, "Gagal hapus."));
       }
     });
   }

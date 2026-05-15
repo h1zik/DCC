@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -86,7 +87,7 @@ export function TreasuryClient(props: { banks: Bank[]; cashflow: CfLine[] }) {
         setAmount("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }

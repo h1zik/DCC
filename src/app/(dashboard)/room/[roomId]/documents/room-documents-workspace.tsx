@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import Image from "next/image";
 import {
@@ -429,7 +430,7 @@ export function RoomDocumentsWorkspace({
         ok += 1;
       } catch (err) {
         const msg =
-          err instanceof Error ? err.message : "Unggah gagal.";
+          actionErrorMessage(err, "Unggah gagal.");
         updateJob(job.id, { status: "error", error: msg, progress: 0 });
         fail += 1;
       }
@@ -473,7 +474,7 @@ export function RoomDocumentsWorkspace({
       setUploadFolderId(id);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal membuat folder.");
+      toast.error(actionErrorMessage(err, "Gagal membuat folder."));
     } finally {
       setPending(false);
     }
@@ -499,7 +500,7 @@ export function RoomDocumentsWorkspace({
       setRenameOpen(false);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(err, "Gagal menyimpan."));
     } finally {
       setRenameBusy(false);
     }
@@ -522,7 +523,7 @@ export function RoomDocumentsWorkspace({
       }
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal menghapus folder.");
+      toast.error(actionErrorMessage(err, "Gagal menghapus folder."));
     } finally {
       setPending(false);
     }
@@ -536,7 +537,7 @@ export function RoomDocumentsWorkspace({
         toast.success("Dokumen dihapus.");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     },
     [router],
@@ -553,7 +554,7 @@ export function RoomDocumentsWorkspace({
         toast.success(`Dipindahkan ke ${targetName}.`);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal memindahkan.");
+        toast.error(actionErrorMessage(err, "Gagal memindahkan."));
       }
     },
     [router, folders],
@@ -1919,8 +1920,7 @@ function DocPreviewDialog({
       router.refresh();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Gagal menyimpan tag.",
-      );
+        actionErrorMessage(err, "Gagal menyimpan tag."));
     } finally {
       setSavingTags(false);
     }

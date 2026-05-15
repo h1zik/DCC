@@ -1,3 +1,4 @@
+import { actionErrorMessage } from "@/lib/action-error-message";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
@@ -81,7 +82,7 @@ export async function POST(req: Request, { params }: Ctx) {
       publicPath: row.publicPath,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unggah gagal.";
+    const msg = actionErrorMessage(e, "Unggah gagal.");
     const unauthorized =
       msg.includes("Belum masuk") || msg.includes("dapat melakukan");
     return NextResponse.json(

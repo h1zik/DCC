@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -73,7 +74,7 @@ export function BudgetClient(props: {
         setLimit("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }

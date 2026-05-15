@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -426,7 +427,7 @@ export function RoomChatExperience({
       try {
         gifUrl = assertSafeGifUrl(gif);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "URL GIF tidak valid.");
+        toast.error(actionErrorMessage(e, "URL GIF tidak valid."));
         return;
       }
     }
@@ -452,7 +453,7 @@ export function RoomChatExperience({
         }
         taRef.current?.focus();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal mengirim.");
+        toast.error(actionErrorMessage(e, "Gagal mengirim."));
       }
     });
   }
@@ -466,7 +467,7 @@ export function RoomChatExperience({
       setGifOpen(false);
       toast.success("GIF ditambahkan ke pesan (kirim untuk mengunggah).");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "URL tidak valid.");
+      toast.error(actionErrorMessage(e, "URL tidak valid."));
     }
   }
 

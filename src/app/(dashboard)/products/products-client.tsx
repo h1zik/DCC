@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState } from "react";
 import type { Brand, Product } from "@prisma/client";
@@ -125,7 +126,7 @@ export function ProductsClient({
       setOpen(false);
       resetForm();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Gagal menyimpan produk.";
+      const msg = actionErrorMessage(e, "Gagal menyimpan produk.");
       toast.error(msg);
     } finally {
       setPending(false);

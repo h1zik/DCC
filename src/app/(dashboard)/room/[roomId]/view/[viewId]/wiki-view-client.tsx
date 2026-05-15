@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import {
@@ -133,8 +134,7 @@ export function WikiViewClient({
         } catch (err) {
           setSaveState({ pageId: page.id, status: "error" });
           toast.error(
-            err instanceof Error ? err.message : "Gagal menyimpan halaman.",
-          );
+            actionErrorMessage(err, "Gagal menyimpan halaman."));
         }
       });
     },
@@ -192,8 +192,7 @@ export function WikiViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal membuat halaman.",
-        );
+          actionErrorMessage(err, "Gagal membuat halaman."));
       }
     });
   }
@@ -208,8 +207,7 @@ export function WikiViewClient({
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal menghapus halaman.",
-        );
+          actionErrorMessage(err, "Gagal menghapus halaman."));
         router.refresh();
       }
     });

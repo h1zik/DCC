@@ -16,6 +16,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { TaskStatus } from "@prisma/client";
 import { archiveTask, moveTaskStatus, unarchiveTask } from "@/actions/tasks";
 import { toast } from "sonner";
+import { actionErrorMessage } from "@/lib/action-error-message";
 import { cn } from "@/lib/utils";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { Button } from "@/components/ui/button";
@@ -154,7 +155,7 @@ function DraggableTask({
       router.refresh();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Gagal mengarsipkan tugas.";
+        actionErrorMessage(err, "Gagal mengarsipkan tugas.");
       toast.error(msg);
     } finally {
       setArchivePending(false);
@@ -171,7 +172,7 @@ function DraggableTask({
       router.refresh();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Gagal memulihkan tugas.";
+        actionErrorMessage(err, "Gagal memulihkan tugas.");
       toast.error(msg);
     } finally {
       setArchivePending(false);
@@ -511,22 +512,20 @@ export function TasksKanban({
     previousStatus: TaskStatus,
   ) {
     setLocalStatuses((prev) => ({ ...prev, [taskId]: newStatus }));
-    toast.success(
+    const successMsg =
       newStatus === TaskStatus.DONE
         ? "Tugas dipindahkan ke Selesai."
-        : "Status tugas diperbarui.",
-    );
+        : "Status tugas diperbarui.";
+    const errFallback =
+      newStatus === TaskStatus.DONE
+        ? "Gagal memindahkan tugas ke Selesai."
+        : "Gagal memindahkan tugas.";
     try {
       await moveTaskStatus({ taskId, status: newStatus });
+      toast.success(successMsg);
     } catch (err) {
       setLocalStatuses((prev) => ({ ...prev, [taskId]: previousStatus }));
-      const msg =
-        err instanceof Error
-          ? err.message
-          : newStatus === TaskStatus.DONE
-            ? "Gagal memindahkan tugas ke Selesai."
-            : "Gagal memindahkan tugas.";
-      toast.error(msg);
+      toast.error(actionErrorMessage(err, errFallback));
     }
   }
 

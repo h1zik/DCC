@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import type { PipelineStage } from "@prisma/client";
 import { useRouter } from "next/navigation";
@@ -53,7 +54,7 @@ export function ApprovalsClient({
       toast.success("Tugas disetujui.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyetujui.");
+      toast.error(actionErrorMessage(e, "Gagal menyetujui."));
     }
   }
 
@@ -63,7 +64,7 @@ export function ApprovalsClient({
       toast.success("Pindah tahap pipeline disetujui.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyetujui.");
+      toast.error(actionErrorMessage(e, "Gagal menyetujui."));
     }
   }
 
@@ -76,7 +77,7 @@ export function ApprovalsClient({
       toast.success("Pengajuan ditolak.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menolak.");
+      toast.error(actionErrorMessage(e, "Gagal menolak."));
     }
   }
 

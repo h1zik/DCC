@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -50,7 +51,7 @@ export function PeriodLockPanel({ currentPeriod, locks }: Props) {
         setReason("");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal mengunci periode.");
+        toast.error(actionErrorMessage(e, "Gagal mengunci periode."));
       }
     });
   }
@@ -63,7 +64,7 @@ export function PeriodLockPanel({ currentPeriod, locks }: Props) {
         toast.success(`Periode ${periodLabel(y, m)} dibuka.`);
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal membuka periode.");
+        toast.error(actionErrorMessage(e, "Gagal membuka periode."));
       }
     });
   }

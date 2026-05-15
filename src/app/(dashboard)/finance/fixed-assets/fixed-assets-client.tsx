@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -98,7 +99,7 @@ export function FixedAssetsClient(props: {
         setCost("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }
@@ -110,7 +111,7 @@ export function FixedAssetsClient(props: {
         toast.success("Penyusutan diposting.");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }

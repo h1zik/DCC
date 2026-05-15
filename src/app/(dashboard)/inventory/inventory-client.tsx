@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -395,7 +396,7 @@ export function InventoryClient({
       setEditingLog(null);
       router.refresh();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Gagal memperbarui mutasi.";
+      const msg = actionErrorMessage(err, "Gagal memperbarui mutasi.");
       toast.error(msg);
     } finally {
       setEditPending(false);
@@ -415,7 +416,7 @@ export function InventoryClient({
       toast.success("Mutasi di-void dengan jejak audit.");
       router.refresh();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Gagal mem-void mutasi.";
+      const msg = actionErrorMessage(err, "Gagal mem-void mutasi.");
       toast.error(msg);
     } finally {
       setDeletePendingId(null);
@@ -449,7 +450,7 @@ export function InventoryClient({
       router.refresh();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Gagal mencatat stok.";
+        actionErrorMessage(err, "Gagal mencatat stok.");
       toast.error(msg);
     } finally {
       setPending(false);

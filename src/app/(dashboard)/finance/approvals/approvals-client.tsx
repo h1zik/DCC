@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -80,7 +81,7 @@ export function ApprovalsClient(props: {
         setAmount("");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }
@@ -210,7 +211,7 @@ function RowActions({
         toast.success("OK");
         onAction();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal");
+        toast.error(actionErrorMessage(e, "Gagal"));
       }
     });
   }

@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -137,7 +138,7 @@ export function ProfileForm({
         toast.success("Profil disimpan.");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(e, "Gagal menyimpan."));
       }
     });
   }
@@ -156,7 +157,7 @@ export function ProfileForm({
         toast.success("Tampilan profil disimpan.");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menyimpan tampilan.");
+        toast.error(actionErrorMessage(e, "Gagal menyimpan tampilan."));
       }
     });
   }
@@ -187,7 +188,7 @@ export function ProfileForm({
         toast.success("Foto profil diperbarui.");
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Unggah gagal.");
+        toast.error(actionErrorMessage(err, "Unggah gagal."));
       }
     });
   }
@@ -200,7 +201,7 @@ export function ProfileForm({
         toast.success("Foto profil dihapus.");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal.");
+        toast.error(actionErrorMessage(e, "Gagal."));
       }
     });
   }

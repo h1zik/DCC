@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -110,7 +111,7 @@ export function CoaClient({ initialRows }: { initialRows: Row[] }) {
         toast.success(`Akun ${row.isActive ? "dinonaktifkan" : "diaktifkan"}.`);
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal.");
+        toast.error(actionErrorMessage(err, "Gagal."));
       }
     });
   }
@@ -403,7 +404,7 @@ function CoaEditDialog({
         onClose();
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Gagal menyimpan.");
+        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
       }
     });
   }

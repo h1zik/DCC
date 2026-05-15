@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -260,7 +261,7 @@ export function TasksWorkspace({
         ];
       });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Gagal menyimpan.";
+      const msg = actionErrorMessage(e, "Gagal menyimpan.");
       toast.error(msg);
     } finally {
       setPending(false);

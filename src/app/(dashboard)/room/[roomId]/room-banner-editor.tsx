@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -44,7 +45,7 @@ export function RoomBannerEditor({
       if (fileRef.current) fileRef.current.value = "";
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan banner.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan banner."));
     } finally {
       setPending(false);
     }
@@ -61,7 +62,7 @@ export function RoomBannerEditor({
       if (fileRef.current) fileRef.current.value = "";
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus banner.");
+      toast.error(actionErrorMessage(e, "Gagal menghapus banner."));
     } finally {
       setPending(false);
     }

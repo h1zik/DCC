@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
@@ -23,8 +24,7 @@ export function FinanceClearDemoButton() {
         router.refresh();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Gagal membersihkan data finance.",
-        );
+          actionErrorMessage(err, "Gagal membersihkan data finance."));
       }
     });
   }

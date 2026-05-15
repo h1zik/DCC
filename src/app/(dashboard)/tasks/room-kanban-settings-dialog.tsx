@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useEffect, useState } from "react";
 import { RoomTaskProcess, TaskStatus } from "@prisma/client";
@@ -93,7 +94,7 @@ export function RoomKanbanSettingsDialog({
       toast.success("Judul kolom disimpan.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan."));
     } finally {
       setBusy(false);
     }
@@ -110,7 +111,7 @@ export function RoomKanbanSettingsDialog({
       toast.success("Urutan kolom disimpan.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan urutan.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan urutan."));
     } finally {
       setBusy(false);
     }
@@ -138,7 +139,7 @@ export function RoomKanbanSettingsDialog({
       toast.success("Kolom ditambahkan.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menambah kolom.");
+      toast.error(actionErrorMessage(e, "Gagal menambah kolom."));
     } finally {
       setBusy(false);
     }
@@ -156,7 +157,7 @@ export function RoomKanbanSettingsDialog({
       toast.success("Kolom dihapus.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus kolom.");
+      toast.error(actionErrorMessage(e, "Gagal menghapus kolom."));
     } finally {
       setBusy(false);
     }

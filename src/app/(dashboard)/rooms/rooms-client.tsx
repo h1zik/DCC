@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -163,7 +164,7 @@ export function RoomsClient({
       reset();
       router.refresh();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Gagal menyimpan.";
+      const msg = actionErrorMessage(e, "Gagal menyimpan.");
       toast.error(msg);
     } finally {
       setPending(false);
@@ -177,7 +178,7 @@ export function RoomsClient({
       toast.success("Ruangan dihapus.");
       router.refresh();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Gagal menghapus.";
+      const msg = actionErrorMessage(e, "Gagal menghapus.");
       toast.error(msg);
     }
   }
@@ -200,7 +201,7 @@ export function RoomsClient({
       toast.success("Peran diperbarui.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan."));
     } finally {
       setMemberPending(false);
     }
@@ -235,7 +236,7 @@ export function RoomsClient({
       router.refresh();
     } catch (e) {
       router.refresh();
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan."));
     } finally {
       setMemberPending(false);
     }
@@ -271,7 +272,7 @@ export function RoomsClient({
       setAddProcesses([...ALL_ROOM_TASK_PROCESSES]);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menambah.");
+      toast.error(actionErrorMessage(e, "Gagal menambah."));
     } finally {
       setMemberPending(false);
     }
@@ -285,7 +286,7 @@ export function RoomsClient({
       toast.success("Anggota dihapus.");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menghapus.");
+      toast.error(actionErrorMessage(e, "Gagal menghapus."));
     } finally {
       setMemberPending(false);
     }

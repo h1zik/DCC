@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/action-error-message";
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -485,7 +486,7 @@ function CarouselDesignRail({
                 toast.success("Semua slide dihapus.");
                 router.refresh();
               } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Gagal.");
+                toast.error(actionErrorMessage(e, "Gagal."));
               }
             }}
           >
@@ -520,7 +521,7 @@ function CarouselDesignRail({
                     toast.success("Slide dihapus.");
                     router.refresh();
                   } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Gagal menghapus.");
+                    toast.error(actionErrorMessage(e, "Gagal menghapus."));
                   }
                 }}
               >
@@ -914,7 +915,7 @@ export function ContentPlanningClient({
         toast.success("Baris dihapus.");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Gagal menghapus.");
+        toast.error(actionErrorMessage(e, "Gagal menghapus."));
       }
     },
     [roomId, router],
@@ -973,7 +974,7 @@ export function ContentPlanningClient({
       reset();
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan."));
     } finally {
       setPending(false);
     }
@@ -1014,7 +1015,7 @@ export function ContentPlanningClient({
       });
     } catch (e) {
       setTableRows((rows) => rows.map((r) => (r.id === rowId ? prev : r)));
-      toast.error(e instanceof Error ? e.message : "Gagal menyimpan perubahan.");
+      toast.error(actionErrorMessage(e, "Gagal menyimpan perubahan."));
     } finally {
       setInlineSavingCell(null);
       setActiveCell(null);
@@ -1558,7 +1559,7 @@ export function ContentPlanningClient({
                 setKanbanSelectedIds([]);
                 router.refresh();
               } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Gagal menambahkan ke Kanban.");
+                toast.error(actionErrorMessage(e, "Gagal menambahkan ke Kanban."));
               }
             });
           }}
@@ -1733,8 +1734,7 @@ export function ContentPlanningClient({
                               router.refresh();
                             } catch (e) {
                               toast.error(
-                                e instanceof Error ? e.message : "Gagal menghapus file.",
-                              );
+                                actionErrorMessage(e, "Gagal menghapus file."));
                             }
                           }}
                         >
@@ -1820,8 +1820,7 @@ export function ContentPlanningClient({
                               router.refresh();
                             } catch (e) {
                               toast.error(
-                                e instanceof Error ? e.message : "Gagal menghapus.",
-                              );
+                                actionErrorMessage(e, "Gagal menghapus."));
                             }
                           }}
                         >
