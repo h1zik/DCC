@@ -145,6 +145,11 @@ function isInlineSelectUserPick(details?: InlineSelectChangeDetails): boolean {
 }
 
 function contentPlanRowSignature(r: ContentPlanTableRow): string {
+  const picIds = r.picUserIds?.length
+    ? r.picUserIds
+    : r.picUserId
+      ? [r.picUserId]
+      : [];
   return [
     r.id,
     r.usage,
@@ -152,7 +157,8 @@ function contentPlanRowSignature(r: ContentPlanTableRow): string {
     r.konten,
     r.statusCopywriting,
     r.statusDesign,
-    r.picUserIds.join(","),
+    picIds.join(","),
+    (r.pics ?? []).map((p) => p.id).join(","),
   ].join("|");
 }
 
@@ -1108,7 +1114,37 @@ export function ContentPlanningClient({
   const [catatan, setCatatan] = useState("");
   const [pending, setPending] = useState(false);
   const [kanbanPending, startKanban] = useTransition();
-  const [tableRows, setTableRows] = useState<ContentPlanTableRow[]>(items);
+
+  const picUserById = useMemo(() => {
+    return new Map(picUserOptions.map((u) => [u.id, u]));
+  }, [picUserOptions]);
+
+  const withResolvedPics = useCallback(
+    (row: ContentPlanTableRow): ContentPlanTableRow => {
+      const ids = row.picUserIds?.length
+        ? row.picUserIds
+        : row.picUserId
+          ? [row.picUserId]
+          : [];
+      const pics = ids
+        .map((id) => picUserById.get(id))
+        .filter((u): u is PicOption => Boolean(u));
+      return {
+        ...row,
+        usage: row.usage ?? ContentPlanUsage.AWARENESS,
+        picUserIds: ids,
+        pics: pics.length ? pics : row.pic ? [row.pic] : [],
+      };
+    },
+    [picUserById],
+  );
+
+  const serverRows = useMemo(
+    () => items.map(withResolvedPics),
+    [items, withResolvedPics],
+  );
+
+  const [tableRows, setTableRows] = useState<ContentPlanTableRow[]>(serverRows);
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [inlineSavingCell, setInlineSavingCell] = useState<string | null>(null);
   const [queuedDesignFiles, setQueuedDesignFiles] = useState<File[]>([]);
@@ -1205,42 +1241,9 @@ export function ContentPlanningClient({
     return { total, published, inProgress, fresh };
   }, [tableRows]);
 
-  const picUserById = useMemo(() => {
-    return new Map(picUserOptions.map((u) => [u.id, u]));
-  }, [picUserOptions]);
-
-  const withResolvedPics = useCallback(
-    (row: ContentPlanTableRow): ContentPlanTableRow => {
-      const ids = row.picUserIds?.length
-        ? row.picUserIds
-        : row.picUserId
-          ? [row.picUserId]
-          : [];
-      const pics = ids
-        .map((id) => picUserById.get(id))
-        .filter((u): u is PicOption => Boolean(u));
-      return {
-        ...row,
-        usage: row.usage ?? ContentPlanUsage.AWARENESS,
-        picUserIds: ids,
-        pics: pics.length ? pics : row.pic ? [row.pic] : [],
-      };
-    },
-    [picUserById],
-  );
-
   useEffect(() => {
-    const next = items.map(withResolvedPics);
-    setTableRows((prev) => {
-      if (
-        prev.length === next.length &&
-        prev.every((r, i) => contentPlanRowSignature(r) === contentPlanRowSignature(next[i]!))
-      ) {
-        return prev;
-      }
-      return next;
-    });
-  }, [items, withResolvedPics]);
+    setTableRows(serverRows);
+  }, [serverRows]);
 
   useEffect(() => {
     const eligible = new Set(
@@ -1436,7 +1439,7 @@ export function ContentPlanningClient({
         const found = rows.find((r) => r.id === rowId);
         if (!found) return rows;
         prev = found;
-        nextRow = { ...found, ...patch };
+        nextRow = withResolvedPics({ ...found, ...patch });
         return rows.map((r) => (r.id === rowId ? nextRow! : r));
       });
       if (!prev || !nextRow) return;
@@ -1455,7 +1458,7 @@ export function ContentPlanningClient({
         setActiveCell(null);
       }
     },
-    [buildUpsertPayload],
+    [buildUpsertPayload, withResolvedPics],
   );
 
   const columns = useMemo<ColumnDef<ContentPlanTableRow>[]>(
