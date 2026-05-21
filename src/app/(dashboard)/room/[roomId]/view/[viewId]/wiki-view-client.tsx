@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/rich-text-editor";
+import { WikiPageDownloadMenu } from "@/components/wiki-page-download-menu";
 import { cn } from "@/lib/utils";
 
 type Page = {
@@ -63,9 +64,11 @@ function applyOptimistic(state: Page[], action: OptimisticAction): Page[] {
 }
 
 export function WikiViewClient({
+  roomId,
   viewId,
   pages: initialPages,
 }: {
+  roomId: string;
   viewId: string;
   pages: Page[];
 }) {
@@ -111,8 +114,9 @@ export function WikiViewClient({
     new Map(),
   );
 
-  /** Judul terbaru per halaman (dari input lokal), dipakai saat auto-save konten agar judul tidak tertimpa nilai props lama. */
+  /** Judul & konten terbaru per halaman (dari editor), untuk auto-save & unduhan. */
   const latestTitleByPageIdRef = useRef<Map<string, string>>(new Map());
+  const latestContentByPageIdRef = useRef<Map<string, string>>(new Map());
 
   const persistPage = useCallback(
     (page: Page, patch: { title?: string; content?: string }) => {
@@ -166,6 +170,7 @@ export function WikiViewClient({
   // save ke server.
   const onContentChange = useCallback(
     (page: Page, nextContent: string) => {
+      latestContentByPageIdRef.current.set(page.id, nextContent);
       if (!latestTitleByPageIdRef.current.has(page.id)) {
         latestTitleByPageIdRef.current.set(page.id, page.title);
       }
@@ -301,6 +306,8 @@ export function WikiViewClient({
       {selected ? (
         <PageEditor
           key={selected.id}
+          roomId={roomId}
+          viewId={viewId}
           page={selected}
           saveStatus={saveStatus}
           onTitleChange={(v) => onTitleChange(selected, v)}
@@ -319,23 +326,29 @@ export function WikiViewClient({
 }
 
 function PageEditor({
+  roomId,
+  viewId,
   page,
   saveStatus,
   onTitleChange,
   onContentChange,
   onDelete,
 }: {
+  roomId: string;
+  viewId: string;
   page: Page;
   saveStatus: SaveStatus;
   onTitleChange: (next: string) => void;
   onContentChange: (next: string) => void;
   onDelete: () => void;
 }) {
-  /** Input judul tidak boleh purely controlled oleh props (useOptimistic revert). */
+  /** Input judul & konten lokal untuk unduhan (konten editor tidak re-render parent tiap ketik). */
   const [titleDraft, setTitleDraft] = useState(page.title);
+  const [contentDraft, setContentDraft] = useState(page.content);
   useEffect(() => {
     setTitleDraft(page.title);
-  }, [page.id]);
+    setContentDraft(page.content);
+  }, [page.id, page.title, page.content]);
 
   return (
     <Card>
@@ -359,6 +372,13 @@ function PageEditor({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <WikiPageDownloadMenu
+              roomId={roomId}
+              viewId={viewId}
+              pageId={page.id}
+              title={titleDraft}
+              contentHtml={contentDraft}
+            />
             <SaveBadge status={saveStatus} />
             <Button
               type="button"
@@ -374,7 +394,10 @@ function PageEditor({
 
         <RichTextEditor
           initialContent={page.content}
-          onUpdate={onContentChange}
+          onUpdate={(html) => {
+            setContentDraft(html);
+            onContentChange(html);
+          }}
           placeholder="Tulis catatan, keputusan rapat, atau brief singkat di sini…"
         />
       </CardContent>

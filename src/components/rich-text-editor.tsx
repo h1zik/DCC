@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { TextStyle } from "@tiptap/extension-text-style";
 import {
   Bold,
   Code,
@@ -20,10 +21,22 @@ import {
   ListOrdered,
   Quote,
   Redo,
+  Minus,
+  Plus,
   Strikethrough,
+  Type,
   Undo,
+  Unlink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_FONT_SIZE_PT,
+  FontSize,
+  clampFontSizePt,
+  fontSizeCSSValueToNumber,
+  numberToFontSizeCSSValue,
+} from "@/lib/tiptap-font-size";
+import { EditorLinkDialog } from "@/components/editor-link-dialog";
 
 export type RichTextEditorProps = {
   /** Konten awal (HTML). Komponen tidak controlled — perubahan dilaporkan via `onUpdate`. */
@@ -36,9 +49,8 @@ export type RichTextEditorProps = {
 };
 
 /**
- * Editor rich-text gaya Google Docs ringan: heading H1-H3, bold/italic/strike,
- * list (bullet/numbered/task), blockquote, code block, tautan. Auto-save
- * dilakukan oleh parent — komponen ini hanya melaporkan perubahan via prop.
+ * Editor rich-text: heading, font size, bold/italic/strike, hyperlink,
+ * list, blockquote, code. Auto-save dilakukan oleh parent.
  */
 export function RichTextEditor({
   initialContent,
@@ -47,23 +59,15 @@ export function RichTextEditor({
   editable = true,
   className,
 }: RichTextEditorProps) {
-  // Simpan callback terbaru di ref agar tidak perlu memicu re-create editor
-  // hanya karena identitas fungsi berubah pada setiap render parent.
   const onUpdateRef = useRef(onUpdate);
   useEffect(() => {
     onUpdateRef.current = onUpdate;
   }, [onUpdate]);
 
-  // PENTING: snapshot `initialContent` pada mount pertama. Tiptap adalah
-  // source of truth untuk konten setelah editor dibuat; jika kita teruskan
-  // prop yang berubah-ubah ke `useEditor`, `setOptions` akan jalan tiap
-  // render dan dapat memicu race condition saat user mengetik (huruf yang
-  // baru diketik “balik seperti semula”). Pergantian dokumen ditangani oleh
-  // parent lewat prop `key`.
   const initialContentRef = useRef(initialContent);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkInitialUrl, setLinkInitialUrl] = useState("");
 
-  // Daftar ekstensi distabilkan agar `compareOptions` di useEditor menganggap
-  // options tidak berubah — sehingga setOptions tidak dipanggil tiap render.
   const extensions = useMemo(
     () => [
       StarterKit.configure({
@@ -71,13 +75,17 @@ export function RichTextEditor({
         orderedList: { keepMarks: true, keepAttributes: true },
         link: false,
       }),
+      TextStyle,
+      FontSize,
       Link.configure({
         openOnClick: false,
         autolink: true,
+        linkOnPaste: true,
+        defaultProtocol: "https",
         HTMLAttributes: {
           rel: "noopener noreferrer",
           target: "_blank",
-          class: "text-primary hover:underline",
+          class: "text-primary underline underline-offset-2 cursor-pointer",
         },
       }),
       Placeholder.configure({ placeholder }),
@@ -101,14 +109,12 @@ export function RichTextEditor({
       extensions,
       content: initialContentRef.current || "",
       editable,
-      // Hindari hydration mismatch saat SSR di Next.js (Tiptap v3 menyarankan ini).
       immediatelyRender: false,
       editorProps,
       onUpdate: ({ editor: ed }) => {
         onUpdateRef.current(ed.getHTML());
       },
     },
-    // Deps kosong eksplisit: editor dibuat sekali, tidak akan di-recreate.
     [],
   );
 
@@ -116,18 +122,58 @@ export function RichTextEditor({
     editor?.setEditable(editable);
   }, [editor, editable]);
 
-  const setLink = useCallback(() => {
+  const openLinkDialog = useCallback(() => {
     if (!editor) return;
-    const prev = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt("URL tautan", prev ?? "https://");
-    if (url === null) return;
-    if (url === "") {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
-    }
-    const href =
-      /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`;
-    editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    const prev = (editor.getAttributes("link").href as string | undefined) ?? "";
+    setLinkInitialUrl(prev);
+    setLinkDialogOpen(true);
+  }, [editor]);
+
+  const applyLink = useCallback(
+    (href: string) => {
+      if (!editor) return;
+      editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    },
+    [editor],
+  );
+
+  const removeLink = useCallback(() => {
+    if (!editor) return;
+    editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    setLinkDialogOpen(false);
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor || !editable) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        openLinkDialog();
+      }
+    };
+    const el = editor.view.dom;
+    el.addEventListener("keydown", onKeyDown);
+    return () => el.removeEventListener("keydown", onKeyDown);
+  }, [editor, editable, openLinkDialog]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    /** Capture phase: buka tautan sebelum ProseMirror menangani klik (mode edit memblokir openOnClick bawaan). */
+    const onClick = (e: MouseEvent) => {
+      if (e.button !== 0 || e.defaultPrevented) return;
+      const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href")?.trim();
+      if (!href || href === "#") return;
+      // Alt+klik: biarkan kursor masuk ke tautan untuk mengedit teks
+      if (e.altKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(href, "_blank", "noopener,noreferrer");
+    };
+    dom.addEventListener("click", onClick, true);
+    return () => dom.removeEventListener("click", onClick, true);
   }, [editor]);
 
   if (!editor) {
@@ -138,22 +184,137 @@ export function RichTextEditor({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <Toolbar editor={editor} onSetLink={setLink} editable={editable} />
+      <Toolbar
+        editor={editor}
+        onOpenLinkDialog={openLinkDialog}
+        onRemoveLink={removeLink}
+        editable={editable}
+      />
       <EditorContent editor={editor} />
+      <EditorLinkDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        initialUrl={linkInitialUrl}
+        onApply={applyLink}
+        onRemove={removeLink}
+      />
+    </div>
+  );
+}
+
+/** Input angka +/− seperti Google Docs (satuan pt, 1–400). */
+function FontSizeControl({ editor }: { editor: Editor }) {
+  const [inputValue, setInputValue] = useState(String(DEFAULT_FONT_SIZE_PT));
+  const editingRef = useRef(false);
+
+  const syncFromEditor = useCallback(() => {
+    const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
+    const n = fontSizeCSSValueToNumber(raw) ?? DEFAULT_FONT_SIZE_PT;
+    setInputValue(String(n));
+  }, [editor]);
+
+  useEffect(() => {
+    syncFromEditor();
+    const handler = () => {
+      if (!editingRef.current) syncFromEditor();
+    };
+    editor.on("selectionUpdate", handler);
+    editor.on("transaction", handler);
+    return () => {
+      editor.off("selectionUpdate", handler);
+      editor.off("transaction", handler);
+    };
+  }, [editor, syncFromEditor]);
+
+  const applyFromInput = useCallback(() => {
+    const trimmed = inputValue.trim().replace(",", ".");
+    if (!trimmed) {
+      syncFromEditor();
+      return;
+    }
+    const parsed = Number.parseFloat(trimmed);
+    if (!Number.isFinite(parsed)) {
+      syncFromEditor();
+      return;
+    }
+    const pt = clampFontSizePt(parsed);
+    editor.chain().focus().setFontSize(numberToFontSizeCSSValue(pt)).run();
+    setInputValue(String(pt));
+  }, [editor, inputValue, syncFromEditor]);
+
+  const step = useCallback(
+    (delta: number) => {
+      const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
+      const current = fontSizeCSSValueToNumber(raw) ?? DEFAULT_FONT_SIZE_PT;
+      const next = clampFontSizePt(current + delta);
+      editor.chain().focus().setFontSize(numberToFontSizeCSSValue(next)).run();
+      setInputValue(String(next));
+    },
+    [editor],
+  );
+
+  const stepBtn = (label: string, onClick: () => void, icon: React.ReactNode) => (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 shrink-0 items-center justify-center transition-colors"
+    >
+      {icon}
+    </button>
+  );
+
+  return (
+    <div
+      className="border-border bg-background flex h-8 items-stretch overflow-hidden rounded-md border"
+      title="Ukuran font (pt) — ketik angka lalu Enter"
+    >
+      {stepBtn("Perkecil", () => step(-1), <Minus className="size-3.5" aria-hidden />)}
+      <input
+        type="text"
+        inputMode="decimal"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onFocus={() => {
+          editingRef.current = true;
+        }}
+        onBlur={() => {
+          editingRef.current = false;
+          applyFromInput();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            applyFromInput();
+          }
+          if (e.key === "Escape") {
+            editingRef.current = false;
+            syncFromEditor();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        aria-label="Ukuran font dalam pt"
+        className="text-foreground w-11 min-w-0 border-0 bg-transparent px-0.5 text-center text-xs tabular-nums outline-none"
+      />
+      {stepBtn("Perbesar", () => step(1), <Plus className="size-3.5" aria-hidden />)}
     </div>
   );
 }
 
 function Toolbar({
   editor,
-  onSetLink,
+  onOpenLinkDialog,
+  onRemoveLink,
   editable,
 }: {
   editor: ReturnType<typeof useEditor>;
-  onSetLink: () => void;
+  onOpenLinkDialog: () => void;
+  onRemoveLink: () => void;
   editable: boolean;
 }) {
   if (!editor || !editable) return null;
+
   const btn = (
     active: boolean,
     label: string,
@@ -202,6 +363,11 @@ function Toolbar({
         <Heading3 className="size-4" aria-hidden />,
       )}
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      <div className="flex items-center gap-1">
+        <Type className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+        <FontSizeControl editor={editor} />
+      </div>
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       {btn(
         editor.isActive("bold"),
         "Tebal (Ctrl+B)",
@@ -222,10 +388,18 @@ function Toolbar({
       )}
       {btn(
         editor.isActive("link"),
-        "Tautan",
-        onSetLink,
+        "Tautan (Ctrl+K)",
+        onOpenLinkDialog,
         <LinkIcon className="size-4" aria-hidden />,
       )}
+      {editor.isActive("link")
+        ? btn(
+            false,
+            "Hapus tautan",
+            onRemoveLink,
+            <Unlink className="size-4" aria-hidden />,
+          )
+        : null}
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       {btn(
         editor.isActive("bulletList"),

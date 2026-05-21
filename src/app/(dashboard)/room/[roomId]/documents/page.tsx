@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { isRoomHubManagerRole } from "@/lib/room-access";
@@ -27,15 +27,23 @@ export default async function RoomDocumentsPage({ params }: PageProps) {
   ]);
 
   return (
-    <RoomDocumentsWorkspace
-      roomId={roomId}
-      folders={folders}
-      documents={documents.map((d) => ({
-        ...d,
-        tags: d.tags ?? [],
-      }))}
-      currentUserId={uid}
-      isRoomManager={isRoomManager}
-    />
+    <Suspense
+      fallback={
+        <div className="text-muted-foreground py-12 text-center text-sm">
+          Memuat dokumen…
+        </div>
+      }
+    >
+      <RoomDocumentsWorkspace
+        roomId={roomId}
+        folders={folders}
+        documents={documents.map((d) => ({
+          ...d,
+          tags: d.tags ?? [],
+        }))}
+        currentUserId={uid}
+        isRoomManager={isRoomManager}
+      />
+    </Suspense>
   );
 }

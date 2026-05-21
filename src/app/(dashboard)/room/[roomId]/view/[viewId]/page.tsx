@@ -38,12 +38,13 @@ export default async function RoomCustomViewPage({ params }: PageProps) {
   return (
     <div className="flex flex-col gap-4">
       <RoomViewHeader view={view} canManage={canManage} />
-      {await renderViewBody(view, canManage)}
+      {await renderViewBody(roomId, view, canManage)}
     </div>
   );
 }
 
 async function renderViewBody(
+  roomId: string,
   view: {
     id: string;
     roomId: string;
@@ -99,6 +100,7 @@ async function renderViewBody(
       });
       return (
         <WikiViewClient
+          roomId={roomId}
           viewId={view.id}
           pages={pages.map((p) => ({
             id: p.id,

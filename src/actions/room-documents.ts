@@ -18,26 +18,38 @@ const folderNameSchema = z.string().trim().min(1).max(80);
 export async function createRoomDocumentFolder(input: {
   roomId: string;
   name: string;
+  /** Null = folder di root drive ruangan. */
+  parentId?: string | null;
 }): Promise<{ id: string }> {
   const session = await requireTasksRoomHubSession();
   const name = folderNameSchema.parse(input.name);
+  const parentId = input.parentId ?? null;
   await assertRoomMember(input.roomId, session.user.id);
+  if (parentId != null) {
+    const parent = await prisma.roomDocumentFolder.findFirst({
+      where: { id: parentId, roomId: input.roomId },
+      select: { id: true },
+    });
+    if (!parent) throw new Error("Folder induk tidak valid.");
+  }
   const dup = await prisma.roomDocumentFolder.findFirst({
     where: {
       roomId: input.roomId,
+      parentId,
       name: { equals: name, mode: "insensitive" },
     },
   });
   if (dup) {
-    throw new Error("Sudah ada folder dengan nama yang sama.");
+    throw new Error("Sudah ada folder dengan nama yang sama di lokasi ini.");
   }
   const max = await prisma.roomDocumentFolder.aggregate({
-    where: { roomId: input.roomId },
+    where: { roomId: input.roomId, parentId },
     _max: { sortOrder: true },
   });
   const row = await prisma.roomDocumentFolder.create({
     data: {
       roomId: input.roomId,
+      parentId,
       name,
       sortOrder: (max._max.sortOrder ?? -1) + 1,
     },
@@ -55,7 +67,7 @@ export async function renameRoomDocumentFolder(input: {
   const name = folderNameSchema.parse(input.name);
   const folder = await prisma.roomDocumentFolder.findUniqueOrThrow({
     where: { id: input.folderId },
-    select: { roomId: true },
+    select: { roomId: true, parentId: true },
   });
   const m = await assertRoomMember(folder.roomId, session.user.id);
   if (!isRoomHubManagerRole(m.role)) {
@@ -64,6 +76,7 @@ export async function renameRoomDocumentFolder(input: {
   const dup = await prisma.roomDocumentFolder.findFirst({
     where: {
       roomId: folder.roomId,
+      parentId: folder.parentId,
       name: { equals: name, mode: "insensitive" },
       NOT: { id: input.folderId },
     },
@@ -82,7 +95,10 @@ export async function deleteRoomDocumentFolder(folderId: string) {
   const session = await requireTasksRoomHubSession();
   const folder = await prisma.roomDocumentFolder.findUniqueOrThrow({
     where: { id: folderId },
-    select: { roomId: true },
+    select: {
+      roomId: true,
+      _count: { select: { children: true, documents: true } },
+    },
   });
   const m = await assertRoomMember(folder.roomId, session.user.id);
   if (!isRoomHubManagerRole(m.role)) {
@@ -216,6 +232,107 @@ export async function updateRoomDocumentTags(
     data: { tags },
   });
   revalidateTasksAndRoomHub();
+}
+
+const bulkDocIdsSchema = z
+  .array(z.string().min(1))
+  .min(1, "Pilih minimal satu file.")
+  .max(200, "Maksimal 200 file sekaligus.");
+
+export async function deleteRoomDocuments(documentIds: string[]) {
+  const session = await requireTasksRoomHubSession();
+  const ids = bulkDocIdsSchema.parse(documentIds);
+  const docs = await prisma.roomDocument.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      publicPath: true,
+      thumbPath: true,
+      uploadedById: true,
+      roomId: true,
+    },
+  });
+  if (docs.length === 0) throw new Error("Dokumen tidak ditemukan.");
+  const roomId = docs[0]!.roomId;
+  if (docs.some((d) => d.roomId !== roomId)) {
+    throw new Error("Semua file harus dari ruangan yang sama.");
+  }
+  const m = await assertRoomMember(roomId, session.user.id);
+  const canModerate = isRoomHubManagerRole(m.role);
+  for (const doc of docs) {
+    if (doc.uploadedById !== session.user.id && !canModerate) {
+      throw new Error("Anda tidak dapat menghapus satu atau lebih file terpilih.");
+    }
+  }
+  for (const doc of docs) {
+    if (!doc.publicPath.startsWith("/uploads/rooms/")) {
+      throw new Error("Path tidak valid.");
+    }
+    const absFile = absolutePathFromStoredPublicPath(doc.publicPath);
+    const absThumb = doc.thumbPath
+      ? absolutePathFromStoredPublicPath(doc.thumbPath)
+      : null;
+    try {
+      if (absFile) await unlink(absFile);
+    } catch {
+      /* abaikan */
+    }
+    if (absThumb) {
+      try {
+        await unlink(absThumb);
+      } catch {
+        /* abaikan */
+      }
+    }
+    await prisma.roomDocument.delete({ where: { id: doc.id } });
+  }
+  revalidateTasksAndRoomHub();
+  return { deleted: docs.length };
+}
+
+const bulkMoveSchema = z.object({
+  documentIds: bulkDocIdsSchema,
+  folderId: z.union([z.string().min(1), z.null()]),
+});
+
+export async function moveRoomDocumentsToFolder(
+  input: z.infer<typeof bulkMoveSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const data = bulkMoveSchema.parse(input);
+  const docs = await prisma.roomDocument.findMany({
+    where: { id: { in: data.documentIds } },
+    select: {
+      id: true,
+      roomId: true,
+      uploadedById: true,
+      folderId: true,
+    },
+  });
+  if (docs.length === 0) throw new Error("Dokumen tidak ditemukan.");
+  const roomId = docs[0]!.roomId;
+  if (docs.some((d) => d.roomId !== roomId)) {
+    throw new Error("Semua file harus dari ruangan yang sama.");
+  }
+  const m = await assertRoomMember(roomId, session.user.id);
+  const canModerate = isRoomHubManagerRole(m.role);
+  for (const doc of docs) {
+    if (doc.uploadedById !== session.user.id && !canModerate) {
+      throw new Error("Anda tidak dapat memindahkan satu atau lebih file terpilih.");
+    }
+  }
+  if (data.folderId != null) {
+    const f = await prisma.roomDocumentFolder.findFirst({
+      where: { id: data.folderId, roomId },
+    });
+    if (!f) throw new Error("Folder tidak valid.");
+  }
+  await prisma.roomDocument.updateMany({
+    where: { id: { in: data.documentIds } },
+    data: { folderId: data.folderId },
+  });
+  revalidateTasksAndRoomHub();
+  return { moved: docs.length };
 }
 
 export async function deleteRoomDocument(documentId: string) {
