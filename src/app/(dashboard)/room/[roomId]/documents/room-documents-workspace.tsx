@@ -1805,17 +1805,17 @@ const DocCard = memo(function DocCard({
   return (
     <li
       className={cn(
-        "border-border bg-card group hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors",
-        "[content-visibility:auto] [contain-intrinsic-block-size:280px]",
+        "doc-grid-card border-border bg-card hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors",
+        "sm:[&:hover_.doc-grid-card-select]:opacity-100 sm:[&:focus-within_.doc-grid-card-select]:opacity-100",
         selected && "border-primary ring-primary/30 ring-2",
       )}
     >
       <div
         className={cn(
-          "absolute top-2 left-2 z-10 transition-opacity",
+          "doc-grid-card-select absolute top-2 left-2 z-20 transition-opacity",
           selectionActive || selected
             ? "opacity-100"
-            : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+            : "opacity-100 sm:opacity-0",
         )}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1841,14 +1841,14 @@ const DocCard = memo(function DocCard({
             fill
             unoptimized
             priority={priority}
-            className="object-cover transition-transform group-hover:scale-[1.02]"
+            className="doc-grid-card-thumb object-cover transition-transform [.doc-grid-card:hover_&]:scale-[1.02]"
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
           />
         ) : isVideo ? (
           <VideoTilePlaceholder
             thumbPath={doc.thumbPath}
             alt={doc.fileName}
-            className="transition-transform group-hover:scale-[1.02]"
+            className="doc-grid-card-thumb transition-transform [.doc-grid-card:hover_&]:scale-[1.02]"
             iconSize="lg"
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
             priority={priority}
