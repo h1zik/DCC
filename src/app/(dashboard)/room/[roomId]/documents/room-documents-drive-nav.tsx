@@ -339,7 +339,12 @@ export function DriveFolderGridCard({
 
   return (
     <li>
-      <div className="border-border bg-card group relative overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md">
+      <div
+        className={cn(
+          "folder-grid-card border-border bg-card relative overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md",
+          "sm:[&:hover_.folder-grid-card-actions]:opacity-100 sm:[&:focus-within_.folder-grid-card-actions]:opacity-100",
+        )}
+      >
         <button
           type="button"
           onClick={onOpen}
@@ -357,7 +362,7 @@ export function DriveFolderGridCard({
             </p>
           </div>
         </button>
-        <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="folder-grid-card-actions absolute top-2 right-2 z-10 flex gap-1 opacity-100 transition-opacity sm:opacity-0">
           <Button
             type="button"
             size="icon-sm"
