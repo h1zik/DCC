@@ -261,6 +261,10 @@
   color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 2px;
+  cursor: pointer;
+}
+.tiptap span[style*="font-size"] {
+  line-height: 1.5;
 }
 .tiptap ul,
 .tiptap ol {

@@ -40,13 +40,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# unggahan lampiran tugas (lokal)
-/public/uploads/tasks/**
-!/public/uploads/tasks/.gitkeep
-/public/uploads/rooms/**
-!/public/uploads/rooms/.gitkeep
-/public/uploads/avatars/**
-!/public/uploads/avatars/.gitkeep
+# Unggahan lokal di server (tasks, rooms, avatar, branding, content plan, dll.)
+# File tetap di disk; hanya tidak ikut commit/push ke GitHub.
+/public/uploads/*
+!/public/uploads/*/
+/public/uploads/**/*
+!/public/uploads/**/.gitkeep
 
-# unggahan lampiran finance (lokal, di luar /public agar butuh auth untuk diakses)
+# Lampiran finance (di luar /public, dilayani lewat auth)
 /uploads/
+!/uploads/.gitkeep

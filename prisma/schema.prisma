@@ -147,6 +147,13 @@ enum ContentPlanJenis {
   SINGLE_FEED
 }
 
+/** Funnel usage / objective konten di content planning. */
+enum ContentPlanUsage {
+  AWARENESS
+  CONSIDERATION
+  CONVERSION
+}
+
 /**
  * Status alur copywriting & design di content planning.
  */
@@ -586,6 +593,7 @@ model RoomContentPlanItem {
   room                 Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
   konten               String                 @default("")
   jenisKonten          ContentPlanJenis       @default(REELS)
+  usage                ContentPlanUsage       @default(AWARENESS)
   detailKonten         String?
   copywritingFilePath  String?
   copywritingLink      String?
@@ -658,13 +666,19 @@ model RoomDocumentFolder {
   id        String         @id @default(cuid())
   roomId    String
   room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /**
+   * Folder bersarang (mirip Google Drive). Null = folder di root drive ruangan.
+   */
+  parentId  String?
+  parent    RoomDocumentFolder?  @relation("RoomDocumentFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  RoomDocumentFolder[] @relation("RoomDocumentFolderTree")
   name      String
   sortOrder Int            @default(0)
   createdAt DateTime       @default(now())
   documents RoomDocument[]
 
-  @@unique([roomId, name])
-  @@index([roomId, sortOrder])
+  @@unique([roomId, parentId, name])
+  @@index([roomId, parentId, sortOrder])
 }
 
 model RoomDocument {

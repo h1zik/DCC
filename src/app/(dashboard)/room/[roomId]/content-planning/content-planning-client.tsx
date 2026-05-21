@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   ContentPlanJenis,
   ContentPlanStatusKerja,
+  ContentPlanUsage,
   type User,
 } from "@prisma/client";
 import { toast } from "sonner";
@@ -52,6 +53,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import {
+  contentPlanDownloadApiPath,
+  contentPlanHasStoredFiles,
+} from "@/lib/content-plan-files";
 import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
@@ -60,9 +65,12 @@ import {
   ArrowUpDown,
   Bookmark,
   CalendarDays,
+  Camera,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Download,
   Eye,
   FileText,
   Heart,
@@ -71,16 +79,20 @@ import {
   LayoutList,
   ListFilter,
   MessageCircle,
+  Music2,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Search,
   Send,
   Sparkles,
   Trash2,
   UserCircle,
+  Users,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { Column, ColumnDef } from "@tanstack/react-table";
 
 const JENIS_LABEL: Record<ContentPlanJenis, string> = {
@@ -106,6 +118,43 @@ const JENIS_BADGE_CLASS: Record<ContentPlanJenis, string> = {
   [ContentPlanJenis.SINGLE_FEED]:
     "border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-300",
 };
+
+const USAGE_LABEL: Record<ContentPlanUsage, string> = {
+  [ContentPlanUsage.AWARENESS]: "Awareness",
+  [ContentPlanUsage.CONSIDERATION]: "Consideration",
+  [ContentPlanUsage.CONVERSION]: "Conversion",
+};
+
+const USAGE_BADGE_CLASS: Record<ContentPlanUsage, string> = {
+  [ContentPlanUsage.AWARENESS]:
+    "border-cyan-500/35 bg-cyan-500/12 text-cyan-800 dark:text-cyan-300",
+  [ContentPlanUsage.CONSIDERATION]:
+    "border-violet-500/35 bg-violet-500/12 text-violet-800 dark:text-violet-300",
+  [ContentPlanUsage.CONVERSION]:
+    "border-emerald-500/35 bg-emerald-500/12 text-emerald-800 dark:text-emerald-300",
+};
+
+/** Base UI Select: onValueChange juga terpanggil saat sync internal (reason `none`). */
+type InlineSelectChangeDetails = {
+  reason?: string;
+  isCanceled?: boolean;
+};
+
+function isInlineSelectUserPick(details?: InlineSelectChangeDetails): boolean {
+  return details?.reason === "item-press" && !details?.isCanceled;
+}
+
+function contentPlanRowSignature(r: ContentPlanTableRow): string {
+  return [
+    r.id,
+    r.usage,
+    r.jenisKonten,
+    r.konten,
+    r.statusCopywriting,
+    r.statusDesign,
+    r.picUserIds.join(","),
+  ].join("|");
+}
 
 /** Select inline di tabel: tanpa kotak border agar mirip spreadsheet. */
 const INLINE_SELECT_TRIGGER =
@@ -139,6 +188,7 @@ export type ContentPlanTableRow = {
   id: string;
   konten: string;
   jenisKonten: ContentPlanJenis;
+  usage: ContentPlanUsage;
   detailKonten: string | null;
   copywritingFilePath: string | null;
   copywritingLink: string | null;
@@ -221,8 +271,42 @@ function isImagePath(publicPath: string): boolean {
   return /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(lower);
 }
 
+function isVideoPath(publicPath: string): boolean {
+  const lower = publicPath.split("?")[0]?.toLowerCase() ?? "";
+  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(lower);
+}
+
+/** Semua jenis konten memakai frame yang sama dengan preview carousel. */
+const PREVIEW_MEDIA_ASPECT = "aspect-[4/5]";
+
+function previewDialogTitle(jenis: ContentPlanJenis): string {
+  switch (jenis) {
+    case ContentPlanJenis.CAROUSEL:
+      return "Preview Carousel";
+    case ContentPlanJenis.REELS:
+      return "Preview Reels";
+    case ContentPlanJenis.SINGLE_FEED:
+      return "Preview Single Feed";
+    default:
+      return "Preview";
+  }
+}
+
+function previewSimulationHint(jenis: ContentPlanJenis): string {
+  switch (jenis) {
+    case ContentPlanJenis.CAROUSEL:
+      return "Simulasi tampilan carousel saat sudah diposting.";
+    case ContentPlanJenis.REELS:
+      return "Simulasi tampilan reels saat sudah diposting.";
+    case ContentPlanJenis.SINGLE_FEED:
+      return "Simulasi tampilan single feed saat sudah diposting.";
+    default:
+      return "Simulasi tampilan konten saat sudah diposting.";
+  }
+}
+
 function ExternalOrText({ value }: { value: string | null }) {
-  if (!value?.trim()) return <span className="text-muted-foreground">—</span>;
+  if (!value?.trim()) return null;
   const t = value.trim();
   if (t.startsWith("http://") || t.startsWith("https://")) {
     return (
@@ -245,7 +329,7 @@ function ExternalOrText({ value }: { value: string | null }) {
 }
 
 function FileLink({ path, short }: { path: string | null; short: string }) {
-  if (!path) return <span className="text-muted-foreground">—</span>;
+  if (!path) return null;
   return (
     <a
       href={path}
@@ -254,6 +338,56 @@ function FileLink({ path, short }: { path: string | null; short: string }) {
       className="text-accent-foreground text-xs underline-offset-2 hover:underline"
     >
       {short}
+    </a>
+  );
+}
+
+function ContentPlanDownloadButton({
+  roomId,
+  row,
+  variant = "outline",
+  size = "xs",
+  showLabel = true,
+  className,
+}: {
+  roomId: string;
+  row: Pick<ContentPlanTableRow, "id" | "copywritingFilePath" | "designFilePaths">;
+  variant?: "outline" | "ghost";
+  size?: "xs" | "icon-sm" | "icon-xs";
+  showLabel?: boolean;
+  className?: string;
+}) {
+  if (!contentPlanHasStoredFiles(row)) return null;
+  const href = contentPlanDownloadApiPath(roomId, row.id);
+  if (size === "icon-sm" || size === "icon-xs") {
+    const iconSize = size === "icon-xs" ? "icon-xs" : "icon-sm";
+    return (
+      <a
+        href={href}
+        download
+        title="Unduh file konten"
+        aria-label="Unduh file konten"
+        className={cn(
+          buttonVariants({ variant, size: iconSize }),
+          size === "icon-xs" ? "size-6 shrink-0" : "size-7 shrink-0",
+          className,
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Download className={size === "icon-xs" ? "size-3" : "size-3.5"} />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={href}
+      download
+      title="Unduh file konten"
+      className={cn(buttonVariants({ variant, size }), className)}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Download className="size-3.5" />
+      {showLabel ? "Unduh" : null}
     </a>
   );
 }
@@ -284,6 +418,20 @@ function JenisBadge({ jenis }: { jenis: ContentPlanJenis }) {
       )}
     >
       {JENIS_LABEL[jenis]}
+    </Badge>
+  );
+}
+
+function UsageBadge({ usage }: { usage: ContentPlanUsage }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "max-w-full whitespace-normal px-1.5 py-0.5 text-left text-[9px] leading-tight font-medium sm:text-[10px]",
+        USAGE_BADGE_CLASS[usage],
+      )}
+    >
+      {USAGE_LABEL[usage]}
     </Badge>
   );
 }
@@ -404,50 +552,54 @@ function PicCell({ pics }: { pics: Pick<User, "id" | "name" | "email" | "image">
 }
 
 function DesignTableCell({
+  roomId,
   row,
   onPreview,
 }: {
+  roomId: string;
   row: ContentPlanTableRow;
   onPreview?: (row: ContentPlanTableRow) => void;
 }) {
   const paths = row.designFilePaths ?? [];
-  const isCarousel = row.jenisKonten === ContentPlanJenis.CAROUSEL;
   if (paths.length === 0) {
+    if (!row.designLink?.trim()) {
+      return <span className="text-muted-foreground text-xs">—</span>;
+    }
     return (
       <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">—</span>
         <ExternalOrText value={row.designLink} />
       </div>
     );
   }
-  /** Di tabel: carousel tidak tampilkan strip thumbnail (hemat tinggi baris). */
-  if (isCarousel) {
-    return (
-      <div className="flex min-w-0 max-w-full flex-col gap-1.5 text-xs">
-        <p className="text-muted-foreground">
-          {paths.length} slide
-        </p>
-        {onPreview ? (
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => onPreview(row)}
-            >
-              <Eye className="size-3.5" />
-              Preview
-            </Button>
-          </div>
-        ) : null}
-        <ExternalOrText value={row.designLink} />
-      </div>
-    );
-  }
+  const hasLink = Boolean(row.designLink?.trim());
+  const showDownload = contentPlanHasStoredFiles(row);
+  const previewLabel = JENIS_LABEL[row.jenisKonten];
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
-      <FileLink path={paths[0] ?? null} short="Unduh file" />
-      <ExternalOrText value={row.designLink} />
+      <div className="flex items-center gap-1">
+        {onPreview ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-xs"
+            className="size-6 shrink-0"
+            aria-label={`Preview ${previewLabel}`}
+            title="Preview"
+            onClick={() => onPreview(row)}
+          >
+            <Eye className="size-3" />
+          </Button>
+        ) : null}
+        {showDownload ? (
+          <ContentPlanDownloadButton
+            roomId={roomId}
+            row={row}
+            size="icon-xs"
+            showLabel={false}
+          />
+        ) : null}
+      </div>
+      {hasLink ? <ExternalOrText value={row.designLink} /> : null}
     </div>
   );
 }
@@ -557,7 +709,242 @@ function CarouselDesignRail({
   );
 }
 
-function CarouselPreviewDialog({
+/** Tombol aksi vertikal kanan (seperti Instagram Reels). */
+function ReelsActionButton({
+  icon: Icon,
+  label,
+  filled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  filled?: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-px text-white">
+      <div className="flex size-7 items-center justify-center drop-shadow-md">
+        <Icon
+          className={cn("size-[18px] stroke-[2]", filled && "fill-white")}
+          aria-hidden
+        />
+      </div>
+      {label ? (
+        <span className="text-[9px] font-medium leading-none drop-shadow-md">{label}</span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Video tanpa kontrol browser — klik untuk play/pause (hemat ruang overlay IG). */
+function ReelsPreviewVideo({ path }: { path: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  return (
+    <>
+      <video
+        ref={videoRef}
+        src={path}
+        playsInline
+        loop
+        muted
+        className="h-full w-full cursor-pointer object-cover"
+        aria-label="Pratinjau video reels"
+        onClick={() => {
+          const v = videoRef.current;
+          if (!v) return;
+          if (v.paused) void v.play();
+          else v.pause();
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+      />
+      {!playing ? (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          aria-hidden
+        >
+          <div className="flex size-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-[2px]">
+            <Play className="ml-0.5 size-5 fill-white text-white" />
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Simulasi layout Reels IG: safe zone tengah, aksi kanan vertikal,
+ * profil & caption di bawah (proporsi mengacu diagram safe zone 1080×1920).
+ */
+function ReelsInstagramPreview({
+  path,
+  creator,
+  caption,
+  kontenTitle,
+}: {
+  path: string;
+  creator: string;
+  caption: string;
+  kontenTitle: string;
+}) {
+  const username =
+    creator
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[^a-z0-9._]/g, "")
+      .slice(0, 24) || "brandaccount";
+
+  return (
+    <div
+      className="relative mx-auto h-[min(72vh,580px)] w-auto max-w-full aspect-[9/16] overflow-hidden rounded-2xl bg-black text-white shadow-lg"
+      aria-label="Simulasi tampilan Instagram Reels"
+    >
+      {/* Media penuh (area aman ~ tengah frame) */}
+      <div className="absolute inset-0">
+        {isVideoPath(path) ? (
+          <div className="relative h-full w-full">
+            <ReelsPreviewVideo path={path} />
+          </div>
+        ) : isImagePath(path) ? (
+          <div className="relative h-full w-full">
+            <Image
+              src={path}
+              alt="Pratinjau reels"
+              fill
+              className="object-cover"
+              unoptimized
+            />
+          </div>
+        ) : (
+          <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 bg-zinc-900">
+            <FileText className="size-10 text-white/70" />
+            <a
+              href={path}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-white/90 underline"
+            >
+              Buka file
+            </a>
+          </div>
+        )}
+      </div>
+
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[12%] bg-gradient-to-b from-black/45 to-transparent"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[16%] bg-gradient-to-t from-black/65 via-black/25 to-transparent"
+        aria-hidden
+      />
+
+      {/* Atas: Reels + kamera */}
+      <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-0.5 text-xs font-semibold drop-shadow-md">
+        <span>Reels</span>
+        <ChevronDown className="size-3.5 opacity-90" aria-hidden />
+      </div>
+      <div className="absolute top-2.5 right-2.5 z-20 drop-shadow-md">
+        <Camera className="size-4" strokeWidth={1.75} aria-hidden />
+      </div>
+
+      {/* Rail kanan — anchor bawah: thumbnail audio sejajar bar audio kiri */}
+      <div className="absolute right-1.5 bottom-2 z-20 flex flex-col items-center gap-1.5 pb-0.5">
+        <ReelsActionButton icon={Heart} label="257" filled />
+        <ReelsActionButton icon={MessageCircle} label="22" />
+        <ReelsActionButton icon={Send} label="1" />
+        <ReelsActionButton icon={MoreHorizontal} label="" />
+        <div
+          className="size-6 overflow-hidden rounded border border-white/25 bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-sm"
+          aria-hidden
+        />
+      </div>
+
+      {/* Bawah kiri — ringkas, tanpa menutupi area video */}
+      <div className="absolute right-11 bottom-2.5 left-2.5 z-20 space-y-1">
+        <div className="inline-flex items-center gap-0.5 rounded bg-white/95 px-1.5 py-0.5 text-[9px] font-semibold text-black shadow-sm">
+          <Layers className="size-2.5" aria-hidden />
+          Use template
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <div className="bg-muted flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/35 text-[9px] font-bold text-black">
+            {creator.slice(0, 1).toUpperCase()}
+          </div>
+          <span className="truncate text-[11px] font-semibold drop-shadow-md">{username}</span>
+          <span className="shrink-0 rounded border border-white/70 px-1.5 py-px text-[9px] font-semibold">
+            Follow
+          </span>
+        </div>
+        <p className="line-clamp-1 text-[10px] leading-snug drop-shadow-md">
+          <span className="font-semibold">{username}</span>{" "}
+          {caption || kontenTitle}
+        </p>
+        <div className="inline-flex max-w-full items-center gap-1 rounded-full bg-black/30 px-1.5 py-0.5 text-[9px] backdrop-blur-sm">
+          <Music2 className="size-2.5 shrink-0" aria-hidden />
+          <span className="truncate">Trending Audio (original)</span>
+          <Users className="size-2.5 shrink-0 opacity-80" aria-hidden />
+          <span className="shrink-0 opacity-90">3</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DesignPreviewMedia({
+  path,
+  slideLabel,
+}: {
+  path: string;
+  slideLabel?: string;
+}) {
+  if (isVideoPath(path)) {
+    return (
+      <div className={cn("bg-muted/30 relative w-full", PREVIEW_MEDIA_ASPECT)}>
+        <video
+          src={path}
+          controls
+          playsInline
+          className="absolute inset-0 h-full w-full object-cover"
+          aria-label={slideLabel ?? "Pratinjau video"}
+        />
+      </div>
+    );
+  }
+  if (isImagePath(path)) {
+    return (
+      <div className={cn("bg-muted/30 relative w-full", PREVIEW_MEDIA_ASPECT)}>
+        <Image
+          src={path}
+          alt={slideLabel ?? "Pratinjau gambar"}
+          fill
+          className="object-cover"
+          unoptimized
+        />
+      </div>
+    );
+  }
+  return (
+    <div
+      className={cn(
+        "text-muted-foreground flex w-full flex-col items-center justify-center gap-2",
+        PREVIEW_MEDIA_ASPECT,
+      )}
+    >
+      <FileText className="size-10" />
+      <p className="text-sm">Pratinjau file non-gambar</p>
+      <a
+        href={path}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-accent-foreground text-xs underline-offset-2 hover:underline"
+      >
+        Buka file
+      </a>
+    </div>
+  );
+}
+
+function ContentPlanPreviewDialog({
   row,
   index,
   onIndexChange,
@@ -569,11 +956,30 @@ function CarouselPreviewDialog({
   if (!row) return null;
   const slides = row.designFilePaths ?? [];
   if (slides.length === 0) return null;
+  const isCarousel = row.jenisKonten === ContentPlanJenis.CAROUSEL;
   const safeIndex = Math.max(0, Math.min(index, slides.length - 1));
   const current = slides[safeIndex]!;
-  const isImage = isImagePath(current);
   const caption = row.detailKonten?.trim() || "Preview caption untuk simulasi posting.";
   const creator = row.createdBy.name?.trim() || row.createdBy.email;
+  const kontenFallback = row.konten || JENIS_LABEL[row.jenisKonten];
+  const isReels = row.jenisKonten === ContentPlanJenis.REELS;
+
+  if (isReels) {
+    return (
+      <div className="mx-auto w-full max-w-sm space-y-3">
+        <ReelsInstagramPreview
+          path={current}
+          creator={creator}
+          caption={caption}
+          kontenTitle={kontenFallback}
+        />
+        <p className="text-muted-foreground text-center text-xs">
+          {previewSimulationHint(row.jenisKonten)}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-sm space-y-3">
       <div className="border-border overflow-hidden rounded-[1.2rem] border bg-card shadow-sm">
@@ -584,31 +990,17 @@ function CarouselPreviewDialog({
             </div>
             <div className="min-w-0">
               <p className="truncate text-xs font-semibold">{creator}</p>
-              <p className="text-muted-foreground truncate text-[10px]">
-                {row.konten || "Konten carousel"}
-              </p>
+              <p className="text-muted-foreground truncate text-[10px]">{kontenFallback}</p>
             </div>
           </div>
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Lainnya">
             <MoreHorizontal className="size-4" />
           </Button>
         </div>
-        <div className="bg-muted/30 relative aspect-[4/5] w-full">
-          {isImage ? (
-            <Image
-              src={current}
-              alt={`Slide ${safeIndex + 1}`}
-              fill
-              className="object-cover"
-              unoptimized
-            />
-          ) : (
-            <div className="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-2">
-              <FileText className="size-10" />
-              <p className="text-sm">Pratinjau file non-gambar</p>
-            </div>
-          )}
-        </div>
+        <DesignPreviewMedia
+          path={current}
+          slideLabel={isCarousel ? `Slide ${safeIndex + 1}` : undefined}
+        />
         <div className="flex items-center justify-between px-3 pt-2">
           <div className="flex items-center gap-1">
             <Button type="button" variant="ghost" size="icon-xs" aria-label="Like">
@@ -625,42 +1017,44 @@ function CarouselPreviewDialog({
             <Bookmark className="size-4" />
           </Button>
         </div>
-        <div className="flex items-center justify-between px-4 py-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-xs"
-            disabled={safeIndex <= 0}
-            onClick={() => onIndexChange(safeIndex - 1)}
-            aria-label="Slide sebelumnya"
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <div className="flex items-center gap-1.5">
-            {slides.map((s, i) => (
-              <button
-                key={`${s}-${i}`}
-                type="button"
-                onClick={() => onIndexChange(i)}
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full transition-all",
-                  i === safeIndex ? "bg-foreground w-4" : "bg-muted-foreground/40",
-                )}
-                aria-label={`Buka slide ${i + 1}`}
-              />
-            ))}
+        {isCarousel && slides.length > 1 ? (
+          <div className="flex items-center justify-between px-4 py-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-xs"
+              disabled={safeIndex <= 0}
+              onClick={() => onIndexChange(safeIndex - 1)}
+              aria-label="Slide sebelumnya"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <div className="flex items-center gap-1.5">
+              {slides.map((s, i) => (
+                <button
+                  key={`${s}-${i}`}
+                  type="button"
+                  onClick={() => onIndexChange(i)}
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full transition-all",
+                    i === safeIndex ? "bg-foreground w-4" : "bg-muted-foreground/40",
+                  )}
+                  aria-label={`Buka slide ${i + 1}`}
+                />
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-xs"
+              disabled={safeIndex >= slides.length - 1}
+              onClick={() => onIndexChange(safeIndex + 1)}
+              aria-label="Slide berikutnya"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-xs"
-            disabled={safeIndex >= slides.length - 1}
-            onClick={() => onIndexChange(safeIndex + 1)}
-            aria-label="Slide berikutnya"
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
+        ) : null}
         <div className="space-y-1 px-3 pb-3">
           <p className="text-[11px] font-semibold">Disukai 128 akun</p>
           <p className="text-muted-foreground line-clamp-2 text-[11px]">
@@ -670,7 +1064,7 @@ function CarouselPreviewDialog({
         </div>
       </div>
       <p className="text-muted-foreground text-center text-xs">
-        Simulasi tampilan carousel saat sudah diposting.
+        {previewSimulationHint(row.jenisKonten)}
       </p>
     </div>
   );
@@ -697,6 +1091,7 @@ export function ContentPlanningClient({
   const [jenisKonten, setJenisKonten] = useState<ContentPlanJenis>(
     ContentPlanJenis.REELS,
   );
+  const [usage, setUsage] = useState<ContentPlanUsage>(ContentPlanUsage.AWARENESS);
   const [detailKonten, setDetailKonten] = useState("");
   const [copywritingLink, setCopywritingLink] = useState("");
   const [designLink, setDesignLink] = useState("");
@@ -720,6 +1115,9 @@ export function ContentPlanningClient({
   const [previewRow, setPreviewRow] = useState<ContentPlanTableRow | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [kanbanSelectedIds, setKanbanSelectedIds] = useState<string[]>([]);
+  const inlineSaveInFlightRef = useRef<Set<string>>(new Set());
+  const inlineSavingCellRef = useRef<string | null>(null);
+  inlineSavingCellRef.current = inlineSavingCell;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [jenisFilter, setJenisFilter] = useState<ContentPlanJenis | "all">("all");
@@ -823,6 +1221,7 @@ export function ContentPlanningClient({
         .filter((u): u is PicOption => Boolean(u));
       return {
         ...row,
+        usage: row.usage ?? ContentPlanUsage.AWARENESS,
         picUserIds: ids,
         pics: pics.length ? pics : row.pic ? [row.pic] : [],
       };
@@ -831,7 +1230,16 @@ export function ContentPlanningClient({
   );
 
   useEffect(() => {
-    setTableRows(items.map(withResolvedPics));
+    const next = items.map(withResolvedPics);
+    setTableRows((prev) => {
+      if (
+        prev.length === next.length &&
+        prev.every((r, i) => contentPlanRowSignature(r) === contentPlanRowSignature(next[i]!))
+      ) {
+        return prev;
+      }
+      return next;
+    });
   }, [items, withResolvedPics]);
 
   useEffect(() => {
@@ -840,7 +1248,13 @@ export function ContentPlanningClient({
         .filter((r) => r.statusDesign === ContentPlanStatusKerja.BARU)
         .map((r) => r.id),
     );
-    setKanbanSelectedIds((prev) => prev.filter((id) => eligible.has(id)));
+    setKanbanSelectedIds((prev) => {
+      const next = prev.filter((id) => eligible.has(id));
+      if (next.length === prev.length && next.every((id, i) => id === prev[i])) {
+        return prev;
+      }
+      return next;
+    });
   }, [tableRows]);
 
   const toggleKanbanSelect = useCallback((id: string) => {
@@ -858,6 +1272,13 @@ export function ContentPlanningClient({
     }));
   }, []);
 
+  const usageSelectItems = useMemo((): SelectItemDef[] => {
+    return (Object.values(ContentPlanUsage) as ContentPlanUsage[]).map((u) => ({
+      value: u,
+      label: USAGE_LABEL[u],
+    }));
+  }, []);
+
   const statusKerjaSelectItems = useMemo((): SelectItemDef[] => {
     return (
       Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[]
@@ -868,6 +1289,7 @@ export function ContentPlanningClient({
     setEditing(null);
     setKonten("");
     setJenisKonten(ContentPlanJenis.REELS);
+    setUsage(ContentPlanUsage.AWARENESS);
     setDetailKonten("");
     setCopywritingLink("");
     setDesignLink("");
@@ -892,6 +1314,7 @@ export function ContentPlanningClient({
     setEditing(row);
     setKonten(row.konten);
     setJenisKonten(row.jenisKonten);
+    setUsage(row.usage ?? ContentPlanUsage.AWARENESS);
     setDetailKonten(row.detailKonten ?? "");
     setCopywritingLink(row.copywritingLink ?? "");
     setDesignLink(row.designLink ?? "");
@@ -936,6 +1359,7 @@ export function ContentPlanningClient({
         roomId,
         konten: konten.trim(),
         jenisKonten,
+        usage,
         detailKonten: detailKonten.trim() || null,
         copywritingLink: copywritingLink.trim() || null,
         designLink: designLink.trim() || null,
@@ -980,47 +1404,59 @@ export function ContentPlanningClient({
     }
   }
 
-  async function saveInlineRow(
-    rowId: string,
-    patch: Partial<ContentPlanTableRow>,
-    cellKey: string,
-  ) {
-    const prev = tableRows.find((r) => r.id === rowId);
-    if (!prev) return;
-    const nextRow = { ...prev, ...patch };
-    setInlineSavingCell(cellKey);
-    setTableRows((rows) => rows.map((r) => (r.id === rowId ? nextRow : r)));
-    try {
-      await upsertRoomContentPlanItem({
-        id: nextRow.id,
-        roomId,
-        konten: nextRow.konten,
-        jenisKonten: nextRow.jenisKonten,
-        detailKonten: nextRow.detailKonten ?? null,
-        copywritingLink: nextRow.copywritingLink ?? null,
-        designLink: nextRow.designLink ?? null,
-        picUserIds: nextRow.picUserIds ?? [],
-        statusCopywriting: nextRow.statusCopywriting,
-        statusDesign: nextRow.statusDesign,
-        deadlineCopywriting: nextRow.deadlineCopywriting
-          ? new Date(nextRow.deadlineCopywriting)
-          : null,
-        deadlineDesign: nextRow.deadlineDesign
-          ? new Date(nextRow.deadlineDesign)
-          : null,
-        tanggalPosting: nextRow.tanggalPosting
-          ? new Date(nextRow.tanggalPosting)
-          : null,
-        catatan: nextRow.catatan ?? null,
+  const buildUpsertPayload = useCallback((row: ContentPlanTableRow) => {
+    return {
+      id: row.id,
+      roomId,
+      konten: row.konten,
+      jenisKonten: row.jenisKonten,
+      usage: row.usage ?? ContentPlanUsage.AWARENESS,
+      detailKonten: row.detailKonten ?? null,
+      copywritingLink: row.copywritingLink ?? null,
+      designLink: row.designLink ?? null,
+      picUserIds: row.picUserIds ?? [],
+      statusCopywriting: row.statusCopywriting,
+      statusDesign: row.statusDesign,
+      deadlineCopywriting: row.deadlineCopywriting
+        ? new Date(row.deadlineCopywriting)
+        : null,
+      deadlineDesign: row.deadlineDesign ? new Date(row.deadlineDesign) : null,
+      tanggalPosting: row.tanggalPosting ? new Date(row.tanggalPosting) : null,
+      catatan: row.catatan ?? null,
+    };
+  }, [roomId]);
+
+  const saveInlineRow = useCallback(
+    async (rowId: string, patch: Partial<ContentPlanTableRow>, cellKey: string) => {
+      if (inlineSaveInFlightRef.current.has(rowId)) return;
+
+      let prev: ContentPlanTableRow | undefined;
+      let nextRow: ContentPlanTableRow | undefined;
+      setTableRows((rows) => {
+        const found = rows.find((r) => r.id === rowId);
+        if (!found) return rows;
+        prev = found;
+        nextRow = { ...found, ...patch };
+        return rows.map((r) => (r.id === rowId ? nextRow! : r));
       });
-    } catch (e) {
-      setTableRows((rows) => rows.map((r) => (r.id === rowId ? prev : r)));
-      toast.error(actionErrorMessage(e, "Gagal menyimpan perubahan."));
-    } finally {
-      setInlineSavingCell(null);
-      setActiveCell(null);
-    }
-  }
+      if (!prev || !nextRow) return;
+
+      inlineSaveInFlightRef.current.add(rowId);
+      setInlineSavingCell(cellKey);
+      try {
+        await upsertRoomContentPlanItem(buildUpsertPayload(nextRow), { revalidate: false });
+      } catch (e) {
+        const rollback = prev;
+        setTableRows((rows) => rows.map((r) => (r.id === rowId ? rollback : r)));
+        toast.error(actionErrorMessage(e, "Gagal menyimpan perubahan."));
+      } finally {
+        inlineSaveInFlightRef.current.delete(rowId);
+        setInlineSavingCell(null);
+        setActiveCell(null);
+      }
+    },
+    [buildUpsertPayload],
+  );
 
   const columns = useMemo<ColumnDef<ContentPlanTableRow>[]>(
     () => [
@@ -1111,9 +1547,9 @@ export function ContentPlanningClient({
             <div className="min-w-0">
               <Select
                 value={row.original.jenisKonten}
-                items={jenisKontenSelectItems}
-                disabled={inlineSavingCell === cellKey}
-                onValueChange={(v) => {
+                disabled={inlineSavingCellRef.current === cellKey}
+                onValueChange={(v, details) => {
+                  if (!isInlineSelectUserPick(details)) return;
                   if (!v || v === row.original.jenisKonten) return;
                   void saveInlineRow(
                     row.original.id,
@@ -1130,6 +1566,53 @@ export function ContentPlanningClient({
                     <SelectItem key={j} value={j}>
                       <div className="py-0.5">
                         <JenisBadge jenis={j} />
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        },
+      },
+      {
+        id: "usage",
+        accessorFn: (row) => row.usage,
+        sortUndefined: "last",
+        size: 120,
+        minSize: 100,
+        maxSize: 140,
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Usage funnel">Usage</span>
+          </CpColumnHeader>
+        ),
+        cell: ({ row }) => {
+          const cellKey = `${row.original.id}:usage`;
+          const storedUsage = row.original.usage ?? ContentPlanUsage.AWARENESS;
+          return (
+            <div className="min-w-0">
+              <Select
+                value={storedUsage}
+                disabled={inlineSavingCellRef.current === cellKey}
+                onValueChange={(v, details) => {
+                  if (!isInlineSelectUserPick(details)) return;
+                  if (!v || v === storedUsage) return;
+                  void saveInlineRow(
+                    row.original.id,
+                    { usage: v as ContentPlanUsage },
+                    cellKey,
+                  );
+                }}
+              >
+                <SelectTrigger className={INLINE_SELECT_TRIGGER}>
+                  <UsageBadge usage={storedUsage} />
+                </SelectTrigger>
+                <SelectContent hideScrollButtons align="start" side="bottom" sideOffset={6}>
+                  {(Object.values(ContentPlanUsage) as ContentPlanUsage[]).map((u) => (
+                    <SelectItem key={u} value={u}>
+                      <div className="py-0.5">
+                        <UsageBadge usage={u} />
                       </div>
                     </SelectItem>
                   ))}
@@ -1172,12 +1655,36 @@ export function ContentPlanningClient({
             <span title="File copywriting">Copy</span>
           </CpColumnHeader>
         ),
-        cell: ({ row }) => (
-          <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
-            <FileLink path={row.original.copywritingFilePath} short="Unduh file" />
-            <ExternalOrText value={row.original.copywritingLink} />
-          </div>
-        ),
+        cell: ({ row }) => {
+          const hasFile = Boolean(row.original.copywritingFilePath);
+          const hasLink = Boolean(row.original.copywritingLink?.trim());
+          const showDownload =
+            contentPlanHasStoredFiles(row.original) &&
+            row.original.designFilePaths.length === 0;
+          if (!hasFile && !hasLink && !showDownload) {
+            return <span className="text-muted-foreground text-xs">—</span>;
+          }
+          return (
+            <div className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
+              <div className="flex items-center gap-1">
+                {hasFile ? (
+                  <FileLink path={row.original.copywritingFilePath} short="Buka file" />
+                ) : null}
+                {showDownload ? (
+                  <ContentPlanDownloadButton
+                    roomId={roomId}
+                    row={row.original}
+                    size="icon-xs"
+                    showLabel={false}
+                  />
+                ) : null}
+              </div>
+              {hasLink ? (
+                <ExternalOrText value={row.original.copywritingLink} />
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         id: "design",
@@ -1190,6 +1697,7 @@ export function ContentPlanningClient({
         ),
         cell: ({ row }) => (
           <DesignTableCell
+            roomId={roomId}
             row={row.original}
             onPreview={(previewTarget) => {
               setPreviewRow(previewTarget);
@@ -1232,9 +1740,9 @@ export function ContentPlanningClient({
             <div className={STATUS_COL_BOX}>
               <Select
                 value={row.original.statusCopywriting}
-                items={statusKerjaSelectItems}
-                disabled={inlineSavingCell === cellKey}
-                onValueChange={(v) => {
+                disabled={inlineSavingCellRef.current === cellKey}
+                onValueChange={(v, details) => {
+                  if (!isInlineSelectUserPick(details)) return;
                   if (!v || v === row.original.statusCopywriting) return;
                   void saveInlineRow(
                     row.original.id,
@@ -1281,9 +1789,9 @@ export function ContentPlanningClient({
             <div className={STATUS_COL_BOX}>
               <Select
                 value={row.original.statusDesign}
-                items={statusKerjaSelectItems}
-                disabled={inlineSavingCell === cellKey}
-                onValueChange={(v) => {
+                disabled={inlineSavingCellRef.current === cellKey}
+                onValueChange={(v, details) => {
+                  if (!isInlineSelectUserPick(details)) return;
                   if (!v || v === row.original.statusDesign) return;
                   void saveInlineRow(
                     row.original.id,
@@ -1413,8 +1921,6 @@ export function ContentPlanningClient({
     [
       activeCell,
       allKanbanSelected,
-      inlineSavingCell,
-      jenisKontenSelectItems,
       kanbanEligibleCount,
       kanbanEligibleIds,
       kanbanSet,
@@ -1422,7 +1928,6 @@ export function ContentPlanningClient({
       openEdit,
       roomId,
       saveInlineRow,
-      statusKerjaSelectItems,
       toggleKanbanSelect,
     ],
   );
@@ -1628,7 +2133,9 @@ export function ContentPlanningClient({
                         {(Object.values(ContentPlanJenis) as ContentPlanJenis[]).map(
                           (j) => (
                             <SelectItem key={j} value={j}>
-                              {JENIS_LABEL[j]}
+                              <div className="py-0.5">
+                                <JenisBadge jenis={j} />
+                              </div>
                             </SelectItem>
                           ),
                         )}
@@ -1636,6 +2143,31 @@ export function ContentPlanningClient({
                     </Select>
                   </div>
                   <div className="space-y-2">
+                    <Label>Usage</Label>
+                    <Select
+                      value={usage}
+                      items={usageSelectItems}
+                      onValueChange={(v) => {
+                        if (v) setUsage(v as ContentPlanUsage);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <UsageBadge usage={usage} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.values(ContentPlanUsage) as ContentPlanUsage[]).map(
+                          (u) => (
+                            <SelectItem key={u} value={u}>
+                              <div className="py-0.5">
+                                <UsageBadge usage={u} />
+                              </div>
+                            </SelectItem>
+                          ),
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
                     <Label className="inline-flex items-center gap-1.5">
                       <UserCircle className="size-3.5 opacity-70" />
                       PIC
@@ -2167,6 +2699,7 @@ export function ContentPlanningClient({
                       </p>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <JenisBadge jenis={row.jenisKonten} />
+                        <UsageBadge usage={row.usage ?? ContentPlanUsage.AWARENESS} />
                         {(row.pics?.length ?? 0) > 0 ? (
                           <span className="text-muted-foreground text-xs">
                             PIC: {(row.pics ?? [])
@@ -2234,21 +2767,37 @@ export function ContentPlanningClient({
                   {row.detailKonten?.trim() ? (
                     <p className="text-muted-foreground line-clamp-2 text-xs">{row.detailKonten}</p>
                   ) : null}
-                  {row.jenisKonten === ContentPlanJenis.CAROUSEL &&
-                  (row.designFilePaths?.length ?? 0) > 0 ? (
-                    <div className="pt-1">
+                  {(row.designFilePaths?.length ?? 0) > 0 ? (
+                    <div className="flex items-center gap-1 pt-1">
                       <Button
                         type="button"
                         variant="outline"
-                        size="xs"
+                        size="icon-xs"
+                        className="size-6 shrink-0"
+                        aria-label={`Preview ${JENIS_LABEL[row.jenisKonten]}`}
+                        title="Preview"
                         onClick={() => {
                           setPreviewRow(row);
                           setPreviewIndex(0);
                         }}
                       >
-                        <Eye className="size-3.5" />
-                        Preview
+                        <Eye className="size-3" />
                       </Button>
+                      <ContentPlanDownloadButton
+                        roomId={roomId}
+                        row={row}
+                        size="icon-xs"
+                        showLabel={false}
+                      />
+                    </div>
+                  ) : contentPlanHasStoredFiles(row) ? (
+                    <div className="flex items-center gap-1 pt-1">
+                      <ContentPlanDownloadButton
+                        roomId={roomId}
+                        row={row}
+                        size="icon-xs"
+                        showLabel={false}
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -2283,11 +2832,19 @@ export function ContentPlanningClient({
           }
         }}
       >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Preview Carousel</DialogTitle>
+        <DialogContent
+          className={cn(
+            "max-w-md",
+            previewRow?.jenisKonten === ContentPlanJenis.REELS &&
+              "max-w-[min(100vw-2rem,380px)] gap-3 p-4",
+          )}
+        >
+          <DialogHeader className="pb-0">
+            <DialogTitle>
+              {previewRow ? previewDialogTitle(previewRow.jenisKonten) : "Preview"}
+            </DialogTitle>
           </DialogHeader>
-          <CarouselPreviewDialog
+          <ContentPlanPreviewDialog
             row={previewRow}
             index={previewIndex}
             onIndexChange={setPreviewIndex}

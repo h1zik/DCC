@@ -4,7 +4,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { ContentPlanJenis, ContentPlanStatusKerja } from "@prisma/client";
+import {
+  ContentPlanJenis,
+  ContentPlanStatusKerja,
+  ContentPlanUsage,
+} from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import {
@@ -104,6 +108,7 @@ const upsertSchema = z.object({
   roomId: z.string().min(1),
   konten: z.string().min(1),
   jenisKonten: z.nativeEnum(ContentPlanJenis),
+  usage: z.nativeEnum(ContentPlanUsage),
   detailKonten: z.string().optional().nullable(),
   copywritingLink: z.string().optional().nullable(),
   designLink: z.string().optional().nullable(),
@@ -117,9 +122,16 @@ const upsertSchema = z.object({
   catatan: z.string().optional().nullable(),
 });
 
+function revalidateContentPlanPaths(roomId: string) {
+  revalidateTasksAndRoomHub();
+  revalidatePath(`/room/${roomId}/content-planning`);
+}
+
 export async function upsertRoomContentPlanItem(
   input: z.infer<typeof upsertSchema>,
+  options?: { revalidate?: boolean },
 ): Promise<{ id: string }> {
+  const shouldRevalidate = options?.revalidate !== false;
   const session = await requireTasksRoomHubSession();
   const data = upsertSchema.parse(input);
   await assertRoomMember(data.roomId, session.user.id);
@@ -142,6 +154,7 @@ export async function upsertRoomContentPlanItem(
       data: {
         konten: data.konten,
         jenisKonten: data.jenisKonten,
+        usage: data.usage,
         detailKonten: data.detailKonten ?? null,
         copywritingLink: data.copywritingLink?.trim() || null,
         designLink: data.designLink?.trim() || null,
@@ -156,8 +169,7 @@ export async function upsertRoomContentPlanItem(
       },
     });
     await normalizeDesignPathsForNonCarousel(data.id);
-    revalidateTasksAndRoomHub();
-    revalidatePath(`/room/${data.roomId}/content-planning`);
+    if (shouldRevalidate) revalidateContentPlanPaths(data.roomId);
     return { id: data.id };
   }
 
@@ -170,6 +182,7 @@ export async function upsertRoomContentPlanItem(
       roomId: data.roomId,
       konten: data.konten,
       jenisKonten: data.jenisKonten,
+      usage: data.usage,
       detailKonten: data.detailKonten ?? null,
       copywritingLink: data.copywritingLink?.trim() || null,
       designLink: data.designLink?.trim() || null,
@@ -186,8 +199,7 @@ export async function upsertRoomContentPlanItem(
     },
   });
   await normalizeDesignPathsForNonCarousel(created.id);
-  revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${data.roomId}/content-planning`);
+  if (shouldRevalidate) revalidateContentPlanPaths(data.roomId);
   return { id: created.id };
 }
 

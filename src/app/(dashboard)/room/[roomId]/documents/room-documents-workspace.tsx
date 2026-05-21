@@ -11,17 +11,20 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   createRoomDocumentFolder,
   deleteRoomDocument,
   deleteRoomDocumentFolder,
+  deleteRoomDocuments,
   moveRoomDocumentToFolder,
+  moveRoomDocumentsToFolder,
   renameRoomDocumentFolder,
   updateRoomDocumentTags,
 } from "@/actions/room-documents";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
@@ -55,7 +58,24 @@ import {
 } from "@/lib/room-document-upload-xhr";
 import { normalizeRoomDocumentTags } from "@/lib/room-document-tags";
 import {
+  downloadRoomDocumentsZip,
+  downloadRoomFolderZip,
+  downloadSingleRoomDocument,
+} from "@/lib/room-document-download-client";
+import {
+  flattenFoldersForPicker,
+  formatFolderPath,
+  getChildFolders,
+} from "@/lib/room-document-folders";
+import {
+  DriveBreadcrumb,
+  DriveFolderGridCard,
+  DriveFolderTree,
+  type DriveFolderRow,
+} from "./room-documents-drive-nav";
+import {
   ArrowDownAZ,
+  ArrowLeft,
   ArrowUpAZ,
   ArrowUpDown,
   Calendar,
@@ -93,14 +113,11 @@ import {
   Trash2,
   User,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 
-export type RoomDocumentFolderRow = {
-  id: string;
-  name: string;
-  sortOrder: number;
-  _count: { documents: number };
-};
+export type RoomDocumentFolderRow = DriveFolderRow;
 
 export type RoomDocumentRow = {
   id: string;
@@ -121,7 +138,6 @@ export type RoomDocumentRow = {
   uploadedBy: { id: string; name: string | null; email: string };
 };
 
-type BrowseKey = "all" | "ungrouped" | string;
 type ViewMode = "grid" | "list";
 type SortKey =
   | "newest"
@@ -162,8 +178,6 @@ type UploadJob = {
   error?: string;
 };
 
-const NO_FOLDER_VALUE = "__none__";
-
 /** Batasi DOM sekaligus — daftar besar jadi ringan; preview tetap penuh. */
 const DOCS_PAGE_SIZE = 40;
 
@@ -187,9 +201,8 @@ function folderLabelForDoc(
   folderId: string | null,
   folders: RoomDocumentFolderRow[],
 ): string {
-  if (!folderId) return "Tanpa folder";
-  const f = folders.find((x) => x.id === folderId);
-  return f?.name ?? "Folder";
+  if (!folderId) return "Semua file";
+  return formatFolderPath(folderId, folders);
 }
 
 function fileTypeMeta(mimeType: string): {
@@ -241,10 +254,25 @@ export function RoomDocumentsWorkspace({
   isRoomManager: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [browseKey, setBrowseKey] = useState<BrowseKey>("all");
-  const [uploadFolderId, setUploadFolderId] = useState<string | null>(null);
+  const folderFromUrl = searchParams.get("folder");
+  const initialFolderId =
+    folderFromUrl && folders.some((f) => f.id === folderFromUrl)
+      ? folderFromUrl
+      : null;
+
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(
+    initialFolderId,
+  );
+  /** Riwayat folder untuk tombol kembali (folder sebelumnya yang dikunjungi). */
+  const [folderBackStack, setFolderBackStack] = useState<(string | null)[]>([]);
+  const currentFolderIdRef = useRef(currentFolderId);
+  currentFolderIdRef.current = currentFolderId;
+  const folderBackStackRef = useRef<(string | null)[]>([]);
+  folderBackStackRef.current = folderBackStack;
   const [title, setTitle] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
   const [pending, setPending] = useState(false);
@@ -264,11 +292,78 @@ export function RoomDocumentsWorkspace({
   const [uploadTagsInput, setUploadTagsInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string>("__all__");
   const [docDisplayLimit, setDocDisplayLimit] = useState(DOCS_PAGE_SIZE);
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const deferredSearch = useDeferredValue(search);
+  const selectionActive = selectedDocIds.size > 0;
 
   const uploadBusy = uploadJobs.some(
     (j) => j.status === "queued" || j.status === "uploading",
+  );
+
+  const applyFolderToUrl = useCallback(
+    (folderId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (folderId) params.set("folder", folderId);
+      else params.delete("folder");
+      const q = params.toString();
+      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const navigateToFolder = useCallback(
+    (folderId: string | null, options?: { skipHistory?: boolean }) => {
+      const prev = currentFolderIdRef.current;
+      if (!options?.skipHistory && folderId !== prev) {
+        const nextStack = [...folderBackStackRef.current, prev];
+        folderBackStackRef.current = nextStack;
+        setFolderBackStack(nextStack);
+      }
+      setCurrentFolderId(folderId);
+      currentFolderIdRef.current = folderId;
+      applyFolderToUrl(folderId);
+    },
+    [applyFolderToUrl],
+  );
+
+  const goBackToPreviousFolder = useCallback(() => {
+    const stack = folderBackStackRef.current;
+    if (stack.length === 0) return;
+    const prev = stack[stack.length - 1] ?? null;
+    const nextStack = stack.slice(0, -1);
+    folderBackStackRef.current = nextStack;
+    setFolderBackStack(nextStack);
+    setCurrentFolderId(prev);
+    currentFolderIdRef.current = prev;
+    applyFolderToUrl(prev);
+  }, [applyFolderToUrl]);
+
+  const canGoBackFolder = folderBackStack.length > 0;
+
+  const previousFolderLabel = useMemo(() => {
+    if (!canGoBackFolder) return null;
+    const id = folderBackStack[folderBackStack.length - 1] ?? null;
+    if (id == null) return "Semua file";
+    return folders.find((f) => f.id === id)?.name ?? "Folder";
+  }, [canGoBackFolder, folderBackStack, folders]);
+
+  const isSearchActive = deferredSearch.trim().length > 0;
+
+  const childFolders = useMemo(
+    () =>
+      isSearchActive
+        ? []
+        : (getChildFolders(folders, currentFolderId) as RoomDocumentFolderRow[]),
+    [folders, currentFolderId, isSearchActive],
+  );
+
+  const rootFileCount = useMemo(
+    () => documents.filter((d) => d.folderId == null).length,
+    [documents],
   );
 
   const allTagsInRoom = useMemo(() => {
@@ -280,30 +375,19 @@ export function RoomDocumentsWorkspace({
   }, [documents]);
 
   useEffect(() => {
-    if (browseKey === "ungrouped") setUploadFolderId(null);
-    else if (browseKey !== "all") setUploadFolderId(browseKey);
-  }, [browseKey]);
-
-  useEffect(() => {
     setDocDisplayLimit(DOCS_PAGE_SIZE);
-  }, [browseKey, tagFilter, sortKey]);
+    setSelectedDocIds(new Set());
+  }, [currentFolderId, tagFilter, sortKey, deferredSearch]);
 
   const totalSize = useMemo(
     () => documents.reduce((acc, d) => acc + (d.size ?? 0), 0),
     [documents],
   );
 
-  const ungroupedCount = useMemo(
-    () => documents.filter((d) => d.folderId == null).length,
-    [documents],
-  );
-
   const visibleDocuments = useMemo(() => {
     let rows = documents;
-    if (browseKey === "ungrouped") {
-      rows = rows.filter((d) => d.folderId == null);
-    } else if (browseKey !== "all") {
-      rows = rows.filter((d) => d.folderId === browseKey);
+    if (!isSearchActive) {
+      rows = rows.filter((d) => d.folderId === currentFolderId);
     }
     const qSearch = deferredSearch.trim().toLowerCase();
     if (qSearch) {
@@ -376,12 +460,54 @@ export function RoomDocumentsWorkspace({
         break;
     }
     return sorted;
-  }, [documents, browseKey, deferredSearch, sortKey, tagFilter]);
+  }, [documents, currentFolderId, deferredSearch, sortKey, tagFilter, isSearchActive]);
 
   const pagedVisibleDocuments = useMemo(
     () => visibleDocuments.slice(0, docDisplayLimit),
     [visibleDocuments, docDisplayLimit],
   );
+
+  const selectableDocIds = useMemo(
+    () => visibleDocuments.map((d) => d.id),
+    [visibleDocuments],
+  );
+
+  const allDocsSelected =
+    selectableDocIds.length > 0 &&
+    selectableDocIds.every((id) => selectedDocIds.has(id));
+
+  const someDocsSelected = selectableDocIds.some((id) =>
+    selectedDocIds.has(id),
+  );
+
+  const selectedDocs = useMemo(
+    () => documents.filter((d) => selectedDocIds.has(d.id)),
+    [documents, selectedDocIds],
+  );
+
+  const canManageAllSelected =
+    selectedDocs.length > 0 &&
+    selectedDocs.every(
+      (d) => d.uploadedBy.id === currentUserId || isRoomManager,
+    );
+
+  const toggleDocSelection = useCallback((docId: string, next?: boolean) => {
+    setSelectedDocIds((prev) => {
+      const copy = new Set(prev);
+      const on = next ?? !copy.has(docId);
+      if (on) copy.add(docId);
+      else copy.delete(docId);
+      return copy;
+    });
+  }, []);
+
+  const selectAllVisibleDocs = useCallback(() => {
+    setSelectedDocIds(new Set(selectableDocIds));
+  }, [selectableDocIds]);
+
+  const clearDocSelection = useCallback(() => {
+    setSelectedDocIds(new Set());
+  }, []);
 
   function updateJob(id: string, patch: Partial<UploadJob>) {
     setUploadJobs((prev) =>
@@ -421,7 +547,7 @@ export function RoomDocumentsWorkspace({
           file,
           {
             title: title.trim() || undefined,
-            folderId: uploadFolderId,
+            folderId: currentFolderId,
             tags: batchTags,
           },
           (pct) => updateJob(job.id, { progress: pct }),
@@ -467,11 +593,14 @@ export function RoomDocumentsWorkspace({
     }
     setPending(true);
     try {
-      const { id } = await createRoomDocumentFolder({ roomId, name });
+      const { id } = await createRoomDocumentFolder({
+        roomId,
+        name,
+        parentId: currentFolderId,
+      });
       setNewFolderName("");
       toast.success("Folder dibuat.");
-      setBrowseKey(id);
-      setUploadFolderId(id);
+      navigateToFolder(id);
       router.refresh();
     } catch (err) {
       toast.error(actionErrorMessage(err, "Gagal membuat folder."));
@@ -507,19 +636,22 @@ export function RoomDocumentsWorkspace({
   }
 
   async function onDeleteFolder(folder: RoomDocumentFolderRow) {
+    const childCount = folders.filter((f) => f.parentId === folder.id).length;
     const n = folder._count.documents;
-    const msg =
-      n > 0
-        ? `Hapus folder "${folder.name}"? ${n} file akan dipindahkan ke Tanpa folder.`
-        : `Hapus folder "${folder.name}"?`;
-    if (!confirm(msg)) return;
+    const parts: string[] = [`Hapus folder "${folder.name}"?`];
+    if (childCount > 0) {
+      parts.push(`${childCount} subfolder juga akan dihapus.`);
+    }
+    if (n > 0) {
+      parts.push(`${n} file di folder ini akan dipindah ke folder induk.`);
+    }
+    if (!confirm(parts.join(" "))) return;
     setPending(true);
     try {
       await deleteRoomDocumentFolder(folder.id);
       toast.success("Folder dihapus.");
-      if (browseKey === folder.id) {
-        setBrowseKey("all");
-        setUploadFolderId(null);
+      if (currentFolderId === folder.id) {
+        navigateToFolder(folder.parentId, { skipHistory: true });
       }
       router.refresh();
     } catch (err) {
@@ -549,8 +681,8 @@ export function RoomDocumentsWorkspace({
       try {
         await moveRoomDocumentToFolder({ documentId: d.id, folderId });
         const targetName = folderId
-          ? folders.find((f) => f.id === folderId)?.name ?? "folder"
-          : "Tanpa folder";
+          ? formatFolderPath(folderId, folders)
+          : "Semua file (root)";
         toast.success(`Dipindahkan ke ${targetName}.`);
         router.refresh();
       } catch (err) {
@@ -564,6 +696,101 @@ export function RoomDocumentsWorkspace({
     setPreviewDoc(d);
   }, []);
 
+  const onDownloadFolder = useCallback(
+    async (folder: RoomDocumentFolderRow) => {
+      setBulkBusy(true);
+      try {
+        await downloadRoomFolderZip(roomId, folder.id);
+        toast.success(`Unduhan "${folder.name}" dimulai.`);
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal mengunduh folder."));
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [roomId],
+  );
+
+  const onBulkDownload = useCallback(async () => {
+    const ids = Array.from(selectedDocIds);
+    if (!ids.length) return;
+    setBulkBusy(true);
+    try {
+      if (ids.length === 1) {
+        const doc = documents.find((d) => d.id === ids[0]);
+        if (doc) downloadSingleRoomDocument(doc.publicPath, doc.fileName);
+        else throw new Error("File tidak ditemukan.");
+      } else {
+        await downloadRoomDocumentsZip(roomId, ids);
+      }
+      toast.success(
+        ids.length === 1 ? "File diunduh." : `${ids.length} file diunduh (ZIP).`,
+      );
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal mengunduh."));
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [documents, roomId, selectedDocIds]);
+
+  const onBulkDelete = useCallback(async () => {
+    const ids = Array.from(selectedDocIds);
+    if (!ids.length) return;
+    if (!canManageAllSelected) {
+      toast.error("Anda tidak dapat menghapus satu atau lebih file terpilih.");
+      return;
+    }
+    if (!confirm(`Hapus ${ids.length} file terpilih?`)) return;
+    setBulkBusy(true);
+    try {
+      await deleteRoomDocuments(ids);
+      toast.success(`${ids.length} file dihapus.`);
+      clearDocSelection();
+      router.refresh();
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal menghapus."));
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [
+    selectedDocIds,
+    canManageAllSelected,
+    clearDocSelection,
+    router,
+  ]);
+
+  const onBulkMove = useCallback(
+    async (folderId: string | null) => {
+      const ids = Array.from(selectedDocIds);
+      if (!ids.length) return;
+      if (!canManageAllSelected) {
+        toast.error("Anda tidak dapat memindahkan satu atau lebih file terpilih.");
+        return;
+      }
+      setBulkBusy(true);
+      try {
+        await moveRoomDocumentsToFolder({ documentIds: ids, folderId });
+        const targetName = folderId
+          ? formatFolderPath(folderId, folders)
+          : "Semua file (root)";
+        toast.success(`${ids.length} file dipindahkan ke ${targetName}.`);
+        clearDocSelection();
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal memindahkan."));
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [
+      selectedDocIds,
+      canManageAllSelected,
+      folders,
+      clearDocSelection,
+      router,
+    ],
+  );
+
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(false);
@@ -572,20 +799,17 @@ export function RoomDocumentsWorkspace({
     if (files.length) void handleUploadFiles(files);
   }
 
-  const browseLabel =
-    browseKey === "all"
-      ? "Semua dokumen"
-      : browseKey === "ungrouped"
-        ? "Tanpa folder"
-        : folders.find((f) => f.id === browseKey)?.name ?? "Folder";
+  const uploadTargetLabel = formatFolderPath(currentFolderId, folders);
 
   const inputId = `room-doc-file-${roomId}`;
+  const folderEmpty =
+    !isSearchActive &&
+    childFolders.length === 0 &&
+    visibleDocuments.length === 0;
   const totalDocs = documents.length;
 
-  const videoPlaylist = useMemo(
-    () => visibleDocuments.filter((d) => d.mimeType.startsWith("video/")),
-    [visibleDocuments],
-  );
+  /** Urutan file untuk prev/next di dialog pratinjau (folder / filter saat ini). */
+  const previewPlaylist = useMemo(() => visibleDocuments, [visibleDocuments]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -639,96 +863,40 @@ export function RoomDocumentsWorkspace({
         </div>
         {showHelp ? (
           <div className="border-border bg-muted/30 relative border-t px-5 py-3 text-xs leading-relaxed sm:px-6">
-            Buat folder untuk mengelompokkan file (mis. <em>Logo</em>,{" "}
-            <em>Legal</em>). Saat unggah, pilih <em>Simpan ke folder</em>; file
-            yang sudah ada bisa dipindahkan lewat tombol{" "}
-            <em>Pindahkan</em> di kartunya. Manager ruangan dapat mengganti
-            nama atau menghapus folder — file di folder yang dihapus akan
-            otomatis pindah ke <em>Tanpa folder</em>.
+            Navigasi seperti Google Drive: buka folder di panel kiri atau
+            klik kartu folder. Buat subfolder di dalam folder yang sedang
+            dibuka. File diunggah ke lokasi yang aktif (breadcrumb). Saat
+            mencari, hasil mencakup seluruh ruangan beserta jalur foldernya.
           </div>
         ) : null}
       </header>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        {/* Sidebar */}
-        <aside className="border-border bg-card sticky top-[5.5rem] z-10 w-full shrink-0 space-y-3 rounded-xl border p-3 lg:max-w-[240px]">
+        {/* Sidebar — pohon folder (Drive) */}
+        <aside className="border-border bg-card sticky top-[5.5rem] z-10 w-full shrink-0 space-y-3 rounded-xl border p-3 lg:max-w-[260px]">
           <div className="flex items-center justify-between">
             <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.08em] uppercase">
-              Folder
+              Drive ruangan
             </p>
             <span className="text-muted-foreground text-[10px] tabular-nums">
-              {folders.length + 2}
+              {folders.length} folder
             </span>
           </div>
 
-          <nav className="flex flex-col gap-0.5">
-            <FolderRow
-              icon={FolderOpen}
-              label="Semua dokumen"
-              count={totalDocs}
-              active={browseKey === "all"}
-              onSelect={() => setBrowseKey("all")}
-            />
-            <FolderRow
-              icon={Folder}
-              label="Tanpa folder"
-              count={ungroupedCount}
-              active={browseKey === "ungrouped"}
-              onSelect={() => setBrowseKey("ungrouped")}
-              muted
-            />
-
-            {folders.length > 0 ? (
-              <div className="bg-border my-1 h-px" aria-hidden />
-            ) : null}
-
-            {folders.map((f) => (
-              <div key={f.id} className="group flex items-center gap-0.5">
-                <FolderRow
-                  icon={Folder}
-                  label={f.name}
-                  count={f._count.documents}
-                  active={browseKey === f.id}
-                  onSelect={() => setBrowseKey(f.id)}
-                  className="flex-1"
-                />
-                {isRoomManager ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={`Aksi folder ${f.name}`}
-                          className="text-muted-foreground hover:text-foreground size-7 shrink-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-within:opacity-100"
-                        />
-                      }
-                    >
-                      <MoreVertical className="size-3.5" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" sideOffset={4}>
-                      <DropdownMenuItem onClick={() => openRename(f)}>
-                        <Pencil className="size-3.5" />
-                        Ganti nama
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => void onDeleteFolder(f)}
-                      >
-                        <Trash2 className="size-3.5" />
-                        Hapus folder
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-              </div>
-            ))}
-          </nav>
+          <DriveFolderTree
+            folders={folders}
+            currentFolderId={currentFolderId}
+            rootFileCount={rootFileCount}
+            isRoomManager={isRoomManager}
+            onNavigate={navigateToFolder}
+            onRename={openRename}
+            onDelete={(f) => void onDeleteFolder(f)}
+            onDownload={(f) => void onDownloadFolder(f)}
+          />
 
           <div className="border-border space-y-1.5 border-t pt-3">
             <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.08em] uppercase">
-              Folder baru
+              Folder baru di sini
             </Label>
             <div className="flex gap-1">
               <Input
@@ -797,12 +965,9 @@ export function RoomDocumentsWorkspace({
                 <p className="text-muted-foreground text-xs">
                   Atau klik tombol{" "}
                   <span className="text-foreground font-medium">Pilih file</span>{" "}
-                  · target folder:{" "}
+                  · lokasi:{" "}
                   <span className="text-foreground font-medium">
-                    {uploadFolderId
-                      ? folders.find((f) => f.id === uploadFolderId)?.name ??
-                        "Folder"
-                      : "Tanpa folder"}
+                    {uploadTargetLabel}
                   </span>
                   {title.trim() ? (
                     <>
@@ -883,50 +1048,56 @@ export function RoomDocumentsWorkspace({
                     Maks. 20 tag; huruf kecil otomatis. Berguna untuk batch footage.
                   </p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Simpan ke folder</Label>
-                  <Select
-                    value={uploadFolderId ?? NO_FOLDER_VALUE}
-                    onValueChange={(v) => {
-                      const next = v ?? "";
-                      setUploadFolderId(
-                        !next || next === NO_FOLDER_VALUE ? null : next,
-                      );
-                    }}
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <span>
-                        {uploadFolderId
-                          ? folders.find((f) => f.id === uploadFolderId)?.name ??
-                            "Folder"
-                          : "Tanpa folder"}
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_FOLDER_VALUE}>Tanpa folder</SelectItem>
-                      {folders.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <p className="text-muted-foreground text-[11px] sm:col-span-2">
+                  File disimpan ke folder yang sedang dibuka (
+                  <span className="text-foreground font-medium">
+                    {uploadTargetLabel}
+                  </span>
+                  ). Pindahkan folder lewat breadcrumb atau panel kiri.
+                </p>
               </div>
             ) : null}
           </div>
 
           {/* Toolbar */}
           <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-xl border p-2">
-            <div className="bg-muted/30 text-muted-foreground border-border flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 py-1.5">
-              <FolderOpen className="size-3.5 shrink-0 opacity-70" aria-hidden />
-              <span className="text-foreground truncate text-sm font-medium">
-                {browseLabel}
-              </span>
-              <span className="text-muted-foreground text-xs tabular-nums">
-                · {visibleDocuments.length} dari {totalDocs}
-              </span>
+            <div className="bg-muted/30 border-border flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2 py-1.5">
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                disabled={!canGoBackFolder}
+                onClick={goBackToPreviousFolder}
+                aria-label={
+                  previousFolderLabel
+                    ? `Kembali ke ${previousFolderLabel}`
+                    : "Kembali ke folder sebelumnya"
+                }
+                title={
+                  previousFolderLabel
+                    ? `Kembali ke ${previousFolderLabel}`
+                    : "Kembali ke folder sebelumnya"
+                }
+                className="shrink-0"
+              >
+                <ArrowLeft className="size-4" />
+              </Button>
+              <div className="bg-border hidden h-5 w-px sm:block" aria-hidden />
+              <DriveBreadcrumb
+                currentFolderId={currentFolderId}
+                folders={folders}
+                onNavigate={navigateToFolder}
+              />
             </div>
+            {isSearchActive ? (
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {visibleDocuments.length} hasil · semua folder
+              </span>
+            ) : (
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {childFolders.length} folder · {visibleDocuments.length} file
+              </span>
+            )}
             <div className="border-border focus-within:border-ring focus-within:ring-ring/40 flex items-center gap-2 rounded-lg border px-2.5 transition-colors focus-within:ring-2">
               <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
               <input
@@ -1046,35 +1217,144 @@ export function RoomDocumentsWorkspace({
             </div>
           </div>
 
-          {/* Files */}
-          {visibleDocuments.length === 0 ? (
+          {selectionActive ? (
+            <div className="border-primary/30 bg-primary/5 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
+              <Checkbox
+                checked={allDocsSelected}
+                onCheckedChange={(v) => {
+                  if (v === true) selectAllVisibleDocs();
+                  else clearDocSelection();
+                }}
+                aria-label="Pilih semua file di tampilan"
+              />
+              <span className="text-sm font-medium tabular-nums">
+                {selectedDocIds.size} dipilih
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs"
+                disabled={bulkBusy || !someDocsSelected}
+                onClick={() => {
+                  if (allDocsSelected) clearDocSelection();
+                  else selectAllVisibleDocs();
+                }}
+              >
+                {allDocsSelected ? "Batalkan semua" : "Pilih semua"}
+              </Button>
+              <div className="bg-border mx-1 hidden h-5 w-px sm:block" aria-hidden />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-8"
+                disabled={bulkBusy}
+                onClick={() => void onBulkDownload()}
+              >
+                <Download className="size-3.5" />
+                Unduh
+              </Button>
+              {canManageAllSelected ? (
+                <>
+                  <BulkMoveFolderMenu
+                    folders={folders}
+                    disabled={bulkBusy}
+                    onMove={(folderId) => void onBulkMove(folderId)}
+                    trigger={
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8"
+                        disabled={bulkBusy}
+                      >
+                        <FolderInput className="size-3.5" />
+                        Pindahkan
+                      </Button>
+                    }
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-8"
+                    disabled={bulkBusy}
+                    onClick={() => void onBulkDelete()}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Hapus
+                  </Button>
+                </>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground ml-auto h-8"
+                disabled={bulkBusy}
+                onClick={clearDocSelection}
+                aria-label="Bersihkan pilihan"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          ) : selectableDocIds.length > 0 ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs"
+                onClick={selectAllVisibleDocs}
+              >
+                Pilih file
+              </Button>
+            </div>
+          ) : null}
+
+          {/* Folder + file */}
+          {folderEmpty ? (
             <div className="border-border bg-card flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-12 text-center">
               <div className="bg-muted text-muted-foreground flex size-14 items-center justify-center rounded-2xl">
                 <FolderOpen className="size-7" />
               </div>
               <p className="text-sm font-medium">
-                {search.trim()
+                {isSearchActive
                   ? "Tidak ada file yang cocok dengan pencarian."
-                  : browseKey === "all"
-                    ? "Belum ada dokumen."
-                    : browseKey === "ungrouped"
-                      ? "Tidak ada file di luar folder."
-                      : "Folder ini masih kosong."}
+                  : "Folder ini masih kosong."}
               </p>
               <p className="text-muted-foreground max-w-xs text-xs">
-                Tarik file ke area atas, atau klik <em>Pilih file</em> untuk
-                memulai unggah.
+                Buat subfolder di panel kiri, atau tarik file ke area unggah di
+                atas.
               </p>
             </div>
           ) : view === "grid" ? (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {!isSearchActive
+                ? childFolders.map((f) => (
+                    <DriveFolderGridCard
+                      key={f.id}
+                      folder={f}
+                      view="grid"
+                      isRoomManager={isRoomManager}
+                      onOpen={() => navigateToFolder(f.id)}
+                      onRename={() => openRename(f)}
+                      onDelete={() => void onDeleteFolder(f)}
+                      onDownload={() => void onDownloadFolder(f)}
+                    />
+                  ))
+                : null}
               {pagedVisibleDocuments.map((d, idx) => (
                 <DocCard
                   key={d.id}
                   doc={d}
                   folders={folders}
-                  showFolderHint={browseKey === "all"}
+                  showFolderHint={isSearchActive}
                   canManage={d.uploadedBy.id === currentUserId || isRoomManager}
+                  selected={selectedDocIds.has(d.id)}
+                  selectionActive={selectionActive}
+                  onToggleSelect={() => toggleDocSelection(d.id)}
                   onPreview={onPreviewDoc}
                   onDelete={onDeleteDoc}
                   onMove={onMoveDoc}
@@ -1087,17 +1367,27 @@ export function RoomDocumentsWorkspace({
             </ul>
           ) : (
             <DocList
+              childFolders={isSearchActive ? [] : childFolders}
               docs={pagedVisibleDocuments}
               folders={folders}
-              showFolderHint={browseKey === "all"}
-              currentUserId={currentUserId}
+              showFolderHint={isSearchActive}
               isRoomManager={isRoomManager}
+              onOpenFolder={(id) => navigateToFolder(id)}
+              onRenameFolder={openRename}
+              onDeleteFolder={(f) => void onDeleteFolder(f)}
+              onDownloadFolder={(f) => void onDownloadFolder(f)}
+              currentUserId={currentUserId}
+              selectedDocIds={selectedDocIds}
+              allDocsSelected={allDocsSelected}
+              onToggleSelect={toggleDocSelection}
+              onSelectAll={selectAllVisibleDocs}
+              onClearSelection={clearDocSelection}
               onPreview={onPreviewDoc}
               onDelete={onDeleteDoc}
               onMove={onMoveDoc}
             />
           )}
-          {visibleDocuments.length > 0 &&
+          {(visibleDocuments.length > 0 || childFolders.length > 0) &&
           docDisplayLimit < visibleDocuments.length ? (
             <div className="flex flex-col items-center gap-2 pt-3">
               <p className="text-muted-foreground text-center text-xs tabular-nums">
@@ -1225,8 +1515,8 @@ export function RoomDocumentsWorkspace({
       {/* Preview dialog */}
       <DocPreviewDialog
         doc={previewDoc}
-        videoPlaylist={videoPlaylist}
-        onNavigateVideo={onPreviewDoc}
+        previewPlaylist={previewPlaylist}
+        onNavigate={onPreviewDoc}
         canManageTags={
           previewDoc
             ? previewDoc.uploadedBy.id === currentUserId || isRoomManager
@@ -1273,6 +1563,47 @@ export function RoomDocumentsWorkspace({
 
 /* ----------------------------- Sub components ----------------------------- */
 
+function BulkMoveFolderMenu({
+  folders,
+  onMove,
+  trigger,
+  disabled,
+}: {
+  folders: RoomDocumentFolderRow[];
+  onMove: (folderId: string | null) => void | Promise<void>;
+  trigger: React.ReactElement;
+  disabled?: boolean;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={trigger} disabled={disabled} />
+      <DropdownMenuContent align="start" sideOffset={4} className="min-w-56">
+        <div className="text-muted-foreground flex items-center gap-1.5 px-1.5 py-1 text-xs font-medium">
+          <FolderInput className="size-3.5 opacity-70" aria-hidden />
+          Pindahkan {`file terpilih`}
+        </div>
+        <DropdownMenuSeparator />
+        <FolderChoiceItem
+          icon={<Folder className="size-3.5 opacity-70" />}
+          label="Semua file (root)"
+          active={false}
+          onSelect={() => void onMove(null)}
+        />
+        {folders.length > 0 ? <DropdownMenuSeparator /> : null}
+        {flattenFoldersForPicker(folders).map((f) => (
+          <FolderChoiceItem
+            key={f.id}
+            icon={<Folder className="size-3.5 opacity-70" />}
+            label={f.depth > 0 ? `${"  ".repeat(f.depth)}${f.label}` : f.label}
+            active={false}
+            onSelect={() => void onMove(f.id)}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function MoveFolderMenu({
   doc,
   folders,
@@ -1295,16 +1626,16 @@ function MoveFolderMenu({
         <DropdownMenuSeparator />
         <FolderChoiceItem
           icon={<Folder className="size-3.5 opacity-70" />}
-          label="Tanpa folder"
+          label="Semua file (root)"
           active={doc.folderId == null}
           onSelect={() => void onMove(doc, null)}
         />
         {folders.length > 0 ? <DropdownMenuSeparator /> : null}
-        {folders.map((f) => (
+        {flattenFoldersForPicker(folders).map((f) => (
           <FolderChoiceItem
             key={f.id}
             icon={<Folder className="size-3.5 opacity-70" />}
-            label={f.name}
+            label={f.depth > 0 ? `${"  ".repeat(f.depth)}${f.label}` : f.label}
             active={doc.folderId === f.id}
             onSelect={() => void onMove(doc, f.id)}
           />
@@ -1439,62 +1770,14 @@ function DocTagChips({ tags }: { tags: string[] }) {
   );
 }
 
-function FolderRow({
-  icon: Icon,
-  label,
-  count,
-  active,
-  onSelect,
-  className,
-  muted,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  count: number;
-  active: boolean;
-  onSelect: () => void;
-  className?: string;
-  muted?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-        active
-          ? "bg-primary text-primary-foreground"
-          : "text-foreground hover:bg-muted",
-        muted && !active && "text-muted-foreground",
-        className,
-      )}
-    >
-      <Icon
-        className={cn(
-          "size-4 shrink-0",
-          active ? "opacity-100" : "opacity-70",
-        )}
-      />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span
-        className={cn(
-          "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
-          active
-            ? "bg-primary-foreground/15 text-primary-foreground"
-            : "bg-muted text-muted-foreground",
-        )}
-      >
-        {count}
-      </span>
-    </button>
-  );
-}
-
 const DocCard = memo(function DocCard({
   doc,
   folders,
   showFolderHint,
   canManage,
+  selected,
+  selectionActive,
+  onToggleSelect,
   onPreview,
   onDelete,
   onMove,
@@ -1504,6 +1787,9 @@ const DocCard = memo(function DocCard({
   folders: RoomDocumentFolderRow[];
   showFolderHint: boolean;
   canManage: boolean;
+  selected: boolean;
+  selectionActive: boolean;
+  onToggleSelect: () => void;
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
@@ -1521,8 +1807,25 @@ const DocCard = memo(function DocCard({
       className={cn(
         "border-border bg-card group hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors",
         "[content-visibility:auto] [contain-intrinsic-block-size:280px]",
+        selected && "border-primary ring-primary/30 ring-2",
       )}
     >
+      <div
+        className={cn(
+          "absolute top-2 left-2 z-10 transition-opacity",
+          selectionActive || selected
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggleSelect()}
+          aria-label={`Pilih ${doc.fileName}`}
+          className="bg-background/90 size-5 border-2 shadow-sm"
+        />
+      </div>
       <button
         type="button"
         onClick={() => onPreview(doc)}
@@ -1555,7 +1858,7 @@ const DocCard = memo(function DocCard({
             <Icon className={cn("size-10", meta.tone)} />
           </div>
         )}
-        <span className="bg-background/90 text-foreground absolute top-2 left-2 inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm">
+        <span className="bg-background/90 text-foreground absolute top-2 right-2 z-[1] inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm">
           <Icon className={cn("size-3", meta.tone)} />
           {meta.label}
         </span>
@@ -1682,6 +1985,8 @@ const DocListRow = memo(function DocListRow({
   folders,
   showFolderHint,
   canManage,
+  selected,
+  onToggleSelect,
   onPreview,
   onDelete,
   onMove,
@@ -1690,6 +1995,8 @@ const DocListRow = memo(function DocListRow({
   folders: RoomDocumentFolderRow[];
   showFolderHint: boolean;
   canManage: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
@@ -1702,10 +2009,17 @@ const DocListRow = memo(function DocListRow({
   return (
     <li
       className={cn(
-        "hover:bg-muted/40 flex flex-col gap-2 px-3 py-2 transition-colors md:flex-row md:items-center md:gap-3",
+        "hover:bg-muted/40 flex flex-row flex-wrap items-center gap-2 px-3 py-2 transition-colors md:flex-nowrap md:gap-3",
         "[content-visibility:auto] [contain-intrinsic-block-size:72px]",
+        selected && "bg-primary/5",
       )}
     >
+      <Checkbox
+        checked={selected}
+        onCheckedChange={() => onToggleSelect()}
+        aria-label={`Pilih ${doc.fileName}`}
+        className="shrink-0"
+      />
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="bg-muted relative size-9 shrink-0 overflow-hidden rounded-md">
           {isImage ? (
@@ -1823,20 +2137,40 @@ const DocListRow = memo(function DocListRow({
 });
 
 function DocList({
+  childFolders,
   docs,
   folders,
   showFolderHint,
   currentUserId,
   isRoomManager,
+  onOpenFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onDownloadFolder,
+  selectedDocIds,
+  allDocsSelected,
+  onToggleSelect,
+  onSelectAll,
+  onClearSelection,
   onPreview,
   onDelete,
   onMove,
 }: {
+  childFolders: RoomDocumentFolderRow[];
   docs: RoomDocumentRow[];
   folders: RoomDocumentFolderRow[];
   showFolderHint: boolean;
   currentUserId: string;
   isRoomManager: boolean;
+  onOpenFolder: (folderId: string) => void;
+  onRenameFolder: (folder: RoomDocumentFolderRow) => void;
+  onDeleteFolder: (folder: RoomDocumentFolderRow) => void;
+  onDownloadFolder: (folder: RoomDocumentFolderRow) => void;
+  selectedDocIds: Set<string>;
+  allDocsSelected: boolean;
+  onToggleSelect: (docId: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
@@ -1844,13 +2178,34 @@ function DocList({
   return (
     <div className="border-border bg-card overflow-hidden rounded-xl border">
       <div className="border-border text-muted-foreground bg-muted/40 hidden items-center gap-3 border-b px-3 py-2 text-[11px] font-semibold tracking-wide uppercase md:flex">
+        <Checkbox
+          checked={allDocsSelected}
+          onCheckedChange={(v) => {
+            if (v === true) onSelectAll();
+            else onClearSelection();
+          }}
+          aria-label="Pilih semua file"
+          className="shrink-0"
+        />
         <span className="flex-1">Nama</span>
-        {showFolderHint ? <span className="w-32">Folder</span> : null}
+        {showFolderHint ? <span className="w-48">Lokasi</span> : null}
         <span className="w-24 text-right">Ukuran</span>
         <span className="w-32">Diunggah</span>
         <span className="w-8" />
       </div>
       <ul className="divide-border divide-y">
+        {childFolders.map((f) => (
+          <DriveFolderGridCard
+            key={f.id}
+            folder={f}
+            view="list"
+            isRoomManager={isRoomManager}
+            onOpen={() => onOpenFolder(f.id)}
+            onRename={() => onRenameFolder(f)}
+            onDelete={() => onDeleteFolder(f)}
+            onDownload={() => onDownloadFolder(f)}
+          />
+        ))}
         {docs.map((d) => (
           <DocListRow
             key={d.id}
@@ -1858,6 +2213,8 @@ function DocList({
             folders={folders}
             showFolderHint={showFolderHint}
             canManage={d.uploadedBy.id === currentUserId || isRoomManager}
+            selected={selectedDocIds.has(d.id)}
+            onToggleSelect={() => onToggleSelect(d.id)}
             onPreview={onPreview}
             onDelete={onDelete}
             onMove={onMove}
@@ -1870,14 +2227,14 @@ function DocList({
 
 function DocPreviewDialog({
   doc,
-  videoPlaylist,
-  onNavigateVideo,
+  previewPlaylist,
+  onNavigate,
   canManageTags,
   onClose,
 }: {
   doc: RoomDocumentRow | null;
-  videoPlaylist: RoomDocumentRow[];
-  onNavigateVideo: (d: RoomDocumentRow) => void;
+  previewPlaylist: RoomDocumentRow[];
+  onNavigate: (d: RoomDocumentRow) => void;
   canManageTags: boolean;
   onClose: () => void;
 }) {
@@ -1891,20 +2248,30 @@ function DocPreviewDialog({
 
   const open = doc !== null;
 
-  const videoIndex =
-    doc && doc.mimeType.startsWith("video/")
-      ? videoPlaylist.findIndex((v) => v.id === doc.id)
-      : -1;
-  const prevVideo =
-    videoIndex > 0 ? videoPlaylist[videoIndex - 1]! : null;
-  const nextVideo =
-    videoIndex >= 0 && videoIndex < videoPlaylist.length - 1
-      ? videoPlaylist[videoIndex + 1]!
+  const previewIndex = doc
+    ? previewPlaylist.findIndex((d) => d.id === doc.id)
+    : -1;
+  const prevDoc = previewIndex > 0 ? previewPlaylist[previewIndex - 1]! : null;
+  const nextDoc =
+    previewIndex >= 0 && previewIndex < previewPlaylist.length - 1
+      ? previewPlaylist[previewIndex + 1]!
       : null;
-  const hasVideoNav =
-    Boolean(doc?.mimeType.startsWith("video/")) &&
-    videoPlaylist.length > 1 &&
-    videoIndex >= 0;
+  const hasFileNav = previewPlaylist.length > 1 && previewIndex >= 0;
+
+  useEffect(() => {
+    if (!open || !doc) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" && prevDoc) {
+        e.preventDefault();
+        onNavigate(prevDoc);
+      } else if (e.key === "ArrowRight" && nextDoc) {
+        e.preventDefault();
+        onNavigate(nextDoc);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, doc, prevDoc, nextDoc, onNavigate]);
 
   async function saveTags() {
     if (!doc) return;
@@ -1957,24 +2324,24 @@ function DocPreviewDialog({
                   {formatFileSize(doc.size)} ·{" "}
                   {doc.uploadedBy.name ?? doc.uploadedBy.email}
                 </p>
-                {hasVideoNav ? (
+                {hasFileNav ? (
                   <p className="text-muted-foreground text-[11px] tabular-nums">
-                    Video {videoIndex + 1} dari {videoPlaylist.length} (tampilan
-                    saat ini)
+                    File {previewIndex + 1} dari {previewPlaylist.length} · tampilan
+                    folder saat ini
                   </p>
                 ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                {hasVideoNav ? (
+                {hasFileNav ? (
                   <>
                     <Button
                       type="button"
                       size="icon-sm"
                       variant="outline"
-                      disabled={!prevVideo}
-                      onClick={() => prevVideo && onNavigateVideo(prevVideo)}
-                      aria-label="Video sebelumnya"
-                      title="Video sebelumnya"
+                      disabled={!prevDoc}
+                      onClick={() => prevDoc && onNavigate(prevDoc)}
+                      aria-label="File sebelumnya"
+                      title="File sebelumnya (←)"
                     >
                       <ChevronLeft className="size-4" />
                     </Button>
@@ -1982,10 +2349,10 @@ function DocPreviewDialog({
                       type="button"
                       size="icon-sm"
                       variant="outline"
-                      disabled={!nextVideo}
-                      onClick={() => nextVideo && onNavigateVideo(nextVideo)}
-                      aria-label="Video berikutnya"
-                      title="Video berikutnya"
+                      disabled={!nextDoc}
+                      onClick={() => nextDoc && onNavigate(nextDoc)}
+                      aria-label="File berikutnya"
+                      title="File berikutnya (→)"
                     >
                       <ChevronRight className="size-4" />
                     </Button>
@@ -2068,7 +2435,35 @@ function DocPreviewDialog({
               </div>
             ) : null}
 
-            <div className="border-border bg-muted/20 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
+            <div className="border-border bg-muted/20 relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
+              {hasFileNav ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    disabled={!prevDoc}
+                    onClick={() => prevDoc && onNavigate(prevDoc)}
+                    aria-label="File sebelumnya"
+                    title="Sebelumnya (←)"
+                    className="absolute top-1/2 left-2 z-10 size-10 -translate-y-1/2 rounded-full shadow-md"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    disabled={!nextDoc}
+                    onClick={() => nextDoc && onNavigate(nextDoc)}
+                    aria-label="File berikutnya"
+                    title="Berikutnya (→)"
+                    className="absolute top-1/2 right-2 z-10 size-10 -translate-y-1/2 rounded-full shadow-md"
+                  >
+                    <ChevronRight className="size-5" />
+                  </Button>
+                </>
+              ) : null}
               <PreviewBody key={doc.id} doc={doc} />
             </div>
           </>
@@ -2078,21 +2473,152 @@ function DocPreviewDialog({
   );
 }
 
+const PREVIEW_IMAGE_ZOOM_MIN = 1;
+const PREVIEW_IMAGE_ZOOM_MAX = 4;
+const PREVIEW_IMAGE_ZOOM_STEP = 0.5;
+const PREVIEW_IMAGE_ZOOM_DBLCLICK = 2;
+
+function PreviewZoomImage({ src, alt }: { src: string; alt: string }) {
+  const [scale, setScale] = useState(PREVIEW_IMAGE_ZOOM_MIN);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    setScale(PREVIEW_IMAGE_ZOOM_MIN);
+    setPan({ x: 0, y: 0 });
+    dragRef.current = null;
+  }, [src]);
+
+  const clampScale = (s: number) =>
+    Math.min(PREVIEW_IMAGE_ZOOM_MAX, Math.max(PREVIEW_IMAGE_ZOOM_MIN, s));
+
+  const applyScale = (next: number) => {
+    const clamped = clampScale(next);
+    setScale(clamped);
+    if (clamped <= PREVIEW_IMAGE_ZOOM_MIN) setPan({ x: 0, y: 0 });
+  };
+
+  const zoomIn = () => applyScale(scale + PREVIEW_IMAGE_ZOOM_STEP);
+  const zoomOut = () => applyScale(scale - PREVIEW_IMAGE_ZOOM_STEP);
+
+  const onDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (scale > PREVIEW_IMAGE_ZOOM_MIN + 0.05) {
+      applyScale(PREVIEW_IMAGE_ZOOM_MIN);
+    } else {
+      applyScale(PREVIEW_IMAGE_ZOOM_DBLCLICK);
+    }
+  };
+
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -PREVIEW_IMAGE_ZOOM_STEP : PREVIEW_IMAGE_ZOOM_STEP;
+    applyScale(scale + delta);
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (scale <= PREVIEW_IMAGE_ZOOM_MIN || e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    setPan({
+      x: dragRef.current.panX + e.clientX - dragRef.current.startX,
+      y: dragRef.current.panY + e.clientY - dragRef.current.startY,
+    });
+  };
+
+  const endDrag = (e: React.PointerEvent) => {
+    if (dragRef.current) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* capture may already be released */
+      }
+    }
+    dragRef.current = null;
+  };
+
+  const isZoomed = scale > PREVIEW_IMAGE_ZOOM_MIN + 0.05;
+
+  return (
+    <div
+      className="bg-muted/30 relative h-full w-full overflow-hidden"
+      onWheel={onWheel}
+      title="Double-click untuk zoom · scroll untuk perbesar/perkecil · geser saat zoom"
+    >
+      <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          aria-label="Perkecil"
+          disabled={scale <= PREVIEW_IMAGE_ZOOM_MIN}
+          onClick={zoomOut}
+        >
+          <ZoomOut className="size-3.5" />
+        </Button>
+        <span className="text-muted-foreground min-w-[3rem] text-center text-[11px] font-medium tabular-nums">
+          {Math.round(scale * 100)}%
+        </span>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          aria-label="Perbesar"
+          disabled={scale >= PREVIEW_IMAGE_ZOOM_MAX}
+          onClick={zoomIn}
+        >
+          <ZoomIn className="size-3.5" />
+        </Button>
+      </div>
+
+      <div
+        className={cn(
+          "flex h-full w-full touch-none items-center justify-center p-2 select-none",
+          isZoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in",
+        )}
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px)`,
+        }}
+        onDoubleClick={onDoubleClick}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          draggable={false}
+          className="max-h-full max-w-full object-contain transition-transform duration-150 ease-out"
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: "center center",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function PreviewBody({ doc }: { doc: RoomDocumentRow }) {
   const m = doc.mimeType;
   if (m.startsWith("image/")) {
-    return (
-      <div className="bg-muted/30 relative flex h-full w-full items-center justify-center overflow-auto p-2">
-        <Image
-          src={doc.publicPath}
-          alt={doc.fileName}
-          width={1600}
-          height={1200}
-          unoptimized
-          className="h-auto max-h-full w-auto max-w-full object-contain"
-        />
-      </div>
-    );
+    return <PreviewZoomImage src={doc.publicPath} alt={doc.fileName} />;
   }
   if (m === "application/pdf") {
     return (
