@@ -44,6 +44,11 @@ export function canManagePipelineProjects(role: UserRole | undefined): boolean {
   return role === UserRole.CEO || isStudioOrProjectManager(role);
 }
 
+/** Tim studio / PM — ubah milestone; CEO & admin hanya memantau. */
+export function canEditProjectMilestones(role: UserRole | undefined): boolean {
+  return isStudioOrProjectManager(role);
+}
+
 export function isProjectManager(role: UserRole | undefined): boolean {
   return role === UserRole.PROJECT_MANAGER;
 }
