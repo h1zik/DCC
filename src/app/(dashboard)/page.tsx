@@ -14,7 +14,10 @@ import {
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getStockHealth, needsUrgentReorder } from "@/lib/stock-status";
-import { PIPELINE_LABELS, PIPELINE_ORDER } from "@/lib/pipeline";
+import { computeMilestoneProgress } from "@/lib/project-milestones";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Card,
   CardContent,
@@ -74,13 +77,11 @@ const getExecutiveDashboardData = unstable_cache(
   async () => {
     const [
       products,
-      pipelineProjects,
+      milestoneProjects,
       salesLogs,
       activeSuppliers,
       overdueTasks,
-      readyLaunchProjects,
       pendingTaskApprovals,
-      pendingPipelineApprovals,
     ] = await Promise.all([
       prisma.product.findMany({
         select: {
@@ -96,9 +97,13 @@ const getExecutiveDashboardData = unstable_cache(
       prisma.project.findMany({
         where: { brandId: { not: null } },
         select: {
-          currentStage: true,
-          pendingPipelineStage: true,
+          id: true,
+          name: true,
+          brand: { select: { name: true } },
+          milestones: { select: { status: true } },
         },
+        orderBy: { updatedAt: "desc" },
+        take: 12,
       }),
       // Jendela 90 hari terakhir — dashboard executive hanya menampilkan
       // ringkasan brand yang relevan untuk operasional saat ini. Tanpa batas
@@ -124,21 +129,29 @@ const getExecutiveDashboardData = unstable_cache(
       prisma.task.count({
         where: { status: TaskStatus.OVERDUE, archivedAt: null },
       }),
-      prisma.project.count({
-        where: { totalProgress: 100, brandId: { not: null } },
-      }),
       prisma.task.count({
         where: { isApprovalRequired: true, isApproved: false },
       }),
-      prisma.project.count({
-        where: {
-          pendingPipelineStage: { not: null },
-          brandId: { not: null },
-        } as never,
-      }),
     ]);
 
-    const pendingApprovals = pendingTaskApprovals + pendingPipelineApprovals;
+    const pendingApprovals = pendingTaskApprovals;
+
+    const projectMilestoneRows = milestoneProjects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      brandName: p.brand?.name ?? "—",
+      pct: computeMilestoneProgress(p.milestones),
+    }));
+    const avgMilestoneProgress =
+      projectMilestoneRows.length > 0
+        ? Math.round(
+            projectMilestoneRows.reduce((acc, p) => acc + p.pct, 0) /
+              projectMilestoneRows.length,
+          )
+        : 0;
+    const readyLaunchProjects = projectMilestoneRows.filter(
+      (p) => p.pct >= 100,
+    ).length;
     const activeSkus = products.length;
     const attentionCount = products.filter(
       (p) => getStockHealth(p.currentStock, p.minStock) !== "OK",
@@ -146,14 +159,6 @@ const getExecutiveDashboardData = unstable_cache(
     const critical = products.filter((p) =>
       needsUrgentReorder(p.currentStock, p.minStock),
     );
-
-    const pipelineCounts = PIPELINE_ORDER.map((stage) => ({
-      stage,
-      label: PIPELINE_LABELS[stage],
-      count: pipelineProjects.filter((p) => p.currentStage === stage).length,
-      pendingCount: pipelineProjects.filter((p) => p.pendingPipelineStage === stage)
-        .length,
-    }));
 
     const businessLogs = salesLogs.filter((row): row is SalesLogRow => !isSystemLog(row));
     const correctionLogs = salesLogs.filter((row): row is SalesLogRow => isSystemLog(row));
@@ -195,7 +200,8 @@ const getExecutiveDashboardData = unstable_cache(
       readyLaunchProjects,
       pendingApprovals,
       critical,
-      pipelineCounts,
+      projectMilestoneRows,
+      avgMilestoneProgress,
       outgoingByBrandRows,
     };
   },
@@ -215,7 +221,8 @@ export default async function ExecutiveDashboardPage() {
     readyLaunchProjects,
     pendingApprovals,
     critical,
-    pipelineCounts,
+    projectMilestoneRows,
+    avgMilestoneProgress,
     outgoingByBrandRows,
   } = await getExecutiveDashboardData();
 
@@ -296,7 +303,7 @@ export default async function ExecutiveDashboardPage() {
             <p className="text-3xl font-semibold tabular-nums">
               {readyLaunchProjects}
             </p>
-            <CardDescription>Proyek progress 100%</CardDescription>
+            <CardDescription>Semua milestone selesai</CardDescription>
           </CardContent>
         </Card>
         <Card className="border-accent/40">
@@ -409,31 +416,56 @@ export default async function ExecutiveDashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Pipeline produksi</CardTitle>
-            <CardDescription>
-              Ringkasan proyek aktif per fase resmi pipeline.
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between gap-2">
+            <div>
+              <CardTitle>Progress milestone proyek</CardTitle>
+              <CardDescription>
+                Rata-rata {avgMilestoneProgress}% — pantau detail di Pipeline
+                proyek.
+              </CardDescription>
+            </div>
+            <Button
+              nativeButton={false}
+              render={<Link href="/projects" />}
+              variant="outline"
+              size="sm"
+            >
+              Buka pipeline
+            </Button>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {pipelineCounts.map(({ stage, label, count, pendingCount }) => (
-                <div
-                  key={stage}
-                  className="bg-muted/40 flex items-center justify-between rounded-lg border border-border px-3 py-2"
-                >
-                  <div>
-                    <span className="text-sm font-medium">{label}</span>
-                    {pendingCount > 0 ? (
-                      <p className="text-muted-foreground text-[11px]">
-                        +{pendingCount} menunggu persetujuan
-                      </p>
-                    ) : null}
-                  </div>
-                  <span className="text-muted-foreground font-mono text-sm">{count}</span>
-                </div>
-              ))}
-            </div>
+            {projectMilestoneRows.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Belum ada proyek ber-brand.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {projectMilestoneRows.map((p) => (
+                  <li key={p.id}>
+                    <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate font-medium">
+                        {p.name}
+                        <span className="text-muted-foreground font-normal">
+                          {" "}
+                          · {p.brandName}
+                        </span>
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 font-semibold tabular-nums",
+                          p.pct >= 100
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-foreground",
+                        )}
+                      >
+                        {p.pct}%
+                      </span>
+                    </div>
+                    <Progress value={p.pct} className="h-1.5" />
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </section>

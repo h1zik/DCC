@@ -2,7 +2,11 @@ import { UserRole } from "@prisma/client";
 import { GitBranch, Info } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensurePipelineAccess } from "@/lib/ensure-pipeline-access";
-import { canManagePipelineProjects } from "@/lib/roles";
+import {
+  canEditProjectMilestones,
+  canManagePipelineProjects,
+} from "@/lib/roles";
+import { computeMilestoneProgress } from "@/lib/project-milestones";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -10,6 +14,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { PageHero, PageHeroChip } from "@/components/page-hero";
+import { seedDefaultProjectMilestones } from "@/lib/project-milestones";
 import { ProjectsPipeline } from "./projects-client";
 
 export default async function ProjectsPage() {
@@ -20,14 +25,54 @@ export default async function ProjectsPage() {
     include: {
       brand: true,
       room: { include: { brand: true } },
-      tasks: { select: { id: true, status: true } },
+      milestones: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          sortOrder: true,
+        },
+      },
     },
     orderBy: { updatedAt: "desc" },
   });
 
-  const canEdit = canManagePipelineProjects(session.user.role);
+  const withoutMilestones = projects.filter((p) => p.milestones.length === 0);
+  if (withoutMilestones.length > 0) {
+    await Promise.all(
+      withoutMilestones.map((p) => seedDefaultProjectMilestones(prisma, p.id)),
+    );
+    for (const p of withoutMilestones) {
+      p.milestones = await prisma.projectMilestone.findMany({
+        where: { projectId: p.id },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          sortOrder: true,
+        },
+      });
+    }
+  }
+
+  const canManageProjects = canManagePipelineProjects(session.user.role);
+  const canEditMilestones = canEditProjectMilestones(session.user.role);
   const isCeo = session.user.role === UserRole.CEO;
-  const [brands, rooms] = canEdit
+
+  const progressList = projects.map((p) => computeMilestoneProgress(p.milestones));
+  const avgProgress =
+    progressList.length > 0
+      ? Math.round(
+          progressList.reduce((a, b) => a + b, 0) / progressList.length,
+        )
+      : 0;
+  const completedCount = progressList.filter((p) => p >= 100).length;
+
+  const [brands, rooms] = canManageProjects
     ? await Promise.all([
         prisma.brand.findMany({ orderBy: { name: "asc" } }),
         prisma.room.findMany({
@@ -37,38 +82,32 @@ export default async function ProjectsPage() {
       ])
     : [[], []];
 
-  const stageCounts = projects.reduce<Record<string, number>>((acc, p) => {
-    acc[p.currentStage] = (acc[p.currentStage] ?? 0) + 1;
-    return acc;
-  }, {});
-
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
       <PageHero
         icon={GitBranch}
-        title="Pipeline pengembangan produk"
-        subtitle="Tahapan IDE → R&D → Desain → Sampling → Produksi → Peluncuran. Tim studio / PM mengajukan pindah tahap; CEO menyetujui di menu Persetujuan CEO."
+        title="Pipeline proyek"
+        subtitle="Linimasa milestone per proyek — pantau progress pengembangan produk dari validasi pasar hingga produksi."
         right={
           <>
             <PageHeroChip>
               <span className="text-foreground font-semibold tabular-nums">
                 {projects.length}
               </span>
-              proyek aktif
+              proyek
             </PageHeroChip>
             <PageHeroChip>
-              <span className="bg-amber-500 size-1.5 rounded-full" aria-hidden />
               <span className="text-foreground font-semibold tabular-nums">
-                {stageCounts.PRODUCTION ?? 0}
+                {avgProgress}%
               </span>
-              produksi
+              rata-rata milestone
             </PageHeroChip>
             <PageHeroChip>
               <span className="bg-emerald-500 size-1.5 rounded-full" aria-hidden />
               <span className="text-foreground font-semibold tabular-nums">
-                {stageCounts.LAUNCH ?? 0}
+                {completedCount}
               </span>
-              launch
+              selesai 100%
             </PageHeroChip>
             <Popover>
               <PopoverTrigger
@@ -80,19 +119,19 @@ export default async function ProjectsPage() {
                 }
               />
               <PopoverContent className="text-muted-foreground w-72 space-y-2 text-xs leading-relaxed">
-                <p className="text-foreground font-semibold">Alur pipeline</p>
+                <p className="text-foreground font-semibold">Milestone proyek</p>
                 <ul className="ml-4 list-disc space-y-1">
-                  <li>Tim studio / PM mengajukan pindah tahap.</li>
+                  <li>Setiap proyek punya 9 tahap default (bisa ditambah/diubah).</li>
                   <li>
-                    CEO menyetujui di menu{" "}
-                    <span className="text-foreground font-medium">
-                      Persetujuan CEO
-                    </span>
-                    . CEO juga dapat menerapkan pindah tahap langsung.
+                    Progress = milestone berstatus{" "}
+                    <span className="text-foreground font-medium">Selesai</span>{" "}
+                    ÷ total milestone.
                   </li>
                   <li>
-                    Proyek tetap di kolom tahap resmi sampai disetujui.
+                    Tim studio / PM mengelola milestone; CEO & admin memantau
+                    persentase di halaman ini.
                   </li>
+                  <li>Klik kartu proyek untuk detail linimasa.</li>
                 </ul>
               </PopoverContent>
             </Popover>
@@ -103,7 +142,8 @@ export default async function ProjectsPage() {
         projects={projects}
         brands={brands}
         rooms={rooms}
-        canEdit={canEdit}
+        canManageProjects={canManageProjects}
+        canEditMilestones={canEditMilestones}
         isCeo={isCeo}
       />
     </div>

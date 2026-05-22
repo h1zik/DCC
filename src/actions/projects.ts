@@ -12,6 +12,7 @@ import { auth } from "@/lib/auth";
 import { requireProjectEditor } from "@/lib/auth-helpers";
 import { PIPELINE_LABELS } from "@/lib/pipeline";
 import { recomputeProjectProgress } from "@/lib/project-progress";
+import { seedDefaultProjectMilestones } from "@/lib/project-milestones";
 import { notifyCeo } from "@/lib/notify";
 import { isSimpleHubRoom } from "@/lib/room-simple-hub";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
@@ -29,7 +30,7 @@ const createSchema = z.object({
 export async function createProject(input: z.infer<typeof createSchema>) {
   await requireProjectEditor();
   const data = createSchema.parse(input);
-  await prisma.project.create({
+  const project = await prisma.project.create({
     data: {
       roomId: data.roomId,
       brandId: data.brandId,
@@ -38,6 +39,7 @@ export async function createProject(input: z.infer<typeof createSchema>) {
       stageEnteredAt: new Date(),
     },
   });
+  await seedDefaultProjectMilestones(prisma, project.id);
   revalidatePath("/projects");
   revalidateTasksAndRoomHub();
   revalidatePath("/rooms");

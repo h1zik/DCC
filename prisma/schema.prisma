@@ -743,6 +743,22 @@ model Project {
   createdAt                DateTime       @default(now())
   updatedAt                DateTime       @updatedAt
   tasks                    Task[]
+  milestones               ProjectMilestone[]
+}
+
+/** Milestone linimasa per proyek pipeline (template default + kustom). */
+model ProjectMilestone {
+  id          String             @id @default(cuid())
+  projectId   String
+  project     Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String             @db.VarChar(200)
+  description String?
+  status      RoomTimelineStatus @default(UPCOMING)
+  sortOrder   Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([projectId, sortOrder])
 }
 
 model Task {
