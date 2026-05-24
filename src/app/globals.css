@@ -79,12 +79,12 @@
   /* Menu kiri: strip oranye sangat lembut + item aktif/hover lebih jelas */
   --sidebar: oklch(0.98 0.04 66);
   --sidebar-foreground: oklch(0.1 0 0);
-  --sidebar-primary: oklch(0.58 0.17 55);
+  --sidebar-primary: oklch(0.72 0.21 48);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.9 0.11 62);
+  --sidebar-accent: oklch(0.93 0.09 62);
   --sidebar-accent-foreground: oklch(0.1 0.06 52);
-  --sidebar-border: oklch(0.88 0.07 66);
-  --sidebar-ring: oklch(0.65 0.15 58);
+  --sidebar-border: oklch(0.9 0.06 66);
+  --sidebar-ring: oklch(0.74 0.19 50);
 }
 
 .dark {
@@ -133,81 +133,130 @@
   }
 }
 
-/* Login page — ambient motion (respects reduced motion) */
+/* Login page — animasi ringan (respects reduced motion) */
+:root {
+  --login-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @keyframes login-drift-a {
   0%,
   100% {
     transform: translate(0, 0) scale(1);
   }
   50% {
-    transform: translate(6%, -4%) scale(1.08);
+    transform: translate(5%, -3%) scale(1.05);
   }
 }
 
 @keyframes login-drift-b {
   0%,
   100% {
-    transform: translate(0, 0) scale(1.05);
+    transform: translate(0, 0) scale(1);
   }
   50% {
-    transform: translate(-8%, 6%) scale(1);
-  }
-}
-
-@keyframes login-drift-c {
-  0%,
-  100% {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  50% {
-    transform: translate(-50%, -50%) rotate(180deg);
+    transform: translate(-5%, 4%) scale(1.05);
   }
 }
 
 @keyframes login-fade-rise {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.98);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
-@keyframes login-shimmer {
-  0% {
-    transform: translateX(-120%);
+@keyframes login-stagger-fade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes login-arrow-nudge {
+  0%,
   100% {
-    transform: translateX(120%);
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
   }
 }
 
-@layer utilities {
-  .animate-login-drift-a {
-    animation: login-drift-a 16s ease-in-out infinite;
+@keyframes login-shake {
+  0%,
+  100% {
+    transform: translateX(0);
   }
-  .animate-login-drift-b {
-    animation: login-drift-b 20s ease-in-out infinite;
+  20%,
+  60% {
+    transform: translateX(-4px);
   }
-  .animate-login-drift-c {
-    animation: login-drift-c 28s linear infinite;
-  }
-  .animate-login-fade-rise {
-    animation: login-fade-rise 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  }
-  .animate-login-shimmer {
-    animation: login-shimmer 3.2s ease-in-out infinite;
+  40%,
+  80% {
+    transform: translateX(4px);
   }
 }
 
+.animate-login-drift-a {
+  animation: login-drift-a 20s ease-in-out infinite;
+}
+.animate-login-drift-b {
+  animation: login-drift-b 24s ease-in-out infinite;
+}
+.animate-login-fade-rise {
+  animation: login-fade-rise 0.7s var(--login-ease-enter) forwards;
+}
+.animate-login-shake {
+  animation: login-shake 0.45s ease-in-out;
+}
+.animate-login-stagger {
+  animation: login-stagger-fade 0.55s var(--login-ease-enter) forwards;
+  opacity: 0;
+}
+.login-stagger-1 {
+  animation-delay: 0.06s;
+}
+.login-stagger-2 {
+  animation-delay: 0.12s;
+}
+.login-stagger-3 {
+  animation-delay: 0.18s;
+}
+.login-stagger-4 {
+  animation-delay: 0.24s;
+}
+.login-stagger-5 {
+  animation-delay: 0.3s;
+}
+.login-stagger-6 {
+  animation-delay: 0.36s;
+}
+.login-arrow-nudge {
+  display: inline-flex;
+  animation: login-arrow-nudge 1.6s ease-in-out infinite;
+}
+.group:hover .login-arrow-nudge {
+  animation-duration: 1s;
+}
 @media (prefers-reduced-motion: reduce) {
   .animate-login-drift-a,
   .animate-login-drift-b,
-  .animate-login-drift-c,
-  .animate-login-shimmer {
+  .login-arrow-nudge,
+  .animate-login-shake {
     animation: none !important;
+  }
+  .animate-login-stagger {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
   }
   .animate-login-fade-rise {
     animation: none !important;
