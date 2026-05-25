@@ -752,14 +752,17 @@ function ReelsPreviewVideo({ path }: { path: string }) {
         src={path}
         playsInline
         loop
-        muted
         className="h-full w-full cursor-pointer object-cover"
         aria-label="Pratinjau video reels"
         onClick={() => {
           const v = videoRef.current;
           if (!v) return;
-          if (v.paused) void v.play();
-          else v.pause();
+          if (v.paused) {
+            v.muted = false;
+            void v.play();
+          } else {
+            v.pause();
+          }
         }}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
