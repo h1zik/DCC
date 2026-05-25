@@ -282,6 +282,8 @@ model User {
   taskComments              TaskComment[]
   taskAttachments           TaskAttachment[]
   roomMessages              RoomMessage[]
+  directConversationMembers DirectConversationMember[]
+  directMessages            DirectMessage[]
   roomDocuments             RoomDocument[]
   roomMembers               RoomMember[]
   contentPlanItemsCreated   RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
@@ -657,6 +659,66 @@ model RoomMessage {
 
   @@index([roomId, createdAt])
   @@index([replyToId])
+}
+
+/** Percakapan pribadi 1:1 antar pengguna. */
+model DirectConversation {
+  id            String                    @id @default(cuid())
+  lastMessageAt DateTime?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  members       DirectConversationMember[]
+  messages      DirectMessage[]
+
+  @@index([lastMessageAt(sort: Desc)])
+}
+
+model DirectConversationMember {
+  id             String             @id @default(cuid())
+  conversationId String
+  conversation   DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime?
+  joinedAt       DateTime           @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id             String             @id @default(cuid())
+  conversationId String
+  conversation   DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body           String             @default("")
+  gifUrl         String?
+  replyToId      String?
+  replyTo        DirectMessage?     @relation("DirectMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        DirectMessage[]    @relation("DirectMessageReplies")
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @default(now()) @updatedAt
+  attachments    DirectMessageAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, updatedAt])
+  @@index([replyToId])
+}
+
+model DirectMessageAttachment {
+  id         String        @id @default(cuid())
+  messageId  String
+  message    DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  publicPath String
+  createdAt  DateTime      @default(now())
+
+  @@index([messageId])
 }
 
 /**

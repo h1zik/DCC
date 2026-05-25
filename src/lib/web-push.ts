@@ -5,6 +5,7 @@ type PushPayload = {
   body: string;
   url?: string;
   icon?: string;
+  tag?: string;
 };
 
 let configured = false;

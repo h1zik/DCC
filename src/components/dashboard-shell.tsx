@@ -7,6 +7,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { DirectChatHeaderButton } from "@/components/direct-chat/direct-chat-header-button";
 import { NotificationBell } from "@/components/notification-bell";
 import { OnlinePresence } from "@/components/online-presence";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -24,6 +25,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </span>
           <OnlinePresence />
           <div className="ml-auto flex items-center gap-1">
+            <DirectChatHeaderButton />
             <ThemeToggle />
             <NotificationBell />
           </div>
