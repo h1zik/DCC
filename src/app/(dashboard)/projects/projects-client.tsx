@@ -23,7 +23,10 @@ import {
   ProjectMilestoneSheet,
   type ProjectMilestoneDTO,
 } from "@/components/projects/project-milestone-sheet";
-import { computeMilestoneProgress } from "@/lib/project-milestones";
+import {
+  computeMilestoneProgress,
+  topLevelMilestones,
+} from "@/lib/project-milestones";
 import { toast } from "sonner";
 import {
   createProject,
@@ -138,17 +141,18 @@ export function ProjectsPipeline({
   const enriched = useMemo(
     () =>
       clientProjects.map((p) => {
+        const tops = topLevelMilestones(p.milestones);
         const pct = computeMilestoneProgress(p.milestones);
-        const done = p.milestones.filter(
+        const done = tops.filter(
           (m) => m.status === RoomTimelineStatus.DONE,
         ).length;
-        const inProgress = p.milestones.filter(
+        const inProgress = tops.filter(
           (m) => m.status === RoomTimelineStatus.IN_PROGRESS,
         ).length;
-        const blocked = p.milestones.filter(
+        const blocked = tops.filter(
           (m) => m.status === RoomTimelineStatus.BLOCKED,
         ).length;
-        return { ...p, pct, done, inProgress, blocked };
+        return { ...p, pct, done, inProgress, blocked, topCount: tops.length };
       }),
     [clientProjects],
   );
@@ -528,7 +532,7 @@ export function ProjectsPipeline({
                   <Progress value={p.pct} className="h-2.5" />
                   <div className="text-muted-foreground flex flex-wrap gap-2 text-[11px]">
                     <span className="tabular-nums">
-                      {p.done}/{p.milestones.length} selesai
+                      {p.done}/{p.topCount} utama selesai
                     </span>
                     {p.inProgress > 0 ? (
                       <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">

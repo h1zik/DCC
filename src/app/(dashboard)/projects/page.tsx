@@ -26,9 +26,10 @@ export default async function ProjectsPage() {
       brand: true,
       room: { include: { brand: true } },
       milestones: {
-        orderBy: { sortOrder: "asc" },
+        orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }],
         select: {
           id: true,
+          parentId: true,
           title: true,
           description: true,
           status: true,
@@ -47,9 +48,10 @@ export default async function ProjectsPage() {
     for (const p of withoutMilestones) {
       p.milestones = await prisma.projectMilestone.findMany({
         where: { projectId: p.id },
-        orderBy: { sortOrder: "asc" },
+        orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }],
         select: {
           id: true,
+          parentId: true,
           title: true,
           description: true,
           status: true,
@@ -121,11 +123,15 @@ export default async function ProjectsPage() {
               <PopoverContent className="text-muted-foreground w-72 space-y-2 text-xs leading-relaxed">
                 <p className="text-foreground font-semibold">Milestone proyek</p>
                 <ul className="ml-4 list-disc space-y-1">
-                  <li>Setiap proyek punya 9 tahap default (bisa ditambah/diubah).</li>
                   <li>
-                    Progress = milestone berstatus{" "}
+                    Setiap proyek punya 11 tahap utama default; tiap tahap bisa
+                    punya sub-milestone.
+                  </li>
+                  <li>
+                    Progress = milestone <span className="text-foreground font-medium">utama</span>{" "}
+                    berstatus{" "}
                     <span className="text-foreground font-medium">Selesai</span>{" "}
-                    ÷ total milestone.
+                    ÷ 11 tahap utama.
                   </li>
                   <li>
                     Tim studio / PM mengelola milestone; CEO & admin memantau
