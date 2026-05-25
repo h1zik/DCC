@@ -813,6 +813,9 @@ model ProjectMilestone {
   id          String             @id @default(cuid())
   projectId   String
   project     Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      ProjectMilestone?  @relation("ProjectMilestoneTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    ProjectMilestone[] @relation("ProjectMilestoneTree")
   title       String             @db.VarChar(200)
   description String?
   status      RoomTimelineStatus @default(UPCOMING)
@@ -820,7 +823,7 @@ model ProjectMilestone {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
-  @@index([projectId, sortOrder])
+  @@index([projectId, parentId, sortOrder])
 }
 
 model Task {

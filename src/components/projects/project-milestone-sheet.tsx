@@ -12,6 +12,7 @@ import {
   Milestone,
   Pencil,
   Plus,
+  RotateCcw,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -19,10 +20,17 @@ import { toast } from "sonner";
 import {
   deleteProjectMilestone,
   ensureProjectMilestones,
+  resetAllProjectMilestonesToDefault,
   updateProjectMilestoneStatus,
   upsertProjectMilestone,
 } from "@/actions/project-milestones";
-import { computeMilestoneProgress } from "@/lib/project-milestones";
+import {
+  buildMilestoneTree,
+  computeMilestoneProgress,
+  DEFAULT_PROJECT_MILESTONES,
+  topLevelMilestones,
+  type ProjectMilestoneNode,
+} from "@/lib/project-milestones";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +61,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 export type ProjectMilestoneDTO = {
   id: string;
+  parentId: string | null;
   title: string;
   description: string | null;
   status: RoomTimelineStatus;
@@ -96,6 +105,158 @@ const STATUS_OPTIONS = (
   label: STATUS_META[s].label,
 }));
 
+function nextSortOrder(
+  flat: ProjectMilestoneDTO[],
+  parentId: string | null,
+): number {
+  const siblings = flat.filter((m) => (m.parentId ?? null) === parentId);
+  if (siblings.length === 0) return 0;
+  return Math.max(...siblings.map((m) => m.sortOrder)) + 1;
+}
+
+function MilestoneCard({
+  m,
+  indexLabel,
+  compact,
+  canEdit,
+  pending,
+  onQuickStatus,
+  onEdit,
+  onDelete,
+  onAddSub,
+}: {
+  m: ProjectMilestoneDTO;
+  indexLabel?: string;
+  compact?: boolean;
+  canEdit: boolean;
+  pending: boolean;
+  onQuickStatus: (m: ProjectMilestoneDTO, status: RoomTimelineStatus) => void;
+  onEdit: (m: ProjectMilestoneDTO) => void;
+  onDelete: (m: ProjectMilestoneDTO) => void;
+  onAddSub?: (parentId: string) => void;
+}) {
+  const meta = STATUS_META[m.status];
+  const Icon = meta.icon;
+  const isDone = m.status === RoomTimelineStatus.DONE;
+
+  return (
+    <div
+      className={cn(
+        "min-w-0 flex-1 rounded-xl border p-3 transition-colors",
+        isDone
+          ? "border-emerald-500/25 bg-emerald-500/5"
+          : "border-border bg-card",
+        compact && "p-2.5",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {indexLabel ? (
+              <span className="text-muted-foreground text-[10px] font-semibold tabular-nums">
+                {indexLabel}
+              </span>
+            ) : null}
+            <h3
+              className={cn(
+                "text-foreground font-semibold leading-snug",
+                compact ? "text-xs" : "text-sm",
+              )}
+            >
+              {m.title}
+            </h3>
+          </div>
+          <span
+            className={cn(
+              "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium",
+              meta.ring,
+              meta.tone,
+            )}
+          >
+            {meta.label}
+          </span>
+          {m.description ? (
+            <p className="text-muted-foreground pt-1 text-xs leading-relaxed">
+              {m.description}
+            </p>
+          ) : null}
+        </div>
+        {canEdit ? (
+          <div className="flex shrink-0 items-center gap-0.5">
+            {m.status !== RoomTimelineStatus.DONE ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title="Tandai selesai"
+                aria-label="Tandai selesai"
+                onClick={() => onQuickStatus(m, RoomTimelineStatus.DONE)}
+                disabled={pending}
+              >
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Ubah milestone"
+              onClick={() => onEdit(m)}
+              disabled={pending}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Hapus milestone"
+              onClick={() => onDelete(m)}
+              disabled={pending}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {canEdit ? (
+        <div className="mt-3 border-t border-border/60 pt-2">
+          <Select
+            value={m.status}
+            onValueChange={(v) => {
+              if (v) onQuickStatus(m, v as RoomTimelineStatus);
+            }}
+          >
+            <SelectTrigger className={cn("text-xs", compact ? "h-7" : "h-8")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+      {canEdit && onAddSub && !compact ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground mt-2 h-7 gap-1 px-2 text-xs"
+          onClick={() => onAddSub(m.id)}
+          disabled={pending}
+        >
+          <Plus className="size-3" aria-hidden />
+          Sub-milestone
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function ProjectMilestoneSheet({
   open,
   onOpenChange,
@@ -118,14 +279,13 @@ export function ProjectMilestoneSheet({
   roomName: string;
   milestones: ProjectMilestoneDTO[];
   canEdit: boolean;
-  /** Pesan untuk CEO / admin (mode pantau). */
   readOnlyHint?: string;
-  /** Sinkronkan kartu proyek di halaman utama tanpa refresh manual. */
   onMilestonesChange?: (milestones: ProjectMilestoneDTO[]) => void;
 }) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectMilestoneDTO | null>(null);
+  const [createParentId, setCreateParentId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [localMilestones, setLocalMilestones] =
     useState<ProjectMilestoneDTO[]>(milestones);
@@ -144,16 +304,35 @@ export function ProjectMilestoneSheet({
     onMilestonesChange?.(next);
   }
 
-  const sorted = useMemo(
-    () => [...localMilestones].sort((a, b) => a.sortOrder - b.sortOrder),
+  const tree = useMemo(
+    () => buildMilestoneTree(localMilestones),
+    [localMilestones],
+  );
+  const topLevel = useMemo(
+    () => topLevelMilestones(localMilestones),
     [localMilestones],
   );
 
-  const progressPct = computeMilestoneProgress(sorted);
-  const doneCount = sorted.filter((m) => m.status === RoomTimelineStatus.DONE).length;
+  const progressPct = computeMilestoneProgress(localMilestones);
+  const doneCount = topLevel.filter(
+    (m) => m.status === RoomTimelineStatus.DONE,
+  ).length;
+  const subCount = localMilestones.length - topLevel.length;
 
-  function openCreate() {
+  function openCreateMain() {
     setEditing(null);
+    setCreateParentId(null);
+    setForm({
+      title: "",
+      description: "",
+      status: RoomTimelineStatus.UPCOMING,
+    });
+    setDialogOpen(true);
+  }
+
+  function openCreateSub(parentId: string) {
+    setEditing(null);
+    setCreateParentId(parentId);
     setForm({
       title: "",
       description: "",
@@ -164,6 +343,7 @@ export function ProjectMilestoneSheet({
 
   function openEdit(m: ProjectMilestoneDTO) {
     setEditing(m);
+    setCreateParentId(m.parentId);
     setForm({
       title: m.title,
       description: m.description ?? "",
@@ -191,7 +371,9 @@ export function ProjectMilestoneSheet({
   }
 
   function removeLocalMilestone(id: string) {
-    publishMilestones(localMilestones.filter((x) => x.id !== id));
+    publishMilestones(
+      localMilestones.filter((x) => x.id !== id && x.parentId !== id),
+    );
   }
 
   function appendLocalMilestone(row: ProjectMilestoneDTO) {
@@ -205,13 +387,17 @@ export function ProjectMilestoneSheet({
       return;
     }
     const prev = localMilestones;
+    const parentId = editing?.parentId ?? createParentId;
     const optimisticId = editing?.id ?? `optimistic-${Date.now()}`;
     const optimisticRow: ProjectMilestoneDTO = {
       id: optimisticId,
+      parentId: parentId ?? null,
       title: form.title.trim(),
       description: form.description.trim() || null,
       status: form.status,
-      sortOrder: editing?.sortOrder ?? prev.length,
+      sortOrder:
+        editing?.sortOrder ??
+        nextSortOrder(prev, parentId ?? null),
     };
     if (editing) {
       patchLocalMilestone(editing.id, optimisticRow);
@@ -225,6 +411,7 @@ export function ProjectMilestoneSheet({
         await upsertProjectMilestone({
           id: editing?.id,
           projectId,
+          parentId: parentId ?? null,
           title: form.title.trim(),
           description: form.description.trim() || null,
           status: form.status,
@@ -240,7 +427,12 @@ export function ProjectMilestoneSheet({
   }
 
   function onDelete(m: ProjectMilestoneDTO) {
-    if (!confirm(`Hapus milestone “${m.title}”?`)) return;
+    const childCount = localMilestones.filter((x) => x.parentId === m.id).length;
+    const msg =
+      childCount > 0
+        ? `Hapus milestone “${m.title}” beserta ${childCount} sub-milestone?`
+        : `Hapus milestone “${m.title}”?`;
+    if (!confirm(msg)) return;
     const prev = localMilestones;
     removeLocalMilestone(m.id);
     startTransition(async () => {
@@ -251,6 +443,39 @@ export function ProjectMilestoneSheet({
       } catch (err) {
         publishMilestones(prev);
         toast.error(actionErrorMessage(err, "Gagal menghapus."));
+      }
+    });
+  }
+
+  function optimisticDefaultMilestones(): ProjectMilestoneDTO[] {
+    return DEFAULT_PROJECT_MILESTONES.map((m, i) => ({
+      id: `optimistic-default-${i}`,
+      parentId: null,
+      title: m.title,
+      description: m.description,
+      status: RoomTimelineStatus.UPCOMING,
+      sortOrder: i,
+    }));
+  }
+
+  function onResetAllProcess() {
+    if (
+      !confirm(
+        "Reset seluruh proses milestone?\n\nSemua tahap (termasuk kustom dan sub-milestone) akan dihapus dan dibuat ulang dengan template 11 tahap default. Semua progres direset ke Belum mulai.",
+      )
+    ) {
+      return;
+    }
+    const prev = localMilestones;
+    publishMilestones(optimisticDefaultMilestones());
+    startTransition(async () => {
+      try {
+        await resetAllProjectMilestonesToDefault(projectId);
+        toast.success("Seluruh proses milestone dibuat ulang ke default.");
+        router.refresh();
+      } catch (err) {
+        publishMilestones(prev);
+        toast.error(actionErrorMessage(err, "Gagal reset seluruh proses."));
       }
     });
   }
@@ -272,6 +497,77 @@ export function ProjectMilestoneSheet({
       }
     });
   }
+
+  function renderMainRow(node: ProjectMilestoneNode, index: number, isLast: boolean) {
+    const meta = STATUS_META[node.status];
+    const Icon = meta.icon;
+    const isDone = node.status === RoomTimelineStatus.DONE;
+
+    return (
+      <li key={node.id} className="relative flex gap-4 pb-6">
+        {!isLast ? (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute top-8 left-[15px] w-px",
+              isDone ? "bg-emerald-500/50" : "bg-border",
+            )}
+            style={{ height: "calc(100% - 1.25rem)" }}
+          />
+        ) : null}
+        <div
+          className={cn(
+            "relative z-[1] flex size-8 shrink-0 items-center justify-center rounded-full border-2 shadow-sm",
+            meta.ring,
+            meta.tone,
+          )}
+        >
+          <Icon
+            className={cn(
+              "size-4",
+              node.status === RoomTimelineStatus.IN_PROGRESS && "animate-spin",
+            )}
+            aria-hidden
+          />
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <MilestoneCard
+            m={node}
+            indexLabel={String(index + 1)}
+            canEdit={canEdit}
+            pending={pending}
+            onQuickStatus={onQuickStatus}
+            onEdit={openEdit}
+            onDelete={onDelete}
+            onAddSub={canEdit ? openCreateSub : undefined}
+          />
+          {node.children.length > 0 ? (
+            <ul className="border-border ml-2 space-y-2 border-l-2 pl-4">
+              {node.children.map((child) => (
+                <li key={child.id}>
+                  <MilestoneCard
+                    m={child}
+                    compact
+                    canEdit={canEdit}
+                    pending={pending}
+                    onQuickStatus={onQuickStatus}
+                    onEdit={openEdit}
+                    onDelete={onDelete}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </li>
+    );
+  }
+
+  const dialogTitle = editing
+    ? "Ubah milestone"
+    : createParentId
+      ? "Tambah sub-milestone"
+      : "Tambah milestone utama";
 
   return (
     <>
@@ -306,7 +602,7 @@ export function ProjectMilestoneSheet({
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
-                    Progress milestone
+                    Progress milestone utama
                   </p>
                   <p className="text-foreground mt-0.5 text-2xl font-bold tabular-nums">
                     {progressPct}%
@@ -316,10 +612,26 @@ export function ProjectMilestoneSheet({
                   <span className="text-foreground font-semibold tabular-nums">
                     {doneCount}
                   </span>
-                  <span> / {sorted.length} selesai</span>
+                  <span> / {topLevel.length} utama selesai</span>
+                  {subCount > 0 ? (
+                    <p className="mt-0.5 tabular-nums">{subCount} sub-milestone</p>
+                  ) : null}
                 </div>
               </div>
               <Progress value={progressPct} className="h-2.5" />
+              {canEdit && localMilestones.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-destructive/35 text-destructive hover:bg-destructive/10 w-full gap-1.5"
+                  onClick={onResetAllProcess}
+                  disabled={pending}
+                >
+                  <RotateCcw className="size-3.5" aria-hidden />
+                  Reset seluruh proses ke default
+                </Button>
+              ) : null}
             </div>
           </SheetHeader>
 
@@ -332,28 +644,29 @@ export function ProjectMilestoneSheet({
           <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
             <div className="flex items-center justify-between gap-2">
               <p className="text-muted-foreground text-sm">
-                {sorted.length} tahap dalam linimasa
+                {topLevel.length} tahap utama
+                {subCount > 0 ? ` · ${subCount} sub` : ""}
               </p>
               {canEdit ? (
                 <Button
                   type="button"
                   size="sm"
                   className="gap-1.5"
-                  onClick={openCreate}
+                  onClick={openCreateMain}
                   disabled={pending}
                 >
                   <Plus className="size-3.5" aria-hidden />
-                  Tambah
+                  Tahap utama
                 </Button>
               ) : null}
             </div>
 
-            {sorted.length === 0 ? (
+            {tree.length === 0 ? (
               <div className="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center">
                 <Flag className="text-muted-foreground/50 size-10" aria-hidden />
                 <p className="text-sm font-medium">Belum ada milestone</p>
                 <p className="text-muted-foreground max-w-xs text-xs leading-relaxed">
-                  Terapkan template 9 tahap standar (Market Validation → Production)
+                  Terapkan template 11 tahap standar (Idea Development → Launch)
                   atau tambahkan milestone sendiri.
                 </p>
                 {canEdit ? (
@@ -369,140 +682,9 @@ export function ProjectMilestoneSheet({
               </div>
             ) : (
               <ol className="relative space-y-0">
-                {sorted.map((m, index) => {
-                  const meta = STATUS_META[m.status];
-                  const Icon = meta.icon;
-                  const isLast = index === sorted.length - 1;
-                  const isDone = m.status === RoomTimelineStatus.DONE;
-
-                  return (
-                    <li key={m.id} className="relative flex gap-4 pb-6">
-                      {!isLast ? (
-                        <span
-                          aria-hidden
-                          className={cn(
-                            "absolute top-8 left-[15px] w-px",
-                            isDone ? "bg-emerald-500/50" : "bg-border",
-                          )}
-                          style={{ height: "calc(100% - 1.25rem)" }}
-                        />
-                      ) : null}
-                      <div
-                        className={cn(
-                          "relative z-[1] flex size-8 shrink-0 items-center justify-center rounded-full border-2 shadow-sm",
-                          meta.ring,
-                          meta.tone,
-                        )}
-                      >
-                        <Icon
-                          className={cn(
-                            "size-4",
-                            m.status === RoomTimelineStatus.IN_PROGRESS &&
-                              "animate-spin",
-                          )}
-                          aria-hidden
-                        />
-                      </div>
-                      <div
-                        className={cn(
-                          "min-w-0 flex-1 rounded-xl border p-3 transition-colors",
-                          isDone
-                            ? "border-emerald-500/25 bg-emerald-500/5"
-                            : "border-border bg-card",
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-muted-foreground text-[10px] font-semibold tabular-nums">
-                                {index + 1}
-                              </span>
-                              <h3 className="text-foreground text-sm font-semibold leading-snug">
-                                {m.title}
-                              </h3>
-                            </div>
-                            <span
-                              className={cn(
-                                "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium",
-                                meta.ring,
-                                meta.tone,
-                              )}
-                            >
-                              {meta.label}
-                            </span>
-                            {m.description ? (
-                              <p className="text-muted-foreground pt-1 text-xs leading-relaxed">
-                                {m.description}
-                              </p>
-                            ) : null}
-                          </div>
-                          {canEdit ? (
-                            <div className="flex shrink-0 items-center gap-0.5">
-                              {m.status !== RoomTimelineStatus.DONE ? (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  title="Tandai selesai"
-                                  aria-label="Tandai selesai"
-                                  onClick={() =>
-                                    onQuickStatus(m, RoomTimelineStatus.DONE)
-                                  }
-                                  disabled={pending}
-                                >
-                                  <CheckCircle2 className="size-3.5 text-emerald-600" />
-                                </Button>
-                              ) : null}
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label="Ubah milestone"
-                                onClick={() => openEdit(m)}
-                                disabled={pending}
-                              >
-                                <Pencil className="size-3.5" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label="Hapus milestone"
-                                onClick={() => onDelete(m)}
-                                disabled={pending}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </div>
-                          ) : null}
-                        </div>
-                        {canEdit ? (
-                          <div className="mt-3 border-t border-border/60 pt-2">
-                            <Select
-                              value={m.status}
-                              onValueChange={(v) => {
-                                if (v) {
-                                  onQuickStatus(m, v as RoomTimelineStatus);
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {STATUS_OPTIONS.map((o) => (
-                                  <SelectItem key={o.value} value={o.value}>
-                                    {o.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        ) : null}
-                      </div>
-                    </li>
-                  );
-                })}
+                {tree.map((node, index) =>
+                  renderMainRow(node, index, index === tree.length - 1),
+                )}
               </ol>
             )}
           </div>
@@ -512,9 +694,7 @@ export function ProjectMilestoneSheet({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {editing ? "Ubah milestone" : "Tambah milestone"}
-            </DialogTitle>
+            <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
           <form onSubmit={submit} className="space-y-3">
             <div className="space-y-1.5">

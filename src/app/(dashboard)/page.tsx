@@ -100,7 +100,7 @@ const getExecutiveDashboardData = unstable_cache(
           id: true,
           name: true,
           brand: { select: { name: true } },
-          milestones: { select: { status: true } },
+          milestones: { select: { status: true, parentId: true } },
         },
         orderBy: { updatedAt: "desc" },
         take: 12,
