@@ -66,3 +66,12 @@ export function isStudioTeamRole(role: UserRole | undefined): boolean {
 export function isFinanceRole(role: UserRole | undefined): boolean {
   return role === UserRole.FINANCE;
 }
+
+/** Pesan pribadi 1:1 — CEO, administrator, studio/PM. */
+export function canUseDirectChat(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  if (role === UserRole.CEO) return true;
+  if (isAdministrator(role)) return true;
+  if (isStudioOrProjectManager(role)) return true;
+  return false;
+}

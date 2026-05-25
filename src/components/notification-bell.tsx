@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { Bell } from "lucide-react";
 import { markNotificationRead } from "@/actions/notifications";
+import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -75,12 +76,17 @@ export function NotificationBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        className={cn(
-          "border-border bg-background text-foreground relative inline-flex size-8 shrink-0 items-center justify-center rounded-lg border shadow-xs outline-none hover:bg-muted",
-        )}
-        aria-label="Notifikasi"
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="relative shrink-0"
+            aria-label="Notifikasi"
+          />
+        }
       >
-        <Bell className="size-4" />
+        <Bell />
         {unread > 0 ? (
           <span className="bg-destructive text-destructive-foreground absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
             {unread > 9 ? "9+" : unread}

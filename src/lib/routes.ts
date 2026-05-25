@@ -33,10 +33,16 @@ export function isFinanceAppRoute(pathname: string): boolean {
   );
 }
 
+/** Pesan pribadi 1:1. */
+export function isDirectChatRoute(pathname: string): boolean {
+  return pathname === "/messages" || pathname.startsWith("/messages/");
+}
+
 /** Pipeline & tugas — tim studio / PM. */
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isScheduleRoute(pathname) ||
+    isDirectChatRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
@@ -49,6 +55,7 @@ export function isCeoAppRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
     isScheduleRoute(pathname) ||
+    isDirectChatRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
@@ -62,6 +69,7 @@ export function isAdministratorAppRoute(pathname: string): boolean {
   return (
     isProfileRoute(pathname) ||
     isScheduleRoute(pathname) ||
+    isDirectChatRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/rooms") ||

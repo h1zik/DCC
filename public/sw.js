@@ -20,6 +20,8 @@ self.addEventListener("push", (event) => {
   const icon = rawIcon.startsWith("http")
     ? rawIcon
     : new URL(rawIcon, self.location.origin).toString();
+  const tag =
+    typeof data.tag === "string" && data.tag ? data.tag : "dcc-notification";
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
@@ -28,7 +30,7 @@ self.addEventListener("push", (event) => {
       image: icon,
       vibrate: [200, 120, 200],
       data: { url },
-      tag: "dcc-chat-message",
+      tag,
       renotify: true,
     }),
   );
