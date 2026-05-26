@@ -88,11 +88,7 @@ export function DashboardHeader() {
           <OnlinePresence />
         </div>
 
-        <div
-          className="border-border/60 bg-muted/25 flex items-center gap-0.5 rounded-xl border p-0.5 shadow-sm"
-          role="toolbar"
-          aria-label="Aksi cepat"
-        >
+        <div className="flex items-center gap-1" role="toolbar" aria-label="Aksi cepat">
           <DirectChatHeaderButton />
           <ThemeToggle />
           <NotificationBell />
