@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   RoomMemberRole,
@@ -9,25 +8,27 @@ import {
 import { KanbanSquare, Workflow } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
-import {
-  isRoomHubManagerRole,
-  memberHasRoomProcessAccess,
-  roomMemberToProcessAccess,
-} from "@/lib/room-access";
+import { isRoomHubManagerRole, roomMemberToProcessAccess } from "@/lib/room-access";
 import { ROOM_PROJECT_MANAGER_ROLE } from "@/lib/room-member-process-access";
 import {
-  defaultRoomTaskProcess,
-  parseRoomTaskProcessParam,
-  roomTaskProcessLabel,
-  ROOM_TASK_PROCESS_ORDER,
-} from "@/lib/room-task-process";
+  buildRoomProcessPhaseList,
+  defaultRoomProcessPhaseRef,
+  parseRoomProcessPhaseParam,
+  roomProcessPhaseKey,
+  taskPhaseWhere,
+} from "@/lib/room-process-phase";
+import { memberHasRoomPhaseAccess } from "@/lib/room-member-process-access";
 import {
   ensureSimpleRoomBoardProject,
   isSimpleTeamOrHqRoom,
 } from "@/lib/room-simple-hub";
-import { cn } from "@/lib/utils";
-import { getRoomKanbanColumns } from "@/lib/room-kanban-columns";
+import {
+  getRoomKanbanColumns,
+  getSimpleHubKanbanColumns,
+} from "@/lib/room-kanban-columns";
+import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
+import { RoomTasksProcessNav } from "./room-tasks-process-nav";
 
 function TasksHero({
   title,
@@ -85,8 +86,13 @@ type PageProps = {
 export default async function RoomTasksPage({ params, searchParams }: PageProps) {
   const { roomId } = await params;
   const sp = await searchParams;
-  const { room, role, allowedRoomProcesses, viewerUserId: uid } =
-    await getRoomMemberContextOrThrow(roomId);
+  const {
+    room,
+    role,
+    allowedRoomProcesses,
+    allowedCustomProcessPhaseIds,
+    viewerUserId: uid,
+  } = await getRoomMemberContextOrThrow(roomId);
   const viewerPreference = await prisma.user.findUnique({
     where: { id: uid },
     select: { taskDefaultWorkspaceView: true },
@@ -102,12 +108,19 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     }
   }
 
-  const accessMember = roomMemberToProcessAccess({ role, allowedRoomProcesses });
-  const accessibleProcesses = ROOM_TASK_PROCESS_ORDER.filter((p) =>
-    memberHasRoomProcessAccess(accessMember, p),
+  const customPhases = simpleHub ? [] : await ensureRoomProcessPhases(roomId);
+
+  const accessMember = roomMemberToProcessAccess({
+    role,
+    allowedRoomProcesses,
+    allowedCustomProcessPhaseIds,
+  });
+  const allPhases = buildRoomProcessPhaseList(customPhases);
+  const accessiblePhases = allPhases.filter((phase) =>
+    memberHasRoomPhaseAccess(accessMember, phase),
   );
 
-  if (!simpleHub && accessibleProcesses.length === 0) {
+  if (!simpleHub && accessiblePhases.length === 0) {
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
         <p className="font-medium text-amber-950 dark:text-amber-50">
@@ -177,7 +190,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         orderBy: { user: { email: "asc" } },
       }),
       prisma.vendor.findMany({ orderBy: { name: "asc" } }),
-      getRoomKanbanColumns(roomId, RoomTaskProcess.MARKET_RESEARCH),
+      getSimpleHubKanbanColumns(roomId),
       prisma.taskTag.findMany({
         where: { roomId },
         orderBy: [{ name: "asc" }],
@@ -220,16 +233,18 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     );
   }
 
-  const requestedProcess =
-    parseRoomTaskProcessParam(sp.process) ?? defaultRoomTaskProcess();
+  const requestedPhase =
+    parseRoomProcessPhaseParam(sp.process, customPhases) ??
+    defaultRoomProcessPhaseRef(customPhases);
 
-  const activeProcess = accessibleProcesses.includes(requestedProcess)
-    ? requestedProcess
-    : accessibleProcesses[0]!;
+  const requestedKey = roomProcessPhaseKey(requestedPhase);
+  const activePhase =
+    accessiblePhases.find((p) => roomProcessPhaseKey(p) === requestedKey) ??
+    accessiblePhases[0]!;
 
-  if (activeProcess !== requestedProcess) {
+  if (roomProcessPhaseKey(activePhase) !== requestedKey) {
     const qs = new URLSearchParams();
-    qs.set("process", activeProcess);
+    qs.set("process", roomProcessPhaseKey(activePhase));
     if (showArchived) qs.set("archived", "1");
     redirect(`/room/${roomId}/tasks?${qs.toString()}`);
   }
@@ -245,7 +260,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     prisma.task.findMany({
       where: {
         project: { roomId },
-        roomProcess: activeProcess,
+        ...taskPhaseWhere(activePhase),
         ...archivedWhere,
       },
       orderBy: [
@@ -293,7 +308,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       orderBy: { user: { email: "asc" } },
     }),
     prisma.vendor.findMany({ orderBy: { name: "asc" } }),
-    getRoomKanbanColumns(roomId, activeProcess),
+    getRoomKanbanColumns(roomId, activePhase),
     prisma.taskTag.findMany({
       where: { roomId },
       orderBy: [{ name: "asc" }],
@@ -303,10 +318,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
 
   const users = contributorMembers
     .filter((row) =>
-      memberHasRoomProcessAccess(
-        roomMemberToProcessAccess(row),
-        activeProcess,
-      ),
+      memberHasRoomPhaseAccess(roomMemberToProcessAccess(row), activePhase),
     )
     .map((row) => row.user);
 
@@ -324,46 +336,17 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         subtitle="Kanban, daftar, dan Gantt per fase proses. Klik kartu (grip untuk seret di Kanban) untuk detail tugas."
         hint={roleHint}
       />
-      <nav
-        aria-label="Proses alur ruangan"
-        className="border-border bg-background/85 supports-backdrop-filter:bg-background/65 sticky top-[8.5rem] z-10 rounded-xl border shadow-sm backdrop-blur-md"
-      >
-        <div className="text-muted-foreground border-border/60 flex items-center gap-2 border-b px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide">
-          <Workflow className="size-3" aria-hidden />
-          Fase proses
-        </div>
-        <ul
-          role="list"
-          className="flex w-full items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {accessibleProcesses.map((p) => {
-            const active = p === activeProcess;
-            return (
-              <li key={p} className="shrink-0">
-                <Link
-                  href={`/room/${roomId}/tasks?process=${p}`}
-                  scroll={false}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "focus-visible:ring-ring inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <span className="whitespace-nowrap">
-                    {roomTaskProcessLabel(p)}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      <RoomTasksProcessNav
+        roomId={roomId}
+        phases={accessiblePhases}
+        activePhase={activePhase}
+        showArchived={showArchived}
+        canManagePhases={canManageRoomTasks}
+      />
       <TasksWorkspace
         roomId={roomId}
         roomTitle={room.name}
-        activeRoomProcess={activeProcess}
+        activePhase={activePhase}
         projects={projects}
         users={users}
         vendors={vendors}

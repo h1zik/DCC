@@ -406,7 +406,33 @@ model Room {
    * View tambahan kustom yang ditambahkan oleh manager ruangan
    * (Kalender, Linimasa, Wiki, Hub tautan, List generik, Glosarium).
    */
-  views            RoomView[]
+  views                RoomView[]
+  /** Semua fase proses tugas di ruangan (bawaan + tambahan). */
+  customProcessPhases RoomCustomProcessPhase[]
+}
+
+/**
+ * Fase proses per ruangan. Fase bawaan punya `legacyProcessKey` (enum awal);
+ * fase tambahan dibuat manager dengan `legacyProcessKey` kosong.
+ */
+model RoomCustomProcessPhase {
+  id                String            @id @default(cuid())
+  roomId            String
+  room              Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name              String            @db.VarChar(80)
+  sortOrder         Int               @default(0)
+  /**
+   * Jika diisi, fase ini mewakili template bawaan (`RoomTaskProcess`) untuk ruangan ini.
+   */
+  legacyProcessKey  RoomTaskProcess?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  tasks         Task[]
+  kanbanColumns RoomKanbanColumn[]
+
+  @@unique([roomId, legacyProcessKey])
+  @@index([roomId, sortOrder])
 }
 
 /**
@@ -572,18 +598,23 @@ model RoomGlossaryEntry {
  * Kolom Kanban: memetakan `linkedStatus` ke judul tampilan & urutan.
  */
 model RoomKanbanColumn {
-  id           String          @id @default(cuid())
-  roomId       String
-  room         Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  roomProcess  RoomTaskProcess
-  linkedStatus TaskStatus
-  title        String
-  sortOrder    Int             @default(0)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id                   String                  @id @default(cuid())
+  roomId               String
+  room                 Room                    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /** Kolom fase enum bawaan — null jika kolom milik fase kustom. */
+  roomProcess          RoomTaskProcess?
+  customProcessPhaseId String?
+  customProcessPhase   RoomCustomProcessPhase? @relation(fields: [customProcessPhaseId], references: [id], onDelete: Cascade)
+  linkedStatus         TaskStatus
+  title                String
+  sortOrder            Int                     @default(0)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
 
   @@unique([roomId, roomProcess, linkedStatus])
+  @@unique([roomId, customProcessPhaseId, linkedStatus])
   @@index([roomId, roomProcess, sortOrder])
+  @@index([roomId, customProcessPhaseId, sortOrder])
 }
 
 /**
@@ -634,8 +665,12 @@ model RoomMember {
   /**
    * Fase tugas yang boleh diakses (manager & kontributor). Kosong untuk `ROOM_PROJECT_MANAGER` (diabaikan).
    */
-  allowedRoomProcesses RoomTaskProcess[] @default([])
-  createdAt            DateTime          @default(now())
+  allowedRoomProcesses           RoomTaskProcess[] @default([])
+  /**
+   * Fase proses kustom ruangan yang boleh diakses (selain enum bawaan).
+   */
+  allowedCustomProcessPhaseIds   String[]          @default([])
+  createdAt                      DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
   @@unique([roomId, userId])
@@ -832,8 +867,11 @@ model Task {
   project                  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /**
    * Fase alur di ruangan kerja (filter Kanban/List/Gantt per proses).
+   * Untuk tugas di fase kustom, tetap diisi default enum; filter pakai `customProcessPhaseId`.
    */
   roomProcess              RoomTaskProcess      @default(MARKET_RESEARCH)
+  customProcessPhaseId     String?
+  customProcessPhase       RoomCustomProcessPhase? @relation(fields: [customProcessPhaseId], references: [id], onDelete: SetNull)
   title                    String
   description              String?
   status                   TaskStatus           @default(TODO)
@@ -872,6 +910,7 @@ model Task {
   contentPlanJenis         ContentPlanJenis?
 
   @@index([projectId, roomProcess, archivedAt, sortOrder])
+  @@index([projectId, customProcessPhaseId, archivedAt, sortOrder])
   @@index([projectId, archivedAt, status])
   @@index([projectId, createdAt])
   @@index([contentPlanItemId])

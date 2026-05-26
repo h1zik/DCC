@@ -1,11 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { RoomMemberRole, RoomTaskProcess, UserRole } from "@prisma/client";
+import { RoomMemberRole, UserRole, type RoomTaskProcess } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdministratorOrProjectManager } from "@/lib/auth-helpers";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
+import { isSimpleHubRoom } from "@/lib/room-simple-hub";
+import { legacyProcessesFromPhaseIds } from "@/lib/room-member-phase-access";
+import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
 import { ROOM_PROJECT_MANAGER_ROLE } from "@/lib/room-member-process-access";
 
 const roomMemberRoleInput = z.enum([
@@ -18,21 +21,21 @@ const upsertInputSchema = z.object({
   roomId: z.string().min(1),
   userId: z.string().min(1),
   role: roomMemberRoleInput,
-  allowedRoomProcesses: z.array(z.nativeEnum(RoomTaskProcess)).optional(),
+  allowedPhaseIds: z.array(z.string().min(1)).optional(),
 });
 
 export async function upsertRoomMember(
   roomId: string,
   userId: string,
   role: RoomMemberRole,
-  allowedRoomProcesses?: RoomTaskProcess[],
+  allowedPhaseIds?: string[],
 ) {
   await requireAdministratorOrProjectManager();
   upsertInputSchema.parse({
     roomId,
     userId,
     role: role as "ROOM_MANAGER" | "ROOM_CONTRIBUTOR" | "ROOM_PROJECT_MANAGER",
-    allowedRoomProcesses,
+    allowedPhaseIds,
   });
 
   await prisma.room.findUniqueOrThrow({ where: { id: roomId } });
@@ -47,16 +50,31 @@ export async function upsertRoomMember(
     throw new Error("CEO tidak perlu ditambahkan sebagai anggota ruangan.");
   }
 
-  let processesToStore: RoomTaskProcess[];
+  const simpleHub = await isSimpleHubRoom(roomId);
+
+  let customIds: string[] = [];
+  let legacyProcesses: RoomTaskProcess[] = [];
+
   if (role === ROOM_PROJECT_MANAGER_ROLE) {
-    processesToStore = [];
+    customIds = [];
+    legacyProcesses = [];
+  } else if (simpleHub) {
+    const phases = await ensureRoomProcessPhases(roomId);
+    customIds = phases.map((p) => p.id);
+    legacyProcesses = legacyProcessesFromPhaseIds(phases, customIds);
   } else {
-    if (!allowedRoomProcesses?.length) {
+    if (!allowedPhaseIds?.length) {
       throw new Error(
         "Pilih minimal satu fase proses untuk administrator atau kontributor ruangan.",
       );
     }
-    processesToStore = allowedRoomProcesses;
+    const phases = await ensureRoomProcessPhases(roomId);
+    const valid = new Set(phases.map((p) => p.id));
+    customIds = allowedPhaseIds.filter((id) => valid.has(id));
+    if (customIds.length === 0) {
+      throw new Error("Fase proses tidak valid untuk ruangan ini.");
+    }
+    legacyProcesses = legacyProcessesFromPhaseIds(phases, customIds);
   }
 
   await prisma.roomMember.upsert({
@@ -65,14 +83,17 @@ export async function upsertRoomMember(
       roomId,
       userId,
       role,
-      allowedRoomProcesses: processesToStore,
+      allowedRoomProcesses: legacyProcesses,
+      allowedCustomProcessPhaseIds: customIds,
     },
     update: {
       role,
-      allowedRoomProcesses: processesToStore,
+      allowedRoomProcesses: legacyProcesses,
+      allowedCustomProcessPhaseIds: customIds,
     },
-  } as never);
+  });
   revalidatePath("/rooms");
+  revalidatePath(`/room/${roomId}/members`);
   revalidateTasksAndRoomHub();
 }
 
@@ -82,5 +103,6 @@ export async function removeRoomMember(roomId: string, userId: string) {
     where: { roomId_userId: { roomId, userId } },
   });
   revalidatePath("/rooms");
+  revalidatePath(`/room/${roomId}/members`);
   revalidateTasksAndRoomHub();
 }

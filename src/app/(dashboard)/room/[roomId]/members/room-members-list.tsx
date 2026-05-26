@@ -9,10 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  phaseLabelsForMember,
+  type RoomPhaseOption,
+} from "@/lib/room-member-phase-access";
+import {
   ROOM_PROJECT_MANAGER_ROLE,
   roomMemberToProcessAccess,
 } from "@/lib/room-member-process-access";
-import { roomTaskProcessLabel } from "@/lib/room-task-process";
 import { cn } from "@/lib/utils";
 
 type MemberRow = {
@@ -21,6 +24,7 @@ type MemberRow = {
   userId: string;
   role: RoomMemberRole;
   allowedRoomProcesses: RoomTaskProcess[];
+  allowedCustomProcessPhaseIds: string[];
   user: {
     id: string;
     name: string | null;
@@ -81,7 +85,13 @@ const ROLE_META: Record<RoomMemberRole, RoleMeta> = {
   },
 };
 
-export function RoomMembersList({ members }: { members: MemberRow[] }) {
+export function RoomMembersList({
+  members,
+  roomPhases,
+}: {
+  members: MemberRow[];
+  roomPhases: RoomPhaseOption[];
+}) {
   const [query, setQuery] = useState("");
 
   const counts = useMemo(() => {
@@ -242,6 +252,7 @@ export function RoomMembersList({ members }: { members: MemberRow[] }) {
                   {items.map((member) => {
                     const access = roomMemberToProcessAccess(member);
                     const fullAccess = access.role === ROOM_PROJECT_MANAGER_ROLE;
+                    const phaseLabels = phaseLabelsForMember(access, roomPhases);
                     const displayName = member.user.name ?? member.user.email;
                     return (
                       <li
@@ -286,18 +297,18 @@ export function RoomMembersList({ members }: { members: MemberRow[] }) {
                             <Badge variant="secondary" className="text-[10px]">
                               Semua fase proses
                             </Badge>
-                          ) : access.allowedRoomProcesses.length === 0 ? (
+                          ) : phaseLabels.length === 0 ? (
                             <Badge variant="outline" className="text-[10px]">
                               Belum ada fase aktif
                             </Badge>
                           ) : (
-                            access.allowedRoomProcesses.map((proc) => (
+                            phaseLabels.map((label) => (
                               <Badge
-                                key={proc}
+                                key={label}
                                 variant="secondary"
                                 className="text-[10px]"
                               >
-                                {roomTaskProcessLabel(proc)}
+                                {label}
                               </Badge>
                             ))
                           )}

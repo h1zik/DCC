@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
+import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
 import { isAdministrator, isProjectManager } from "@/lib/roles";
 import {
   Dialog,
@@ -29,6 +30,15 @@ export default async function RoomMembersPage({ params }: PageProps) {
     isProjectManager(session?.user?.role) ||
     isAdministrator(session?.user?.role);
   const simpleRoom = isSimpleTeamOrHqRoom(room);
+
+  const roomPhases = simpleRoom
+    ? []
+    : (await ensureRoomProcessPhases(roomId)).map((p) => ({
+        id: p.id,
+        name: p.name,
+        sortOrder: p.sortOrder,
+        legacyProcessKey: p.legacyProcessKey,
+      }));
 
   const [members, studioUsers] = await Promise.all([
     prisma.roomMember.findMany({
@@ -57,6 +67,7 @@ export default async function RoomMembersPage({ params }: PageProps) {
     userId: m.userId,
     role: m.role,
     allowedRoomProcesses: m.allowedRoomProcesses,
+    allowedCustomProcessPhaseIds: m.allowedCustomProcessPhaseIds,
     user: {
       id: m.user.id,
       name: m.user.name,
@@ -71,6 +82,7 @@ export default async function RoomMembersPage({ params }: PageProps) {
     userId: m.userId,
     role: m.role,
     allowedRoomProcesses: m.allowedRoomProcesses,
+    allowedCustomProcessPhaseIds: m.allowedCustomProcessPhaseIds,
     user: {
       id: m.user.id,
       name: m.user.name,
@@ -101,12 +113,13 @@ export default async function RoomMembersPage({ params }: PageProps) {
                 members={membersForAdmin}
                 studioUsers={studioUsers}
                 simpleRoom={simpleRoom}
+                roomPhases={roomPhases}
               />
             </DialogContent>
           </Dialog>
         </div>
       ) : null}
-      <RoomMembersList members={membersForList} />
+      <RoomMembersList members={membersForList} roomPhases={roomPhases} />
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import {
-  assertRoomMemberHasTaskProcess,
+  assertRoomMemberHasTaskPhase,
   getTaskRoomContext,
   isRoomHubManagerRole,
 } from "@/lib/room-access";
@@ -95,8 +95,8 @@ export async function addTaskLinkAttachment(
       : defaultLinkTitle(linkUrl);
   const fileName = titleRaw.slice(0, MAX_LINK_TITLE_CHARS);
 
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   await prisma.taskAttachment.create({
     data: {
@@ -126,8 +126,8 @@ export async function uploadTaskAttachment(taskId: string, formData: FormData) {
     throw new Error("Tipe file tidak diizinkan (gambar, PDF, dokumen Office, zip, teks).");
   }
 
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
@@ -162,11 +162,11 @@ export async function deleteTaskAttachment(attachmentId: string) {
       taskId: true,
     },
   });
-  const { roomId, roomProcess } = await getTaskRoomContext(a.taskId);
-  const member = await assertRoomMemberHasTaskProcess(
+  const { roomId, phase } = await getTaskRoomContext(a.taskId);
+  const member = await assertRoomMemberHasTaskPhase(
     roomId,
     session.user.id,
-    roomProcess,
+    phase,
   );
   const canModerate = isRoomHubManagerRole(member.role);
   if (a.uploadedById !== session.user.id && !canModerate) {
