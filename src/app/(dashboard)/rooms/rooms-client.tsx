@@ -13,7 +13,9 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createRoom, deleteRoom, updateRoom } from "@/actions/rooms";
+import { listRoomCustomProcessPhases } from "@/actions/room-custom-process-phases";
 import { removeRoomMember, upsertRoomMember } from "@/actions/room-members";
+import { RoomMemberPhaseCheckboxes } from "@/components/room/room-member-phase-checkboxes";
 import { DataTable } from "@/components/data-table";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -40,14 +42,16 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  ALL_ROOM_TASK_PROCESSES,
-  ROOM_TASK_PROCESS_ORDER,
-  roomTaskProcessLabel,
-} from "@/lib/room-task-process";
+  allRoomPhaseIds,
+  memberAllowedPhaseIds,
+  type RoomPhaseOption,
+} from "@/lib/room-member-phase-access";
 import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
 import { brandIdItems, type SelectItemDef } from "@/lib/select-option-items";
-import { ROOM_PROJECT_MANAGER_ROLE } from "@/lib/room-member-process-access";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  ROOM_PROJECT_MANAGER_ROLE,
+  roomMemberToProcessAccess,
+} from "@/lib/room-member-process-access";
 import { MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -56,6 +60,7 @@ type MemberWithUser = {
   userId: string;
   role: RoomMemberRole;
   allowedRoomProcesses?: RoomTaskProcess[];
+  allowedCustomProcessPhaseIds?: string[];
   user: Pick<User, "id" | "name" | "email" | "role">;
 };
 
@@ -106,9 +111,8 @@ export function RoomsClient({
   const [addRole, setAddRole] = useState<RoomMemberRole>(
     RoomMemberRole.ROOM_CONTRIBUTOR,
   );
-  const [addProcesses, setAddProcesses] = useState<RoomTaskProcess[]>(() => [
-    ...ALL_ROOM_TASK_PROCESSES,
-  ]);
+  const [addPhaseIds, setAddPhaseIds] = useState<string[]>([]);
+  const [roomPhases, setRoomPhases] = useState<RoomPhaseOption[]>([]);
   const [memberPending, setMemberPending] = useState(false);
 
   useEffect(() => {
@@ -116,6 +120,29 @@ export function RoomsClient({
     const next = rooms.find((r) => r.id === membersRoom.id);
     if (next) setMembersRoom(next);
   }, [rooms, membersRoom]);
+
+  useEffect(() => {
+    if (!membersRoom || isSimpleCoachingRoom(membersRoom)) {
+      setRoomPhases([]);
+      return;
+    }
+    let cancelled = false;
+    void listRoomCustomProcessPhases(membersRoom.id).then((rows) => {
+      if (cancelled) return;
+      const phases: RoomPhaseOption[] = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        sortOrder: r.sortOrder,
+        legacyProcessKey:
+          r.legacyProcessKey as RoomPhaseOption["legacyProcessKey"],
+      }));
+      setRoomPhases(phases);
+      setAddPhaseIds(allRoomPhaseIds(phases));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [membersRoom?.id]);
 
   function reset() {
     setEditing(null);
@@ -141,7 +168,7 @@ export function RoomsClient({
     setMembersRoom(r);
     setAddUserId("");
     setAddRole(RoomMemberRole.ROOM_CONTRIBUTOR);
-    setAddProcesses([...ALL_ROOM_TASK_PROCESSES]);
+    setAddPhaseIds([]);
   }
 
   async function onSave() {
@@ -187,17 +214,17 @@ export function RoomsClient({
     roomId: string,
     userId: string,
     role: RoomMemberRole,
-    existingAllowed: RoomTaskProcess[],
+    existingPhaseIds: string[],
   ) {
     setMemberPending(true);
     try {
-      const processes =
+      const phaseIds =
         role === ROOM_PROJECT_MANAGER_ROLE
           ? undefined
-          : existingAllowed.length > 0
-            ? existingAllowed
-            : [...ALL_ROOM_TASK_PROCESSES];
-      await upsertRoomMember(roomId, userId, role, processes);
+          : existingPhaseIds.length > 0
+            ? existingPhaseIds
+            : allRoomPhaseIds(roomPhases);
+      await upsertRoomMember(roomId, userId, role, phaseIds);
       toast.success("Peran diperbarui.");
       router.refresh();
     } catch (e) {
@@ -207,11 +234,11 @@ export function RoomsClient({
     }
   }
 
-  async function onSaveMemberProcesses(
+  async function onSaveMemberPhaseIds(
     roomId: string,
     userId: string,
     role: RoomMemberRole,
-    next: RoomTaskProcess[],
+    next: string[],
   ) {
     if (role === ROOM_PROJECT_MANAGER_ROLE) return;
     if (next.length === 0) {
@@ -225,7 +252,7 @@ export function RoomsClient({
         ...prev,
         members: prev.members.map((m) =>
           m.userId === userId
-            ? { ...m, allowedRoomProcesses: next }
+            ? { ...m, allowedCustomProcessPhaseIds: next }
             : m,
         ),
       };
@@ -248,28 +275,26 @@ export function RoomsClient({
     if (
       !simple &&
       addRole !== ROOM_PROJECT_MANAGER_ROLE &&
-      addProcesses.length === 0
+      addPhaseIds.length === 0
     ) {
       toast.error("Pilih minimal satu fase proses.");
       return;
     }
     setMemberPending(true);
     try {
-      const processesForContributor =
-        simple && addRole !== ROOM_PROJECT_MANAGER_ROLE
-          ? [...ALL_ROOM_TASK_PROCESSES]
-          : addProcesses;
       await upsertRoomMember(
         membersRoom.id,
         addUserId,
         addRole,
         addRole === ROOM_PROJECT_MANAGER_ROLE
           ? undefined
-          : processesForContributor,
+          : simple
+            ? allRoomPhaseIds(roomPhases)
+            : addPhaseIds,
       );
       toast.success("Anggota ditambahkan.");
       setAddUserId("");
-      setAddProcesses([...ALL_ROOM_TASK_PROCESSES]);
+      setAddPhaseIds(allRoomPhaseIds(roomPhases));
       router.refresh();
     } catch (e) {
       toast.error(actionErrorMessage(e, "Gagal menambah."));
@@ -524,15 +549,18 @@ export function RoomsClient({
                     </>
                   ) : (
                     <>
-                      Administrator menetapkan peran dan fase proses tugas (Market
-                      Research → Produksi) yang boleh diakses masing-masing
-                      manager ruangan dan kontributor. Project manager ruangan
-                      melihat semua fase dan dapat mengelola tugas seperti manager.
+                      Administrator menetapkan peran dan fase proses tugas yang
+                      dikonfigurasi di ruangan ini — centang fase yang boleh diakses
+                      masing-masing manager ruangan dan kontributor. Project manager
+                      ruangan melihat semua fase.
                     </>
                   )}
                 </p>
                 <ul className="space-y-3">
-                  {membersRoom.members.map((m) => (
+                  {membersRoom.members.map((m) => {
+                    const access = roomMemberToProcessAccess(m);
+                    const memberPhaseIds = memberAllowedPhaseIds(access, roomPhases);
+                    return (
                     <li
                       key={m.id}
                       className="flex flex-col gap-2 rounded-md border border-border p-3"
@@ -557,7 +585,7 @@ export function RoomsClient({
                                 membersRoom.id,
                                 m.userId,
                                 v as RoomMemberRole,
-                                m.allowedRoomProcesses ?? [],
+                                memberPhaseIds,
                               );
                             }}
                           >
@@ -604,47 +632,24 @@ export function RoomsClient({
                           <p className="text-muted-foreground text-xs font-medium">
                             Fase tugas yang dapat diakses
                           </p>
-                          <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-                            {ROOM_TASK_PROCESS_ORDER.map((proc) => (
-                              <label
-                                key={proc}
-                                className="flex min-w-0 cursor-pointer items-center gap-2 text-xs"
-                              >
-                                <Checkbox
-                                  checked={(m.allowedRoomProcesses ?? []).includes(
-                                    proc,
-                                  )}
-                                  disabled={memberPending}
-                                  onCheckedChange={(c) => {
-                                    const cur = m.allowedRoomProcesses ?? [];
-                                    const next =
-                                      c === true
-                                        ? Array.from(
-                                            new Set([...cur, proc]),
-                                          )
-                                        : cur.filter((x) => x !== proc);
-                                    if (next.length === 0) {
-                                      toast.error(
-                                        "Minimal satu fase harus tetap aktif.",
-                                      );
-                                      return;
-                                    }
-                                    void onSaveMemberProcesses(
-                                      membersRoom.id,
-                                      m.userId,
-                                      m.role,
-                                      next,
-                                    );
-                                  }}
-                                />
-                                <span className="break-words">{roomTaskProcessLabel(proc)}</span>
-                              </label>
-                            ))}
-                          </div>
+                          <RoomMemberPhaseCheckboxes
+                            roomPhases={roomPhases}
+                            selectedIds={memberPhaseIds}
+                            disabled={memberPending}
+                            onChange={(next) =>
+                              void onSaveMemberPhaseIds(
+                                membersRoom.id,
+                                m.userId,
+                                m.role,
+                                next,
+                              )
+                            }
+                          />
                         </div>
                       )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
                 {membersRoom.members.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
@@ -709,7 +714,7 @@ export function RoomsClient({
                         !addUserId ||
                         (!isSimpleCoachingRoom(membersRoom) &&
                           addRole !== ROOM_PROJECT_MANAGER_ROLE &&
-                          addProcesses.length === 0)
+                          addPhaseIds.length === 0)
                       }
                       onClick={() => void onAddMember()}
                     >
@@ -727,34 +732,12 @@ export function RoomsClient({
                         <Label className="text-xs">
                           Fase tugas untuk anggota baru
                         </Label>
-                        <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-                          {ROOM_TASK_PROCESS_ORDER.map((proc) => (
-                            <label
-                              key={proc}
-                              className="flex min-w-0 cursor-pointer items-center gap-2 text-xs"
-                            >
-                              <Checkbox
-                                checked={addProcesses.includes(proc)}
-                                disabled={memberPending}
-                                onCheckedChange={(c) => {
-                                  setAddProcesses((prev) => {
-                                    if (c === true)
-                                      return Array.from(new Set([...prev, proc]));
-                                    const next = prev.filter((x) => x !== proc);
-                                    if (next.length === 0) {
-                                      toast.error(
-                                        "Minimal satu fase harus dipilih.",
-                                      );
-                                      return prev;
-                                    }
-                                    return next;
-                                  });
-                                }}
-                              />
-                              <span className="break-words">{roomTaskProcessLabel(proc)}</span>
-                            </label>
-                          ))}
-                        </div>
+                        <RoomMemberPhaseCheckboxes
+                          roomPhases={roomPhases}
+                          selectedIds={addPhaseIds}
+                          disabled={memberPending}
+                          onChange={setAddPhaseIds}
+                        />
                       </div>
                     )
                   ) : (

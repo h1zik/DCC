@@ -5,7 +5,7 @@ import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { notifyTaskCommentViaWhatsApp } from "@/lib/task-whatsapp-notify";
 import {
-  assertRoomMemberHasTaskProcess,
+  assertRoomMemberHasTaskPhase,
   getTaskRoomContext,
   isRoomHubManagerRole,
 } from "@/lib/room-access";
@@ -15,8 +15,8 @@ export async function addTaskComment(taskId: string, body: string) {
   const text = body.trim();
   if (!text) throw new Error("Komentar tidak boleh kosong.");
 
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   await prisma.taskComment.create({
     data: {
@@ -67,11 +67,11 @@ export async function deleteTaskComment(commentId: string) {
     where: { id: commentId },
     select: { authorId: true, taskId: true },
   });
-  const { roomId, roomProcess } = await getTaskRoomContext(c.taskId);
-  const member = await assertRoomMemberHasTaskProcess(
+  const { roomId, phase } = await getTaskRoomContext(c.taskId);
+  const member = await assertRoomMemberHasTaskPhase(
     roomId,
     session.user.id,
-    roomProcess,
+    phase,
   );
   const canModerate = isRoomHubManagerRole(member.role);
   if (c.authorId !== session.user.id && !canModerate) {

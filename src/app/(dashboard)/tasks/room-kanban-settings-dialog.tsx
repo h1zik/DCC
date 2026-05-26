@@ -2,7 +2,9 @@
 import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useEffect, useState } from "react";
-import { RoomTaskProcess, TaskStatus } from "@prisma/client";
+import { TaskStatus } from "@prisma/client";
+import type { RoomProcessPhaseRef } from "@/lib/room-process-phase";
+import { roomProcessPhaseKey } from "@/lib/room-process-phase";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -37,7 +39,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roomId: string;
-  roomProcess: RoomTaskProcess;
+  activePhase: RoomProcessPhaseRef;
   columns: RoomKanbanColumnDTO[];
 };
 
@@ -45,9 +47,10 @@ export function RoomKanbanSettingsDialog({
   open,
   onOpenChange,
   roomId,
-  roomProcess,
+  activePhase,
   columns: initialColumns,
 }: Props) {
+  const processKey = roomProcessPhaseKey(activePhase);
   const router = useRouter();
   const [columns, setColumns] = useState<RoomKanbanColumnDTO[]>(initialColumns);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -68,7 +71,7 @@ export function RoomKanbanSettingsDialog({
     let cancelled = false;
     void (async () => {
       try {
-        const u = await listUnusedKanbanStatuses({ roomId, roomProcess });
+        const u = await listUnusedKanbanStatuses({ roomId, processKey });
         if (!cancelled) {
           setUnused(u);
           setAddStatus(u[0] ?? "");
@@ -80,7 +83,7 @@ export function RoomKanbanSettingsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, roomId, roomProcess, initialColumns]);
+  }, [open, roomId, processKey, initialColumns]);
 
   async function saveTitle(columnId: string) {
     const title = (titles[columnId] ?? "").trim();
@@ -105,7 +108,7 @@ export function RoomKanbanSettingsDialog({
     try {
       await reorderRoomKanbanColumns({
         roomId,
-        roomProcess,
+        processKey,
         orderedColumnIds: next.map((c) => c.id),
       });
       toast.success("Urutan kolom disimpan.");
@@ -133,7 +136,7 @@ export function RoomKanbanSettingsDialog({
     try {
       await addRoomKanbanColumn({
         roomId,
-        roomProcess,
+        processKey,
         linkedStatus: addStatus,
       });
       toast.success("Kolom ditambahkan.");

@@ -5,7 +5,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomHubManager } from "@/lib/room-access";
-import { ensureDefaultRoomKanbanColumns } from "@/lib/room-kanban-columns";
+import {
+  ensureDefaultRoomKanbanColumnsForCustomPhase,
+  getRoomKanbanColumns,
+} from "@/lib/room-kanban-columns";
+import {
+  kanbanColumnWhere,
+  resolveRoomProcessPhaseKey,
+} from "@/lib/room-kanban-phase-key";
 import {
   isDefaultKanbanLinkedStatus,
   taskStatusLabel,
@@ -36,7 +43,7 @@ export async function updateRoomKanbanColumnTitle(input: {
 
 const reorderSchema = z.object({
   roomId: z.string().min(1),
-  roomProcess: z.nativeEnum(RoomTaskProcess),
+  processKey: z.string().min(1),
   orderedColumnIds: z.array(z.string().min(1)).min(1),
 });
 
@@ -46,10 +53,11 @@ export async function reorderRoomKanbanColumns(
   const session = await requireTasksRoomHubSession();
   const data = reorderSchema.parse(input);
   await assertRoomHubManager(data.roomId, session.user.id);
-  await ensureDefaultRoomKanbanColumns(data.roomId, data.roomProcess);
+  const phase = await resolveRoomProcessPhaseKey(data.roomId, data.processKey);
+  await ensureDefaultRoomKanbanColumnsForCustomPhase(data.roomId, phase.id);
 
   const cols = await prisma.roomKanbanColumn.findMany({
-    where: { roomId: data.roomId, roomProcess: data.roomProcess },
+    where: kanbanColumnWhere(data.roomId, phase),
     select: { id: true },
   });
   const valid = new Set(cols.map((c) => c.id));
@@ -71,7 +79,7 @@ export async function reorderRoomKanbanColumns(
 
 const addSchema = z.object({
   roomId: z.string().min(1),
-  roomProcess: z.nativeEnum(RoomTaskProcess),
+  processKey: z.string().min(1),
   linkedStatus: z.nativeEnum(TaskStatus),
 });
 
@@ -80,29 +88,26 @@ export async function addRoomKanbanColumn(input: z.infer<typeof addSchema>) {
   const session = await requireTasksRoomHubSession();
   const data = addSchema.parse(input);
   await assertRoomHubManager(data.roomId, session.user.id);
-  await ensureDefaultRoomKanbanColumns(data.roomId, data.roomProcess);
+  const phase = await resolveRoomProcessPhaseKey(data.roomId, data.processKey);
+  await ensureDefaultRoomKanbanColumnsForCustomPhase(data.roomId, phase.id);
 
-  const existing = await prisma.roomKanbanColumn.findUnique({
-    where: {
-      roomId_roomProcess_linkedStatus: {
-        roomId: data.roomId,
-        roomProcess: data.roomProcess,
-        linkedStatus: data.linkedStatus,
-      },
-    },
+  const where = kanbanColumnWhere(data.roomId, phase);
+  const existing = await prisma.roomKanbanColumn.findFirst({
+    where: { ...where, linkedStatus: data.linkedStatus },
   });
   if (existing) {
     throw new Error("Kolom untuk status ini sudah ada.");
   }
 
   const max = await prisma.roomKanbanColumn.aggregate({
-    where: { roomId: data.roomId, roomProcess: data.roomProcess },
+    where,
     _max: { sortOrder: true },
   });
   await prisma.roomKanbanColumn.create({
     data: {
       roomId: data.roomId,
-      roomProcess: data.roomProcess,
+      roomProcess: phase.legacyProcessKey ?? null,
+      customProcessPhaseId: phase.id,
       linkedStatus: data.linkedStatus,
       title: taskStatusLabel(data.linkedStatus),
       sortOrder: (max._max.sortOrder ?? -1) + 1,
@@ -131,6 +136,7 @@ export async function deleteRoomKanbanColumn(
       id: true,
       roomId: true,
       roomProcess: true,
+      customProcessPhaseId: true,
       linkedStatus: true,
     },
   });
@@ -142,10 +148,16 @@ export async function deleteRoomKanbanColumn(
     );
   }
 
+  const phaseFilter = col.customProcessPhaseId
+    ? { customProcessPhaseId: col.customProcessPhaseId }
+    : {
+        customProcessPhaseId: null,
+        roomProcess: col.roomProcess ?? undefined,
+      };
   const activeTasks = await prisma.task.count({
     where: {
       status: col.linkedStatus,
-      roomProcess: col.roomProcess,
+      ...phaseFilter,
       project: { roomId: col.roomId },
       archivedAt: null,
     },
@@ -164,13 +176,14 @@ export async function deleteRoomKanbanColumn(
 /** Status yang belum punya kolom di papan (untuk dropdown “tambah kolom”). */
 export async function listUnusedKanbanStatuses(input: {
   roomId: string;
-  roomProcess: RoomTaskProcess;
+  processKey: string;
 }): Promise<TaskStatus[]> {
   const session = await requireTasksRoomHubSession();
   await assertRoomHubManager(input.roomId, session.user.id);
-  await ensureDefaultRoomKanbanColumns(input.roomId, input.roomProcess);
+  const phase = await resolveRoomProcessPhaseKey(input.roomId, input.processKey);
+  await getRoomKanbanColumns(input.roomId, phase);
   const cols = await prisma.roomKanbanColumn.findMany({
-    where: { roomId: input.roomId, roomProcess: input.roomProcess },
+    where: kanbanColumnWhere(input.roomId, phase),
     select: { linkedStatus: true },
   });
   const used = new Set(cols.map((c) => c.linkedStatus));

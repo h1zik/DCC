@@ -28,12 +28,20 @@ import {
   taskProjectContextLabel,
 } from "@/lib/room-simple-hub";
 import {
+  phaseRef,
+  taskPhaseWhere,
+  taskToPhaseRef,
+  type RoomProcessPhaseRef,
+} from "@/lib/room-process-phase";
+import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
+import {
   assertRoomHubManager,
   assertRoomMember,
-  assertRoomMemberHasTaskProcess,
+  assertRoomMemberHasTaskPhase,
   getProjectRoomId,
   getTaskRoomContext,
   isRoomHubManagerRole,
+  memberHasRoomPhaseAccess,
   memberHasRoomProcessAccess,
   roomMemberToProcessAccess,
 } from "@/lib/room-access";
@@ -64,10 +72,10 @@ async function markContentPlanDesignPublishedIfTaskDone(params: {
 async function validateAssigneesForRoom(params: {
   roomId: string;
   assigneeIds: string[];
-  roomProcess: RoomTaskProcess;
+  phase: RoomProcessPhaseRef;
   simpleHub: boolean;
 }) {
-  const { roomId, assigneeIds, roomProcess, simpleHub } = params;
+  const { roomId, assigneeIds, phase, simpleHub } = params;
   if (assigneeIds.length === 0) return;
 
   const members = await prisma.roomMember.findMany({
@@ -76,6 +84,7 @@ async function validateAssigneesForRoom(params: {
       userId: true,
       role: true,
       allowedRoomProcesses: true,
+      allowedCustomProcessPhaseIds: true,
     },
   });
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -87,21 +96,55 @@ async function validateAssigneesForRoom(params: {
     }
     if (
       !simpleHub &&
-      !memberHasRoomProcessAccess(
-        roomMemberToProcessAccess(member),
-        roomProcess,
-      )
+      !memberHasRoomPhaseAccess(roomMemberToProcessAccess(member), phase)
     ) {
       throw new Error("PIC tidak memiliki akses ke fase proses tugas ini.");
     }
   }
 }
 
+async function resolveTaskPhaseForCreate(
+  roomId: string,
+  data: {
+    roomProcess?: RoomTaskProcess;
+    customProcessPhaseId?: string | null;
+  },
+): Promise<{
+  phase: RoomProcessPhaseRef;
+  roomProcess: RoomTaskProcess;
+  customProcessPhaseId: string | null;
+}> {
+  const phases = await ensureRoomProcessPhases(roomId);
+  const phaseId = data.customProcessPhaseId?.trim();
+  if (phaseId) {
+    const row = phases.find((p) => p.id === phaseId);
+    if (!row) {
+      throw new Error("Fase proses tidak ditemukan di ruangan ini.");
+    }
+    return {
+      phase: phaseRef(row),
+      roomProcess: row.legacyProcessKey ?? RoomTaskProcess.MARKET_RESEARCH,
+      customProcessPhaseId: row.id,
+    };
+  }
+  const legacy = data.roomProcess ?? RoomTaskProcess.MARKET_RESEARCH;
+  const row =
+    phases.find((p) => p.legacyProcessKey === legacy) ?? phases[0];
+  if (!row) {
+    throw new Error("Belum ada fase proses di ruangan ini.");
+  }
+  return {
+    phase: phaseRef(row),
+    roomProcess: row.legacyProcessKey ?? legacy,
+    customProcessPhaseId: row.id,
+  };
+}
+
 export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   const session = await requireTasksRoomHubSession();
   const { taskId, status } = moveSchema.parse(input);
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   const task = await prisma.task.findUniqueOrThrow({
     where: { id: taskId },
@@ -170,7 +213,8 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     notificationJobs.push(
       notifyRoomManagersTaskDoneViaWhatsApp({
         roomId: task.project.roomId,
-        roomProcess,
+        roomProcess:
+          phase.legacyProcessKey ?? RoomTaskProcess.MARKET_RESEARCH,
         taskTitle: task.title,
         project: task.project,
         picDisplayName: task.assignees[0]?.user?.name ?? null,
@@ -191,16 +235,13 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
 
 export async function archiveTask(taskId: string) {
   const session = await requireTasksRoomHubSession();
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
   const simpleHub = await isSimpleHubRoom(roomId);
   const hubManager = await assertRoomHubManager(roomId, session.user.id);
   if (
     !simpleHub &&
     hubManager.role === RoomMemberRole.ROOM_MANAGER &&
-    !memberHasRoomProcessAccess(
-      roomMemberToProcessAccess(hubManager),
-      roomProcess,
-    )
+    !memberHasRoomPhaseAccess(roomMemberToProcessAccess(hubManager), phase)
   ) {
     throw new Error("Anda tidak dapat mengarsipkan tugas di fase proses ini.");
   }
@@ -226,16 +267,13 @@ export async function archiveTask(taskId: string) {
 
 export async function unarchiveTask(taskId: string) {
   const session = await requireTasksRoomHubSession();
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
   const simpleHub = await isSimpleHubRoom(roomId);
   const hubManager = await assertRoomHubManager(roomId, session.user.id);
   if (
     !simpleHub &&
     hubManager.role === RoomMemberRole.ROOM_MANAGER &&
-    !memberHasRoomProcessAccess(
-      roomMemberToProcessAccess(hubManager),
-      roomProcess,
-    )
+    !memberHasRoomPhaseAccess(roomMemberToProcessAccess(hubManager), phase)
   ) {
     throw new Error("Anda tidak dapat memulihkan tugas di fase proses ini.");
   }
@@ -270,6 +308,7 @@ const createSchema = z
     vendorId: z.string().optional().nullable(),
     leadTimeDays: z.coerce.number().int().min(0).optional().nullable(),
     roomProcess: z.nativeEnum(RoomTaskProcess).optional(),
+    customProcessPhaseId: z.string().min(1).optional().nullable(),
     contentPlanItemId: z.string().min(1).optional().nullable(),
     contentPlanJenis: z.nativeEnum(ContentPlanJenis).optional().nullable(),
   })
@@ -316,15 +355,24 @@ export async function createTask(
   const hubManager = await assertRoomHubManager(roomId, session.user.id);
   const simpleHub = await isSimpleHubRoom(roomId);
 
-  const roomProcess = simpleHub
-    ? RoomTaskProcess.MARKET_RESEARCH
-    : (data.roomProcess ?? RoomTaskProcess.MARKET_RESEARCH);
+  const phaseFields = simpleHub
+    ? {
+        phase: {
+          id: "simple-hub",
+          name: "Tasks",
+          legacyProcessKey: null,
+        },
+        roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+        customProcessPhaseId: null,
+      }
+    : await resolveTaskPhaseForCreate(roomId, data);
+
   if (
     !simpleHub &&
     hubManager.role === RoomMemberRole.ROOM_MANAGER &&
-    !memberHasRoomProcessAccess(
+    !memberHasRoomPhaseAccess(
       roomMemberToProcessAccess(hubManager),
-      roomProcess,
+      phaseFields.phase,
     )
   ) {
     throw new Error(
@@ -351,7 +399,7 @@ export async function createTask(
   await validateAssigneesForRoom({
     roomId,
     assigneeIds,
-    roomProcess,
+    phase: phaseFields.phase,
     simpleHub,
   });
   if (tagIds.length > 0) {
@@ -364,14 +412,15 @@ export async function createTask(
   }
 
   const maxSort = await prisma.task.aggregate({
-    where: { projectId: data.projectId, roomProcess },
+    where: { projectId: data.projectId, ...taskPhaseWhere(phaseFields.phase) },
     _max: { sortOrder: true },
   });
 
   const task = await prisma.task.create({
     data: {
       projectId: data.projectId,
-      roomProcess,
+      roomProcess: phaseFields.roomProcess,
+      customProcessPhaseId: phaseFields.customProcessPhaseId,
       title: data.title,
       description: data.description ?? undefined,
       priority: data.priority,
@@ -448,6 +497,8 @@ export async function updateTask(
       id: true,
       projectId: true,
       roomProcess: true,
+      customProcessPhaseId: true,
+      customProcessPhase: { select: { id: true, name: true } },
       status: true,
       contentPlanItemId: true,
       contentPlanJenis: true,
@@ -475,11 +526,8 @@ export async function updateTask(
   const membership = await assertRoomMember(roomId, session.user.id);
   const isHubManager = isRoomHubManagerRole(membership.role);
 
-  await assertRoomMemberHasTaskProcess(
-    roomId,
-    session.user.id,
-    prev.roomProcess,
-  );
+  const prevPhase = taskToPhaseRef(prev);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, prevPhase);
 
   if (
     data.status === TaskStatus.DONE &&
@@ -500,18 +548,11 @@ export async function updateTask(
       : prev.tags.map((t) => t.tagId);
   let isApprovalRequired = data.isApprovalRequired ?? false;
 
-  let roomProcess =
-    data.roomProcess !== undefined ? data.roomProcess : prev.roomProcess;
+  let roomProcess = prev.roomProcess;
+  let customProcessPhaseId = prev.customProcessPhaseId;
   if (simpleHub) {
     roomProcess = RoomTaskProcess.MARKET_RESEARCH;
-  }
-
-  if (roomProcess !== prev.roomProcess) {
-    await assertRoomMemberHasTaskProcess(
-      roomId,
-      session.user.id,
-      roomProcess,
-    );
+    customProcessPhaseId = null;
   }
 
   if (!isHubManager) {
@@ -527,7 +568,7 @@ export async function updateTask(
     await validateAssigneesForRoom({
       roomId,
       assigneeIds,
-      roomProcess,
+      phase: prevPhase,
       simpleHub,
     });
     if (tagIds.length > 0) {
@@ -564,6 +605,7 @@ export async function updateTask(
     data: {
       projectId,
       roomProcess,
+      customProcessPhaseId,
       title: data.title,
       description: data.description ?? null,
       priority: data.priority,
@@ -680,16 +722,13 @@ export async function updateTask(
 
 export async function deleteTask(taskId: string) {
   const session = await requireTasksRoomHubSession();
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
   const hubManager = await assertRoomHubManager(roomId, session.user.id);
   const simpleHub = await isSimpleHubRoom(roomId);
   if (
     !simpleHub &&
     hubManager.role === RoomMemberRole.ROOM_MANAGER &&
-    !memberHasRoomProcessAccess(
-      roomMemberToProcessAccess(hubManager),
-      roomProcess,
-    )
+    !memberHasRoomPhaseAccess(roomMemberToProcessAccess(hubManager), phase)
   ) {
     throw new Error(
       "Anda tidak memiliki akses ke fase proses tugas ini untuk menghapusnya.",
@@ -746,8 +785,8 @@ async function checklistTaskContextOrThrow(checklistItemId: string) {
 
 export async function addChecklistItem(taskId: string, title: string) {
   const session = await requireTasksRoomHubSession();
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   const max = await prisma.taskChecklistItem.aggregate({
     where: { taskId },
@@ -765,8 +804,8 @@ export async function addChecklistItem(taskId: string, title: string) {
 
 export async function toggleChecklistItem(id: string, done: boolean) {
   const session = await requireTasksRoomHubSession();
-  const { roomId, roomProcess } = await checklistTaskContextOrThrow(id);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await checklistTaskContextOrThrow(id);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   await prisma.taskChecklistItem.update({
     where: { id },
@@ -777,8 +816,8 @@ export async function toggleChecklistItem(id: string, done: boolean) {
 
 export async function deleteChecklistItem(id: string) {
   const session = await requireTasksRoomHubSession();
-  const { roomId, roomProcess } = await checklistTaskContextOrThrow(id);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await checklistTaskContextOrThrow(id);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   await prisma.taskChecklistItem.delete({ where: { id } });
   revalidateTasksAndRoomHub();
@@ -794,8 +833,8 @@ export async function updateChecklistItemTitle(
 ) {
   const session = await requireTasksRoomHubSession();
   const data = updateChecklistTitleSchema.parse(input);
-  const { roomId, roomProcess } = await checklistTaskContextOrThrow(data.id);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await checklistTaskContextOrThrow(data.id);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   await prisma.taskChecklistItem.update({
     where: { id: data.id },
@@ -810,8 +849,8 @@ export async function updateChecklistItemTitle(
  */
 export async function loadTaskDetail(taskId: string) {
   const session = await requireTasksRoomHubSession();
-  const { roomId, roomProcess } = await getTaskRoomContext(taskId);
-  await assertRoomMemberHasTaskProcess(roomId, session.user.id, roomProcess);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
   const detail = await prisma.task.findUnique({
     where: { id: taskId },

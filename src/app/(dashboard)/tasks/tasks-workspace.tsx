@@ -45,7 +45,11 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { roomTaskProcessLabel } from "@/lib/room-task-process";
+import {
+  roomProcessPhaseKey,
+  roomProcessPhaseLabel,
+  type RoomProcessPhaseRef,
+} from "@/lib/room-process-phase";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { DEFAULT_KANBAN_STATUSES, taskStatusLabel } from "@/lib/task-status-ui";
@@ -103,12 +107,12 @@ function projectSelectLabel(p: Project & { brand: Brand | null }) {
 function roomTasksPath(opts: {
   roomId: string;
   simpleHub: boolean;
-  activeRoomProcess?: RoomTaskProcess;
+  activePhase?: RoomProcessPhaseRef;
   archived: boolean;
 }) {
   const qs = new URLSearchParams();
-  if (!opts.simpleHub && opts.activeRoomProcess) {
-    qs.set("process", opts.activeRoomProcess);
+  if (!opts.simpleHub && opts.activePhase) {
+    qs.set("process", roomProcessPhaseKey(opts.activePhase));
   }
   if (opts.archived) qs.set("archived", "1");
   const q = qs.toString();
@@ -118,7 +122,7 @@ function roomTasksPath(opts: {
 export function TasksWorkspace({
   roomId,
   roomTitle,
-  activeRoomProcess,
+  activePhase,
   simpleHub = false,
   tasks,
   projects,
@@ -134,7 +138,7 @@ export function TasksWorkspace({
   roomId?: string;
   roomTitle?: string;
   /** Tab proses aktif di hub ruangan — tugas baru mengikuti fase ini. */
-  activeRoomProcess?: RoomTaskProcess;
+  activePhase?: RoomProcessPhaseRef;
   /** Ruangan HQ/Team tanpa brand: UI tanpa fase proses / pipeline. */
   simpleHub?: boolean;
   tasks: TaskRow[];
@@ -240,9 +244,7 @@ export function TasksWorkspace({
         dueDate: due,
         leadTimeDays: lead,
         isApprovalRequired: approval,
-        ...(activeRoomProcess !== undefined
-          ? { roomProcess: activeRoomProcess }
-          : {}),
+        ...(activePhase ? { customProcessPhaseId: activePhase.id } : {}),
       };
       const created = await createTask(payload);
       toast.success("Tugas dibuat.");
@@ -300,15 +302,12 @@ export function TasksWorkspace({
     }));
   }, [kanbanColumns]);
 
-  const kanbanRoomProcess =
-    activeRoomProcess ?? RoomTaskProcess.MARKET_RESEARCH;
-
   const boardPath =
     roomId != null
       ? roomTasksPath({
           roomId,
           simpleHub,
-          activeRoomProcess,
+          activePhase,
           archived: false,
         })
       : null;
@@ -317,7 +316,7 @@ export function TasksWorkspace({
       ? roomTasksPath({
           roomId,
           simpleHub,
-          activeRoomProcess,
+          activePhase,
           archived: true,
         })
       : null;
@@ -553,12 +552,12 @@ export function TasksWorkspace({
         simpleHub={simpleHub}
       />
 
-      {roomId != null && (kanbanColumns?.length ?? 0) > 0 ? (
+      {roomId != null && activePhase && (kanbanColumns?.length ?? 0) > 0 ? (
         <RoomKanbanSettingsDialog
           open={kanbanSettingsOpen}
           onOpenChange={setKanbanSettingsOpen}
           roomId={roomId}
-          roomProcess={kanbanRoomProcess}
+          activePhase={activePhase}
           columns={kanbanColumns!}
         />
       ) : null}
@@ -568,11 +567,11 @@ export function TasksWorkspace({
           <p>
             Ruangan aktif: <span className="font-semibold">{roomTitle}</span>
           </p>
-          {activeRoomProcess !== undefined ? (
+          {activePhase !== undefined ? (
             <p className="text-muted-foreground mt-1">
               Proses alur:{" "}
               <span className="text-foreground font-medium">
-                {roomTaskProcessLabel(activeRoomProcess)}
+                {roomProcessPhaseLabel(activePhase)}
               </span>
               {" — "}
               tugas baru ditambahkan ke fase ini.

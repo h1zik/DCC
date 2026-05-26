@@ -14,6 +14,7 @@ export type RoomMemberContext = {
   room: Room & { brand: Brand | null };
   role: RoomMemberRole;
   allowedRoomProcesses: RoomTaskProcess[];
+  allowedCustomProcessPhaseIds: string[];
   /** Pengguna yang sedang melihat hub (untuk menghindari pemanggilan `auth()` ganda di halaman anak). */
   viewerUserId: string;
 };
@@ -42,6 +43,7 @@ export const getRoomMemberContextOrThrow = cache(
         room,
         role: ROOM_PROJECT_MANAGER_ROLE,
         allowedRoomProcesses: [],
+        allowedCustomProcessPhaseIds: [],
         viewerUserId: session.user.id,
       };
     }
@@ -57,11 +59,13 @@ export const getRoomMemberContextOrThrow = cache(
     if (!member) {
       redirect("/tasks");
     }
-    const { role, allowedRoomProcesses } = roomMemberToProcessAccess(member);
+    const { role, allowedRoomProcesses, allowedCustomProcessPhaseIds } =
+      roomMemberToProcessAccess(member);
     return {
       room: member.room,
       role,
       allowedRoomProcesses,
+      allowedCustomProcessPhaseIds,
       viewerUserId: session.user.id,
     };
   },
