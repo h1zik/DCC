@@ -4,7 +4,15 @@ import { actionErrorMessage } from "@/lib/action-error-message";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { addRoomMessage } from "@/actions/room-messages";
 import type { RoomChatMessageView } from "@/lib/room-chat-message-view";
 import { assertSafeGifUrl } from "@/lib/room-chat-gif";
@@ -155,6 +163,8 @@ export function RoomChatExperience({
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
+  const suppressNearBottomCheckRef = useRef(true);
+  const shouldScrollToEndRef = useRef(true);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyRef = useRef(body);
   const lastTypingPingRef = useRef(0);
@@ -283,12 +293,63 @@ export function RoomChatExperience({
     container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   }, []);
 
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const top = container.scrollHeight - container.clientHeight;
+    if (behavior === "auto") {
+      container.scrollTop = top;
+    } else {
+      container.scrollTo({ top, behavior });
+    }
+  }, []);
+
   const onScrollList = useCallback(() => {
+    if (suppressNearBottomCheckRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     nearBottomRef.current = gap < 120;
   }, []);
+
+  useLayoutEffect(() => {
+    shouldScrollToEndRef.current = true;
+    nearBottomRef.current = true;
+  }, [roomId]);
+
+  /** Saat buka chat: paksa scroll ke pesan terbaru (beberapa frame untuk layout/media). */
+  useLayoutEffect(() => {
+    if (!shouldScrollToEndRef.current || messages.length === 0) return;
+    suppressNearBottomCheckRef.current = true;
+    const run = () => scrollToBottom("auto");
+    run();
+    const raf = requestAnimationFrame(run);
+    const t1 = window.setTimeout(run, 50);
+    const t2 = window.setTimeout(run, 200);
+    const t3 = window.setTimeout(() => {
+      run();
+      shouldScrollToEndRef.current = false;
+      suppressNearBottomCheckRef.current = false;
+    }, 400);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [roomId, messages.length, scrollToBottom]);
+
+  /** GIF/gambar yang muat belakangan menambah tinggi — tetap di bawah jika user di pesan terbaru. */
+  useEffect(() => {
+    const container = scrollRef.current;
+    const inner = container?.firstElementChild;
+    if (!container || !inner) return;
+    const ro = new ResizeObserver(() => {
+      if (nearBottomRef.current) scrollToBottom("auto");
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [roomId, scrollToBottom]);
 
   /**
    * Live updates: hanya menarik pesan baru sejak `lastSyncedAtRef`.
@@ -369,17 +430,12 @@ export function RoomChatExperience({
   useEffect(() => {
     const last = messages[messages.length - 1];
     const own = last?.author.id === currentUserId;
-    const container = scrollRef.current;
     if (own || nearBottomRef.current) {
       requestAnimationFrame(() => {
-        if (!container) return;
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: own ? "smooth" : "auto",
-        });
+        scrollToBottom(own ? "smooth" : "auto");
       });
     }
-  }, [messages, currentUserId]);
+  }, [messages, currentUserId, scrollToBottom]);
 
   useEffect(() => {
     if (!gifOpen) return;
@@ -447,6 +503,7 @@ export function RoomChatExperience({
           if (prev.some((m) => m.id === created.id)) return prev;
           return [...prev, created];
         });
+        requestAnimationFrame(() => scrollToBottom("smooth"));
         // Geser cursor delta agar polling tidak menarik ulang pesan kita sendiri.
         if (created.createdAt > lastSyncedAtRef.current) {
           lastSyncedAtRef.current = created.createdAt;
@@ -494,11 +551,11 @@ export function RoomChatExperience({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="border-border bg-muted/10 flex max-h-[min(520px,58vh)] min-h-[280px] flex-col rounded-xl border">
+      <div className="border-border bg-muted/10 flex max-h-[min(520px,58vh)] min-h-[280px] flex-col overflow-hidden rounded-xl border">
         <div
           ref={scrollRef}
           onScroll={onScrollList}
-          className="overflow-y-auto p-3"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
         >
           <div className="flex flex-col gap-2">
             {messages.length === 0 ? (
