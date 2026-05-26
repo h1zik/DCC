@@ -20,7 +20,6 @@ export default async function BudgetPage() {
 
   return (
     <FinancePageShell
-      maxWidth="xl"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Anggaran" },

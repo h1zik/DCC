@@ -58,7 +58,7 @@ export default async function TasksRoomSelectPage() {
     isStudioOrProjectManager(session.user.role);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 pb-10">
+    <div className="flex w-full flex-col gap-6">
       <RoomsPicker
         rooms={pickerRooms}
         brands={brands}

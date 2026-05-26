@@ -15,7 +15,6 @@ export default async function BankPage() {
 
   return (
     <FinancePageShell
-      maxWidth="lg"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Rekonsiliasi bank" },

@@ -21,7 +21,6 @@ export default async function FinanceApprovalsPage() {
 
   return (
     <FinancePageShell
-      maxWidth="xl"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Persetujuan" },

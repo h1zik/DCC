@@ -49,6 +49,9 @@
 }
 
 :root {
+  /* Layout halaman dashboard (selaras dengan DashboardShell) */
+  --page-max-width: 87.5rem; /* 1400px */
+  --page-padding: 1.5rem; /* 24px — setara p-6 */
   /* Latar utama putih murni, teks hitam */
   --background: oklch(1 0 0);
   --foreground: oklch(0.1 0 0);
@@ -393,4 +396,34 @@
 .tiptap:focus,
 .tiptap:focus-visible {
   outline: none;
+}
+
+/* Label menu sidebar: fade + geser halus saat mode ikon */
+[data-slot="sidebar"] [data-sidebar="menu-button"] .sidebar-nav-label,
+[data-slot="sidebar"] [data-slot="sidebar-menu-button"] .sidebar-nav-label {
+  display: inline-block;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    max-width 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-slot="sidebar"][data-collapsible="icon"] [data-sidebar="menu-button"] .sidebar-nav-label,
+[data-slot="sidebar"][data-collapsible="icon"] [data-slot="sidebar-menu-button"] .sidebar-nav-label {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-0.35rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="sidebar"] [data-sidebar="menu-button"] .sidebar-nav-label,
+  [data-slot="sidebar"] [data-slot="sidebar-menu-button"] .sidebar-nav-label {
+    transition: none;
+  }
 }

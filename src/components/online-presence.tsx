@@ -140,7 +140,7 @@ export function OnlinePresence() {
     <Popover>
       <PopoverTrigger>
         <div
-          className="hover:bg-muted/60 flex items-center rounded-md px-2 py-1 transition-colors"
+          className="hover:bg-muted/60 flex items-center rounded-lg border border-transparent px-2 py-1 transition-[background-color,border-color] duration-200 hover:border-border/50"
           aria-label="Lihat daftar online"
         >
           <div className="flex -space-x-2">

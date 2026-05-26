@@ -119,13 +119,14 @@ function groupLabelForRole(role: UserRole | undefined) {
  */
 const sidebarMenuItemClass = cn(
   "relative h-9 gap-2.5 px-2.5 text-[13px] font-medium text-sidebar-foreground/80",
-  "border-l-2 border-l-transparent transition-colors",
+  "border-l-2 border-l-transparent transition-[colors,gap,padding] duration-300 ease-in-out motion-reduce:transition-none",
   "hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
-  "[&_svg]:text-sidebar-foreground/70 [&_svg]:transition-colors hover:[&_svg]:text-sidebar-primary",
+  "[&_svg]:text-sidebar-foreground/70 [&_svg]:shrink-0 [&_svg]:transition-colors hover:[&_svg]:text-sidebar-primary",
   "data-active:!bg-gradient-to-r data-active:!from-sidebar-primary/[0.18] data-active:!via-sidebar-accent/40 data-active:!to-transparent",
   "data-active:!border-l-sidebar-primary data-active:!text-sidebar-foreground",
   "data-active:[&_svg]:!text-sidebar-primary",
   "group-data-[collapsible=icon]:!border-l-0 group-data-[collapsible=icon]:data-active:!bg-sidebar-accent",
+  "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
 );
 
 export function AppSidebar() {
@@ -181,24 +182,25 @@ export function AppSidebar() {
     <Sidebar
       collapsible="icon"
       className={cn(
-        // Subtle vertical gradient on the panel itself
         "[&_[data-sidebar=sidebar-inner]]:bg-gradient-to-b",
         "[&_[data-sidebar=sidebar-inner]]:from-sidebar",
         "[&_[data-sidebar=sidebar-inner]]:to-[color:color-mix(in_srgb,var(--sidebar)_88%,var(--sidebar-primary)_12%)]",
       )}
     >
-      <SidebarHeader className="border-b border-sidebar-border/70 p-0">
+      <SidebarHeader className="p-0">
         <BrandHeader branding={branding} />
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup className="pt-3">
-          <SidebarGroupLabel className="px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/55">
+          <SidebarGroupLabel className="px-2 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap text-sidebar-foreground/55">
             <span
-              className="mr-2 size-1 rounded-full bg-sidebar-primary"
+              className="mr-2 size-1 shrink-0 rounded-full bg-sidebar-primary transition-opacity duration-300 ease-in-out group-data-[collapsible=icon]:opacity-0"
               aria-hidden
             />
-            {groupLabel}
+            <span className="transition-opacity duration-300 ease-in-out group-data-[collapsible=icon]:opacity-0">
+              {groupLabel}
+            </span>
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
@@ -218,7 +220,7 @@ export function AppSidebar() {
                       render={<Link href={item.href} />}
                     >
                       <item.icon />
-                      <span>{item.label}</span>
+                      <span className="sidebar-nav-label">{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -249,7 +251,7 @@ export function AppSidebar() {
               onClick={() => signOut({ callbackUrl: "/login" })}
             >
               <LogOut />
-              <span>Keluar</span>
+              <span className="sidebar-nav-label">Keluar</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -273,76 +275,49 @@ function BrandHeader({
   const logo = branding?.logoImagePath;
 
   return (
-    <div
-      className={cn(
-        "relative isolate overflow-hidden",
-        "bg-gradient-to-br from-sidebar-primary/[0.16] via-sidebar/0 to-sidebar-primary/[0.06]",
-      )}
-    >
-      <div
-        className="pointer-events-none absolute -top-10 -right-6 size-32 rounded-full opacity-40 blur-2xl"
-        style={{
-          background:
-            "radial-gradient(circle, color-mix(in srgb, var(--sidebar-primary) 70%, transparent) 0%, transparent 70%)",
-        }}
-        aria-hidden
-      />
+    <div className="relative w-full min-w-0 shrink-0 bg-transparent">
       <div
         className={cn(
-          "flex flex-col items-center gap-1 px-3 py-3 text-center transition-opacity",
-          "group-data-[collapsible=icon]:hidden",
+          "relative flex w-full min-w-0 flex-col items-center justify-center",
+          "px-2 py-3 transition-[padding] duration-300 ease-in-out",
+          "group-data-[collapsible=icon]:px-0.5 group-data-[collapsible=icon]:py-2.5",
         )}
       >
-        <div className="relative">
-          {/* Decorative accent ring around logo */}
-          <span
-            className="pointer-events-none absolute inset-[-4px] rounded-2xl bg-gradient-to-br from-sidebar-primary/40 via-sidebar-primary/0 to-sidebar-primary/30 opacity-70 blur-[2px]"
-            aria-hidden
-          />
-          <div className="relative flex size-11 items-center justify-center overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar shadow-sm">
-            {logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logo}
-                alt={title}
-                className="size-full object-contain p-1"
-              />
-            ) : (
-              <Sparkles className="size-5 text-sidebar-primary" aria-hidden />
-            )}
-          </div>
-        </div>
-        <div className="mt-1 flex flex-col items-center leading-tight">
-          <span className="text-sidebar-primary font-semibold tracking-tight">{title}</span>
-          <span className="text-sidebar-foreground/55 text-[10px] font-medium tracking-[0.22em] uppercase">
-            {subtitle}
-          </span>
-        </div>
-      </div>
-      <div
-        className={cn(
-          "hidden items-center justify-center px-0 py-3",
-          "group-data-[collapsible=icon]:flex",
-        )}
-        aria-hidden
-      >
-        <div className="relative">
-          <span
-            className="pointer-events-none absolute inset-[-3px] rounded-xl bg-gradient-to-br from-sidebar-primary/40 via-sidebar-primary/0 to-sidebar-primary/30 opacity-60 blur-[1.5px]"
-            aria-hidden
-          />
+        <div
+          className={cn(
+            "relative flex shrink-0 items-center justify-center overflow-hidden",
+            "rounded-2xl border border-sidebar-border/70 bg-sidebar shadow-sm",
+            "size-11 transition-[width,height,border-radius] duration-300 ease-in-out",
+            "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-lg",
+          )}
+        >
           {logo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={logo}
               alt={title}
-              className="relative size-9 rounded-xl border border-sidebar-border bg-sidebar object-contain p-1"
+              className="size-full object-contain p-0.5"
             />
           ) : (
-            <span className="text-sidebar-primary relative flex size-9 items-center justify-center rounded-xl border border-sidebar-border bg-sidebar text-[15px] font-bold">
-              {title.slice(0, 1).toUpperCase()}
-            </span>
+            <Sparkles
+              className="size-5 text-sidebar-primary transition-[width,height] duration-300 group-data-[collapsible=icon]:size-4"
+              aria-hidden
+            />
           )}
+        </div>
+        <div
+          className={cn(
+            "mt-1.5 flex w-full min-w-0 flex-col items-center gap-0.5 overflow-hidden text-center leading-tight",
+            "transition-[max-height,opacity,margin] duration-300 ease-in-out motion-reduce:transition-none",
+            "group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:max-h-0 group-data-[collapsible=icon]:opacity-0",
+          )}
+        >
+          <span className="text-sidebar-primary w-full truncate px-0.5 text-sm font-semibold tracking-tight">
+            {title}
+          </span>
+          <span className="text-sidebar-foreground/55 w-full truncate px-0.5 text-[10px] font-medium tracking-[0.16em] uppercase">
+            {subtitle}
+          </span>
         </div>
       </div>
     </div>
@@ -373,11 +348,11 @@ function UserCard({
       href={href}
       title={`${name}${roleLabel ? ` • ${roleLabel}` : ""}`}
       className={cn(
-        "group/usercard relative mb-1 flex items-center gap-2 overflow-hidden rounded-lg border p-1.5 transition",
+        "group/usercard relative mb-1 flex items-center gap-2 overflow-hidden rounded-lg border p-1.5",
+        "transition-[border-color,background-color,padding,gap] duration-300 ease-in-out motion-reduce:transition-none",
         isActive
           ? "border-sidebar-primary/35 bg-gradient-to-r from-sidebar-primary/[0.18] via-sidebar-accent/35 to-transparent"
           : "border-sidebar-border/60 bg-sidebar/40 hover:border-sidebar-primary/30 hover:bg-sidebar-accent/40",
-        // Collapsed state: become icon-only square avatar
         "group-data-[collapsible=icon]:m-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-1",
       )}
     >
@@ -399,7 +374,13 @@ function UserCard({
           )}
         </span>
       </span>
-      <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+      <span
+        className={cn(
+          "min-w-0 flex-1 overflow-hidden",
+          "transition-[max-width,opacity] duration-300 ease-in-out motion-reduce:transition-none",
+          "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:flex-[0] group-data-[collapsible=icon]:opacity-0",
+        )}
+      >
         <span className="text-sidebar-foreground block truncate text-[13px] font-semibold leading-tight">
           {name}
         </span>
@@ -411,8 +392,9 @@ function UserCard({
       </span>
       <span
         className={cn(
-          "text-sidebar-foreground/40 shrink-0 text-[10px] font-medium uppercase tracking-wider transition-opacity",
-          "group-data-[collapsible=icon]:hidden group-hover/usercard:text-sidebar-primary",
+          "text-sidebar-foreground/40 shrink-0 overflow-hidden text-[10px] font-medium uppercase tracking-wider",
+          "transition-[max-width,opacity] duration-300 ease-in-out motion-reduce:transition-none",
+          "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0 group-hover/usercard:text-sidebar-primary",
         )}
         aria-hidden
       >

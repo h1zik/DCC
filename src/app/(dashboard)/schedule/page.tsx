@@ -71,7 +71,7 @@ export default async function SchedulePage() {
   }).length;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={CalendarDays}
         title="Jadwal"

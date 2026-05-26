@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
-
 type Crumb = { label: string; href?: string };
 
 type Props = {
@@ -13,23 +11,12 @@ type Props = {
   description?: React.ReactNode;
   /** Aksi cepat di sisi kanan header. */
   actions?: React.ReactNode;
-  /** Lebar konten maks. */
-  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "full";
   children: React.ReactNode;
-};
-
-const MAX_WIDTH: Record<NonNullable<Props["maxWidth"]>, string> = {
-  sm: "max-w-3xl",
-  md: "max-w-4xl",
-  lg: "max-w-5xl",
-  xl: "max-w-6xl",
-  "2xl": "max-w-[1400px]",
-  full: "max-w-none",
 };
 
 /**
  * Shell halaman modul keuangan: breadcrumb + judul/aksi + konten.
- * Dipakai oleh semua sub-halaman finance untuk tampilan konsisten.
+ * Lebar & margin horizontal mengikuti `DashboardShell`.
  */
 export function FinancePageShell({
   breadcrumbs,
@@ -37,16 +24,10 @@ export function FinancePageShell({
   title,
   description,
   actions,
-  maxWidth = "lg",
   children,
 }: Props) {
   return (
-    <div
-      className={cn(
-        "mx-auto flex w-full flex-col gap-6 pb-10",
-        MAX_WIDTH[maxWidth],
-      )}
-    >
+    <div className="flex w-full min-w-0 flex-col gap-6 pb-6">
       {breadcrumbs && breadcrumbs.length > 0 ? (
         <nav
           aria-label="Breadcrumb"

@@ -27,7 +27,7 @@ export default async function AdminRolesPage() {
   const customCount = roles.length - protectedCount;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={ShieldCheck}
         title="Peran (role)"
