@@ -12,7 +12,6 @@ export default async function FixedAssetsPage() {
 
   return (
     <FinancePageShell
-      maxWidth="xl"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Aset tetap" },

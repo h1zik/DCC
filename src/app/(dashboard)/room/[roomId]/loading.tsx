@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function RoomLoading() {
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-1 pb-8 sm:px-0">
+    <div className="flex w-full flex-col gap-6">
       <div className="rounded-xl border p-4">
         <Skeleton className="h-6 w-56" />
         <Skeleton className="mt-3 h-4 w-40" />

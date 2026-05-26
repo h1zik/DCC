@@ -24,7 +24,6 @@ export default async function ApArPage() {
 
   return (
     <FinancePageShell
-      maxWidth="xl"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Hutang & piutang" },

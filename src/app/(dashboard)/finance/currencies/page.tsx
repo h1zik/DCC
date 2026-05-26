@@ -8,7 +8,6 @@ export default async function CurrenciesPage() {
 
   return (
     <FinancePageShell
-      maxWidth="md"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Multi-mata uang" },

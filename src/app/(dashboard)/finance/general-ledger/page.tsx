@@ -49,7 +49,6 @@ export default async function GeneralLedgerPage({
 
   return (
     <FinancePageShell
-      maxWidth="xl"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Buku besar" },

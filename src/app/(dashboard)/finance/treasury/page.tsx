@@ -28,7 +28,6 @@ export default async function TreasuryPage() {
 
   return (
     <FinancePageShell
-      maxWidth="xl"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Kas & treasury" },

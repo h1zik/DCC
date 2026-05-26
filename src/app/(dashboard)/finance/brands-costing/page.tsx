@@ -20,7 +20,6 @@ export default async function BrandsCostingPage() {
 
   return (
     <FinancePageShell
-      maxWidth="lg"
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },
         { label: "Brand & costing" },

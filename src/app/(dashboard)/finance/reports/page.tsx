@@ -143,7 +143,6 @@ export default async function FinanceReportsPage({
 
   return (
     <FinancePageShell
-      maxWidth="2xl"
       icon={<FileBarChart className="size-5" />}
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },

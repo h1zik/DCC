@@ -10,9 +10,9 @@ export default async function FinanceLayout({
   await ensureFinancePage();
   await ensureFinanceCoaReady();
   return (
-    <div className="flex w-full flex-col">
+    <div className="flex w-full min-w-0 flex-col gap-4">
       <FinanceSubNav />
-      <div className="px-2 sm:px-4">{children}</div>
+      {children}
     </div>
   );
 }

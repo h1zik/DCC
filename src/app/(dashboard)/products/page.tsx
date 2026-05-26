@@ -13,7 +13,7 @@ export default async function ProductsPage() {
   ]);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Produk & SKU</h1>
         <p className="text-muted-foreground mt-1 text-sm">

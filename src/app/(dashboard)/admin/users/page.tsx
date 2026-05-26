@@ -48,7 +48,7 @@ export default async function AdminUsersPage() {
   }, {});
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={Users}
         title="Pengguna"

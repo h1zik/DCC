@@ -7,7 +7,7 @@ export default function MessagesLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="-m-4 flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden md:-m-8">
+    <div className="-m-6 flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col overflow-hidden">
       {children}
     </div>
   );

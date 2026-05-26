@@ -8,7 +8,6 @@ export default async function ChartOfAccountsPage() {
 
   return (
     <FinancePageShell
-      maxWidth="lg"
       icon={<Scale className="size-5" />}
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },

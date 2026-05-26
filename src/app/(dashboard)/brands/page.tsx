@@ -11,7 +11,7 @@ export default async function BrandsPage() {
   const withLogo = brands.filter((b) => Boolean(b.logo)).length;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={Building2}
         title="Brand"

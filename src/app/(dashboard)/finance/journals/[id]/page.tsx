@@ -89,7 +89,6 @@ export default async function FinanceJournalDetailPage({
 
   return (
     <FinancePageShell
-      maxWidth="lg"
       icon={<ScrollText className="size-5" />}
       breadcrumbs={[
         { label: "Keuangan", href: "/finance" },

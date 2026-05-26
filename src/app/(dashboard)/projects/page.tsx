@@ -85,7 +85,7 @@ export default async function ProjectsPage() {
     : [[], []];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={GitBranch}
         title="Pipeline proyek"

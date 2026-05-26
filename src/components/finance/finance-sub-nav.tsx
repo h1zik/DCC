@@ -54,9 +54,9 @@ export function FinanceSubNav() {
   return (
     <nav
       aria-label="Modul keuangan"
-      className="border-border/70 bg-card/80 sticky top-0 z-20 -mx-2 mb-2 border-b backdrop-blur supports-backdrop-filter:bg-card/60 sm:-mx-4"
+      className="border-border/70 bg-card/80 sticky top-0 z-20 -mt-2 border-b backdrop-blur supports-backdrop-filter:bg-card/60"
     >
-      <div className="mx-auto flex w-full max-w-[1400px] items-center gap-1 overflow-x-auto px-2 py-2 sm:px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex w-full items-center gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {NAV_ITEMS.map((item, idx) => {
           const prev = NAV_ITEMS[idx - 1];
           const showDivider = prev && prev.group !== item.group;
