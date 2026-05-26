@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -178,6 +179,8 @@ export function DirectChatExperience({
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastSyncedAtRef = useRef<string>("");
   const nearBottomRef = useRef(true);
+  const suppressNearBottomCheckRef = useRef(true);
+  const shouldScrollToEndRef = useRef(true);
   const bodyRef = useRef(body);
   bodyRef.current = body;
 
@@ -237,8 +240,15 @@ export function DirectChatExperience({
     return `Dibaca ${formatTime(peerLastReadAt)}`;
   }, [lastOwnMessageId, peerLastReadAt, messages]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    endRef.current?.scrollIntoView({ behavior, block: "end" });
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const top = container.scrollHeight - container.clientHeight;
+    if (behavior === "auto") {
+      container.scrollTop = top;
+    } else {
+      container.scrollTo({ top, behavior });
+    }
   }, []);
 
   const pollInbox = useCallback(async () => {
@@ -273,7 +283,10 @@ export function DirectChatExperience({
       if (data.mode === "initial") {
         setMessages(data.messages);
         syncLastActivityRef(lastSyncedAtRef, data.messages);
-        if (nearBottomRef.current) scrollToBottom("auto");
+        nearBottomRef.current = true;
+        shouldScrollToEndRef.current = true;
+        scrollToBottom("auto");
+        requestAnimationFrame(() => scrollToBottom("auto"));
       } else if (data.messages.length > 0) {
         const fromPeer = data.messages.some(
           (m) => m.author.id !== currentUserId,
@@ -297,6 +310,45 @@ export function DirectChatExperience({
     return () => window.clearInterval(t);
   }, [pollInbox]);
 
+  useLayoutEffect(() => {
+    shouldScrollToEndRef.current = true;
+    nearBottomRef.current = true;
+    suppressNearBottomCheckRef.current = true;
+  }, [activeId]);
+
+  useLayoutEffect(() => {
+    if (!activeId || !shouldScrollToEndRef.current || messages.length === 0) {
+      return;
+    }
+    const run = () => scrollToBottom("auto");
+    run();
+    const raf = requestAnimationFrame(run);
+    const t1 = window.setTimeout(run, 50);
+    const t2 = window.setTimeout(run, 200);
+    const t3 = window.setTimeout(() => {
+      run();
+      shouldScrollToEndRef.current = false;
+      suppressNearBottomCheckRef.current = false;
+    }, 400);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [activeId, messages.length, scrollToBottom]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    const inner = container?.querySelector(".direct-chat-messages");
+    if (!container || !inner) return;
+    const ro = new ResizeObserver(() => {
+      if (nearBottomRef.current) scrollToBottom("auto");
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, [activeId, scrollToBottom]);
+
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
@@ -306,9 +358,11 @@ export function DirectChatExperience({
     }
     setLoadingThread(true);
     lastSyncedAtRef.current = "";
+    nearBottomRef.current = true;
     void (async () => {
       await pollMessages();
       setLoadingThread(false);
+      scrollToBottom("auto");
       void markDirectConversationRead(activeId).then(() => {
         window.dispatchEvent(new Event("direct-chat-inbox-changed"));
       });
@@ -709,6 +763,7 @@ export function DirectChatExperience({
                 ref={scrollRef}
                 className="bg-muted/15 min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
                 onScroll={() => {
+                  if (suppressNearBottomCheckRef.current) return;
                   const el = scrollRef.current;
                   if (!el) return;
                   nearBottomRef.current =
