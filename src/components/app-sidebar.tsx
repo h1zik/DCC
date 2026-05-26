@@ -230,7 +230,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border/70 p-2">
+      <SidebarFooter className="border-t border-sidebar-border/70 p-2 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
         <UserCard
           href="/profile"
           name={userName}
@@ -239,14 +239,15 @@ export function AppSidebar() {
           roleLabel={roleLabel}
           isActive={pathname.startsWith("/profile")}
         />
-        <SidebarMenu className="gap-0.5">
-          <SidebarMenuItem>
+        <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:items-center">
+          <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center">
             <SidebarMenuButton
               tooltip="Keluar"
               className={cn(
                 sidebarMenuItemClass,
                 "text-sidebar-foreground/70 hover:text-destructive",
                 "[&_svg]:text-sidebar-foreground/60 hover:[&_svg]:!text-destructive",
+                "group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8",
               )}
               onClick={() => signOut({ callbackUrl: "/login" })}
             >
@@ -353,17 +354,23 @@ function UserCard({
         isActive
           ? "border-sidebar-primary/35 bg-gradient-to-r from-sidebar-primary/[0.18] via-sidebar-accent/35 to-transparent"
           : "border-sidebar-border/60 bg-sidebar/40 hover:border-sidebar-primary/30 hover:bg-sidebar-accent/40",
-        "group-data-[collapsible=icon]:m-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-1",
+        "group-data-[collapsible=icon]:m-0 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:overflow-visible group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0",
       )}
     >
       <span
         className={cn(
           "relative shrink-0 rounded-full p-[2px]",
           "bg-gradient-to-br from-sidebar-primary via-sidebar-primary/40 to-sidebar-primary/10",
+          "group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0",
         )}
         aria-hidden
       >
-        <span className="bg-sidebar block size-8 overflow-hidden rounded-full border border-sidebar-border/70">
+        <span
+          className={cn(
+            "bg-sidebar block size-8 overflow-hidden rounded-full border border-sidebar-border/70",
+            "group-data-[collapsible=icon]:size-7 group-data-[collapsible=icon]:border-sidebar-primary/30",
+          )}
+        >
           {image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={image} alt="" className="size-full object-cover" />
@@ -378,7 +385,7 @@ function UserCard({
         className={cn(
           "min-w-0 flex-1 overflow-hidden",
           "transition-[max-width,opacity] duration-300 ease-in-out motion-reduce:transition-none",
-          "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:flex-[0] group-data-[collapsible=icon]:opacity-0",
+          "group-data-[collapsible=icon]:hidden",
         )}
       >
         <span className="text-sidebar-foreground block truncate text-[13px] font-semibold leading-tight">
@@ -394,7 +401,7 @@ function UserCard({
         className={cn(
           "text-sidebar-foreground/40 shrink-0 overflow-hidden text-[10px] font-medium uppercase tracking-wider",
           "transition-[max-width,opacity] duration-300 ease-in-out motion-reduce:transition-none",
-          "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0 group-hover/usercard:text-sidebar-primary",
+          "group-data-[collapsible=icon]:hidden group-hover/usercard:text-sidebar-primary",
         )}
         aria-hidden
       >

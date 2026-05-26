@@ -416,9 +416,7 @@
 
 [data-slot="sidebar"][data-collapsible="icon"] [data-sidebar="menu-button"] .sidebar-nav-label,
 [data-slot="sidebar"][data-collapsible="icon"] [data-slot="sidebar-menu-button"] .sidebar-nav-label {
-  max-width: 0;
-  opacity: 0;
-  transform: translateX(-0.35rem);
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
