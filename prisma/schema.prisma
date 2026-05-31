@@ -298,6 +298,8 @@ model User {
   financeSpendApprovals     FinanceSpendRequest[]          @relation("FinanceSpendApprover")
   financePeriodLocks        FinancePeriodLock[]
   financeJournalAttachments FinanceJournalLineAttachment[] @relation("FinanceJournalLineAttachmentUploader")
+  faceData                  FaceData[]
+  attendances               Attendance[]
 
   @@index([customRoleId])
 }
@@ -1552,4 +1554,61 @@ model FinanceFixedAsset {
   disposedAt              DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
+}
+
+/* -------------------------------------------------------------------------- */
+/*                             Absensi (Attendance)                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Jenis catatan absensi. CHECK_IN/CHECK_OUT lewat verifikasi wajah 1:1,
+ * SICK/PERMISSION lewat input alasan (tanpa scan wajah).
+ */
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+  SICK
+  PERMISSION
+}
+
+/**
+ * Data wajah terdaftar milik seorang User untuk verifikasi absensi 1:1.
+ * `descriptor` = Float32Array 128 nilai hasil face-api, di-serialize JSON.
+ * `label` = pose/sumber data (front/left/right/smile, atau foto-N dari upload).
+ */
+model FaceData {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  descriptor String
+  label      String
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+/**
+ * Catatan absensi seorang User. `date` disimpan string "YYYY-MM-DD" agar
+ * query per-hari mudah dan bebas isu timezone.
+ */
+model Attendance {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           AttendanceType
+  timestamp      DateTime       @default(now())
+  date           String
+  /** Confidence kecocokan wajah (0-1); 0 untuk SICK/PERMISSION. */
+  confidence     Float          @default(0)
+  /** Alasan sakit / izin (SICK/PERMISSION). */
+  reason         String?
+  /** JSON array rencana kerja (CHECK_IN). */
+  todoList       String?
+  /** JSON array tugas selesai (CHECK_OUT). */
+  completedTasks String?
+  createdAt      DateTime       @default(now())
+
+  @@index([userId])
+  @@index([date])
+  @@index([userId, date])
 }
