@@ -15,19 +15,29 @@ export function isScheduleRoute(pathname: string): boolean {
   return pathname === "/schedule" || pathname.startsWith("/schedule/");
 }
 
+/**
+ * Modul absensi — boleh diakses semua peran yang sudah login (absensi
+ * mandiri). Sub-rute admin (`/attendance/rekap`) tetap di-gate per halaman.
+ */
+export function isAttendanceRoute(pathname: string): boolean {
+  return pathname === "/attendance" || pathname.startsWith("/attendance/");
+}
+
 export function isLogisticsRoute(pathname: string): boolean {
   return (
     isScheduleRoute(pathname) ||
+    isAttendanceRoute(pathname) ||
     LOGISTICS_ROUTE_PREFIXES.some(
       (p) => pathname === p || pathname.startsWith(`${p}/`),
     )
   );
 }
 
-/** Modul keuangan — hanya peran Finance (plus profil). */
+/** Modul keuangan — hanya peran Finance (plus profil & absensi). */
 export function isFinanceAppRoute(pathname: string): boolean {
   return (
     isProfileRoute(pathname) ||
+    isAttendanceRoute(pathname) ||
     pathname === "/finance" ||
     pathname.startsWith("/finance/")
   );
@@ -43,6 +53,7 @@ export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
+    isAttendanceRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
@@ -56,6 +67,7 @@ export function isCeoAppRoute(pathname: string): boolean {
     pathname === "/" ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
+    isAttendanceRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
@@ -70,6 +82,7 @@ export function isAdministratorAppRoute(pathname: string): boolean {
     isProfileRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
+    isAttendanceRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/rooms") ||

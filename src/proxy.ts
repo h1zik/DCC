@@ -91,8 +91,13 @@ export default auth((req) => {
 });
 
 export const config = {
-  /** `uploads/` diserahkan ke route handler (bukan file statis build-time). */
+  /**
+   * `uploads/` diserahkan ke route handler (bukan file statis build-time).
+   * `models/` = bobot model face-api di /public (sebagian file tanpa
+   * ekstensi, mis. `tiny_face_detector_model-shard1`) — harus dilewati
+   * middleware agar tidak terkena redirect auth saat dimuat browser.
+   */
   matcher: [
-    "/((?!api/|_next/static|_next/image|favicon.ico|uploads/|.*\\..*).*)",
+    "/((?!api/|_next/static|_next/image|favicon.ico|uploads/|models/|.*\\..*).*)",
   ],
 };

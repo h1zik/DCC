@@ -11,6 +11,7 @@ import {
   Boxes,
   Calculator,
   CalendarDays,
+  ClipboardList,
   Coins,
   Factory,
   FileBarChart,
@@ -22,6 +23,7 @@ import {
   LogOut,
   Package,
   PiggyBank,
+  ScanFace,
   ScrollText,
   ShieldCheck,
   Sparkles,
@@ -53,6 +55,8 @@ const navCeo = [
   { href: "/projects", label: "Pipeline proyek", icon: GitBranch },
   { href: "/approvals", label: "Persetujuan CEO", icon: ShieldCheck },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
+  { href: "/attendance", label: "Absensi", icon: ScanFace },
+  { href: "/attendance/rekap", label: "Rekap Absensi", icon: ClipboardList },
 ] as const;
 
 const navAdministrator = [
@@ -60,6 +64,8 @@ const navAdministrator = [
   { href: "/for-me", label: "My Tasks", icon: Focus },
   { href: "/projects", label: "Pipeline", icon: GitBranch },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
+  { href: "/attendance", label: "Absensi", icon: ScanFace },
+  { href: "/attendance/rekap", label: "Rekap Absensi", icon: ClipboardList },
   { href: "/brands", label: "Brand", icon: Tags },
   { href: "/admin/users", label: "Pengguna", icon: Users },
   { href: "/admin/roles", label: "Peran (role)", icon: ShieldCheck },
@@ -70,6 +76,7 @@ const navLogistics = [
   { href: "/inventory", label: "Inventori", icon: Boxes },
   { href: "/products", label: "Produk & SKU", icon: Package },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
+  { href: "/attendance", label: "Absensi", icon: ScanFace },
   { href: "/vendors", label: "Vendor Maklon", icon: Factory },
 ] as const;
 
@@ -87,6 +94,7 @@ const navFinance = [
   { href: "/finance/approvals", label: "Persetujuan Pengeluaran", icon: ShieldCheck },
   { href: "/finance/reports", label: "Laporan", icon: FileBarChart },
   { href: "/finance/fixed-assets", label: "Aset Tetap", icon: Calculator },
+  { href: "/attendance", label: "Absensi", icon: ScanFace },
 ] as const;
 
 const navStudio = [
@@ -94,6 +102,7 @@ const navStudio = [
   { href: "/for-me", label: "My Tasks", icon: Focus },
   { href: "/projects", label: "Pipeline", icon: GitBranch },
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
+  { href: "/attendance", label: "Absensi", icon: ScanFace },
 ] as const;
 
 function navForRole(role: UserRole | undefined) {
@@ -208,8 +217,8 @@ export function AppSidebar() {
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
-                    : item.href === "/finance"
-                      ? pathname === "/finance"
+                    : item.href === "/finance" || item.href === "/attendance"
+                      ? pathname === item.href
                       : pathname.startsWith(item.href);
                 return (
                   <SidebarMenuItem key={item.href}>
