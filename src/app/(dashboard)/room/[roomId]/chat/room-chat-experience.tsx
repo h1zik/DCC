@@ -13,8 +13,12 @@ import {
   useState,
   useTransition,
 } from "react";
-import { addRoomMessage } from "@/actions/room-messages";
+import { addRoomMessage, deleteRoomMessage, editRoomMessage } from "@/actions/room-messages";
 import type { RoomChatMessageView } from "@/lib/room-chat-message-view";
+import {
+  mergeRoomMessageLists,
+  roomMessageActivityMs,
+} from "@/lib/room-chat-message-view";
 import { assertSafeGifUrl } from "@/lib/room-chat-gif";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -23,13 +27,23 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   Clapperboard,
+  MoreHorizontal,
+  Pencil,
   Reply,
   Smile,
+  Trash2,
   X,
 } from "lucide-react";
 import type { EmojiClickData } from "emoji-picker-react";
@@ -56,7 +70,12 @@ function authorLabel(name: string | null, email: string) {
   return name?.trim() || email;
 }
 
-function replySnippet(msg: { body: string; gifUrl: string | null }): string {
+function replySnippet(msg: {
+  body: string;
+  gifUrl: string | null;
+  deletedAt?: string | null;
+}): string {
+  if (msg.deletedAt) return "Pesan dihapus";
   const t = msg.body.trim();
   if (msg.gifUrl && t) {
     const cut = t.length > 72 ? `${t.slice(0, 72)}…` : t;
@@ -158,6 +177,10 @@ export function RoomChatExperience({
   >("checking");
   const [mentionDraft, setMentionDraft] = useState<MentionDraft | null>(null);
   const [mentionPickIndex, setMentionPickIndex] = useState(0);
+  const [editingMessage, setEditingMessage] = useState<{
+    id: string;
+    body: string;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
   const taRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -358,7 +381,9 @@ export function RoomChatExperience({
    */
   const lastSyncedAtRef = useRef<string>(
     initialMessages.length > 0
-      ? initialMessages[initialMessages.length - 1]!.createdAt
+      ? new Date(
+          Math.max(...initialMessages.map(roomMessageActivityMs)),
+        ).toISOString()
       : new Date(0).toISOString(),
   );
   useEffect(() => {
@@ -386,18 +411,14 @@ export function RoomChatExperience({
         );
         const incoming = j.messages;
         if (incoming.length === 0) return;
-        const newest = incoming[incoming.length - 1]!;
-        if (newest.createdAt > lastSyncedAtRef.current) {
-          lastSyncedAtRef.current = newest.createdAt;
+        const maxActivity = Math.max(...incoming.map(roomMessageActivityMs));
+        const prevMs = lastSyncedAtRef.current
+          ? new Date(lastSyncedAtRef.current).getTime()
+          : 0;
+        if (maxActivity > prevMs) {
+          lastSyncedAtRef.current = new Date(maxActivity).toISOString();
         }
-        // Hanya tambahkan pesan yang belum kita kenal (id-based dedupe).
-        // Tidak perlu sort — server sudah ascending, client juga ascending.
-        setMessages((prev) => {
-          const known = new Set(prev.map((m) => m.id));
-          const fresh = incoming.filter((m) => !known.has(m.id));
-          if (fresh.length === 0) return prev;
-          return [...prev, ...fresh];
-        });
+        setMessages((prev) => mergeRoomMessageLists(prev, incoming));
       } catch {
         /* offline / transient */
       }
@@ -466,17 +487,90 @@ export function RoomChatExperience({
   }
 
   function startReply(m: RoomChatMessageView) {
+    if (m.deletedAt) return;
     setReply({
       id: m.id,
       authorLabel: authorLabel(m.author.name, m.author.email),
-      snippet: replySnippet({ body: m.body, gifUrl: m.gifUrl }),
+      snippet: replySnippet({
+        body: m.body,
+        gifUrl: m.gifUrl,
+        deletedAt: m.deletedAt,
+      }),
     });
     taRef.current?.focus();
+  }
+
+  function startEdit(m: RoomChatMessageView) {
+    if (m.deletedAt) return;
+    setEditingMessage({ id: m.id, body: m.body });
+    setBody(m.body);
+    setReply(null);
+    setPendingGifUrl(null);
+    taRef.current?.focus();
+  }
+
+  function cancelEdit() {
+    setEditingMessage(null);
+    setBody("");
+  }
+
+  function confirmDeleteMessage(messageId: string) {
+    if (!window.confirm("Hapus pesan ini? Tindakan tidak dapat dibatalkan.")) return;
+    startTransition(async () => {
+      try {
+        await deleteRoomMessage(messageId);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  body: "",
+                  gifUrl: null,
+                  deletedAt: new Date().toISOString(),
+                  editedAt: null,
+                  updatedAt: new Date().toISOString(),
+                }
+              : m,
+          ),
+        );
+        lastSyncedAtRef.current = new Date().toISOString();
+        if (editingMessage?.id === messageId) cancelEdit();
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal menghapus pesan."));
+      }
+    });
   }
 
   function submit() {
     const text = body.trim();
     const gif = pendingGifUrl?.trim() ?? "";
+    if (pending) return;
+
+    if (editingMessage) {
+      if (!text) {
+        toast.error("Pesan tidak boleh kosong.");
+        return;
+      }
+      startTransition(async () => {
+        try {
+          const updated = await editRoomMessage({
+            messageId: editingMessage.id,
+            body: text,
+          });
+          setEditingMessage(null);
+          setBody("");
+          setMessages((prev) => mergeRoomMessageLists(prev, [updated]));
+          lastSyncedAtRef.current = new Date(
+            roomMessageActivityMs(updated),
+          ).toISOString();
+          taRef.current?.focus();
+        } catch (e) {
+          toast.error(actionErrorMessage(e, "Gagal mengedit pesan."));
+        }
+      });
+      return;
+    }
+
     if ((!text && !gif) || pending) return;
     let gifUrl: string | null = null;
     if (gif) {
@@ -499,15 +593,11 @@ export function RoomChatExperience({
         setPendingGifUrl(null);
         setReply(null);
         nearBottomRef.current = true;
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === created.id)) return prev;
-          return [...prev, created];
-        });
+        setMessages((prev) => mergeRoomMessageLists(prev, [created]));
         requestAnimationFrame(() => scrollToBottom("smooth"));
-        // Geser cursor delta agar polling tidak menarik ulang pesan kita sendiri.
-        if (created.createdAt > lastSyncedAtRef.current) {
-          lastSyncedAtRef.current = created.createdAt;
-        }
+        lastSyncedAtRef.current = new Date(
+          roomMessageActivityMs(created),
+        ).toISOString();
         taRef.current?.focus();
       } catch (e) {
         toast.error(actionErrorMessage(e, "Gagal mengirim."));
@@ -565,6 +655,7 @@ export function RoomChatExperience({
             ) : (
               messages.map((m) => {
                 const own = m.author.id === currentUserId;
+                const deleted = Boolean(m.deletedAt);
                 return (
                   <div
                     key={m.id}
@@ -574,7 +665,7 @@ export function RoomChatExperience({
                     }}
                     data-message-id={m.id}
                     className={cn(
-                      "flex gap-2",
+                      "group flex gap-2",
                       own ? "flex-row-reverse" : "flex-row",
                     )}
                   >
@@ -608,6 +699,7 @@ export function RoomChatExperience({
                         own
                           ? "border-primary/25 bg-primary/12"
                           : "border-border bg-card",
+                        deleted && "opacity-75",
                       )}
                     >
                       <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-[11px]">
@@ -615,14 +707,19 @@ export function RoomChatExperience({
                           href={`/profile/${m.author.id}`}
                           className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline"
                         >
-                          {authorLabel(m.author.name, m.author.email)}
+                          {own ? "Anda" : authorLabel(m.author.name, m.author.email)}
                         </Link>
-                        <time dateTime={m.createdAt}>
-                          {new Date(m.createdAt).toLocaleString("id-ID", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}
-                        </time>
+                        <span className="flex items-center gap-1">
+                          {m.editedAt && !deleted ? (
+                            <span className="italic opacity-80">diedit</span>
+                          ) : null}
+                          <time dateTime={m.createdAt}>
+                            {new Date(m.createdAt).toLocaleString("id-ID", {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })}
+                          </time>
+                        </span>
                       </div>
                       {m.replyTo ? (
                         <button
@@ -637,37 +734,77 @@ export function RoomChatExperience({
                             {replySnippet({
                               body: m.replyTo.body,
                               gifUrl: m.replyTo.gifUrl,
+                              deletedAt: m.replyTo.deletedAt,
                             })}
                           </p>
                         </button>
                       ) : null}
-                      {m.body.trim() ? (
-                        <p className="mt-1 whitespace-pre-wrap break-words">
-                          {m.body}
+                      {deleted ? (
+                        <p className="text-muted-foreground mt-1 text-xs italic">
+                          Pesan dihapus
                         </p>
-                      ) : null}
-                      {m.gifUrl ? (
-                        <div className="mt-1.5 overflow-hidden rounded-lg border border-border/60">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={m.gifUrl}
-                            alt="GIF"
-                            className="max-h-64 w-full max-w-full object-contain"
-                            loading="lazy"
-                          />
-                        </div>
-                      ) : null}
-                      <div className={cn("mt-1 flex", own ? "justify-start" : "justify-end")}>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          className="text-muted-foreground h-7 gap-1 px-2 text-[11px]"
-                          onClick={() => startReply(m)}
-                        >
-                          <Reply className="size-3" />
-                          Balas
-                        </Button>
+                      ) : (
+                        <>
+                          {m.body.trim() ? (
+                            <p className="mt-1 whitespace-pre-wrap break-words">
+                              {m.body}
+                            </p>
+                          ) : null}
+                          {m.gifUrl ? (
+                            <div className="mt-1.5 overflow-hidden rounded-lg border border-border/60">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={m.gifUrl}
+                                alt="GIF"
+                                className="max-h-64 w-full max-w-full object-contain"
+                                loading="lazy"
+                              />
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                      <div
+                        className={cn(
+                          "mt-1 flex flex-wrap items-center gap-1",
+                          own ? "justify-start" : "justify-end",
+                        )}
+                      >
+                        {!deleted ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            className="text-muted-foreground h-7 gap-1 px-2 text-[11px] opacity-70 group-hover:opacity-100"
+                            onClick={() => startReply(m)}
+                          >
+                            <Reply className="size-3" />
+                            Balas
+                          </Button>
+                        ) : null}
+                        {own && !deleted ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              className="text-muted-foreground hover:bg-muted inline-flex size-7 items-center justify-center rounded-md opacity-70 group-hover:opacity-100"
+                              aria-label="Aksi pesan"
+                            >
+                              <MoreHorizontal className="size-3.5" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align={own ? "start" : "end"}>
+                              <DropdownMenuItem onClick={() => startEdit(m)}>
+                                <Pencil className="size-3.5" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => confirmDeleteMessage(m.id)}
+                              >
+                                <Trash2 className="size-3.5" />
+                                Hapus
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -680,6 +817,22 @@ export function RoomChatExperience({
       </div>
 
       <div className="border-border bg-card space-y-2 rounded-xl border p-3">
+        {editingMessage ? (
+          <div className="bg-primary/10 flex items-center justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5 text-xs">
+            <span>
+              <strong>Mengedit pesan</strong> — Enter simpan, Esc batal
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Batal edit"
+              onClick={cancelEdit}
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
+        ) : null}
         {reply ? (
           <div className="bg-muted/60 flex items-start justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5 text-xs">
             <div className="min-w-0">
@@ -700,7 +853,7 @@ export function RoomChatExperience({
             </Button>
           </div>
         ) : null}
-        {pendingGifUrl ? (
+        {pendingGifUrl && !editingMessage ? (
           <div className="bg-muted/60 flex items-center justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5">
             <div className="flex min-w-0 items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -780,7 +933,9 @@ export function RoomChatExperience({
           <Textarea
           ref={taRef}
           rows={3}
-          placeholder="Tulis pesan… (@emoji & GIF dari toolbar)"
+          placeholder={
+            editingMessage ? "Edit pesan…" : "Tulis pesan… (@emoji & GIF dari toolbar)"
+          }
           value={body}
           disabled={pending}
           onChange={(e) => {
@@ -795,6 +950,11 @@ export function RoomChatExperience({
             setMentionDraft(detectMentionDraft(bodyRef.current, cursor));
           }}
           onKeyDown={(e) => {
+            if (e.key === "Escape" && editingMessage) {
+              e.preventDefault();
+              cancelEdit();
+              return;
+            }
             if (mentionDraft && mentionSuggestions.length > 0) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
@@ -828,6 +988,7 @@ export function RoomChatExperience({
           />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
+          {!editingMessage ? (
           <div className="flex flex-wrap items-center gap-1">
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverTrigger
@@ -942,16 +1103,30 @@ export function RoomChatExperience({
               </PopoverContent>
             </Popover>
           </div>
+          ) : (
+            <p className="text-muted-foreground text-xs">Mode edit: hanya teks pesan.</p>
+          )}
           <Button
             type="button"
-            disabled={pending || (!body.trim() && !pendingGifUrl)}
+            disabled={
+              pending ||
+              (editingMessage ? !body.trim() : !body.trim() && !pendingGifUrl)
+            }
             onClick={submit}
           >
-            {pending ? "Mengirim…" : "Kirim"}
+            {pending
+              ? editingMessage
+                ? "Menyimpan…"
+                : "Mengirim…"
+              : editingMessage
+                ? "Simpan"
+                : "Kirim"}
           </Button>
         </div>
         <p className="text-muted-foreground text-xs">
-          Enter kirim · Shift+Enter baris baru · Pakai @Nama untuk summon (kirim notif WA)
+          {editingMessage
+            ? "Enter simpan · Esc batal"
+            : "Enter kirim · Shift+Enter baris baru · Pakai @Nama untuk summon (kirim notif WA)"}
         </p>
       </div>
     </div>
