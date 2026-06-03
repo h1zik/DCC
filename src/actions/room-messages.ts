@@ -26,6 +26,11 @@ const sendMessageSchema = z.object({
   replyToId: z.string().min(1).optional(),
 });
 
+const editMessageSchema = z.object({
+  messageId: z.string().min(1),
+  body: z.string().max(4000),
+});
+
 type RoomMentionCandidate = {
   id: string;
   name: string | null;
@@ -255,4 +260,69 @@ export async function addRoomMessage(
   });
   revalidateTasksAndRoomHub();
   return mapRoomMessageToView(created);
+}
+
+export async function editRoomMessage(
+  input: z.infer<typeof editMessageSchema>,
+): Promise<RoomChatMessageView> {
+  const session = await requireTasksRoomHubSession();
+  const data = editMessageSchema.parse(input);
+  const body = data.body.trim();
+
+  const existing = await prisma.roomMessage.findUniqueOrThrow({
+    where: { id: data.messageId },
+    select: {
+      authorId: true,
+      roomId: true,
+      deletedAt: true,
+      gifUrl: true,
+    },
+  });
+
+  if (existing.deletedAt) throw new Error("Pesan sudah dihapus.");
+  if (existing.authorId !== session.user.id) {
+    throw new Error("Hanya penulis yang dapat mengedit pesan.");
+  }
+  if (!body) throw new Error("Pesan tidak boleh kosong.");
+  if (existing.gifUrl && !body) {
+    throw new Error("Tambahkan teks pada pesan GIF.");
+  }
+
+  await assertRoomMember(existing.roomId, session.user.id);
+
+  const updated = await prisma.roomMessage.update({
+    where: { id: data.messageId },
+    data: { body, editedAt: new Date() },
+    include: roomChatMessageInclude,
+  });
+
+  revalidateTasksAndRoomHub();
+  return mapRoomMessageToView(updated);
+}
+
+export async function deleteRoomMessage(messageId: string) {
+  const session = await requireTasksRoomHubSession();
+  const existing = await prisma.roomMessage.findUniqueOrThrow({
+    where: { id: messageId },
+    select: { authorId: true, roomId: true, deletedAt: true },
+  });
+
+  if (existing.authorId !== session.user.id) {
+    throw new Error("Hanya penulis yang dapat menghapus pesan.");
+  }
+  if (existing.deletedAt) return;
+
+  await assertRoomMember(existing.roomId, session.user.id);
+
+  await prisma.roomMessage.update({
+    where: { id: messageId },
+    data: {
+      deletedAt: new Date(),
+      body: "",
+      gifUrl: null,
+      editedAt: null,
+    },
+  });
+
+  revalidateTasksAndRoomHub();
 }

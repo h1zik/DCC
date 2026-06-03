@@ -692,9 +692,13 @@ model RoomMessage {
   replyToId String?
   replyTo   RoomMessage?  @relation("RoomMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   RoomMessage[] @relation("RoomMessageReplies")
+  editedAt  DateTime?
+  deletedAt DateTime?
   createdAt DateTime      @default(now())
+  updatedAt DateTime      @default(now()) @updatedAt
 
   @@index([roomId, createdAt])
+  @@index([roomId, updatedAt])
   @@index([replyToId])
 }
 

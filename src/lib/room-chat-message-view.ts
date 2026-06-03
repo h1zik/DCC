@@ -7,6 +7,9 @@ export type RoomChatMessageView = {
   gifUrl: string | null;
   replyToId: string | null;
   createdAt: string;
+  updatedAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
   author: {
     id: string;
     name: string | null;
@@ -17,6 +20,7 @@ export type RoomChatMessageView = {
     id: string;
     body: string;
     gifUrl: string | null;
+    deletedAt: string | null;
     author: { name: string | null; email: string };
   };
 };
@@ -28,6 +32,7 @@ export const roomChatMessageInclude = {
       id: true,
       body: true,
       gifUrl: true,
+      deletedAt: true,
       author: { select: { name: true, email: true } },
     },
   },
@@ -40,20 +45,42 @@ export type RoomChatMessageRow = Prisma.RoomMessageGetPayload<{
 export function mapRoomMessageToView(m: RoomChatMessageRow): RoomChatMessageView {
   return {
     id: m.id,
-    body: m.body,
-    gifUrl: m.gifUrl,
+    body: m.deletedAt ? "" : m.body,
+    gifUrl: m.deletedAt ? null : m.gifUrl,
     replyToId: m.replyToId,
     createdAt: m.createdAt.toISOString(),
+    updatedAt: m.updatedAt.toISOString(),
+    editedAt: m.editedAt?.toISOString() ?? null,
+    deletedAt: m.deletedAt?.toISOString() ?? null,
     author: m.author,
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
-          body: m.replyTo.body,
-          gifUrl: m.replyTo.gifUrl,
+          body: m.replyTo.deletedAt ? "" : m.replyTo.body,
+          gifUrl: m.replyTo.deletedAt ? null : m.replyTo.gifUrl,
+          deletedAt: m.replyTo.deletedAt?.toISOString() ?? null,
           author: m.replyTo.author,
         }
       : null,
   };
+}
+
+export function roomMessageActivityMs(m: RoomChatMessageView): number {
+  return Math.max(
+    new Date(m.createdAt).getTime(),
+    new Date(m.updatedAt).getTime(),
+  );
+}
+
+export function mergeRoomMessageLists(
+  prev: RoomChatMessageView[],
+  incoming: RoomChatMessageView[],
+): RoomChatMessageView[] {
+  const byId = new Map(prev.map((m) => [m.id, m]));
+  for (const m of incoming) byId.set(m.id, m);
+  return [...byId.values()].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
 }
 
 /**
@@ -68,6 +95,13 @@ export const ROOM_CHAT_INITIAL_MESSAGE_LIMIT = 200;
  * sekaligus (mencegah spike memori jika ada burst pesan dalam satu detik).
  */
 export const ROOM_CHAT_DELTA_MESSAGE_LIMIT = 500;
+
+function roomMessageActivityWhere(roomId: string, since: Date) {
+  return {
+    roomId,
+    OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
+  };
+}
 
 /**
  * Initial load — terakhir N pesan dari ruangan, dikembalikan dalam urutan
@@ -84,13 +118,11 @@ export async function loadRoomChatMessagesForRoom(
     take,
     include: roomChatMessageInclude,
   });
-  // Kembalikan ascending untuk konsumsi UI (timeline klasik atas → bawah).
   return rows.map(mapRoomMessageToView).reverse();
 }
 
 /**
- * Delta load — pesan dengan `createdAt > since`, ascending. Menggunakan index
- * `RoomMessage(@@index([roomId, createdAt]))` sehingga sangat ringan.
+ * Delta load — pesan baru atau yang diedit/dihapus setelah `since`, ascending.
  */
 export async function loadRoomChatMessagesSince(
   roomId: string,
@@ -99,7 +131,7 @@ export async function loadRoomChatMessagesSince(
 ): Promise<RoomChatMessageView[]> {
   const take = Math.max(1, Math.min(limit, ROOM_CHAT_DELTA_MESSAGE_LIMIT));
   const rows = await prisma.roomMessage.findMany({
-    where: { roomId, createdAt: { gt: since } },
+    where: roomMessageActivityWhere(roomId, since),
     orderBy: { createdAt: "asc" },
     take,
     include: roomChatMessageInclude,
