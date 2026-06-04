@@ -13,7 +13,16 @@ import {
   useState,
   useTransition,
 } from "react";
-import { addRoomMessage, deleteRoomMessage, editRoomMessage } from "@/actions/room-messages";
+import { addRoomMessage, addRoomMessageForm, deleteRoomMessage, editRoomMessage } from "@/actions/room-messages";
+import { ChatLinkifiedText } from "@/components/chat-linkified-text";
+import {
+  mergePendingChatFiles,
+  readClipboardImageFiles,
+} from "@/lib/chat-pending-files";
+import {
+  DIRECT_CHAT_MAX_FILES_PER_MESSAGE,
+  isDirectChatImageMime,
+} from "@/lib/direct-chat-attachments-shared";
 import type { RoomChatMessageView } from "@/lib/room-chat-message-view";
 import {
   mergeRoomMessageLists,
@@ -39,7 +48,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   Clapperboard,
+  Download,
+  FileText,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   Reply,
   Smile,
@@ -74,16 +86,32 @@ function replySnippet(msg: {
   body: string;
   gifUrl: string | null;
   deletedAt?: string | null;
+  attachmentCount?: number;
 }): string {
   if (msg.deletedAt) return "Pesan dihapus";
   const t = msg.body.trim();
+  const att = msg.attachmentCount ?? 0;
+  if (att > 0 && !t && !msg.gifUrl) {
+    return att === 1 ? "Lampiran" : `${att} lampiran`;
+  }
   if (msg.gifUrl && t) {
     const cut = t.length > 72 ? `${t.slice(0, 72)}…` : t;
     return `${cut} · GIF`;
   }
   if (msg.gifUrl) return "GIF";
+  if (!t && att > 0) {
+    return att === 1 ? "Lampiran" : `${att} lampiran`;
+  }
   if (!t) return "(tanpa teks)";
-  return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+  const suffix = att > 0 ? ` · ${att} lampiran` : "";
+  const text = t.length > 120 ? `${t.slice(0, 120)}…` : t;
+  return `${text}${suffix}`;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 type ReplyTarget = {
@@ -172,6 +200,7 @@ export function RoomChatExperience({
   const [gifLoading, setGifLoading] = useState(false);
   const [giphyConfigured, setGiphyConfigured] = useState<boolean | null>(null);
   const [pasteGif, setPasteGif] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pushState, setPushState] = useState<
     "checking" | "ready" | "needs-activation" | "blocked" | "unsupported" | "not-configured"
   >("checking");
@@ -183,6 +212,7 @@ export function RoomChatExperience({
   } | null>(null);
   const [pending, startTransition] = useTransition();
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -486,6 +516,19 @@ export function RoomChatExperience({
     setEmojiOpen(false);
   }
 
+  function onPickFiles(incoming: File[]) {
+    if (incoming.length === 0) return;
+    setPendingFiles((prev) => mergePendingChatFiles(prev, incoming));
+  }
+
+  function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (editingMessage || pending) return;
+    const images = readClipboardImageFiles(e.clipboardData);
+    if (images.length === 0) return;
+    e.preventDefault();
+    onPickFiles(images);
+  }
+
   function startReply(m: RoomChatMessageView) {
     if (m.deletedAt) return;
     setReply({
@@ -495,6 +538,7 @@ export function RoomChatExperience({
         body: m.body,
         gifUrl: m.gifUrl,
         deletedAt: m.deletedAt,
+        attachmentCount: m.attachments.length,
       }),
     });
     taRef.current?.focus();
@@ -506,12 +550,16 @@ export function RoomChatExperience({
     setBody(m.body);
     setReply(null);
     setPendingGifUrl(null);
+    setPendingFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     taRef.current?.focus();
   }
 
   function cancelEdit() {
     setEditingMessage(null);
     setBody("");
+    setPendingFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function confirmDeleteMessage(messageId: string) {
@@ -526,6 +574,7 @@ export function RoomChatExperience({
                   ...m,
                   body: "",
                   gifUrl: null,
+                  attachments: [],
                   deletedAt: new Date().toISOString(),
                   editedAt: null,
                   updatedAt: new Date().toISOString(),
@@ -571,7 +620,7 @@ export function RoomChatExperience({
       return;
     }
 
-    if ((!text && !gif) || pending) return;
+    if ((!text && !gif && pendingFiles.length === 0) || pending) return;
     let gifUrl: string | null = null;
     if (gif) {
       try {
@@ -581,16 +630,30 @@ export function RoomChatExperience({
         return;
       }
     }
+    const hasFiles = pendingFiles.length > 0;
     startTransition(async () => {
       try {
-        const created = await addRoomMessage({
-          roomId,
-          body: text,
-          gifUrl: gifUrl ?? undefined,
-          replyToId: reply?.id,
-        });
+        let created: RoomChatMessageView;
+        if (hasFiles) {
+          const fd = new FormData();
+          fd.append("roomId", roomId);
+          fd.append("body", text);
+          if (gifUrl) fd.append("gifUrl", gifUrl);
+          if (reply?.id) fd.append("replyToId", reply.id);
+          for (const f of pendingFiles) fd.append("files", f);
+          created = await addRoomMessageForm(fd);
+        } else {
+          created = await addRoomMessage({
+            roomId,
+            body: text,
+            gifUrl: gifUrl ?? undefined,
+            replyToId: reply?.id,
+          });
+        }
         setBody("");
         setPendingGifUrl(null);
+        setPendingFiles([]);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setReply(null);
         nearBottomRef.current = true;
         setMessages((prev) => mergeRoomMessageLists(prev, [created]));
@@ -735,6 +798,7 @@ export function RoomChatExperience({
                               body: m.replyTo.body,
                               gifUrl: m.replyTo.gifUrl,
                               deletedAt: m.replyTo.deletedAt,
+                              attachmentCount: m.replyTo.attachmentCount,
                             })}
                           </p>
                         </button>
@@ -746,9 +810,7 @@ export function RoomChatExperience({
                       ) : (
                         <>
                           {m.body.trim() ? (
-                            <p className="mt-1 whitespace-pre-wrap break-words">
-                              {m.body}
-                            </p>
+                            <ChatLinkifiedText text={m.body} className="mt-1" />
                           ) : null}
                           {m.gifUrl ? (
                             <div className="mt-1.5 overflow-hidden rounded-lg border border-border/60">
@@ -760,6 +822,52 @@ export function RoomChatExperience({
                                 loading="lazy"
                               />
                             </div>
+                          ) : null}
+                          {m.attachments.length > 0 ? (
+                            <ul className="mt-1.5 space-y-1">
+                              {m.attachments.map((a) => {
+                                const isImage = isDirectChatImageMime(a.mimeType);
+                                return (
+                                  <li key={a.id}>
+                                    {isImage ? (
+                                      <a
+                                        href={a.publicPath}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block overflow-hidden rounded-md border border-border/60"
+                                      >
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={a.publicPath}
+                                          alt={a.fileName}
+                                          className="max-h-64 w-full object-contain"
+                                          loading="lazy"
+                                        />
+                                      </a>
+                                    ) : (
+                                      <a
+                                        href={a.publicPath}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        download={a.fileName}
+                                        className="bg-muted/40 hover:bg-muted/70 flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors"
+                                      >
+                                        <FileText className="text-muted-foreground size-3.5 shrink-0" />
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block truncate font-medium">
+                                            {a.fileName}
+                                          </span>
+                                          <span className="text-muted-foreground">
+                                            {formatFileSize(a.sizeBytes)}
+                                          </span>
+                                        </span>
+                                        <Download className="text-muted-foreground size-3 shrink-0" />
+                                      </a>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
                           ) : null}
                         </>
                       )}
@@ -875,6 +983,29 @@ export function RoomChatExperience({
             </Button>
           </div>
         ) : null}
+        {pendingFiles.length > 0 && !editingMessage ? (
+          <ul className="bg-muted/40 max-h-28 space-y-1 overflow-y-auto rounded-lg border border-dashed p-2 text-xs">
+            {pendingFiles.map((f, idx) => (
+              <li
+                key={`${f.name}-${idx}`}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="truncate">{f.name}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Hapus ${f.name}`}
+                  onClick={() =>
+                    setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
+                  }
+                >
+                  <X className="size-3" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {typingUsers.length > 0 ? (
           <p className="text-muted-foreground text-xs">
             {typingUsers[0]} sedang mengetik
@@ -930,14 +1061,32 @@ export function RoomChatExperience({
               </ul>
             </div>
           ) : null}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv"
+            disabled={pending || Boolean(editingMessage)}
+            onChange={(e) => {
+              const input = e.target;
+              /** `FileList` hidup: reset `value` mengosongkan `files` — salin dulu. */
+              const picked = input.files?.length ? Array.from(input.files) : [];
+              input.value = "";
+              onPickFiles(picked);
+            }}
+          />
           <Textarea
           ref={taRef}
           rows={3}
           placeholder={
-            editingMessage ? "Edit pesan…" : "Tulis pesan… (@emoji & GIF dari toolbar)"
+            editingMessage
+              ? "Edit pesan…"
+              : "Tulis pesan… (Ctrl+V gambar, @mention, GIF & lampiran dari toolbar)"
           }
           value={body}
           disabled={pending}
+          onPaste={onComposerPaste}
           onChange={(e) => {
             const next = e.target.value;
             setBody(next);
@@ -1102,6 +1251,19 @@ export function RoomChatExperience({
                 </div>
               </PopoverContent>
             </Popover>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              disabled={
+                pending || pendingFiles.length >= DIRECT_CHAT_MAX_FILES_PER_MESSAGE
+              }
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip className="size-4" />
+              File
+            </Button>
           </div>
           ) : (
             <p className="text-muted-foreground text-xs">Mode edit: hanya teks pesan.</p>
@@ -1110,7 +1272,9 @@ export function RoomChatExperience({
             type="button"
             disabled={
               pending ||
-              (editingMessage ? !body.trim() : !body.trim() && !pendingGifUrl)
+              (editingMessage
+                ? !body.trim()
+                : !body.trim() && !pendingGifUrl && pendingFiles.length === 0)
             }
             onClick={submit}
           >

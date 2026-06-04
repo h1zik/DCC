@@ -16,6 +16,10 @@ import {
   roomChatMessageInclude,
   type RoomChatMessageView,
 } from "@/lib/room-chat-message-view";
+import {
+  DIRECT_CHAT_MAX_FILES_PER_MESSAGE,
+  saveRoomChatAttachmentFile,
+} from "@/lib/room-chat-attachments";
 import { sendWebPushMessage } from "@/lib/web-push";
 import { getAppBranding } from "@/lib/app-branding";
 
@@ -135,6 +139,7 @@ async function notifyRoomMembersViaPush(params: {
   authorName: string;
   body: string;
   hasGif: boolean;
+  hasAttachments?: boolean;
 }) {
   const branding = await getAppBranding();
   const pushIconPath = branding.pushIconPath ?? "/next.svg";
@@ -165,9 +170,11 @@ async function notifyRoomMembersViaPush(params: {
     ? preview.length > 90
       ? `${preview.slice(0, 90)}…`
       : preview
-    : params.hasGif
-      ? "Mengirim GIF"
-      : "Pesan baru";
+    : params.hasAttachments
+      ? "Mengirim lampiran"
+      : params.hasGif
+        ? "Mengirim GIF"
+        : "Pesan baru";
   const sender = params.authorName.trim() || "Rekan tim";
   const roomLabel = params.roomName.trim() || "ruangan";
   const invalidSubscriptionIds: string[] = [];
@@ -214,7 +221,7 @@ export async function addRoomMessage(
   const replyToId = (data.replyToId ?? "").trim() || null;
 
   if (!body && !gifUrl) {
-    throw new Error("Tulis pesan, pilih GIF, atau keduanya.");
+    throw new Error("Tulis pesan, pilih GIF, atau lampirkan file.");
   }
 
   await assertRoomMember(data.roomId, session.user.id);
@@ -262,6 +269,97 @@ export async function addRoomMessage(
   return mapRoomMessageToView(created);
 }
 
+export async function addRoomMessageForm(
+  formData: FormData,
+): Promise<RoomChatMessageView> {
+  const session = await requireTasksRoomHubSession();
+  const roomId = String(formData.get("roomId") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  const gifRaw = String(formData.get("gifUrl") ?? "").trim();
+  const replyToIdRaw = String(formData.get("replyToId") ?? "").trim();
+  const gifUrl = gifRaw ? assertSafeGifUrl(gifRaw) : null;
+  const replyToId = replyToIdRaw || null;
+  const files = formData
+    .getAll("files")
+    .filter((f): f is File => f instanceof File && f.size > 0);
+
+  if (!roomId) throw new Error("Ruangan tidak valid.");
+  if (files.length > DIRECT_CHAT_MAX_FILES_PER_MESSAGE) {
+    throw new Error(`Maksimal ${DIRECT_CHAT_MAX_FILES_PER_MESSAGE} file per pesan.`);
+  }
+  if (!body && !gifUrl && files.length === 0) {
+    throw new Error("Tulis pesan, pilih GIF, atau lampirkan file.");
+  }
+
+  await assertRoomMember(roomId, session.user.id);
+  const room = await prisma.room.findUniqueOrThrow({
+    where: { id: roomId },
+    select: { id: true, name: true },
+  });
+
+  if (replyToId) {
+    const parent = await prisma.roomMessage.findFirst({
+      where: { id: replyToId, roomId },
+      select: { id: true },
+    });
+    if (!parent) {
+      throw new Error("Pesan yang dibalas tidak ditemukan.");
+    }
+  }
+
+  const created = await prisma.roomMessage.create({
+    data: {
+      roomId,
+      authorId: session.user.id,
+      body,
+      gifUrl,
+      replyToId,
+    },
+    include: roomChatMessageInclude,
+  });
+
+  for (const file of files) {
+    const saved = await saveRoomChatAttachmentFile({
+      roomId,
+      messageId: created.id,
+      file,
+    });
+    await prisma.roomMessageAttachment.create({
+      data: {
+        messageId: created.id,
+        fileName: saved.fileName,
+        mimeType: saved.mimeType,
+        sizeBytes: saved.sizeBytes,
+        publicPath: saved.publicPath,
+      },
+    });
+  }
+
+  const full = await prisma.roomMessage.findUniqueOrThrow({
+    where: { id: created.id },
+    include: roomChatMessageInclude,
+  });
+
+  await notifyMentionedUsersViaWhatsApp({
+    roomId: room.id,
+    roomName: room.name,
+    body,
+    authorId: session.user.id,
+    authorName: session.user.name || session.user.email || "Rekan tim",
+  });
+  await notifyRoomMembersViaPush({
+    roomId: room.id,
+    roomName: room.name,
+    authorId: session.user.id,
+    authorName: session.user.name || session.user.email || "Rekan tim",
+    body,
+    hasGif: Boolean(gifUrl),
+    hasAttachments: files.length > 0,
+  });
+  revalidateTasksAndRoomHub();
+  return mapRoomMessageToView(full);
+}
+
 export async function editRoomMessage(
   input: z.infer<typeof editMessageSchema>,
 ): Promise<RoomChatMessageView> {
@@ -276,6 +374,7 @@ export async function editRoomMessage(
       roomId: true,
       deletedAt: true,
       gifUrl: true,
+      attachments: { select: { id: true }, take: 1 },
     },
   });
 
@@ -283,9 +382,11 @@ export async function editRoomMessage(
   if (existing.authorId !== session.user.id) {
     throw new Error("Hanya penulis yang dapat mengedit pesan.");
   }
-  if (!body) throw new Error("Pesan tidak boleh kosong.");
   if (existing.gifUrl && !body) {
     throw new Error("Tambahkan teks pada pesan GIF.");
+  }
+  if (!body && existing.attachments.length === 0 && !existing.gifUrl) {
+    throw new Error("Pesan tidak boleh kosong.");
   }
 
   await assertRoomMember(existing.roomId, session.user.id);

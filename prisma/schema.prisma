@@ -696,10 +696,24 @@ model RoomMessage {
   deletedAt DateTime?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @default(now()) @updatedAt
+  attachments RoomMessageAttachment[]
 
   @@index([roomId, createdAt])
   @@index([roomId, updatedAt])
   @@index([replyToId])
+}
+
+model RoomMessageAttachment {
+  id         String      @id @default(cuid())
+  messageId  String
+  message    RoomMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  publicPath String
+  createdAt  DateTime    @default(now())
+
+  @@index([messageId])
 }
 
 /** Percakapan pribadi 1:1 antar pengguna. */
