@@ -30,6 +30,7 @@ import {
   Tags,
   Users,
   WandSparkles,
+  Bot,
 } from "lucide-react";
 import { effectiveRoleLabel } from "@/lib/role-labels";
 import { isStudioOrProjectManager } from "@/lib/roles";
@@ -104,6 +105,14 @@ const navStudio = [
   { href: "/schedule", label: "Jadwal", icon: CalendarDays },
   { href: "/attendance", label: "Absensi", icon: ScanFace },
 ] as const;
+
+/** Tautan eksternal — tampil untuk semua pengguna yang sudah login. */
+const DOMINATUS_AI_URL = "https://ai.dominatuscenter.com";
+const navDominatusAi = {
+  href: DOMINATUS_AI_URL,
+  label: "Dominatus AI",
+  icon: Bot,
+} as const;
 
 function navForRole(role: UserRole | undefined) {
   if (role === UserRole.CEO) return navCeo;
@@ -234,6 +243,38 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 );
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="pt-1">
+          <SidebarGroupLabel className="px-2 text-[10px] font-semibold tracking-[0.18em] whitespace-nowrap text-sidebar-foreground/55">
+            <span
+              className="mr-2 size-1 shrink-0 rounded-full bg-sidebar-primary transition-opacity duration-300 ease-in-out group-data-[collapsible=icon]:opacity-0"
+              aria-hidden
+            />
+            <span className="transition-opacity duration-300 ease-in-out group-data-[collapsible=icon]:opacity-0">
+              AI
+            </span>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip={navDominatusAi.label}
+                  className={sidebarMenuItemClass}
+                  render={
+                    <a
+                      href={navDominatusAi.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    />
+                  }
+                >
+                  <navDominatusAi.icon />
+                  <span className="sidebar-nav-label">{navDominatusAi.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
