@@ -55,8 +55,8 @@ export async function buildDocumentDownloadResponse(
   }
 
   if (resolved.length === 1) {
-    const { abs } = resolved[0]!;
-    const filename = path.basename(abs);
+    const { abs, zipName } = resolved[0]!;
+    const filename = path.basename(zipName);
     const st = await stat(abs);
     const buf = await readFile(abs);
     return new NextResponse(buf, {

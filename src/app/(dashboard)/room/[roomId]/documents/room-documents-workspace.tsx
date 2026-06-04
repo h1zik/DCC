@@ -711,6 +711,18 @@ export function RoomDocumentsWorkspace({
     [roomId],
   );
 
+  const onDownloadDocument = useCallback(
+    async (doc: RoomDocumentRow) => {
+      try {
+        await downloadSingleRoomDocument(roomId, doc.id, doc.fileName);
+        toast.success(`"${doc.fileName}" diunduh.`);
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal mengunduh file."));
+      }
+    },
+    [roomId],
+  );
+
   const onBulkDownload = useCallback(async () => {
     const ids = Array.from(selectedDocIds);
     if (!ids.length) return;
@@ -718,7 +730,7 @@ export function RoomDocumentsWorkspace({
     try {
       if (ids.length === 1) {
         const doc = documents.find((d) => d.id === ids[0]);
-        if (doc) downloadSingleRoomDocument(doc.publicPath, doc.fileName);
+        if (doc) await downloadSingleRoomDocument(roomId, doc.id, doc.fileName);
         else throw new Error("File tidak ditemukan.");
       } else {
         await downloadRoomDocumentsZip(roomId, ids);
@@ -1358,6 +1370,7 @@ export function RoomDocumentsWorkspace({
                   onPreview={onPreviewDoc}
                   onDelete={onDeleteDoc}
                   onMove={onMoveDoc}
+                  onDownload={(d) => void onDownloadDocument(d)}
                   // 4 ubin pertama (1 baris di breakpoint 2xl) berada di atas
                   // fold — beri `priority` agar Next.js set `loading="eager"`
                   // + `fetchPriority="high"` dan tidak memunculkan warning LCP.
@@ -1385,6 +1398,7 @@ export function RoomDocumentsWorkspace({
               onPreview={onPreviewDoc}
               onDelete={onDeleteDoc}
               onMove={onMoveDoc}
+              onDownloadDocument={(d) => void onDownloadDocument(d)}
             />
           )}
           {(visibleDocuments.length > 0 || childFolders.length > 0) &&
@@ -1517,6 +1531,7 @@ export function RoomDocumentsWorkspace({
         doc={previewDoc}
         previewPlaylist={previewPlaylist}
         onNavigate={onPreviewDoc}
+        onDownload={(d) => void onDownloadDocument(d)}
         canManageTags={
           previewDoc
             ? previewDoc.uploadedBy.id === currentUserId || isRoomManager
@@ -1781,6 +1796,7 @@ const DocCard = memo(function DocCard({
   onPreview,
   onDelete,
   onMove,
+  onDownload,
   priority = false,
 }: {
   doc: RoomDocumentRow;
@@ -1793,6 +1809,7 @@ const DocCard = memo(function DocCard({
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onDownload: (d: RoomDocumentRow) => void | Promise<void>;
   /** Hint LCP — tile pertama yang berada di atas fold harus eager. */
   priority?: boolean;
 }) {
@@ -1928,16 +1945,9 @@ const DocCard = memo(function DocCard({
             size="icon-sm"
             variant="outline"
             className="shrink-0"
-            nativeButton={false}
-            render={
-              <a
-                href={doc.publicPath}
-                download={doc.fileName}
-                rel="noopener noreferrer"
-                aria-label={`Unduh ${doc.fileName}`}
-                title="Unduh"
-              />
-            }
+            aria-label={`Unduh ${doc.fileName}`}
+            title="Unduh"
+            onClick={() => void onDownload(doc)}
           >
             <Download className="size-3.5" />
           </Button>
@@ -1990,6 +2000,7 @@ const DocListRow = memo(function DocListRow({
   onPreview,
   onDelete,
   onMove,
+  onDownload,
 }: {
   doc: RoomDocumentRow;
   folders: RoomDocumentFolderRow[];
@@ -2000,6 +2011,7 @@ const DocListRow = memo(function DocListRow({
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onDownload: (d: RoomDocumentRow) => void | Promise<void>;
 }) {
   const meta = fileTypeMeta(doc.mimeType);
   const Icon = meta.icon;
@@ -2086,14 +2098,7 @@ const DocListRow = memo(function DocListRow({
           size="icon-sm"
           aria-label={`Unduh ${doc.fileName}`}
           title="Unduh"
-          nativeButton={false}
-          render={
-            <a
-              href={doc.publicPath}
-              download={doc.fileName}
-              rel="noopener noreferrer"
-            />
-          }
+          onClick={() => void onDownload(doc)}
         >
           <Download className="size-4" />
         </Button>
@@ -2155,6 +2160,7 @@ function DocList({
   onPreview,
   onDelete,
   onMove,
+  onDownloadDocument,
 }: {
   childFolders: RoomDocumentFolderRow[];
   docs: RoomDocumentRow[];
@@ -2174,6 +2180,7 @@ function DocList({
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onDownloadDocument: (d: RoomDocumentRow) => void | Promise<void>;
 }) {
   return (
     <div className="border-border bg-card overflow-hidden rounded-xl border">
@@ -2218,6 +2225,7 @@ function DocList({
             onPreview={onPreview}
             onDelete={onDelete}
             onMove={onMove}
+            onDownload={onDownloadDocument}
           />
         ))}
       </ul>
@@ -2229,12 +2237,14 @@ function DocPreviewDialog({
   doc,
   previewPlaylist,
   onNavigate,
+  onDownload,
   canManageTags,
   onClose,
 }: {
   doc: RoomDocumentRow | null;
   previewPlaylist: RoomDocumentRow[];
   onNavigate: (d: RoomDocumentRow) => void;
+  onDownload: (d: RoomDocumentRow) => void | Promise<void>;
   canManageTags: boolean;
   onClose: () => void;
 }) {
@@ -2377,14 +2387,8 @@ function DocPreviewDialog({
                 <Button
                   type="button"
                   size="sm"
-                  nativeButton={false}
-                  render={
-                    <a
-                      href={doc.publicPath}
-                      download={doc.fileName}
-                      rel="noopener noreferrer"
-                    />
-                  }
+                  variant="outline"
+                  onClick={() => void onDownload(doc)}
                 >
                   <Download className="size-3.5" />
                   Download

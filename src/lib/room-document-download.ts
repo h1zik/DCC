@@ -22,6 +22,14 @@ export function roomDocumentsBulkDownloadApiPath(roomId: string): string {
   return `/api/rooms/${roomId}/documents/download`;
 }
 
+/** URL unduh satu file dengan nama asli dari metadata dokumen. */
+export function roomDocumentDownloadApiPath(
+  roomId: string,
+  documentId: string,
+): string {
+  return `/api/rooms/${roomId}/documents/${documentId}/download`;
+}
+
 export function sanitizeZipPathSegment(name: string): string {
   const trimmed = name.trim() || "folder";
   return trimmed
