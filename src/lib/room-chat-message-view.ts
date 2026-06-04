@@ -1,6 +1,14 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
+export type RoomChatAttachmentView = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  publicPath: string;
+};
+
 export type RoomChatMessageView = {
   id: string;
   body: string;
@@ -16,17 +24,29 @@ export type RoomChatMessageView = {
     email: string;
     image: string | null;
   };
+  attachments: RoomChatAttachmentView[];
   replyTo: null | {
     id: string;
     body: string;
     gifUrl: string | null;
     deletedAt: string | null;
     author: { name: string | null; email: string };
+    attachmentCount: number;
   };
 };
 
 export const roomChatMessageInclude = {
   author: { select: { id: true, name: true, email: true, image: true } },
+  attachments: {
+    select: {
+      id: true,
+      fileName: true,
+      mimeType: true,
+      sizeBytes: true,
+      publicPath: true,
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
   replyTo: {
     select: {
       id: true,
@@ -34,6 +54,7 @@ export const roomChatMessageInclude = {
       gifUrl: true,
       deletedAt: true,
       author: { select: { name: true, email: true } },
+      _count: { select: { attachments: true } },
     },
   },
 } satisfies Prisma.RoomMessageInclude;
@@ -53,6 +74,15 @@ export function mapRoomMessageToView(m: RoomChatMessageRow): RoomChatMessageView
     editedAt: m.editedAt?.toISOString() ?? null,
     deletedAt: m.deletedAt?.toISOString() ?? null,
     author: m.author,
+    attachments: m.deletedAt
+      ? []
+      : m.attachments.map((a) => ({
+          id: a.id,
+          fileName: a.fileName,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes,
+          publicPath: a.publicPath,
+        })),
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
@@ -60,6 +90,7 @@ export function mapRoomMessageToView(m: RoomChatMessageRow): RoomChatMessageView
           gifUrl: m.replyTo.deletedAt ? null : m.replyTo.gifUrl,
           deletedAt: m.replyTo.deletedAt?.toISOString() ?? null,
           author: m.replyTo.author,
+          attachmentCount: m.replyTo._count.attachments,
         }
       : null,
   };

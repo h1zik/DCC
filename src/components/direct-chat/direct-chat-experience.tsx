@@ -27,6 +27,10 @@ import type { DirectInboxItem } from "@/lib/direct-chat-inbox";
 import { previewText } from "@/lib/direct-chat-inbox";
 import { directChatReplySnippet } from "@/lib/direct-chat-reply-snippet";
 import { DIRECT_CHAT_MAX_FILES_PER_MESSAGE } from "@/lib/direct-chat-attachments-shared";
+import {
+  mergePendingChatFiles,
+  readClipboardImageFiles,
+} from "@/lib/chat-pending-files";
 import { assertSafeGifUrl } from "@/lib/room-chat-gif";
 import { toast } from "sonner";
 import { DirectChatPushSetup } from "@/components/direct-chat/direct-chat-push-setup";
@@ -448,12 +452,17 @@ export function DirectChatExperience({
     setBody("");
   }
 
-  function onPickFiles(files: FileList | null) {
-    if (!files?.length) return;
-    setPendingFiles((prev) => {
-      const next = [...prev, ...Array.from(files)];
-      return next.slice(0, DIRECT_CHAT_MAX_FILES_PER_MESSAGE);
-    });
+  function onPickFiles(incoming: File[]) {
+    if (incoming.length === 0) return;
+    setPendingFiles((prev) => mergePendingChatFiles(prev, incoming));
+  }
+
+  function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (editingMessage || pending) return;
+    const images = readClipboardImageFiles(e.clipboardData);
+    if (images.length === 0) return;
+    e.preventDefault();
+    onPickFiles(images);
   }
 
   function applyPastedGif() {
@@ -893,18 +902,22 @@ export function DirectChatExperience({
                   className="sr-only"
                   accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv"
                   onChange={(e) => {
-                    onPickFiles(e.target.files);
-                    e.target.value = "";
+                    const input = e.target;
+                    /** `FileList` hidup: reset `value` mengosongkan `files` — salin dulu. */
+                    const picked = input.files?.length ? Array.from(input.files) : [];
+                    input.value = "";
+                    onPickFiles(picked);
                   }}
                 />
                 <Textarea
                   ref={taRef}
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
+                  onPaste={onComposerPaste}
                   placeholder={
                     editingMessage
                       ? "Edit teks pesan…"
-                      : "Tulis pesan… (lampiran, GIF, emoji)"
+                      : "Tulis pesan… (Ctrl+V gambar, lampiran, GIF, emoji)"
                   }
                   rows={2}
                   disabled={pending}

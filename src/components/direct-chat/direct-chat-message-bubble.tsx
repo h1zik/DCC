@@ -16,6 +16,7 @@ import type { DirectChatMessageView } from "@/lib/direct-chat-message-view";
 import { directChatReplySnippet } from "@/lib/direct-chat-reply-snippet";
 import { isDirectChatImageMime } from "@/lib/direct-chat-attachments-shared";
 import { Button } from "@/components/ui/button";
+import { ChatLinkifiedText } from "@/components/chat-linkified-text";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -162,7 +163,7 @@ export function DirectChatMessageBubble({
         ) : (
           <>
             {m.body.trim() ? (
-              <p className="mt-0.5 whitespace-pre-wrap break-words">{m.body}</p>
+              <ChatLinkifiedText text={m.body} className="mt-0.5" />
             ) : null}
             {m.gifUrl ? (
               <div className={cn("border-border/60 mt-1 overflow-hidden border", bubbleInnerRound)}>
