@@ -1,5 +1,6 @@
 import {
   roomDocumentsBulkDownloadApiPath,
+  roomDocumentDownloadApiPath,
   roomFolderDownloadApiPath,
 } from "@/lib/room-document-download";
 
@@ -71,13 +72,23 @@ export async function downloadRoomDocumentsZip(
   triggerBlobDownload(blob, name);
 }
 
-/** Satu file — unduh langsung dari URL publik. */
-export function downloadSingleRoomDocument(publicPath: string, fileName: string) {
-  const a = document.createElement("a");
-  a.href = publicPath;
-  a.download = fileName;
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+/** Satu file — unduh via API agar nama file sesuai metadata dokumen. */
+export async function downloadSingleRoomDocument(
+  roomId: string,
+  documentId: string,
+  fallbackName: string,
+): Promise<void> {
+  const res = await fetch(roomDocumentDownloadApiPath(roomId, documentId), {
+    method: "GET",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Gagal mengunduh file.");
+  }
+  const blob = await res.blob();
+  const name =
+    filenameFromContentDisposition(res.headers.get("Content-Disposition")) ??
+    fallbackName;
+  triggerBlobDownload(blob, name);
 }
