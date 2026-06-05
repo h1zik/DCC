@@ -48,12 +48,18 @@ export function isDirectChatRoute(pathname: string): boolean {
   return pathname === "/messages" || pathname.startsWith("/messages/");
 }
 
+/** AI Agent in-app — CEO, administrator, studio / PM. */
+export function isAgentRoute(pathname: string): boolean {
+  return pathname === "/agent" || pathname.startsWith("/agent/");
+}
+
 /** Pipeline & tugas — tim studio / PM. */
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||
+    isAgentRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
@@ -68,6 +74,7 @@ export function isCeoAppRoute(pathname: string): boolean {
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||
+    isAgentRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
@@ -83,6 +90,7 @@ export function isAdministratorAppRoute(pathname: string): boolean {
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||
+    isAgentRoute(pathname) ||
     pathname.startsWith("/for-me") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/rooms") ||

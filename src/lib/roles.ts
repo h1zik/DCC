@@ -67,6 +67,15 @@ export function isFinanceRole(role: UserRole | undefined): boolean {
   return role === UserRole.FINANCE;
 }
 
+/** AI Agent in-app — CEO, administrator, studio/PM. */
+export function canUseAgent(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  if (role === UserRole.CEO) return true;
+  if (isAdministrator(role)) return true;
+  if (isStudioOrProjectManager(role)) return true;
+  return false;
+}
+
 /** Pesan pribadi 1:1 — CEO, administrator, studio/PM. */
 export function canUseDirectChat(role: UserRole | undefined): boolean {
   if (!role) return false;

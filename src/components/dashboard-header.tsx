@@ -3,6 +3,7 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
+import { AgentPanelToggle } from "@/components/agent/agent-right-panel";
 import { DirectChatHeaderButton } from "@/components/direct-chat/direct-chat-header-button";
 import { NotificationBell } from "@/components/notification-bell";
 import { OnlinePresence } from "@/components/online-presence";
@@ -89,6 +90,7 @@ export function DashboardHeader() {
         </div>
 
         <div className="flex items-center gap-1" role="toolbar" aria-label="Aksi cepat">
+          <AgentPanelToggle />
           <DirectChatHeaderButton />
           <ThemeToggle />
           <NotificationBell />

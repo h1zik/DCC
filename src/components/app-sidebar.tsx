@@ -33,7 +33,7 @@ import {
   Bot,
 } from "lucide-react";
 import { effectiveRoleLabel } from "@/lib/role-labels";
-import { isStudioOrProjectManager } from "@/lib/roles";
+import { canUseAgent, isStudioOrProjectManager } from "@/lib/roles";
 import {
   Sidebar,
   SidebarContent,
@@ -47,10 +47,12 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { useAgentPanel } from "@/components/agent/agent-panel-context";
 import { cn } from "@/lib/utils";
 
 const navCeo = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/agent", label: "AI Agent", icon: Sparkles },
   { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
   { href: "/for-me", label: "My Tasks", icon: Focus },
   { href: "/projects", label: "Pipeline proyek", icon: GitBranch },
@@ -150,6 +152,7 @@ const sidebarMenuItemClass = cn(
 export function AppSidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { open: agentOpen, toggle: toggleAgent } = useAgentPanel();
   const role = session?.user?.role;
   const nav = navForRole(role);
   const groupLabel = groupLabelForRole(role);
@@ -259,6 +262,19 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
+              {canUseAgent(role) ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="AI Agent"
+                    isActive={agentOpen}
+                    className={sidebarMenuItemClass}
+                    onClick={toggleAgent}
+                  >
+                    <Sparkles />
+                    <span className="sidebar-nav-label">AI Agent</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ) : null}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip={navDominatusAi.label}
