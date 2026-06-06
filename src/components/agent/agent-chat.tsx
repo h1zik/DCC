@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, Loader2, Send, Sparkles, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { AgentMessageContent } from "@/components/agent/agent-message-content";
 import { cn } from "@/lib/utils";
 
 type ChatMessage = {
@@ -56,6 +57,7 @@ export function AgentChat({
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const scrollToBottom = (smooth = true) => {
     requestAnimationFrame(() => {
@@ -68,6 +70,29 @@ export function AgentChat({
 
   useEffect(() => {
     scrollToBottom(false);
+  }, []);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const updateInset = () => {
+      const inset = Math.max(
+        0,
+        window.innerHeight - viewport.height - viewport.offsetTop,
+      );
+      setKeyboardInset(inset);
+      if (inset > 0) scrollToBottom(false);
+    };
+
+    viewport.addEventListener("resize", updateInset);
+    viewport.addEventListener("scroll", updateInset);
+    updateInset();
+
+    return () => {
+      viewport.removeEventListener("resize", updateInset);
+      viewport.removeEventListener("scroll", updateInset);
+    };
   }, []);
 
   const sendMessage = async (text: string) => {
@@ -159,7 +184,11 @@ export function AgentChat({
                   : "border-border/60 bg-muted/30 text-foreground rounded-2xl rounded-bl-sm border px-3.5 py-2.5",
               )}
             >
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === "assistant" ? (
+                <AgentMessageContent content={msg.content} />
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
               {msg.toolCalls && msg.toolCalls.length > 0 ? (
                 <div className="flex flex-wrap gap-1 pt-0.5">
                   {msg.toolCalls.map((tc, j) => (
@@ -202,7 +231,7 @@ export function AgentChat({
               key={s}
               type="button"
               onClick={() => void sendMessage(s)}
-              className="border-border/70 bg-background/80 text-muted-foreground hover:border-primary/25 hover:bg-primary/5 hover:text-foreground rounded-full border px-2.5 py-1 text-[11px] transition-[colors,transform] duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
+              className="border-border/70 bg-background/80 text-muted-foreground hover:border-primary/25 hover:bg-primary/5 hover:text-foreground min-h-9 rounded-full border px-3 py-2 text-xs transition-[colors,transform] duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
             >
               {s}
             </button>
@@ -211,7 +240,12 @@ export function AgentChat({
       ) : null}
 
       <form
-        className="border-border/60 bg-background/80 shrink-0 border-t p-3 backdrop-blur-sm"
+        className="border-border/60 bg-background/80 shrink-0 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm"
+        style={
+          keyboardInset > 0
+            ? { paddingBottom: `${keyboardInset + 12}px` }
+            : undefined
+        }
         onSubmit={(e) => {
           e.preventDefault();
           void sendMessage(input);

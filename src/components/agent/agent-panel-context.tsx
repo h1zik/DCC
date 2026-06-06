@@ -31,8 +31,14 @@ export function AgentPanelProvider({ children }: { children: React.ReactNode }) 
       if (e.key === "Escape") setOpen(false);
     };
 
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   const value = useMemo(

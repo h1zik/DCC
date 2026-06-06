@@ -74,6 +74,7 @@ export function DirectChatHeaderButton() {
       type="button"
       variant="outline"
       size="icon-sm"
+      nativeButton={false}
       className={cn("relative shrink-0", onMessagesPage && "bg-muted")}
       render={<Link href="/messages" />}
       aria-label={

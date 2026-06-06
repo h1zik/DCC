@@ -33,6 +33,7 @@ export type AgentRoomAccessSummary = {
   membershipRole: string;
   membershipRoleLabel: string;
   canManageTasks: boolean;
+  isSimpleHub: boolean;
   accessiblePhases: string[];
 };
 
@@ -59,8 +60,9 @@ export async function getAgentUserAccessSummary(
 
     const roomSummaries: AgentRoomAccessSummary[] = [];
     for (const room of rooms) {
+      const simpleHub = isSimpleTeamOrHqRoom(room);
       let phases: string[] = ["Tasks"];
-      if (!isSimpleTeamOrHqRoom(room)) {
+      if (!simpleHub) {
         const rows = await ensureRoomProcessPhases(room.id);
         phases = buildRoomProcessPhaseList(rows).map((p) => p.name);
       }
@@ -70,6 +72,7 @@ export async function getAgentUserAccessSummary(
         membershipRole: globalRole,
         membershipRoleLabel: globalRoleLabel,
         canManageTasks: true,
+        isSimpleHub: simpleHub,
         accessiblePhases: phases,
       });
     }
@@ -116,6 +119,7 @@ export async function getAgentUserAccessSummary(
       membershipRole: m.role,
       membershipRoleLabel: agentRoomRoleLabel(m.role),
       canManageTasks: isRoomHubManagerRole(m.role),
+      isSimpleHub: isSimpleTeamOrHqRoom(m.room),
       accessiblePhases,
     });
   }
@@ -131,24 +135,30 @@ export async function getAgentUserAccessSummary(
 export function formatAgentAccessForPrompt(
   summary: AgentUserAccessSummary,
 ): string {
+  const formatRoomLine = (r: AgentRoomAccessSummary) => {
+    const phases =
+      r.accessiblePhases.length > 0
+        ? r.accessiblePhases.join(", ")
+        : "belum ada fase";
+    const hubNote = r.isSimpleHub
+      ? " [ruangan HQ/Team tanpa brand — hanya papan Tasks, TANPA fase proses brand]"
+      : "";
+    const manage = r.canManageTasks ? "bisa buat tugas" : "tidak bisa buat tugas";
+    return `- ${r.roomName}${hubNote}: peran ${r.membershipRoleLabel}, fase [${phases}], ${manage}`;
+  };
+
   if (summary.hasFullAccess) {
-    return `Akses: ${summary.globalRoleLabel} (akses penuh semua ruangan & fase).`;
+    if (summary.rooms.length === 0) {
+      return `Akses: ${summary.globalRoleLabel} (akses penuh semua ruangan).`;
+    }
+    return `Akses: ${summary.globalRoleLabel} (akses penuh).\n${summary.rooms.map(formatRoomLine).join("\n")}`;
   }
 
   if (summary.rooms.length === 0) {
     return `Akses: ${summary.globalRoleLabel} — belum tergabung di ruangan manapun.`;
   }
 
-  const lines = summary.rooms.map((r) => {
-    const phases =
-      r.accessiblePhases.length > 0
-        ? r.accessiblePhases.join(", ")
-        : "belum ada fase";
-    const manage = r.canManageTasks ? "bisa buat tugas" : "tidak bisa buat tugas";
-    return `- ${r.roomName}: peran ${r.membershipRoleLabel}, fase [${phases}], ${manage}`;
-  });
-
-  return `Akses pengguna (${summary.globalRoleLabel}):\n${lines.join("\n")}`;
+  return `Akses pengguna (${summary.globalRoleLabel}):\n${summary.rooms.map(formatRoomLine).join("\n")}`;
 }
 
 export type AccessiblePhaseRef = { id: string; name: string };

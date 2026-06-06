@@ -149,6 +149,29 @@ const sidebarMenuItemClass = cn(
   "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
 );
 
+function NavBetaBadge() {
+  return (
+    <span className="bg-primary/12 text-primary shrink-0 rounded px-1 py-px text-[9px] font-semibold uppercase leading-none tracking-wide">
+      Beta
+    </span>
+  );
+}
+
+function SidebarNavLabel({
+  children,
+  beta = false,
+}: {
+  children: React.ReactNode;
+  beta?: boolean;
+}) {
+  return (
+    <span className="sidebar-nav-label inline-flex min-w-0 items-center gap-1.5">
+      <span className="truncate">{children}</span>
+      {beta ? <NavBetaBadge /> : null}
+    </span>
+  );
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
@@ -241,7 +264,9 @@ export function AppSidebar() {
                       render={<Link href={item.href} />}
                     >
                       <item.icon />
-                      <span className="sidebar-nav-label">{item.label}</span>
+                      <SidebarNavLabel beta={item.label === "AI Agent"}>
+                        {item.label}
+                      </SidebarNavLabel>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -265,19 +290,19 @@ export function AppSidebar() {
               {canUseAgent(role) ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    tooltip="AI Agent"
+                    tooltip="AI Agent · Beta"
                     isActive={agentOpen}
                     className={sidebarMenuItemClass}
                     onClick={toggleAgent}
                   >
                     <Sparkles />
-                    <span className="sidebar-nav-label">AI Agent</span>
+                    <SidebarNavLabel beta>AI Agent</SidebarNavLabel>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ) : null}
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  tooltip={navDominatusAi.label}
+                  tooltip={`${navDominatusAi.label} · Beta`}
                   className={sidebarMenuItemClass}
                   render={
                     <a
@@ -288,7 +313,7 @@ export function AppSidebar() {
                   }
                 >
                   <navDominatusAi.icon />
-                  <span className="sidebar-nav-label">{navDominatusAi.label}</span>
+                  <SidebarNavLabel beta>{navDominatusAi.label}</SidebarNavLabel>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

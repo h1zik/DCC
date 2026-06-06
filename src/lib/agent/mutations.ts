@@ -6,7 +6,10 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyTaskCompletedForCeo } from "@/lib/notify";
-import { notifyRoomManagersTaskDoneViaWhatsApp } from "@/lib/task-whatsapp-notify";
+import {
+  notifyPicTaskViaWhatsApp,
+  notifyRoomManagersTaskDoneViaWhatsApp,
+} from "@/lib/task-whatsapp-notify";
 import { recomputeProjectProgress } from "@/lib/project-progress";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import {
@@ -173,11 +176,25 @@ export async function agentCreateTask(
       project: {
         select: {
           name: true,
+          brand: { select: { name: true } },
           room: { select: { id: true, name: true } },
         },
       },
     },
   });
+
+  for (const assigneeId of assigneeIds) {
+    void notifyPicTaskViaWhatsApp({
+      assigneeId,
+      headline: "new",
+      task: {
+        title: task.title,
+        priority: task.priority,
+        dueDate: task.dueDate,
+      },
+      project: task.project,
+    });
+  }
 
   void recomputeProjectProgress(input.projectId);
 
@@ -393,12 +410,14 @@ export async function agentUpdateTask(
     (prevDue?.getTime() ?? null) !== (nextDueDate?.getTime() ?? null);
   const markingDone =
     nextStatus === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
+  const prevAssigneeIds = prev.assignees.map((a) => a.userId);
   const assigneesChanged =
     isHubManager &&
-    (assigneeIds.length !== prev.assignees.length ||
-      assigneeIds.some(
-        (id) => !prev.assignees.some((a) => a.userId === id),
-      ));
+    (assigneeIds.length !== prevAssigneeIds.length ||
+      assigneeIds.some((id) => !prevAssigneeIds.includes(id)));
+  const addedAssigneeIds = assigneeIds.filter(
+    (id) => !prevAssigneeIds.includes(id),
+  );
 
   const updated = await prisma.task.update({
     where: { id: input.taskId },
@@ -453,6 +472,21 @@ export async function agentUpdateTask(
       updated.title,
       taskProjectContextLabel(updated.project),
     );
+  }
+
+  if (assigneesChanged) {
+    for (const assigneeId of addedAssigneeIds) {
+      void notifyPicTaskViaWhatsApp({
+        assigneeId,
+        headline: prevAssigneeIds.length > 0 ? "pic_changed" : "new",
+        task: {
+          title: updated.title,
+          priority: updated.priority,
+          dueDate: updated.dueDate,
+        },
+        project: updated.project,
+      });
+    }
   }
 
   if (nextStatus !== prev.status) {

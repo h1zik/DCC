@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import { Bot, PanelRightClose, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSidebar } from "@/components/ui/sidebar";
 import { canUseAgent } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { AgentChat } from "./agent-chat";
@@ -38,7 +39,7 @@ export function AgentRightPanel() {
         aria-label="AI Agent"
         aria-hidden={!open}
         className={cn(
-          "border-border/60 bg-background/95 fixed top-14 right-0 z-40 flex h-[calc(100dvh-3.5rem)] w-full max-w-[400px] flex-col border-l shadow-[-12px_0_40px_-20px_rgba(0,0,0,0.18)] backdrop-blur-xl",
+          "border-border/60 bg-background/95 fixed top-14 right-0 z-40 flex h-[calc(100dvh-3.5rem)] w-full max-w-none flex-col border-l shadow-[-12px_0_40px_-20px_rgba(0,0,0,0.18)] backdrop-blur-xl md:max-w-[400px]",
           "transition-[transform,opacity] duration-[350ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
           open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0",
         )}
@@ -55,6 +56,9 @@ export function AgentRightPanel() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <h2 className="text-sm font-semibold tracking-tight">AI Agent</h2>
+              <span className="bg-primary/12 text-primary rounded px-1 py-px text-[9px] font-semibold uppercase leading-none tracking-wide">
+                Beta
+              </span>
               <Sparkles className="text-primary/50 size-3.5" aria-hidden />
             </div>
             <p className="text-muted-foreground truncate text-[11px]">
@@ -81,17 +85,25 @@ export function AgentRightPanel() {
 
 export function AgentPanelToggle({ className }: { className?: string }) {
   const { open, toggle } = useAgentPanel();
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
   const { data: session } = useSession();
   const role = session?.user?.role;
 
   if (!canUseAgent(role)) return null;
+
+  const handleToggle = () => {
+    if (!open && isMobile && openMobile) {
+      setOpenMobile(false);
+    }
+    toggle();
+  };
 
   return (
     <Button
       type="button"
       variant="outline"
       size="icon-sm"
-      onClick={toggle}
+      onClick={handleToggle}
       data-active={open ? "true" : "false"}
       aria-label={open ? "Tutup AI Agent" : "Buka AI Agent"}
       aria-expanded={open}

@@ -77,7 +77,12 @@ function mapTaskRow(
     project: {
       name: string;
       brand: { name: string } | null;
-      room: { id: string; name: string };
+      room: {
+        id: string;
+        name: string;
+        brandId: string | null;
+        workspaceSection: import("@prisma/client").RoomWorkspaceSection;
+      };
     };
     assignees: {
       user: { id: string; name: string | null; email: string | null };
@@ -85,7 +90,10 @@ function mapTaskRow(
   },
   viewerUserId?: string,
 ): AgentTaskSummary {
-  const phase = taskToPhaseRef(t);
+  const simpleHub = isSimpleTeamOrHqRoom(t.project.room);
+  const phase = simpleHub
+    ? { id: null as string | null, name: "Tasks" }
+    : taskToPhaseRef(t);
   return {
     id: t.id,
     title: t.title,
@@ -127,7 +135,7 @@ const taskSelect = {
       id: true,
       name: true,
       brand: { select: { name: true } },
-      room: { select: { id: true, name: true } },
+      room: { select: { id: true, name: true, brandId: true, workspaceSection: true } },
     },
   },
   assignees: {
@@ -506,12 +514,18 @@ export async function listAgentTasks(
     where.project = { roomId: params.roomId };
 
     if (params.processPhaseNameOrId?.trim()) {
-      const phase = await resolveAgentProcessPhase(
-        user,
-        params.roomId,
-        params.processPhaseNameOrId,
-      );
-      where.customProcessPhaseId = phase.id;
+      const room = await prisma.room.findUniqueOrThrow({
+        where: { id: params.roomId },
+        select: { brandId: true, workspaceSection: true },
+      });
+      if (!isSimpleTeamOrHqRoom(room)) {
+        const phase = await resolveAgentProcessPhase(
+          user,
+          params.roomId,
+          params.processPhaseNameOrId,
+        );
+        where.customProcessPhaseId = phase.id;
+      }
     }
   } else if (!canSeeAllRooms(user)) {
     where.project = {

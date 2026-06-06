@@ -218,7 +218,7 @@ export const AGENT_TOOLS: Tool[] = [
       {
         name: "list_room_process_phases",
         description:
-          "Daftar fase proses di ruangan brand (Market Research, Brand & Design, dll). Gunakan jika perlu cek nama fase.",
+          "Daftar fase proses di ruangan. Ruangan brand punya fase (Market Research, Brand & Design, dll). Ruangan HQ/Team tanpa brand hanya punya satu papan Tasks — jangan sebut fase brand untuk ruangan itu.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {
