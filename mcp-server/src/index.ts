@@ -516,7 +516,7 @@ async function main() {
 
     "list_pending_pipeline_approvals",
 
-    "Proyek brand yang mengajukan pindah tahap pipeline — menunggu persetujuan CEO.",
+    "Approval legacy CEO: proyek yang mengajukan pindah tahap enum pipeline (terpisah dari progress milestone).",
 
     { limit: limitSchema.describe("Default 20, maks 50") },
 

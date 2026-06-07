@@ -50,14 +50,14 @@ export function registerStrategicTools(server: McpServer, deps: Deps) {
 
   server.tool(
     "list_projects_by_pipeline_stage",
-    "Proyek brand dikelompokkan per tahap pipeline (Market Research → Launch).",
+    "Daftar proyek brand dengan progress milestone (milestone utama selesai ÷ total). Termasuk milestone aktif dan grouping per tahap saat ini.",
     {},
     async () => asText(await dccFetch("/api/ai/projects/by-stage")),
   );
 
   server.tool(
     "get_project_detail",
-    "Detail proyek: stage, milestone progress, tugas aktif.",
+    "Detail proyek: pohon milestone, progress %, milestone aktif, tugas terbuka. Field legacyStageApproval hanya untuk approval CEO enum lama.",
     {
       projectId: z.string().min(1),
     },
@@ -71,7 +71,7 @@ export function registerStrategicTools(server: McpServer, deps: Deps) {
 
   server.tool(
     "list_stuck_projects",
-    "Proyek brand yang lama di tahap pipeline yang sama (potensi bottleneck).",
+    "Proyek dengan milestone terhambat (BLOCKED) atau milestone berjalan tanpa update lama (default ≥45 hari).",
     {
       minDaysInStage: z
         .number()
@@ -79,7 +79,7 @@ export function registerStrategicTools(server: McpServer, deps: Deps) {
         .min(7)
         .max(365)
         .optional()
-        .describe("Default 45 hari"),
+        .describe("Hari tanpa update milestone berjalan (default 45)"),
     },
     async ({ minDaysInStage }) =>
       asText(

@@ -139,7 +139,7 @@ async function main() {
     }, async ({ taskId }) => asText(await dccFetch(`/api/ai/tasks/${encodeURIComponent(taskId)}`)));
     server.tool("list_room_members", "Daftar anggota ruangan beserta peran (PIC potensial).", { roomNameOrId: roomNameSchema }, async ({ roomNameOrId }) => asText(await dccFetch(`/api/ai/rooms/members${buildQuery({ roomNameOrId })}`)));
     server.tool("list_pending_task_approvals", "Tugas yang menunggu persetujuan CEO sebelum ditandai selesai.", { limit: limitSchema.describe("Default 20, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/approvals/tasks${buildQuery({ limit })}`)));
-    server.tool("list_pending_pipeline_approvals", "Proyek brand yang mengajukan pindah tahap pipeline — menunggu persetujuan CEO.", { limit: limitSchema.describe("Default 20, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/approvals/pipeline${buildQuery({ limit })}`)));
+    server.tool("list_pending_pipeline_approvals", "Approval legacy CEO: proyek yang mengajukan pindah tahap enum pipeline (terpisah dari progress milestone).", { limit: limitSchema.describe("Default 20, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/approvals/pipeline${buildQuery({ limit })}`)));
     server.tool("list_pending_finance_spend", "Pengajuan pengeluaran finance berstatus submitted — menunggu persetujuan.", { limit: limitSchema.describe("Default 20, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/approvals/finance${buildQuery({ limit })}`)));
     server.tool("get_schedule", "Jadwal umum (meeting/acara) mendatang di DCC.", {
         daysAhead: z

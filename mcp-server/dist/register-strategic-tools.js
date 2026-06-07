@@ -12,18 +12,18 @@ export function registerStrategicTools(server, deps) {
             .describe("Default 90 hari"),
     }, async ({ days }) => asText(await dccFetch(`/api/ai/commercial/outgoing-by-brand${buildQuery({ days })}`)));
     server.tool("list_brands", "Daftar brand aktif beserta jumlah produk, proyek, dan ruangan.", {}, async () => asText(await dccFetch("/api/ai/brands")));
-    server.tool("list_projects_by_pipeline_stage", "Proyek brand dikelompokkan per tahap pipeline (Market Research → Launch).", {}, async () => asText(await dccFetch("/api/ai/projects/by-stage")));
-    server.tool("get_project_detail", "Detail proyek: stage, milestone progress, tugas aktif.", {
+    server.tool("list_projects_by_pipeline_stage", "Daftar proyek brand dengan progress milestone (milestone utama selesai ÷ total). Termasuk milestone aktif dan grouping per tahap saat ini.", {}, async () => asText(await dccFetch("/api/ai/projects/by-stage")));
+    server.tool("get_project_detail", "Detail proyek: pohon milestone, progress %, milestone aktif, tugas terbuka. Field legacyStageApproval hanya untuk approval CEO enum lama.", {
         projectId: z.string().min(1),
     }, async ({ projectId }) => asText(await dccFetch(`/api/ai/projects/${encodeURIComponent(projectId)}`)));
-    server.tool("list_stuck_projects", "Proyek brand yang lama di tahap pipeline yang sama (potensi bottleneck).", {
+    server.tool("list_stuck_projects", "Proyek dengan milestone terhambat (BLOCKED) atau milestone berjalan tanpa update lama (default ≥45 hari).", {
         minDaysInStage: z
             .number()
             .int()
             .min(7)
             .max(365)
             .optional()
-            .describe("Default 45 hari"),
+            .describe("Hari tanpa update milestone berjalan (default 45)"),
     }, async ({ minDaysInStage }) => asText(await dccFetch(`/api/ai/projects/stuck${buildQuery({ minDaysInStage })}`)));
     server.tool("list_products", "Katalog SKU dengan stok, min stok, dan health status.", {
         limit: z.number().int().min(1).max(100).optional(),
