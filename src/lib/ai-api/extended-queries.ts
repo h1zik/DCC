@@ -161,6 +161,7 @@ export async function aiListTasks(
     roomNameOrId?: string;
     status?: TaskStatus;
     search?: string;
+    assigneeNameOrEmailOrId?: string;
     limit?: number;
   },
 ) {
@@ -177,10 +178,26 @@ export async function aiListTasks(
     roomId = resolved.room.id;
   }
 
+  let assigneeUserId: string | undefined;
+  if (params.assigneeNameOrEmailOrId?.trim()) {
+    const { resolveOrgUser } = await import("@/lib/ai-api/user-tasks");
+    const resolved = await resolveOrgUser(params.assigneeNameOrEmailOrId);
+    if (!resolved.ok) {
+      return {
+        accessible: false as const,
+        message: resolved.error,
+        suggestions: "suggestions" in resolved ? resolved.suggestions : undefined,
+        data: null,
+      };
+    }
+    assigneeUserId = resolved.user.id;
+  }
+
   const tasks = await listAgentTasks(user, {
     roomId,
     status: params.status,
     search: params.search,
+    assigneeUserId,
     limit: params.limit ?? 30,
   });
 
@@ -689,68 +706,10 @@ export async function aiGetWikiPage(role: AiApiRole, pageId: string) {
   };
 }
 
-export async function aiSearchDocuments(
-  role: AiApiRole,
-  params: { q: string; roomNameOrId?: string; limit?: number },
-) {
-  if (!canViewRoomsWiki(role)) {
-    return accessDenied("Akses dokumen ruangan tidak tersedia untuk peran ini.");
-  }
-
-  const q = params.q.trim();
-  if (!q) {
-    return { accessible: false as const, message: "Parameter q wajib diisi.", data: null };
-  }
-
-  const room = await resolveRoomIdForSearch(role, params.roomNameOrId);
-  if (!room.ok) {
-    return { accessible: false as const, message: room.error, data: null };
-  }
-
-  const limit = Math.min(params.limit ?? 20, 40);
-  const docs = await prisma.roomDocument.findMany({
-    where: {
-      ...(room.roomId ? { roomId: room.roomId } : {}),
-      OR: [
-        { title: { contains: q, mode: "insensitive" } },
-        { fileName: { contains: q, mode: "insensitive" } },
-      ],
-    },
-    select: {
-      id: true,
-      title: true,
-      fileName: true,
-      mimeType: true,
-      size: true,
-      tags: true,
-      createdAt: true,
-      room: { select: { id: true, name: true } },
-      folder: { select: { name: true } },
-      uploadedBy: { select: { name: true, email: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
-
-  return {
-    accessible: true as const,
-    query: q,
-    roomName: room.roomName ?? null,
-    count: docs.length,
-    documents: docs.map((d) => ({
-      id: d.id,
-      title: d.title || d.fileName,
-      fileName: d.fileName,
-      mimeType: d.mimeType,
-      sizeBytes: d.size,
-      tags: d.tags,
-      folderName: d.folder?.name ?? null,
-      roomId: d.room.id,
-      roomName: d.room.name,
-      uploadedBy: d.uploadedBy.name?.trim() || d.uploadedBy.email || "—",
-      createdAt: d.createdAt.toISOString(),
-    })),
-  };
-}
+export {
+  aiGetRoomDocumentContent,
+  aiListRoomDocuments,
+  aiSearchDocuments,
+} from "@/lib/ai-api/room-documents";
 
 export type { TaskPriority, TaskStatus };
