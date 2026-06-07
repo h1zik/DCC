@@ -6,14 +6,13 @@ import {
 import { format, subDays } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { getUpcomingDeadlines } from "@/lib/agent/analytics";
-import { listAgentTasks } from "@/lib/agent/queries";
 import { getTodayDateString } from "@/lib/attendance";
 import {
   computeCriticalStockSkus,
   computeOutgoingByBrand,
   computePipelineMilestoneSnapshot,
 } from "@/lib/ai-api/executive-metrics";
-import { loadFinanceDashboard } from "@/lib/finance-dashboard";
+import { aiGetUsersTaskOverview } from "@/lib/ai-api/user-tasks";
 import {
   formatIdr,
   signedBalanceForAccount,
@@ -664,42 +663,34 @@ export async function aiGetBlockedTasksSummary(role: AiApiRole, limit = 25) {
 }
 
 export async function aiGetTeamWorkloadSummary(role: AiApiRole, limit = 15) {
-  if (!canViewExecutive(role)) {
-    return denied("Ringkasan workload tim hanya untuk CEO/Administrator.");
+  const overview = await aiGetUsersTaskOverview(role, {
+    includeTaskTitles: true,
+    tasksPerUser: 5,
+    limit: Math.min(limit, 30),
+    activeOnly: true,
+  });
+
+  if (!overview.accessible) {
+    return overview;
   }
-
-  const user = createAiApiAgentUser(role);
-  const tasks = await listAgentTasks(user, { limit: 50 });
-
-  const byAssignee = new Map<
-    string,
-    { name: string; overdue: number; inProgress: number; total: number }
-  >();
-
-  for (const t of tasks) {
-    for (const name of t.assignees) {
-      const key = name;
-      const row = byAssignee.get(key) ?? {
-        name,
-        overdue: 0,
-        inProgress: 0,
-        total: 0,
-      };
-      row.total += 1;
-      if (t.status === TaskStatus.OVERDUE) row.overdue += 1;
-      if (t.status === TaskStatus.IN_PROGRESS) row.inProgress += 1;
-      byAssignee.set(key, row);
-    }
-  }
-
-  const ranked = [...byAssignee.values()]
-    .sort((a, b) => b.overdue - a.overdue || b.total - a.total)
-    .slice(0, Math.min(limit, 30));
 
   return {
     accessible: true as const,
-    note: "Berdasarkan sampel 50 tugas aktif terbaru.",
-    assignees: ranked,
+    note: "Ringkasan tugas aktif per PIC. Gunakan get_user_tasks untuk daftar lengkap satu orang.",
+    totalUsersWithTasks: overview.totalUsersWithTasks,
+    unassignedActiveTasks: overview.unassignedActiveTasks,
+    users: overview.users.map((u) => ({
+      userId: u.userId,
+      name: u.name,
+      email: u.email,
+      activeCount: u.activeCount,
+      overdue: u.overdue,
+      blocked: u.blocked,
+      inProgress: u.inProgress,
+      inReview: u.inReview,
+      todo: u.todo,
+      sampleTasks: u.tasks ?? [],
+    })),
   };
 }
 
@@ -871,6 +862,7 @@ export function aiGetMcpCapabilities(role: AiApiRole) {
       salesOutgoing: canViewExecutive(role) || canViewInventory(role),
       brandPipeline: canViewBrandPipeline(role),
       tasksKanban: canViewTasks(role),
+      userTasks: canViewTasks(role),
       inventory: canViewInventory(role),
       ceoApprovals: canViewApprovals(role),
       finance: canViewFinanceSummary(role),

@@ -98,7 +98,7 @@ async function dccFetch(path: string): Promise<unknown> {
 
 
 
-function buildQuery(params: Record<string, string | number | undefined>) {
+function buildQuery(params: Record<string, string | number | boolean | undefined>) {
 
   const q = new URLSearchParams();
 
@@ -354,13 +354,169 @@ async function main() {
 
   server.tool(
 
+    "get_user_tasks",
+
+    "Tugas milik satu user (PIC): jumlah per status + daftar judul tugas. Wajib isi userNameOrEmailOrId (nama, email, atau ID).",
+
+    {
+
+      userNameOrEmailOrId: z
+
+        .string()
+
+        .min(1)
+
+        .describe("Nama, email, atau user ID — contoh: Budi, budi@perusahaan.com"),
+
+      status: z
+
+        .enum([
+
+          "TODO",
+
+          "IN_PROGRESS",
+
+          "OVERDUE",
+
+          "DONE",
+
+          "BLOCKED",
+
+          "IN_REVIEW",
+
+        ])
+
+        .optional()
+
+        .describe("Filter satu status saja (opsional)"),
+
+      includeDone: z
+
+        .boolean()
+
+        .optional()
+
+        .describe("Sertakan tugas DONE (default false, hanya tugas aktif)"),
+
+      limit: z
+
+        .number()
+
+        .int()
+
+        .min(1)
+
+        .max(100)
+
+        .optional()
+
+        .describe("Default 50, maks 100"),
+
+    },
+
+    async ({ userNameOrEmailOrId, status, includeDone, limit }) =>
+
+      asText(
+
+        await dccFetch(
+
+          `/api/ai/users/tasks${buildQuery({ userNameOrEmailOrId, status, includeDone, limit })}`,
+
+        ),
+
+      ),
+
+  );
+
+
+
+  server.tool(
+
+    "get_users_task_overview",
+
+    "Ringkasan semua user: berapa tugas aktif masing-masing (+ sample judul tugas jika diminta). Ideal untuk 'siapa paling sibuk?' atau 'PIC siapa saja?'.",
+
+    {
+
+      includeTaskTitles: z
+
+        .boolean()
+
+        .optional()
+
+        .describe("Sertakan sample judul tugas per user (default false)"),
+
+      tasksPerUser: z
+
+        .number()
+
+        .int()
+
+        .min(1)
+
+        .max(20)
+
+        .optional()
+
+        .describe("Jumlah judul tugas per user jika includeTaskTitles=true (default 8)"),
+
+      limit: z
+
+        .number()
+
+        .int()
+
+        .min(1)
+
+        .max(80)
+
+        .optional()
+
+        .describe("Maks user yang dikembalikan (default 50)"),
+
+      activeOnly: z
+
+        .boolean()
+
+        .optional()
+
+        .describe("Hanya tugas non-DONE (default true)"),
+
+    },
+
+    async ({ includeTaskTitles, tasksPerUser, limit, activeOnly }) =>
+
+      asText(
+
+        await dccFetch(
+
+          `/api/ai/users/task-overview${buildQuery({ includeTaskTitles, tasksPerUser, limit, activeOnly })}`,
+
+        ),
+
+      ),
+
+  );
+
+
+
+  server.tool(
+
     "list_tasks",
 
-    "Cari daftar tugas aktif dengan filter ruangan, status, atau kata kunci judul.",
+    "Cari tugas dengan filter ruangan, status, judul, atau PIC (assigneeNameOrEmailOrId). Untuk 'tugas user X' lebih mudah pakai get_user_tasks.",
 
     {
 
       roomNameOrId: z.string().optional().describe("Filter ruangan (opsional)"),
+
+      assigneeNameOrEmailOrId: z
+
+        .string()
+
+        .optional()
+
+        .describe("Filter PIC — nama, email, atau user ID"),
 
       status: z
 
@@ -388,13 +544,13 @@ async function main() {
 
     },
 
-    async ({ roomNameOrId, status, search, limit }) =>
+    async ({ roomNameOrId, assigneeNameOrEmailOrId, status, search, limit }) =>
 
       asText(
 
         await dccFetch(
 
-          `/api/ai/tasks${buildQuery({ roomNameOrId, status, search, limit })}`,
+          `/api/ai/tasks${buildQuery({ roomNameOrId, assigneeNameOrEmailOrId, status, search, limit })}`,
 
         ),
 
@@ -736,9 +892,57 @@ async function main() {
 
   server.tool(
 
+    "list_room_documents",
+
+    "Daftar file di Documents & Files ruangan DCC (terbaru dulu). Lanjutkan dengan get_room_document untuk baca isi.",
+
+    {
+
+      roomNameOrId: z
+
+        .string()
+
+        .optional()
+
+        .describe("Filter satu ruangan (opsional)"),
+
+      limit: z
+
+        .number()
+
+        .int()
+
+        .min(1)
+
+        .max(60)
+
+        .optional()
+
+        .describe("Default 30, maks 60"),
+
+    },
+
+    async ({ roomNameOrId, limit }) =>
+
+      asText(
+
+        await dccFetch(
+
+          `/api/ai/documents/list${buildQuery({ roomNameOrId, limit })}`,
+
+        ),
+
+      ),
+
+  );
+
+
+
+  server.tool(
+
     "search_room_documents",
 
-    "Cari file dokumen ruangan (nama file, judul, metadata).",
+    "Cari file di Documents & Files (judul, nama file, tag). Hasil berisi documentId — panggil get_room_document untuk baca isi.",
 
     {
 
@@ -769,6 +973,34 @@ async function main() {
         await dccFetch(
 
           `/api/ai/documents/search${buildQuery({ q, roomNameOrId, limit })}`,
+
+        ),
+
+      ),
+
+  );
+
+
+
+  server.tool(
+
+    "get_room_document",
+
+    "Baca isi teks dokumen upload (PDF, DOCX, TXT, CSV, JSON, HTML). Butuh documentId dari list_room_documents atau search_room_documents.",
+
+    {
+
+      documentId: z.string().min(1).describe("ID dokumen dari DCC"),
+
+    },
+
+    async ({ documentId }) =>
+
+      asText(
+
+        await dccFetch(
+
+          `/api/ai/documents/${encodeURIComponent(documentId)}`,
 
         ),
 

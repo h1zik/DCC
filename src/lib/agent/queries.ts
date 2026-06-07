@@ -499,13 +499,16 @@ export async function listAgentTasks(
     search?: string;
     processPhaseNameOrId?: string;
     assignedToMe?: boolean;
+    assigneeUserId?: string;
     limit?: number;
   },
 ): Promise<AgentTaskSummary[]> {
   const limit = Math.min(params.limit ?? 30, 50);
   const where: Record<string, unknown> = { archivedAt: null };
 
-  if (params.assignedToMe) {
+  if (params.assigneeUserId) {
+    where.assignees = { some: { userId: params.assigneeUserId } };
+  } else if (params.assignedToMe) {
     where.assignees = { some: { userId: user.id } };
   }
 

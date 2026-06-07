@@ -19,6 +19,10 @@ export async function GET(req: Request) {
     roomNameOrId: params.get("roomNameOrId") ?? undefined,
     status,
     search: params.get("search") ?? undefined,
+    assigneeNameOrEmailOrId:
+      params.get("assigneeNameOrEmailOrId") ??
+      params.get("assignee") ??
+      undefined,
     limit: parseLimitParam(params.get("limit"), 30, 50),
   });
 
