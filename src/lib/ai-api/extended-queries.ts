@@ -315,6 +315,7 @@ export async function aiListPendingPipelineApprovals(role: AiApiRole, limit: num
 
   return {
     accessible: true as const,
+    note: "Approval legacy enum tahap pipeline CEO — terpisah dari progress milestone di halaman Pipeline.",
     count: rows.length,
     projects: rows.map((p) => ({
       id: p.id,

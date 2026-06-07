@@ -1,6 +1,6 @@
 import {
   FinanceLedgerType,
-  PipelineStage,
+  RoomTimelineStatus,
   TaskStatus,
 } from "@prisma/client";
 import { format, subDays } from "date-fns";
@@ -19,8 +19,16 @@ import {
   signedBalanceForAccount,
   zeroDecimal,
 } from "@/lib/finance-money";
-import { computeMilestoneProgress } from "@/lib/project-milestones";
-import { PIPELINE_LABELS, PIPELINE_ORDER } from "@/lib/pipeline";
+import {
+  formatMilestoneNode,
+  groupProjectsByCurrentMilestone,
+  loadBrandProjectsWithMilestones,
+  PIPELINE_PROGRESS_NOTE,
+  PROJECT_MILESTONE_SELECT,
+  summarizeProjectMilestones,
+} from "@/lib/ai-api/pipeline-milestones";
+import { buildMilestoneTree, seedDefaultProjectMilestones } from "@/lib/project-milestones";
+import { PIPELINE_LABELS } from "@/lib/pipeline";
 import { prisma } from "@/lib/prisma";
 import { getStockHealth } from "@/lib/stock-status";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
@@ -133,6 +141,11 @@ export async function aiGetCompanyExecutiveBriefing(role: AiApiRole) {
       `${pipeline.readyForLaunchCount} proyek milestone 100% (siap launch).`,
     );
   }
+  if (pipeline.withBlockedMilestones > 0) {
+    highlights.push(
+      `${pipeline.withBlockedMilestones} proyek punya milestone utama terhambat.`,
+    );
+  }
   if (highlights.length === 0) {
     highlights.push("Tidak ada alert kritis utama saat ini.");
   }
@@ -157,7 +170,11 @@ export async function aiGetCompanyExecutiveBriefing(role: AiApiRole) {
         : null,
     },
     pipeline: {
+      progressModel: PIPELINE_PROGRESS_NOTE,
       avgMilestoneProgressPct: pipeline.avgMilestoneProgressPct,
+      completedCount: pipeline.completedCount,
+      needsAttentionCount: pipeline.needsAttentionCount,
+      withBlockedMilestones: pipeline.withBlockedMilestones,
       readyForLaunchCount: pipeline.readyForLaunchCount,
       topProjects: pipeline.projects.slice(0, 5),
     },
@@ -229,70 +246,55 @@ export async function aiListProjectsByPipelineStage(role: AiApiRole) {
     return denied("Akses pipeline proyek tidak tersedia untuk peran ini.");
   }
 
-  const projects = await prisma.project.findMany({
-    where: { brandId: { not: null } },
-    select: {
-      id: true,
-      name: true,
-      currentStage: true,
-      pendingPipelineStage: true,
-      stageEnteredAt: true,
-      totalProgress: true,
-      brand: { select: { name: true } },
-      room: { select: { name: true } },
-    },
-    orderBy: [{ currentStage: "asc" }, { updatedAt: "desc" }],
-  });
+  const projects = await loadBrandProjectsWithMilestones();
 
-  const byStage: Record<
-    string,
-    {
-      stage: PipelineStage;
-      label: string;
-      count: number;
-      projects: {
-        id: string;
-        name: string;
-        brandName: string;
-        roomName: string;
-        totalProgress: number;
-        pendingStage: PipelineStage | null;
-        daysInStage: number;
-      }[];
-    }
-  > = {};
-
-  for (const stage of PIPELINE_ORDER) {
-    byStage[stage] = {
-      stage,
-      label: PIPELINE_LABELS[stage],
-      count: 0,
-      projects: [],
-    };
-  }
-
-  const now = Date.now();
-  for (const p of projects) {
-    const bucket = byStage[p.currentStage];
-    if (!bucket) continue;
-    bucket.count += 1;
-    bucket.projects.push({
+  const rows = projects.map((p) => {
+    const summary = summarizeProjectMilestones(p.milestones);
+    return {
       id: p.id,
       name: p.name,
       brandName: p.brand?.name ?? "—",
       roomName: p.room.name,
-      totalProgress: p.totalProgress,
-      pendingStage: p.pendingPipelineStage,
-      daysInStage: Math.floor(
-        (now - p.stageEnteredAt.getTime()) / (24 * 60 * 60 * 1000),
-      ),
-    });
-  }
+      progressPct: summary.progressPct,
+      topLevelDone: summary.topLevelDone,
+      topLevelTotal: summary.topLevelTotal,
+      inProgressCount: summary.inProgressCount,
+      blockedCount: summary.blockedCount,
+      currentMilestone: summary.currentMilestone,
+      nextMilestone: summary.nextMilestone,
+    };
+  });
+
+  const total = rows.length;
+  const avgProgressPct =
+    total > 0
+      ? Math.round(rows.reduce((s, r) => s + r.progressPct, 0) / total)
+      : 0;
 
   return {
     accessible: true as const,
-    totalProjects: projects.length,
-    stages: PIPELINE_ORDER.map((s) => byStage[s]!),
+    progressModel: PIPELINE_PROGRESS_NOTE,
+    summary: {
+      totalProjects: total,
+      avgProgressPct,
+      completedCount: rows.filter((r) => r.progressPct >= 100).length,
+      needsAttentionCount: rows.filter((r) => r.progressPct < 50).length,
+      withBlockedMilestones: rows.filter((r) => r.blockedCount > 0).length,
+    },
+    projects: rows.sort(
+      (a, b) => b.progressPct - a.progressPct || a.name.localeCompare(b.name),
+    ),
+    byCurrentMilestone: groupProjectsByCurrentMilestone(rows).map((g) => ({
+      milestoneTitle: g.milestoneTitle,
+      count: g.count,
+      projectIds: g.projects.map((p) => p.id),
+      projects: g.projects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        brandName: p.brandName,
+        progressPct: p.progressPct,
+      })),
+    })),
   };
 }
 
@@ -314,13 +316,8 @@ export async function aiGetProjectDetail(role: AiApiRole, projectId: string) {
       brand: { select: { id: true, name: true } },
       room: { select: { id: true, name: true } },
       milestones: {
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          parentId: true,
-        },
-        orderBy: { sortOrder: "asc" },
+        select: PROJECT_MILESTONE_SELECT,
+        orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }],
       },
       tasks: {
         where: { archivedAt: null },
@@ -334,77 +331,127 @@ export async function aiGetProjectDetail(role: AiApiRole, projectId: string) {
     return denied("Proyek tidak ditemukan.");
   }
 
+  if (project.milestones.length === 0) {
+    await seedDefaultProjectMilestones(prisma, project.id);
+    project.milestones = await prisma.projectMilestone.findMany({
+      where: { projectId: project.id },
+      select: PROJECT_MILESTONE_SELECT,
+      orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }],
+    });
+  }
+
+  const summary = summarizeProjectMilestones(project.milestones);
+  const milestoneTree = buildMilestoneTree(project.milestones).map(
+    formatMilestoneNode,
+  );
+
   return {
     accessible: true as const,
+    progressModel: PIPELINE_PROGRESS_NOTE,
     project: {
       id: project.id,
       name: project.name,
       brandName: project.brand?.name ?? null,
       roomName: project.room.name,
-      currentStage: project.currentStage,
-      currentStageLabel: PIPELINE_LABELS[project.currentStage],
-      pendingPipelineStage: project.pendingPipelineStage,
-      pendingStageLabel: project.pendingPipelineStage
-        ? PIPELINE_LABELS[project.pendingPipelineStage]
-        : null,
-      pipelineStageRequestedAt:
-        project.pipelineStageRequestedAt?.toISOString() ?? null,
-      stageEnteredAt: project.stageEnteredAt.toISOString(),
-      totalProgress: project.totalProgress,
-      milestoneProgressPct: computeMilestoneProgress(project.milestones),
-      milestones: project.milestones.map((m) => ({
-        id: m.id,
-        title: m.title,
-        status: m.status,
-      })),
+      progress: {
+        pct: summary.progressPct,
+        topLevelDone: summary.topLevelDone,
+        topLevelTotal: summary.topLevelTotal,
+        subMilestoneCount: summary.subMilestoneCount,
+        inProgressCount: summary.inProgressCount,
+        blockedCount: summary.blockedCount,
+      },
+      currentMilestone: summary.currentMilestone,
+      nextMilestone: summary.nextMilestone,
+      milestoneTree,
       activeTasks: project.tasks,
+      legacyStageApproval: {
+        note: "Field legacy untuk approval CEO pindah tahap enum — progress utama di UI dihitung dari milestone.",
+        currentStage: project.currentStage,
+        currentStageLabel: PIPELINE_LABELS[project.currentStage],
+        pendingPipelineStage: project.pendingPipelineStage,
+        pendingStageLabel: project.pendingPipelineStage
+          ? PIPELINE_LABELS[project.pendingPipelineStage]
+          : null,
+        pipelineStageRequestedAt:
+          project.pipelineStageRequestedAt?.toISOString() ?? null,
+        stageEnteredAt: project.stageEnteredAt.toISOString(),
+        totalProgress: project.totalProgress,
+      },
     },
   };
 }
 
-export async function aiListStuckProjects(role: AiApiRole, minDaysInStage = 45) {
+export async function aiListStuckProjects(role: AiApiRole, minDaysStalled = 45) {
   if (!canViewBrandPipeline(role)) {
     return denied("Akses proyek macet tidak tersedia untuk peran ini.");
   }
 
-  const threshold = Math.max(minDaysInStage, 7);
+  const threshold = Math.max(minDaysStalled, 7);
   const cutoff = new Date(Date.now() - threshold * 24 * 60 * 60 * 1000);
-
-  const projects = await prisma.project.findMany({
-    where: {
-      brandId: { not: null },
-      stageEnteredAt: { lte: cutoff },
-      pendingPipelineStage: null,
-    },
-    select: {
-      id: true,
-      name: true,
-      currentStage: true,
-      stageEnteredAt: true,
-      totalProgress: true,
-      brand: { select: { name: true } },
-      room: { select: { name: true } },
-    },
-    orderBy: { stageEnteredAt: "asc" },
-    take: 20,
-  });
-
+  const projects = await loadBrandProjectsWithMilestones();
   const now = Date.now();
+
+  const stuck = projects
+    .map((p) => {
+      const summary = summarizeProjectMilestones(p.milestones);
+      const tops = p.milestones.filter((m) => !m.parentId);
+      const blockedRoots = tops.filter(
+        (m) => m.status === RoomTimelineStatus.BLOCKED,
+      );
+      const stalledInProgress = tops.filter(
+        (m) =>
+          m.status === RoomTimelineStatus.IN_PROGRESS &&
+          m.updatedAt <= cutoff,
+      );
+      const reasons: string[] = [];
+      if (blockedRoots.length > 0) {
+        reasons.push(`${blockedRoots.length} milestone utama terhambat`);
+      }
+      if (stalledInProgress.length > 0) {
+        reasons.push(
+          `${stalledInProgress.length} milestone berjalan tanpa update ≥${threshold} hari`,
+        );
+      }
+
+      if (reasons.length === 0) return null;
+
+      const oldestStalledAt = [...blockedRoots, ...stalledInProgress]
+        .map((m) => m.updatedAt.getTime())
+        .sort((a, b) => a - b)[0];
+
+      return {
+        id: p.id,
+        name: p.name,
+        brandName: p.brand?.name ?? "—",
+        roomName: p.room.name,
+        progressPct: summary.progressPct,
+        currentMilestone: summary.currentMilestone,
+        reasons,
+        daysSinceLastMilestoneUpdate: oldestStalledAt
+          ? Math.floor((now - oldestStalledAt) / (24 * 60 * 60 * 1000))
+          : null,
+        blockedMilestones: blockedRoots.map((m) => ({
+          id: m.id,
+          title: m.title,
+          updatedAt: m.updatedAt.toISOString(),
+        })),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null)
+    .sort(
+      (a, b) =>
+        (b.daysSinceLastMilestoneUpdate ?? 0) -
+        (a.daysSinceLastMilestoneUpdate ?? 0),
+    )
+    .slice(0, 20);
+
   return {
     accessible: true as const,
-    minDaysInStage: threshold,
-    count: projects.length,
-    projects: projects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      brandName: p.brand?.name ?? "—",
-      roomName: p.room.name,
-      currentStageLabel: PIPELINE_LABELS[p.currentStage],
-      totalProgress: p.totalProgress,
-      daysInStage: Math.floor(
-        (now - p.stageEnteredAt.getTime()) / (24 * 60 * 60 * 1000),
-      ),
-    })),
+    progressModel: PIPELINE_PROGRESS_NOTE,
+    minDaysStalled: threshold,
+    count: stuck.length,
+    projects: stuck,
   };
 }
 

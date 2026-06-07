@@ -1,6 +1,9 @@
 import { StockLogType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { computeMilestoneProgress } from "@/lib/project-milestones";
+import {
+  loadBrandProjectsWithMilestones,
+  summarizeProjectMilestones,
+} from "@/lib/ai-api/pipeline-milestones";
 import { getStockHealth, needsUrgentReorder } from "@/lib/stock-status";
 
 type SalesLogRow = {
@@ -114,45 +117,41 @@ export async function computeOutgoingByBrand(days = 90): Promise<{
 }
 
 export async function computePipelineMilestoneSnapshot(limit = 12) {
-  const projects = await prisma.project.findMany({
-    where: { brandId: { not: null } },
-    select: {
-      id: true,
-      name: true,
-      currentStage: true,
-      pendingPipelineStage: true,
-      stageEnteredAt: true,
-      brand: { select: { name: true } },
-      room: { select: { name: true } },
-      milestones: { select: { status: true, parentId: true } },
-    },
-    orderBy: { updatedAt: "desc" },
-    take: limit,
-  });
+  const projects = await loadBrandProjectsWithMilestones();
 
-  const rows = projects.map((p) => ({
-    id: p.id,
-    name: p.name,
-    brandName: p.brand?.name ?? "—",
-    roomName: p.room.name,
-    currentStage: p.currentStage,
-    pendingPipelineStage: p.pendingPipelineStage,
-    stageEnteredAt: p.stageEnteredAt.toISOString(),
-    milestoneProgressPct: computeMilestoneProgress(p.milestones),
-  }));
+  const rows = projects.map((p) => {
+    const summary = summarizeProjectMilestones(p.milestones);
+    return {
+      id: p.id,
+      name: p.name,
+      brandName: p.brand?.name ?? "—",
+      roomName: p.room.name,
+      progressPct: summary.progressPct,
+      topLevelDone: summary.topLevelDone,
+      topLevelTotal: summary.topLevelTotal,
+      blockedCount: summary.blockedCount,
+      currentMilestone: summary.currentMilestone,
+    };
+  });
 
   const avgProgress =
     rows.length > 0
       ? Math.round(
-          rows.reduce((s, r) => s + r.milestoneProgressPct, 0) / rows.length,
+          rows.reduce((s, r) => s + r.progressPct, 0) / rows.length,
         )
       : 0;
 
   return {
     projectCount: rows.length,
     avgMilestoneProgressPct: avgProgress,
-    readyForLaunchCount: rows.filter((r) => r.milestoneProgressPct >= 100).length,
-    projects: rows,
+    completedCount: rows.filter((r) => r.progressPct >= 100).length,
+    needsAttentionCount: rows.filter((r) => r.progressPct < 50).length,
+    withBlockedMilestones: rows.filter((r) => r.blockedCount > 0).length,
+    readyForLaunchCount: rows.filter((r) => r.progressPct >= 100).length,
+    projects: rows
+      .slice()
+      .sort((a, b) => b.progressPct - a.progressPct)
+      .slice(0, limit),
   };
 }
 
