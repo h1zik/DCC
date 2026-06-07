@@ -73,6 +73,7 @@
     "@types/fluent-ffmpeg": "^2.1.28",
     "@types/html-to-docx": "^1.8.1",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/turndown": "^5.0.6",

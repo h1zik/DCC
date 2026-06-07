@@ -13,6 +13,7 @@ import {
   computePipelineMilestoneSnapshot,
 } from "@/lib/ai-api/executive-metrics";
 import { aiGetUsersTaskOverview } from "@/lib/ai-api/user-tasks";
+import { loadFinanceDashboard } from "@/lib/finance-dashboard";
 import {
   formatIdr,
   signedBalanceForAccount,
