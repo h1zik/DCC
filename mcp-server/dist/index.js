@@ -84,7 +84,7 @@ async function main() {
     requireConfig();
     const server = new McpServer({
         name: "dcc-read-api",
-        version: "2.0.0",
+        version: "3.0.0",
     });
     server.tool("get_kpi_overview", "Ringkasan KPI operasional Dominatus Control Center: tugas overdue, stok kritis, persetujuan pending.", {}, async () => asText(await dccFetch("/api/ai/kpi-overview")));
     server.tool("get_overdue_tasks", "Daftar tugas yang sudah melewati tenggat (overdue) beserta assignee dan konteks proyek/ruangan.", {
@@ -186,6 +186,14 @@ async function main() {
             .optional()
             .describe("Default 20, maks 40"),
     }, async ({ q, roomNameOrId, limit }) => asText(await dccFetch(`/api/ai/documents/search${buildQuery({ q, roomNameOrId, limit })}`)));
+    const { registerStrategicTools } = await import("./register-strategic-tools.js");
+    registerStrategicTools(server, {
+        dccFetch,
+        buildQuery,
+        asText,
+        limitSchema,
+        roomNameSchema,
+    });
     const transport = new StdioServerTransport();
     await server.connect(transport);
 }

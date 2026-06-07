@@ -81,6 +81,23 @@ export function canViewRoomsWiki(role: AiApiRole): boolean {
   return canViewTasks(role) || role === "ALL";
 }
 
+export function canViewExecutive(role: AiApiRole): boolean {
+  return role === "ALL" || role === "CEO" || role === "ADMINISTRATOR";
+}
+
+export function canViewBrandPipeline(role: AiApiRole): boolean {
+  return (
+    role === "ALL" ||
+    role === "CEO" ||
+    role === "ADMINISTRATOR" ||
+    role === "STUDIO"
+  );
+}
+
+export function canViewOrgUsers(role: AiApiRole): boolean {
+  return role === "ALL" || role === "CEO" || role === "ADMINISTRATOR";
+}
+
 /** Map header role ke label Prisma (untuk logging). */
 export function aiRoleLabel(role: AiApiRole): string {
   if (role === "STUDIO") return UserRole.NORMAL_USER;
