@@ -134,6 +134,7 @@ export function TasksWorkspace({
   showArchived = false,
   defaultTaskView = TaskWorkspaceView.KANBAN,
   roomTaskTags = [],
+  documentFolders = [],
 }: {
   roomId?: string;
   roomTitle?: string;
@@ -156,6 +157,13 @@ export function TasksWorkspace({
   defaultTaskView?: TaskWorkspaceView;
   /** Tag tugas reusable khusus ruangan aktif. */
   roomTaskTags?: { id: string; roomId: string; name: string; colorHex: string }[];
+  /** Folder Documents & files ruangan — untuk opsi upload lampiran tugas. */
+  documentFolders?: {
+    id: string;
+    name: string;
+    parentId: string | null;
+    sortOrder: number;
+  }[];
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [localTasks, setLocalTasks] = useState<TaskRow[]>(tasks);
@@ -550,6 +558,7 @@ export function TasksWorkspace({
         isRoomManager={isRoomManager}
         currentUserId={currentUserId}
         simpleHub={simpleHub}
+        documentFolders={documentFolders}
       />
 
       {roomId != null && activePhase && (kanbanColumns?.length ?? 0) > 0 ? (

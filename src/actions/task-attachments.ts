@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { prisma } from "@/lib/prisma";
 import {
   absolutePathFromStoredPublicPath,
@@ -12,10 +13,13 @@ import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import {
+  assertRoomMember,
   assertRoomMemberHasTaskPhase,
   getTaskRoomContext,
   isRoomHubManagerRole,
 } from "@/lib/room-access";
+import { saveRoomDocumentToStorageAndDb } from "@/lib/room-document-upload";
+import { resolveUploadFolderId } from "@/actions/room-documents";
 
 const ALLOWED_PREFIXES = [
   "image/",
@@ -112,6 +116,13 @@ export async function addTaskLinkAttachment(
   revalidateTasksAndRoomHub();
 }
 
+function parseAlsoSaveToDocuments(raw: unknown): boolean {
+  if (raw === true || raw === "true" || raw === "1" || raw === "on") {
+    return true;
+  }
+  return false;
+}
+
 export async function uploadTaskAttachment(taskId: string, formData: FormData) {
   const session = await requireTasksRoomHubSession();
   const file = formData.get("file");
@@ -128,6 +139,18 @@ export async function uploadTaskAttachment(taskId: string, formData: FormData) {
 
   const { roomId, phase } = await getTaskRoomContext(taskId);
   await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
+
+  const alsoSaveToDocuments = parseAlsoSaveToDocuments(
+    formData.get("alsoSaveToDocuments"),
+  );
+  let documentsFolderId: string | null = null;
+  if (alsoSaveToDocuments) {
+    await assertRoomMember(roomId, session.user.id);
+    documentsFolderId = await resolveUploadFolderId(
+      roomId,
+      formData.get("documentsFolderId"),
+    );
+  }
 
   const buf = Buffer.from(await file.arrayBuffer());
   const base = sanitizeBaseName(file.name);
@@ -148,6 +171,24 @@ export async function uploadTaskAttachment(taskId: string, formData: FormData) {
       publicPath,
     },
   });
+
+  if (alsoSaveToDocuments) {
+    const body = Readable.toWeb(
+      Readable.from(buf),
+    ) as ReadableStream<Uint8Array>;
+    await saveRoomDocumentToStorageAndDb({
+      roomId,
+      uploadedById: session.user.id,
+      folderId: documentsFolderId,
+      title: null,
+      fileName: file.name,
+      mimeType: mime,
+      size: file.size,
+      body,
+      tags: ["from-task"],
+    });
+  }
+
   revalidateTasksAndRoomHub();
 }
 

@@ -255,8 +255,15 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     ? { archivedAt: { not: null }, status: TaskStatus.DONE }
     : { archivedAt: null };
 
-  const [tasks, projects, contributorMembers, vendors, kanbanColumns, roomTaskTags] =
-    await Promise.all([
+  const [
+    tasks,
+    projects,
+    contributorMembers,
+    vendors,
+    kanbanColumns,
+    roomTaskTags,
+    documentFolders,
+  ] = await Promise.all([
     prisma.task.findMany({
       where: {
         project: { roomId },
@@ -314,6 +321,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       orderBy: [{ name: "asc" }],
       select: { id: true, roomId: true, name: true, colorHex: true },
     }),
+    prisma.roomDocumentFolder.findMany({
+      where: { roomId },
+      select: { id: true, name: true, parentId: true, sortOrder: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    }),
   ]);
 
   const users = contributorMembers
@@ -357,6 +369,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         showArchived={showArchived}
         defaultTaskView={defaultTaskView}
         roomTaskTags={roomTaskTags}
+        documentFolders={documentFolders}
       />
     </div>
   );

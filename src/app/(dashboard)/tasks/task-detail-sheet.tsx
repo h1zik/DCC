@@ -73,6 +73,10 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { TaskDocumentUploadOptions } from "@/components/tasks/task-document-upload-options";
+import { listRoomDocumentFoldersForPicker } from "@/actions/room-documents";
+import type { RoomFolderNode } from "@/lib/room-document-folders";
+import { formatFolderPath } from "@/lib/room-document-folders";
 import { Link2, Paperclip, Pencil, Trash2 } from "lucide-react";
 
 function priorityLabel(p: TaskPriority) {
@@ -115,6 +119,7 @@ type Props = {
   currentUserId: string;
   /** Ruangan HQ/Team tanpa brand: sembunyikan fase proses alur. */
   simpleHub?: boolean;
+  documentFolders?: RoomFolderNode[];
 };
 
 function projectSelectLabel(p: Project & { brand: Brand | null }) {
@@ -141,6 +146,7 @@ export function TaskDetailSheet({
   isRoomManager,
   currentUserId,
   simpleHub = false,
+  documentFolders: documentFoldersProp = [],
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -171,6 +177,13 @@ export function TaskDetailSheet({
   const [commentBody, setCommentBody] = useState("");
   const [commentPending, setCommentPending] = useState(false);
   const [uploadPending, setUploadPending] = useState(false);
+  const [alsoSaveToDocuments, setAlsoSaveToDocuments] = useState(false);
+  const [documentsFolderId, setDocumentsFolderId] = useState<string | null>(
+    null,
+  );
+  const [loadedDocumentFolders, setLoadedDocumentFolders] = useState<
+    RoomFolderNode[]
+  >([]);
   const [attachLinkUrl, setAttachLinkUrl] = useState("");
   const [attachLinkTitle, setAttachLinkTitle] = useState("");
   const [linkAttachPending, setLinkAttachPending] = useState(false);
@@ -193,6 +206,26 @@ export function TaskDetailSheet({
   useEffect(() => {
     setAvailableTags(roomTaskTags);
   }, [roomTaskTags]);
+
+  const documentFolders =
+    documentFoldersProp.length > 0
+      ? documentFoldersProp
+      : loadedDocumentFolders;
+
+  useEffect(() => {
+    if (!open || !roomId || documentFoldersProp.length > 0) return;
+    let cancelled = false;
+    void listRoomDocumentFoldersForPicker(roomId)
+      .then((rows) => {
+        if (!cancelled) setLoadedDocumentFolders(rows);
+      })
+      .catch(() => {
+        /* abaikan — opsi dokumen opsional */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, roomId, documentFoldersProp.length]);
 
   /**
    * Form-reset effect — HANYA jalan saat user pindah ke tugas lain (id
@@ -462,12 +495,22 @@ export function TaskDetailSheet({
       for (const file of files) {
         const fd = new FormData();
         fd.append("file", file);
+        if (alsoSaveToDocuments && roomId) {
+          fd.append("alsoSaveToDocuments", "true");
+          if (documentsFolderId) {
+            fd.append("documentsFolderId", documentsFolderId);
+          }
+        }
         await uploadTaskAttachment(task.id, fd);
       }
+      const docHint =
+        alsoSaveToDocuments && roomId
+          ? ` (+ Documents & files: ${formatFolderPath(documentsFolderId, documentFolders)})`
+          : "";
       toast.success(
-        files.length === 1
+        (files.length === 1
           ? "Lampiran diunggah."
-          : `${files.length} lampiran diunggah.`,
+          : `${files.length} lampiran diunggah.`) + docHint,
       );
       await loadDetail(task.id);
     } catch (err) {
@@ -1118,6 +1161,17 @@ export function TaskDetailSheet({
                     <p className="text-muted-foreground text-xs">
                       {uploadPending ? "Mengunggah…" : contentPlanAttachmentHint.helper}
                     </p>
+                    {roomId ? (
+                      <TaskDocumentUploadOptions
+                        roomId={roomId}
+                        folders={documentFolders}
+                        enabled={alsoSaveToDocuments}
+                        onEnabledChange={setAlsoSaveToDocuments}
+                        folderId={documentsFolderId}
+                        onFolderIdChange={setDocumentsFolderId}
+                        disabled={uploadPending}
+                      />
+                    ) : null}
                   </div>
                   <div className="space-y-2 border-t border-border pt-3">
                     <Label className="text-foreground flex items-center gap-2 text-sm font-medium">
