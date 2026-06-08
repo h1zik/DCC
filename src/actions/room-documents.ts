@@ -145,7 +145,18 @@ export async function moveRoomDocumentToFolder(
   revalidateTasksAndRoomHub();
 }
 
-async function resolveUploadFolderId(
+export async function listRoomDocumentFoldersForPicker(roomId: string) {
+  const session = await requireTasksRoomHubSession();
+  await assertRoomMember(roomId, session.user.id);
+
+  return prisma.roomDocumentFolder.findMany({
+    where: { roomId },
+    select: { id: true, name: true, parentId: true, sortOrder: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function resolveUploadFolderId(
   roomId: string,
   folderIdRaw: unknown,
 ): Promise<string | null> {
