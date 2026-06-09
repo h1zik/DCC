@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { RoomMemberRole, RoomTaskProcess } from "@prisma/client";
 import { Search, ShieldCheck, UserCog, UserRound, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -88,9 +89,12 @@ const ROLE_META: Record<RoomMemberRole, RoleMeta> = {
 export function RoomMembersList({
   members,
   roomPhases,
+  toolbarEnd,
 }: {
   members: MemberRow[];
   roomPhases: RoomPhaseOption[];
+  /** Tombol/aksi tambahan di toolbar (mis. kelola anggota). */
+  toolbarEnd?: React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
 
@@ -130,61 +134,8 @@ export function RoomMembersList({
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm">
-        <div
-          className="bg-gradient-to-br from-primary/10 via-primary/5 absolute inset-0 to-transparent"
-          aria-hidden
-        />
-        <div
-          className="bg-gradient-to-r from-transparent via-primary/40 to-transparent absolute inset-x-0 top-0 h-px"
-          aria-hidden
-        />
-        <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
-          <div className="flex min-w-0 items-start gap-3">
-            <span
-              className="border-primary/30 bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl border"
-              aria-hidden
-            >
-              <Users className="size-5" />
-            </span>
-            <div className="min-w-0 space-y-1">
-              <h2 className="text-foreground text-base font-semibold tracking-tight sm:text-lg">
-                Anggota ruangan
-              </h2>
-              <p className="text-muted-foreground text-pretty text-sm leading-relaxed">
-                Daftar anggota aktif beserta peran dan akses fase tugasnya.
-                Gunakan pencarian untuk menemukan orang dengan cepat.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 self-start">
-            <Chip>
-              <span className="text-foreground font-semibold tabular-nums">
-                {counts.total}
-              </span>
-              total
-            </Chip>
-            {ROLE_ORDER.map((role) => {
-              const c = counts.byRole.get(role) ?? 0;
-              if (c === 0) return null;
-              const meta = ROLE_META[role];
-              const Icon = meta.Icon;
-              return (
-                <Chip key={role}>
-                  <Icon className="size-3" aria-hidden />
-                  <span className="text-foreground font-semibold tabular-nums">
-                    {c}
-                  </span>
-                  {meta.label}
-                </Chip>
-              );
-            })}
-          </div>
-        </div>
-      </header>
-
-      <div className="bg-card flex items-center gap-2 rounded-xl border p-1.5 shadow-sm">
-        <div className="relative flex-1">
+      <div className="bg-card flex flex-wrap items-center gap-2 rounded-xl border p-1.5 shadow-sm">
+        <div className="relative min-w-0 flex-1 sm:min-w-[16rem]">
           <Search
             className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
             aria-hidden
@@ -208,15 +159,43 @@ export function RoomMembersList({
             </Button>
           ) : null}
         </div>
+        <div className="flex flex-wrap items-center gap-1.5 px-1">
+          <Chip>
+            <span className="text-foreground font-semibold tabular-nums">
+              {counts.total}
+            </span>
+            total
+          </Chip>
+          {ROLE_ORDER.map((role) => {
+            const c = counts.byRole.get(role) ?? 0;
+            if (c === 0) return null;
+            const meta = ROLE_META[role];
+            const Icon = meta.Icon;
+            return (
+              <Chip key={role}>
+                <Icon className="size-3" aria-hidden />
+                <span className="text-foreground font-semibold tabular-nums">
+                  {c}
+                </span>
+                {meta.label}
+              </Chip>
+            );
+          })}
+        </div>
+        {toolbarEnd ? (
+          <div className="flex shrink-0 items-center px-1">{toolbarEnd}</div>
+        ) : null}
       </div>
 
       {members.length === 0 ? (
         <EmptyState
+          icon={Users}
           title="Belum ada anggota di ruangan ini."
           description="Tambahkan anggota lewat tombol Kelola Anggota & Peran di atas."
         />
       ) : filtered.length === 0 ? (
         <EmptyState
+          icon={Users}
           title="Tidak ada anggota cocok."
           description="Coba kata kunci lain atau bersihkan pencarian."
         />
@@ -334,21 +313,3 @@ function Chip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="bg-card text-muted-foreground rounded-xl border border-dashed p-8 text-center text-sm">
-      <Users
-        className="text-muted-foreground/50 mx-auto mb-3 size-8"
-        aria-hidden
-      />
-      <p className="text-foreground font-medium">{title}</p>
-      <p className="mt-1 text-xs">{description}</p>
-    </div>
-  );
-}

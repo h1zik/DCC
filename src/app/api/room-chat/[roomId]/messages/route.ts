@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { UserRole } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import {
-  loadRoomChatMessagesForRoom,
-  loadRoomChatMessagesSince,
+  loadRoomChatMessagesForChannel,
+  loadRoomChatMessagesSinceForChannel,
   ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
 } from "@/lib/room-chat-message-view";
+import { resolveRoomChannelId } from "@/lib/room-channels";
 import { assertRoomMember } from "@/lib/room-access";
 import { isAdministrator, isStudioOrProjectManager } from "@/lib/roles";
 import { listRoomTyping, markRoomTyping } from "@/lib/room-chat-typing-state";
@@ -43,13 +44,23 @@ export async function GET(
   const sinceParam = url.searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : null;
 
+  let channelId: string;
+  try {
+    channelId = await resolveRoomChannelId(
+      roomId,
+      url.searchParams.get("channelId"),
+    );
+  } catch {
+    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+  }
+
   let messages;
   let mode: "delta" | "initial";
   if (since && Number.isFinite(since.getTime())) {
-    messages = await loadRoomChatMessagesSince(roomId, since);
+    messages = await loadRoomChatMessagesSinceForChannel(channelId, since);
     mode = "delta";
   } else {
-    messages = await loadRoomChatMessagesForRoom(roomId);
+    messages = await loadRoomChatMessagesForChannel(channelId);
     mode = "initial";
   }
 

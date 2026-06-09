@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -36,13 +37,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -50,10 +44,10 @@ import {
   Clapperboard,
   Download,
   FileText,
-  MoreHorizontal,
   Paperclip,
   Pencil,
   Reply,
+  Send,
   Smile,
   Trash2,
   X,
@@ -112,6 +106,42 @@ function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Kelompokkan pesan beruntun dari author yang sama dalam jendela ini. */
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+function isSameDay(a: string, b: string) {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+/** Label pembatas tanggal: Hari ini / Kemarin / tanggal lengkap. */
+function dayDividerLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (isSameDay(d.toISOString(), today.toISOString())) return "Hari ini";
+  if (isSameDay(d.toISOString(), yesterday.toISOString())) return "Kemarin";
+  return d.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function timeOnly(iso: string): string {
+  return new Date(iso).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 type ReplyTarget = {
@@ -176,11 +206,13 @@ function urlBase64ToUint8Array(base64String: string) {
 
 export function RoomChatExperience({
   roomId,
+  channelId,
   currentUserId,
   messages: initialMessages,
   mentionableUsers,
 }: {
   roomId: string;
+  channelId: string;
   currentUserId: string;
   messages: RoomChatMessageView[];
   mentionableUsers: MentionableUser[];
@@ -416,6 +448,13 @@ export function RoomChatExperience({
         ).toISOString()
       : new Date(0).toISOString(),
   );
+  /**
+   * Apakah baseline awal sudah ada. Saat berpindah channel tanpa pesan
+   * pra-muat, fetch pertama harus mode "initial" (tanpa `since`) agar
+   * mengambil N pesan TERBARU — bukan delta dari epoch (yang justru menarik
+   * pesan tertua pada channel ramai).
+   */
+  const hasBaselineRef = useRef(initialMessages.length > 0);
   useEffect(() => {
     let cancelled = false;
     async function pull() {
@@ -425,7 +464,10 @@ export function RoomChatExperience({
           `/api/room-chat/${roomId}/messages`,
           window.location.origin,
         );
-        url.searchParams.set("since", lastSyncedAtRef.current);
+        url.searchParams.set("channelId", channelId);
+        if (hasBaselineRef.current) {
+          url.searchParams.set("since", lastSyncedAtRef.current);
+        }
         const r = await fetch(url.toString(), { credentials: "include" });
         if (!r.ok || cancelled) return;
         const j = (await r.json()) as {
@@ -434,6 +476,7 @@ export function RoomChatExperience({
           mode?: "initial" | "delta";
         };
         if (!Array.isArray(j.messages) || cancelled) return;
+        hasBaselineRef.current = true;
         setTypingUsers(
           Array.isArray(j.typingUsers)
             ? j.typingUsers.filter((x): x is string => typeof x === "string")
@@ -459,7 +502,7 @@ export function RoomChatExperience({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [roomId, initialMessages]);
+  }, [roomId, channelId, initialMessages]);
 
   useEffect(() => {
     if (!body.trim()) return;
@@ -637,6 +680,7 @@ export function RoomChatExperience({
         if (hasFiles) {
           const fd = new FormData();
           fd.append("roomId", roomId);
+          fd.append("channelId", channelId);
           fd.append("body", text);
           if (gifUrl) fd.append("gifUrl", gifUrl);
           if (reply?.id) fd.append("replyToId", reply.id);
@@ -645,6 +689,7 @@ export function RoomChatExperience({
         } else {
           created = await addRoomMessage({
             roomId,
+            channelId,
             body: text,
             gifUrl: gifUrl ?? undefined,
             replyToId: reply?.id,
@@ -703,117 +748,153 @@ export function RoomChatExperience({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="border-border bg-muted/10 flex max-h-[min(520px,58vh)] min-h-[280px] flex-col overflow-hidden rounded-xl border">
-        <div
-          ref={scrollRef}
-          onScroll={onScrollList}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
-        >
-          <div className="flex flex-col gap-2">
-            {messages.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Belum ada pesan. Mulai percakapan di bawah.
-              </p>
-            ) : (
-              messages.map((m) => {
-                const own = m.author.id === currentUserId;
-                const deleted = Boolean(m.deletedAt);
-                return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        ref={scrollRef}
+        onScroll={onScrollList}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3 sm:px-3"
+      >
+        <div className="flex flex-col">
+          {messages.length === 0 ? (
+            <p className="text-muted-foreground px-2 py-8 text-center text-sm">
+              Belum ada pesan. Mulai percakapan di bawah.
+            </p>
+          ) : (
+            messages.map((m, idx) => {
+              const own = m.author.id === currentUserId;
+              const deleted = Boolean(m.deletedAt);
+              const prev = idx > 0 ? messages[idx - 1] : null;
+              const showDate = !prev || !isSameDay(prev.createdAt, m.createdAt);
+              const grouped =
+                !showDate &&
+                !!prev &&
+                prev.author.id === m.author.id &&
+                !prev.deletedAt &&
+                !m.replyTo &&
+                new Date(m.createdAt).getTime() -
+                  new Date(prev.createdAt).getTime() <
+                  GROUP_WINDOW_MS;
+              return (
+                <Fragment key={m.id}>
+                  {showDate ? (
+                    <div className="my-2 flex items-center gap-3 px-2">
+                      <span className="bg-border h-px flex-1" aria-hidden />
+                      <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-[11px] font-medium">
+                        {dayDividerLabel(m.createdAt)}
+                      </span>
+                      <span className="bg-border h-px flex-1" aria-hidden />
+                    </div>
+                  ) : null}
                   <div
-                    key={m.id}
                     ref={(el) => {
                       if (el) messageRefs.current.set(m.id, el);
                       else messageRefs.current.delete(m.id);
                     }}
                     data-message-id={m.id}
                     className={cn(
-                      "group flex gap-2",
-                      own ? "flex-row-reverse" : "flex-row",
+                      "group hover:bg-muted/40 relative flex gap-2.5 rounded-lg px-2 transition-colors",
+                      grouped ? "mt-0.5 py-0.5" : "mt-3 py-1 first:mt-0",
                     )}
                   >
-                    <Link
-                      href={`/profile/${m.author.id}`}
-                      className="shrink-0 rounded-full pt-0.5"
-                      title={`Lihat profil ${authorLabel(m.author.name, m.author.email)}`}
-                      aria-label={`Lihat profil ${authorLabel(m.author.name, m.author.email)}`}
-                    >
-                      {m.author.image ? (
-                        <Image
-                          src={m.author.image}
-                          alt=""
-                          width={36}
-                          height={36}
-                          className="border-border size-9 rounded-full border object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <div
-                          className="border-border bg-accent/40 text-accent-foreground flex size-9 items-center justify-center rounded-full border text-xs font-semibold"
-                          aria-hidden
+                    <div className="w-9 shrink-0">
+                      {grouped ? (
+                        <time
+                          dateTime={m.createdAt}
+                          className="text-muted-foreground pointer-events-none mt-1 block text-right text-[10px] tabular-nums opacity-0 group-hover:opacity-100"
                         >
-                          {authorInitial(m.author.name, m.author.email)}
-                        </div>
-                      )}
-                    </Link>
-                    <div
-                      className={cn(
-                        "max-w-[min(100%,520px)] min-w-0 rounded-2xl border px-3 py-2 text-sm shadow-sm",
-                        own
-                          ? "border-primary/25 bg-primary/12"
-                          : "border-border bg-card",
-                        deleted && "opacity-75",
-                      )}
-                    >
-                      <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          {timeOnly(m.createdAt)}
+                        </time>
+                      ) : (
                         <Link
                           href={`/profile/${m.author.id}`}
-                          className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline"
+                          className="block shrink-0 rounded-full"
+                          title={`Lihat profil ${authorLabel(m.author.name, m.author.email)}`}
+                          aria-label={`Lihat profil ${authorLabel(m.author.name, m.author.email)}`}
                         >
-                          {own ? "Anda" : authorLabel(m.author.name, m.author.email)}
+                          {m.author.image ? (
+                            <Image
+                              src={m.author.image}
+                              alt=""
+                              width={36}
+                              height={36}
+                              className="border-border size-9 rounded-full border object-cover"
+                              unoptimized
+                            />
+                          ) : (
+                            <div
+                              className="border-border bg-accent/40 text-accent-foreground flex size-9 items-center justify-center rounded-full border text-xs font-semibold"
+                              aria-hidden
+                            >
+                              {authorInitial(m.author.name, m.author.email)}
+                            </div>
+                          )}
                         </Link>
-                        <span className="flex items-center gap-1">
-                          {m.editedAt && !deleted ? (
-                            <span className="italic opacity-80">diedit</span>
-                          ) : null}
-                          <time dateTime={m.createdAt}>
-                            {new Date(m.createdAt).toLocaleString("id-ID", {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })}
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      {!grouped ? (
+                        <div className="flex items-baseline gap-2">
+                          <Link
+                            href={`/profile/${m.author.id}`}
+                            className={cn(
+                              "truncate text-sm font-semibold underline-offset-4 hover:underline focus-visible:underline",
+                              own ? "text-primary" : "text-foreground",
+                            )}
+                          >
+                            {own
+                              ? "Anda"
+                              : authorLabel(m.author.name, m.author.email)}
+                          </Link>
+                          <time
+                            dateTime={m.createdAt}
+                            className="text-muted-foreground shrink-0 text-[11px] tabular-nums"
+                          >
+                            {timeOnly(m.createdAt)}
                           </time>
-                        </span>
-                      </div>
+                          {m.editedAt && !deleted ? (
+                            <span className="text-muted-foreground text-[11px] italic">
+                              diedit
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+
                       {m.replyTo ? (
                         <button
                           type="button"
                           onClick={() => scrollToMessage(m.replyTo!.id)}
-                          className="border-primary/40 bg-muted/50 hover:bg-muted mt-1.5 mb-1 w-full rounded-md border-l-4 py-1.5 pr-2 pl-2 text-left transition-colors"
+                          className="border-primary/40 bg-muted/40 hover:bg-muted mt-1 mb-1 flex w-full max-w-[640px] items-center gap-1.5 rounded-md border-l-2 py-1 pr-2 pl-2 text-left transition-colors"
                         >
-                          <span className="text-primary text-[11px] font-semibold">
-                            ↩ {authorLabel(m.replyTo.author.name, m.replyTo.author.email)}
+                          <Reply className="text-primary size-3 shrink-0" aria-hidden />
+                          <span className="text-primary shrink-0 text-[11px] font-semibold">
+                            {authorLabel(
+                              m.replyTo.author.name,
+                              m.replyTo.author.email,
+                            )}
                           </span>
-                          <p className="text-muted-foreground truncate text-xs">
+                          <span className="text-muted-foreground truncate text-xs">
                             {replySnippet({
                               body: m.replyTo.body,
                               gifUrl: m.replyTo.gifUrl,
                               deletedAt: m.replyTo.deletedAt,
                               attachmentCount: m.replyTo.attachmentCount,
                             })}
-                          </p>
+                          </span>
                         </button>
                       ) : null}
+
                       {deleted ? (
-                        <p className="text-muted-foreground mt-1 text-xs italic">
+                        <p className="text-muted-foreground text-xs italic">
                           Pesan dihapus
                         </p>
                       ) : (
-                        <>
+                        <div className="text-sm">
                           {m.body.trim() ? (
-                            <ChatLinkifiedText text={m.body} className="mt-1" />
+                            <ChatLinkifiedText text={m.body} />
                           ) : null}
                           {m.gifUrl ? (
-                            <div className="mt-1.5 overflow-hidden rounded-lg border border-border/60">
+                            <div className="border-border/60 mt-1.5 max-w-[400px] overflow-hidden rounded-lg border">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={m.gifUrl}
@@ -824,7 +905,7 @@ export function RoomChatExperience({
                             </div>
                           ) : null}
                           {m.attachments.length > 0 ? (
-                            <ul className="mt-1.5 space-y-1">
+                            <ul className="mt-1.5 max-w-[440px] space-y-1">
                               {m.attachments.map((a) => {
                                 const isImage = isDirectChatImageMime(a.mimeType);
                                 return (
@@ -834,7 +915,7 @@ export function RoomChatExperience({
                                         href={a.publicPath}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="block overflow-hidden rounded-md border border-border/60"
+                                        className="border-border/60 block overflow-hidden rounded-md border"
                                       >
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img
@@ -869,62 +950,52 @@ export function RoomChatExperience({
                               })}
                             </ul>
                           ) : null}
-                        </>
+                        </div>
                       )}
-                      <div
-                        className={cn(
-                          "mt-1 flex flex-wrap items-center gap-1",
-                          own ? "justify-start" : "justify-end",
-                        )}
-                      >
-                        {!deleted ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="xs"
-                            className="text-muted-foreground h-7 gap-1 px-2 text-[11px] opacity-70 group-hover:opacity-100"
-                            onClick={() => startReply(m)}
-                          >
-                            <Reply className="size-3" />
-                            Balas
-                          </Button>
-                        ) : null}
-                        {own && !deleted ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              className="text-muted-foreground hover:bg-muted inline-flex size-7 items-center justify-center rounded-md opacity-70 group-hover:opacity-100"
-                              aria-label="Aksi pesan"
+                    </div>
+
+                    {!deleted ? (
+                      <div className="border-border bg-card absolute -top-3 right-2 z-10 flex items-center gap-0.5 rounded-md border p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 items-center justify-center rounded"
+                          aria-label="Balas pesan"
+                          onClick={() => startReply(m)}
+                        >
+                          <Reply className="size-3.5" />
+                        </button>
+                        {own ? (
+                          <>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 items-center justify-center rounded"
+                              aria-label="Edit pesan"
+                              onClick={() => startEdit(m)}
                             >
-                              <MoreHorizontal className="size-3.5" />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align={own ? "start" : "end"}>
-                              <DropdownMenuItem onClick={() => startEdit(m)}>
-                                <Pencil className="size-3.5" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={() => confirmDeleteMessage(m.id)}
-                              >
-                                <Trash2 className="size-3.5" />
-                                Hapus
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive inline-flex size-7 items-center justify-center rounded"
+                              aria-label="Hapus pesan"
+                              onClick={() => confirmDeleteMessage(m.id)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </>
                         ) : null}
                       </div>
-                    </div>
+                    ) : null}
                   </div>
-                );
-              })
-            )}
-            <div ref={endRef} aria-hidden />
-          </div>
+                </Fragment>
+              );
+            })
+          )}
+          <div ref={endRef} aria-hidden />
         </div>
       </div>
 
-      <div className="border-border bg-card space-y-2 rounded-xl border p-3">
+      <div className="border-border bg-card shrink-0 space-y-2 border-t p-3">
         {editingMessage ? (
           <div className="bg-primary/10 flex items-center justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5 text-xs">
             <span>
@@ -1076,222 +1147,221 @@ export function RoomChatExperience({
               onPickFiles(picked);
             }}
           />
-          <Textarea
-          ref={taRef}
-          rows={3}
-          placeholder={
-            editingMessage
-              ? "Edit pesan…"
-              : "Tulis pesan… (Ctrl+V gambar, @mention, GIF & lampiran dari toolbar)"
-          }
-          value={body}
-          disabled={pending}
-          onPaste={onComposerPaste}
-          onChange={(e) => {
-            const next = e.target.value;
-            setBody(next);
-            const cursor = e.target.selectionStart ?? next.length;
-            setMentionDraft(detectMentionDraft(next, cursor));
-          }}
-          onClick={(e) => {
-            const el = e.currentTarget;
-            const cursor = el.selectionStart ?? bodyRef.current.length;
-            setMentionDraft(detectMentionDraft(bodyRef.current, cursor));
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && editingMessage) {
-              e.preventDefault();
-              cancelEdit();
-              return;
-            }
-            if (mentionDraft && mentionSuggestions.length > 0) {
-              if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setMentionPickIndex((prev) => (prev + 1) % mentionSuggestions.length);
-                return;
-              }
-              if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setMentionPickIndex((prev) =>
-                  prev === 0 ? mentionSuggestions.length - 1 : prev - 1,
-                );
-                return;
-              }
-              if (e.key === "Enter" || e.key === "Tab") {
-                e.preventDefault();
-                applyMentionSuggestion(mentionSuggestions[mentionPickIndex] ?? mentionSuggestions[0]);
-                return;
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setMentionDraft(null);
-                return;
-              }
-            }
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          className="min-h-[88px] resize-y"
-          />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {!editingMessage ? (
-          <div className="flex flex-wrap items-center gap-1">
-            <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-              <PopoverTrigger
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "gap-1",
-                  pending && "pointer-events-none opacity-50",
-                )}
-                disabled={pending}
-                aria-label="Pilih emoji"
-              >
-                <Smile className="size-4" />
-                Emoji
-              </PopoverTrigger>
-              <PopoverContent
-                className="border-border w-auto max-w-[calc(100vw-2rem)] overflow-hidden border p-0 shadow-lg"
-                align="start"
-                side="top"
-                sideOffset={8}
-              >
-                <EmojiPicker
-                  onEmojiClick={onEmojiPick}
-                  theme={Theme.AUTO}
-                  width={352}
-                  height={420}
-                  previewConfig={{ showPreview: false }}
-                  skinTonesDisabled
-                />
-              </PopoverContent>
-            </Popover>
-            <Popover open={gifOpen} onOpenChange={setGifOpen}>
-              <PopoverTrigger
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "gap-1",
-                  pending && "pointer-events-none opacity-50",
-                )}
-                disabled={pending}
-                aria-label="Tambah GIF"
-              >
-                <Clapperboard className="size-4" />
-                GIF
-              </PopoverTrigger>
-              <PopoverContent
-                className="border-border w-[min(100vw-2rem,380px)] p-3 shadow-lg"
-                align="start"
-                side="top"
-                sideOffset={8}
-              >
-                <p className="text-muted-foreground mb-2 text-xs">
-                  Cari di Giphy (butuh <code className="text-foreground">GIPHY_API_KEY</code> di
-                  server) atau tempel URL Giphy/Tenor.
-                </p>
-                <Input
-                  value={gifQuery}
-                  onChange={(e) => setGifQuery(e.target.value)}
-                  placeholder="Cari GIF…"
-                  className="mb-2"
-                />
-                {giphyConfigured === false ? (
-                  <p className="text-muted-foreground mb-2 text-xs">
-                    API Giphy belum diatur — gunakan tempel URL di bawah.
-                  </p>
-                ) : null}
-                <div className="max-h-56 overflow-y-auto">
-                  {gifLoading ? (
-                    <p className="text-muted-foreground py-6 text-center text-sm">
-                      Memuat…
-                    </p>
-                  ) : gifItems.length === 0 ? (
-                    <p className="text-muted-foreground py-4 text-center text-xs">
-                      Tidak ada hasil. Ubah kata kunci atau tempel URL.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {gifItems.map((g) => (
-                        <button
-                          key={g.url}
-                          type="button"
-                          className="border-border hover:ring-primary overflow-hidden rounded-md border focus-visible:ring-2 focus-visible:outline-none"
-                          onClick={() => {
-                            setPendingGifUrl(g.url);
-                            setGifOpen(false);
-                          }}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={g.preview}
-                            alt=""
-                            className="aspect-square w-full object-cover"
-                            loading="lazy"
+          <div className="border-border bg-background focus-within:border-ring focus-within:ring-ring/50 overflow-hidden rounded-xl border transition-[border-color,box-shadow] focus-within:ring-3">
+            <Textarea
+              ref={taRef}
+              rows={2}
+              placeholder={editingMessage ? "Edit pesan…" : "Tulis pesan…"}
+              value={body}
+              disabled={pending}
+              onPaste={onComposerPaste}
+              onChange={(e) => {
+                const next = e.target.value;
+                setBody(next);
+                const cursor = e.target.selectionStart ?? next.length;
+                setMentionDraft(detectMentionDraft(next, cursor));
+              }}
+              onClick={(e) => {
+                const el = e.currentTarget;
+                const cursor = el.selectionStart ?? bodyRef.current.length;
+                setMentionDraft(detectMentionDraft(bodyRef.current, cursor));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && editingMessage) {
+                  e.preventDefault();
+                  cancelEdit();
+                  return;
+                }
+                if (mentionDraft && mentionSuggestions.length > 0) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setMentionPickIndex((prev) => (prev + 1) % mentionSuggestions.length);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setMentionPickIndex((prev) =>
+                      prev === 0 ? mentionSuggestions.length - 1 : prev - 1,
+                    );
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    applyMentionSuggestion(
+                      mentionSuggestions[mentionPickIndex] ?? mentionSuggestions[0],
+                    );
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMentionDraft(null);
+                    return;
+                  }
+                }
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              className="min-h-[72px] resize-none rounded-none border-0 bg-transparent px-3 pt-3 pb-1 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+            />
+            <div className="flex items-center justify-between gap-2 px-2 pb-2">
+              {!editingMessage ? (
+                <div className="flex items-center gap-0.5">
+                  <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+                    <PopoverTrigger
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                        "text-muted-foreground hover:text-foreground",
+                        pending && "pointer-events-none opacity-50",
+                      )}
+                      disabled={pending}
+                      aria-label="Pilih emoji"
+                      title="Emoji"
+                    >
+                      <Smile className="size-4" />
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="border-border w-auto max-w-[calc(100vw-2rem)] overflow-hidden border p-0 shadow-lg"
+                      align="start"
+                      side="top"
+                      sideOffset={8}
+                    >
+                      <EmojiPicker
+                        onEmojiClick={onEmojiPick}
+                        theme={Theme.AUTO}
+                        width={352}
+                        height={420}
+                        previewConfig={{ showPreview: false }}
+                        skinTonesDisabled
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Popover open={gifOpen} onOpenChange={setGifOpen}>
+                    <PopoverTrigger
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                        "text-muted-foreground hover:text-foreground",
+                        pending && "pointer-events-none opacity-50",
+                      )}
+                      disabled={pending}
+                      aria-label="Tambah GIF"
+                      title="GIF"
+                    >
+                      <Clapperboard className="size-4" />
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="border-border w-[min(100vw-2rem,380px)] p-3 shadow-lg"
+                      align="start"
+                      side="top"
+                      sideOffset={8}
+                    >
+                      <p className="text-muted-foreground mb-2 text-xs">
+                        Cari di Giphy (butuh <code className="text-foreground">GIPHY_API_KEY</code>{" "}
+                        di server) atau tempel URL Giphy/Tenor.
+                      </p>
+                      <Input
+                        value={gifQuery}
+                        onChange={(e) => setGifQuery(e.target.value)}
+                        placeholder="Cari GIF…"
+                        className="mb-2"
+                      />
+                      {giphyConfigured === false ? (
+                        <p className="text-muted-foreground mb-2 text-xs">
+                          API Giphy belum diatur — gunakan tempel URL di bawah.
+                        </p>
+                      ) : null}
+                      <div className="max-h-56 overflow-y-auto">
+                        {gifLoading ? (
+                          <p className="text-muted-foreground py-6 text-center text-sm">
+                            Memuat…
+                          </p>
+                        ) : gifItems.length === 0 ? (
+                          <p className="text-muted-foreground py-4 text-center text-xs">
+                            Tidak ada hasil. Ubah kata kunci atau tempel URL.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {gifItems.map((g) => (
+                              <button
+                                key={g.url}
+                                type="button"
+                                className="border-border hover:ring-primary overflow-hidden rounded-md border focus-visible:ring-2 focus-visible:outline-none"
+                                onClick={() => {
+                                  setPendingGifUrl(g.url);
+                                  setGifOpen(false);
+                                }}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={g.preview}
+                                  alt=""
+                                  className="aspect-square w-full object-cover"
+                                  loading="lazy"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="border-border mt-3 space-y-1.5 border-t pt-2">
+                        <LabelTiny>Tempel URL GIF (HTTPS)</LabelTiny>
+                        <div className="flex gap-1">
+                          <Input
+                            value={pasteGif}
+                            onChange={(e) => setPasteGif(e.target.value)}
+                            placeholder="https://media.giphy.com/…"
+                            className="text-xs"
                           />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                          <Button type="button" size="sm" variant="secondary" onClick={applyPastedGif}>
+                            Pakai
+                          </Button>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-foreground"
+                    disabled={
+                      pending || pendingFiles.length >= DIRECT_CHAT_MAX_FILES_PER_MESSAGE
+                    }
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Lampirkan file"
+                    title="Lampirkan file"
+                  >
+                    <Paperclip className="size-4" />
+                  </Button>
                 </div>
-                <div className="border-border mt-3 space-y-1.5 border-t pt-2">
-                  <LabelTiny>Tempel URL GIF (HTTPS)</LabelTiny>
-                  <div className="flex gap-1">
-                    <Input
-                      value={pasteGif}
-                      onChange={(e) => setPasteGif(e.target.value)}
-                      placeholder="https://media.giphy.com/…"
-                      className="text-xs"
-                    />
-                    <Button type="button" size="sm" variant="secondary" onClick={applyPastedGif}>
-                      Pakai
-                    </Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1"
-              disabled={
-                pending || pendingFiles.length >= DIRECT_CHAT_MAX_FILES_PER_MESSAGE
-              }
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Paperclip className="size-4" />
-              File
-            </Button>
+              ) : (
+                <p className="text-muted-foreground px-1 text-xs">Mode edit: hanya teks pesan.</p>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                disabled={
+                  pending ||
+                  (editingMessage
+                    ? !body.trim()
+                    : !body.trim() && !pendingGifUrl && pendingFiles.length === 0)
+                }
+                onClick={submit}
+              >
+                {!editingMessage ? <Send className="size-4" aria-hidden /> : null}
+                {pending
+                  ? editingMessage
+                    ? "Menyimpan…"
+                    : "Mengirim…"
+                  : editingMessage
+                    ? "Simpan"
+                    : "Kirim"}
+              </Button>
+            </div>
           </div>
-          ) : (
-            <p className="text-muted-foreground text-xs">Mode edit: hanya teks pesan.</p>
-          )}
-          <Button
-            type="button"
-            disabled={
-              pending ||
-              (editingMessage
-                ? !body.trim()
-                : !body.trim() && !pendingGifUrl && pendingFiles.length === 0)
-            }
-            onClick={submit}
-          >
-            {pending
-              ? editingMessage
-                ? "Menyimpan…"
-                : "Mengirim…"
-              : editingMessage
-                ? "Simpan"
-                : "Kirim"}
-          </Button>
         </div>
-        <p className="text-muted-foreground text-xs">
-          {editingMessage
-            ? "Enter simpan · Esc batal"
-            : "Enter kirim · Shift+Enter baris baru · Pakai @Nama untuk summon (kirim notif WA)"}
-        </p>
       </div>
     </div>
   );

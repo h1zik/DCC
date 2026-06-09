@@ -22,9 +22,11 @@ import {
 } from "@/lib/room-chat-attachments";
 import { sendWebPushMessage } from "@/lib/web-push";
 import { getAppBranding } from "@/lib/app-branding";
+import { markRoomChannelRead, resolveRoomChannelId } from "@/lib/room-channels";
 
 const sendMessageSchema = z.object({
   roomId: z.string().min(1),
+  channelId: z.string().min(1).optional(),
   body: z.string().max(4000),
   gifUrl: z.string().max(2048).optional(),
   replyToId: z.string().min(1).optional(),
@@ -134,6 +136,7 @@ async function notifyMentionedUsersViaWhatsApp(params: {
 
 async function notifyRoomMembersViaPush(params: {
   roomId: string;
+  channelId: string;
   roomName: string;
   authorId: string;
   authorName: string;
@@ -187,7 +190,7 @@ async function notifyRoomMembersViaPush(params: {
         payload: {
           title: `${sender} di ${roomLabel}`,
           body: snippet,
-          url: `/room/${params.roomId}/chat`,
+          url: `/room/${params.roomId}/chat?channel=${params.channelId}`,
           icon: pushIconPath,
         },
       });
@@ -229,10 +232,11 @@ export async function addRoomMessage(
     where: { id: data.roomId },
     select: { id: true, name: true },
   });
+  const channelId = await resolveRoomChannelId(data.roomId, data.channelId);
 
   if (replyToId) {
     const parent = await prisma.roomMessage.findFirst({
-      where: { id: replyToId, roomId: data.roomId },
+      where: { id: replyToId, channelId },
       select: { id: true },
     });
     if (!parent) {
@@ -243,6 +247,7 @@ export async function addRoomMessage(
   const created = await prisma.roomMessage.create({
     data: {
       roomId: data.roomId,
+      channelId,
       authorId: session.user.id,
       body,
       gifUrl,
@@ -250,6 +255,7 @@ export async function addRoomMessage(
     },
     include: roomChatMessageInclude,
   });
+  await markRoomChannelRead(channelId, session.user.id);
   await notifyMentionedUsersViaWhatsApp({
     roomId: room.id,
     roomName: room.name,
@@ -259,6 +265,7 @@ export async function addRoomMessage(
   });
   await notifyRoomMembersViaPush({
     roomId: room.id,
+    channelId,
     roomName: room.name,
     authorId: session.user.id,
     authorName: session.user.name || session.user.email || "Rekan tim",
@@ -274,6 +281,7 @@ export async function addRoomMessageForm(
 ): Promise<RoomChatMessageView> {
   const session = await requireTasksRoomHubSession();
   const roomId = String(formData.get("roomId") ?? "").trim();
+  const channelIdRaw = String(formData.get("channelId") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
   const gifRaw = String(formData.get("gifUrl") ?? "").trim();
   const replyToIdRaw = String(formData.get("replyToId") ?? "").trim();
@@ -296,10 +304,11 @@ export async function addRoomMessageForm(
     where: { id: roomId },
     select: { id: true, name: true },
   });
+  const channelId = await resolveRoomChannelId(roomId, channelIdRaw || null);
 
   if (replyToId) {
     const parent = await prisma.roomMessage.findFirst({
-      where: { id: replyToId, roomId },
+      where: { id: replyToId, channelId },
       select: { id: true },
     });
     if (!parent) {
@@ -310,6 +319,7 @@ export async function addRoomMessageForm(
   const created = await prisma.roomMessage.create({
     data: {
       roomId,
+      channelId,
       authorId: session.user.id,
       body,
       gifUrl,
@@ -339,6 +349,7 @@ export async function addRoomMessageForm(
     where: { id: created.id },
     include: roomChatMessageInclude,
   });
+  await markRoomChannelRead(channelId, session.user.id);
 
   await notifyMentionedUsersViaWhatsApp({
     roomId: room.id,
@@ -349,6 +360,7 @@ export async function addRoomMessageForm(
   });
   await notifyRoomMembersViaPush({
     roomId: room.id,
+    channelId,
     roomName: room.name,
     authorId: session.user.id,
     authorName: session.user.name || session.user.email || "Rekan tim",

@@ -147,7 +147,9 @@ enum ContentPlanJenis {
   SINGLE_FEED
 }
 
-/** Funnel usage / objective konten di content planning. */
+/**
+ * Funnel usage / objective konten di content planning.
+ */
 enum ContentPlanUsage {
   AWARENESS
   CONSIDERATION
@@ -282,6 +284,7 @@ model User {
   taskComments              TaskComment[]
   taskAttachments           TaskAttachment[]
   roomMessages              RoomMessage[]
+  roomChannelReads          RoomChannelRead[]
   directConversationMembers DirectConversationMember[]
   directMessages            DirectMessage[]
   roomDocuments             RoomDocument[]
@@ -375,41 +378,44 @@ model Brand {
  * Ruang kerja tim (mis. Room Archipelago) — konteks sebelum Kanban.
  */
 model Room {
-  id               String                @id @default(cuid())
-  name             String
+  id                  String                   @id @default(cuid())
+  name                String
   /**
    * Banner visual ruangan (path publik di /uploads/rooms/{roomId}/...).
    */
-  bannerImage      String?
+  bannerImage         String?
   /**
    * Logo persegi ruangan (path publik di /uploads/rooms/{roomId}/logos/...).
    */
-  logoImage        String?
+  logoImage           String?
   /**
    * Bagian di menu Tugas: HQ, Team, atau Ruangan.
    */
-  workspaceSection RoomWorkspaceSection  @default(ROOMS)
-  brandId          String?
-  brand            Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  projects         Project[]
-  messages         RoomMessage[]
-  documents        RoomDocument[]
-  documentFolders  RoomDocumentFolder[]
-  members          RoomMember[]
-  contentPlanItems RoomContentPlanItem[]
+  workspaceSection    RoomWorkspaceSection     @default(ROOMS)
+  brandId             String?
+  brand               Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  projects            Project[]
+  messages            RoomMessage[]
+  channels            RoomChannel[]
+  documents           RoomDocument[]
+  documentFolders     RoomDocumentFolder[]
+  members             RoomMember[]
+  contentPlanItems    RoomContentPlanItem[]
   /**
    * Judul & urutan kolom Kanban per fase proses (diatur manager ruangan).
    */
-  kanbanColumns    RoomKanbanColumn[]
-  taskTags         TaskTag[]
+  kanbanColumns       RoomKanbanColumn[]
+  taskTags            TaskTag[]
   /**
    * View tambahan kustom yang ditambahkan oleh manager ruangan
    * (Kalender, Linimasa, Wiki, Hub tautan, List generik, Glosarium).
    */
-  views                RoomView[]
-  /** Semua fase proses tugas di ruangan (bawaan + tambahan). */
+  views               RoomView[]
+  /**
+   * Semua fase proses tugas di ruangan (bawaan + tambahan).
+   */
   customProcessPhases RoomCustomProcessPhase[]
 }
 
@@ -418,17 +424,17 @@ model Room {
  * fase tambahan dibuat manager dengan `legacyProcessKey` kosong.
  */
 model RoomCustomProcessPhase {
-  id                String            @id @default(cuid())
-  roomId            String
-  room              Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  name              String            @db.VarChar(80)
-  sortOrder         Int               @default(0)
+  id               String           @id @default(cuid())
+  roomId           String
+  room             Room             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name             String           @db.VarChar(80)
+  sortOrder        Int              @default(0)
   /**
    * Jika diisi, fase ini mewakili template bawaan (`RoomTaskProcess`) untuk ruangan ini.
    */
-  legacyProcessKey  RoomTaskProcess?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  legacyProcessKey RoomTaskProcess?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   tasks         Task[]
   kanbanColumns RoomKanbanColumn[]
@@ -456,36 +462,40 @@ model RoomView {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  calendarEvents      RoomCalendarEvent[]
-  timelineMilestones  RoomTimelineMilestone[]
-  wikiPages           RoomWikiPage[]
-  links               RoomLinkItem[]
-  listColumns         RoomListColumn[]
-  listRows            RoomListRow[]
-  glossaryEntries     RoomGlossaryEntry[]
+  calendarEvents     RoomCalendarEvent[]
+  timelineMilestones RoomTimelineMilestone[]
+  wikiPages          RoomWikiPage[]
+  links              RoomLinkItem[]
+  listColumns        RoomListColumn[]
+  listRows           RoomListRow[]
+  glossaryEntries    RoomGlossaryEntry[]
 
   @@index([roomId, sortOrder])
 }
 
-/** Event/acara di view CALENDAR per ruangan. */
+/**
+ * Event/acara di view CALENDAR per ruangan.
+ */
 model RoomCalendarEvent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   viewId      String
-  view        RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
-  title       String   @db.VarChar(160)
+  view        RoomView  @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title       String    @db.VarChar(160)
   description String?
-  location    String?  @db.VarChar(200)
+  location    String?   @db.VarChar(200)
   startsAt    DateTime
   endsAt      DateTime?
-  allDay      Boolean  @default(false)
+  allDay      Boolean   @default(false)
   createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([viewId, startsAt])
 }
 
-/** Milestone di view TIMELINE per ruangan. */
+/**
+ * Milestone di view TIMELINE per ruangan.
+ */
 model RoomTimelineMilestone {
   id          String             @id @default(cuid())
   viewId      String
@@ -501,25 +511,29 @@ model RoomTimelineMilestone {
   @@index([viewId, date])
 }
 
-/** Halaman wiki / catatan keputusan di view WIKI per ruangan. */
+/**
+ * Halaman wiki / catatan keputusan di view WIKI per ruangan.
+ */
 model RoomWikiPage {
-  id            String   @id @default(cuid())
-  viewId        String
-  view          RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
-  title         String   @db.VarChar(160)
+  id          String   @id @default(cuid())
+  viewId      String
+  view        RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(160)
   /**
    * Konten halaman dalam markdown sederhana.
    */
-  content       String   @default("")
-  sortOrder     Int      @default(0)
-  updatedById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  content     String   @default("")
+  sortOrder   Int      @default(0)
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([viewId, sortOrder])
 }
 
-/** Item tautan di view LINKS per ruangan (hub of links). */
+/**
+ * Item tautan di view LINKS per ruangan (hub of links).
+ */
 model RoomLinkItem {
   id          String   @id @default(cuid())
   viewId      String
@@ -538,7 +552,9 @@ model RoomLinkItem {
   @@index([viewId, sortOrder])
 }
 
-/** Definisi kolom kustom untuk view LIST generik. */
+/**
+ * Definisi kolom kustom untuk view LIST generik.
+ */
 model RoomListColumn {
   id        String             @id @default(cuid())
   viewId    String
@@ -561,7 +577,9 @@ model RoomListColumn {
   @@index([viewId, sortOrder])
 }
 
-/** Baris data untuk view LIST generik (nilai per kolom disimpan di JSON). */
+/**
+ * Baris data untuk view LIST generik (nilai per kolom disimpan di JSON).
+ */
 model RoomListRow {
   id        String   @id @default(cuid())
   viewId    String
@@ -577,7 +595,9 @@ model RoomListRow {
   @@index([viewId, sortOrder])
 }
 
-/** Entri istilah pada view GLOSSARY per ruangan. */
+/**
+ * Entri istilah pada view GLOSSARY per ruangan.
+ */
 model RoomGlossaryEntry {
   id         String   @id @default(cuid())
   viewId     String
@@ -603,7 +623,9 @@ model RoomKanbanColumn {
   id                   String                  @id @default(cuid())
   roomId               String
   room                 Room                    @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  /** Kolom fase enum bawaan — null jika kolom milik fase kustom. */
+  /**
+   * Kolom fase enum bawaan — null jika kolom milik fase kustom.
+   */
   roomProcess          RoomTaskProcess?
   customProcessPhaseId String?
   customProcessPhase   RoomCustomProcessPhase? @relation(fields: [customProcessPhaseId], references: [id], onDelete: Cascade)
@@ -658,49 +680,96 @@ model RoomContentPlanItem {
 }
 
 model RoomMember {
-  id                   String            @id @default(cuid())
-  roomId               String
-  room                 Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  userId               String
-  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role                 RoomMemberRole
+  id                           String            @id @default(cuid())
+  roomId                       String
+  room                         Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId                       String
+  user                         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                         RoomMemberRole
   /**
    * Fase tugas yang boleh diakses (manager & kontributor). Kosong untuk `ROOM_PROJECT_MANAGER` (diabaikan).
    */
-  allowedRoomProcesses           RoomTaskProcess[] @default([])
+  allowedRoomProcesses         RoomTaskProcess[] @default([])
   /**
    * Fase proses kustom ruangan yang boleh diakses (selain enum bawaan).
    */
-  allowedCustomProcessPhaseIds   String[]          @default([])
-  createdAt                      DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  allowedCustomProcessPhaseIds String[]          @default([])
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
 
   @@unique([roomId, userId])
 }
 
 model RoomMessage {
-  id        String        @id @default(cuid())
-  roomId    String
-  room      Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  body      String        @default("")
+  id          String                  @id @default(cuid())
+  roomId      String
+  room        Room                    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /**
+   * Channel (ala Discord) tempat pesan berada. Nullable untuk kompatibilitas
+   * data lama; selalu diisi oleh aplikasi (backfill ke channel default #umum).
+   */
+  channelId   String?
+  channel     RoomChannel?            @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body        String                  @default("")
   /**
    * URL gambar/GIF ter-hosting (Tenor, Giphy, dll.) — teks opsional di `body`.
    */
-  gifUrl    String?
-  replyToId String?
-  replyTo   RoomMessage?  @relation("RoomMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies   RoomMessage[] @relation("RoomMessageReplies")
-  editedAt  DateTime?
-  deletedAt DateTime?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @default(now()) @updatedAt
+  gifUrl      String?
+  replyToId   String?
+  replyTo     RoomMessage?            @relation("RoomMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies     RoomMessage[]           @relation("RoomMessageReplies")
+  editedAt    DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @default(now()) @updatedAt
   attachments RoomMessageAttachment[]
 
   @@index([roomId, createdAt])
   @@index([roomId, updatedAt])
+  @@index([channelId, createdAt])
+  @@index([channelId, updatedAt])
   @@index([replyToId])
+}
+
+/**
+ * Channel chat (ala Discord) di dalam sebuah ruangan. Satu ruangan punya satu
+ * channel default `#umum` (`isDefault`, tidak dapat dihapus) + channel tambahan
+ * yang dibuat manager ruangan.
+ */
+model RoomChannel {
+  id        String            @id @default(cuid())
+  roomId    String
+  room      Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name      String            @db.VarChar(80)
+  topic     String?           @db.VarChar(200)
+  sortOrder Int               @default(0)
+  isDefault Boolean           @default(false)
+  /** Channel terkunci tidak dapat dihapus (selain channel default yang selalu terkunci). */
+  isLocked  Boolean           @default(false)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  messages  RoomMessage[]
+  reads     RoomChannelRead[]
+
+  @@index([roomId, sortOrder])
+}
+
+/**
+ * Penanda pesan terakhir dibaca per (user, channel) untuk badge unread.
+ */
+model RoomChannelRead {
+  id         String      @id @default(cuid())
+  channelId  String
+  channel    RoomChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime?
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([channelId, userId])
+  @@index([userId])
 }
 
 model RoomMessageAttachment {
@@ -716,12 +785,14 @@ model RoomMessageAttachment {
   @@index([messageId])
 }
 
-/** Percakapan pribadi 1:1 antar pengguna. */
+/**
+ * Percakapan pribadi 1:1 antar pengguna.
+ */
 model DirectConversation {
-  id            String                    @id @default(cuid())
+  id            String                     @id @default(cuid())
   lastMessageAt DateTime?
-  createdAt     DateTime                  @default(now())
-  updatedAt     DateTime                  @updatedAt
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
   members       DirectConversationMember[]
   messages      DirectMessage[]
 
@@ -742,20 +813,20 @@ model DirectConversationMember {
 }
 
 model DirectMessage {
-  id             String             @id @default(cuid())
+  id             String                    @id @default(cuid())
   conversationId String
-  conversation   DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   DirectConversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   authorId       String
-  author         User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  body           String             @default("")
+  author         User                      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body           String                    @default("")
   gifUrl         String?
   replyToId      String?
-  replyTo        DirectMessage?     @relation("DirectMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies        DirectMessage[]    @relation("DirectMessageReplies")
+  replyTo        DirectMessage?            @relation("DirectMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        DirectMessage[]           @relation("DirectMessageReplies")
   editedAt       DateTime?
   deletedAt      DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @default(now()) @updatedAt
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @default(now()) @updatedAt
   attachments    DirectMessageAttachment[]
 
   @@index([conversationId, createdAt])
@@ -780,9 +851,9 @@ model DirectMessageAttachment {
  * Folder logis untuk mengelompokkan dokumen bersama per ruangan (Logo, Legal, dll.).
  */
 model RoomDocumentFolder {
-  id        String         @id @default(cuid())
+  id        String               @id @default(cuid())
   roomId    String
-  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room      Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
   /**
    * Folder bersarang (mirip Google Drive). Null = folder di root drive ruangan.
    */
@@ -790,8 +861,8 @@ model RoomDocumentFolder {
   parent    RoomDocumentFolder?  @relation("RoomDocumentFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
   children  RoomDocumentFolder[] @relation("RoomDocumentFolderTree")
   name      String
-  sortOrder Int            @default(0)
-  createdAt DateTime       @default(now())
+  sortOrder Int                  @default(0)
+  createdAt DateTime             @default(now())
   documents RoomDocument[]
 
   @@unique([roomId, parentId, name])
@@ -840,30 +911,32 @@ model RoomDocument {
 }
 
 model Project {
-  id                       String         @id @default(cuid())
+  id                       String             @id @default(cuid())
   roomId                   String
-  room                     Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room                     Room               @relation(fields: [roomId], references: [id], onDelete: Cascade)
   /**
    * Kosong untuk papan tugas internal ruangan HQ/Team tanpa brand.
    */
   brandId                  String?
-  brand                    Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  brand                    Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
   name                     String
-  currentStage             PipelineStage  @default(MARKET_RESEARCH)
-  stageEnteredAt           DateTime       @default(now())
+  currentStage             PipelineStage      @default(MARKET_RESEARCH)
+  stageEnteredAt           DateTime           @default(now())
   /**
    * Tahap tujuan yang diajukan tim — `currentStage` tidak berubah sampai CEO menyetujui.
    */
   pendingPipelineStage     PipelineStage?
   pipelineStageRequestedAt DateTime?
-  totalProgress            Int            @default(0)
-  createdAt                DateTime       @default(now())
-  updatedAt                DateTime       @updatedAt
+  totalProgress            Int                @default(0)
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
   tasks                    Task[]
   milestones               ProjectMilestone[]
 }
 
-/** Milestone linimasa per proyek pipeline (template default + kustom). */
+/**
+ * Milestone linimasa per proyek pipeline (template default + kustom).
+ */
 model ProjectMilestone {
   id          String             @id @default(cuid())
   projectId   String
@@ -882,27 +955,27 @@ model ProjectMilestone {
 }
 
 model Task {
-  id                       String               @id @default(cuid())
+  id                       String                  @id @default(cuid())
   projectId                String
-  project                  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project                  Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /**
    * Fase alur di ruangan kerja (filter Kanban/List/Gantt per proses).
    * Untuk tugas di fase kustom, tetap diisi default enum; filter pakai `customProcessPhaseId`.
    */
-  roomProcess              RoomTaskProcess      @default(MARKET_RESEARCH)
+  roomProcess              RoomTaskProcess         @default(MARKET_RESEARCH)
   customProcessPhaseId     String?
   customProcessPhase       RoomCustomProcessPhase? @relation(fields: [customProcessPhaseId], references: [id], onDelete: SetNull)
   title                    String
   description              String?
-  status                   TaskStatus           @default(TODO)
-  priority                 TaskPriority         @default(MEDIUM)
+  status                   TaskStatus              @default(TODO)
+  priority                 TaskPriority            @default(MEDIUM)
   dueDate                  DateTime?
-  isApprovalRequired       Boolean              @default(false)
-  isApproved               Boolean              @default(false)
+  isApprovalRequired       Boolean                 @default(false)
+  isApproved               Boolean                 @default(false)
   vendorId                 String?
-  vendor                   Vendor?              @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  vendor                   Vendor?                 @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   leadTimeDays             Int?
-  sortOrder                Int                  @default(0)
+  sortOrder                Int                     @default(0)
   /**
    * Pengingat WA “3 hari lagi” sudah dikirim (hindari duplikat).
    */
@@ -915,8 +988,8 @@ model Task {
    * Tugas selesai diarsipkan — disembunyikan dari papan utama.
    */
   archivedAt               DateTime?
-  createdAt                DateTime             @default(now())
-  updatedAt                DateTime             @updatedAt
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
   checklistItems           TaskChecklistItem[]
   comments                 TaskComment[]
   attachments              TaskAttachment[]
@@ -926,7 +999,7 @@ model Task {
    * Jika diisi, tugas ini dibuat dari baris Content Planning (alur upload khusus).
    */
   contentPlanItemId        String?
-  contentPlanItem          RoomContentPlanItem? @relation(fields: [contentPlanItemId], references: [id], onDelete: SetNull)
+  contentPlanItem          RoomContentPlanItem?    @relation(fields: [contentPlanItemId], references: [id], onDelete: SetNull)
   contentPlanJenis         ContentPlanJenis?
 
   @@index([projectId, roomProcess, archivedAt, sortOrder])
@@ -1574,9 +1647,15 @@ model FinanceFixedAsset {
   updatedAt               DateTime                  @updatedAt
 }
 
-/* -------------------------------------------------------------------------- */
-/*                             Absensi (Attendance)                          */
-/* -------------------------------------------------------------------------- */
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Absensi (Attendance)
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 /**
  * Jenis catatan absensi. CHECK_IN/CHECK_OUT lewat verifikasi wajah 1:1,
@@ -1616,13 +1695,21 @@ model Attendance {
   type           AttendanceType
   timestamp      DateTime       @default(now())
   date           String
-  /** Confidence kecocokan wajah (0-1); 0 untuk SICK/PERMISSION. */
+  /**
+   * Confidence kecocokan wajah (0-1); 0 untuk SICK/PERMISSION.
+   */
   confidence     Float          @default(0)
-  /** Alasan sakit / izin (SICK/PERMISSION). */
+  /**
+   * Alasan sakit / izin (SICK/PERMISSION).
+   */
   reason         String?
-  /** JSON array rencana kerja (CHECK_IN). */
+  /**
+   * JSON array rencana kerja (CHECK_IN).
+   */
   todoList       String?
-  /** JSON array tugas selesai (CHECK_OUT). */
+  /**
+   * JSON array tugas selesai (CHECK_OUT).
+   */
   completedTasks String?
   createdAt      DateTime       @default(now())
 

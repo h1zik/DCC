@@ -825,74 +825,45 @@ export function RoomDocumentsWorkspace({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Page hero */}
-      <header className="border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm">
-        <div
-          className="from-primary/8 absolute inset-0 bg-gradient-to-br via-transparent to-transparent"
-          aria-hidden
-        />
-        <div
-          className="bg-primary/10 absolute -top-12 -right-12 size-40 rounded-full blur-3xl"
-          aria-hidden
-        />
-        <div className="relative flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="bg-primary/12 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <HardDrive className="size-5" aria-hidden />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-xl font-semibold tracking-tight">
-                Documents &amp; files
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                Arsip file bersama untuk ruangan ini — kontrak, logo, referensi,
-                aset, dll.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="border-border bg-background/70 flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
-              <FileIcon className="size-3.5 opacity-70" aria-hidden />
-              {totalDocs} file
-            </div>
-            <div className="border-border bg-background/70 flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
-              <Folder className="size-3.5 opacity-70" aria-hidden />
-              {folders.length} folder
-            </div>
-            <div className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-              {formatFileSize(totalSize)}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Bantuan dokumen"
-              onClick={() => setShowHelp((v) => !v)}
-            >
-              <Info className="size-4" />
-            </Button>
-          </div>
-        </div>
-        {showHelp ? (
-          <div className="border-border bg-muted/30 relative border-t px-5 py-3 text-xs leading-relaxed sm:px-6">
-            Navigasi seperti Google Drive: buka folder di panel kiri atau
-            klik kartu folder. Buat subfolder di dalam folder yang sedang
-            dibuka. File diunggah ke lokasi yang aktif (breadcrumb). Saat
-            mencari, hasil mencakup seluruh ruangan beserta jalur foldernya.
-          </div>
-        ) : null}
-      </header>
-
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Sidebar — pohon folder (Drive) */}
-        <aside className="border-border bg-card sticky top-[5.5rem] z-10 w-full shrink-0 space-y-3 rounded-xl border p-3 lg:max-w-[260px]">
-          <div className="flex items-center justify-between">
-            <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.08em] uppercase">
-              Drive ruangan
-            </p>
-            <span className="text-muted-foreground text-[10px] tabular-nums">
-              {folders.length} folder
-            </span>
+        <aside className="border-border bg-card sticky top-14 z-10 w-full shrink-0 space-y-3 rounded-xl border p-3 lg:max-w-[260px]">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.08em] uppercase">
+                Drive ruangan
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Bantuan dokumen"
+                onClick={() => setShowHelp((v) => !v)}
+              >
+                <Info className="size-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span className="border-border bg-background/70 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium">
+                <FileIcon className="size-3 opacity-70" aria-hidden />
+                {totalDocs} file
+              </span>
+              <span className="border-border bg-background/70 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium">
+                <Folder className="size-3 opacity-70" aria-hidden />
+                {folders.length} folder
+              </span>
+              <span className="text-muted-foreground tabular-nums">
+                {formatFileSize(totalSize)}
+              </span>
+            </div>
+            {showHelp ? (
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                Navigasi seperti Google Drive: buka folder di panel kiri atau klik
+                kartu folder. Buat subfolder di dalam folder yang sedang dibuka.
+                File diunggah ke lokasi yang aktif (breadcrumb). Saat mencari,
+                hasil mencakup seluruh ruangan beserta jalur foldernya.
+              </p>
+            ) : null}
           </div>
 
           <DriveFolderTree

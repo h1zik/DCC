@@ -69,7 +69,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
   Download,
   Eye,
   FileText,
@@ -1947,50 +1946,21 @@ export function ContentPlanningClient({
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {/* Hero header */}
-      <header className="border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm">
-        <div
-          className="from-primary/8 absolute inset-0 bg-gradient-to-br via-transparent to-transparent"
-          aria-hidden
-        />
-        <div
-          className="bg-primary/10 absolute -top-12 -right-12 size-40 rounded-full blur-3xl"
-          aria-hidden
-        />
-        <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="bg-primary/12 text-primary flex size-11 shrink-0 items-center justify-center rounded-xl">
-              <ClipboardList className="size-5" aria-hidden />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-xl font-semibold tracking-tight">
-                Content planning
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                Tabel perencanaan konten per ruangan — PIC, status copywriting &amp;
-                design, deadline, dan posting.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="border-border bg-background/70 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
-              <Layers className="size-3.5 opacity-70" aria-hidden /> {stats.total} total
-            </span>
-            <span className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
-              ✓ {stats.published} terbit
-            </span>
-            <span className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
-              ↻ {stats.inProgress} proses
-            </span>
-            <span className="border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
-              • {stats.fresh} baru
-            </span>
-          </div>
-        </div>
-      </header>
-
-      {/* Toolbar: search + filter toggle + actions */}
       <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-xl border p-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="border-border bg-background/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
+            <Layers className="size-3.5 opacity-70" aria-hidden /> {stats.total} total
+          </span>
+          <span className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
+            ✓ {stats.published} terbit
+          </span>
+          <span className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
+            ↻ {stats.inProgress} proses
+          </span>
+          <span className="border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
+            • {stats.fresh} baru
+          </span>
+        </div>
         <div className="border-input focus-within:border-ring focus-within:ring-ring/40 bg-background/40 flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 transition-colors focus-within:ring-2 sm:max-w-md">
           <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
           <input

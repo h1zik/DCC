@@ -2,7 +2,6 @@
 import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ColumnDef } from "@tanstack/react-table";
 import {
   RoomTaskProcess,
   TaskWorkspaceView,
@@ -13,19 +12,18 @@ import {
   type User,
   type Vendor,
 } from "@prisma/client";
-import Image from "next/image";
 import Link from "next/link";
+import { Archive, Columns3, LayoutGrid, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createTask, deleteTask } from "@/actions/tasks";
 import { setDefaultTaskWorkspaceView } from "@/actions/task-view-preference";
-import { DataTable } from "@/components/data-table";
 import { TasksCalendar, type CalendarTask } from "./tasks-calendar";
+import { TasksList } from "./tasks-list";
 import { TasksGantt, type GanttTask } from "./tasks-gantt";
 import { TasksKanban, type KanbanTask } from "./tasks-kanban";
 import { TaskDetailSheet } from "./task-detail-sheet";
 import type { TaskRow } from "./task-types";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -47,7 +45,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   roomProcessPhaseKey,
-  roomProcessPhaseLabel,
   type RoomProcessPhaseRef,
 } from "@/lib/room-process-phase";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
@@ -407,120 +404,6 @@ export function TasksWorkspace({
     ];
   }, [vendors]);
 
-  const columns = useMemo<ColumnDef<TaskRow>[]>(
-    () => [
-      {
-        accessorKey: "title",
-        header: "Tugas",
-        cell: ({ row }) => (
-          <span className="font-medium">{row.original.title}</span>
-        ),
-      },
-      {
-        id: "brand",
-        header: simpleHub ? "Konteks" : "Brand",
-        cell: ({ row }) =>
-          simpleHub
-            ? taskProjectContextLabel(row.original.project)
-            : (row.original.project.brand?.name ?? "—"),
-      },
-      {
-        id: "project",
-        header: "Proyek",
-        cell: ({ row }) => row.original.project.name,
-      },
-      {
-        id: "pic",
-        header: "PIC",
-        cell: ({ row }) => {
-          const assignees = row.original.assignees.map((a) => a.user);
-          if (assignees.length === 0) {
-            return <span className="text-muted-foreground">—</span>;
-          }
-          const a = assignees[0]!;
-          const label = a.name ?? a.email;
-          const initial = label.slice(0, 1).toUpperCase();
-          return (
-            <div className="flex items-center gap-2">
-              {a.image ? (
-                <Image
-                  src={a.image}
-                  alt=""
-                  width={24}
-                  height={24}
-                  className="border-border size-6 shrink-0 rounded-full border object-cover"
-                  unoptimized
-                />
-              ) : (
-                <div
-                  className="border-border bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold"
-                  aria-hidden
-                >
-                  {initial}
-                </div>
-              )}
-              <span className="truncate">
-                {label}
-                {assignees.length > 1 ? ` +${assignees.length - 1}` : ""}
-              </span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: "priority",
-        header: "Prioritas",
-        cell: ({ row }) => priorityLabel(row.original.priority),
-      },
-      {
-        id: "due",
-        header: "Deadline",
-        cell: ({ row }) =>
-          row.original.dueDate
-            ? row.original.dueDate.toLocaleDateString("id-ID")
-            : "—",
-      },
-      {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => (
-          <Badge variant="outline">{taskStatusLabel(row.original.status)}</Badge>
-        ),
-      },
-      {
-        id: "actions",
-        header: "",
-        cell: ({ row }) => (
-          <div className="flex gap-1">
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                openDetail(row.original);
-              }}
-            >
-              Buka
-            </Button>
-            {isRoomManager ? (
-              <Button
-                size="xs"
-                variant="destructive"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteTask(row.original.id);
-                }}
-              >
-                Hapus
-              </Button>
-            ) : null}
-          </div>
-        ),
-      },
-    ],
-    [isRoomManager, onDeleteTask, openDetail, simpleHub],
-  );
-
   const onChangeView = useCallback((nextValue: string) => {
     const next = nextValue as TaskViewTab;
     setActiveView(next);
@@ -571,23 +454,6 @@ export function TasksWorkspace({
         />
       ) : null}
 
-      {roomTitle ? (
-        <div className="bg-muted/50 border-border rounded-lg border px-3 py-2 text-sm">
-          <p>
-            Ruangan aktif: <span className="font-semibold">{roomTitle}</span>
-          </p>
-          {activePhase !== undefined ? (
-            <p className="text-muted-foreground mt-1">
-              Proses alur:{" "}
-              <span className="text-foreground font-medium">
-                {roomProcessPhaseLabel(activePhase)}
-              </span>
-              {" — "}
-              tugas baru ditambahkan ke fase ini.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
       {roomTitle && isRoomManager && projects.length === 0 && !simpleHub ? (
         <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-50">
           <p className="font-medium">Belum ada proyek di ruangan ini</p>
@@ -605,290 +471,128 @@ export function TasksWorkspace({
           </p>
         </div>
       ) : null}
-      {showArchived ? (
-        <p className="text-muted-foreground rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-sm">
-          Menampilkan tugas <span className="text-foreground font-medium">Selesai</span>{" "}
-          yang diarsipkan. Pulihkan jika perlu muncul lagi di papan utama.
-        </p>
-      ) : null}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {roomId != null && boardPath != null && archivedPath != null ? (
-          <>
-            <Link
-              href={boardPath}
-              scroll={false}
-              className={cn(
-                buttonVariants({
-                  size: "sm",
-                  variant: showArchived ? "outline" : "secondary",
-                }),
-              )}
-            >
-              Papan tugas
-            </Link>
-            <Link
-              href={archivedPath}
-              scroll={false}
-              className={cn(
-                buttonVariants({
-                  size: "sm",
-                  variant: showArchived ? "secondary" : "outline",
-                }),
-              )}
-            >
-              Arsip
-            </Link>
-          </>
-        ) : null}
-        {roomId != null &&
-        isRoomManager &&
-        !showArchived &&
-        (kanbanColumns?.length ?? 0) > 0 ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setKanbanSettingsOpen(true)}
-          >
-            Kolom Kanban…
-          </Button>
-        ) : null}
-        {isRoomManager && !showArchived ? (
-          <Button type="button" onClick={() => openCreate()}>
-            Tugas baru
-          </Button>
-        ) : null}
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Tugas baru</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-3 py-2">
-              <div className="space-y-2">
-                <Label>Proyek</Label>
-                <Select
-                  value={projectId}
-                  items={createDialogProjectItems}
-                  onValueChange={(v) => {
-                    if (v) setProjectId(v);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {projectSelectLabel(p)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="tt">Judul</Label>
-                <Input id="tt" value={title} onChange={(e) => setTitle(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="td">Deskripsi</Label>
-                <Textarea
-                  id="td"
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <Label>PIC</Label>
-                  <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
-                    {users.map((u) => {
-                      const checked = assigneeIds.includes(u.id);
-                      return (
-                        <label key={u.id} className="flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={checked}
-                            disabled={!isRoomManager}
-                            onCheckedChange={(v) => {
-                              const next = v === true;
-                              setAssigneeIds((prev) =>
-                                next
-                                  ? [...prev, u.id]
-                                  : prev.filter((id) => id !== u.id),
-                              );
-                            }}
-                          />
-                          <span>{u.name ?? u.email}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {!isRoomManager ? (
-                    <p className="text-muted-foreground text-xs">
-                      PIC ditetapkan oleh manager ruangan lewat detail tugas setelah
-                      tugas dibuat.
-                    </p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <Label>Tag</Label>
-                  <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
-                    {roomTaskTags.length === 0 ? (
-                      <p className="text-muted-foreground text-xs">Belum ada tag ruangan.</p>
-                    ) : (
-                      roomTaskTags.map((tag) => {
-                        const checked = tagIds.includes(tag.id);
-                        return (
-                          <label key={tag.id} className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(v) => {
-                                const next = v === true;
-                                setTagIds((prev) =>
-                                  next
-                                    ? [...prev, tag.id]
-                                    : prev.filter((id) => id !== tag.id),
-                                );
-                              }}
-                            />
-                            <span
-                              className="inline-block size-3 rounded-sm border border-border"
-                              style={{ backgroundColor: tag.colorHex }}
-                              aria-hidden
-                            />
-                            <span>{tag.name}</span>
-                          </label>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <Label>Prioritas</Label>
-                  <Select
-                    value={priority}
-                    items={createDialogPriorityItems}
-                    onValueChange={(v) => {
-                      if (v) setPriority(v as TaskPriority);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.values(TaskPriority) as TaskPriority[]).map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {priorityLabel(p)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={status}
-                    items={createDialogStatusItems}
-                    onValueChange={(v) => {
-                      if (v) setStatus(v as TaskStatus);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.values(TaskStatus) as TaskStatus[]).map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {taskStatusLabel(s)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <Label htmlFor="dd">Deadline</Label>
-                  <Input
-                    id="dd"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <Label>Vendor (opsional)</Label>
-                  <Select
-                    value={vendorId || "__none__"}
-                    items={createDialogVendorItems}
-                    onValueChange={(v) => {
-                      if (!v || v === "__none__") setVendorId("");
-                      else setVendorId(v);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="—" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">—</SelectItem>
-                      {vendors.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lt">Lead time (hari)</Label>
-                  <Input
-                    id="lt"
-                    type="number"
-                    min={0}
-                    value={leadTimeDays}
-                    onChange={(e) => setLeadTimeDays(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="appr"
-                  checked={approval}
-                  onCheckedChange={(c) => setApproval(c === true)}
-                />
-                <Label htmlFor="appr" className="text-sm font-normal">
-                  Perlu persetujuan CEO
-                </Label>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>
-                Batal
-              </Button>
-              <Button
-                onClick={onSaveCreate}
-                disabled={pending || !title.trim() || !projectId}
+      <Tabs value={activeView} onValueChange={onChangeView} className="gap-3">
+        <div className="border-border flex flex-col gap-2 border-b pb-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:rounded-xl sm:border sm:bg-card sm:p-1.5 sm:shadow-sm">
+          <div className="flex items-center justify-between gap-2 sm:contents">
+            {roomId != null && boardPath != null && archivedPath != null ? (
+              <div
+                className="bg-muted/50 flex shrink-0 items-center rounded-lg p-0.5"
+                role="tablist"
+                aria-label="Papan atau arsip"
               >
-                Simpan
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+                <Link
+                  href={boardPath}
+                  scroll={false}
+                  aria-current={!showArchived ? "page" : undefined}
+                  aria-label="Papan tugas"
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3",
+                    !showArchived
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <LayoutGrid className="size-3.5 shrink-0" aria-hidden />
+                  <span className="hidden sm:inline">Papan</span>
+                </Link>
+                <Link
+                  href={archivedPath}
+                  scroll={false}
+                  aria-current={showArchived ? "page" : undefined}
+                  aria-label="Arsip tugas"
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3",
+                    showArchived
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Archive className="size-3.5 shrink-0" aria-hidden />
+                  <span className="hidden sm:inline">Arsip</span>
+                </Link>
+              </div>
+            ) : (
+              <span className="sm:hidden" />
+            )}
 
-      <Tabs value={activeView} onValueChange={onChangeView}>
-        <TabsList>
-          <TabsTrigger value="kanban">Kanban</TabsTrigger>
-          <TabsTrigger value="list">Daftar</TabsTrigger>
-          <TabsTrigger value="gantt">Gantt</TabsTrigger>
-          <TabsTrigger value="calendar">Kalender</TabsTrigger>
-        </TabsList>
-        <TabsContent value="kanban" className="mt-4">
+            <div className="flex shrink-0 items-center gap-1 sm:order-last sm:ml-auto">
+              {roomId != null &&
+              isRoomManager &&
+              !showArchived &&
+              activeView === "kanban" &&
+              (kanbanColumns?.length ?? 0) > 0 ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    className="sm:hidden"
+                    aria-label="Kolom Kanban"
+                    onClick={() => setKanbanSettingsOpen(true)}
+                  >
+                    <Columns3 className="size-3.5" aria-hidden />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="hidden gap-1.5 sm:inline-flex"
+                    onClick={() => setKanbanSettingsOpen(true)}
+                  >
+                    <Columns3 className="size-3.5" aria-hidden />
+                    Kolom Kanban
+                  </Button>
+                </>
+              ) : null}
+              {isRoomManager && !showArchived ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    className="sm:hidden"
+                    aria-label="Tugas baru"
+                    onClick={() => openCreate()}
+                  >
+                    <Plus className="size-3.5" aria-hidden />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="hidden gap-1.5 sm:inline-flex"
+                    onClick={() => openCreate()}
+                  >
+                    <Plus className="size-3.5" aria-hidden />
+                    Tugas baru
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <TabsList className="h-8 w-full max-w-full justify-start overflow-x-auto [scrollbar-width:none] sm:w-fit sm:shrink-0 [&::-webkit-scrollbar]:hidden">
+            <TabsTrigger value="kanban" className="max-sm:flex-none max-sm:px-2.5">
+              Kanban
+            </TabsTrigger>
+            <TabsTrigger value="list" className="max-sm:flex-none max-sm:px-2.5">
+              Daftar
+            </TabsTrigger>
+            <TabsTrigger value="gantt" className="max-sm:flex-none max-sm:px-2.5">
+              Gantt
+            </TabsTrigger>
+            <TabsTrigger value="calendar" className="max-sm:flex-none max-sm:px-2.5">
+              Kalender
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {showArchived ? (
+          <p className="text-muted-foreground rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2 text-sm">
+            Menampilkan tugas <span className="text-foreground font-medium">Selesai</span>{" "}
+            yang diarsipkan. Pulihkan jika perlu muncul lagi di papan utama.
+          </p>
+        ) : null}
+
+        <TabsContent value="kanban" className="mt-0">
           <TasksKanban
             tasks={kanbanTasks}
             columns={resolvedKanbanColumns}
@@ -906,15 +610,35 @@ export function TasksWorkspace({
             }
           />
         </TabsContent>
-        <TabsContent value="list" className="mt-4">
-          <DataTable
-            columns={columns}
-            data={localTasks}
+        <TabsContent value="list" className="mt-0">
+          <TasksList
+            tasks={localTasks}
+            columns={resolvedKanbanColumns}
+            users={users}
+            isRoomManager={isRoomManager}
+            onTaskClick={openDetail}
+            onTaskPatched={(taskId, patch) => {
+              setLocalTasks((prev) =>
+                prev.map((task) =>
+                  task.id === taskId ? ({ ...task, ...patch } as TaskRow) : task,
+                ),
+              );
+              setDetailTask((prev) =>
+                prev && prev.id === taskId
+                  ? ({ ...prev, ...patch } as TaskRow)
+                  : prev,
+              );
+            }}
+            onAddTask={
+              isRoomManager && !showArchived
+                ? (taskStatus) => openCreate(taskStatus)
+                : undefined
+            }
+            readOnly={showArchived}
             empty="Belum ada tugas."
-            onRowClick={(row) => openDetail(row)}
           />
         </TabsContent>
-        <TabsContent value="gantt" className="mt-4">
+        <TabsContent value="gantt" className="mt-0">
           <TasksGantt
             tasks={ganttTasks}
             onTaskClick={(id) => {
@@ -923,7 +647,7 @@ export function TasksWorkspace({
             }}
           />
         </TabsContent>
-        <TabsContent value="calendar" className="mt-4">
+        <TabsContent value="calendar" className="mt-0">
           <TasksCalendar
             tasks={calendarTasks}
             onTaskClick={(id) => {
@@ -933,6 +657,228 @@ export function TasksWorkspace({
           />
         </TabsContent>
       </Tabs>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Tugas baru</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="space-y-2">
+              <Label>Proyek</Label>
+              <Select
+                value={projectId}
+                items={createDialogProjectItems}
+                onValueChange={(v) => {
+                  if (v) setProjectId(v);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {projectSelectLabel(p)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tt">Judul</Label>
+              <Input id="tt" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="td">Deskripsi</Label>
+              <Textarea
+                id="td"
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label>PIC</Label>
+                <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
+                  {users.map((u) => {
+                    const checked = assigneeIds.includes(u.id);
+                    return (
+                      <label key={u.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={checked}
+                          disabled={!isRoomManager}
+                          onCheckedChange={(v) => {
+                            const next = v === true;
+                            setAssigneeIds((prev) =>
+                              next
+                                ? [...prev, u.id]
+                                : prev.filter((id) => id !== u.id),
+                            );
+                          }}
+                        />
+                        <span>{u.name ?? u.email}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {!isRoomManager ? (
+                  <p className="text-muted-foreground text-xs">
+                    PIC ditetapkan oleh manager ruangan lewat detail tugas setelah
+                    tugas dibuat.
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label>Tag</Label>
+                <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
+                  {roomTaskTags.length === 0 ? (
+                    <p className="text-muted-foreground text-xs">Belum ada tag ruangan.</p>
+                  ) : (
+                    roomTaskTags.map((tag) => {
+                      const checked = tagIds.includes(tag.id);
+                      return (
+                        <label key={tag.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              const next = v === true;
+                              setTagIds((prev) =>
+                                next
+                                  ? [...prev, tag.id]
+                                  : prev.filter((id) => id !== tag.id),
+                              );
+                            }}
+                          />
+                          <span
+                            className="inline-block size-3 rounded-sm border border-border"
+                            style={{ backgroundColor: tag.colorHex }}
+                            aria-hidden
+                          />
+                          <span>{tag.name}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label>Prioritas</Label>
+                <Select
+                  value={priority}
+                  items={createDialogPriorityItems}
+                  onValueChange={(v) => {
+                    if (v) setPriority(v as TaskPriority);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.values(TaskPriority) as TaskPriority[]).map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {priorityLabel(p)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={status}
+                  items={createDialogStatusItems}
+                  onValueChange={(v) => {
+                    if (v) setStatus(v as TaskStatus);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.values(TaskStatus) as TaskStatus[]).map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {taskStatusLabel(s)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="dd">Deadline</Label>
+                <Input
+                  id="dd"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label>Vendor (opsional)</Label>
+                <Select
+                  value={vendorId || "__none__"}
+                  items={createDialogVendorItems}
+                  onValueChange={(v) => {
+                    if (!v || v === "__none__") setVendorId("");
+                    else setVendorId(v);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {vendors.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lt">Lead time (hari)</Label>
+                <Input
+                  id="lt"
+                  type="number"
+                  min={0}
+                  value={leadTimeDays}
+                  onChange={(e) => setLeadTimeDays(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="appr"
+                checked={approval}
+                onCheckedChange={(c) => setApproval(c === true)}
+              />
+              <Label htmlFor="appr" className="text-sm font-normal">
+                Perlu persetujuan CEO
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={onSaveCreate}
+              disabled={pending || !title.trim() || !projectId}
+            >
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
