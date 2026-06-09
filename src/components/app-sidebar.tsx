@@ -48,6 +48,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useAgentPanel } from "@/components/agent/agent-panel-context";
+import { TasksNav } from "@/components/nav/tasks-nav";
 import { cn } from "@/lib/utils";
 
 const navCeo = [
@@ -249,6 +250,17 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
               {nav.map((item) => {
+                if (item.href === "/tasks") {
+                  return (
+                    <TasksNav
+                      key={item.href}
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      className={sidebarMenuItemClass}
+                    />
+                  );
+                }
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
@@ -375,28 +387,28 @@ function BrandHeader({
           "group-data-[collapsible=icon]:px-0.5 group-data-[collapsible=icon]:py-2.5",
         )}
       >
-        <div
-          className={cn(
-            "relative flex shrink-0 items-center justify-center overflow-hidden",
-            "rounded-2xl border border-sidebar-border/70 bg-sidebar shadow-sm",
-            "size-11 transition-[width,height,border-radius] duration-300 ease-in-out",
-            "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-lg",
-          )}
-        >
-          {logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={logo}
-              alt={title}
-              className="size-full object-contain p-0.5"
-            />
-          ) : (
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logo}
+            alt={title}
+            className="size-11 shrink-0 object-contain transition-[width,height] duration-300 ease-in-out group-data-[collapsible=icon]:size-8"
+          />
+        ) : (
+          <div
+            className={cn(
+              "relative flex shrink-0 items-center justify-center overflow-hidden",
+              "rounded-2xl border border-sidebar-border/70 bg-sidebar shadow-sm",
+              "size-11 transition-[width,height,border-radius] duration-300 ease-in-out",
+              "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-lg",
+            )}
+          >
             <Sparkles
               className="size-5 text-sidebar-primary transition-[width,height] duration-300 group-data-[collapsible=icon]:size-4"
               aria-hidden
             />
-          )}
-        </div>
+          </div>
+        )}
         <div
           className={cn(
             "mt-1.5 flex w-full min-w-0 flex-col items-center gap-0.5 overflow-hidden text-center leading-tight",

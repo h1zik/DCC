@@ -2,13 +2,11 @@
 import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
-import { createElement, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { RoomViewType } from "@prisma/client";
 import { toast } from "sonner";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { deleteRoomView, renameRoomView } from "@/actions/room-views";
-import { ROOM_VIEW_TYPE_META } from "@/lib/room-view-meta";
-import { roomViewTypeIcon } from "@/lib/room-view-icon";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,7 +25,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
 type Props = {
   view: {
     id: string;
@@ -46,12 +43,6 @@ export function RoomViewHeader({ view, canManage }: Props) {
   const [title, setTitle] = useState(view.title);
   const [subtitle, setSubtitle] = useState(view.subtitle ?? "");
   const [pending, startTransition] = useTransition();
-  const iconNode = createElement(roomViewTypeIcon(view.type), {
-    className: "size-4",
-    "aria-hidden": true,
-  });
-  const meta = ROOM_VIEW_TYPE_META[view.type];
-
   function onRename(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
@@ -84,59 +75,42 @@ export function RoomViewHeader({ view, canManage }: Props) {
     });
   }
 
-  return (
-    <header className="border-border bg-card flex flex-col gap-2 rounded-2xl border p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:p-5">
-      <div className="min-w-0 space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="bg-primary/10 text-primary inline-flex size-9 shrink-0 items-center justify-center rounded-lg">
-            {iconNode}
-          </span>
-          <div className="min-w-0">
-            <h1 className="text-foreground truncate text-xl font-semibold tracking-tight sm:text-2xl">
-              {view.title}
-            </h1>
-            <p className="text-muted-foreground text-xs">
-              {meta.label}
-              {view.subtitle ? ` • ${view.subtitle}` : ""}
-            </p>
-          </div>
-        </div>
-      </div>
+  if (!canManage) return null;
 
-      {canManage ? (
-        <div className="shrink-0">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  aria-label="Pengaturan view"
-                >
-                  <MoreHorizontal className="size-3.5" aria-hidden />
-                  Atur
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setRenameOpen(true)}>
-                <Pencil className="size-3.5" aria-hidden />
-                Ubah judul / deskripsi
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => setDeleteOpen(true)}
+  return (
+    <>
+      <div className="flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                aria-label="Pengaturan view"
               >
-                <Trash2 className="size-3.5" aria-hidden />
-                Hapus view
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      ) : null}
+                <MoreHorizontal className="size-3.5" aria-hidden />
+                Atur view
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+              <Pencil className="size-3.5" aria-hidden />
+              Ubah judul / deskripsi
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="size-3.5" aria-hidden />
+              Hapus view
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>
@@ -206,6 +180,6 @@ export function RoomViewHeader({ view, canManage }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </header>
+    </>
   );
 }

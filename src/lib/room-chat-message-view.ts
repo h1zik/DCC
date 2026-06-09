@@ -127,24 +127,24 @@ export const ROOM_CHAT_INITIAL_MESSAGE_LIMIT = 200;
  */
 export const ROOM_CHAT_DELTA_MESSAGE_LIMIT = 500;
 
-function roomMessageActivityWhere(roomId: string, since: Date) {
+function channelMessageActivityWhere(channelId: string, since: Date) {
   return {
-    roomId,
+    channelId,
     OR: [{ createdAt: { gt: since } }, { updatedAt: { gt: since } }],
   };
 }
 
 /**
- * Initial load — terakhir N pesan dari ruangan, dikembalikan dalam urutan
- * waktu menaik (siap render dari atas ke bawah).
+ * Initial load — terakhir N pesan dari sebuah channel, dikembalikan dalam
+ * urutan waktu menaik (siap render dari atas ke bawah).
  */
-export async function loadRoomChatMessagesForRoom(
-  roomId: string,
+export async function loadRoomChatMessagesForChannel(
+  channelId: string,
   limit: number = ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
 ): Promise<RoomChatMessageView[]> {
   const take = Math.max(1, Math.min(limit, ROOM_CHAT_INITIAL_MESSAGE_LIMIT));
   const rows = await prisma.roomMessage.findMany({
-    where: { roomId },
+    where: { channelId },
     orderBy: { createdAt: "desc" },
     take,
     include: roomChatMessageInclude,
@@ -155,14 +155,14 @@ export async function loadRoomChatMessagesForRoom(
 /**
  * Delta load — pesan baru atau yang diedit/dihapus setelah `since`, ascending.
  */
-export async function loadRoomChatMessagesSince(
-  roomId: string,
+export async function loadRoomChatMessagesSinceForChannel(
+  channelId: string,
   since: Date,
   limit: number = ROOM_CHAT_DELTA_MESSAGE_LIMIT,
 ): Promise<RoomChatMessageView[]> {
   const take = Math.max(1, Math.min(limit, ROOM_CHAT_DELTA_MESSAGE_LIMIT));
   const rows = await prisma.roomMessage.findMany({
-    where: roomMessageActivityWhere(roomId, since),
+    where: channelMessageActivityWhere(channelId, since),
     orderBy: { createdAt: "asc" },
     take,
     include: roomChatMessageInclude,
@@ -170,6 +170,8 @@ export async function loadRoomChatMessagesSince(
   return rows.map(mapRoomMessageToView);
 }
 
-export async function countRoomChatMessages(roomId: string): Promise<number> {
-  return prisma.roomMessage.count({ where: { roomId } });
+export async function countRoomChatChannelMessages(
+  channelId: string,
+): Promise<number> {
+  return prisma.roomMessage.count({ where: { channelId } });
 }

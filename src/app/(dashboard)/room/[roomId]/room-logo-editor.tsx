@@ -23,14 +23,21 @@ export function RoomLogoEditor({
   roomId,
   logoImage,
   roomName,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   roomId: string;
   logoImage: string | null;
   roomName: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
+  const isControlled = controlledOpen !== undefined;
   const [pending, setPending] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
 
@@ -98,14 +105,16 @@ export function RoomLogoEditor({
         if (!v) setPreview(null);
       }}
     >
-      <DialogTrigger
-        render={
-          <Button type="button" variant="secondary" size="sm">
-            <ImagePlus className="size-3.5" aria-hidden />
-            Edit logo
-          </Button>
-        }
-      />
+      {!isControlled ? (
+        <DialogTrigger
+          render={
+            <Button type="button" variant="secondary" size="sm">
+              <ImagePlus className="size-3.5" aria-hidden />
+              Edit logo
+            </Button>
+          }
+        />
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Logo ruangan</DialogTitle>

@@ -3,33 +3,23 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RoomViewType, RoomWorkspaceSection, type Brand } from "@prisma/client";
-import {
-  ClipboardList,
-  Files,
-  Hash,
-  KanbanSquare,
-  MessageCircle,
-  Sparkles,
-  Users,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { RoomWorkspaceSection, type Brand } from "@prisma/client";
+import { Hash, ImagePlus, Pencil, Settings2, Sparkles } from "lucide-react";
 import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
-import { roomViewTypeIcon } from "@/lib/room-view-icon";
-import { RoomBannerEditor } from "./room-banner-editor";
 import { RoomLogoEditor } from "./room-logo-editor";
 import { RoomEditorButton } from "./room-editor-button";
-import { AddRoomViewButton } from "./add-room-view-button";
 import {
   RoomMemberAvatarStack,
   type RoomMemberAvatarUser,
 } from "@/components/room-member-avatar-stack";
-
-export type RoomHubNavView = {
-  id: string;
-  type: RoomViewType;
-  title: string;
-};
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 function roomNameInitials(name: string): string {
   const trimmed = name.trim();
@@ -44,236 +34,149 @@ export function RoomHubNav({
   roomId,
   roomName,
   simpleHub = false,
-  bannerImage,
   logoImage = null,
-  canEditBanner = false,
+  canEditAssets = false,
   canEditRoom = false,
-  canManageViews = false,
   roomBrandId = null,
   roomWorkspaceSection = RoomWorkspaceSection.ROOMS,
   brands = [],
   brand = null,
   memberUsers = [],
-  customViews = [],
 }: {
   roomId: string;
   roomName: string;
   /** Ruangan HQ/Team tanpa brand: hanya tugas, chat, dokumen. */
   simpleHub?: boolean;
-  bannerImage?: string | null;
   logoImage?: string | null;
-  canEditBanner?: boolean;
+  canEditAssets?: boolean;
   canEditRoom?: boolean;
-  /** Manager ruangan: dapat menambah/menghapus custom view. */
-  canManageViews?: boolean;
   roomBrandId?: string | null;
   roomWorkspaceSection?: RoomWorkspaceSection;
   brands?: Brand[];
   brand?: Pick<Brand, "id" | "name"> | null;
   memberUsers?: RoomMemberAvatarUser[];
-  customViews?: RoomHubNavView[];
 }) {
-  const pathname = usePathname();
-  const base = `/room/${roomId}`;
-  type NavLink = {
-    href: string;
-    label: string;
-    icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  };
-  const simpleLinks: NavLink[] = [
-    { href: `${base}/tasks`, label: "Tasks", icon: KanbanSquare },
-    { href: `${base}/members`, label: "Anggota", icon: Users },
-    { href: `${base}/chat`, label: "Grup", icon: MessageCircle },
-    { href: `${base}/documents`, label: "Documents & file", icon: Files },
-  ];
-  const fullLinks: NavLink[] = [
-    { href: `${base}/tasks`, label: "Tasks", icon: KanbanSquare },
-    {
-      href: `${base}/content-planning`,
-      label: "Content planning",
-      icon: ClipboardList,
-    },
-    { href: `${base}/members`, label: "Anggota", icon: Users },
-    { href: `${base}/chat`, label: "Grup", icon: MessageCircle },
-    { href: `${base}/documents`, label: "Documents & file", icon: Files },
-  ];
-  const customViewLinks: NavLink[] = customViews.map((v) => ({
-    href: `${base}/view/${v.id}`,
-    label: v.title,
-    icon: roomViewTypeIcon(v.type),
-  }));
-  const links: NavLink[] = [...(simpleHub ? simpleLinks : fullLinks), ...customViewLinks];
-
   const sectionLabel = roomWorkspaceSectionTitle(roomWorkspaceSection);
+  const pathname = usePathname();
+  const [logoDialogOpen, setLogoDialogOpen] = useState(false);
+  const [roomDialogOpen, setRoomDialogOpen] = useState(false);
+
+  if (pathname?.endsWith("/chat")) return null;
+
+  const showSettings = canEditAssets || canEditRoom;
 
   return (
-    <div className="flex flex-col gap-4">
-      <header
-        className={cn(
-          "border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm",
-        )}
-      >
-        {/* Background: banner image or decorative gradient */}
-        {bannerImage ? (
-          <>
-            <div
-              className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url("${bannerImage}")` }}
-              aria-hidden
-            />
-            {/* Stronger overlay so judul/teks selalu terbaca di atas banner */}
-            <div
-              className="bg-gradient-to-t from-background via-background/85 to-background/40 absolute inset-0"
-              aria-hidden
-            />
-            <div
-              className="bg-gradient-to-r from-background/55 via-transparent to-background/30 absolute inset-0"
-              aria-hidden
-            />
-          </>
-        ) : (
-          <>
-            <div
-              className="bg-gradient-to-br from-primary/12 via-primary/4 absolute inset-0 to-transparent"
-              aria-hidden
-            />
-            <div
-              className="bg-primary/15 absolute -top-16 -right-16 size-56 rounded-full blur-3xl"
-              aria-hidden
-            />
-            <div
-              className="bg-primary/10 absolute -bottom-24 -left-10 size-48 rounded-full blur-3xl"
-              aria-hidden
-            />
-          </>
-        )}
-        {/* Aksen garis tipis di atas */}
-        <div
-          className="bg-gradient-to-r from-transparent via-primary/40 to-transparent absolute inset-x-0 top-0 h-px"
-          aria-hidden
+    <header className="border-border flex items-center gap-2.5 border-b pb-3 sm:gap-3">
+      {logoImage ? (
+        <Image
+          src={logoImage}
+          alt={`Logo ${roomName}`}
+          width={36}
+          height={36}
+          className="size-9 shrink-0 object-contain"
+          unoptimized
         />
+      ) : (
+        <div className="bg-primary/10 flex size-9 shrink-0 items-center justify-center rounded-lg">
+          <span
+            className="text-primary text-sm font-semibold tracking-tight"
+            aria-hidden
+          >
+            {roomNameInitials(roomName)}
+          </span>
+        </div>
+      )}
 
-        <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-6">
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="border-primary/25 bg-primary/12 text-primary inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm">
-                <Hash className="size-3" aria-hidden />
-                {sectionLabel}
-              </span>
-              {brand ? (
-                <span className="border-border bg-background/85 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm">
-                  <span className="bg-primary size-1.5 rounded-full" aria-hidden />
-                  {brand.name}
-                </span>
-              ) : simpleHub ? (
-                <span className="border-border bg-background/70 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm">
-                  <Sparkles className="size-3" aria-hidden />
-                  Hub ringkas
-                </span>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div
-                  className={cn(
-                    "border-border bg-background/85 relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border shadow-sm backdrop-blur-sm sm:size-14",
-                    !logoImage && "bg-primary/10",
-                  )}
-                >
-                  {logoImage ? (
-                    <Image
-                      src={logoImage}
-                      alt={`Logo ${roomName}`}
-                      fill
-                      sizes="(min-width: 640px) 56px, 48px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <span
-                      className="text-primary text-base font-semibold tracking-tight sm:text-lg"
-                      aria-hidden
-                    >
-                      {roomNameInitials(roomName)}
-                    </span>
-                  )}
-                </div>
-                <h1 className="text-foreground min-w-0 truncate text-2xl font-semibold tracking-tight sm:text-3xl">
-                  {roomName}
-                </h1>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <RoomMemberAvatarStack users={memberUsers} maxVisible={6} />
-                <span className="text-muted-foreground text-xs font-medium">
-                  {memberUsers.length} anggota
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {canEditBanner || canEditRoom ? (
-            <div className="flex shrink-0 flex-wrap items-start gap-2 sm:flex-col sm:items-end sm:gap-1.5">
-              {canEditBanner ? (
-                <>
-                  <RoomLogoEditor
-                    roomId={roomId}
-                    logoImage={logoImage}
-                    roomName={roomName}
-                  />
-                  <RoomBannerEditor roomId={roomId} hasBanner={!!bannerImage} />
-                </>
-              ) : null}
-              {canEditRoom ? (
-                <RoomEditorButton
-                  roomId={roomId}
-                  initialName={roomName}
-                  initialBrandId={roomBrandId}
-                  initialWorkspaceSection={roomWorkspaceSection}
-                  brands={brands}
-                />
-              ) : null}
-            </div>
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <h1 className="text-foreground min-w-0 truncate text-base font-semibold tracking-tight">
+            {roomName}
+          </h1>
+          <span className="border-primary/25 bg-primary/12 text-primary hidden shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium sm:inline-flex">
+            <Hash className="size-2.5" aria-hidden />
+            {sectionLabel}
+          </span>
+          {brand ? (
+            <span className="border-border bg-background hidden shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium sm:inline-flex">
+              <span className="bg-primary size-1.5 rounded-full" aria-hidden />
+              {brand.name}
+            </span>
+          ) : simpleHub ? (
+            <span className="border-border bg-background text-muted-foreground hidden shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium sm:inline-flex">
+              <Sparkles className="size-2.5" aria-hidden />
+              Hub ringkas
+            </span>
           ) : null}
         </div>
-      </header>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <RoomMemberAvatarStack
+            users={memberUsers}
+            maxVisible={4}
+            size="responsive"
+          />
+          <Link
+            href={`/room/${roomId}/members`}
+            className="text-muted-foreground hover:text-foreground shrink-0 text-[11px] font-medium underline-offset-2 hover:underline"
+          >
+            <span className="sm:hidden">{memberUsers.length}</span>
+            <span className="hidden sm:inline">{memberUsers.length} anggota</span>
+          </Link>
+        </div>
+      </div>
 
-      <nav
-        aria-label="Menu ruangan"
-        className="border-border bg-background/85 supports-backdrop-filter:bg-background/65 sticky top-14 z-20 rounded-xl border shadow-sm backdrop-blur-md"
-      >
-        <ul
-          role="list"
-          className="flex w-full items-center gap-0.5 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {links.map((l) => {
-            const active =
-              pathname === l.href || pathname.startsWith(`${l.href}/`);
-            return (
-              <li key={l.href} className="shrink-0">
-                <Link
-                  href={l.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
+      {showSettings ? (
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Pengaturan ruangan"
+                  title="Pengaturan ruangan"
                 >
-                  <l.icon className="size-4 shrink-0" aria-hidden />
-                  <span className="whitespace-nowrap">{l.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-          {canManageViews ? (
-            <li className="shrink-0 pl-0.5">
-              <AddRoomViewButton roomId={roomId} />
-            </li>
+                  <Settings2 className="size-4" aria-hidden />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              {canEditAssets ? (
+                <DropdownMenuItem onClick={() => setLogoDialogOpen(true)}>
+                  <ImagePlus className="size-3.5" aria-hidden />
+                  Edit logo
+                </DropdownMenuItem>
+              ) : null}
+              {canEditRoom ? (
+                <DropdownMenuItem onClick={() => setRoomDialogOpen(true)}>
+                  <Pencil className="size-3.5" aria-hidden />
+                  Edit ruang
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {canEditAssets ? (
+            <RoomLogoEditor
+              roomId={roomId}
+              logoImage={logoImage}
+              roomName={roomName}
+              open={logoDialogOpen}
+              onOpenChange={setLogoDialogOpen}
+            />
           ) : null}
-        </ul>
-      </nav>
-    </div>
+          {canEditRoom ? (
+            <RoomEditorButton
+              roomId={roomId}
+              initialName={roomName}
+              initialBrandId={roomBrandId}
+              initialWorkspaceSection={roomWorkspaceSection}
+              brands={brands}
+              open={roomDialogOpen}
+              onOpenChange={setRoomDialogOpen}
+            />
+          ) : null}
+        </>
+      ) : null}
+    </header>
   );
 }

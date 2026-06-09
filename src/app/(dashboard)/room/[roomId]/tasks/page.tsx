@@ -1,15 +1,12 @@
 import { redirect } from "next/navigation";
 import {
   RoomMemberRole,
-  RoomTaskProcess,
   TaskWorkspaceView,
   TaskStatus,
 } from "@prisma/client";
-import { KanbanSquare, Workflow } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { isRoomHubManagerRole, roomMemberToProcessAccess } from "@/lib/room-access";
-import { ROOM_PROJECT_MANAGER_ROLE } from "@/lib/room-member-process-access";
 import {
   buildRoomProcessPhaseList,
   defaultRoomProcessPhaseRef,
@@ -29,51 +26,6 @@ import {
 import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
 import { RoomTasksProcessNav } from "./room-tasks-process-nav";
-
-function TasksHero({
-  title,
-  subtitle,
-  hint,
-}: {
-  title: string;
-  subtitle: string;
-  hint: string;
-}) {
-  return (
-    <header className="border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm">
-      <div
-        className="bg-gradient-to-br from-primary/10 via-primary/5 absolute inset-0 to-transparent"
-        aria-hidden
-      />
-      <div
-        className="bg-gradient-to-r from-transparent via-primary/40 to-transparent absolute inset-x-0 top-0 h-px"
-        aria-hidden
-      />
-      <div className="relative flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:p-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            className="border-primary/30 bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl border"
-            aria-hidden
-          >
-            <KanbanSquare className="size-5" />
-          </span>
-          <div className="min-w-0 space-y-1">
-            <h2 className="text-foreground text-base font-semibold tracking-tight sm:text-lg">
-              {title}
-            </h2>
-            <p className="text-muted-foreground text-pretty text-sm leading-relaxed">
-              {subtitle}
-            </p>
-          </div>
-        </div>
-        <div className="border-primary/25 bg-primary/8 text-primary inline-flex max-w-md items-start gap-2 self-start rounded-lg border px-3 py-2 text-[12px] leading-relaxed sm:max-w-sm">
-          <Workflow className="mt-[1px] size-3.5 shrink-0" aria-hidden />
-          <span>{hint}</span>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 type PageProps = {
   params: Promise<{ roomId: string }>;
@@ -209,11 +161,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
 
     return (
       <div className="flex flex-col gap-4">
-        <TasksHero
-          title="Tasks ruangan"
-          subtitle="Mode sederhana tanpa fase proses — gunakan Kanban, daftar, atau Gantt untuk merencanakan pekerjaan."
-          hint="Obrolan grup dan dokumen tersedia di menu atas ruangan."
-        />
         <TasksWorkspace
           roomId={roomId}
           roomTitle={room.name}
@@ -334,20 +281,8 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     )
     .map((row) => row.user);
 
-  const roleHint =
-    role === ROOM_PROJECT_MANAGER_ROLE
-      ? "Sebagai project manager ruangan Anda memegang semua fase proses, membuat tugas, dan menetapkan PIC."
-      : role === RoomMemberRole.ROOM_MANAGER
-        ? "Sebagai manager ruangan Anda mengelola tugas pada fase yang diizinkan administrator."
-        : "Sebagai kontributor Anda dapat memindahkan status tugas, mengisi komentar, lampiran, dan sub-tugas.";
-
   return (
     <div className="flex flex-col gap-4">
-      <TasksHero
-        title="Tasks ruangan"
-        subtitle="Kanban, daftar, dan Gantt per fase proses. Klik kartu (grip untuk seret di Kanban) untuk detail tugas."
-        hint={roleHint}
-      />
       <RoomTasksProcessNav
         roomId={roomId}
         phases={accessiblePhases}

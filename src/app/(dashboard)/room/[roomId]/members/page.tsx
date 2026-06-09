@@ -92,9 +92,11 @@ export default async function RoomMembersPage({ params }: PageProps) {
   }));
 
   return (
-    <div className="flex flex-col gap-4">
-      {canManageMembers ? (
-        <div className="flex justify-end">
+    <RoomMembersList
+      members={membersForList}
+      roomPhases={roomPhases}
+      toolbarEnd={
+        canManageMembers ? (
           <Dialog>
             <DialogTrigger
               render={
@@ -117,9 +119,8 @@ export default async function RoomMembersPage({ params }: PageProps) {
               />
             </DialogContent>
           </Dialog>
-        </div>
-      ) : null}
-      <RoomMembersList members={membersForList} roomPhases={roomPhases} />
-    </div>
+        ) : null
+      }
+    />
   );
 }

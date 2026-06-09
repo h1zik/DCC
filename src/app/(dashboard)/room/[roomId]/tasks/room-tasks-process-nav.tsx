@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Settings2, Workflow } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { RoomCustomProcessPhasesDialog } from "@/components/room/room-custom-process-phases-dialog";
 import {
   roomProcessPhaseKey,
@@ -39,29 +39,11 @@ export function RoomTasksProcessNav({
     <>
       <nav
         aria-label="Proses alur ruangan"
-        className="border-border bg-background/85 supports-backdrop-filter:bg-background/65 sticky top-[8.5rem] z-10 rounded-xl border shadow-sm backdrop-blur-md"
+        className="border-border bg-background/85 supports-backdrop-filter:bg-background/65 sticky top-14 z-10 flex items-center gap-1 border-b backdrop-blur-md"
       >
-        <div className="text-muted-foreground border-border/60 flex items-center justify-between gap-2 border-b px-3 py-1.5">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide">
-            <Workflow className="size-3" aria-hidden />
-            Fase proses
-          </div>
-          {canManagePhases ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              className="h-7 gap-1 text-[11px]"
-              onClick={() => setManageOpen(true)}
-            >
-              <Settings2 className="size-3" />
-              Kelola fase
-            </Button>
-          ) : null}
-        </div>
         <ul
           role="list"
-          className="flex w-full items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {phases.map((phase) => {
             const key = roomProcessPhaseKey(phase);
@@ -73,11 +55,10 @@ export function RoomTasksProcessNav({
                   scroll={false}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "focus-visible:ring-ring inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                    "focus-visible:ring-ring inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
                     active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <span className="whitespace-nowrap">
@@ -88,6 +69,18 @@ export function RoomTasksProcessNav({
             );
           })}
         </ul>
+        {canManagePhases ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="ml-0.5 h-8 shrink-0 gap-1 text-[11px]"
+            onClick={() => setManageOpen(true)}
+          >
+            <Settings2 className="size-3" />
+            <span className="hidden sm:inline">Kelola fase</span>
+          </Button>
+        ) : null}
       </nav>
       {canManagePhases ? (
         <RoomCustomProcessPhasesDialog

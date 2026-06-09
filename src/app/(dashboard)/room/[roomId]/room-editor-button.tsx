@@ -32,15 +32,22 @@ export function RoomEditorButton({
   initialBrandId,
   initialWorkspaceSection,
   brands,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   roomId: string;
   initialName: string;
   initialBrandId: string | null;
   initialWorkspaceSection: RoomWorkspaceSection;
   brands: Brand[];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
+  const isControlled = controlledOpen !== undefined;
   const [name, setName] = useState(initialName);
   const [brandId, setBrandId] = useState(initialBrandId ?? "");
   const [workspaceSection, setWorkspaceSection] = useState(initialWorkspaceSection);
@@ -84,9 +91,11 @@ export function RoomEditorButton({
         if (!v) reset();
       }}
     >
-      <DialogTrigger render={<Button type="button" variant="secondary" size="sm" />}>
-        Edit ruang
-      </DialogTrigger>
+      {!isControlled ? (
+        <DialogTrigger render={<Button type="button" variant="secondary" size="sm" />}>
+          Edit ruang
+        </DialogTrigger>
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit ruang</DialogTitle>

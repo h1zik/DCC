@@ -17,17 +17,27 @@ function initialFrom(user: RoomMemberAvatarUser): string {
 /**
  * Foto profil anggota ruangan (overlap ring) untuk kartu ringkasan ruangan.
  */
+const AVATAR_SIZE = {
+  sm: { className: "size-7", px: 28 },
+  md: { className: "size-9", px: 36 },
+  responsive: { className: "size-7 sm:size-9", px: 28 },
+} as const;
+
 export function RoomMemberAvatarStack({
   users,
   maxVisible = 6,
   className,
   linkProfiles = true,
+  size = "md",
 }: {
   users: RoomMemberAvatarUser[];
   maxVisible?: number;
   className?: string;
   linkProfiles?: boolean;
+  /** `responsive` = lebih kecil di HP, normal di layar lebar. */
+  size?: keyof typeof AVATAR_SIZE;
 }) {
+  const avatarSize = AVATAR_SIZE[size];
   const unique = [...new Map(users.map((u) => [u.id, u])).values()].sort(
     (a, b) =>
       (a.name ?? a.email).localeCompare(b.name ?? b.email, "id", {
@@ -59,14 +69,20 @@ export function RoomMemberAvatarStack({
             <Image
               src={u.image}
               alt={label}
-              width={36}
-              height={36}
+              width={avatarSize.px}
+              height={avatarSize.px}
               unoptimized
-              className="border-border size-9 rounded-full border object-cover"
+              className={cn(
+                "border-border rounded-full border object-cover",
+                avatarSize.className,
+              )}
             />
           ) : (
             <span
-              className="border-border bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-full border text-xs font-semibold"
+              className={cn(
+                "border-border bg-muted text-muted-foreground flex items-center justify-center rounded-full border text-xs font-semibold",
+                avatarSize.className,
+              )}
               aria-hidden
             >
               {initialFrom(u)}
@@ -77,7 +93,10 @@ export function RoomMemberAvatarStack({
             return (
               <div
                 key={u.id}
-                className="ring-background relative inline-flex size-9 rounded-full ring-2"
+                className={cn(
+                  "ring-background relative inline-flex rounded-full ring-2",
+                  avatarSize.className,
+                )}
                 style={{ zIndex: shown.length - i }}
                 title={label}
                 aria-label={label}
@@ -91,7 +110,10 @@ export function RoomMemberAvatarStack({
             <Link
               key={u.id}
               href={`/profile/${u.id}`}
-              className="ring-background relative inline-flex size-9 rounded-full ring-2"
+              className={cn(
+                "ring-background relative inline-flex rounded-full ring-2",
+                avatarSize.className,
+              )}
               style={{ zIndex: shown.length - i }}
               title={`Lihat profil ${label}`}
               aria-label={`Lihat profil ${label}`}

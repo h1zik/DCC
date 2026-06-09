@@ -901,6 +901,7 @@ export function DirectChatExperience({
                   multiple
                   className="sr-only"
                   accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv"
+                  disabled={pending || Boolean(editingMessage)}
                   onChange={(e) => {
                     const input = e.target;
                     /** `FileList` hidup: reset `value` mengosongkan `files` — salin dulu. */
@@ -909,79 +910,76 @@ export function DirectChatExperience({
                     onPickFiles(picked);
                   }}
                 />
-                <Textarea
-                  ref={taRef}
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  onPaste={onComposerPaste}
-                  placeholder={
-                    editingMessage
-                      ? "Edit teks pesan…"
-                      : "Tulis pesan… (Ctrl+V gambar, lampiran, GIF, emoji)"
-                  }
-                  rows={2}
-                  disabled={pending}
-                  className="min-h-[72px] resize-y text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape" && editingMessage) {
-                      e.preventDefault();
-                      cancelEdit();
-                      return;
-                    }
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      submitMessage();
-                    }
-                  }}
-                />
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1">
-                    <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-                      <PopoverTrigger
-                        className={cn(
-                          buttonVariants({ variant: "outline", size: "sm" }),
-                          "gap-1",
-                          pending && "pointer-events-none opacity-50",
-                        )}
-                        disabled={pending}
-                        aria-label="Emoji"
-                      >
-                        <Smile className="size-4" />
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="border-border w-auto max-w-[calc(100vw-2rem)] overflow-hidden border p-0 shadow-lg"
-                        align="start"
-                        side="top"
-                        sideOffset={8}
-                      >
-                        <EmojiPicker
-                          theme={Theme.AUTO}
-                          onEmojiClick={(d: EmojiClickData) => {
-                            setBody((b) => b + d.emoji);
-                            setEmojiOpen(false);
-                            taRef.current?.focus();
-                          }}
-                          width={352}
-                          height={380}
-                          previewConfig={{ showPreview: false }}
-                          skinTonesDisabled
-                        />
-                      </PopoverContent>
-                    </Popover>
+                <div className="border-border bg-background focus-within:border-ring focus-within:ring-ring/50 overflow-hidden rounded-xl border transition-[border-color,box-shadow] focus-within:ring-3">
+                  <Textarea
+                    ref={taRef}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    onPaste={onComposerPaste}
+                    placeholder={editingMessage ? "Edit teks pesan…" : "Tulis pesan…"}
+                    rows={2}
+                    disabled={pending}
+                    className="min-h-[72px] resize-none rounded-none border-0 bg-transparent px-3 pt-3 pb-1 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape" && editingMessage) {
+                        e.preventDefault();
+                        cancelEdit();
+                        return;
+                      }
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        submitMessage();
+                      }
+                    }}
+                  />
+                  <div className="flex items-center justify-between gap-2 px-2 pb-2">
                     {!editingMessage ? (
-                      <>
-                        <Popover open={gifOpen} onOpenChange={setGifOpen}>
+                      <div className="flex items-center gap-0.5">
+                        <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
                           <PopoverTrigger
                             className={cn(
-                              buttonVariants({ variant: "outline", size: "sm" }),
-                              "gap-1",
+                              buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                              "text-muted-foreground hover:text-foreground",
                               pending && "pointer-events-none opacity-50",
                             )}
                             disabled={pending}
-                            aria-label="GIF"
+                            aria-label="Pilih emoji"
+                            title="Emoji"
+                          >
+                            <Smile className="size-4" />
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="border-border w-auto max-w-[calc(100vw-2rem)] overflow-hidden border p-0 shadow-lg"
+                            align="start"
+                            side="top"
+                            sideOffset={8}
+                          >
+                            <EmojiPicker
+                              theme={Theme.AUTO}
+                              onEmojiClick={(d: EmojiClickData) => {
+                                setBody((b) => b + d.emoji);
+                                setEmojiOpen(false);
+                                taRef.current?.focus();
+                              }}
+                              width={352}
+                              height={380}
+                              previewConfig={{ showPreview: false }}
+                              skinTonesDisabled
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <Popover open={gifOpen} onOpenChange={setGifOpen}>
+                          <PopoverTrigger
+                            className={cn(
+                              buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                              "text-muted-foreground hover:text-foreground",
+                              pending && "pointer-events-none opacity-50",
+                            )}
+                            disabled={pending}
+                            aria-label="Tambah GIF"
+                            title="GIF"
                           >
                             <Clapperboard className="size-4" />
-                            GIF
                           </PopoverTrigger>
                           <PopoverContent
                             className="border-border w-[min(100vw-2rem,380px)] p-3 shadow-lg"
@@ -1018,7 +1016,7 @@ export function DirectChatExperience({
                                     <button
                                       key={g.url}
                                       type="button"
-                                      className="border-border overflow-hidden rounded-none border"
+                                      className="border-border overflow-hidden rounded-md border"
                                       onClick={() => {
                                         setPendingGifUrl(g.url);
                                         setGifOpen(false);
@@ -1061,39 +1059,37 @@ export function DirectChatExperience({
                         </Popover>
                         <Button
                           type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-1"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-foreground"
                           disabled={
                             pending ||
                             pendingFiles.length >= DIRECT_CHAT_MAX_FILES_PER_MESSAGE
                           }
                           onClick={() => fileInputRef.current?.click()}
+                          aria-label="Lampirkan file"
+                          title="Lampirkan file"
                         >
                           <Paperclip className="size-4" />
-                          File
                         </Button>
-                      </>
-                    ) : null}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground px-1 text-xs">
+                        Mode edit: hanya teks pesan.
+                      </p>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="shrink-0 gap-1.5"
+                      disabled={pending || !canSend}
+                      onClick={submitMessage}
+                    >
+                      {!editingMessage ? <Send className="size-4" aria-hidden /> : null}
+                      {pending ? "…" : editingMessage ? "Simpan" : "Kirim"}
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    disabled={pending || !canSend}
-                    onClick={submitMessage}
-                    className="gap-1"
-                  >
-                    <Send className="size-4" />
-                    {pending
-                      ? "…"
-                      : editingMessage
-                        ? "Simpan"
-                        : "Kirim"}
-                  </Button>
                 </div>
-                <p className="text-muted-foreground text-xs">
-                  Enter kirim · Shift+Enter baris baru · Maks.{" "}
-                  {DIRECT_CHAT_MAX_FILES_PER_MESSAGE} file per pesan
-                </p>
               </div>
             </>
           ) : null}
