@@ -56,13 +56,13 @@ export default function AttendanceWeeklyChart({ data }: WeeklyChartProps) {
           />
           <Bar
             dataKey="hadir"
-            fill="#10b981"
+            fill="var(--color-emerald-500)"
             radius={[4, 4, 0, 0]}
             maxBarSize={36}
           />
           <Bar
             dataKey="absen"
-            fill="#f59e0b"
+            fill="var(--color-amber-500)"
             radius={[4, 4, 0, 0]}
             maxBarSize={36}
           />

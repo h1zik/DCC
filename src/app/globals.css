@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./app-themes.css";
+@import "./theme-palettes.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -39,6 +41,10 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-success: var(--color-emerald-500);
+  --color-warning: var(--color-amber-500);
+  --color-info: var(--color-sky-500);
+  --color-danger: var(--color-rose-500);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -48,7 +54,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
+:root:not([data-theme]) {
   /* Layout halaman dashboard (selaras dengan DashboardShell) */
   --page-max-width: 87.5rem; /* 1400px */
   --page-padding: 1.5rem; /* 24px — setara p-6 */
@@ -90,7 +96,7 @@
   --sidebar-ring: oklch(0.74 0.19 50);
 }
 
-.dark {
+.dark:not([data-theme]) {
   --background: oklch(0.12 0.01 70);
   --foreground: oklch(0.98 0.005 85);
   --card: oklch(0.16 0.015 70);

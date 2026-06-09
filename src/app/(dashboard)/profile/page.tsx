@@ -11,6 +11,7 @@ import {
   isProfileBannerPreset,
   isProfileSticker,
 } from "@/lib/profile-appearance";
+import { AppThemePicker } from "@/components/app-theme-picker";
 import { ProfileForm } from "./profile-form";
 
 export default async function ProfilePage() {
@@ -119,6 +120,8 @@ export default async function ProfilePage() {
         initialAvatarFrame={avatarFrame}
         profileSharePath={`/profile/${user.id}`}
       />
+
+      <AppThemePicker />
     </div>
   );
 }
