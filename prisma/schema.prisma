@@ -259,6 +259,10 @@ model User {
    */
   profileAvatarFrame        String                         @default("ring")
   /**
+   * Preset tema UI aplikasi (slug). Lihat `APP_THEME_PRESETS` di kode.
+   */
+  appThemePreset            String                         @default("original")
+  /**
    * Tampilan default modul Tasks saat membuka ruangan.
    */
   taskDefaultWorkspaceView  TaskWorkspaceView              @default(KANBAN)
