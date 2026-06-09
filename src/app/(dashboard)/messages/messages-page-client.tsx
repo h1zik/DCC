@@ -29,7 +29,7 @@ function MessagesPageContent({
   const inThread = Boolean(activeId);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       {!inThread ? (
         <header className="border-border bg-card mb-1 flex shrink-0 items-center gap-2.5 rounded-none border px-3 py-2 shadow-sm">
           <span className="border-primary/30 bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-none border">
