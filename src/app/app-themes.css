@@ -1,5 +1,11 @@
 /* Custom app themes — Opera GX style presets */
 
+html[data-theme] {
+  --radius: 0.625rem;
+  --page-max-width: 87.5rem;
+  --page-padding: 1.5rem;
+}
+
 html[data-theme="light"] {
   --background: oklch(0.98 0.005 90);
   --foreground: oklch(0.2 0.01 60);

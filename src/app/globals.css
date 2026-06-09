@@ -139,6 +139,10 @@
   }
   html {
     @apply font-sans;
+    /* Layout & radius — harus ada di semua tema (termasuk data-theme kustom) */
+    --radius: 0.625rem;
+    --page-max-width: 87.5rem;
+    --page-padding: 1.5rem;
   }
 }
 
