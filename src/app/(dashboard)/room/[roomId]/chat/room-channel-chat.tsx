@@ -277,8 +277,8 @@ export function RoomChannelChat({
   }
 
   return (
-    <div className="bg-card flex h-full min-h-0 flex-1 overflow-hidden max-md:flex-col">
-      <aside className="border-border bg-muted/20 flex w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 max-md:w-full max-md:flex-row max-md:items-stretch max-md:gap-1 max-md:overflow-x-auto max-md:border-r-0 max-md:border-b">
+    <div className="bg-card flex min-h-0 flex-1 overflow-hidden max-md:flex-col">
+      <aside className="border-border bg-muted/20 flex w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 max-md:w-full max-md:shrink-0 max-md:flex-row max-md:items-stretch max-md:gap-1 max-md:overflow-x-auto max-md:border-r-0 max-md:border-b">
         <div className="flex items-center justify-between gap-1 px-1.5 py-1 max-md:hidden">
           <span className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
             Channel
@@ -516,16 +516,18 @@ export function RoomChannelChat({
           </header>
         ) : null}
         {activeChannel ? (
-          <RoomChatExperience
-            key={activeChannel.id}
-            roomId={roomId}
-            channelId={activeChannel.id}
-            currentUserId={currentUserId}
-            messages={
-              activeChannel.id === initialChannelId ? initialMessages : []
-            }
-            mentionableUsers={mentionableUsers}
-          />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <RoomChatExperience
+              key={activeChannel.id}
+              roomId={roomId}
+              channelId={activeChannel.id}
+              currentUserId={currentUserId}
+              messages={
+                activeChannel.id === initialChannelId ? initialMessages : []
+              }
+              mentionableUsers={mentionableUsers}
+            />
+          </div>
         ) : null}
       </div>
 

@@ -22,13 +22,13 @@ export function DashboardShell({
       <RoomNavProvider rooms={navRooms}>
         <AgentPanelProvider>
           <AppSidebar />
-          <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-x-hidden">
+          <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-x-hidden has-[_[data-chat-shell]]:overflow-hidden">
             <DashboardHeader />
             <div
               className={cn(
                 PAGE_PADDING_CLASS,
                 "flex min-h-0 flex-1 flex-col",
-                "has-[_[data-chat-shell]]:p-0",
+                "has-[_[data-chat-shell]]:h-[calc(100svh-3.5rem)] has-[_[data-chat-shell]]:max-h-[calc(100svh-3.5rem)] has-[_[data-chat-shell]]:overflow-hidden has-[_[data-chat-shell]]:p-0",
               )}
             >
               <div
@@ -36,7 +36,7 @@ export function DashboardShell({
                   "mx-auto flex w-full min-w-0 flex-1 flex-col",
                   PAGE_MAX_WIDTH_CLASS,
                   PAGE_GAP_CLASS,
-                  "has-[_[data-chat-shell]]:mx-0 has-[_[data-chat-shell]]:max-w-none has-[_[data-chat-shell]]:min-h-0 has-[_[data-chat-shell]]:gap-0",
+                  "has-[_[data-chat-shell]]:mx-0 has-[_[data-chat-shell]]:max-w-none has-[_[data-chat-shell]]:min-h-0 has-[_[data-chat-shell]]:flex-1 has-[_[data-chat-shell]]:overflow-hidden has-[_[data-chat-shell]]:gap-0",
                 )}
               >
                 {children}

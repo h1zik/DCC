@@ -752,7 +752,7 @@ export function RoomChatExperience({
       <div
         ref={scrollRef}
         onScroll={onScrollList}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3 sm:px-3"
+        className="min-h-0 flex-1 basis-0 overflow-y-auto overscroll-contain px-2 py-3 sm:px-3"
       >
         <div className="flex flex-col">
           {messages.length === 0 ? (
