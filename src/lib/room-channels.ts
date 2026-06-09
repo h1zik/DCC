@@ -32,21 +32,46 @@ export function normalizeChannelName(raw: string): string {
 }
 
 /**
- * Pastikan ruangan punya channel default `#umum`. Mengembalikan id channel
- * default (dibuat bila belum ada). Aman dipanggil berkali-kali.
+ * Pindahkan pesan lama (sebelum fitur channel) ke channel default ruangan.
+ * Idempoten — aman dipanggil berkali-kali.
+ */
+export async function backfillLegacyRoomMessages(
+  roomId: string,
+  defaultChannelId: string,
+): Promise<number> {
+  const result = await prisma.roomMessage.updateMany({
+    where: { roomId, channelId: null },
+    data: { channelId: defaultChannelId },
+  });
+  return result.count;
+}
+
+/**
+ * Pastikan ruangan punya channel default `#umum`, lalu tautkan pesan lama
+ * (`channelId` null) ke channel tersebut. Mengembalikan id channel default.
+ * Aman dipanggil berkali-kali — dipakai otomatis saat chat dibuka / deploy.
  */
 export async function ensureRoomDefaultChannel(roomId: string): Promise<string> {
-  const existing = await prisma.roomChannel.findFirst({
+  let channel = await prisma.roomChannel.findFirst({
     where: { roomId, isDefault: true },
     select: { id: true },
     orderBy: { sortOrder: "asc" },
   });
-  if (existing) return existing.id;
-  const created = await prisma.roomChannel.create({
-    data: { roomId, name: "umum", isDefault: true, isLocked: true, sortOrder: 0 },
-    select: { id: true },
-  });
-  return created.id;
+  if (!channel) {
+    channel = await prisma.roomChannel.create({
+      data: {
+        roomId,
+        name: "umum",
+        isDefault: true,
+        isLocked: true,
+        sortOrder: 0,
+      },
+      select: { id: true },
+    });
+  }
+
+  await backfillLegacyRoomMessages(roomId, channel.id);
+  return channel.id;
 }
 
 /**
@@ -63,8 +88,9 @@ export async function resolveRoomChannelId(
       where: { id: trimmed, roomId },
       select: { id: true },
     });
-    if (!channel) throw new Error("Channel tidak ditemukan di ruangan ini.");
-    return channel.id;
+    if (channel) return channel.id;
+    // Bookmark / link lama setelah migrasi channel — arahkan ke #umum.
+    return ensureRoomDefaultChannel(roomId);
   }
   return ensureRoomDefaultChannel(roomId);
 }
