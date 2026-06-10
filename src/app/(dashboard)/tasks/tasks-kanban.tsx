@@ -4,14 +4,20 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  closestCorners,
   DndContext,
   type DragEndEvent,
   PointerSensor,
   useSensor,
   useSensors,
-  useDraggable,
   useDroppable,
 } from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TaskPriority, TaskStatus, type User } from "@prisma/client";
 import {
@@ -19,12 +25,14 @@ import {
   archiveTask,
   createTaskTag,
   moveTaskStatus,
+  reorderKanbanColumn,
   unarchiveTask,
   updateTask,
   type TaskMutationResult,
 } from "@/actions/tasks";
 import { toast } from "sonner";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { sortTasksForKanbanColumn } from "@/lib/kanban-sort";
 import { cn } from "@/lib/utils";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { Button } from "@/components/ui/button";
@@ -81,6 +89,9 @@ export type KanbanTask = {
   }[];
   tagIds: string[];
   tags: { id: string; name: string; colorHex: string }[];
+  createdAt: string;
+  updatedAt: string;
+  kanbanSortKey?: number | null;
 };
 
 type RoomTaskTag = {
@@ -313,10 +324,11 @@ function DraggableTask({
   const [newTagName, setNewTagName] = useState("");
   const [newTagColorHex, setNewTagColorHex] = useState("#6B7280");
   const [createTagPending, setCreateTagPending] = useState(false);
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id, disabled: dragDisabled });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: task.id, disabled: dragDisabled });
   const style = {
-    transform: CSS.Translate.toString(transform),
+    transform: CSS.Transform.toString(transform),
+    transition,
   };
   const readOnly = Boolean(dragDisabled);
   const canEditAssignees = isRoomManager && !readOnly;
@@ -1039,36 +1051,72 @@ export function TasksKanban({
   isRoomManager?: boolean;
   showArchived?: boolean;
 }) {
+  const router = useRouter();
   const [localStatuses, setLocalStatuses] = useState<Record<string, TaskStatus>>({});
+  const [localSortKeys, setLocalSortKeys] = useState<Record<string, number>>({});
   const [doneConfirmTaskId, setDoneConfirmTaskId] = useState<string | null>(null);
   const [doneConfirmUnfinished, setDoneConfirmUnfinished] = useState(0);
   const [doneConfirmPreviousStatus, setDoneConfirmPreviousStatus] =
     useState<TaskStatus | null>(null);
+  const [pendingTargetOrder, setPendingTargetOrder] = useState<string[] | null>(
+    null,
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
   useEffect(() => {
     setLocalStatuses({});
+    setLocalSortKeys({});
   }, [tasks]);
 
   const viewTasks = useMemo(
     () =>
-      tasks.map((t) => ({
-        ...t,
-        status: localStatuses[t.id] ?? t.status,
-      })),
-    [tasks, localStatuses],
+      tasks.map((t) => {
+        const status = localStatuses[t.id] ?? t.status;
+        const serverKey =
+          t.kanbanSortKey ??
+          tasks
+            .find((row) => row.id === t.id)
+            ?.kanbanSortKey ??
+          null;
+        return {
+          ...t,
+          status,
+          kanbanSortKey: localSortKeys[t.id] ?? serverKey ?? null,
+        };
+      }),
+    [tasks, localStatuses, localSortKeys],
   );
 
   const statusSet = new Set(columns.map((c) => c.linkedStatus));
+
+  function resolveDropStatus(overId: string): TaskStatus | null {
+    if (statusSet.has(overId as TaskStatus)) return overId as TaskStatus;
+    const overTask = viewTasks.find((t) => t.id === overId);
+    return overTask?.status ?? null;
+  }
+
+  function applyOptimisticSortKeys(orderedIds: string[]) {
+    setLocalSortKeys((prev) => {
+      const next = { ...prev };
+      orderedIds.forEach((id, index) => {
+        next[id] = index * 1000;
+      });
+      return next;
+    });
+  }
 
   async function persistStatusChange(
     taskId: string,
     newStatus: TaskStatus,
     previousStatus: TaskStatus,
+    orderedTaskIdsInTarget?: string[],
   ) {
     setLocalStatuses((prev) => ({ ...prev, [taskId]: newStatus }));
+    if (orderedTaskIdsInTarget) {
+      applyOptimisticSortKeys(orderedTaskIdsInTarget);
+    }
     const successMsg =
       newStatus === TaskStatus.DONE
         ? "Tugas dipindahkan ke Selesai."
@@ -1078,10 +1126,16 @@ export function TasksKanban({
         ? "Gagal memindahkan tugas ke Selesai."
         : "Gagal memindahkan tugas.";
     try {
-      await moveTaskStatus({ taskId, status: newStatus });
+      await moveTaskStatus({
+        taskId,
+        status: newStatus,
+        orderedTaskIdsInTarget,
+      });
+      router.refresh();
       toast.success(successMsg);
     } catch (err) {
       setLocalStatuses((prev) => ({ ...prev, [taskId]: previousStatus }));
+      if (orderedTaskIdsInTarget) setLocalSortKeys({});
       toast.error(actionErrorMessage(err, errFallback));
     }
   }
@@ -1091,20 +1145,63 @@ export function TasksKanban({
     const { active, over } = e;
     if (!over) return;
     const taskId = String(active.id);
-    const newStatus = over.id as TaskStatus;
-    if (!statusSet.has(newStatus)) return;
+    const overId = String(over.id);
     const task = viewTasks.find((t) => t.id === taskId);
-    if (!task || task.status === newStatus) return;
-    if (newStatus === TaskStatus.DONE) {
+    if (!task) return;
+
+    const overStatus = resolveDropStatus(overId);
+    if (!overStatus) return;
+
+    if (task.status === overStatus) {
+      const colTasks = sortTasksForKanbanColumn(viewTasks, overStatus);
+      const oldIndex = colTasks.findIndex((t) => t.id === taskId);
+      const newIndex = statusSet.has(overId as TaskStatus)
+        ? colTasks.length - 1
+        : colTasks.findIndex((t) => t.id === overId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+
+      const reordered = arrayMove(colTasks, oldIndex, newIndex);
+      const orderedIds = reordered.map((t) => t.id);
+      applyOptimisticSortKeys(orderedIds);
+      try {
+        await reorderKanbanColumn({
+          status: overStatus,
+          orderedTaskIds: orderedIds,
+        });
+        router.refresh();
+      } catch (err) {
+        setLocalSortKeys({});
+        toast.error(actionErrorMessage(err, "Gagal mengurutkan tugas."));
+      }
+      return;
+    }
+
+    const targetColTasks = sortTasksForKanbanColumn(
+      viewTasks.filter((t) => t.id !== taskId),
+      overStatus,
+    );
+    let insertIndex = targetColTasks.length;
+    if (!statusSet.has(overId as TaskStatus)) {
+      const overIdx = targetColTasks.findIndex((t) => t.id === overId);
+      if (overIdx >= 0) insertIndex = overIdx;
+    }
+    const orderedIds = [
+      ...targetColTasks.slice(0, insertIndex).map((t) => t.id),
+      taskId,
+      ...targetColTasks.slice(insertIndex).map((t) => t.id),
+    ];
+
+    if (overStatus === TaskStatus.DONE) {
       const unfinished = task.checklistTotal - task.checklistDone;
       if (unfinished > 0) {
         setDoneConfirmTaskId(task.id);
         setDoneConfirmUnfinished(unfinished);
         setDoneConfirmPreviousStatus(task.status);
+        setPendingTargetOrder(orderedIds);
         return;
       }
     }
-    await persistStatusChange(taskId, newStatus, task.status);
+    await persistStatusChange(taskId, overStatus, task.status, orderedIds);
   }
 
   async function onQuickDone(taskId: string) {
@@ -1124,13 +1221,19 @@ export function TasksKanban({
 
   return (
     <>
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragEnd={onDragEnd}
+      >
         <div className="w-full overflow-x-auto">
           <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
           {columns.map((col) => {
-            const colTasks = viewTasks.filter(
-              (t) => t.status === col.linkedStatus,
+            const colTasks = sortTasksForKanbanColumn(
+              viewTasks,
+              col.linkedStatus,
             );
+            const colTaskIds = colTasks.map((t) => t.id);
             return (
               <DroppableColumn
                 key={col.id}
@@ -1139,6 +1242,10 @@ export function TasksKanban({
                 onAddTask={readOnly ? undefined : onAddTask}
                 readOnly={readOnly}
               >
+                <SortableContext
+                  items={colTaskIds}
+                  strategy={verticalListSortingStrategy}
+                >
                 {colTasks.map((t) => (
                   <DraggableTask
                     key={t.id}
@@ -1155,6 +1262,7 @@ export function TasksKanban({
                     showArchived={showArchived}
                   />
                 ))}
+                </SortableContext>
               </DroppableColumn>
             );
           })}
@@ -1169,6 +1277,7 @@ export function TasksKanban({
             setDoneConfirmTaskId(null);
             setDoneConfirmUnfinished(0);
             setDoneConfirmPreviousStatus(null);
+            setPendingTargetOrder(null);
           }
         }}
       >
@@ -1201,7 +1310,13 @@ export function TasksKanban({
                 setDoneConfirmTaskId(null);
                 setDoneConfirmUnfinished(0);
                 setDoneConfirmPreviousStatus(null);
-                await persistStatusChange(taskId, TaskStatus.DONE, previous);
+                await persistStatusChange(
+                  taskId,
+                  TaskStatus.DONE,
+                  previous,
+                  pendingTargetOrder ?? undefined,
+                );
+                setPendingTargetOrder(null);
               }}
             >
               Tetap Selesaikan

@@ -3,6 +3,7 @@ import type {
   Project,
   Task,
   TaskChecklistItem,
+  TaskStatus,
   User,
   Vendor,
 } from "@prisma/client";
@@ -14,6 +15,15 @@ export type TaskCommentRow = {
   author: Pick<User, "id" | "name" | "email">;
 };
 
+export type TaskAttachmentCommentRow = {
+  id: string;
+  body: string;
+  resolvedAt: Date | null;
+  createdAt: Date;
+  author: Pick<User, "id" | "name" | "email">;
+  assignee: Pick<User, "id" | "name" | "email"> | null;
+};
+
 export type TaskAttachmentRow = {
   id: string;
   fileName: string;
@@ -23,6 +33,8 @@ export type TaskAttachmentRow = {
   linkUrl: string | null;
   createdAt: Date;
   uploadedBy: Pick<User, "id" | "name" | "email">;
+  commentCount?: number;
+  unresolvedCommentCount?: number;
 };
 
 export type TaskTagRow = {
@@ -51,4 +63,5 @@ export type TaskRow = Task & {
   comments?: TaskCommentRow[];
   attachments?: TaskAttachmentRow[];
   tags: TaskTagRow[];
+  kanbanPositions?: { status: TaskStatus; sortKey: number }[];
 };

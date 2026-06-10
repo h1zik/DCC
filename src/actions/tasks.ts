@@ -50,7 +50,57 @@ import { syncContentPlanRowFromCompletedKanbanTask } from "@/actions/room-conten
 const moveSchema = z.object({
   taskId: z.string().min(1),
   status: z.nativeEnum(TaskStatus),
+  /** Urutan penuh kolom tujuan setelah drop (opsional). */
+  orderedTaskIdsInTarget: z.array(z.string().min(1)).optional(),
 });
+
+const reorderKanbanColumnSchema = z.object({
+  status: z.nativeEnum(TaskStatus),
+  orderedTaskIds: z.array(z.string().min(1)),
+});
+
+async function persistKanbanColumnOrder(
+  status: TaskStatus,
+  orderedTaskIds: string[],
+) {
+  if (orderedTaskIds.length === 0) return;
+  await prisma.$transaction(
+    orderedTaskIds.map((taskId, index) =>
+      prisma.taskKanbanPosition.upsert({
+        where: { taskId_status: { taskId, status } },
+        create: { taskId, status, sortKey: index * 1000 },
+        update: { sortKey: index * 1000 },
+      }),
+    ),
+  );
+}
+
+async function assertKanbanReorderTasks(
+  roomId: string,
+  phase: RoomProcessPhaseRef,
+  status: TaskStatus,
+  orderedTaskIds: string[],
+  userId: string,
+) {
+  await assertRoomMemberHasTaskPhase(roomId, userId, phase);
+  const unique = [...new Set(orderedTaskIds)];
+  if (unique.length !== orderedTaskIds.length) {
+    throw new Error("Daftar urutan tugas tidak valid.");
+  }
+  const rows = await prisma.task.findMany({
+    where: {
+      id: { in: orderedTaskIds },
+      status,
+      project: { roomId },
+      ...taskPhaseWhere(phase),
+      archivedAt: null,
+    },
+    select: { id: true },
+  });
+  if (rows.length !== orderedTaskIds.length) {
+    throw new Error("Sebagian tugas tidak valid untuk pengurutan kolom ini.");
+  }
+}
 
 async function markContentPlanDesignPublishedIfTaskDone(params: {
   roomId: string;
@@ -140,9 +190,30 @@ async function resolveTaskPhaseForCreate(
   };
 }
 
+export async function reorderKanbanColumn(
+  input: z.infer<typeof reorderKanbanColumnSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const data = reorderKanbanColumnSchema.parse(input);
+  const first = await prisma.task.findFirstOrThrow({
+    where: { id: data.orderedTaskIds[0] },
+    select: { id: true },
+  });
+  const { roomId, phase } = await getTaskRoomContext(first.id);
+  await assertKanbanReorderTasks(
+    roomId,
+    phase,
+    data.status,
+    data.orderedTaskIds,
+    session.user.id,
+  );
+  await persistKanbanColumnOrder(data.status, data.orderedTaskIds);
+  revalidateTasksAndRoomHub();
+}
+
 export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   const session = await requireTasksRoomHubSession();
-  const { taskId, status } = moveSchema.parse(input);
+  const { taskId, status, orderedTaskIdsInTarget } = moveSchema.parse(input);
   const { roomId, phase } = await getTaskRoomContext(taskId);
   await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
@@ -192,6 +263,17 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
         : {}),
     },
   });
+
+  if (orderedTaskIdsInTarget && orderedTaskIdsInTarget.length > 0) {
+    await assertKanbanReorderTasks(
+      roomId,
+      phase,
+      status,
+      orderedTaskIdsInTarget,
+      session.user.id,
+    );
+    await persistKanbanColumnOrder(status, orderedTaskIdsInTarget);
+  }
 
   if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
     await markContentPlanDesignPublishedIfTaskDone({
@@ -876,6 +958,11 @@ export async function loadTaskDetail(taskId: string) {
           linkUrl: true,
           createdAt: true,
           uploadedBy: { select: { id: true, name: true, email: true } },
+          _count: { select: { comments: true } },
+          comments: {
+            where: { resolvedAt: null, assigneeId: { not: null } },
+            select: { id: true },
+          },
         },
       },
     },
@@ -886,6 +973,17 @@ export async function loadTaskDetail(taskId: string) {
   return {
     id: detail.id,
     comments: detail.comments,
-    attachments: detail.attachments,
+    attachments: detail.attachments.map((a) => ({
+      id: a.id,
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      size: a.size,
+      publicPath: a.publicPath,
+      linkUrl: a.linkUrl,
+      createdAt: a.createdAt,
+      uploadedBy: a.uploadedBy,
+      commentCount: a._count.comments,
+      unresolvedCommentCount: a.comments.length,
+    })),
   };
 }

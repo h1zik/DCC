@@ -473,7 +473,7 @@ export async function getAgentKanbanBoard(
       ...phaseWhere,
     },
     select: taskSelect,
-    orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     take: 200,
   });
 

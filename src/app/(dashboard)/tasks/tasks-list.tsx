@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { moveTaskStatus, updateTask, type TaskMutationResult } from "@/actions/tasks";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { sortTasksForKanbanColumn } from "@/lib/kanban-sort";
 import { cn } from "@/lib/utils";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { taskStatusLabel } from "@/lib/task-status-ui";
@@ -696,10 +697,18 @@ export function TasksList({
       const list = byStatus.get(task.status);
       if (list) list.push(task);
     }
-    return columns.map((col) => ({
-      column: col,
-      tasks: byStatus.get(col.linkedStatus) ?? [],
-    }));
+    return columns.map((col) => {
+      const colTasks = (byStatus.get(col.linkedStatus) ?? []).map((task) => ({
+        ...task,
+        kanbanSortKey:
+          task.kanbanPositions?.find((p) => p.status === col.linkedStatus)
+            ?.sortKey ?? null,
+      }));
+      return {
+        column: col,
+        tasks: sortTasksForKanbanColumn(colTasks, col.linkedStatus),
+      };
+    });
   }, [tasks, columns]);
 
   const extraStatuses = useMemo(() => {

@@ -32,6 +32,7 @@ import {
   deleteTaskAttachment,
   uploadTaskAttachment,
 } from "@/actions/task-attachments";
+import { TaskAttachmentPreviewDialog } from "@/components/tasks/task-attachment-preview-dialog";
 import type { TaskAttachmentRow, TaskCommentRow, TaskRow } from "./task-types";
 import {
   roomTaskProcessLabel,
@@ -198,6 +199,9 @@ export function TaskDetailSheet({
   const [detailAttachments, setDetailAttachments] = useState<
     TaskAttachmentRow[]
   >([]);
+  const [previewAttachment, setPreviewAttachment] =
+    useState<TaskAttachmentRow | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     setAvailableTags(roomTaskTags);
@@ -1058,13 +1062,16 @@ export function TaskDetailSheet({
                         key={a.id}
                         className="flex flex-col gap-2 rounded-md border border-border px-2 py-2 text-sm"
                       >
+                        <button
+                          type="button"
+                          className="hover:border-primary/40 flex w-full flex-col gap-2 rounded-md text-left transition-colors"
+                          onClick={() => {
+                            setPreviewAttachment(a);
+                            setPreviewOpen(true);
+                          }}
+                        >
                         {a.publicPath && a.mimeType.startsWith("image/") ? (
-                          <a
-                            href={a.publicPath}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="border-border relative block max-h-40 max-w-full self-start overflow-hidden rounded-md border"
-                          >
+                          <span className="border-border relative block max-h-40 max-w-full self-start overflow-hidden rounded-md border">
                             <Image
                               src={a.publicPath}
                               alt={a.fileName}
@@ -1073,23 +1080,33 @@ export function TaskDetailSheet({
                               unoptimized
                               className="max-h-40 w-auto max-w-full object-contain"
                             />
-                          </a>
+                          </span>
                         ) : null}
                         <div className="flex items-center justify-between gap-2">
-                          <a
-                            href={a.linkUrl ?? a.publicPath ?? "#"}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-accent-foreground flex min-w-0 flex-1 items-center gap-1.5 truncate underline-offset-2 hover:underline"
-                          >
+                          <span className="text-accent-foreground flex min-w-0 flex-1 items-center gap-1.5 truncate">
                             {a.linkUrl ? (
                               <Link2 className="text-muted-foreground size-3.5 shrink-0" />
                             ) : null}
                             <span className="truncate">{a.fileName}</span>
-                          </a>
+                          </span>
                           <span className="text-muted-foreground shrink-0 text-xs">
                             {a.linkUrl ? "Tautan" : formatFileSize(a.size)}
                           </span>
+                          {(a.commentCount ?? 0) > 0 ? (
+                            <span
+                              className={cn(
+                                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                                (a.unresolvedCommentCount ?? 0) > 0
+                                  ? "bg-amber-500/15 text-amber-700"
+                                  : "bg-muted text-muted-foreground",
+                              )}
+                            >
+                              {a.commentCount} komentar
+                            </span>
+                          ) : null}
+                        </div>
+                        </button>
+                        <div className="flex items-center justify-end gap-2">
                           {(a.uploadedBy.id === currentUserId || isRoomManager) && (
                             <Button
                               type="button"
@@ -1164,6 +1181,15 @@ export function TaskDetailSheet({
           ) : null}
         </SheetContent>
       </Sheet>
+
+      <TaskAttachmentPreviewDialog
+        attachment={previewAttachment}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        users={users}
+        currentUserId={currentUserId}
+        isRoomManager={isRoomManager}
+      />
 
       <Dialog open={doneWarningOpen} onOpenChange={setDoneWarningOpen}>
         <DialogContent className="max-w-md">
