@@ -83,6 +83,26 @@ function isImageMime(mime: string) {
   return mime.startsWith("image/");
 }
 
+/** SVG has no generated thumb and often needs a light canvas + explicit sizing. */
+function isSvgImage(mime: string, fileName: string) {
+  const lower = mime.toLowerCase();
+  if (lower === "image/svg+xml" || lower === "image/svg") return true;
+  return fileName.toLowerCase().endsWith(".svg");
+}
+
+/** Upscale tiny assets (SVG icons, small PNG) so preview is readable. */
+const PREVIEW_SMALL_IMAGE_MAX_EDGE = 240;
+
+function shouldUpscalePreviewImage(
+  svgPreview: boolean,
+  naturalWidth: number,
+  naturalHeight: number,
+) {
+  if (svgPreview) return true;
+  const maxEdge = Math.max(naturalWidth, naturalHeight);
+  return maxEdge > 0 && maxEdge < PREVIEW_SMALL_IMAGE_MAX_EDGE;
+}
+
 function isTextMime(mime: string) {
   return (
     mime.startsWith("text/") ||
@@ -988,6 +1008,7 @@ function PdfSelectablePreview({
 function ImageRegionPreview({
   src,
   thumbSrc,
+  mimeType,
   fileName,
   comments,
   activeCommentId,
@@ -996,6 +1017,7 @@ function ImageRegionPreview({
 }: {
   src: string;
   thumbSrc?: string | null;
+  mimeType: string;
   fileName: string;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
@@ -1004,10 +1026,16 @@ function ImageRegionPreview({
 }) {
   const imageBoxRef = useRef<HTMLDivElement>(null);
   const regionPins = useRegionPins(comments, activeCommentId);
-  const previewThumb = thumbSrc && thumbSrc !== src ? thumbSrc : null;
+  const svgPreview = isSvgImage(mimeType, fileName);
+  const previewThumb =
+    svgPreview || !thumbSrc || thumbSrc === src ? null : thumbSrc;
   const [hdReady, setHdReady] = useState(!previewThumb);
+  const [loadError, setLoadError] = useState(false);
+  const [upscalePreview, setUpscalePreview] = useState(svgPreview);
 
   useEffect(() => {
+    setLoadError(false);
+    setUpscalePreview(svgPreview);
     if (!previewThumb) {
       setHdReady(true);
       return;
@@ -1022,9 +1050,24 @@ function ImageRegionPreview({
       img.onload = null;
       img.onerror = null;
     };
-  }, [src, previewThumb]);
+  }, [src, previewThumb, svgPreview]);
 
   const displaySrc = hdReady ? src : previewThumb!;
+
+  const onImageLoad = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      setLoadError(false);
+      const el = e.currentTarget;
+      setUpscalePreview(
+        shouldUpscalePreviewImage(
+          svgPreview,
+          el.naturalWidth,
+          el.naturalHeight,
+        ),
+      );
+    },
+    [svgPreview],
+  );
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -1042,11 +1085,31 @@ function ImageRegionPreview({
     [onPendingSelection],
   );
 
+  if (loadError) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+        <CircleAlert className="text-muted-foreground size-10" />
+        <p className="text-sm font-medium">Gagal memuat pratinjau gambar</p>
+        <a
+          href={src}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium"
+        >
+          Buka file asli
+        </a>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain bg-black/90 p-2 sm:p-4">
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain bg-muted/30 p-2 sm:p-4">
       <div
         ref={imageBoxRef}
-        className="relative inline-flex max-h-full max-w-full touch-none"
+        className={cn(
+          "border-border/50 bg-background relative flex max-h-full max-w-full items-center justify-center rounded-lg border p-2 shadow-sm touch-none sm:p-3",
+          upscalePreview && "min-w-[min(80vw,640px)]",
+        )}
         onPointerDown={onPointerDown}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1055,14 +1118,19 @@ function ImageRegionPreview({
           alt={fileName}
           draggable={false}
           decoding="async"
+          onLoad={onImageLoad}
+          onError={() => setLoadError(true)}
           className={cn(
-            "block max-h-full max-w-full h-auto w-auto object-contain select-none",
+            "block object-contain select-none",
+            upscalePreview
+              ? "h-auto w-[min(80vw,640px)] max-h-[min(65vh,680px)]"
+              : "max-h-[min(65vh,680px)] max-w-[min(calc(100vw-3rem),900px)] h-auto w-auto",
             previewThumb && !hdReady && "scale-[1.01] blur-[2px]",
           )}
         />
         {previewThumb && !hdReady ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
-            <Loader2 className="size-6 animate-spin text-white/80" />
+          <div className="bg-background/60 pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg">
+            <Loader2 className="text-muted-foreground size-6 animate-spin" />
           </div>
         ) : null}
         <DraftRegionOverlay />
@@ -1165,6 +1233,7 @@ export function AnchoredFilePreview({
           key={current.id}
           src={current.publicPath!}
           thumbSrc={current.thumbPath}
+          mimeType={current.mimeType}
           fileName={current.fileName}
           comments={comments}
           activeCommentId={activeCommentId}
