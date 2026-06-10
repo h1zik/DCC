@@ -57,6 +57,34 @@ export const PROFILE_BANNER_PRESETS = {
     to: "#09090b",
     defaultAccent: "#d4d4d8",
   },
+  cosmos: {
+    label: "Cosmos",
+    from: "#0f0524",
+    via: "#312e81",
+    to: "#030712",
+    defaultAccent: "#818cf8",
+  },
+  cyber: {
+    label: "Cyber",
+    from: "#042f2e",
+    via: "#0e7490",
+    to: "#1e1b4b",
+    defaultAccent: "#22d3ee",
+  },
+  gold: {
+    label: "Gold",
+    from: "#422006",
+    via: "#a16207",
+    to: "#1c1917",
+    defaultAccent: "#facc15",
+  },
+  candy: {
+    label: "Candy",
+    from: "#500724",
+    via: "#db2777",
+    to: "#312e81",
+    defaultAccent: "#f9a8d4",
+  },
 } as const;
 
 export type ProfileBannerPreset = keyof typeof PROFILE_BANNER_PRESETS;

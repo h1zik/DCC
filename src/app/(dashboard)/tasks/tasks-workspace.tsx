@@ -10,12 +10,20 @@ import {
   type Brand,
   type Project,
   type User,
-  type Vendor,
 } from "@prisma/client";
 import Link from "next/link";
-import { Archive, Columns3, LayoutGrid, Plus } from "lucide-react";
+import { Archive, Columns3, LayoutGrid, ListChecks, Paperclip, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { createTask, deleteTask } from "@/actions/tasks";
+import {
+  addChecklistItem,
+  createTask,
+  createTaskTag,
+  deleteTask,
+} from "@/actions/tasks";
+import {
+  addTaskLinkAttachment,
+  uploadTaskAttachment,
+} from "@/actions/task-attachments";
 import { setDefaultTaskWorkspaceView } from "@/actions/task-view-preference";
 import { TasksCalendar, type CalendarTask } from "./tasks-calendar";
 import { TasksList } from "./tasks-list";
@@ -24,25 +32,23 @@ import { TasksKanban, type KanbanTask } from "./tasks-kanban";
 import { TaskDetailSheet } from "./task-detail-sheet";
 import type { TaskRow } from "./task-types";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  TaskFormAttachmentsDraft,
+  TaskFormChecklistDraft,
+  TaskFormCollapsibleSection,
+  TaskFormEssentials,
+  TaskFormPeople,
+  TaskFormPlanning,
+} from "@/components/tasks/task-form-ui";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import {
   roomProcessPhaseKey,
   type RoomProcessPhaseRef,
@@ -124,7 +130,6 @@ export function TasksWorkspace({
   tasks,
   projects,
   users,
-  vendors,
   isRoomManager,
   currentUserId,
   kanbanColumns,
@@ -142,7 +147,6 @@ export function TasksWorkspace({
   tasks: TaskRow[];
   projects: (Project & { brand: Brand | null })[];
   users: Pick<User, "id" | "name" | "email">[];
-  vendors: Pick<Vendor, "id" | "name">[];
   /** Manager ruangan: buat/hapus tugas, ubah PIC, moderasi lampiran & komentar. */
   isRoomManager: boolean;
   currentUserId: string;
@@ -176,13 +180,29 @@ export function TasksWorkspace({
   const [description, setDescription] = useState("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [vendorId, setVendorId] = useState<string>("");
+  const [availableTags, setAvailableTags] = useState(roomTaskTags);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColorHex, setNewTagColorHex] = useState("#6B7280");
+  const [createTagPending, setCreateTagPending] = useState(false);
+  const [draftChecklist, setDraftChecklist] = useState<string[]>([]);
+  const [newCheck, setNewCheck] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingLinks, setPendingLinks] = useState<
+    { id: string; url: string; title: string }[]
+  >([]);
+  const [attachLinkUrl, setAttachLinkUrl] = useState("");
+  const [attachLinkTitle, setAttachLinkTitle] = useState("");
+  const [alsoSaveToDocuments, setAlsoSaveToDocuments] = useState(false);
+  const [documentsFolderId, setDocumentsFolderId] = useState<string | null>(null);
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   const [dueDate, setDueDate] = useState("");
-  const [leadTimeDays, setLeadTimeDays] = useState("");
   const [approval, setApproval] = useState(false);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    setAvailableTags(roomTaskTags);
+  }, [roomTaskTags]);
 
   const detailId = detailTask?.id;
   useEffect(() => {
@@ -217,13 +237,74 @@ export function TasksWorkspace({
     setDescription("");
     setAssigneeIds([]);
     setTagIds([]);
-    setVendorId("");
+    setNewTagName("");
+    setDraftChecklist([]);
+    setNewCheck("");
+    setPendingFiles([]);
+    setPendingLinks([]);
+    setAttachLinkUrl("");
+    setAttachLinkTitle("");
+    setAlsoSaveToDocuments(false);
+    setDocumentsFolderId(null);
     setPriority(TaskPriority.MEDIUM);
     setStatus(initialStatus);
     setDueDate("");
-    setLeadTimeDays("");
     setApproval(false);
     setCreateOpen(true);
+  }
+
+  async function onCreateTag() {
+    if (!roomId || !newTagName.trim()) return;
+    setCreateTagPending(true);
+    try {
+      const created = await createTaskTag({
+        roomId,
+        name: newTagName.trim(),
+        colorHex: newTagColorHex,
+      });
+      setAvailableTags((prev) => {
+        if (prev.some((t) => t.id === created.id)) return prev;
+        return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setTagIds((prev) =>
+        prev.includes(created.id) ? prev : [...prev, created.id],
+      );
+      setNewTagName("");
+      toast.success("Tag ditambahkan.");
+    } catch (e) {
+      toast.error(actionErrorMessage(e, "Gagal membuat tag."));
+    } finally {
+      setCreateTagPending(false);
+    }
+  }
+
+  function onAddDraftCheck() {
+    const title = newCheck.trim();
+    if (!title) return;
+    setDraftChecklist((prev) => [...prev, title]);
+    setNewCheck("");
+  }
+
+  function onAddDraftLink() {
+    const url = attachLinkUrl.trim();
+    if (!url) return;
+    setPendingLinks((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        url,
+        title: attachLinkTitle.trim(),
+      },
+    ]);
+    setAttachLinkUrl("");
+    setAttachLinkTitle("");
+  }
+
+  function onPickCreateFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files?.length ? Array.from(e.target.files) : [];
+    e.target.value = "";
+    if (!files.length) return;
+    setPendingFiles((prev) => [...prev, ...files]);
   }
 
   const openDetail = useCallback((task: TaskRow) => {
@@ -235,23 +316,43 @@ export function TasksWorkspace({
     setPending(true);
     try {
       const due = dueDate ? new Date(dueDate) : null;
-      const lead =
-        leadTimeDays.trim() === "" ? null : Math.max(0, parseInt(leadTimeDays, 10));
       const payload = {
         projectId,
         title,
         description: description || null,
         assigneeIds: isRoomManager ? assigneeIds : [],
         tagIds,
-        vendorId: vendorId || null,
         priority,
         status,
         dueDate: due,
-        leadTimeDays: lead,
         isApprovalRequired: approval,
         ...(activePhase ? { customProcessPhaseId: activePhase.id } : {}),
       };
       const created = await createTask(payload);
+
+      for (const itemTitle of draftChecklist) {
+        await addChecklistItem(created.id, itemTitle);
+      }
+
+      for (const file of pendingFiles) {
+        const fd = new FormData();
+        fd.append("file", file);
+        if (alsoSaveToDocuments && roomId) {
+          fd.append("alsoSaveToDocuments", "true");
+          if (documentsFolderId) {
+            fd.append("documentsFolderId", documentsFolderId);
+          }
+        }
+        await uploadTaskAttachment(created.id, fd);
+      }
+
+      for (const link of pendingLinks) {
+        await addTaskLinkAttachment(created.id, {
+          url: link.url,
+          title: link.title || null,
+        });
+      }
+
       toast.success("Tugas dibuat.");
       setCreateOpen(false);
       setLocalTasks((prev) => {
@@ -330,10 +431,15 @@ export function TasksWorkspace({
     () =>
       localTasks.map((t) => ({
         id: t.id,
+        projectId: t.projectId,
         title: t.title,
         status: t.status,
-        priority: priorityLabel(t.priority),
+        priority: t.priority,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+        description: t.description,
+        isApprovalRequired: t.isApprovalRequired,
+        vendorId: t.vendorId,
+        leadTimeDays: t.leadTimeDays,
         checklistTotal: t.checklistItems.length,
         checklistDone: t.checklistItems.filter((item) => item.done).length,
         checklistItems: t.checklistItems.map((c) => ({
@@ -346,10 +452,12 @@ export function TasksWorkspace({
           brand: { name: taskProjectContextLabel(t.project) },
         },
         assignees: t.assignees.map((a) => ({
+          id: a.user.id,
           image: a.user.image ?? null,
           name: a.user.name,
           email: a.user.email,
         })),
+        tagIds: t.tags.map((row) => row.tagId),
         tags: t.tags.map((row) => ({
           id: row.tag.id,
           name: row.tag.name,
@@ -385,25 +493,6 @@ export function TasksWorkspace({
       label: projectSelectLabel(p),
     }));
   }, [projects]);
-  const createDialogPriorityItems = useMemo((): SelectItemDef[] => {
-    return (Object.values(TaskPriority) as TaskPriority[]).map((p) => ({
-      value: p,
-      label: priorityLabel(p),
-    }));
-  }, []);
-  const createDialogStatusItems = useMemo((): SelectItemDef[] => {
-    return (Object.values(TaskStatus) as TaskStatus[]).map((s) => ({
-      value: s,
-      label: taskStatusLabel(s),
-    }));
-  }, []);
-  const createDialogVendorItems = useMemo((): SelectItemDef[] => {
-    return [
-      { value: "__none__", label: "—" },
-      ...vendors.map((v) => ({ value: v.id, label: v.name })),
-    ];
-  }, [vendors]);
-
   const onChangeView = useCallback((nextValue: string) => {
     const next = nextValue as TaskViewTab;
     setActiveView(next);
@@ -435,7 +524,6 @@ export function TasksWorkspace({
         }}
         projects={projects}
         users={users}
-        vendors={vendors}
         roomId={roomId}
         roomTaskTags={roomTaskTags}
         isRoomManager={isRoomManager}
@@ -596,12 +684,101 @@ export function TasksWorkspace({
           <TasksKanban
             tasks={kanbanTasks}
             columns={resolvedKanbanColumns}
+            users={users}
+            roomTaskTags={availableTags}
+            roomId={roomId}
             kanbanReadOnly={showArchived}
             isRoomManager={isRoomManager}
             showArchived={showArchived}
+            onTagCreated={(created) => {
+              setAvailableTags((prev) => {
+                if (prev.some((t) => t.id === created.id)) return prev;
+                return [...prev, created].sort((a, b) =>
+                  a.name.localeCompare(b.name),
+                );
+              });
+            }}
             onTaskClick={(id) => {
               const t = localTasks.find((x) => x.id === id);
               if (t) openDetail(t);
+            }}
+            onTaskPatched={(taskId, patch) => {
+              setLocalTasks((prev) =>
+                prev.map((task) => {
+                  if (task.id !== taskId) return task;
+                  const next: TaskRow = { ...task };
+                  if (patch.title !== undefined) next.title = patch.title;
+                  if (patch.priority !== undefined) next.priority = patch.priority;
+                  if (patch.dueDate !== undefined) {
+                    next.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
+                  }
+                  if (patch.assignees !== undefined) {
+                    next.assignees = patch.assignees.map((a) => ({
+                      user: {
+                        id: a.id,
+                        name: a.name,
+                        email: a.email,
+                        image: a.image,
+                      },
+                    }));
+                  }
+                  if (patch.tags !== undefined) {
+                    next.tags = patch.tags.map((tag) => ({
+                      taskId,
+                      tagId: tag.id,
+                      tag: {
+                        id: tag.id,
+                        roomId:
+                          roomTaskTags.find((rt) => rt.id === tag.id)?.roomId ??
+                          task.tags.find((row) => row.tagId === tag.id)?.tag
+                            .roomId ??
+                          "",
+                        name: tag.name,
+                        colorHex: tag.colorHex,
+                      },
+                    }));
+                  }
+                  return next;
+                }),
+              );
+              setDetailTask((prev) => {
+                if (!prev || prev.id !== taskId) return prev;
+                const task = localTasks.find((t) => t.id === taskId);
+                if (!task) return prev;
+                const next: TaskRow = { ...prev };
+                if (patch.title !== undefined) next.title = patch.title;
+                if (patch.priority !== undefined) next.priority = patch.priority;
+                if (patch.dueDate !== undefined) {
+                  next.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
+                }
+                if (patch.assignees !== undefined) {
+                  next.assignees = patch.assignees.map((a) => ({
+                    user: {
+                      id: a.id,
+                      name: a.name,
+                      email: a.email,
+                      image: a.image,
+                    },
+                  }));
+                }
+                if (patch.tags !== undefined) {
+                  next.tags = patch.tags.map((tag) => ({
+                    taskId,
+                    tagId: tag.id,
+                    tag: {
+                      id: tag.id,
+                      roomId:
+                        roomTaskTags.find((rt) => rt.id === tag.id)?.roomId ??
+                        prev.tags.find((row) => row.tagId === tag.id)?.tag
+                          .roomId ??
+                        "",
+                      name: tag.name,
+                      colorHex: tag.colorHex,
+                    },
+                  }));
+                }
+                return next;
+              });
             }}
             onAddTask={
               isRoomManager && !showArchived
@@ -659,214 +836,136 @@ export function TasksWorkspace({
       </Tabs>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Tugas baru</DialogTitle>
+        <DialogContent className="flex max-h-[92vh] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-border shrink-0 border-b px-6 pt-6 pb-4">
+            <DialogTitle>Buat tugas baru</DialogTitle>
+            <DialogDescription>
+              Isi informasi utama dulu. Sub-tugas dan lampiran bisa ditambah di
+              bawah — semuanya opsional.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <div className="space-y-2">
-              <Label>Proyek</Label>
-              <Select
-                value={projectId}
-                items={createDialogProjectItems}
-                onValueChange={(v) => {
-                  if (v) setProjectId(v);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {projectSelectLabel(p)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tt">Judul</Label>
-              <Input id="tt" value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="td">Deskripsi</Label>
-              <Textarea
-                id="td"
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+            <TaskFormEssentials
+              projectId={projectId}
+              projects={createDialogProjectItems}
+              onProjectChange={setProjectId}
+              title={title}
+              onTitleChange={setTitle}
+              titleId="create-task-title"
+              description={description}
+              onDescriptionChange={setDescription}
+              descriptionId="create-task-desc"
+            />
+
+            <TaskFormPlanning
+              status={status}
+              onStatusChange={setStatus}
+              priority={priority}
+              onPriorityChange={setPriority}
+              dueDate={dueDate}
+              onDueDateChange={setDueDate}
+              dueDateId="create-task-due"
+              approval={approval}
+              onApprovalChange={setApproval}
+              approvalId="create-task-approval"
+            />
+
+            <TaskFormPeople
+              users={users}
+              assigneeIds={assigneeIds}
+              onAssigneeToggle={(userId, selected) => {
+                setAssigneeIds((prev) =>
+                  selected
+                    ? [...prev, userId]
+                    : prev.filter((id) => id !== userId),
+                );
+              }}
+              assigneeDisabled={!isRoomManager}
+              tags={availableTags}
+              selectedTagIds={tagIds}
+              onTagToggle={(tagId, selected) => {
+                setTagIds((prev) =>
+                  selected
+                    ? [...prev, tagId]
+                    : prev.filter((id) => id !== tagId),
+                );
+              }}
+              canCreateTag={isRoomManager}
+              newTagName={newTagName}
+              onNewTagNameChange={setNewTagName}
+              newTagColorHex={newTagColorHex}
+              onNewTagColorChange={setNewTagColorHex}
+              onCreateTag={() => void onCreateTag()}
+              createTagPending={createTagPending}
+              roomId={roomId}
+            />
+
+            <TaskFormCollapsibleSection
+              icon={<ListChecks className="size-4" />}
+              title="Sub-tugas"
+              defaultOpen={draftChecklist.length > 0}
+              badge={
+                draftChecklist.length > 0 ? (
+                  <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums">
+                    {draftChecklist.length}
+                  </span>
+                ) : null
+              }
+            >
+              <TaskFormChecklistDraft
+                items={draftChecklist}
+                draft={newCheck}
+                onDraftChange={setNewCheck}
+                onAdd={onAddDraftCheck}
+                onRemove={(index) =>
+                  setDraftChecklist((prev) => prev.filter((_, i) => i !== index))
+                }
               />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label>PIC</Label>
-                <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
-                  {users.map((u) => {
-                    const checked = assigneeIds.includes(u.id);
-                    return (
-                      <label key={u.id} className="flex items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={checked}
-                          disabled={!isRoomManager}
-                          onCheckedChange={(v) => {
-                            const next = v === true;
-                            setAssigneeIds((prev) =>
-                              next
-                                ? [...prev, u.id]
-                                : prev.filter((id) => id !== u.id),
-                            );
-                          }}
-                        />
-                        <span>{u.name ?? u.email}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {!isRoomManager ? (
-                  <p className="text-muted-foreground text-xs">
-                    PIC ditetapkan oleh manager ruangan lewat detail tugas setelah
-                    tugas dibuat.
-                  </p>
-                ) : null}
-              </div>
-              <div className="space-y-2">
-                <Label>Tag</Label>
-                <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
-                  {roomTaskTags.length === 0 ? (
-                    <p className="text-muted-foreground text-xs">Belum ada tag ruangan.</p>
-                  ) : (
-                    roomTaskTags.map((tag) => {
-                      const checked = tagIds.includes(tag.id);
-                      return (
-                        <label key={tag.id} className="flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(v) => {
-                              const next = v === true;
-                              setTagIds((prev) =>
-                                next
-                                  ? [...prev, tag.id]
-                                  : prev.filter((id) => id !== tag.id),
-                              );
-                            }}
-                          />
-                          <span
-                            className="inline-block size-3 rounded-sm border border-border"
-                            style={{ backgroundColor: tag.colorHex }}
-                            aria-hidden
-                          />
-                          <span>{tag.name}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label>Prioritas</Label>
-                <Select
-                  value={priority}
-                  items={createDialogPriorityItems}
-                  onValueChange={(v) => {
-                    if (v) setPriority(v as TaskPriority);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.values(TaskPriority) as TaskPriority[]).map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {priorityLabel(p)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select
-                  value={status}
-                  items={createDialogStatusItems}
-                  onValueChange={(v) => {
-                    if (v) setStatus(v as TaskStatus);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.values(TaskStatus) as TaskStatus[]).map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {taskStatusLabel(s)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label htmlFor="dd">Deadline</Label>
-                <Input
-                  id="dd"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label>Vendor (opsional)</Label>
-                <Select
-                  value={vendorId || "__none__"}
-                  items={createDialogVendorItems}
-                  onValueChange={(v) => {
-                    if (!v || v === "__none__") setVendorId("");
-                    else setVendorId(v);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="—" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">—</SelectItem>
-                    {vendors.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lt">Lead time (hari)</Label>
-                <Input
-                  id="lt"
-                  type="number"
-                  min={0}
-                  value={leadTimeDays}
-                  onChange={(e) => setLeadTimeDays(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="appr"
-                checked={approval}
-                onCheckedChange={(c) => setApproval(c === true)}
+            </TaskFormCollapsibleSection>
+
+            <TaskFormCollapsibleSection
+              icon={<Paperclip className="size-4" />}
+              title="Lampiran"
+              defaultOpen={
+                pendingFiles.length > 0 || pendingLinks.length > 0
+              }
+              badge={
+                pendingFiles.length + pendingLinks.length > 0 ? (
+                  <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums">
+                    {pendingFiles.length + pendingLinks.length}
+                  </span>
+                ) : null
+              }
+            >
+              <TaskFormAttachmentsDraft
+                pendingFiles={pendingFiles}
+                onPickFiles={onPickCreateFiles}
+                onRemoveFile={(index) =>
+                  setPendingFiles((prev) => prev.filter((_, i) => i !== index))
+                }
+                pendingLinks={pendingLinks}
+                linkUrl={attachLinkUrl}
+                onLinkUrlChange={setAttachLinkUrl}
+                linkTitle={attachLinkTitle}
+                onLinkTitleChange={setAttachLinkTitle}
+                onAddLink={onAddDraftLink}
+                onRemoveLink={(id) =>
+                  setPendingLinks((prev) => prev.filter((item) => item.id !== id))
+                }
+                disabled={pending}
+                roomId={roomId}
+                documentFolders={documentFolders}
+                alsoSaveToDocuments={alsoSaveToDocuments}
+                onAlsoSaveToDocumentsChange={setAlsoSaveToDocuments}
+                documentsFolderId={documentsFolderId}
+                onDocumentsFolderIdChange={setDocumentsFolderId}
+                fileInputId="create-task-attach"
               />
-              <Label htmlFor="appr" className="text-sm font-normal">
-                Perlu persetujuan CEO
-              </Label>
-            </div>
+            </TaskFormCollapsibleSection>
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="border-border shrink-0 border-t px-6 py-4">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               Batal
             </Button>
@@ -874,7 +973,7 @@ export function TasksWorkspace({
               onClick={onSaveCreate}
               disabled={pending || !title.trim() || !projectId}
             >
-              Simpan
+              {pending ? "Menyimpan…" : "Buat tugas"}
             </Button>
           </DialogFooter>
         </DialogContent>
