@@ -101,7 +101,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       ? { archivedAt: { not: null }, status: TaskStatus.DONE }
       : { archivedAt: null };
 
-    const [tasks, projects, memberRows, vendors, kanbanColumns, roomTaskTags] =
+    const [tasks, projects, memberRows, kanbanColumns, roomTaskTags] =
       await Promise.all([
       prisma.task.findMany({
         where: { project: { roomId }, ...archivedWhere },
@@ -141,7 +141,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         },
         orderBy: { user: { email: "asc" } },
       }),
-      prisma.vendor.findMany({ orderBy: { name: "asc" } }),
       getSimpleHubKanbanColumns(roomId),
       prisma.taskTag.findMany({
         where: { roomId },
@@ -167,7 +166,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           simpleHub
           projects={projects}
           users={users}
-          vendors={vendors}
           isRoomManager={canManageRoomTasks}
           currentUserId={uid}
           tasks={tasks}
@@ -206,7 +204,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     tasks,
     projects,
     contributorMembers,
-    vendors,
     kanbanColumns,
     roomTaskTags,
     documentFolders,
@@ -261,7 +258,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       },
       orderBy: { user: { email: "asc" } },
     }),
-    prisma.vendor.findMany({ orderBy: { name: "asc" } }),
     getRoomKanbanColumns(roomId, activePhase),
     prisma.taskTag.findMany({
       where: { roomId },
@@ -296,7 +292,6 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         activePhase={activePhase}
         projects={projects}
         users={users}
-        vendors={vendors}
         isRoomManager={canManageRoomTasks}
         currentUserId={uid}
         tasks={tasks}

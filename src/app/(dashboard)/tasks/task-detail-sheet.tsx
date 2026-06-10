@@ -11,7 +11,6 @@ import {
   type Brand,
   type Project,
   type User,
-  type Vendor,
 } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -71,26 +70,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { TaskDocumentUploadOptions } from "@/components/tasks/task-document-upload-options";
+import {
+  TaskFormEssentials,
+  TaskFormPeople,
+  TaskFormPlanning,
+  TaskFormSection,
+  priorityLabel,
+} from "@/components/tasks/task-form-ui";
 import { listRoomDocumentFoldersForPicker } from "@/actions/room-documents";
 import type { RoomFolderNode } from "@/lib/room-document-folders";
 import { formatFolderPath } from "@/lib/room-document-folders";
-import { Link2, Paperclip, Pencil, Trash2 } from "lucide-react";
-
-function priorityLabel(p: TaskPriority) {
-  switch (p) {
-    case TaskPriority.HIGH:
-      return "Tinggi";
-    case TaskPriority.MEDIUM:
-      return "Sedang";
-    case TaskPriority.LOW:
-      return "Rendah";
-    default:
-      return p;
-  }
-}
+import {
+  Link2,
+  ListChecks,
+  MessageSquare,
+  Paperclip,
+  Pencil,
+  Trash2,
+} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function contentPlanJenisLabel(j: ContentPlanJenis) {
   switch (j) {
@@ -112,7 +112,6 @@ type Props = {
   onTaskPatched?: (taskId: string, patch: Partial<TaskRow>) => void;
   projects: (Project & { brand: Brand | null })[];
   users: Pick<User, "id" | "name" | "email">[];
-  vendors: Pick<Vendor, "id" | "name">[];
   roomId?: string;
   roomTaskTags?: { id: string; roomId: string; name: string; colorHex: string }[];
   isRoomManager: boolean;
@@ -140,7 +139,6 @@ export function TaskDetailSheet({
   onTaskPatched,
   projects,
   users,
-  vendors,
   roomId,
   roomTaskTags = [],
   isRoomManager,
@@ -158,7 +156,6 @@ export function TaskDetailSheet({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-  const [vendorId, setVendorId] = useState("");
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState(roomTaskTags);
@@ -167,7 +164,6 @@ export function TaskDetailSheet({
   const [createTagPending, setCreateTagPending] = useState(false);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   const [dueDate, setDueDate] = useState("");
-  const [leadTimeDays, setLeadTimeDays] = useState("");
   const [approval, setApproval] = useState(false);
   const [savePending, setSavePending] = useState(false);
 
@@ -241,12 +237,10 @@ export function TaskDetailSheet({
     setTitle(task.title);
     setDescription(task.description ?? "");
     setAssigneeIds(task.assignees.map((a) => a.user.id));
-    setVendorId(task.vendorId ?? "");
     setPriority(task.priority);
     setSelectedTagIds(task.tags.map((t) => t.tagId));
     setStatus(task.status);
     setDueDate(task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "");
-    setLeadTimeDays(task.leadTimeDays != null ? String(task.leadTimeDays) : "");
     setApproval(task.isApprovalRequired);
     setNewCheck("");
     setChecklistEditId(null);
@@ -315,30 +309,6 @@ export function TaskDetailSheet({
       })),
     [],
   );
-  const prioritySelectItems = useMemo(
-    () =>
-      (Object.values(TaskPriority) as TaskPriority[]).map((p) => ({
-        value: p,
-        label: priorityLabel(p),
-      })),
-    [],
-  );
-  const statusSelectItems = useMemo(
-    () =>
-      (Object.values(TaskStatus) as TaskStatus[]).map((s) => ({
-        value: s,
-        label: taskStatusLabel(s),
-      })),
-    [],
-  );
-  const vendorSelectItems = useMemo(
-    () => [
-      { value: "__none__", label: "—" },
-      ...vendors.map((v) => ({ value: v.id, label: v.name })),
-    ],
-    [vendors],
-  );
-
   const contentPlanAttachmentHint = useMemo(() => {
     if (!task?.contentPlanItemId || !task.contentPlanJenis) {
       return {
@@ -385,8 +355,6 @@ export function TaskDetailSheet({
     setSavePending(true);
     try {
       const due = dueDate ? new Date(dueDate) : null;
-      const lead =
-        leadTimeDays.trim() === "" ? null : Math.max(0, parseInt(leadTimeDays, 10));
       const updated = await updateTask({
         taskId: task.id,
         projectId,
@@ -395,10 +363,10 @@ export function TaskDetailSheet({
         description: description || null,
         assigneeIds,
         tagIds: selectedTagIds,
-        vendorId: vendorId || null,
+        vendorId: task.vendorId ?? null,
         priority,
         dueDate: due,
-        leadTimeDays: lead,
+        leadTimeDays: task.leadTimeDays,
         isApprovalRequired: approval,
         status,
       });
@@ -607,15 +575,23 @@ export function TaskDetailSheet({
         <SheetContent
           side="right"
           showCloseButton
-          className="data-[side=right]:sm:max-w-lg flex h-full w-full max-w-full flex-col gap-0 p-0"
+          className="data-[side=right]:sm:max-w-xl flex h-full w-full max-w-full flex-col gap-0 p-0"
         >
           {task ? (
             <>
-            <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pb-2">
-              <SheetTitle className="pr-10 leading-snug">{task.title}</SheetTitle>
-              <SheetDescription>
-                {taskProjectContextLabel(task.project)} · {task.project.name}
-              </SheetDescription>
+            <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pb-3">
+              <div className="flex flex-wrap items-start justify-between gap-2 pr-8">
+                <div className="min-w-0 space-y-1">
+                  <SheetTitle className="text-lg leading-snug">Edit tugas</SheetTitle>
+                  <SheetDescription className="line-clamp-2">
+                    {taskProjectContextLabel(task.project)} · {task.project.name}
+                  </SheetDescription>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-1.5">
+                  <Badge variant="outline">{taskStatusLabel(status)}</Badge>
+                  <Badge variant="secondary">{priorityLabel(priority)}</Badge>
+                </div>
+              </div>
             </SheetHeader>
 
             {task.contentPlanItemId && task.contentPlanJenis ? (
@@ -634,309 +610,159 @@ export function TaskDetailSheet({
               </div>
             ) : null}
 
-            <ScrollArea className="min-h-0 flex-1">
-              <div className="flex flex-col gap-6 px-4 py-4">
-                <section className="space-y-3">
-                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Ringkasan
-                  </h3>
-                  <div className="space-y-2">
-                    <Label>Proyek</Label>
-                    <Select
-                      value={projectId}
-                      items={projectSelectItems}
-                      disabled={!isRoomManager}
-                      onValueChange={(v) => {
-                        if (v) setProjectId(v);
-                      }}
+            <Tabs
+              defaultValue="detail"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            >
+              <div className="border-border shrink-0 border-b px-4 pt-2">
+                <TabsList
+                  variant="line"
+                  className="h-9 w-full justify-start overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                    <TabsTrigger value="detail" className="text-xs sm:text-sm">
+                      Detail
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="checklist"
+                      className="gap-1.5 text-xs sm:text-sm"
                     >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projects.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {projectSelectLabel(p)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {!simpleHub ? (
-                    <div className="space-y-2">
-                      <Label>Proses alur ruangan</Label>
-                      <Select
-                        value={roomProcess}
-                        items={roomProcessSelectItems}
-                        onValueChange={(v) => {
-                          if (v) setRoomProcess(v as RoomTaskProcess);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROOM_TASK_PROCESS_ORDER.map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {roomTaskProcessLabel(p)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-muted-foreground text-xs">
-                        Memindahkan tugas ke tab proses lain: ubah nilai ini lalu
-                        simpan — kartu akan muncul di tab yang sesuai setelah
-                        penyegaran.
-                      </p>
-                    </div>
-                  ) : null}
-                  <div className="space-y-2">
-                    <Label htmlFor="td-title">Judul</Label>
-                    <Input
-                      id="td-title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="td-desc">Deskripsi</Label>
-                    <Textarea
-                      id="td-desc"
-                      rows={3}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label>PIC</Label>
-                      <div className="max-h-40 space-y-1 overflow-auto rounded-md border p-2">
-                        {users.map((u) => {
-                          const checked = assigneeIds.includes(u.id);
-                          return (
-                            <label key={u.id} className="flex items-center gap-2 text-sm">
-                              <Checkbox
-                                checked={checked}
-                                disabled={!isRoomManager}
-                                onCheckedChange={(v) => {
-                                  const next = v === true;
-                                  setAssigneeIds((prev) =>
-                                    next
-                                      ? [...prev, u.id]
-                                      : prev.filter((id) => id !== u.id),
-                                  );
-                                }}
-                              />
-                              <span>{u.name ?? u.email}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      {!isRoomManager ? (
-                        <p className="text-muted-foreground text-xs">
-                          Hanya manager ruangan yang dapat mengubah PIC (anggota
-                          ruangan dengan akses fase ini).
-                        </p>
+                      <ListChecks className="size-3.5" />
+                      Sub-tugas
+                      {task.checklistItems.length > 0 ? (
+                        <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0 text-[10px] tabular-nums">
+                          {task.checklistItems.length}
+                        </span>
                       ) : null}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Prioritas</Label>
-                      <Select
-                        value={priority}
-                        items={prioritySelectItems}
-                        onValueChange={(v) => {
-                          if (v) setPriority(v as TaskPriority);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.values(TaskPriority) as TaskPriority[]).map(
-                            (p) => (
-                              <SelectItem key={p} value={p}>
-                                {priorityLabel(p)}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="td-due">Deadline</Label>
-                      <Input
-                        id="td-due"
-                        type="date"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Status</Label>
-                      <Select
-                        value={status}
-                        items={statusSelectItems}
-                        disabled={Boolean(task.archivedAt)}
-                        onValueChange={(v) => {
-                          if (v) setStatus(v as TaskStatus);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.values(TaskStatus) as TaskStatus[]).map(
-                            (s) => (
-                              <SelectItem key={s} value={s}>
-                                {taskStatusLabel(s)}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-                      {task.archivedAt ? (
-                        <p className="text-muted-foreground text-xs">
-                          Status tidak dapat diubah selama tugas diarsipkan.
-                          Pulihkan dari Arsip untuk mengubah status.
-                        </p>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="attachments"
+                      className="gap-1.5 text-xs sm:text-sm"
+                    >
+                      <Paperclip className="size-3.5" />
+                      Lampiran
+                      {detailAttachments.length > 0 ? (
+                        <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0 text-[10px] tabular-nums">
+                          {detailAttachments.length}
+                        </span>
                       ) : null}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label>Vendor</Label>
-                      <Select
-                        value={vendorId || "__none__"}
-                        items={vendorSelectItems}
-                        onValueChange={(v) => {
-                          if (!v || v === "__none__") setVendorId("");
-                          else setVendorId(v);
-                        }}
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="comments"
+                      className="gap-1.5 text-xs sm:text-sm"
+                    >
+                      <MessageSquare className="size-3.5" />
+                      Komentar
+                      {detailComments.length > 0 ? (
+                        <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0 text-[10px] tabular-nums">
+                          {detailComments.length}
+                        </span>
+                      ) : null}
+                    </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <ScrollArea className="min-h-0 flex-1">
+                <div className="space-y-4 px-4 py-4">
+                  <TabsContent value="detail" className="mt-0 space-y-4">
+                    <TaskFormEssentials
+                      projectId={projectId}
+                      projects={projectSelectItems}
+                      onProjectChange={setProjectId}
+                      projectDisabled={!isRoomManager}
+                      title={title}
+                      onTitleChange={setTitle}
+                      titleId="td-title"
+                      description={description}
+                      onDescriptionChange={setDescription}
+                      descriptionId="td-desc"
+                    />
+                    {!simpleHub ? (
+                      <TaskFormSection
+                        title="Proses alur"
+                        description="Pindahkan tugas ke tab proses lain di ruangan ini."
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="—" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">—</SelectItem>
-                          {vendors.map((v) => (
-                            <SelectItem key={v.id} value={v.id}>
-                              {v.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="td-lt">Lead time (hari)</Label>
-                      <Input
-                        id="td-lt"
-                        type="number"
-                        min={0}
-                        value={leadTimeDays}
-                        onChange={(e) => setLeadTimeDays(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tag</Label>
-                    {availableTags.length === 0 ? (
-                      <p className="text-muted-foreground text-xs">
-                        Belum ada tag di ruangan ini.
-                      </p>
-                    ) : (
-                      <div className="max-h-36 space-y-1 overflow-auto rounded-md border p-2">
-                        {availableTags.map((tag) => (
-                          <label key={tag.id} className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={selectedTagIds.includes(tag.id)}
-                              onCheckedChange={(v) => {
-                                const next = v === true;
-                                setSelectedTagIds((prev) =>
-                                  next
-                                    ? [...prev, tag.id]
-                                    : prev.filter((id) => id !== tag.id),
-                                );
-                              }}
-                            />
-                            <span
-                              className="inline-block size-3 rounded-sm border border-border"
-                              style={{ backgroundColor: tag.colorHex }}
-                              aria-hidden
-                            />
-                            <span>{tag.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                    {isRoomManager ? (
-                      <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-md border p-2">
-                        <Input
-                          placeholder="Tag baru…"
-                          value={newTagName}
-                          onChange={(e) => setNewTagName(e.target.value)}
-                          maxLength={40}
-                          disabled={createTagPending || !roomId}
-                        />
-                        <Input
-                          type="color"
-                          value={newTagColorHex}
-                          onChange={(e) => setNewTagColorHex(e.target.value.toUpperCase())}
-                          className="h-9 w-12 p-1"
-                          disabled={createTagPending || !roomId}
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          disabled={
-                            createTagPending || !roomId || newTagName.trim().length === 0
-                          }
-                          onClick={() => void onCreateTag()}
+                        <Select
+                          value={roomProcess}
+                          items={roomProcessSelectItems}
+                          onValueChange={(v) => {
+                            if (v) setRoomProcess(v as RoomTaskProcess);
+                          }}
                         >
-                          {createTagPending ? "..." : "Tambah"}
-                        </Button>
-                      </div>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROOM_TASK_PROCESS_ORDER.map((p) => (
+                              <SelectItem key={p} value={p}>
+                                {roomTaskProcessLabel(p)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TaskFormSection>
                     ) : null}
-                    <div className="flex flex-wrap gap-2">
-                      {availableTags
-                        .filter((tag) => selectedTagIds.includes(tag.id))
-                        .map((tag) => (
-                          <Badge key={tag.id} variant="secondary">
-                            <span
-                              className="mr-1 inline-block size-2 rounded-full"
-                              style={{ backgroundColor: tag.colorHex }}
-                              aria-hidden
-                            />
-                            {tag.name}
-                          </Badge>
-                        ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="td-appr"
-                      checked={approval}
-                      disabled={!isRoomManager}
-                      onCheckedChange={(c) => setApproval(c === true)}
+                    <TaskFormPlanning
+                      status={status}
+                      onStatusChange={setStatus}
+                      statusDisabled={Boolean(task.archivedAt)}
+                      priority={priority}
+                      onPriorityChange={setPriority}
+                      dueDate={dueDate}
+                      onDueDateChange={setDueDate}
+                      dueDateId="td-due"
+                      approval={approval}
+                      onApprovalChange={setApproval}
+                      approvalDisabled={!isRoomManager}
+                      approvalId="td-appr"
                     />
-                    <Label htmlFor="td-appr" className="text-sm font-normal">
-                      Perlu persetujuan CEO
-                    </Label>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">{taskStatusLabel(status)}</Badge>
-                    <Badge variant="secondary">{priorityLabel(priority)}</Badge>
-                  </div>
-                </section>
+                    {task.archivedAt ? (
+                      <p className="text-muted-foreground rounded-lg border border-dashed px-3 py-2 text-xs">
+                        Tugas diarsipkan — status tidak bisa diubah sampai
+                        dipulihkan dari Arsip.
+                      </p>
+                    ) : null}
+                    <TaskFormPeople
+                      users={users}
+                      assigneeIds={assigneeIds}
+                      onAssigneeToggle={(userId, selected) => {
+                        setAssigneeIds((prev) =>
+                          selected
+                            ? [...prev, userId]
+                            : prev.filter((id) => id !== userId),
+                        );
+                      }}
+                      assigneeDisabled={!isRoomManager}
+                      tags={availableTags}
+                      selectedTagIds={selectedTagIds}
+                      onTagToggle={(tagId, selected) => {
+                        setSelectedTagIds((prev) =>
+                          selected
+                            ? [...prev, tagId]
+                            : prev.filter((id) => id !== tagId),
+                        );
+                      }}
+                      canCreateTag={isRoomManager}
+                      newTagName={newTagName}
+                      onNewTagNameChange={setNewTagName}
+                      newTagColorHex={newTagColorHex}
+                      onNewTagColorChange={setNewTagColorHex}
+                      onCreateTag={() => void onCreateTag()}
+                      createTagPending={createTagPending}
+                      roomId={roomId}
+                    />
+                  </TabsContent>
 
-                <Separator />
-
-                <section className="space-y-3">
-                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Sub-tugas
-                  </h3>
+                  <TabsContent value="checklist" className="mt-0">
+                    <TaskFormSection
+                      icon={<ListChecks className="size-4" />}
+                      title="Sub-tugas"
+                      description="Pecah pekerjaan jadi langkah-langkah. Centang saat selesai."
+                    >
+                  {task.checklistItems.length === 0 ? (
+                    <p className="text-muted-foreground text-xs">
+                      Belum ada sub-tugas. Tambahkan langkah pertama di bawah.
+                    </p>
+                  ) : null}
                   <ul className="space-y-2">
                     {task.checklistItems.map((c) => (
                       <li
@@ -1045,19 +871,19 @@ export function TaskDetailSheet({
                       Tambah
                     </Button>
                   </div>
-                </section>
+                    </TaskFormSection>
+                  </TabsContent>
 
-                <Separator />
-
-                <section className="space-y-3">
-                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Komentar
-                    {detailLoading && detailComments.length === 0 ? (
-                      <span className="text-muted-foreground/70 ml-2 text-[10px] font-normal normal-case tracking-normal">
-                        memuat…
-                      </span>
-                    ) : null}
-                  </h3>
+                  <TabsContent value="comments" className="mt-0">
+                    <TaskFormSection
+                      icon={<MessageSquare className="size-4" />}
+                      title="Komentar"
+                      description={
+                        detailLoading && detailComments.length === 0
+                          ? "Memuat komentar…"
+                          : "Diskusi singkat seputar tugas ini."
+                      }
+                    >
                   <div className="max-h-48 space-y-3 overflow-y-auto rounded-md border border-border p-2">
                     {detailComments.length === 0 ? (
                       <p className="text-muted-foreground text-sm">
@@ -1128,22 +954,38 @@ export function TaskDetailSheet({
                   >
                     Kirim komentar
                   </Button>
-                </section>
+                    </TaskFormSection>
+                  </TabsContent>
 
-                <Separator />
-
-                <section className="space-y-3">
-                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Lampiran
-                  </h3>
+                  <TabsContent value="attachments" className="mt-0">
+                    <TaskFormSection
+                      icon={<Paperclip className="size-4" />}
+                      title="Lampiran"
+                      description={
+                        uploadPending
+                          ? "Mengunggah file…"
+                          : contentPlanAttachmentHint.helper
+                      }
+                    >
                   <div className="space-y-2">
                     <Label
                       htmlFor={`task-attach-${task.id}`}
-                      className="text-foreground flex items-center gap-2 text-sm font-medium"
+                      className="sr-only"
                     >
-                      <Paperclip className="text-muted-foreground size-4" />
-                      Sisipkan file
+                      Unggah file
                     </Label>
+                    <label
+                      htmlFor={`task-attach-${task.id}`}
+                      className={cn(
+                        "border-border hover:border-primary/40 hover:bg-muted/20 flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-4 py-6 text-center transition-colors",
+                        uploadPending && "pointer-events-none opacity-50",
+                      )}
+                    >
+                      <Paperclip className="text-muted-foreground size-5" aria-hidden />
+                      <span className="text-foreground text-sm font-medium">
+                        Klik untuk pilih file
+                      </span>
+                    </label>
                     <input
                       id={`task-attach-${task.id}`}
                       type="file"
@@ -1151,16 +993,8 @@ export function TaskDetailSheet({
                       accept={contentPlanAttachmentHint.accept}
                       disabled={uploadPending}
                       onChange={onFileSelected}
-                      className={cn(
-                        "border-input bg-background text-foreground file:bg-muted file:text-foreground flex min-h-9 w-full cursor-pointer rounded-lg border px-2.5 py-2 text-sm transition-colors outline-none",
-                        "file:mr-3 file:inline-flex file:h-8 file:cursor-pointer file:items-center file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium",
-                        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-3",
-                        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
-                      )}
+                      className="sr-only"
                     />
-                    <p className="text-muted-foreground text-xs">
-                      {uploadPending ? "Mengunggah…" : contentPlanAttachmentHint.helper}
-                    </p>
                     {roomId ? (
                       <TaskDocumentUploadOptions
                         roomId={roomId}
@@ -1284,9 +1118,11 @@ export function TaskDetailSheet({
                       </li>
                     ))}
                   </ul>
-                </section>
-              </div>
-            </ScrollArea>
+                    </TaskFormSection>
+                  </TabsContent>
+                </div>
+              </ScrollArea>
+            </Tabs>
 
             <SheetFooter className="border-border shrink-0 flex-row flex-wrap gap-2 border-t">
               {isRoomManager ? (
@@ -1321,7 +1157,7 @@ export function TaskDetailSheet({
                 disabled={savePending || !title.trim() || !projectId}
                 onClick={onSaveFields}
               >
-                Simpan perubahan
+                {savePending ? "Menyimpan…" : "Simpan perubahan"}
               </Button>
             </SheetFooter>
             </>

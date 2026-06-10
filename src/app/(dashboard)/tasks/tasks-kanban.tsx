@@ -13,13 +13,22 @@ import {
   useDroppable,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { TaskStatus } from "@prisma/client";
-import { archiveTask, moveTaskStatus, unarchiveTask } from "@/actions/tasks";
+import { TaskPriority, TaskStatus, type User } from "@prisma/client";
+import {
+  addChecklistItem,
+  archiveTask,
+  createTaskTag,
+  moveTaskStatus,
+  unarchiveTask,
+  updateTask,
+  type TaskMutationResult,
+} from "@/actions/tasks";
 import { toast } from "sonner";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { cn } from "@/lib/utils";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -29,92 +38,263 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
   Archive,
   CalendarDays,
   Check,
   Flag,
-  GripVertical,
+  Pencil,
   Plus,
   RotateCcw,
+  Tag,
+  UserRound,
 } from "lucide-react";
 import { TaskChecklistPopover } from "@/components/tasks/task-checklist-popover";
 
 export type KanbanTask = {
   id: string;
+  projectId: string;
   title: string;
   status: TaskStatus;
-  priority: string;
+  priority: TaskPriority;
   dueDate: string | null;
+  description: string | null;
+  isApprovalRequired: boolean;
+  vendorId: string | null;
+  leadTimeDays: number | null;
   checklistTotal: number;
   checklistDone: number;
   checklistItems: { id: string; title: string; done: boolean }[];
   project: { name: string; brand: { name: string } };
   assignees: {
+    id: string;
     image: string | null;
     name: string | null;
     email: string;
   }[];
+  tagIds: string[];
   tags: { id: string; name: string; colorHex: string }[];
 };
 
-function PicStrip({
-  assignees,
+type RoomTaskTag = {
+  id: string;
+  name: string;
+  colorHex: string;
+  roomId?: string;
+};
+
+function priorityLabel(p: TaskPriority): string {
+  switch (p) {
+    case TaskPriority.HIGH:
+      return "Tinggi";
+    case TaskPriority.MEDIUM:
+      return "Sedang";
+    case TaskPriority.LOW:
+      return "Rendah";
+    default:
+      return String(p);
+  }
+}
+
+function priorityFlagClass(p: TaskPriority): string {
+  switch (p) {
+    case TaskPriority.HIGH:
+      return "text-rose-500";
+    case TaskPriority.MEDIUM:
+      return "text-amber-500";
+    case TaskPriority.LOW:
+      return "text-sky-500";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+function kanbanTaskToUpdatePayload(
+  task: KanbanTask,
+  overrides: {
+    title?: string;
+    assigneeIds?: string[];
+    tagIds?: string[];
+    priority?: TaskPriority;
+    dueDate?: Date | null;
+  } = {},
+) {
+  return {
+    taskId: task.id,
+    projectId: task.projectId,
+    title: overrides.title ?? task.title,
+    description: task.description,
+    assigneeIds:
+      overrides.assigneeIds ?? task.assignees.map((a) => a.id),
+    tagIds: overrides.tagIds ?? task.tagIds,
+    vendorId: task.vendorId,
+    priority: overrides.priority ?? task.priority,
+    dueDate:
+      overrides.dueDate !== undefined
+        ? overrides.dueDate
+        : task.dueDate
+          ? new Date(task.dueDate)
+          : null,
+    leadTimeDays: task.leadTimeDays,
+    isApprovalRequired: task.isApprovalRequired,
+    status: task.status,
+  };
+}
+
+function applyKanbanPatch(
+  task: KanbanTask,
+  updated: TaskMutationResult,
+): Partial<KanbanTask> {
+  return {
+    title: updated.title,
+    priority: updated.priority,
+    dueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
+    assignees: updated.assignees.map((a) => ({
+      id: a.user.id,
+      image: a.user.image ?? null,
+      name: a.user.name,
+      email: a.user.email,
+    })),
+    tagIds: updated.tags.map((t) => t.tagId),
+    tags: updated.tags.map((t) => ({
+      id: t.tag.id,
+      name: t.tag.name,
+      colorHex: t.tag.colorHex,
+    })),
+  };
+}
+
+const ASSIGNEE_AVATAR_COLORS = [
+  "bg-rose-500",
+  "bg-violet-500",
+  "bg-sky-500",
+  "bg-amber-500",
+  "bg-emerald-500",
+  "bg-fuchsia-500",
+] as const;
+
+function assigneeAvatarColor(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash + id.charCodeAt(i)) % 997;
+  return ASSIGNEE_AVATAR_COLORS[hash % ASSIGNEE_AVATAR_COLORS.length]!;
+}
+
+function assigneeInitials(assignee: KanbanTask["assignees"][number]) {
+  const name = assignee.name?.trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }
+  return assignee.email.slice(0, 2).toUpperCase();
+}
+
+function formatDueDateChip(
+  dueDate: string,
+  isDone: boolean,
+): { label: string; tone: string } {
+  const due = new Date(dueDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueStart = new Date(due);
+  dueStart.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor(
+    (dueStart.getTime() - today.getTime()) / 86_400_000,
+  );
+
+  let label: string;
+  if (diffDays === 0) label = "Hari ini";
+  else if (diffDays === 1) label = "Besok";
+  else if (diffDays === -1) label = "Kemarin";
+  else if (diffDays > 1 && diffDays <= 7) label = `${diffDays} hari lagi`;
+  else if (diffDays < -1 && diffDays >= -7) label = `${Math.abs(diffDays)} hari lalu`;
+  else {
+    label = due.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+    });
+  }
+
+  let tone = "text-muted-foreground";
+  if (!isDone) {
+    if (diffDays < 0) tone = "text-rose-600 dark:text-rose-400";
+    else if (diffDays <= 3) tone = "text-amber-600 dark:text-amber-400";
+  }
+
+  return { label, tone };
+}
+
+function metaChipClass(className?: string) {
+  return cn(
+    "border-border/70 bg-background hover:bg-muted/40 inline-flex h-6 max-w-full shrink-0 items-center gap-1 rounded-full border px-1.5 text-[10px] font-medium transition-colors",
+    className,
+  );
+}
+
+function AssigneeAvatar({
+  assignee,
+  className,
 }: {
-  assignees: KanbanTask["assignees"];
+  assignee: KanbanTask["assignees"][number];
+  className?: string;
 }) {
-  if (assignees.length > 0) {
-    const assignee = assignees[0]!;
-    const label = assignee.name?.trim() || assignee.email;
-    const initial = label.slice(0, 1).toUpperCase() || "?";
-    const extra = assignees.length - 1;
+  const initials = assigneeInitials(assignee);
+  if (assignee.image) {
     return (
-      <div className="mt-2 flex items-center gap-1.5 border-t border-border/70 pt-2">
-        {assignee.image ? (
-          <Image
-            src={assignee.image}
-            alt=""
-            width={24}
-            height={24}
-            className="border-border size-6 shrink-0 rounded-full border object-cover"
-            unoptimized
-          />
-        ) : (
-          <div
-            className="border-border bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold"
-            aria-hidden
-          >
-            {initial}
-          </div>
-        )}
-        <span className="text-muted-foreground truncate text-[10px]" title={label}>
-          PIC: {label}
-          {extra > 0 ? ` +${extra}` : ""}
-        </span>
-      </div>
+      <Image
+        src={assignee.image}
+        alt=""
+        width={18}
+        height={18}
+        className={cn("size-[18px] rounded-full object-cover", className)}
+        unoptimized
+      />
     );
   }
   return (
-    <div className="mt-2 flex items-center gap-1.5 border-t border-border/70 pt-2">
-      <div
-        className="border-border/60 size-6 shrink-0 rounded-full border border-dashed"
-        aria-hidden
-      />
-      <span className="text-muted-foreground text-[10px]">Belum ada PIC</span>
-    </div>
+    <span
+      className={cn(
+        "text-background flex size-[18px] items-center justify-center rounded-full text-[7px] font-bold",
+        assigneeAvatarColor(assignee.id),
+        className,
+      )}
+      aria-hidden
+    >
+      {initials}
+    </span>
   );
 }
 
 function DraggableTask({
   task,
+  users,
+  roomTaskTags,
+  roomId,
   onTaskClick,
   onQuickDone,
+  onTaskPatched,
+  onTagCreated,
   dragDisabled,
   isRoomManager,
   showArchived,
 }: {
   task: KanbanTask;
+  users: Pick<User, "id" | "name" | "email">[];
+  roomTaskTags: RoomTaskTag[];
+  roomId?: string | null;
   onTaskClick?: (taskId: string) => void;
   onQuickDone?: (taskId: string) => Promise<void>;
+  onTaskPatched?: (taskId: string, patch: Partial<KanbanTask>) => void;
+  onTagCreated?: (tag: RoomTaskTag & { roomId: string }) => void;
   dragDisabled?: boolean;
   isRoomManager?: boolean;
   showArchived?: boolean;
@@ -122,17 +302,51 @@ function DraggableTask({
   const router = useRouter();
   const [quickPending, setQuickPending] = useState(false);
   const [archivePending, setArchivePending] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(task.title);
+  const [subtaskOpen, setSubtaskOpen] = useState(false);
+  const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [subtaskPending, setSubtaskPending] = useState(false);
+  const [metaPending, setMetaPending] = useState(false);
+  const [cardHovered, setCardHovered] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColorHex, setNewTagColorHex] = useState("#6B7280");
+  const [createTagPending, setCreateTagPending] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id, disabled: dragDisabled });
   const style = {
     transform: CSS.Translate.toString(transform),
   };
-  const canQuickDone = task.status !== TaskStatus.DONE && !showArchived;
+  const readOnly = Boolean(dragDisabled);
+  const canEditAssignees = isRoomManager && !readOnly;
+  const canQuickDone = task.status !== TaskStatus.DONE && !showArchived && !readOnly;
   const canArchive =
     isRoomManager &&
     !showArchived &&
     task.status === TaskStatus.DONE;
   const canUnarchive = isRoomManager && showArchived;
+
+  useEffect(() => {
+    setRenameDraft(task.title);
+  }, [task.title]);
+
+  async function patchTask(
+    overrides: Parameters<typeof kanbanTaskToUpdatePayload>[1],
+  ) {
+    if (readOnly) return;
+    setMetaPending(true);
+    try {
+      const updated = await updateTask(kanbanTaskToUpdatePayload(task, overrides));
+      const patch = applyKanbanPatch(task, updated);
+      onTaskPatched?.(task.id, patch);
+      toast.success("Tugas diperbarui.");
+    } catch (e) {
+      toast.error(actionErrorMessage(e, "Gagal memperbarui tugas."));
+    } finally {
+      setMetaPending(false);
+    }
+  }
 
   async function handleQuickDone(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation();
@@ -179,196 +393,529 @@ function DraggableTask({
     }
   }
 
-  const priorityTone = (() => {
-    const p = task.priority.toUpperCase();
-    if (p === "HIGH" || p === "URGENT")
-      return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
-    if (p === "MEDIUM")
-      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
-    if (p === "LOW")
-      return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
-    return "border-border bg-muted text-muted-foreground";
-  })();
-
-  const dueDateInfo = (() => {
-    if (!task.dueDate) return null;
-    const due = new Date(task.dueDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueStart = new Date(due);
-    dueStart.setHours(0, 0, 0, 0);
-    const diffDays = Math.floor(
-      (dueStart.getTime() - today.getTime()) / 86_400_000,
-    );
-    const isDone = task.status === TaskStatus.DONE;
-    let tone = "text-muted-foreground";
-    if (!isDone) {
-      if (diffDays < 0) tone = "text-rose-600 dark:text-rose-400";
-      else if (diffDays <= 3) tone = "text-amber-600 dark:text-amber-400";
+  async function handleRename() {
+    const next = renameDraft.trim();
+    if (!next || next === task.title) {
+      setRenameOpen(false);
+      return;
     }
-    return {
-      label: due.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "short",
-      }),
-      tone,
-    };
-  })();
+    await patchTask({ title: next });
+    setRenameOpen(false);
+  }
+
+  async function handleCreateTag() {
+    if (!roomId || !newTagName.trim() || !isRoomManager || createTagPending) return;
+    setCreateTagPending(true);
+    try {
+      const created = await createTaskTag({
+        roomId,
+        name: newTagName.trim(),
+        colorHex: newTagColorHex,
+      });
+      onTagCreated?.(created);
+      setNewTagName("");
+      const nextIds = task.tagIds.includes(created.id)
+        ? task.tagIds
+        : [...task.tagIds, created.id];
+      await patchTask({ tagIds: nextIds });
+    } catch (e) {
+      toast.error(actionErrorMessage(e, "Gagal membuat tag."));
+    } finally {
+      setCreateTagPending(false);
+    }
+  }
+
+  async function handleAddSubtask() {
+    const title = subtaskDraft.trim();
+    if (!title || subtaskPending) return;
+    setSubtaskPending(true);
+    try {
+      await addChecklistItem(task.id, title);
+      setSubtaskDraft("");
+      setSubtaskOpen(false);
+      toast.success("Sub-tugas ditambahkan.");
+      router.refresh();
+    } catch (e) {
+      toast.error(actionErrorMessage(e, "Gagal menambah sub-tugas."));
+    } finally {
+      setSubtaskPending(false);
+    }
+  }
+
+  const dueDateInfo = task.dueDate
+    ? formatDueDateChip(task.dueDate, task.status === TaskStatus.DONE)
+    : null;
+  const visibleAssignees = task.assignees.slice(0, 3);
+  const extraAssignees = Math.max(0, task.assignees.length - 3);
 
   const checklistPct =
     task.checklistTotal > 0
       ? Math.round((task.checklistDone / task.checklistTotal) * 100)
       : null;
 
+  const stopDrag = (e: React.PointerEvent) => e.stopPropagation();
+  const stopClick = (e: React.MouseEvent) => e.stopPropagation();
+
+  const showHoverActions =
+    cardHovered || renameOpen || subtaskOpen || tagOpen;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "bg-card group/task hover:border-primary/30 hover:shadow-md flex min-w-0 gap-0.5 rounded-lg border border-border text-sm shadow-sm transition-shadow",
+        "bg-card hover:border-primary/30 hover:shadow-md relative min-w-0 rounded-lg border border-border text-sm shadow-sm transition-shadow",
+        !dragDisabled && "cursor-grab touch-none active:cursor-grabbing",
         isDragging && "z-10 opacity-70 ring-2 ring-primary",
       )}
+      onMouseEnter={() => setCardHovered(true)}
+      onMouseLeave={() => setCardHovered(false)}
+      {...(dragDisabled ? {} : listeners)}
+      {...(dragDisabled ? {} : attributes)}
     >
-      <button
-        type="button"
-        className={cn(
-          "text-muted-foreground shrink-0 touch-none rounded-l-md p-2",
-          dragDisabled
-            ? "cursor-not-allowed opacity-40"
-            : "hover:bg-muted/80 cursor-grab active:cursor-grabbing",
-        )}
-        {...(dragDisabled ? {} : listeners)}
-        {...(dragDisabled ? {} : attributes)}
-        aria-label="Seret tugas"
-        disabled={dragDisabled}
-      >
-        <GripVertical className="size-4" />
-      </button>
-      <div className="flex shrink-0 flex-col items-center gap-0.5 self-start pt-2">
-        {canQuickDone ? (
-          <Button
+      <div className="relative p-2">
+        <div className="relative">
+          <button
             type="button"
-            size="icon-xs"
-            variant="ghost"
-            className="text-emerald-600 hover:bg-emerald-500/10 size-6"
-            aria-label="Tandai selesai"
-            disabled={quickPending}
-            onClick={(e) => void handleQuickDone(e)}
+            className="text-foreground hover:text-primary w-full text-left text-sm leading-snug font-medium break-words transition-colors"
+            onClick={() => onTaskClick?.(task.id)}
           >
-            <Check className="size-3.5" />
-          </Button>
-        ) : null}
-        {canArchive ? (
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            className="text-muted-foreground hover:bg-muted/80 size-6"
-            aria-label="Arsipkan tugas"
-            disabled={archivePending}
-            title="Arsipkan"
-            onClick={(e) => void handleArchive(e)}
+            {task.title}
+          </button>
+
+          {/* Hover actions — overlay di kanan judul, satu box */}
+          <div
+            className={cn(
+              "border-border bg-background divide-border absolute top-0 right-0 z-10 flex flex-row items-center divide-x overflow-hidden rounded-md border shadow-sm transition-opacity duration-150",
+              showHoverActions
+                ? "pointer-events-auto opacity-100"
+                : "pointer-events-none opacity-0",
+            )}
+            onPointerDown={stopDrag}
           >
-            <Archive className="size-3.5" />
-          </Button>
-        ) : null}
-        {canUnarchive ? (
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            className="text-muted-foreground hover:bg-muted/80 size-6"
-            aria-label="Pulihkan dari arsip"
-            disabled={archivePending}
-            title="Pulihkan"
-            onClick={(e) => void handleUnarchive(e)}
-          >
-            <RotateCcw className="size-3.5" />
-          </Button>
-        ) : null}
-      </div>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={`Buka detail tugas: ${task.title}`}
-        className="hover:bg-muted/30 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-r-md p-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        onClick={() => onTaskClick?.(task.id)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onTaskClick?.(task.id);
-          }
-        }}
-      >
-        <p className="text-foreground break-words font-medium leading-snug">
-          {task.title}
-        </p>
-        <p className="text-muted-foreground mt-1 line-clamp-1 text-xs">
-          {task.project.brand.name} · {task.project.name}
-        </p>
-        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold",
-                priorityTone,
-              )}
+          {canQuickDone ? (
+            <button
+              type="button"
+              className="text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-950 inline-flex size-6 shrink-0 items-center justify-center transition-colors disabled:opacity-50"
+              aria-label="Tandai selesai"
+              disabled={quickPending}
+              onClick={(e) => void handleQuickDone(e)}
             >
-              <Flag className="size-2.5" aria-hidden />
-              {task.priority}
-            </span>
-            {dueDateInfo ? (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 text-[10px] font-medium",
-                  dueDateInfo.tone,
-                )}
+              <Check className="size-3.5" />
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <Popover open={subtaskOpen} onOpenChange={setSubtaskOpen}>
+              <PopoverTrigger
+                type="button"
+                className="text-muted-foreground hover:bg-muted inline-flex size-6 shrink-0 items-center justify-center transition-colors"
+                aria-label="Tambah sub-tugas"
+                onClick={stopClick}
               >
-                <CalendarDays className="size-2.5" aria-hidden />
-                {dueDateInfo.label}
-              </span>
-            ) : null}
+                <Plus className="size-3.5" />
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="w-56 p-3"
+                onClick={stopClick}
+              >
+                <p className="text-muted-foreground mb-2 text-xs font-medium">
+                  Sub-tugas baru
+                </p>
+                <Input
+                  value={subtaskDraft}
+                  onChange={(e) => setSubtaskDraft(e.target.value)}
+                  placeholder="Judul sub-tugas…"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAddSubtask();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-2 w-full"
+                  disabled={subtaskPending || !subtaskDraft.trim()}
+                  onClick={() => void handleAddSubtask()}
+                >
+                  {subtaskPending ? "Menyimpan…" : "Tambah"}
+                </Button>
+              </PopoverContent>
+            </Popover>
+          ) : null}
+          {!readOnly ? (
+            <Popover open={renameOpen} onOpenChange={setRenameOpen}>
+              <PopoverTrigger
+                type="button"
+                className="text-muted-foreground hover:bg-muted inline-flex size-6 shrink-0 items-center justify-center transition-colors"
+                aria-label="Ubah nama tugas"
+                onClick={stopClick}
+              >
+                <Pencil className="size-3.5" />
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="w-64 p-3"
+                onClick={stopClick}
+              >
+                <p className="text-muted-foreground mb-2 text-xs font-medium">
+                  Ubah nama tugas
+                </p>
+                <Input
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleRename();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-2 w-full"
+                  disabled={metaPending || !renameDraft.trim()}
+                  onClick={() => void handleRename()}
+                >
+                  Simpan
+                </Button>
+              </PopoverContent>
+            </Popover>
+          ) : null}
+          {canArchive ? (
+            <button
+              type="button"
+              className="text-muted-foreground hover:bg-muted inline-flex size-6 shrink-0 items-center justify-center transition-colors disabled:opacity-50"
+              aria-label="Arsipkan tugas"
+              disabled={archivePending}
+              title="Arsipkan"
+              onClick={(e) => void handleArchive(e)}
+            >
+              <Archive className="size-3.5" />
+            </button>
+          ) : null}
+          {canUnarchive ? (
+            <button
+              type="button"
+              className="text-muted-foreground hover:bg-muted inline-flex size-6 shrink-0 items-center justify-center transition-colors disabled:opacity-50"
+              aria-label="Pulihkan dari arsip"
+              disabled={archivePending}
+              title="Pulihkan"
+              onClick={(e) => void handleUnarchive(e)}
+            >
+              <RotateCcw className="size-3.5" />
+            </button>
+          ) : null}
           </div>
-          <TaskChecklistPopover
-            items={task.checklistItems}
-            doneCount={task.checklistDone}
-            totalCount={task.checklistTotal}
-            contentAlign="end"
-            triggerClassName="border-border/70 bg-muted/40 hover:bg-muted/70 rounded-full border px-2 py-0.5"
-          />
         </div>
-        {checklistPct != null && task.checklistTotal > 0 ? (
-          <div className="bg-muted/60 relative mt-1.5 h-1 w-full overflow-hidden rounded-full">
-            <div
-              className={cn(
-                "absolute inset-y-0 left-0 rounded-full",
-                checklistPct >= 100
-                  ? "bg-emerald-500"
-                  : checklistPct >= 50
-                    ? "bg-primary"
-                    : "bg-muted-foreground/40",
-              )}
-              style={{ width: `${Math.max(2, checklistPct)}%` }}
-            />
-          </div>
-        ) : null}
-        {task.tags.length > 0 ? (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {task.tags.map((tag) => (
-              <span
-                key={tag.id}
-                className="inline-flex max-w-full items-center break-words rounded-full border border-border/70 px-1.5 py-0.5 text-[10px] leading-none font-medium"
-                style={{
-                  backgroundColor: `${tag.colorHex}22`,
-                  color: tag.colorHex,
-                }}
+
+        {/* Meta: PIC · Deadline · Prioritas · Tag */}
+        <div className="mt-1.5 flex flex-col gap-1" onPointerDown={stopDrag}>
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            {/* PIC */}
+            <Popover>
+              <PopoverTrigger
+                type="button"
+                className={metaChipClass(
+                  task.assignees.length > 0 ? "pl-1" : "px-1.5",
+                )}
+                disabled={!canEditAssignees || metaPending}
+                aria-label="Atur PIC"
+                onPointerDown={stopDrag}
+                onClick={stopClick}
               >
-                {tag.name}
-              </span>
-            ))}
+                {task.assignees.length > 0 ? (
+                  <>
+                    <span className="flex items-center">
+                      <span className="flex -space-x-1">
+                        {visibleAssignees.map((assignee) => (
+                          <AssigneeAvatar
+                            key={assignee.id}
+                            assignee={assignee}
+                            className="ring-background ring-1"
+                          />
+                        ))}
+                      </span>
+                      {extraAssignees > 0 ? (
+                        <span className="text-muted-foreground ml-0.5 text-[9px] font-semibold">
+                          +{extraAssignees}
+                        </span>
+                      ) : null}
+                    </span>
+                  </>
+                ) : (
+                  <UserRound className="text-muted-foreground size-3" />
+                )}
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-56 p-2" onClick={stopClick}>
+                <p className="text-muted-foreground mb-2 px-1 text-xs font-medium">
+                  PIC
+                </p>
+                <div className="max-h-48 space-y-1 overflow-auto">
+                  {users.map((u) => {
+                    const checked = task.assignees.some((a) => a.id === u.id);
+                    return (
+                      <label
+                        key={u.id}
+                        className="hover:bg-muted/50 flex cursor-pointer items-center gap-2 rounded-md px-1 py-1.5 text-sm"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            const next = v === true;
+                            const ids = task.assignees.map((a) => a.id);
+                            const nextIds = next
+                              ? [...ids, u.id]
+                              : ids.filter((id) => id !== u.id);
+                            void patchTask({ assigneeIds: nextIds });
+                          }}
+                        />
+                        <span className="truncate">{u.name ?? u.email}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Deadline */}
+            <Popover>
+              <PopoverTrigger
+                type="button"
+                className={metaChipClass()}
+                disabled={readOnly || metaPending}
+                aria-label={
+                  dueDateInfo
+                    ? `Deadline: ${dueDateInfo.label}`
+                    : "Atur deadline"
+                }
+                onPointerDown={stopDrag}
+                onClick={stopClick}
+              >
+                <CalendarDays
+                  className={cn(
+                    "size-3 shrink-0",
+                    dueDateInfo?.tone ?? "text-muted-foreground",
+                  )}
+                />
+                {dueDateInfo ? (
+                  <span className={cn("truncate", dueDateInfo.tone)}>
+                    {dueDateInfo.label}
+                  </span>
+                ) : null}
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-52 p-3" onClick={stopClick}>
+                <p className="text-muted-foreground mb-2 text-xs font-medium">
+                  Deadline
+                </p>
+                <Input
+                  type="date"
+                  value={task.dueDate ? task.dueDate.slice(0, 10) : ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    void patchTask({
+                      dueDate: raw ? new Date(raw) : null,
+                    });
+                  }}
+                />
+                {task.dueDate ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 w-full"
+                    onClick={() => void patchTask({ dueDate: null })}
+                  >
+                    Hapus deadline
+                  </Button>
+                ) : null}
+              </PopoverContent>
+            </Popover>
+
+            {/* Prioritas */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                type="button"
+                className={metaChipClass()}
+                disabled={readOnly || metaPending}
+                aria-label={`Prioritas: ${priorityLabel(task.priority)}`}
+                onPointerDown={stopDrag}
+                onClick={stopClick}
+              >
+                <Flag
+                  className={cn(
+                    "size-3 shrink-0 fill-current",
+                    priorityFlagClass(task.priority),
+                  )}
+                />
+                <span className="text-foreground truncate">
+                  {priorityLabel(task.priority)}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-36">
+                {(Object.values(TaskPriority) as TaskPriority[]).map((p) => (
+                  <DropdownMenuItem
+                    key={p}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (p !== task.priority) void patchTask({ priority: p });
+                    }}
+                  >
+                    <Flag
+                      className={cn("size-4 fill-current", priorityFlagClass(p))}
+                    />
+                    <span className="flex-1">{priorityLabel(p)}</span>
+                    {task.priority === p ? (
+                      <Check className="text-primary size-4" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Tag */}
+          <Popover open={tagOpen} onOpenChange={setTagOpen}>
+            <PopoverTrigger
+              type="button"
+              className={metaChipClass("min-w-0 max-w-full")}
+              disabled={readOnly || metaPending}
+              aria-label="Atur tag"
+              onPointerDown={stopDrag}
+              onClick={stopClick}
+            >
+              <Tag className="text-muted-foreground size-3 shrink-0" />
+              {task.tags.length > 0 ? (
+                <span className="flex min-w-0 flex-wrap items-center gap-0.5">
+                  {task.tags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="inline-flex max-w-full items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                      style={{
+                        backgroundColor: `${tag.colorHex}22`,
+                        color: tag.colorHex,
+                      }}
+                    >
+                      <span className="truncate">{tag.name}</span>
+                    </span>
+                  ))}
+                </span>
+              ) : null}
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-56 p-2" onClick={stopClick}>
+              {roomTaskTags.length > 0 ? (
+                <div className="max-h-40 space-y-1 overflow-auto">
+                  {roomTaskTags.map((tag) => {
+                    const checked = task.tagIds.includes(tag.id);
+                    return (
+                      <label
+                        key={tag.id}
+                        className="hover:bg-muted/50 flex cursor-pointer items-center gap-2 rounded-md px-1 py-1.5 text-sm"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            const next = v === true;
+                            const ids = task.tagIds;
+                            const nextIds = next
+                              ? [...ids, tag.id]
+                              : ids.filter((id) => id !== tag.id);
+                            void patchTask({ tagIds: nextIds });
+                          }}
+                        />
+                        <span
+                          className="size-2.5 shrink-0 rounded-sm"
+                          style={{ backgroundColor: tag.colorHex }}
+                        />
+                        <span className="truncate">{tag.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {isRoomManager && roomId ? (
+                <div
+                  className={cn(
+                    "flex flex-wrap items-center gap-1.5 rounded-md border border-dashed p-1.5",
+                    roomTaskTags.length > 0 && "mt-2",
+                  )}
+                >
+                  <Input
+                    placeholder="Buat tag baru…"
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    maxLength={40}
+                    disabled={createTagPending}
+                    className="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleCreateTag();
+                      }
+                    }}
+                  />
+                  <Input
+                    type="color"
+                    value={newTagColorHex}
+                    onChange={(e) =>
+                      setNewTagColorHex(e.target.value.toUpperCase())
+                    }
+                    className="size-6 shrink-0 cursor-pointer border-0 p-0.5"
+                    disabled={createTagPending}
+                    title="Warna tag"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 shrink-0 px-2 text-xs"
+                    disabled={createTagPending || !newTagName.trim()}
+                    onClick={() => void handleCreateTag()}
+                  >
+                    <Plus className="size-3" />
+                    {createTagPending ? "…" : "Buat"}
+                  </Button>
+                </div>
+              ) : roomTaskTags.length === 0 ? (
+                <p className="text-muted-foreground px-1 text-xs">
+                  Belum ada tag di ruangan.
+                </p>
+              ) : null}
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {task.checklistTotal > 0 ? (
+          <div className="mt-2 flex items-center gap-2" onPointerDown={stopDrag}>
+            <div className="bg-muted/60 relative h-1 min-w-0 flex-1 overflow-hidden rounded-full">
+              {checklistPct != null ? (
+                <div
+                  className={cn(
+                    "absolute inset-y-0 left-0 rounded-full",
+                    checklistPct >= 100
+                      ? "bg-emerald-500"
+                      : checklistPct >= 50
+                        ? "bg-primary"
+                        : "bg-muted-foreground/40",
+                  )}
+                  style={{ width: `${Math.max(2, checklistPct)}%` }}
+                />
+              ) : null}
+            </div>
+            <div onClick={stopClick}>
+              <TaskChecklistPopover
+                items={task.checklistItems}
+                doneCount={task.checklistDone}
+                totalCount={task.checklistTotal}
+                contentAlign="end"
+                triggerClassName="text-muted-foreground hover:text-foreground text-[10px] tabular-nums"
+              />
+            </div>
           </div>
         ) : null}
-        <PicStrip assignees={task.assignees} />
       </div>
     </div>
   );
@@ -467,16 +1014,26 @@ function DroppableColumn({
 export function TasksKanban({
   tasks,
   columns,
+  users,
+  roomTaskTags,
+  roomId,
   onTaskClick,
   onAddTask,
+  onTaskPatched,
+  onTagCreated,
   kanbanReadOnly,
   isRoomManager,
   showArchived,
 }: {
   tasks: KanbanTask[];
   columns: RoomKanbanColumnDTO[];
+  users: Pick<User, "id" | "name" | "email">[];
+  roomTaskTags: RoomTaskTag[];
+  roomId?: string | null;
   onTaskClick?: (taskId: string) => void;
   onAddTask?: (status: TaskStatus) => void;
+  onTaskPatched?: (taskId: string, patch: Partial<KanbanTask>) => void;
+  onTagCreated?: (tag: RoomTaskTag & { roomId: string }) => void;
   /** Mode arsip: tidak ada drag / pindah status dari papan. */
   kanbanReadOnly?: boolean;
   isRoomManager?: boolean;
@@ -586,8 +1143,13 @@ export function TasksKanban({
                   <DraggableTask
                     key={t.id}
                     task={t}
+                    users={users}
+                    roomTaskTags={roomTaskTags}
+                    roomId={roomId}
                     onTaskClick={onTaskClick}
                     onQuickDone={readOnly ? undefined : onQuickDone}
+                    onTaskPatched={onTaskPatched}
+                    onTagCreated={onTagCreated}
                     dragDisabled={readOnly}
                     isRoomManager={isRoomManager}
                     showArchived={showArchived}
