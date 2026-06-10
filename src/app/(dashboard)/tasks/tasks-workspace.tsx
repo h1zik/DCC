@@ -463,6 +463,10 @@ export function TasksWorkspace({
           name: row.tag.name,
           colorHex: row.tag.colorHex,
         })),
+        createdAt: t.createdAt.toISOString(),
+        updatedAt: t.updatedAt.toISOString(),
+        kanbanSortKey:
+          t.kanbanPositions?.find((p) => p.status === t.status)?.sortKey ?? null,
       })),
     [localTasks],
   );

@@ -435,3 +435,29 @@
     transition: none;
   }
 }
+
+/* PDF.js text layer — selectable text overlay for anchored comments */
+.textLayer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  overflow: hidden;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 2;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer span::selection {
+  background: color-mix(in srgb, var(--color-primary), transparent 70%);
+}

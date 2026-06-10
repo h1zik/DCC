@@ -21,7 +21,6 @@ import {
   moveRoomDocumentToFolder,
   moveRoomDocumentsToFolder,
   renameRoomDocumentFolder,
-  updateRoomDocumentTags,
 } from "@/actions/room-documents";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -73,6 +72,7 @@ import {
   DriveFolderTree,
   type DriveFolderRow,
 } from "./room-documents-drive-nav";
+import { RoomDocumentPreviewDialog } from "@/components/documents/room-document-preview-dialog";
 import {
   ArrowDownAZ,
   ArrowLeft,
@@ -81,14 +81,11 @@ import {
   Calendar,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CircleAlert,
   CircleCheck,
   CloudUpload,
   Download,
   Eye,
-  ExternalLink,
   File as FileIcon,
   FileArchive,
   FileImage,
@@ -104,7 +101,6 @@ import {
   Info,
   LayoutList,
   Loader2,
-  MoreVertical,
   Music,
   Pencil,
   Play,
@@ -113,30 +109,12 @@ import {
   Trash2,
   User,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 
-export type RoomDocumentFolderRow = DriveFolderRow;
+export type { RoomDocumentRow } from "./room-document-types";
+import type { RoomDocumentRow } from "./room-document-types";
 
-export type RoomDocumentRow = {
-  id: string;
-  title: string | null;
-  fileName: string;
-  mimeType: string;
-  size: number;
-  publicPath: string;
-  /**
-   * Path thumbnail (webp ~480px) bila tersedia. Null untuk non-image atau
-   * gambar yang gagal didekode saat upload — UI fallback ke `publicPath`
-   * (atau ikon tipe file untuk non-image).
-   */
-  thumbPath: string | null;
-  createdAt: Date;
-  folderId: string | null;
-  tags: string[];
-  uploadedBy: { id: string; name: string | null; email: string };
-};
+export type RoomDocumentFolderRow = DriveFolderRow;
 
 type ViewMode = "grid" | "list";
 type SortKey =
@@ -1498,7 +1476,7 @@ export function RoomDocumentsWorkspace({
       ) : null}
 
       {/* Preview dialog */}
-      <DocPreviewDialog
+      <RoomDocumentPreviewDialog
         doc={previewDoc}
         previewPlaylist={previewPlaylist}
         onNavigate={onPreviewDoc}
@@ -1509,6 +1487,8 @@ export function RoomDocumentsWorkspace({
             : false
         }
         onClose={() => setPreviewDoc(null)}
+        currentUserId={currentUserId}
+        isRoomManager={isRoomManager}
       />
 
       {/* Rename folder dialog */}
@@ -2204,455 +2184,3 @@ function DocList({
   );
 }
 
-function DocPreviewDialog({
-  doc,
-  previewPlaylist,
-  onNavigate,
-  onDownload,
-  canManageTags,
-  onClose,
-}: {
-  doc: RoomDocumentRow | null;
-  previewPlaylist: RoomDocumentRow[];
-  onNavigate: (d: RoomDocumentRow) => void;
-  onDownload: (d: RoomDocumentRow) => void | Promise<void>;
-  canManageTags: boolean;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [tagDraft, setTagDraft] = useState("");
-  const [savingTags, setSavingTags] = useState(false);
-
-  useEffect(() => {
-    if (doc) setTagDraft((doc.tags ?? []).join(", "));
-  }, [doc]);
-
-  const open = doc !== null;
-
-  const previewIndex = doc
-    ? previewPlaylist.findIndex((d) => d.id === doc.id)
-    : -1;
-  const prevDoc = previewIndex > 0 ? previewPlaylist[previewIndex - 1]! : null;
-  const nextDoc =
-    previewIndex >= 0 && previewIndex < previewPlaylist.length - 1
-      ? previewPlaylist[previewIndex + 1]!
-      : null;
-  const hasFileNav = previewPlaylist.length > 1 && previewIndex >= 0;
-
-  useEffect(() => {
-    if (!open || !doc) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" && prevDoc) {
-        e.preventDefault();
-        onNavigate(prevDoc);
-      } else if (e.key === "ArrowRight" && nextDoc) {
-        e.preventDefault();
-        onNavigate(nextDoc);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, doc, prevDoc, nextDoc, onNavigate]);
-
-  async function saveTags() {
-    if (!doc) return;
-    const tokens = tagDraft
-      .split(/[,;\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const tags = normalizeRoomDocumentTags(tokens);
-    setSavingTags(true);
-    try {
-      await updateRoomDocumentTags({ documentId: doc.id, tags });
-      toast.success("Tag disimpan.");
-      router.refresh();
-    } catch (err) {
-      toast.error(
-        actionErrorMessage(err, "Gagal menyimpan tag."));
-    } finally {
-      setSavingTags(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
-    >
-      <DialogContent className="flex h-[min(90vh,820px)] w-[min(96vw,1100px)] max-w-none flex-col gap-3 p-4 sm:max-w-none">
-        {doc ? (
-          <>
-            <DialogHeader className="flex flex-row flex-wrap items-start gap-3 pr-8">
-              <div
-                className={cn(
-                  "bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg",
-                )}
-              >
-                {(() => {
-                  const meta = fileTypeMeta(doc.mimeType);
-                  const Icon = meta.icon;
-                  return <Icon className={cn("size-5", meta.tone)} />;
-                })()}
-              </div>
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <DialogTitle className="truncate text-base">
-                  {doc.title?.trim() ? doc.title : doc.fileName}
-                </DialogTitle>
-                <p className="text-muted-foreground truncate text-xs">
-                  {doc.fileName} · {fileTypeMeta(doc.mimeType).label} ·{" "}
-                  {formatFileSize(doc.size)} ·{" "}
-                  {doc.uploadedBy.name ?? doc.uploadedBy.email}
-                </p>
-                {hasFileNav ? (
-                  <p className="text-muted-foreground text-[11px] tabular-nums">
-                    File {previewIndex + 1} dari {previewPlaylist.length} · tampilan
-                    folder saat ini
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                {hasFileNav ? (
-                  <>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="outline"
-                      disabled={!prevDoc}
-                      onClick={() => prevDoc && onNavigate(prevDoc)}
-                      aria-label="File sebelumnya"
-                      title="File sebelumnya (←)"
-                    >
-                      <ChevronLeft className="size-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="outline"
-                      disabled={!nextDoc}
-                      onClick={() => nextDoc && onNavigate(nextDoc)}
-                      aria-label="File berikutnya"
-                      title="File berikutnya (→)"
-                    >
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </>
-                ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  nativeButton={false}
-                  render={
-                    <a
-                      href={doc.publicPath}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  }
-                >
-                  <ExternalLink className="size-3.5" />
-                  Tab baru
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void onDownload(doc)}
-                >
-                  <Download className="size-3.5" />
-                  Download
-                </Button>
-              </div>
-            </DialogHeader>
-
-            {canManageTags ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="preview-doc-tags" className="text-xs">
-                  Tag
-                </Label>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Input
-                    id="preview-doc-tags"
-                    value={tagDraft}
-                    onChange={(e) => setTagDraft(e.target.value)}
-                    placeholder="footage, raw, approved — koma atau spasi"
-                    disabled={savingTags}
-                    className="h-9 sm:min-w-[240px] sm:flex-1"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() => void saveTags()}
-                    disabled={savingTags}
-                  >
-                    {savingTags ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      "Simpan tag"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            ) : (doc.tags ?? []).length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Tag className="text-muted-foreground size-3.5 shrink-0" />
-                {(doc.tags ?? []).map((t) => (
-                  <span
-                    key={t}
-                    className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs font-medium"
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="border-border bg-muted/20 relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
-              {hasFileNav ? (
-                <>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    disabled={!prevDoc}
-                    onClick={() => prevDoc && onNavigate(prevDoc)}
-                    aria-label="File sebelumnya"
-                    title="Sebelumnya (←)"
-                    className="absolute top-1/2 left-2 z-10 size-10 -translate-y-1/2 rounded-full shadow-md"
-                  >
-                    <ChevronLeft className="size-5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    disabled={!nextDoc}
-                    onClick={() => nextDoc && onNavigate(nextDoc)}
-                    aria-label="File berikutnya"
-                    title="Berikutnya (→)"
-                    className="absolute top-1/2 right-2 z-10 size-10 -translate-y-1/2 rounded-full shadow-md"
-                  >
-                    <ChevronRight className="size-5" />
-                  </Button>
-                </>
-              ) : null}
-              <PreviewBody key={doc.id} doc={doc} />
-            </div>
-          </>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-const PREVIEW_IMAGE_ZOOM_MIN = 1;
-const PREVIEW_IMAGE_ZOOM_MAX = 4;
-const PREVIEW_IMAGE_ZOOM_STEP = 0.5;
-const PREVIEW_IMAGE_ZOOM_DBLCLICK = 2;
-
-function PreviewZoomImage({ src, alt }: { src: string; alt: string }) {
-  const [scale, setScale] = useState(PREVIEW_IMAGE_ZOOM_MIN);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    panX: number;
-    panY: number;
-  } | null>(null);
-
-  useEffect(() => {
-    setScale(PREVIEW_IMAGE_ZOOM_MIN);
-    setPan({ x: 0, y: 0 });
-    dragRef.current = null;
-  }, [src]);
-
-  const clampScale = (s: number) =>
-    Math.min(PREVIEW_IMAGE_ZOOM_MAX, Math.max(PREVIEW_IMAGE_ZOOM_MIN, s));
-
-  const applyScale = (next: number) => {
-    const clamped = clampScale(next);
-    setScale(clamped);
-    if (clamped <= PREVIEW_IMAGE_ZOOM_MIN) setPan({ x: 0, y: 0 });
-  };
-
-  const zoomIn = () => applyScale(scale + PREVIEW_IMAGE_ZOOM_STEP);
-  const zoomOut = () => applyScale(scale - PREVIEW_IMAGE_ZOOM_STEP);
-
-  const onDoubleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (scale > PREVIEW_IMAGE_ZOOM_MIN + 0.05) {
-      applyScale(PREVIEW_IMAGE_ZOOM_MIN);
-    } else {
-      applyScale(PREVIEW_IMAGE_ZOOM_DBLCLICK);
-    }
-  };
-
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -PREVIEW_IMAGE_ZOOM_STEP : PREVIEW_IMAGE_ZOOM_STEP;
-    applyScale(scale + delta);
-  };
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (scale <= PREVIEW_IMAGE_ZOOM_MIN || e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      panX: pan.x,
-      panY: pan.y,
-    };
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current) return;
-    setPan({
-      x: dragRef.current.panX + e.clientX - dragRef.current.startX,
-      y: dragRef.current.panY + e.clientY - dragRef.current.startY,
-    });
-  };
-
-  const endDrag = (e: React.PointerEvent) => {
-    if (dragRef.current) {
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        /* capture may already be released */
-      }
-    }
-    dragRef.current = null;
-  };
-
-  const isZoomed = scale > PREVIEW_IMAGE_ZOOM_MIN + 0.05;
-
-  return (
-    <div
-      className="bg-muted/30 relative h-full w-full overflow-hidden"
-      onWheel={onWheel}
-      title="Double-click untuk zoom · scroll untuk perbesar/perkecil · geser saat zoom"
-    >
-      <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          aria-label="Perkecil"
-          disabled={scale <= PREVIEW_IMAGE_ZOOM_MIN}
-          onClick={zoomOut}
-        >
-          <ZoomOut className="size-3.5" />
-        </Button>
-        <span className="text-muted-foreground min-w-[3rem] text-center text-[11px] font-medium tabular-nums">
-          {Math.round(scale * 100)}%
-        </span>
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          aria-label="Perbesar"
-          disabled={scale >= PREVIEW_IMAGE_ZOOM_MAX}
-          onClick={zoomIn}
-        >
-          <ZoomIn className="size-3.5" />
-        </Button>
-      </div>
-
-      <div
-        className={cn(
-          "flex h-full w-full touch-none items-center justify-center p-2 select-none",
-          isZoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in",
-        )}
-        style={{
-          transform: `translate(${pan.x}px, ${pan.y}px)`,
-        }}
-        onDoubleClick={onDoubleClick}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={alt}
-          draggable={false}
-          className="max-h-full max-w-full object-contain transition-transform duration-150 ease-out"
-          style={{
-            transform: `scale(${scale})`,
-            transformOrigin: "center center",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function PreviewBody({ doc }: { doc: RoomDocumentRow }) {
-  const m = doc.mimeType;
-  if (m.startsWith("image/")) {
-    return <PreviewZoomImage src={doc.publicPath} alt={doc.fileName} />;
-  }
-  if (m === "application/pdf") {
-    return (
-      <iframe
-        src={doc.publicPath}
-        title={doc.fileName}
-        className="h-full w-full"
-      />
-    );
-  }
-  if (m.startsWith("video/")) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-black">
-        <video
-          key={doc.id}
-          src={doc.publicPath}
-          controls
-          className="h-full w-full max-h-full"
-          preload="metadata"
-        />
-      </div>
-    );
-  }
-  if (m.startsWith("audio/")) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6">
-        <div className="bg-primary/10 text-primary flex size-16 items-center justify-center rounded-2xl">
-          <Music className="size-7" />
-        </div>
-        <p className="text-sm font-medium">{doc.fileName}</p>
-        <audio src={doc.publicPath} controls className="w-full max-w-md" />
-      </div>
-    );
-  }
-  if (m.startsWith("text/") || m === "application/json") {
-    return (
-      <iframe
-        src={doc.publicPath}
-        title={doc.fileName}
-        className="bg-background h-full w-full"
-      />
-    );
-  }
-  // Fallback
-  const meta = fileTypeMeta(m);
-  const Icon = meta.icon;
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
-      <div className="bg-muted text-muted-foreground flex size-16 items-center justify-center rounded-2xl">
-        <Icon className={cn("size-7", meta.tone)} />
-      </div>
-      <p className="text-sm font-medium">Pratinjau tidak tersedia</p>
-      <p className="text-muted-foreground max-w-sm text-xs">
-        Tipe file{" "}
-        <span className="text-foreground font-medium">{meta.label}</span> tidak
-        bisa ditampilkan di sini. Gunakan tombol{" "}
-        <span className="text-foreground font-medium">Download</span> atau{" "}
-        <span className="text-foreground font-medium">Tab baru</span>.
-      </p>
-    </div>
-  );
-}

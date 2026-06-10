@@ -83,6 +83,14 @@ enum TaskPriority {
 enum NotificationType {
   TASK_COMPLETED
   TASK_OVERDUE
+  /**
+   * Komentar pada lampiran tugas ditugaskan ke anggota tim.
+   */
+  TASK_FILE_COMMENT_ASSIGNED
+  /**
+   * Komentar pada dokumen ruangan ditugaskan ke anggota tim.
+   */
+  ROOM_DOCUMENT_COMMENT_ASSIGNED
   CEO_APPROVAL_REQUESTED
   /**
    * Pengajuan pindah tahap pipeline proyek menunggu CEO.
@@ -287,6 +295,10 @@ model User {
   pushSubscriptions         PushSubscription[]
   taskComments              TaskComment[]
   taskAttachments           TaskAttachment[]
+  taskAttachmentCommentsAuthored TaskAttachmentComment[] @relation("TaskAttachmentCommentAuthor")
+  taskAttachmentCommentsAssigned TaskAttachmentComment[] @relation("TaskAttachmentCommentAssignee")
+  roomDocumentCommentsAuthored   RoomDocumentComment[]   @relation("RoomDocumentCommentAuthor")
+  roomDocumentCommentsAssigned   RoomDocumentComment[]   @relation("RoomDocumentCommentAssignee")
   roomMessages              RoomMessage[]
   roomChannelReads          RoomChannelRead[]
   directConversationMembers DirectConversationMember[]
@@ -900,6 +912,7 @@ model RoomDocument {
    */
   tags         String[]            @default([])
   createdAt    DateTime            @default(now())
+  comments     RoomDocumentComment[]
 
   @@index([roomId, folderId])
   /**
@@ -912,6 +925,26 @@ model RoomDocument {
    * sort terbaru), composite ini mempercepat pemilihan halaman.
    */
   @@index([roomId, folderId, createdAt(sort: Desc)])
+}
+
+model RoomDocumentComment {
+  id           String       @id @default(cuid())
+  documentId   String
+  document     RoomDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User         @relation("RoomDocumentCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  assigneeId   String?
+  assignee     User?        @relation("RoomDocumentCommentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  body         String
+  selectedText String?
+  anchorPage   Int?
+  anchorJson   String?      @db.Text
+  resolvedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([documentId, createdAt])
+  @@index([assigneeId, resolvedAt])
 }
 
 model Project {
@@ -997,6 +1030,7 @@ model Task {
   checklistItems           TaskChecklistItem[]
   comments                 TaskComment[]
   attachments              TaskAttachment[]
+  kanbanPositions          TaskKanbanPosition[]
   assignees                TaskAssignee[]
   tags                     TaskTagOnTask[]
   /**
@@ -1078,8 +1112,56 @@ model TaskAttachment {
    */
   linkUrl      String?
   createdAt    DateTime @default(now())
+  comments     TaskAttachmentComment[]
 
   @@index([taskId, createdAt])
+}
+
+/**
+ * Urutan manual kartu Kanban per kolom (status). `sortKey` lebih kecil = lebih atas.
+ * Tugas tanpa baris untuk status saat ini diurutkan default (terbaru di atas).
+ */
+model TaskKanbanPosition {
+  taskId    String
+  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status    TaskStatus
+  sortKey   Float      @default(0)
+  updatedAt DateTime   @updatedAt
+
+  @@id([taskId, status])
+  @@index([status, sortKey])
+}
+
+model TaskAttachmentComment {
+  id           String         @id @default(cuid())
+  attachmentId String
+  attachment   TaskAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User           @relation("TaskAttachmentCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  /**
+   * Anggota tim yang ditugaskan menanggapi / menyelesaikan komentar ini.
+   */
+  assigneeId   String?
+  assignee     User?          @relation("TaskAttachmentCommentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  body         String
+  /**
+   * Kutipan teks yang dikomentari (Google Drive-style).
+   */
+  selectedText String?
+  /**
+   * Halaman PDF (1-based) bila komentar terikat area halaman.
+   */
+  anchorPage   Int?
+  /**
+   * JSON anchor: offset teks, rect normalisasi (0–1), jenis (text|region).
+   */
+  anchorJson   String?        @db.Text
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([attachmentId, createdAt])
+  @@index([assigneeId, resolvedAt])
 }
 
 model TaskChecklistItem {

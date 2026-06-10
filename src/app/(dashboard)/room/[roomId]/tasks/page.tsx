@@ -105,11 +105,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
       await Promise.all([
       prisma.task.findMany({
         where: { project: { roomId }, ...archivedWhere },
-        orderBy: [
-          { projectId: "asc" },
-          { sortOrder: "asc" },
-          { createdAt: "desc" },
-        ],
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
         // `comments` & `attachments` SENGAJA tidak di-include di SSR daftar
         // tugas — terlalu berat (lihat `task-list-query.ts`). Detail sheet
         // me-lazy-load via `loadTaskDetail()` saat dibuka.
@@ -126,6 +122,9 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
             include: {
               tag: { select: { id: true, roomId: true, name: true, colorHex: true } },
             },
+          },
+          kanbanPositions: {
+            select: { status: true, sortKey: true },
           },
         },
       }),
@@ -214,11 +213,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
         ...taskPhaseWhere(activePhase),
         ...archivedWhere,
       },
-      orderBy: [
-        { projectId: "asc" },
-        { sortOrder: "asc" },
-        { createdAt: "desc" },
-      ],
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
       // Lihat catatan di blok `simpleHub` di atas: `comments`/`attachments`
       // sengaja diabaikan agar payload SSR ringan.
       include: {
@@ -234,6 +229,9 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           include: {
             tag: { select: { id: true, roomId: true, name: true, colorHex: true } },
           },
+        },
+        kanbanPositions: {
+          select: { status: true, sortKey: true },
         },
       },
     }),
