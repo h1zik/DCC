@@ -1176,6 +1176,17 @@ export function RoomDocumentsWorkspace({
                 List
               </button>
             </div>
+            {!selectionActive && selectableDocIds.length > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 shrink-0 text-xs"
+                onClick={selectAllVisibleDocs}
+              >
+                Pilih file
+              </Button>
+            ) : null}
           </div>
 
           {selectionActive ? (
@@ -1258,18 +1269,6 @@ export function RoomDocumentsWorkspace({
                 aria-label="Bersihkan pilihan"
               >
                 <X className="size-4" />
-              </Button>
-            </div>
-          ) : selectableDocIds.length > 0 ? (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs"
-                onClick={selectAllVisibleDocs}
-              >
-                Pilih file
               </Button>
             </div>
           ) : null}
