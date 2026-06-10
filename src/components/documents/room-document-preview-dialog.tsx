@@ -137,6 +137,7 @@ export function RoomDocumentPreviewDialog({
           fileName: a.fileName,
           mimeType: a.mimeType,
           publicPath: a.publicPath,
+          thumbPath: a.thumbPath,
           linkUrl: null as string | null,
         })),
     [previewPlaylist],
@@ -182,11 +183,23 @@ export function RoomDocumentPreviewDialog({
 
   useEffect(() => {
     if (!sessionKey) return;
-    void refresh(sessionKey, { initial: true });
-    const interval = window.setInterval(() => {
-      void refresh(sessionKey);
-    }, 45_000);
-    return () => window.clearInterval(interval);
+    let cancelled = false;
+    const runRefresh = (initial: boolean) => {
+      if (cancelled || document.hidden) return;
+      void refresh(sessionKey, { initial });
+    };
+    const deferId = window.setTimeout(() => runRefresh(true), 0);
+    const interval = window.setInterval(() => runRefresh(false), 60_000);
+    const onVisibility = () => {
+      if (!document.hidden) runRefresh(false);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(deferId);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [sessionKey, refresh]);
 
   useEffect(() => {
@@ -262,6 +275,7 @@ export function RoomDocumentPreviewDialog({
     fileName: doc.fileName,
     mimeType: doc.mimeType,
     publicPath: doc.publicPath,
+    thumbPath: doc.thumbPath,
     linkUrl: null as string | null,
   };
 
@@ -272,8 +286,8 @@ export function RoomDocumentPreviewDialog({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="flex h-[min(92vh,820px)] w-[min(96vw,1200px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="border-border shrink-0 border-b px-4 py-3 pr-12">
+      <DialogContent className="flex h-[min(calc(100dvh-0.75rem),820px)] w-[min(calc(100vw-0.5rem),1200px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        <DialogHeader className="border-border shrink-0 border-b px-3 py-2.5 pr-14 sm:px-4 sm:py-3 sm:pr-16">
           <div className="flex flex-wrap items-start gap-3">
             <div className="min-w-0 flex-1">
               <DialogTitle className="truncate text-base">
@@ -291,7 +305,7 @@ export function RoomDocumentPreviewDialog({
                 Pilih teks atau blok area untuk komentar (ala Google Drive)
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
               {hasFileNav ? (
                 <>
                   <Button
@@ -319,6 +333,21 @@ export function RoomDocumentPreviewDialog({
               <Button
                 type="button"
                 size="sm"
+                variant={commentsOpen ? "secondary" : "outline"}
+                onClick={() => setCommentsOpen((v) => !v)}
+                aria-pressed={commentsOpen}
+              >
+                <MessageSquare className="size-3.5" />
+                Komentar
+                {comments.length > 0 ? (
+                  <span className="bg-primary/10 text-primary ml-1 rounded-full px-1.5 text-[10px] font-semibold tabular-nums">
+                    {comments.length}
+                  </span>
+                ) : null}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
                 variant="outline"
                 nativeButton={false}
                 render={
@@ -340,21 +369,6 @@ export function RoomDocumentPreviewDialog({
               >
                 <Download className="size-3.5" />
                 Download
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={commentsOpen ? "secondary" : "outline"}
-                onClick={() => setCommentsOpen((v) => !v)}
-                aria-pressed={commentsOpen}
-              >
-                <MessageSquare className="size-3.5" />
-                Komentar
-                {comments.length > 0 ? (
-                  <span className="bg-primary/10 text-primary ml-1 rounded-full px-1.5 text-[10px] font-semibold tabular-nums">
-                    {comments.length}
-                  </span>
-                ) : null}
               </Button>
             </div>
           </div>
@@ -404,13 +418,15 @@ export function RoomDocumentPreviewDialog({
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div className="bg-muted/20 relative min-h-[280px] min-w-0 flex-1 md:min-h-0">
+          <div className="bg-muted/20 relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:min-h-0">
             {loading && comments.length === 0 ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-                <Loader2 className="text-muted-foreground size-6 animate-spin" />
+              <div className="bg-background/80 pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2 rounded-full border px-2.5 py-1 shadow-sm">
+                <Loader2 className="text-muted-foreground size-3.5 animate-spin" />
+                <span className="text-muted-foreground text-[10px]">Memuat komentar…</span>
               </div>
             ) : null}
             <AnchoredFilePreview
+              className="h-full min-h-0"
               attachment={previewAttachment}
               imageAttachments={imageAttachments}
               imageIndex={imageIndex}

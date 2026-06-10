@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
@@ -55,12 +54,14 @@ export type PendingSelection = {
   clientRect: { top: number; left: number; width: number; height: number };
 };
 
-type PreviewAttachment = {
+export type PreviewAttachment = {
   id: string;
   fileName: string;
   mimeType: string;
   publicPath: string | null;
   linkUrl: string | null;
+  /** Thumbnail WebP for progressive image preview (Documents module). */
+  thumbPath?: string | null;
 };
 
 type RegionPin = {
@@ -88,6 +89,47 @@ function isTextMime(mime: string) {
     mime === "application/json" ||
     mime === "application/xml"
   );
+}
+
+/** Ensures preview children fill the dialog pane and can shrink (flex min-h-0). */
+function PreviewFrame({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-full min-h-0 w-full flex-col overflow-hidden",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function usePreloadImageSources(sources: string[]) {
+  const key = sources.join("\0");
+  useEffect(() => {
+    const unique = [...new Set(sources.filter(Boolean))];
+    const images: HTMLImageElement[] = [];
+    for (const src of unique) {
+      const img = new window.Image();
+      img.decoding = "async";
+      img.src = src;
+      images.push(img);
+    }
+    return () => {
+      for (const img of images) {
+        img.onload = null;
+        img.onerror = null;
+        img.src = "";
+      }
+    };
+  }, [key, sources]);
 }
 
 function useTextAnchorMeta(
@@ -305,16 +347,28 @@ function SelectableTextPreview({
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const loader = kind === "docx" ? extractDocxTextFromUrl : loadPlainText;
-    void loader(src)
-      .then((body) => {
+    void (async () => {
+      try {
+        if (kind === "text") {
+          const res = await fetch(src, { signal: controller.signal });
+          if (!res.ok) throw new Error("Gagal memuat file.");
+          const body = await res.text();
+          if (!cancelled) setLoad({ src, status: "ready", text: body });
+          return;
+        }
+        const body = await loader(src);
         if (!cancelled) setLoad({ src, status: "ready", text: body });
-      })
-      .catch(() => {
-        if (!cancelled) setLoad({ src, status: "error", text: "" });
-      });
+      } catch (err) {
+        if (!cancelled && !(err instanceof DOMException && err.name === "AbortError")) {
+          setLoad({ src, status: "error", text: "" });
+        }
+      }
+    })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [src, kind]);
 
@@ -844,7 +898,7 @@ function PdfSelectablePreview({
 
   useEffect(() => {
     let cancelled = false;
-    const task = pdfjs.getDocument(src);
+    const task = pdfjs.getDocument({ url: src, disableAutoFetch: false });
     task.promise
       .then((doc) => {
         if (!cancelled) setDocState({ src, pdf: doc, failed: false });
@@ -933,6 +987,7 @@ function PdfSelectablePreview({
 
 function ImageRegionPreview({
   src,
+  thumbSrc,
   fileName,
   comments,
   activeCommentId,
@@ -940,6 +995,7 @@ function ImageRegionPreview({
   onCommentPinClick,
 }: {
   src: string;
+  thumbSrc?: string | null;
   fileName: string;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
@@ -948,6 +1004,27 @@ function ImageRegionPreview({
 }) {
   const imageBoxRef = useRef<HTMLDivElement>(null);
   const regionPins = useRegionPins(comments, activeCommentId);
+  const previewThumb = thumbSrc && thumbSrc !== src ? thumbSrc : null;
+  const [hdReady, setHdReady] = useState(!previewThumb);
+
+  useEffect(() => {
+    if (!previewThumb) {
+      setHdReady(true);
+      return;
+    }
+    setHdReady(false);
+    const img = new window.Image();
+    img.decoding = "async";
+    img.onload = () => setHdReady(true);
+    img.onerror = () => setHdReady(true);
+    img.src = src;
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [src, previewThumb]);
+
+  const displaySrc = hdReady ? src : previewThumb!;
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -966,23 +1043,28 @@ function ImageRegionPreview({
   );
 
   return (
-    <div className="flex h-full w-full items-center justify-center bg-black/90 p-4">
-      {/* Pin diposisikan relatif terhadap kotak gambar (bukan container
-          letterbox) supaya koordinat tidak bergeser saat dialog di-resize. */}
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain bg-black/90 p-2 sm:p-4">
       <div
         ref={imageBoxRef}
-        className="relative max-h-full max-w-full touch-none"
+        className="relative inline-flex max-h-full max-w-full touch-none"
         onPointerDown={onPointerDown}
       >
-        <Image
-          src={src}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={displaySrc}
           alt={fileName}
-          width={1200}
-          height={800}
-          unoptimized
           draggable={false}
-          className="max-h-[calc(100vh-12rem)] max-w-full object-contain select-none"
+          decoding="async"
+          className={cn(
+            "block max-h-full max-w-full h-auto w-auto object-contain select-none",
+            previewThumb && !hdReady && "scale-[1.01] blur-[2px]",
+          )}
         />
+        {previewThumb && !hdReady ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
+            <Loader2 className="size-6 animate-spin text-white/80" />
+          </div>
+        ) : null}
         <DraftRegionOverlay />
         <RegionPinButtons pins={regionPins} onCommentPinClick={onCommentPinClick} />
       </div>
@@ -1003,6 +1085,7 @@ export function AnchoredFilePreview({
   activeCommentId,
   onPendingSelection,
   onCommentPinClick,
+  className,
 }: {
   attachment: PreviewAttachment;
   imageAttachments: PreviewAttachment[];
@@ -1012,24 +1095,40 @@ export function AnchoredFilePreview({
   activeCommentId: string | null;
   onPendingSelection: (sel: PendingSelection | null) => void;
   onCommentPinClick: (id: string) => void;
+  className?: string;
 }) {
   const m = attachment.mimeType;
   const src = attachment.publicPath ?? attachment.linkUrl ?? "";
 
+  const adjacentImageSources = useMemo(() => {
+    if (imageAttachments.length <= 1) return [] as string[];
+    const out: string[] = [];
+    for (const offset of [-1, 1]) {
+      const item = imageAttachments[imageIndex + offset];
+      if (item?.publicPath) {
+        out.push(item.thumbPath ?? item.publicPath);
+      }
+    }
+    return out;
+  }, [imageAttachments, imageIndex]);
+  usePreloadImageSources(adjacentImageSources);
+
   if (attachment.linkUrl && m === EXTERNAL_LINK_MIME) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-        <ExternalLink className="text-muted-foreground size-10" />
-        <p className="text-sm font-medium">{attachment.fileName}</p>
-        <a
-          href={attachment.linkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium"
-        >
-          Buka tautan
-        </a>
-      </div>
+      <PreviewFrame className={className}>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+          <ExternalLink className="text-muted-foreground size-10" />
+          <p className="text-sm font-medium">{attachment.fileName}</p>
+          <a
+            href={attachment.linkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium"
+          >
+            Buka tautan
+          </a>
+        </div>
+      </PreviewFrame>
     );
   }
 
@@ -1037,7 +1136,7 @@ export function AnchoredFilePreview({
     const hasCarousel = imageAttachments.length > 1;
     const current = imageAttachments[imageIndex] ?? attachment;
     return (
-      <div className="relative h-full">
+      <PreviewFrame className={cn("relative", className)}>
         {hasCarousel ? (
           <>
             <Button
@@ -1063,103 +1162,118 @@ export function AnchoredFilePreview({
           </>
         ) : null}
         <ImageRegionPreview
+          key={current.id}
           src={current.publicPath!}
+          thumbSrc={current.thumbPath}
           fileName={current.fileName}
           comments={comments}
           activeCommentId={activeCommentId}
           onPendingSelection={onPendingSelection}
           onCommentPinClick={onCommentPinClick}
         />
-      </div>
+      </PreviewFrame>
     );
   }
 
   if (m === "application/pdf" && attachment.publicPath) {
     return (
-      <PdfSelectablePreview
-        src={attachment.publicPath}
-        comments={comments}
-        activeCommentId={activeCommentId}
-        onPendingSelection={onPendingSelection}
-        onCommentPinClick={onCommentPinClick}
-      />
+      <PreviewFrame className={className}>
+        <PdfSelectablePreview
+          src={attachment.publicPath}
+          comments={comments}
+          activeCommentId={activeCommentId}
+          onPendingSelection={onPendingSelection}
+          onCommentPinClick={onCommentPinClick}
+        />
+      </PreviewFrame>
     );
   }
 
   if (isDocxMime(m, attachment.fileName) && attachment.publicPath) {
     return (
-      <SelectableTextPreview
-        src={attachment.publicPath}
-        kind="docx"
-        fileName={attachment.fileName}
-        comments={comments}
-        activeCommentId={activeCommentId}
-        onPendingSelection={onPendingSelection}
-        onCommentPinClick={onCommentPinClick}
-      />
+      <PreviewFrame className={className}>
+        <SelectableTextPreview
+          src={attachment.publicPath}
+          kind="docx"
+          fileName={attachment.fileName}
+          comments={comments}
+          activeCommentId={activeCommentId}
+          onPendingSelection={onPendingSelection}
+          onCommentPinClick={onCommentPinClick}
+        />
+      </PreviewFrame>
     );
   }
 
   if (isTextMime(m) && attachment.publicPath) {
     return (
-      <SelectableTextPreview
-        src={attachment.publicPath}
-        kind="text"
-        fileName={attachment.fileName}
-        comments={comments}
-        activeCommentId={activeCommentId}
-        onPendingSelection={onPendingSelection}
-        onCommentPinClick={onCommentPinClick}
-      />
+      <PreviewFrame className={className}>
+        <SelectableTextPreview
+          src={attachment.publicPath}
+          kind="text"
+          fileName={attachment.fileName}
+          comments={comments}
+          activeCommentId={activeCommentId}
+          onPendingSelection={onPendingSelection}
+          onCommentPinClick={onCommentPinClick}
+        />
+      </PreviewFrame>
     );
   }
 
   if (m.startsWith("video/") && attachment.publicPath) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center bg-black">
-        <video
-          key={attachment.id}
-          src={attachment.publicPath}
-          controls
-          className="max-h-[70%] max-w-full"
-          preload="metadata"
-        />
-        <p className="text-background/70 mt-2 px-4 text-center text-xs">
-          Video: gunakan komentar umum di panel kanan. Dukungan anchor waktu
-          menyusul.
-        </p>
-      </div>
+      <PreviewFrame className={className}>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 overflow-auto bg-black p-2 sm:p-4">
+          <video
+            key={attachment.id}
+            src={attachment.publicPath}
+            controls
+            playsInline
+            className="max-h-full max-w-full object-contain"
+            preload="metadata"
+          />
+          <p className="text-background/70 shrink-0 px-4 text-center text-xs">
+            Video: gunakan komentar umum di panel kanan. Dukungan anchor waktu
+            menyusul.
+          </p>
+        </div>
+      </PreviewFrame>
     );
   }
 
   if (m.startsWith("audio/") && attachment.publicPath) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
-        <Music className="text-muted-foreground size-12" />
-        <p className="text-sm font-medium">{attachment.fileName}</p>
-        <audio src={attachment.publicPath} controls className="w-full max-w-md" />
-      </div>
+      <PreviewFrame className={className}>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-8">
+          <Music className="text-muted-foreground size-12" />
+          <p className="text-sm font-medium">{attachment.fileName}</p>
+          <audio src={attachment.publicPath} controls className="w-full max-w-md" preload="metadata" />
+        </div>
+      </PreviewFrame>
     );
   }
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-      <FileText className="text-muted-foreground size-12" />
-      <p className="text-sm font-medium">{attachment.fileName}</p>
-      <p className="text-muted-foreground flex items-center gap-1 text-xs">
-        <MessageSquarePlus className="size-3.5" />
-        Pilih teks tidak tersedia — gunakan komentar umum di panel kanan
-      </p>
-      {src ? (
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium"
-        >
-          Buka file
-        </a>
-      ) : null}
-    </div>
+    <PreviewFrame className={className}>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+        <FileText className="text-muted-foreground size-12" />
+        <p className="text-sm font-medium">{attachment.fileName}</p>
+        <p className="text-muted-foreground flex items-center gap-1 text-xs">
+          <MessageSquarePlus className="size-3.5" />
+          Pilih teks tidak tersedia — gunakan komentar umum di panel kanan
+        </p>
+        {src ? (
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center justify-center rounded-md px-3 text-sm font-medium"
+          >
+            Buka file
+          </a>
+        ) : null}
+      </div>
+    </PreviewFrame>
   );
 }

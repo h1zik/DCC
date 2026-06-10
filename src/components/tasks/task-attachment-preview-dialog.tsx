@@ -145,12 +145,23 @@ export function TaskAttachmentPreviewDialog({
 
   useEffect(() => {
     if (!sessionKey) return;
-    void refresh(sessionKey, { initial: true });
-    // Poll ringan: hanya menyegarkan komentar, tidak mereset posisi carousel.
-    const interval = window.setInterval(() => {
-      void refresh(sessionKey);
-    }, 45_000);
-    return () => window.clearInterval(interval);
+    let cancelled = false;
+    const runRefresh = (initial: boolean) => {
+      if (cancelled || document.hidden) return;
+      void refresh(sessionKey, { initial });
+    };
+    const deferId = window.setTimeout(() => runRefresh(true), 0);
+    const interval = window.setInterval(() => runRefresh(false), 60_000);
+    const onVisibility = () => {
+      if (!document.hidden) runRefresh(false);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(deferId);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [sessionKey, refresh]);
 
   function onSubmitComment(anchor?: PendingSelection["anchor"] | null) {
@@ -189,7 +200,7 @@ export function TaskAttachmentPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(92vh,780px)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
+      <DialogContent className="flex h-[min(calc(100dvh-0.75rem),780px)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
         <div className="border-border flex shrink-0 items-center gap-2 border-b py-2 pr-12 pl-4">
           <DialogTitle className="min-w-0 flex-1 truncate text-sm font-semibold">
             {attachment.fileName}
@@ -215,14 +226,16 @@ export function TaskAttachmentPreviewDialog({
           </Button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div className="bg-muted/30 relative min-h-[280px] min-w-0 flex-1 md:min-h-0">
+          <div className="bg-muted/30 relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:min-h-0">
             {loading && comments.length === 0 ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-                <Loader2 className="text-muted-foreground size-6 animate-spin" />
+              <div className="bg-background/80 pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2 rounded-full border px-2.5 py-1 shadow-sm">
+                <Loader2 className="text-muted-foreground size-3.5 animate-spin" />
+                <span className="text-muted-foreground text-[10px]">Memuat komentar…</span>
               </div>
             ) : null}
             {activePreview ? (
               <AnchoredFilePreview
+                className="h-full min-h-0"
                 attachment={activePreview}
                 imageAttachments={imageAttachments}
                 imageIndex={imageIndex}
