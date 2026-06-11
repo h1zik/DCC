@@ -1097,6 +1097,18 @@ export function TasksKanban({
     return overTask?.status ?? null;
   }
 
+  /** Status di DB — hindari kirim urutan saat optimistic `localStatuses` belum sinkron. */
+  function persistedStatus(taskId: string): TaskStatus | undefined {
+    return tasks.find((t) => t.id === taskId)?.status;
+  }
+
+  function filterIdsForPersistedColumn(
+    ids: string[],
+    status: TaskStatus,
+  ): string[] {
+    return ids.filter((id) => persistedStatus(id) === status);
+  }
+
   function applyOptimisticSortKeys(orderedIds: string[]) {
     setLocalSortKeys((prev) => {
       const next = { ...prev };
@@ -1161,7 +1173,11 @@ export function TasksKanban({
       if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
 
       const reordered = arrayMove(colTasks, oldIndex, newIndex);
-      const orderedIds = reordered.map((t) => t.id);
+      const orderedIds = filterIdsForPersistedColumn(
+        reordered.map((t) => t.id),
+        overStatus,
+      );
+      if (orderedIds.length === 0) return;
       applyOptimisticSortKeys(orderedIds);
       try {
         await reorderKanbanColumn({

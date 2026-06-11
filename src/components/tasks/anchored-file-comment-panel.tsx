@@ -6,15 +6,7 @@ import { MessageSquare, Quote, UserRound, X } from "lucide-react";
 import type { User } from "@prisma/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { CommentMentionInput } from "@/components/tasks/comment-mention-input";
 import type { PendingSelection } from "@/components/tasks/anchored-file-preview";
 
 const emptySubscribe = () => () => {};
@@ -52,7 +44,6 @@ export function SelectionCommentPopover({
   onSubmit: () => void;
   onDismiss: () => void;
 }) {
-  // SSR-safe: false saat render server, true setelah hydration di klien.
   const mounted = useSyncExternalStore(
     emptySubscribe,
     () => true,
@@ -71,8 +62,13 @@ export function SelectionCommentPopover({
 
   return createPortal(
     <div
+      data-anchored-selection-popover
       className="border-border bg-popover fixed z-[200] w-72 rounded-lg border p-3 shadow-xl"
       style={{ top, left }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
     >
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -92,42 +88,18 @@ export function SelectionCommentPopover({
           <X className="size-3.5" />
         </Button>
       </div>
-      <Textarea
+      <CommentMentionInput
         value={draft}
-        onChange={(e) => onDraftChange(e.target.value)}
-        placeholder="Jelaskan revisi yang dibutuhkan…"
-        rows={3}
-        className="text-sm"
+        onChange={onDraftChange}
+        assigneeId={assigneeId}
+        onAssigneeChange={onAssigneeChange}
+        users={users}
+        onSubmit={onSubmit}
+        pending={pending}
+        placeholder="Jelaskan revisi… ketik @ untuk menandai"
         autoFocus
+        minRows={3}
       />
-      <div className="mt-2 space-y-1">
-        <Label className="text-xs">Tugaskan ke</Label>
-        <Select
-          value={assigneeId || "__none__"}
-          onValueChange={(v) => onAssigneeChange(!v || v === "__none__" ? "" : v)}
-        >
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue placeholder="Opsional" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">— Tidak ditugaskan —</SelectItem>
-            {users.map((u) => (
-              <SelectItem key={u.id} value={u.id}>
-                {u.name ?? u.email}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <Button
-        type="button"
-        size="sm"
-        className="mt-2 w-full"
-        disabled={pending || !draft.trim()}
-        onClick={onSubmit}
-      >
-        {pending ? "Menyimpan…" : "Kirim komentar"}
-      </Button>
     </div>,
     document.body,
   );
@@ -291,45 +263,18 @@ export function AnchoredCommentAside({
         )}
       </div>
 
-      <div className="border-border space-y-2 border-t p-3">
-        <Label className="text-xs">Komentar umum (tanpa blok)</Label>
-        <Textarea
+      <div className="border-border border-t p-3">
+        <CommentMentionInput
           value={draft}
-          onChange={(e) => onDraftChange(e.target.value)}
-          placeholder="Catatan untuk seluruh file…"
-          rows={2}
-          className="text-sm"
+          onChange={onDraftChange}
+          assigneeId={assigneeId}
+          onAssigneeChange={onAssigneeChange}
+          users={users}
+          onSubmit={onSubmitGeneral}
+          pending={pending}
+          placeholder="Komentar umum… ketik @ untuk menandai"
+          minRows={2}
         />
-        <div className="space-y-1">
-          <Label className="text-xs">Tugaskan ke (opsional)</Label>
-          <Select
-            value={assigneeId || "__none__"}
-            onValueChange={(v) =>
-              onAssigneeChange(!v || v === "__none__" ? "" : v)
-            }
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Pilih anggota tim" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">— Tidak ditugaskan —</SelectItem>
-              {users.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name ?? u.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          className="w-full"
-          disabled={pending || !draft.trim()}
-          onClick={onSubmitGeneral}
-        >
-          {pending ? "Mengirim…" : "Kirim komentar umum"}
-        </Button>
       </div>
     </aside>
   );

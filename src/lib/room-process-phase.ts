@@ -105,7 +105,18 @@ export function taskBelongsToPhase(
   return false;
 }
 
+/**
+ * Filter tugas per fase aktif.
+ * Fase legacy (id = enum `RoomTaskProcess`) memakai `roomProcess` + `customProcessPhaseId: null`.
+ * Fase kustom memakai `customProcessPhaseId` (UUID baris `RoomCustomProcessPhase`).
+ */
 export function taskPhaseWhere(phase: RoomProcessPhaseRef) {
+  if (isLegacyRoomTaskProcess(phase.id)) {
+    return {
+      customProcessPhaseId: null,
+      roomProcess: phase.id,
+    };
+  }
   return { customProcessPhaseId: phase.id };
 }
 

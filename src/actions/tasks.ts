@@ -29,6 +29,7 @@ import {
 } from "@/lib/room-simple-hub";
 import {
   phaseRef,
+  taskBelongsToPhase,
   taskPhaseWhere,
   taskToPhaseRef,
   type RoomProcessPhaseRef,
@@ -82,23 +83,43 @@ async function assertKanbanReorderTasks(
   orderedTaskIds: string[],
   userId: string,
 ) {
-  await assertRoomMemberHasTaskPhase(roomId, userId, phase);
+  const simpleHub = await isSimpleHubRoom(roomId);
+  if (simpleHub) {
+    await assertRoomMember(roomId, userId);
+  } else {
+    await assertRoomMemberHasTaskPhase(roomId, userId, phase);
+  }
+
   const unique = [...new Set(orderedTaskIds)];
   if (unique.length !== orderedTaskIds.length) {
     throw new Error("Daftar urutan tugas tidak valid.");
   }
+
   const rows = await prisma.task.findMany({
     where: {
       id: { in: orderedTaskIds },
       status,
       project: { roomId },
-      ...taskPhaseWhere(phase),
       archivedAt: null,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      roomProcess: true,
+      customProcessPhaseId: true,
+    },
   });
   if (rows.length !== orderedTaskIds.length) {
     throw new Error("Sebagian tugas tidak valid untuk pengurutan kolom ini.");
+  }
+
+  if (!simpleHub) {
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+    for (const taskId of orderedTaskIds) {
+      const row = rowById.get(taskId);
+      if (!row || !taskBelongsToPhase(row, phase)) {
+        throw new Error("Sebagian tugas tidak valid untuk pengurutan kolom ini.");
+      }
+    }
   }
 }
 
