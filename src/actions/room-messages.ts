@@ -192,6 +192,7 @@ async function notifyRoomMembersViaPush(params: {
           body: snippet,
           url: `/room/${params.roomId}/chat?channel=${params.channelId}`,
           icon: pushIconPath,
+          tag: `dcc-room-${params.channelId}`,
         },
       });
       if (!sent.ok && sent.reason === "gone") {
@@ -256,22 +257,24 @@ export async function addRoomMessage(
     include: roomChatMessageInclude,
   });
   await markRoomChannelRead(channelId, session.user.id);
-  await notifyMentionedUsersViaWhatsApp({
-    roomId: room.id,
-    roomName: room.name,
-    body,
-    authorId: session.user.id,
-    authorName: session.user.name || session.user.email || "Rekan tim",
-  });
-  await notifyRoomMembersViaPush({
-    roomId: room.id,
-    channelId,
-    roomName: room.name,
-    authorId: session.user.id,
-    authorName: session.user.name || session.user.email || "Rekan tim",
-    body,
-    hasGif: Boolean(gifUrl),
-  });
+  void Promise.allSettled([
+    notifyMentionedUsersViaWhatsApp({
+      roomId: room.id,
+      roomName: room.name,
+      body,
+      authorId: session.user.id,
+      authorName: session.user.name || session.user.email || "Rekan tim",
+    }),
+    notifyRoomMembersViaPush({
+      roomId: room.id,
+      channelId,
+      roomName: room.name,
+      authorId: session.user.id,
+      authorName: session.user.name || session.user.email || "Rekan tim",
+      body,
+      hasGif: Boolean(gifUrl),
+    }),
+  ]);
   revalidateTasksAndRoomHub();
   return mapRoomMessageToView(created);
 }
@@ -351,23 +354,25 @@ export async function addRoomMessageForm(
   });
   await markRoomChannelRead(channelId, session.user.id);
 
-  await notifyMentionedUsersViaWhatsApp({
-    roomId: room.id,
-    roomName: room.name,
-    body,
-    authorId: session.user.id,
-    authorName: session.user.name || session.user.email || "Rekan tim",
-  });
-  await notifyRoomMembersViaPush({
-    roomId: room.id,
-    channelId,
-    roomName: room.name,
-    authorId: session.user.id,
-    authorName: session.user.name || session.user.email || "Rekan tim",
-    body,
-    hasGif: Boolean(gifUrl),
-    hasAttachments: files.length > 0,
-  });
+  void Promise.allSettled([
+    notifyMentionedUsersViaWhatsApp({
+      roomId: room.id,
+      roomName: room.name,
+      body,
+      authorId: session.user.id,
+      authorName: session.user.name || session.user.email || "Rekan tim",
+    }),
+    notifyRoomMembersViaPush({
+      roomId: room.id,
+      channelId,
+      roomName: room.name,
+      authorId: session.user.id,
+      authorName: session.user.name || session.user.email || "Rekan tim",
+      body,
+      hasGif: Boolean(gifUrl),
+      hasAttachments: files.length > 0,
+    }),
+  ]);
   revalidateTasksAndRoomHub();
   return mapRoomMessageToView(full);
 }
