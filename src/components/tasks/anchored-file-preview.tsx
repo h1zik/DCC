@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -700,9 +707,11 @@ function PdfPage({
   );
   const [visible, setVisible] = useState(
     () =>
+      pageNumber === 1 ||
       typeof window === "undefined" ||
       typeof IntersectionObserver === "undefined",
   );
+  const [pageReady, setPageReady] = useState(false);
   const [text, setText] = useState("");
   // Bertambah setiap text layer selesai dirender ulang (mis. resize) —
   // teks kanonik tidak berubah tapi span DOM baru perlu di-highlight ulang.
@@ -772,6 +781,8 @@ function PdfPage({
     let renderTask: ReturnType<pdfjs.PDFPageProxy["render"]> | null = null;
     let textLayer: InstanceType<typeof pdfjs.TextLayer> | null = null;
 
+    setPageReady(false);
+
     void (async () => {
       try {
         const page = await pdf.getPage(pageNumber);
@@ -801,22 +812,28 @@ function PdfPage({
         });
         await renderTask.promise;
         if (cancelled) return;
+        setPageReady(true);
 
-        const content = await page.getTextContent();
-        if (cancelled) return;
-        textLayer = new pdfjs.TextLayer({
-          textContentSource: content,
-          container: textContainer,
-          viewport,
-        });
-        await textLayer.render();
-        if (cancelled) return;
+        try {
+          const content = await page.getTextContent();
+          if (cancelled) return;
+          textLayer = new pdfjs.TextLayer({
+            textContentSource: content,
+            container: textContainer,
+            viewport,
+          });
+          await textLayer.render();
+          if (cancelled) return;
 
-        for (const span of getPdfLeafSpans(textContainer)) {
-          span.setAttribute("data-pdf-span-text", span.textContent ?? "");
+          for (const span of getPdfLeafSpans(textContainer)) {
+            span.setAttribute("data-pdf-span-text", span.textContent ?? "");
+          }
+          setText(buildCanonicalPdfText(getPdfSpanTexts(textContainer)));
+          setRenderVersion((v) => v + 1);
+        } catch {
+          // Text layer opsional — canvas sudah tampil, komentar teks mungkin
+          // tidak tersedia di halaman ini.
         }
-        setText(buildCanonicalPdfText(getPdfSpanTexts(textContainer)));
-        setRenderVersion((v) => v + 1);
       } catch {
         // Render dibatalkan (scroll cepat / unmount) atau halaman korup.
       }
@@ -911,7 +928,7 @@ function PdfPage({
         style={{ minHeight: placeholderHeight }}
         onPointerDown={commentMode ? onRegionPointerDown : undefined}
       >
-        {!text ? (
+        {!pageReady ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="text-muted-foreground size-5 animate-spin" />
           </div>
@@ -954,6 +971,7 @@ function PdfPage({
 }
 
 const PDF_PAGE_GUTTER = 32;
+const PDF_DEFAULT_PAGE_WIDTH = 320;
 
 function PdfSelectablePreview({
   src,
@@ -976,7 +994,7 @@ function PdfSelectablePreview({
     pdf: pdfjs.PDFDocumentProxy | null;
     failed: boolean;
   }>({ src, pdf: null, failed: false });
-  const [pageWidth, setPageWidth] = useState(0);
+  const [pageWidth, setPageWidth] = useState(PDF_DEFAULT_PAGE_WIDTH);
 
   // Reset saat sumber berganti — pola "adjust state during render".
   if (docState.src !== src) {
@@ -1006,23 +1024,30 @@ function PdfSelectablePreview({
   const loading = !pdf && !failed;
   const pageCount = pdf?.numPages ?? 0;
 
-  useEffect(() => {
+  const measurePageWidth = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const update = (width: number) => {
-      const next = Math.max(280, Math.floor(width) - PDF_PAGE_GUTTER);
-      // Histeresis kecil agar resize 1-2px tidak memicu render ulang semua
-      // halaman.
-      setPageWidth((prev) => (Math.abs(prev - next) > 8 ? next : prev));
-    };
-    update(el.clientWidth);
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) update(entry.contentRect.width);
-    });
+    const next = Math.max(280, Math.floor(el.clientWidth) - PDF_PAGE_GUTTER);
+    // Histeresis kecil agar resize 1-2px tidak memicu render ulang semua
+    // halaman.
+    setPageWidth((prev) => (Math.abs(prev - next) > 8 ? next : prev));
+  }, []);
+
+  useLayoutEffect(() => {
+    measurePageWidth();
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => measurePageWidth());
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [src, measurePageWidth]);
+
+  useEffect(() => {
+    if (!pdf) return;
+    measurePageWidth();
+    const id = window.requestAnimationFrame(measurePageWidth);
+    return () => window.cancelAnimationFrame(id);
+  }, [pdf, measurePageWidth]);
 
   if (failed) {
     return (
@@ -1038,7 +1063,7 @@ function PdfSelectablePreview({
 
   return (
     <div ref={scrollRef} className="h-full overflow-auto bg-muted/40 p-4">
-      {loading || !pdf || pageWidth <= 0 ? (
+      {loading || !pdf ? (
         <div className="flex h-full items-center justify-center">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
