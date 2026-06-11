@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { Loader2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@prisma/client";
@@ -61,6 +68,8 @@ export function TaskAttachmentPreviewDialog({
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
+  const pendingSelectionRef = useRef(pendingSelection);
+  pendingSelectionRef.current = pendingSelection;
 
   // Reset state transien saat lampiran yang dipreview berganti —
   // pola "adjust state during render".
@@ -81,6 +90,26 @@ export function TaskAttachmentPreviewDialog({
   const openComment = useCallback((id: string) => {
     setActiveCommentId(id);
     setCommentsOpen(true);
+  }, []);
+
+  const handlePendingSelection = useCallback((sel: PendingSelection | null) => {
+    // Popover komentar blok hanya ditutup lewat tombol X atau kirim —
+    // bukan karena fokus/klik @mention mengosongkan seleksi dokumen.
+    if (sel === null && pendingSelectionRef.current !== null) return;
+    setPendingSelection(sel);
+  }, []);
+
+  const toggleComments = useCallback(() => {
+    setCommentsOpen((open) => {
+      if (open) {
+        setPendingSelection(null);
+        setSelectionDraft("");
+        setSelectionAssigneeId("");
+        setActiveCommentId(null);
+        window.getSelection()?.removeAllRanges();
+      }
+      return !open;
+    });
   }, []);
 
   const imageAttachments = useMemo(
@@ -204,16 +233,18 @@ export function TaskAttachmentPreviewDialog({
         <div className="border-border flex shrink-0 items-center gap-2 border-b py-2 pr-12 pl-4">
           <DialogTitle className="min-w-0 flex-1 truncate text-sm font-semibold">
             {attachment.fileName}
-            <span className="text-muted-foreground ml-2 text-xs font-normal">
-              Pilih teks atau blok area untuk komentar (ala Google Drive)
-            </span>
+            {commentsOpen ? (
+              <span className="text-muted-foreground ml-2 text-xs font-normal">
+                Pilih teks atau blok area untuk komentar
+              </span>
+            ) : null}
           </DialogTitle>
           <Button
             type="button"
             size="sm"
             variant={commentsOpen ? "secondary" : "outline"}
             className={cn("shrink-0", commentsOpen && "ring-primary/40 ring-1")}
-            onClick={() => setCommentsOpen((v) => !v)}
+            onClick={toggleComments}
             aria-pressed={commentsOpen}
           >
             <MessageSquare className="size-3.5" />
@@ -242,7 +273,8 @@ export function TaskAttachmentPreviewDialog({
                 onImageIndexChange={setImageIndex}
                 comments={commentPins}
                 activeCommentId={activeCommentId}
-                onPendingSelection={setPendingSelection}
+                commentMode={commentsOpen}
+                onPendingSelection={handlePendingSelection}
                 onCommentPinClick={openComment}
               />
             ) : null}
@@ -301,7 +333,7 @@ export function TaskAttachmentPreviewDialog({
         </div>
       </DialogContent>
 
-      {pendingSelection ? (
+      {commentsOpen && pendingSelection ? (
         <SelectionCommentPopover
           selection={pendingSelection}
           draft={selectionDraft}

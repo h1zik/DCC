@@ -68,14 +68,16 @@ export function RoomHubNav({
   return (
     <header className="border-border flex items-center gap-2.5 border-b pb-3 sm:gap-3">
       {logoImage ? (
-        <Image
-          src={logoImage}
-          alt={`Logo ${roomName}`}
-          width={36}
-          height={36}
-          className="size-9 shrink-0 object-contain"
-          unoptimized
-        />
+        <span className="border-border size-9 shrink-0 overflow-hidden rounded-lg border shadow-sm">
+          <Image
+            src={logoImage}
+            alt={`Logo ${roomName}`}
+            width={36}
+            height={36}
+            className="size-full object-cover"
+            unoptimized
+          />
+        </span>
       ) : (
         <div className="bg-primary/10 flex size-9 shrink-0 items-center justify-center rounded-lg">
           <span

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -93,6 +100,8 @@ export function RoomDocumentPreviewDialog({
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
+  const pendingSelectionRef = useRef(pendingSelection);
+  pendingSelectionRef.current = pendingSelection;
 
   // Reset state transien saat dokumen yang dipreview berganti —
   // pola "adjust state during render".
@@ -114,6 +123,24 @@ export function RoomDocumentPreviewDialog({
   const openComment = useCallback((id: string) => {
     setActiveCommentId(id);
     setCommentsOpen(true);
+  }, []);
+
+  const handlePendingSelection = useCallback((sel: PendingSelection | null) => {
+    if (sel === null && pendingSelectionRef.current !== null) return;
+    setPendingSelection(sel);
+  }, []);
+
+  const toggleComments = useCallback(() => {
+    setCommentsOpen((open) => {
+      if (open) {
+        setPendingSelection(null);
+        setSelectionDraft("");
+        setSelectionAssigneeId("");
+        setActiveCommentId(null);
+        window.getSelection()?.removeAllRanges();
+      }
+      return !open;
+    });
   }, []);
 
   const open = doc !== null;
@@ -301,9 +328,11 @@ export function RoomDocumentPreviewDialog({
                   ? ` · File ${previewIndex + 1}/${previewPlaylist.length}`
                   : null}
               </p>
-              <p className="text-muted-foreground mt-1 text-[11px]">
-                Pilih teks atau blok area untuk komentar (ala Google Drive)
-              </p>
+              {commentsOpen ? (
+                <p className="text-muted-foreground mt-1 text-[11px]">
+                  Pilih teks atau blok area untuk komentar
+                </p>
+              ) : null}
             </div>
             <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
               {hasFileNav ? (
@@ -334,7 +363,7 @@ export function RoomDocumentPreviewDialog({
                 type="button"
                 size="sm"
                 variant={commentsOpen ? "secondary" : "outline"}
-                onClick={() => setCommentsOpen((v) => !v)}
+                onClick={toggleComments}
                 aria-pressed={commentsOpen}
               >
                 <MessageSquare className="size-3.5" />
@@ -439,7 +468,8 @@ export function RoomDocumentPreviewDialog({
               }}
               comments={commentPins}
               activeCommentId={activeCommentId}
-              onPendingSelection={setPendingSelection}
+              commentMode={commentsOpen}
+              onPendingSelection={handlePendingSelection}
               onCommentPinClick={openComment}
             />
           </div>
@@ -497,7 +527,7 @@ export function RoomDocumentPreviewDialog({
         </div>
       </DialogContent>
 
-      {pendingSelection ? (
+      {commentsOpen && pendingSelection ? (
         <SelectionCommentPopover
           selection={pendingSelection}
           draft={selectionDraft}

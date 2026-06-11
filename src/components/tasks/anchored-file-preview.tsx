@@ -342,6 +342,7 @@ function SelectableTextPreview({
   fileName,
   comments,
   activeCommentId,
+  commentMode,
   onPendingSelection,
   onCommentPinClick,
 }: {
@@ -350,6 +351,7 @@ function SelectableTextPreview({
   fileName: string;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
+  commentMode: boolean;
   onPendingSelection: (sel: PendingSelection | null) => void;
   onCommentPinClick: (id: string) => void;
 }) {
@@ -396,32 +398,53 @@ function SelectableTextPreview({
   const loading = load.status === "loading";
   const failed = load.status === "error";
 
-  const anchorMeta = useTextAnchorMeta(comments, activeCommentId);
+  const anchorMeta = useTextAnchorMeta(
+    commentMode ? comments : [],
+    commentMode ? activeCommentId : null,
+  );
   const segments = useMemo(
-    () => textHighlightSpans(text, anchorMeta),
-    [text, anchorMeta],
+    () =>
+      commentMode
+        ? textHighlightSpans(text, anchorMeta)
+        : text
+          ? [{ type: "text" as const, value: text }]
+          : [],
+    [text, anchorMeta, commentMode],
   );
 
   useEffect(() => {
-    if (!activeCommentId || !rootRef.current) return;
+    if (!commentMode || !activeCommentId || !rootRef.current) return;
     rootRef.current
       .querySelector(`[data-comment-id="${activeCommentId}"]`)
       ?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [activeCommentId, text]);
+  }, [activeCommentId, text, commentMode]);
 
-  const onMouseUp = useCallback(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const sel = window.getSelection();
-    const selected = sel?.toString().trim() ?? "";
-    if (!selected) {
-      onPendingSelection(null);
-      return;
-    }
-    const anchor = textAnchorFromSelection(root, text);
-    if (!anchor) return;
-    onPendingSelection(selectionToPending(anchor, selected));
-  }, [onPendingSelection, text]);
+  const onMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      if (!commentMode) return;
+      const root = rootRef.current;
+      if (!root) return;
+      const sel = window.getSelection();
+      const selected = sel?.toString().trim() ?? "";
+      if (!selected) {
+        const popover = document.querySelector(
+          "[data-anchored-selection-popover]",
+        );
+        if (
+          popover?.contains(e.target as Node) ||
+          document.activeElement?.closest("[data-anchored-selection-popover]")
+        ) {
+          return;
+        }
+        onPendingSelection(null);
+        return;
+      }
+      const anchor = textAnchorFromSelection(root, text);
+      if (!anchor) return;
+      onPendingSelection(selectionToPending(anchor, selected));
+    },
+    [commentMode, onPendingSelection, text],
+  );
 
   if (loading) {
     return (
@@ -438,8 +461,8 @@ function SelectableTextPreview({
         <p className="text-sm font-medium">{fileName}</p>
         <p className="text-muted-foreground text-xs">
           {failed
-            ? "Gagal memuat isi file. Gunakan komentar umum."
-            : "File tidak berisi teks yang bisa dipilih. Gunakan komentar umum."}
+            ? "Gagal memuat isi file."
+            : "File tidak berisi teks yang bisa dipilih."}
         </p>
       </div>
     );
@@ -452,10 +475,10 @@ function SelectableTextPreview({
         "h-full overflow-auto text-sm leading-relaxed whitespace-pre-wrap select-text",
         kind === "docx" ? "p-6" : "p-4",
       )}
-      onMouseUp={onMouseUp}
+      onMouseUp={commentMode ? onMouseUp : undefined}
     >
       {segments.map((seg, i) =>
-        isHighlightSpan(seg) ? (
+        commentMode && isHighlightSpan(seg) ? (
           <mark
             key={`${seg.id}-${seg.start}`}
             data-comment-id={seg.id}
@@ -475,7 +498,9 @@ function SelectableTextPreview({
             {text.slice(seg.start, seg.end)}
           </mark>
         ) : (
-          <span key={`t-${i}`}>{seg.value}</span>
+          <span key={`t-${i}`}>
+            {"type" in seg ? seg.value : text.slice(seg.start, seg.end)}
+          </span>
         ),
       )}
     </div>
@@ -654,6 +679,7 @@ function PdfPage({
   pageWidth,
   comments,
   activeCommentId,
+  commentMode,
   onPendingSelection,
   onCommentPinClick,
 }: {
@@ -662,6 +688,7 @@ function PdfPage({
   pageWidth: number;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
+  commentMode: boolean;
   onPendingSelection: (sel: PendingSelection | null) => void;
   onCommentPinClick: (id: string) => void;
 }) {
@@ -685,12 +712,19 @@ function PdfPage({
     () => comments.filter((c) => (c.anchorPage ?? 1) === pageNumber),
     [comments, pageNumber],
   );
-  const anchorMeta = useTextAnchorMeta(pageComments, activeCommentId);
-  const regionPins = useRegionPins(pageComments, activeCommentId);
+  const anchorMeta = useTextAnchorMeta(
+    commentMode ? pageComments : [],
+    commentMode ? activeCommentId : null,
+  );
+  const regionPins = useRegionPins(
+    commentMode ? pageComments : [],
+    commentMode ? activeCommentId : null,
+  );
 
   // Halaman dengan komentar aktif dipaksa render agar scroll-to-anchor
   // berfungsi — pola "adjust state during render".
   if (
+    commentMode &&
     !visible &&
     activeCommentId &&
     pageComments.some((c) => c.id === activeCommentId)
@@ -796,35 +830,52 @@ function PdfPage({
   }, [pdf, pageNumber, visible, baseDims, pageWidth]);
 
   useEffect(() => {
-    if (!textLayerRef.current || !text) return;
+    if (!commentMode || !textLayerRef.current || !text) return;
     applyPdfTextHighlights(textLayerRef.current, text, anchorMeta);
-  }, [text, anchorMeta, renderVersion]);
+  }, [text, anchorMeta, renderVersion, commentMode]);
 
   useEffect(() => {
-    if (!activeCommentId || !pageBoxRef.current) return;
+    if (!commentMode || !activeCommentId || !pageBoxRef.current) return;
     pageBoxRef.current
       .querySelector(`[data-comment-id="${activeCommentId}"]`)
       ?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [activeCommentId, text]);
+  }, [activeCommentId, text, commentMode]);
 
-  const onMouseUp = useCallback(() => {
-    const root = textLayerRef.current;
-    if (!root) return;
-    const sel = window.getSelection();
-    const selected = sel?.toString().trim() ?? "";
-    if (!selected) {
-      onPendingSelection(null);
-      return;
-    }
-    const anchor = textAnchorFromSelection(root, text, pageNumber);
-    if (!anchor) return;
-    onPendingSelection(
-      selectionToPending(anchor, anchor.kind === "text" ? anchor.selectedText : selected),
-    );
-  }, [onPendingSelection, pageNumber, text]);
+  const onMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      if (!commentMode) return;
+      const root = textLayerRef.current;
+      if (!root) return;
+      const sel = window.getSelection();
+      const selected = sel?.toString().trim() ?? "";
+      if (!selected) {
+        const popover = document.querySelector(
+          "[data-anchored-selection-popover]",
+        );
+        if (
+          popover?.contains(e.target as Node) ||
+          document.activeElement?.closest("[data-anchored-selection-popover]")
+        ) {
+          return;
+        }
+        onPendingSelection(null);
+        return;
+      }
+      const anchor = textAnchorFromSelection(root, text, pageNumber);
+      if (!anchor) return;
+      onPendingSelection(
+        selectionToPending(
+          anchor,
+          anchor.kind === "text" ? anchor.selectedText : selected,
+        ),
+      );
+    },
+    [commentMode, onPendingSelection, pageNumber, text],
+  );
 
   const onRegionPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (!commentMode) return;
       const pageBox = pageBoxRef.current;
       if (!pageBox || e.button !== 0) return;
       // Drag area hanya dari area kosong (bukan teks) agar tidak bentrok
@@ -842,7 +893,7 @@ function PdfPage({
         });
       });
     },
-    [onPendingSelection, pageNumber],
+    [commentMode, onPendingSelection, pageNumber],
   );
 
   const placeholderHeight = baseDims
@@ -853,9 +904,12 @@ function PdfPage({
     <div className="mx-auto mb-6 max-w-full" style={{ width: pageWidth }}>
       <div
         ref={pageBoxRef}
-        className="relative touch-none bg-white shadow-md"
+        className={cn(
+          "relative bg-white shadow-md",
+          commentMode && "touch-none",
+        )}
         style={{ minHeight: placeholderHeight }}
-        onPointerDown={onRegionPointerDown}
+        onPointerDown={commentMode ? onRegionPointerDown : undefined}
       >
         {!text ? (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -866,24 +920,35 @@ function PdfPage({
         <div
           ref={textLayerRef}
           className="textLayer select-text"
-          onMouseUp={onMouseUp}
-          onClick={(e) => {
-            const target = (e.target as HTMLElement).closest(
-              "[data-comment-id]",
-            );
-            if (target) {
-              e.stopPropagation();
-              onCommentPinClick(target.getAttribute("data-comment-id")!);
-            }
-          }}
+          onMouseUp={commentMode ? onMouseUp : undefined}
+          onClick={
+            commentMode
+              ? (e) => {
+                  const target = (e.target as HTMLElement).closest(
+                    "[data-comment-id]",
+                  );
+                  if (target) {
+                    e.stopPropagation();
+                    onCommentPinClick(target.getAttribute("data-comment-id")!);
+                  }
+                }
+              : undefined
+          }
         />
-        <DraftRegionOverlay />
-        <RegionPinButtons pins={regionPins} onCommentPinClick={onCommentPinClick} />
+        {commentMode ? <DraftRegionOverlay /> : null}
+        {commentMode ? (
+          <RegionPinButtons
+            pins={regionPins}
+            onCommentPinClick={onCommentPinClick}
+          />
+        ) : null}
       </div>
-      <p className="text-muted-foreground mt-1 text-center text-[10px]">
-        Halaman {pageNumber} — pilih teks, atau drag area kosong untuk komentar
-        area
-      </p>
+      {commentMode ? (
+        <p className="text-muted-foreground mt-1 text-center text-[10px]">
+          Halaman {pageNumber} — pilih teks, atau drag area kosong untuk
+          komentar area
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -894,12 +959,14 @@ function PdfSelectablePreview({
   src,
   comments,
   activeCommentId,
+  commentMode,
   onPendingSelection,
   onCommentPinClick,
 }: {
   src: string;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
+  commentMode: boolean;
   onPendingSelection: (sel: PendingSelection | null) => void;
   onCommentPinClick: (id: string) => void;
 }) {
@@ -977,10 +1044,12 @@ function PdfSelectablePreview({
         </div>
       ) : (
         <>
-          <p className="text-muted-foreground mb-3 text-center text-xs">
-            Pilih teks atau drag area kosong pada halaman untuk menambah
-            komentar
-          </p>
+          {commentMode ? (
+            <p className="text-muted-foreground mb-3 text-center text-xs">
+              Pilih teks atau drag area kosong pada halaman untuk menambah
+              komentar
+            </p>
+          ) : null}
           {Array.from({ length: pageCount }, (_, i) => i + 1).map(
             (pageNumber) => (
               <PdfPage
@@ -990,6 +1059,7 @@ function PdfSelectablePreview({
                 pageWidth={pageWidth}
                 comments={comments}
                 activeCommentId={activeCommentId}
+                commentMode={commentMode}
                 onPendingSelection={onPendingSelection}
                 onCommentPinClick={onCommentPinClick}
               />
@@ -1012,6 +1082,7 @@ function ImageRegionPreview({
   fileName,
   comments,
   activeCommentId,
+  commentMode,
   onPendingSelection,
   onCommentPinClick,
 }: {
@@ -1021,11 +1092,15 @@ function ImageRegionPreview({
   fileName: string;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
+  commentMode: boolean;
   onPendingSelection: (sel: PendingSelection | null) => void;
   onCommentPinClick: (id: string) => void;
 }) {
   const imageBoxRef = useRef<HTMLDivElement>(null);
-  const regionPins = useRegionPins(comments, activeCommentId);
+  const regionPins = useRegionPins(
+    commentMode ? comments : [],
+    commentMode ? activeCommentId : null,
+  );
   const svgPreview = isSvgImage(mimeType, fileName);
   const previewThumb =
     svgPreview || !thumbSrc || thumbSrc === src ? null : thumbSrc;
@@ -1071,6 +1146,7 @@ function ImageRegionPreview({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (!commentMode) return;
       const box = imageBoxRef.current;
       if (!box || e.button !== 0) return;
       e.preventDefault();
@@ -1082,7 +1158,7 @@ function ImageRegionPreview({
         });
       });
     },
-    [onPendingSelection],
+    [commentMode, onPendingSelection],
   );
 
   if (loadError) {
@@ -1107,10 +1183,11 @@ function ImageRegionPreview({
       <div
         ref={imageBoxRef}
         className={cn(
-          "border-border/50 bg-background relative flex max-h-full max-w-full items-center justify-center rounded-lg border p-2 shadow-sm touch-none sm:p-3",
+          "border-border/50 bg-background relative flex max-h-full max-w-full items-center justify-center rounded-lg border p-2 shadow-sm sm:p-3",
+          commentMode && "touch-none",
           upscalePreview && "min-w-[min(80vw,640px)]",
         )}
-        onPointerDown={onPointerDown}
+        onPointerDown={commentMode ? onPointerDown : undefined}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -1133,8 +1210,13 @@ function ImageRegionPreview({
             <Loader2 className="text-muted-foreground size-6 animate-spin" />
           </div>
         ) : null}
-        <DraftRegionOverlay />
-        <RegionPinButtons pins={regionPins} onCommentPinClick={onCommentPinClick} />
+        {commentMode ? <DraftRegionOverlay /> : null}
+        {commentMode ? (
+          <RegionPinButtons
+            pins={regionPins}
+            onCommentPinClick={onCommentPinClick}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -1151,6 +1233,7 @@ export function AnchoredFilePreview({
   onImageIndexChange,
   comments,
   activeCommentId,
+  commentMode = false,
   onPendingSelection,
   onCommentPinClick,
   className,
@@ -1161,6 +1244,7 @@ export function AnchoredFilePreview({
   onImageIndexChange: (index: number) => void;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
+  commentMode?: boolean;
   onPendingSelection: (sel: PendingSelection | null) => void;
   onCommentPinClick: (id: string) => void;
   className?: string;
@@ -1237,6 +1321,7 @@ export function AnchoredFilePreview({
           fileName={current.fileName}
           comments={comments}
           activeCommentId={activeCommentId}
+          commentMode={commentMode}
           onPendingSelection={onPendingSelection}
           onCommentPinClick={onCommentPinClick}
         />
@@ -1251,6 +1336,7 @@ export function AnchoredFilePreview({
           src={attachment.publicPath}
           comments={comments}
           activeCommentId={activeCommentId}
+          commentMode={commentMode}
           onPendingSelection={onPendingSelection}
           onCommentPinClick={onCommentPinClick}
         />
@@ -1267,6 +1353,7 @@ export function AnchoredFilePreview({
           fileName={attachment.fileName}
           comments={comments}
           activeCommentId={activeCommentId}
+          commentMode={commentMode}
           onPendingSelection={onPendingSelection}
           onCommentPinClick={onCommentPinClick}
         />
@@ -1283,6 +1370,7 @@ export function AnchoredFilePreview({
           fileName={attachment.fileName}
           comments={comments}
           activeCommentId={activeCommentId}
+          commentMode={commentMode}
           onPendingSelection={onPendingSelection}
           onCommentPinClick={onCommentPinClick}
         />
@@ -1302,10 +1390,12 @@ export function AnchoredFilePreview({
             className="max-h-full max-w-full object-contain"
             preload="metadata"
           />
-          <p className="text-background/70 shrink-0 px-4 text-center text-xs">
-            Video: gunakan komentar umum di panel kanan. Dukungan anchor waktu
-            menyusul.
-          </p>
+          {commentMode ? (
+            <p className="text-background/70 shrink-0 px-4 text-center text-xs">
+              Video: gunakan komentar umum di panel kanan. Dukungan anchor waktu
+              menyusul.
+            </p>
+          ) : null}
         </div>
       </PreviewFrame>
     );
@@ -1328,10 +1418,12 @@ export function AnchoredFilePreview({
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
         <FileText className="text-muted-foreground size-12" />
         <p className="text-sm font-medium">{attachment.fileName}</p>
-        <p className="text-muted-foreground flex items-center gap-1 text-xs">
-          <MessageSquarePlus className="size-3.5" />
-          Pilih teks tidak tersedia — gunakan komentar umum di panel kanan
-        </p>
+        {commentMode ? (
+          <p className="text-muted-foreground flex items-center gap-1 text-xs">
+            <MessageSquarePlus className="size-3.5" />
+            Pilih teks tidak tersedia — gunakan komentar umum di panel kanan
+          </p>
+        ) : null}
         {src ? (
           <a
             href={src}
