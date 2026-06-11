@@ -1,5 +1,6 @@
 import { NotificationType, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { sendPushForInAppNotification } from "@/lib/push-notify";
 
 export async function notifyUser(
   userId: string,
@@ -8,6 +9,9 @@ export async function notifyUser(
 ) {
   await prisma.notification.create({
     data: { userId, message, type },
+  });
+  void sendPushForInAppNotification(userId, message, type).catch((e) => {
+    console.error("[notify] push failed", { userId, type, error: e });
   });
 }
 

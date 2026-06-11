@@ -27,11 +27,12 @@ self.addEventListener("push", (event) => {
       body,
       icon,
       badge: icon,
-      image: icon,
       vibrate: [200, 120, 200],
       data: { url },
       tag,
       renotify: true,
+      requireInteraction: false,
+      silent: false,
     }),
   );
 });

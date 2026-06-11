@@ -1,6 +1,6 @@
 import webpush from "web-push";
 
-type PushPayload = {
+export type PushPayload = {
   title: string;
   body: string;
   url?: string;
@@ -45,7 +45,11 @@ export async function sendWebPushMessage(params: {
   };
   const payload = JSON.stringify(params.payload);
   try {
-    await webpush.sendNotification(subscription, payload);
+    await webpush.sendNotification(subscription, payload, {
+      // Prioritas tinggi agar FCM/APNs mengantrekan segera (mendekati native push).
+      urgency: "high",
+      TTL: 3600,
+    });
     return { ok: true as const };
   } catch (error) {
     const statusCode =
