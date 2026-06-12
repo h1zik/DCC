@@ -329,6 +329,12 @@ model User {
   attendances               Attendance[]
   reviewIntelSourcesCreated ReviewIntelSource[]  @relation("ReviewIntelSourceCreator")
   researchCompetitorsCreated ResearchCompetitor[] @relation("ResearchCompetitorCreator")
+  trendWatchlistsCreated    TrendWatchlist[]     @relation("TrendWatchlistCreator")
+  keywordIntelQueriesCreated KeywordIntelQuery[] @relation("KeywordIntelQueryCreator")
+  socialListeningMonitorsCreated SocialListeningMonitor[] @relation("SocialListeningMonitorCreator")
+  uspGapAnalysesCreated     UspGapAnalysis[]     @relation("UspGapAnalysisCreator")
+  productConceptsCreated    ProductConcept[]     @relation("ProductConceptCreator")
+  researchReportsCreated    ResearchReport[]     @relation("ResearchReportCreator")
 
   @@index([customRoleId])
 }
@@ -399,6 +405,8 @@ model Brand {
   financeBudgetLines   FinanceBudgetLine[]
   financeSpendRequests FinanceSpendRequest[]
   reviewIntelSources   ReviewIntelSource[]
+  uspGapAnalyses       UspGapAnalysis[]
+  productConcepts      ProductConcept[]
 }
 
 /**
@@ -2009,5 +2017,328 @@ model CompetitorAlert {
   createdAt    DateTime            @default(now())
 
   @@index([competitorId, isRead])
+  @@index([createdAt])
+}
+
+enum TrendRadarStatus {
+  PENDING
+  COLLECTING
+  ANALYZING
+  READY
+  FAILED
+}
+
+enum TrendPhase {
+  EMERGING
+  GROWING
+  PEAK
+  DECLINING
+}
+
+enum TrendDimension {
+  INGREDIENT
+  CLAIM
+  CATEGORY
+  FORMAT
+  BRAND
+}
+
+enum KeywordIntelStatus {
+  PENDING
+  COLLECTING
+  ANALYZING
+  READY
+  FAILED
+}
+
+model TrendWatchlist {
+  id          String             @id @default(cuid())
+  name        String
+  keywords    String[]           @default([])
+  dimensions  TrendDimension[]   @default([])
+  isActive    Boolean            @default(true)
+  createdById String
+  createdBy   User               @relation("TrendWatchlistCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  digests     TrendRadarDigest[]
+
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model TrendRadarDigest {
+  id           String           @id @default(cuid())
+  weekStart    DateTime
+  weekEnd      DateTime
+  status       TrendRadarStatus @default(PENDING)
+  narrative    String?          @db.Text
+  isGlobal     Boolean          @default(false)
+  watchlistId  String?
+  watchlist    TrendWatchlist?  @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
+  errorMessage String?
+  generatedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  items        TrendRadarItem[]
+
+  @@index([status])
+  @@index([isGlobal, weekStart])
+  @@index([watchlistId])
+}
+
+model TrendRadarItem {
+  id               String         @id @default(cuid())
+  digestId         String
+  digest           TrendRadarDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+  name             String
+  dimension        TrendDimension
+  phase            TrendPhase
+  score            Float?
+  narrative        String?        @db.Text
+  isGlobalPipeline Boolean        @default(false)
+  sources          Json           @default("[]")
+  relatedProducts  Json           @default("[]")
+  createdAt        DateTime       @default(now())
+
+  @@index([digestId])
+  @@index([phase])
+}
+
+model KeywordIntelQuery {
+  id           String              @id @default(cuid())
+  category     String
+  seedKeyword  String?
+  marketplace  ResearchMarketplace?
+  status       KeywordIntelStatus  @default(PENDING)
+  errorMessage String?
+  createdById  String
+  createdBy    User                @relation("KeywordIntelQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  result       KeywordIntelResult?
+
+  @@index([createdById])
+  @@index([status])
+}
+
+model KeywordIntelResult {
+  id                String            @id @default(cuid())
+  queryId           String            @unique
+  query             KeywordIntelQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  keywordMatrix     Json              @default("[]")
+  gapKeywords       Json              @default("[]")
+  namingSuggestions Json              @default("[]")
+  copyKeywords      Json              @default("{}")
+  seasonalCalendar  Json              @default("[]")
+  clusters          Json              @default("[]")
+  aiSummary         String?           @db.Text
+  updatedAt         DateTime          @updatedAt
+}
+
+enum SocialListeningPlatform {
+  TIKTOK
+  INSTAGRAM
+}
+
+enum SocialListeningStatus {
+  PENDING
+  COLLECTING
+  ANALYZING
+  READY
+  FAILED
+}
+
+enum SocialMentionClass {
+  COMPLAINT
+  PRAISE
+  QUESTION
+  WISHLIST
+  RECOMMENDATION
+  NEUTRAL
+}
+
+model SocialListeningMonitor {
+  id          String                    @id @default(cuid())
+  name        String
+  keywords    String[]                  @default([])
+  platforms   SocialListeningPlatform[] @default([])
+  isActive    Boolean                   @default(true)
+  createdById String
+  createdBy   User                      @relation("SocialListeningMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  batches     SocialListeningBatch[]
+
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model SocialListeningBatch {
+  id           String                 @id @default(cuid())
+  monitorId    String
+  monitor      SocialListeningMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status       SocialListeningStatus  @default(PENDING)
+  errorMessage String?
+  collectedAt  DateTime?
+  createdAt    DateTime               @default(now())
+  mentions     SocialMention[]
+  summary      SocialListeningSummary?
+
+  @@index([monitorId])
+  @@index([status])
+}
+
+model SocialMention {
+  id           String                 @id @default(cuid())
+  batchId      String
+  batch        SocialListeningBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  platform     SocialListeningPlatform
+  externalId   String?
+  text         String                 @db.Text
+  author       String?
+  url          String?
+  likes        Int                    @default(0)
+  comments     Int                    @default(0)
+  views        Int                    @default(0)
+  classification SocialMentionClass   @default(NEUTRAL)
+  painPoint    String?
+  isViral      Boolean                @default(false)
+  postedAt     DateTime?
+  createdAt    DateTime               @default(now())
+
+  @@unique([batchId, platform, externalId])
+  @@index([batchId])
+  @@index([classification])
+}
+
+model SocialListeningSummary {
+  id                String               @id @default(cuid())
+  batchId           String               @unique
+  batch             SocialListeningBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  topPainPoints     Json                 @default("[]")
+  topWishlist       Json                 @default("[]")
+  influencers       Json                 @default("[]")
+  viralContent      Json                 @default("[]")
+  categoryBreakdown Json                 @default("[]")
+  aiSummary         String?              @db.Text
+  updatedAt         DateTime             @updatedAt
+}
+
+enum UspGapStatus {
+  PENDING
+  GATHERING
+  ANALYZING
+  READY
+  FAILED
+}
+
+model UspGapAnalysis {
+  id             String        @id @default(cuid())
+  category       String
+  brandId        String?
+  brand          Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  contextModules Json          @default("{}")
+  status         UspGapStatus  @default(PENDING)
+  errorMessage   String?
+  createdById    String
+  createdBy      User          @relation("UspGapAnalysisCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  result         UspGapResult?
+  productConcepts ProductConcept[]
+
+  @@index([createdById])
+  @@index([status])
+  @@index([brandId])
+}
+
+model UspGapResult {
+  id                   String         @id @default(cuid())
+  analysisId           String         @unique
+  analysis             UspGapAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  gapMatrix            Json           @default("[]")
+  claimAnalysis        Json           @default("{}")
+  positioningMap       Json           @default("{}")
+  uspCandidates        Json           @default("[]")
+  differentiationScore Float?
+  aiSummary            String?        @db.Text
+  updatedAt            DateTime       @updatedAt
+}
+
+enum ProductConceptMode {
+  MANUAL
+  AI_GENERATED
+}
+
+enum ProductConceptStatus {
+  DRAFT
+  VALIDATING
+  READY
+  ARCHIVED
+}
+
+model ProductConcept {
+  id               String               @id @default(cuid())
+  title            String
+  category         String
+  targetMarket     String?
+  priceTargetMin   Float?
+  priceTargetMax   Float?
+  mode             ProductConceptMode   @default(MANUAL)
+  status           ProductConceptStatus @default(DRAFT)
+  brandId          String?
+  brand            Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  uspGapAnalysisId String?
+  uspGapAnalysis   UspGapAnalysis?      @relation(fields: [uspGapAnalysisId], references: [id], onDelete: SetNull)
+  uspIndex         Int?
+  sourceModules    Json                 @default("{}")
+  conceptData      Json                 @default("{}")
+  validationScores Json                 @default("{}")
+  createdById      String
+  createdBy        User                 @relation("ProductConceptCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+  @@index([brandId])
+  @@index([uspGapAnalysisId])
+}
+
+enum ResearchReportType {
+  WEEKLY
+  CUSTOM
+  CATEGORY_DEEP_DIVE
+  COMPETITOR_BATTLE
+  TREND_BRIEF
+}
+
+enum ResearchReportStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+model ResearchReport {
+  id           String               @id @default(cuid())
+  title        String
+  type         ResearchReportType
+  status       ResearchReportStatus @default(PENDING)
+  config       Json                 @default("{}")
+  sections     Json                 @default("[]")
+  aiSummary    String?              @db.Text
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  errorMessage String?
+  createdById  String
+  createdBy    User                 @relation("ResearchReportCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([createdById])
+  @@index([type])
+  @@index([status])
   @@index([createdAt])
 }

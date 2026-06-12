@@ -1,6 +1,18 @@
 import {
+  KeywordIntelStatus,
+  ProductConceptMode,
+  ProductConceptStatus,
   ResearchMarketplace,
+  ResearchReportStatus,
+  ResearchReportType,
   ReviewIntelSourceStatus,
+  SocialListeningPlatform,
+  SocialListeningStatus,
+  SocialMentionClass,
+  TrendDimension,
+  TrendPhase,
+  TrendRadarStatus,
+  UspGapStatus,
 } from "@prisma/client";
 
 export const MARKETPLACE_LABELS: Record<ResearchMarketplace, string> = {
@@ -13,6 +25,106 @@ export const SOURCE_STATUS_LABELS: Record<ReviewIntelSourceStatus, string> = {
   PENDING: "Menunggu",
   SCRAPING: "Scraping",
   ANALYZING: "Menganalisis",
+  READY: "Siap",
+  FAILED: "Gagal",
+};
+
+export const KEYWORD_INTEL_STATUS_LABELS: Record<KeywordIntelStatus, string> = {
+  PENDING: "Menunggu",
+  COLLECTING: "Mengumpulkan",
+  ANALYZING: "Menganalisis",
+  READY: "Siap",
+  FAILED: "Gagal",
+};
+
+export const TREND_RADAR_STATUS_LABELS: Record<TrendRadarStatus, string> = {
+  PENDING: "Menunggu",
+  COLLECTING: "Mengumpulkan",
+  ANALYZING: "Menganalisis",
+  READY: "Siap",
+  FAILED: "Gagal",
+};
+
+export const TREND_PHASE_LABELS: Record<TrendPhase, string> = {
+  EMERGING: "Emerging",
+  GROWING: "Growing",
+  PEAK: "Peak",
+  DECLINING: "Declining",
+};
+
+export const TREND_DIMENSION_LABELS: Record<TrendDimension, string> = {
+  INGREDIENT: "Bahan",
+  CLAIM: "Klaim",
+  CATEGORY: "Kategori",
+  FORMAT: "Format",
+  BRAND: "Brand",
+};
+
+export const SOCIAL_LISTENING_STATUS_LABELS: Record<
+  SocialListeningStatus,
+  string
+> = {
+  PENDING: "Menunggu",
+  COLLECTING: "Mengumpulkan",
+  ANALYZING: "Menganalisis",
+  READY: "Siap",
+  FAILED: "Gagal",
+};
+
+export const SOCIAL_LISTENING_PLATFORM_LABELS: Record<
+  SocialListeningPlatform,
+  string
+> = {
+  TIKTOK: "TikTok",
+  INSTAGRAM: "Instagram",
+};
+
+export const SOCIAL_MENTION_CLASS_LABELS: Record<SocialMentionClass, string> = {
+  COMPLAINT: "Keluhan",
+  PRAISE: "Pujian",
+  QUESTION: "Pertanyaan",
+  WISHLIST: "Wishlist",
+  RECOMMENDATION: "Rekomendasi",
+  NEUTRAL: "Netral",
+};
+
+export const USP_GAP_STATUS_LABELS: Record<UspGapStatus, string> = {
+  PENDING: "Menunggu",
+  GATHERING: "Mengumpulkan",
+  ANALYZING: "Menganalisis",
+  READY: "Siap",
+  FAILED: "Gagal",
+};
+
+export const PRODUCT_CONCEPT_MODE_LABELS: Record<ProductConceptMode, string> = {
+  MANUAL: "Manual",
+  AI_GENERATED: "AI Generate",
+};
+
+export const PRODUCT_CONCEPT_STATUS_LABELS: Record<
+  ProductConceptStatus,
+  string
+> = {
+  DRAFT: "Draft",
+  VALIDATING: "Validasi",
+  READY: "Siap",
+  ARCHIVED: "Arsip",
+};
+
+export const RESEARCH_REPORT_TYPE_LABELS: Record<ResearchReportType, string> = {
+  WEEKLY: "Mingguan",
+  CUSTOM: "Custom",
+  CATEGORY_DEEP_DIVE: "Category Deep Dive",
+  COMPETITOR_BATTLE: "Competitor Battle",
+  TREND_BRIEF: "Trend Brief",
+};
+
+export const RESEARCH_REPORT_STATUS_LABELS: Record<
+  ResearchReportStatus,
+  string
+> = {
+  PENDING: "Menunggu",
+  GENERATING: "Membuat",
   READY: "Siap",
   FAILED: "Gagal",
 };
