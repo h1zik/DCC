@@ -62,6 +62,13 @@ export const CUSTOM_ROLE_SEED: SeedRole[] = [
     matchesEnum: [UserRole.LOGISTICS],
   },
   {
+    slug: "market-analyst",
+    name: "Market Analyst",
+    permissionTier: UserRole.MARKET_ANALYST,
+    isProtected: true,
+    matchesEnum: [UserRole.MARKET_ANALYST],
+  },
+  {
     slug: "marketing",
     name: "Marketing",
     permissionTier: UserRole.NORMAL_USER,

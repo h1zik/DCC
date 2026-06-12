@@ -9,6 +9,7 @@ export const PROTECTED_ROLE_SLUGS = [
   "administrator",
   "finance",
   "logistik",
+  "market-analyst",
 ] as const;
 export type ProtectedRoleSlug = (typeof PROTECTED_ROLE_SLUGS)[number];
 
@@ -24,6 +25,8 @@ export function enumRoleLabel(role: UserRole): string {
       return "Administrator";
     case UserRole.FINANCE:
       return "Finance";
+    case UserRole.MARKET_ANALYST:
+      return "Market Analyst";
     case UserRole.LOGISTICS:
       return "Logistik";
     case UserRole.NORMAL_USER:
@@ -59,6 +62,8 @@ export function permissionTierLabel(tier: UserRole): string {
       return "Administrator (kelola pengguna & sistem)";
     case UserRole.FINANCE:
       return "Finance (akses modul keuangan)";
+    case UserRole.MARKET_ANALYST:
+      return "Market Analyst (Research Hub + studio)";
     case UserRole.LOGISTICS:
       return "Logistik (akses inventori & produk)";
     case UserRole.PROJECT_MANAGER:
@@ -87,6 +92,7 @@ export function permissionTierLabel(tier: UserRole): string {
 export const ASSIGNABLE_PERMISSION_TIERS: UserRole[] = [
   UserRole.ADMINISTRATOR,
   UserRole.FINANCE,
+  UserRole.MARKET_ANALYST,
   UserRole.LOGISTICS,
   UserRole.PROJECT_MANAGER,
   UserRole.NORMAL_USER,

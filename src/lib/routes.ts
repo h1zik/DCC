@@ -43,6 +43,18 @@ export function isFinanceAppRoute(pathname: string): boolean {
   );
 }
 
+/** Modul Research Hub — Market Analyst. */
+export function isResearchHubRoute(pathname: string): boolean {
+  return (
+    pathname === "/research-hub" || pathname.startsWith("/research-hub/")
+  );
+}
+
+/** Research Hub + studio workspace — Market Analyst. */
+export function isMarketAnalystAppRoute(pathname: string): boolean {
+  return isResearchHubRoute(pathname) || isStudioWorkspaceRoute(pathname);
+}
+
 /** Pesan pribadi 1:1. */
 export function isDirectChatRoute(pathname: string): boolean {
   return pathname === "/messages" || pathname.startsWith("/messages/");

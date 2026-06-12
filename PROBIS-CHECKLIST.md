@@ -32,7 +32,7 @@
 | `pm@dominatus.local` | `dcc-demo-2026` | PROJECT_MANAGER | `/tasks` |
 | `marketing@dominatus.local` | `dcc-demo-2026` | NORMAL_USER | `/tasks` |
 | `creative@dominatus.local` | `dcc-demo-2026` | NORMAL_USER | `/tasks` |
-| `analyst@dominatus.local` | `dcc-demo-2026` | NORMAL_USER | `/tasks` |
+| `analyst@dominatus.local` | `dcc-demo-2026` | MARKET_ANALYST | `/research-hub` |
 | `copywriter@dominatus.local` | `dcc-demo-2026` | NORMAL_USER | `/tasks` |
 | `akdzan@gmail.com` | `akdzan123` | CEO (akun reviewer) | `/` |
 

@@ -57,6 +57,10 @@ enum UserRole {
    * @deprecated dipindah ke NORMAL_USER.
    */
   COPYWRITER
+  /**
+   * Market Analyst — akses Research Hub + studio workspace.
+   */
+  MARKET_ANALYST
 }
 
 enum TaskStatus {
@@ -100,6 +104,10 @@ enum NotificationType {
    * Pengingat jadwal acara / meeting (H-1 & ~1 jam sebelum mulai).
    */
   SCHEDULE_REMINDER
+  /**
+   * Alert dari modul Research Hub (Competitor Tracker, dll).
+   */
+  RESEARCH_ALERT
 }
 
 /**
@@ -319,6 +327,8 @@ model User {
   financeJournalAttachments FinanceJournalLineAttachment[] @relation("FinanceJournalLineAttachmentUploader")
   faceData                  FaceData[]
   attendances               Attendance[]
+  reviewIntelSourcesCreated ReviewIntelSource[]  @relation("ReviewIntelSourceCreator")
+  researchCompetitorsCreated ResearchCompetitor[] @relation("ResearchCompetitorCreator")
 
   @@index([customRoleId])
 }
@@ -388,6 +398,7 @@ model Brand {
   financeArInvoices    FinanceArInvoice[]
   financeBudgetLines   FinanceBudgetLine[]
   financeSpendRequests FinanceSpendRequest[]
+  reviewIntelSources   ReviewIntelSource[]
 }
 
 /**
@@ -1802,4 +1813,201 @@ model Attendance {
   @@index([userId])
   @@index([date])
   @@index([userId, date])
+}
+
+// ─── Research Hub ───────────────────────────────────────────────────────────
+
+enum ResearchMarketplace {
+  SHOPEE
+  TOKOPEDIA
+  TIKTOK_SHOP
+}
+
+enum ReviewIntelSourceStatus {
+  PENDING
+  SCRAPING
+  ANALYZING
+  READY
+  FAILED
+}
+
+enum ResearchScrapeJobType {
+  REVIEW_SCRAPE
+  COMPETITOR_SNAPSHOT
+}
+
+enum ResearchScrapeJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ReviewSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum CompetitorAlertType {
+  PRICE_CHANGE
+  RATING_CHANGE
+  NEW_SKU
+  PROMO_DETECTED
+  NEW_ENTRANT
+}
+
+model ReviewIntelSource {
+  id              String                  @id @default(cuid())
+  productName     String
+  competitorBrand String
+  marketplace     ResearchMarketplace
+  productUrl      String
+  status          ReviewIntelSourceStatus @default(PENDING)
+  reviewCount     Int                     @default(0)
+  lastAnalyzedAt  DateTime?
+  errorMessage    String?
+  createdById     String
+  createdBy       User                    @relation("ReviewIntelSourceCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  brandId         String?
+  brand           Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  reviews         ReviewRaw[]
+  summary         ReviewIntelSummary?
+
+  @@index([createdById])
+  @@index([status])
+  @@index([brandId])
+}
+
+model ReviewRaw {
+  id         String           @id @default(cuid())
+  sourceId   String
+  source     ReviewIntelSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId String?
+  author     String?
+  rating     Float?
+  text       String           @db.Text
+  reviewDate DateTime?
+  createdAt  DateTime         @default(now())
+  analysis   ReviewAnalysis?
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId])
+}
+
+model ReviewAnalysis {
+  id              String          @id @default(cuid())
+  reviewId        String          @unique
+  review          ReviewRaw       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  sentiment       ReviewSentiment
+  complaintThemes String[]        @default([])
+  praiseThemes    String[]        @default([])
+  keywords        String[]        @default([])
+  createdAt       DateTime        @default(now())
+
+  @@index([sentiment])
+}
+
+model ReviewIntelSummary {
+  id              String            @id @default(cuid())
+  sourceId        String            @unique
+  source          ReviewIntelSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  positivePct     Float             @default(0)
+  neutralPct      Float             @default(0)
+  negativePct     Float             @default(0)
+  topComplaints   Json              @default("[]")
+  topPraises      Json              @default("[]")
+  keywordCloud    Json              @default("[]")
+  timelineBuckets Json              @default("[]")
+  gapOpportunity  String?           @db.Text
+  updatedAt       DateTime          @updatedAt
+}
+
+model ResearchScrapeJob {
+  id          String                  @id @default(cuid())
+  type        ResearchScrapeJobType
+  entityId    String
+  apifyRunId  String?
+  status      ResearchScrapeJobStatus @default(PENDING)
+  error       String?                 @db.Text
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime                @default(now())
+
+  @@index([status])
+  @@index([entityId, type])
+  @@index([apifyRunId])
+}
+
+model ResearchCompetitor {
+  id          String              @id @default(cuid())
+  name        String
+  brand       String
+  category    String
+  marketplace ResearchMarketplace
+  shopUrl     String
+  isActive    Boolean             @default(true)
+  createdById String
+  createdBy   User                @relation("ResearchCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  skus        CompetitorSku[]
+  snapshots   CompetitorSnapshot[]
+  alerts      CompetitorAlert[]
+
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model CompetitorSku {
+  id           String             @id @default(cuid())
+  competitorId String
+  competitor   ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  name         String
+  productUrl   String
+  externalId   String?
+  currentPrice Float?
+  rating       Float?
+  reviewCount  Int                @default(0)
+  firstSeenAt  DateTime           @default(now())
+  lastSeenAt   DateTime           @default(now())
+  snapshots    CompetitorSnapshot[]
+
+  @@unique([competitorId, externalId])
+  @@index([competitorId])
+}
+
+model CompetitorSnapshot {
+  id           String             @id @default(cuid())
+  competitorId String
+  competitor   ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  skuId        String?
+  sku          CompetitorSku?     @relation(fields: [skuId], references: [id], onDelete: SetNull)
+  price        Float?
+  rating       Float?
+  reviewCount  Int?
+  hasPromo     Boolean            @default(false)
+  promoText    String?
+  categoryRank Int?
+  capturedAt   DateTime           @default(now())
+
+  @@index([competitorId, capturedAt])
+  @@index([skuId])
+}
+
+model CompetitorAlert {
+  id           String              @id @default(cuid())
+  competitorId String
+  competitor   ResearchCompetitor  @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  type         CompetitorAlertType
+  message      String
+  severity     String              @default("info")
+  metadata     Json?
+  isRead       Boolean             @default(false)
+  createdAt    DateTime            @default(now())
+
+  @@index([competitorId, isRead])
+  @@index([createdAt])
 }

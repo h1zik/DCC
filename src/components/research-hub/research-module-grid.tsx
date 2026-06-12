@@ -1,0 +1,130 @@
+import Link from "next/link";
+import {
+  BarChart3,
+  FileText,
+  FlaskConical,
+  MessageSquare,
+  Radar,
+  Search,
+  Star,
+  Target,
+} from "lucide-react";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+
+const MODULES = [
+  {
+    href: "/research-hub/review-intelligence",
+    title: "1. Review Intelligence",
+    desc: "Scrape & analisis ribuan review kompetitor — sentimen, keluhan, pujian, keyword.",
+    icon: Star,
+    active: true,
+  },
+  {
+    href: "/research-hub/competitor-tracker",
+    title: "2. Competitor Tracker",
+    desc: "Pantau harga, SKU, rating, dan promo kompetitor secara otomatis.",
+    icon: Target,
+    active: true,
+  },
+  {
+    title: "3. Trend Radar",
+    desc: "Deteksi tren bahan, klaim, dan kategori sebelum mainstream.",
+    icon: Radar,
+    active: false,
+  },
+  {
+    title: "4. Keyword & Search Intel",
+    desc: "Eksplorasi keyword marketplace dan Google untuk naming & copy.",
+    icon: Search,
+    active: false,
+  },
+  {
+    title: "5. Social Listening",
+    desc: "Monitor percakapan organik di sosial media dan marketplace.",
+    icon: MessageSquare,
+    active: false,
+  },
+  {
+    title: "6. USP & Gap Analyzer",
+    desc: "Temukan celah pasar dan formulasi USP berbasis data.",
+    icon: BarChart3,
+    active: false,
+  },
+  {
+    title: "7. Product Concept Lab",
+    desc: "Bangun dan validasi konsep produk siap brief ke R&D.",
+    icon: FlaskConical,
+    active: false,
+  },
+  {
+    title: "8. Research Reports",
+    desc: "Laporan riset terdokumentasi dan bisa di-share.",
+    icon: FileText,
+    active: false,
+  },
+] as const;
+
+export function ResearchModuleGrid() {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {MODULES.map((mod) => {
+        const Icon = mod.icon;
+        const inner = (
+          <Card
+            className={cn(
+              "h-full transition-shadow",
+              mod.active
+                ? "hover:border-primary/40 hover:shadow-md"
+                : "opacity-60",
+            )}
+          >
+            <CardHeader className="gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <span
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                    mod.active
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-border bg-muted text-muted-foreground",
+                  )}
+                  aria-hidden
+                >
+                  <Icon className="size-4" />
+                </span>
+                {!mod.active ? (
+                  <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase">
+                    Segera
+                  </span>
+                ) : null}
+              </div>
+              <CardTitle className="text-base">{mod.title}</CardTitle>
+              <CardDescription className="text-xs leading-relaxed">
+                {mod.desc}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        );
+
+        if (mod.active && "href" in mod && mod.href) {
+          return (
+            <Link key={mod.title} href={mod.href} className="block h-full">
+              {inner}
+            </Link>
+          );
+        }
+
+        return (
+          <div key={mod.title} className="h-full cursor-not-allowed">
+            {inner}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
