@@ -34,12 +34,36 @@ const NAV_ITEMS: SubNavItem[] = [
     label: "Competitor Tracker",
     icon: Target,
   },
-  { label: "Trend Radar", icon: Radar, comingSoon: true },
-  { label: "Keyword Intel", icon: Search, comingSoon: true },
-  { label: "Social Listening", icon: MessageSquare, comingSoon: true },
-  { label: "USP Analyzer", icon: BarChart3, comingSoon: true },
-  { label: "Concept Lab", icon: FlaskConical, comingSoon: true },
-  { label: "Research Reports", icon: FileText, comingSoon: true },
+  {
+    href: "/research-hub/trend-radar",
+    label: "Trend Radar",
+    icon: Radar,
+  },
+  {
+    href: "/research-hub/keyword-intel",
+    label: "Keyword Intel",
+    icon: Search,
+  },
+  {
+    href: "/research-hub/social-listening",
+    label: "Social Listening",
+    icon: MessageSquare,
+  },
+  {
+    href: "/research-hub/usp-analyzer",
+    label: "USP Analyzer",
+    icon: BarChart3,
+  },
+  {
+    href: "/research-hub/concept-lab",
+    label: "Concept Lab",
+    icon: FlaskConical,
+  },
+  {
+    href: "/research-hub/research-reports",
+    label: "Research Reports",
+    icon: FileText,
+  },
 ];
 
 function isItemActive(itemHref: string, pathname: string): boolean {
