@@ -1,16 +1,11 @@
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isAdministrator, isStudioOrProjectManager } from "@/lib/roles";
+import { canUseAgent as canUseAgentRole } from "@/lib/roles";
 import { assertRoomMember, assertRoomHubManager } from "@/lib/room-access";
 import type { AgentUser } from "./types";
 
 export function canUseAgent(user: AgentUser): boolean {
-  const role = user.role as UserRole;
-  return (
-    role === UserRole.CEO ||
-    isAdministrator(role) ||
-    isStudioOrProjectManager(role)
-  );
+  return canUseAgentRole(user.role as UserRole);
 }
 
 export function canSeeAllRooms(user: AgentUser): boolean {

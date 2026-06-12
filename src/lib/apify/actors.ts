@@ -1,0 +1,129 @@
+import "server-only";
+
+import { ResearchMarketplace, ResearchScrapeJobType } from "@prisma/client";
+import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
+
+const GIO21_SHOPEE_SCRAPER = "gio21~shopee-scraper";
+const GIO21_SHOPEE_PRODUCT_DETAIL = "gio21~shopee-product-detail";
+
+export function getReviewActorId(marketplace: ResearchMarketplace): string | null {
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      return process.env.APIFY_ACTOR_SHOPEE_REVIEWS?.trim() || null;
+    case ResearchMarketplace.TOKOPEDIA:
+      return process.env.APIFY_ACTOR_TOKOPEDIA_REVIEWS?.trim() || null;
+    case ResearchMarketplace.TIKTOK_SHOP:
+      return process.env.APIFY_ACTOR_TIKTOK_REVIEWS?.trim() || null;
+    default:
+      return null;
+  }
+}
+
+export function getShopActorId(marketplace: ResearchMarketplace): string | null {
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      return process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim() || null;
+    case ResearchMarketplace.TOKOPEDIA:
+      return process.env.APIFY_ACTOR_TOKOPEDIA_SHOP?.trim() || null;
+    case ResearchMarketplace.TIKTOK_SHOP:
+      return process.env.APIFY_ACTOR_TIKTOK_SHOP?.trim() || null;
+    default:
+      return null;
+  }
+}
+
+/** Deteksi kode negara Shopee dari URL (default Indonesia). */
+export function shopeeCountryFromUrl(url: string): string {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host.includes("shopee.co.id")) return "ID";
+    if (host.includes("shopee.com.br")) return "BR";
+    if (host.includes("shopee.sg")) return "SG";
+    if (host.includes("shopee.com.my")) return "MY";
+    if (host.includes("shopee.co.th")) return "TH";
+    if (host.includes("shopee.vn")) return "VN";
+    if (host.includes("shopee.ph")) return "PH";
+    if (host.includes("shopee.com.mx")) return "MX";
+  } catch {
+    /* ignore */
+  }
+  return "ID";
+}
+
+function isGio21ProductDetailActor(actorId: string | null): boolean {
+  if (!actorId) return false;
+  const n = actorId.replace(/\//g, "~").toLowerCase();
+  return n.includes("shopee-product-detail") || n === GIO21_SHOPEE_PRODUCT_DETAIL;
+}
+
+function isGio21ShopeeScraperActor(actorId: string | null): boolean {
+  if (!actorId) return false;
+  const n = actorId.replace(/\//g, "~").toLowerCase();
+  return (
+    (n.includes("gio21") && n.includes("shopee-scraper")) ||
+    n === GIO21_SHOPEE_SCRAPER
+  );
+}
+
+export function buildReviewActorInput(
+  marketplace: ResearchMarketplace,
+  productUrl: string,
+): Record<string, unknown> {
+  const actorId = getReviewActorId(marketplace);
+
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      if (isGio21ProductDetailActor(actorId)) {
+        const url = cleanShopeeUrl(productUrl);
+        return {
+          productUrls: [url],
+          country: shopeeCountryFromUrl(url),
+          includeReviews: true,
+          reviewsLimit: 500,
+        };
+      }
+      return { productUrls: [productUrl], maxReviews: 500 };
+    case ResearchMarketplace.TOKOPEDIA:
+      return {
+        product_url: productUrl,
+        results_wanted: 500,
+        max_pages: 50,
+      };
+    default:
+      return { url: productUrl, maxReviews: 500 };
+  }
+}
+
+export function buildShopActorInput(
+  marketplace: ResearchMarketplace,
+  shopUrl: string,
+): Record<string, unknown> {
+  const actorId = getShopActorId(marketplace);
+
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      if (isGio21ShopeeScraperActor(actorId)) {
+        const url = cleanShopeeUrl(shopUrl);
+        return {
+          shopUrls: [url],
+          country: shopeeCountryFromUrl(url),
+          maxItems: 100,
+        };
+      }
+      return { shopUrls: [shopUrl], maxProducts: 100 };
+    case ResearchMarketplace.TOKOPEDIA:
+      return { shopUrl, maxProducts: 100 };
+    default:
+      return { url: shopUrl, maxProducts: 100 };
+  }
+}
+
+export function actorEnvHint(
+  type: ResearchScrapeJobType,
+  marketplace: ResearchMarketplace,
+): string {
+  if (type === ResearchScrapeJobType.REVIEW_SCRAPE) {
+    return `Set env APIFY_ACTOR_*_REVIEWS untuk ${marketplace} (Shopee: gio21~shopee-product-detail).`;
+  }
+  return `Set env APIFY_ACTOR_*_SHOP untuk ${marketplace} (Shopee: gio21~shopee-scraper).`;
+}

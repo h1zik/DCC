@@ -5,16 +5,18 @@ import {
   isCeoAppRoute,
   isFinanceAppRoute,
   isLogisticsRoute,
+  isMarketAnalystAppRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
 } from "@/lib/routes";
-import { isStudioOrProjectManager } from "@/lib/roles";
+import { isMarketAnalyst, isStudioOrProjectManager } from "@/lib/roles";
 import { NextResponse } from "next/server";
 
 function defaultHomeForRole(role: UserRole | undefined): string {
   if (role === UserRole.CEO) return "/";
   if (role === UserRole.ADMINISTRATOR) return "/tasks";
   if (role === UserRole.FINANCE) return "/finance";
+  if (isMarketAnalyst(role)) return "/research-hub";
   if (isStudioOrProjectManager(role)) return "/tasks";
   return "/inventory";
 }
@@ -76,6 +78,16 @@ export default auth((req) => {
     if (!isFinanceAppRoute(pathname)) {
       return NextResponse.redirect(new URL("/finance", req.nextUrl));
     }
+  }
+
+  if (isMarketAnalyst(role)) {
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/research-hub", req.nextUrl));
+    }
+    if (!isMarketAnalystAppRoute(pathname)) {
+      return NextResponse.redirect(new URL("/research-hub", req.nextUrl));
+    }
+    return NextResponse.next();
   }
 
   if (isStudioOrProjectManager(role)) {

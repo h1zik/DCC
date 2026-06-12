@@ -14,7 +14,8 @@ import {
   isProfileRoute,
   isStudioWorkspaceRoute,
 } from "@/lib/routes";
-import { isStudioOrProjectManager } from "@/lib/roles";
+import { isMarketAnalyst, isStudioOrProjectManager } from "@/lib/roles";
+import { isMarketAnalystAppRoute } from "@/lib/routes";
 import { ArrowRight, Eye, EyeOff, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -84,6 +85,11 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
         isFinanceAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
           : "/finance";
+    } else if (isMarketAnalyst(userRole)) {
+      dest =
+        isMarketAnalystAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
+          ? callbackUrl
+          : "/research-hub";
     } else if (isStudioOrProjectManager(userRole)) {
       dest =
         isStudioWorkspaceRoute(callbackUrl) || isProfileRoute(callbackUrl)

@@ -31,9 +31,14 @@ import {
   Users,
   WandSparkles,
   Bot,
+  Microscope,
 } from "lucide-react";
 import { effectiveRoleLabel } from "@/lib/role-labels";
-import { canUseAgent, isStudioOrProjectManager } from "@/lib/roles";
+import {
+  canUseAgent,
+  isMarketAnalyst,
+  isStudioOrProjectManager,
+} from "@/lib/roles";
 import {
   Sidebar,
   SidebarContent,
@@ -109,6 +114,15 @@ const navStudio = [
   { href: "/attendance", label: "Absensi", icon: ScanFace },
 ] as const;
 
+const navMarketAnalyst = [
+  { href: "/research-hub", label: "Research Hub", icon: Microscope },
+  { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
+  { href: "/for-me", label: "My Tasks", icon: Focus },
+  { href: "/projects", label: "Pipeline", icon: GitBranch },
+  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
+  { href: "/attendance", label: "Absensi", icon: ScanFace },
+] as const;
+
 /** Tautan eksternal — tampil untuk semua pengguna yang sudah login. */
 const DOMINATUS_AI_URL = "https://ai.dominatuscenter.com";
 const navDominatusAi = {
@@ -120,6 +134,7 @@ const navDominatusAi = {
 function navForRole(role: UserRole | undefined) {
   if (role === UserRole.CEO) return navCeo;
   if (role === UserRole.ADMINISTRATOR) return navAdministrator;
+  if (isMarketAnalyst(role)) return navMarketAnalyst;
   if (isStudioOrProjectManager(role)) return navStudio;
   if (role === UserRole.FINANCE) return navFinance;
   return navLogistics;
@@ -128,6 +143,7 @@ function navForRole(role: UserRole | undefined) {
 function groupLabelForRole(role: UserRole | undefined) {
   if (role === UserRole.CEO) return "CEO";
   if (role === UserRole.ADMINISTRATOR) return "Administrator";
+  if (isMarketAnalyst(role)) return "Market Analyst";
   if (isStudioOrProjectManager(role)) return "Studio & PM";
   if (role === UserRole.FINANCE) return "Finance";
   return "Logistik";

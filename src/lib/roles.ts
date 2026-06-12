@@ -30,9 +30,10 @@ export const PICAssignableRoles: UserRole[] = [
   UserRole.PROJECT_MANAGER,
 ];
 
-/** Akses papan tugas, ruangan, pipeline (studio + PM). */
+/** Akses papan tugas, ruangan, pipeline (studio + PM + market analyst). */
 export function isStudioOrProjectManager(role: UserRole | undefined): boolean {
   if (!role) return false;
+  if (role === UserRole.MARKET_ANALYST) return true;
   if (role === UserRole.PROJECT_MANAGER) return true;
   if (role === UserRole.NORMAL_USER) return true;
   return LEGACY_STUDIO_ROLES.includes(role);
@@ -67,20 +68,31 @@ export function isFinanceRole(role: UserRole | undefined): boolean {
   return role === UserRole.FINANCE;
 }
 
-/** AI Agent in-app — CEO, administrator, studio/PM. */
+export function isMarketAnalyst(role: UserRole | undefined): boolean {
+  return role === UserRole.MARKET_ANALYST;
+}
+
+/** Market Analyst + studio workspace (tugas, pipeline, ruangan). */
+export function isMarketAnalystOrStudio(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  if (isMarketAnalyst(role)) return true;
+  return isStudioOrProjectManager(role);
+}
+
+/** AI Agent in-app — CEO, administrator, studio/PM, market analyst. */
 export function canUseAgent(role: UserRole | undefined): boolean {
   if (!role) return false;
   if (role === UserRole.CEO) return true;
   if (isAdministrator(role)) return true;
-  if (isStudioOrProjectManager(role)) return true;
+  if (isMarketAnalystOrStudio(role)) return true;
   return false;
 }
 
-/** Pesan pribadi 1:1 — CEO, administrator, studio/PM. */
+/** Pesan pribadi 1:1 — CEO, administrator, studio/PM, market analyst. */
 export function canUseDirectChat(role: UserRole | undefined): boolean {
   if (!role) return false;
   if (role === UserRole.CEO) return true;
   if (isAdministrator(role)) return true;
-  if (isStudioOrProjectManager(role)) return true;
+  if (isMarketAnalystOrStudio(role)) return true;
   return false;
 }
