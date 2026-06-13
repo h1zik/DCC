@@ -95,6 +95,8 @@ export default async function ReviewDetailPage({ params }: Props) {
     marketplace: source.marketplace,
     status: source.status,
     reviewCount: source.reviewCount,
+    totalReviewsReported: source.totalReviewsReported,
+    reviewsComplete: source.reviewsComplete,
     lastAnalyzedAt: source.lastAnalyzedAt?.toISOString() ?? null,
     summary: source.summary
       ? {

@@ -20,6 +20,8 @@ export default async function ReviewIntelligencePage() {
       productUrl: true,
       status: true,
       reviewCount: true,
+      totalReviewsReported: true,
+      reviewsComplete: true,
       lastAnalyzedAt: true,
       errorMessage: true,
     },

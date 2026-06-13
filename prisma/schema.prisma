@@ -1873,6 +1873,9 @@ model ReviewIntelSource {
   productUrl      String
   status          ReviewIntelSourceStatus @default(PENDING)
   reviewCount     Int                     @default(0)
+  totalReviewsReported Int?
+  reviewsAccessible    Int?
+  reviewsComplete      Boolean?
   lastAnalyzedAt  DateTime?
   errorMessage    String?
   createdById     String

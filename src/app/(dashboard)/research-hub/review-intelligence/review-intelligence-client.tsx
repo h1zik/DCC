@@ -52,6 +52,8 @@ export type ReviewSourceRow = {
   productUrl: string;
   status: ReviewIntelSourceStatus;
   reviewCount: number;
+  totalReviewsReported: number | null;
+  reviewsComplete: boolean | null;
   lastAnalyzedAt: string | null;
   errorMessage: string | null;
 };
@@ -254,8 +256,20 @@ export function ReviewIntelligenceClient({
                       </p>
                     ) : null}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {s.reviewCount.toLocaleString("id-ID")}
+                  <TableCell className="text-right">
+                    <span className="tabular-nums">
+                      {s.reviewCount.toLocaleString("id-ID")}
+                    </span>
+                    {s.totalReviewsReported != null &&
+                    s.totalReviewsReported > s.reviewCount ? (
+                      <p
+                        className="text-amber-600 dark:text-amber-400 text-[10px] font-medium"
+                        title={`Marketplace melaporkan ${s.totalReviewsReported.toLocaleString("id-ID")} review, namun hanya ${s.reviewCount.toLocaleString("id-ID")} yang bisa diambil scraper.`}
+                      >
+                        dari {s.totalReviewsReported.toLocaleString("id-ID")} ·
+                        parsial
+                      </p>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
                     {formatRelativeTime(
