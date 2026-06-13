@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { ResearchMarketplace, ReviewIntelSourceStatus } from "@prisma/client";
 import { Plus, RefreshCw, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ import {
   formatRelativeTime,
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+import { useReviewIntelPolling } from "./use-review-intel-polling";
 
 export type ReviewSourceRow = {
   id: string;
@@ -91,11 +92,7 @@ export function ReviewIntelligenceClient({
     (s) => s.status === "SCRAPING" || s.status === "ANALYZING",
   );
 
-  useEffect(() => {
-    if (!hasInProgress) return;
-    const id = window.setInterval(() => router.refresh(), 12_000);
-    return () => window.clearInterval(id);
-  }, [hasInProgress, router]);
+  useReviewIntelPolling(hasInProgress);
 
   function handleCreate() {
     startTransition(async () => {
@@ -106,7 +103,9 @@ export function ReviewIntelligenceClient({
           marketplace,
           productUrl,
         });
-        toast.success("Scrape & analisis selesai.");
+        toast.success(
+          "Scrape dimulai di background. Halaman akan update otomatis.",
+        );
         setDialogOpen(false);
         setProductName("");
         setCompetitorBrand("");
@@ -196,7 +195,7 @@ export function ReviewIntelligenceClient({
                   !productUrl.trim()
                 }
               >
-                {pending ? "Menunggu Apify…" : "Mulai Scrape & Analisis"}
+                {pending ? "Menambahkan…" : "Mulai Scrape & Analisis"}
               </Button>
             </DialogFooter>
           </DialogContent>

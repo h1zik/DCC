@@ -55,6 +55,10 @@ export type KeywordDetailData = {
   status: KeywordIntelStatus;
   errorMessage: string | null;
   aiSummary: string | null;
+  dataNotice: string | null;
+  isDemo: boolean;
+  /** Volume Google dari DataForSEO tersedia di matrix. */
+  hasGoogleVolume: boolean;
   matrix: KeywordMatrixRow[];
   gaps: GapKeyword[];
   namingSuggestions: string[];
@@ -214,6 +218,20 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
         </div>
       </div>
 
+      {data.dataNotice ? (
+        <p
+          className={cn(
+            "rounded-lg border px-4 py-3 text-sm",
+            data.isDemo
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+              : "border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-100",
+          )}
+        >
+          {data.isDemo ? "Data demo — " : ""}
+          {data.dataNotice}
+        </p>
+      ) : null}
+
       {data.errorMessage ? (
         <p className="text-rose-600 text-sm">{data.errorMessage}</p>
       ) : null}
@@ -240,7 +258,10 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
               <CardTitle className="text-base">Keyword Matrix</CardTitle>
             </CardHeader>
             <CardContent>
-              <KeywordMatrixTable rows={data.matrix} />
+              <KeywordMatrixTable
+                rows={data.matrix}
+                hasGoogleVolume={data.hasGoogleVolume}
+              />
             </CardContent>
           </Card>
 

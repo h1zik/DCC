@@ -8,6 +8,7 @@ import {
   Inbox,
   type LucideIcon,
   MessageSquare,
+  PackageSearch,
   Radar,
   Search,
   Sparkles,
@@ -33,6 +34,13 @@ type ModuleMeta = {
 };
 
 const MODULES: ModuleMeta[] = [
+  {
+    key: "product-discovery",
+    href: "/research-hub/product-discovery",
+    title: "Product Discovery",
+    desc: "Tarik produk kompetitor by keyword dari berbagai brand.",
+    icon: PackageSearch,
+  },
   {
     key: "review-intelligence",
     href: "/research-hub/review-intelligence",

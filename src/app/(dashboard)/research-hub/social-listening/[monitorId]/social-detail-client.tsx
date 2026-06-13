@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { ArrowLeft, FileText, RefreshCw } from "lucide-react";
 import {
   SocialListeningPlatform,
@@ -108,6 +108,17 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
     data.batchStatus === "ANALYZING" ||
     data.batchStatus === "PENDING";
 
+  const mentionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of data.mentions) {
+      counts.set(m.platform, (counts.get(m.platform) ?? 0) + 1);
+    }
+    return data.platforms.map((p) => ({
+      platform: p,
+      count: counts.get(p) ?? 0,
+    }));
+  }, [data.mentions, data.platforms]);
+
   useEffect(() => {
     if (!inProgress) return;
     const id = window.setInterval(() => router.refresh(), 12_000);
@@ -166,6 +177,17 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
               .map((p) => SOCIAL_LISTENING_PLATFORM_LABELS[p])
               .join(", ")}
           </p>
+          {data.mentions.length > 0 ? (
+            <p className="text-muted-foreground mt-1 text-xs">
+              Mention:{" "}
+              {mentionCounts
+                .map(
+                  ({ platform, count }) =>
+                    `${SOCIAL_LISTENING_PLATFORM_LABELS[platform]} ${count}`,
+                )
+                .join(" · ")}
+            </p>
+          ) : null}
           <span
             className={cn(
               "mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",

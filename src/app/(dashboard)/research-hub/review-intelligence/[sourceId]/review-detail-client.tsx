@@ -37,6 +37,7 @@ import {
   formatRelativeTime,
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+import { useReviewIntelPolling } from "../use-review-intel-polling";
 
 type Theme = { theme: string; count: number };
 type Keyword = { word: string; count: number };
@@ -96,6 +97,9 @@ export function ReviewDetailClient({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const inProgress =
+    source.status === "SCRAPING" || source.status === "ANALYZING";
+  useReviewIntelPolling(inProgress);
   const [selectedCompare, setSelectedCompare] = useState<string[]>([]);
   const [briefOpen, setBriefOpen] = useState(false);
   const [projectName, setProjectName] = useState(
@@ -165,7 +169,9 @@ export function ReviewDetailClient({
             startTransition(async () => {
               try {
                 await rescrapeReviewIntelSource(source.id);
-                toast.success("Scrape ulang dimulai.");
+                toast.success(
+                  "Scrape dimulai di background. Halaman akan update otomatis.",
+                );
                 router.refresh();
               } catch (err) {
                 toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
@@ -203,6 +209,23 @@ export function ReviewDetailClient({
           {SOURCE_STATUS_LABELS[source.status as keyof typeof SOURCE_STATUS_LABELS] ??
             source.status}
         </span>
+
+        {inProgress ? (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200">
+            <RefreshCw
+              className="mt-0.5 size-4 shrink-0 animate-spin"
+              aria-hidden
+            />
+            <p className="text-xs leading-relaxed">
+              <span className="font-semibold">
+                {source.status === "SCRAPING" ? "Scrape" : "Analisis"} berjalan
+                di background.
+              </span>{" "}
+              Halaman ini akan refresh otomatis setiap beberapa detik — kamu
+              boleh menutup tab atau lanjut browsing.
+            </p>
+          </div>
+        ) : null}
 
         {source.totalReviewsReported != null &&
         source.totalReviewsReported > source.reviewCount ? (

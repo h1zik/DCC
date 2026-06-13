@@ -49,6 +49,20 @@ export default async function KeywordDetailPage({ params }: Props) {
   if (!query) notFound();
 
   const copyRaw = query.result?.copyKeywords;
+  const copyMeta =
+    copyRaw &&
+    typeof copyRaw === "object" &&
+    !Array.isArray(copyRaw) &&
+    "_meta" in copyRaw &&
+    copyRaw._meta &&
+    typeof copyRaw._meta === "object"
+      ? (copyRaw._meta as {
+          isDemo?: boolean;
+          dataNotice?: string | null;
+          volumeSource?: string;
+        })
+      : null;
+
   const copyKeywords =
     copyRaw && typeof copyRaw === "object" && !Array.isArray(copyRaw)
       ? (copyRaw as KeywordDetailData["copyKeywords"])
@@ -62,6 +76,9 @@ export default async function KeywordDetailPage({ params }: Props) {
     status: query.status,
     errorMessage: query.errorMessage,
     aiSummary: query.result?.aiSummary ?? null,
+    dataNotice: copyMeta?.dataNotice ?? null,
+    isDemo: copyMeta?.isDemo === true,
+    hasGoogleVolume: copyMeta?.volumeSource === "dataforseo",
     matrix: parseMatrix(query.result?.keywordMatrix),
     gaps: parseGaps(query.result?.gapKeywords),
     namingSuggestions: Array.isArray(query.result?.namingSuggestions)

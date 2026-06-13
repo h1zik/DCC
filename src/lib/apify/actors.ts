@@ -2,6 +2,7 @@ import "server-only";
 
 import { ResearchMarketplace, ResearchScrapeJobType } from "@prisma/client";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
+import { isApifyConfigured } from "@/lib/apify/client";
 
 const GIO21_SHOPEE_SCRAPER = "gio21~shopee-scraper";
 const GIO21_SHOPEE_PRODUCT_DETAIL = "gio21~shopee-product-detail";
@@ -115,6 +116,71 @@ export function buildShopActorInput(
       return { shopUrl, maxProducts: 100 };
     default:
       return { url: shopUrl, maxProducts: 100 };
+  }
+}
+
+export function getSearchActorId(
+  marketplace: ResearchMarketplace,
+): string | null {
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      return process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim() || null;
+    case ResearchMarketplace.TOKOPEDIA:
+      return (
+        process.env.APIFY_ACTOR_TOKOPEDIA_SEARCH?.trim() ||
+        process.env.APIFY_ACTOR_TOKOPEDIA_SHOP?.trim() ||
+        null
+      );
+    case ResearchMarketplace.TIKTOK_SHOP:
+      return (
+        process.env.APIFY_ACTOR_TIKTOK_SEARCH?.trim() ||
+        process.env.APIFY_ACTOR_TIKTOK_SHOP?.trim() ||
+        null
+      );
+    default:
+      return null;
+  }
+}
+
+export function isProductSearchConfigured(
+  marketplace: ResearchMarketplace,
+): boolean {
+  return isApifyConfigured() && !!getSearchActorId(marketplace);
+}
+
+export function buildSearchActorInput(
+  marketplace: ResearchMarketplace,
+  keyword: string,
+  productLimit: number,
+): Record<string, unknown> {
+  const actorId = getSearchActorId(marketplace);
+  const limit = Math.min(Math.max(productLimit, 1), 500);
+
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      if (isGio21ShopeeScraperActor(actorId)) {
+        return {
+          location: keyword.trim(),
+          country: "ID",
+          maxItems: limit,
+        };
+      }
+      return { keywords: [keyword.trim()], maxProducts: limit };
+    case ResearchMarketplace.TOKOPEDIA:
+      return { keyword: keyword.trim(), maxProducts: limit };
+    default:
+      return { search: keyword.trim(), maxProducts: limit };
+  }
+}
+
+export function searchActorEnvHint(marketplace: ResearchMarketplace): string {
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      return "Set APIFY_ACTOR_SHOPEE_SHOP (gio21~shopee-scraper mendukung keyword search).";
+    case ResearchMarketplace.TOKOPEDIA:
+      return "Set APIFY_ACTOR_TOKOPEDIA_SEARCH atau APIFY_ACTOR_TOKOPEDIA_SHOP.";
+    default:
+      return "Set APIFY_ACTOR_TIKTOK_SEARCH atau APIFY_ACTOR_TIKTOK_SHOP.";
   }
 }
 

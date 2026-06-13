@@ -35,13 +35,13 @@ export async function createReviewIntelSource(
   try {
     await enqueueReviewScrape(source.id);
   } catch (err) {
-    console.error("[createReviewIntelSource] scrape gagal", err);
+    console.error("[createReviewIntelSource] enqueue scrape gagal", err);
     throw err;
   }
 
   revalidatePath("/research-hub/review-intelligence");
   revalidatePath(`/research-hub/review-intelligence/${source.id}`);
-  return { id: source.id };
+  return { id: source.id, status: "SCRAPING" as const };
 }
 
 export async function rescrapeReviewIntelSource(sourceId: string) {
@@ -57,6 +57,15 @@ export async function rescrapeReviewIntelSource(sourceId: string) {
 
   revalidatePath("/research-hub/review-intelligence");
   revalidatePath(`/research-hub/review-intelligence/${sourceId}`);
+}
+
+export async function pollReviewIntelJobs(): Promise<{ polled: number }> {
+  await requireMarketAnalyst();
+  const { pollReviewScrapeJobsLight } = await import(
+    "@/lib/research/run-review-scrape-job"
+  );
+  const polled = await pollReviewScrapeJobsLight();
+  return { polled };
 }
 
 export async function deleteReviewIntelSource(sourceId: string) {

@@ -25,6 +25,8 @@ export type CollectMentionsResult = {
   mentions: RawSocialMention[];
   usedDemo: boolean;
   warnings: string[];
+  /** Jumlah mention per platform setelah scrape (sebelum demo fallback). */
+  platformCounts: Partial<Record<SocialListeningPlatform, number>>;
 };
 
 function dedupeMentions(mentions: RawSocialMention[]): RawSocialMention[] {
@@ -41,16 +43,30 @@ function dedupeMentions(mentions: RawSocialMention[]): RawSocialMention[] {
   return out;
 }
 
+function countByPlatform(
+  mentions: RawSocialMention[],
+): Partial<Record<SocialListeningPlatform, number>> {
+  const counts: Partial<Record<SocialListeningPlatform, number>> = {};
+  for (const m of mentions) {
+    counts[m.platform] = (counts[m.platform] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export async function collectMentions(input: {
   keywords: string[];
   platforms: SocialListeningPlatform[];
 }): Promise<CollectMentionsResult> {
   const warnings: string[] = [];
-  const tasks: Promise<RawSocialMention[]>[] = [];
+  const batches: RawSocialMention[][] = [];
 
   if (input.platforms.includes(SocialListeningPlatform.TIKTOK)) {
     if (isTikTokMentionsConfigured()) {
-      tasks.push(scrapeTikTokMentions(input.keywords));
+      const tiktok = await scrapeTikTokMentions(input.keywords);
+      if (tiktok.length === 0) {
+        warnings.push("TikTok: scrape selesai tapi tidak ada mention ditemukan.");
+      }
+      batches.push(tiktok);
     } else {
       warnings.push("TikTok Apify belum dikonfigurasi — lewati platform TikTok.");
     }
@@ -58,7 +74,13 @@ export async function collectMentions(input: {
 
   if (input.platforms.includes(SocialListeningPlatform.INSTAGRAM)) {
     if (isInstagramMentionsConfigured()) {
-      tasks.push(scrapeInstagramMentions(input.keywords));
+      const instagram = await scrapeInstagramMentions(input.keywords);
+      if (instagram.length === 0) {
+        warnings.push(
+          "Instagram: scrape selesai tapi tidak ada post ditemukan untuk keyword/hashtag ini.",
+        );
+      }
+      batches.push(instagram);
     } else {
       warnings.push(
         "APIFY_ACTOR_INSTAGRAM belum diset — lewati platform Instagram.",
@@ -66,17 +88,15 @@ export async function collectMentions(input: {
     }
   }
 
-  const batches = await Promise.all(tasks);
   let mentions = dedupeMentions(batches.flat());
+  const platformCounts = countByPlatform(mentions);
   let usedDemo = false;
 
   if (mentions.length === 0) {
     mentions = generateDemoMentions(input.keywords, input.platforms);
     usedDemo = true;
-    if (warnings.length > 0) {
-      warnings.push("Menggunakan data demo karena scrape kosong atau API tidak tersedia.");
-    }
+    warnings.push("Menggunakan data demo karena scrape kosong atau API tidak tersedia.");
   }
 
-  return { mentions, usedDemo, warnings };
+  return { mentions, usedDemo, warnings, platformCounts };
 }

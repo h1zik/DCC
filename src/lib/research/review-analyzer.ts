@@ -11,6 +11,13 @@ import { aggregateReviewAnalyses } from "@/lib/research/review-aggregator";
 
 const BATCH_SIZE = 25;
 
+/** Legacy placeholder dari scraper internal lama — skip Gemini untuk baris ini. */
+const RATING_ONLY_PLACEHOLDER = "(Rating tanpa komentar teks)";
+
+function isRatingOnlyReviewText(text: string): boolean {
+  return text.trim() === RATING_ONLY_PLACEHOLDER;
+}
+
 type BatchResult = {
   reviews: {
     idx?: number;
@@ -74,16 +81,30 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
   const pending = source.reviews;
   for (let i = 0; i < pending.length; i += BATCH_SIZE) {
     const batch = pending.slice(i, i + BATCH_SIZE);
+    const covered = new Set<string>();
+
+    const ratingOnly = batch.filter((r) => isRatingOnlyReviewText(r.text));
+    for (const review of ratingOnly) {
+      covered.add(review.id);
+      await saveReviewAnalysis(review.id, {
+        sentiment: fallbackSentiment(review.rating),
+        complaintThemes: [],
+        praiseThemes: [],
+        keywords: [],
+      });
+    }
+
+    const forAi = batch.filter((r) => !isRatingOnlyReviewText(r.text));
+    if (forAi.length === 0) continue;
+
     const prompt = buildReviewBatchPrompt(
       source.productName,
-      batch.map((r, batchIdx) => ({
+      forAi.map((r, batchIdx) => ({
         idx: batchIdx,
         text: r.text,
         rating: r.rating,
       })),
     );
-
-    const covered = new Set<string>();
 
     let parsed: BatchResult | null = null;
     try {
@@ -98,7 +119,7 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
           typeof item.idx === "number" && Number.isInteger(item.idx)
             ? item.idx
             : -1;
-        const review = batchIdx >= 0 ? batch[batchIdx] : undefined;
+        const review = batchIdx >= 0 ? forAi[batchIdx] : undefined;
         if (!review) continue;
 
         covered.add(review.id);
@@ -111,7 +132,7 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
       }
     }
 
-    for (const review of batch) {
+    for (const review of forAi) {
       if (covered.has(review.id)) continue;
       await saveReviewAnalysis(review.id, {
         sentiment: fallbackSentiment(review.rating),
