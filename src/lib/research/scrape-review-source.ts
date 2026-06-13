@@ -17,6 +17,7 @@ import {
   startApifyActor,
 } from "@/lib/apify/client";
 import {
+  extractReviewScrapeMeta,
   generateDemoReviews,
   normalizeReviewItems,
 } from "@/lib/apify/normalize";
@@ -38,6 +39,9 @@ export async function enqueueReviewScrape(sourceId: string): Promise<void> {
       status: ReviewIntelSourceStatus.SCRAPING,
       errorMessage: null,
       reviewCount: 0,
+      totalReviewsReported: null,
+      reviewsAccessible: null,
+      reviewsComplete: null,
       lastAnalyzedAt: null,
     },
   });
@@ -124,6 +128,7 @@ export async function completeReviewScrapeFromDataset(
 ): Promise<void> {
   const hasMock = items.some((x) => x._mock === true);
   const normalized = normalizeReviewItems(items);
+  const meta = extractReviewScrapeMeta(items);
   if (normalized.length === 0) {
     await prisma.reviewIntelSource.update({
       where: { id: sourceId },
@@ -151,7 +156,12 @@ export async function completeReviewScrapeFromDataset(
 
   await prisma.reviewIntelSource.update({
     where: { id: sourceId },
-    data: { reviewCount: normalized.length },
+    data: {
+      reviewCount: normalized.length,
+      totalReviewsReported: meta.totalReviewsReported,
+      reviewsAccessible: meta.reviewsAccessible,
+      reviewsComplete: meta.reviewsComplete,
+    },
   });
 
   await runReviewAnalysis(sourceId);

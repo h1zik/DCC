@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { ArrowLeft, FileText, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, FileText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { createProductBriefFromInsight } from "@/actions/research-brief";
 import { rescrapeReviewIntelSource } from "@/actions/research-review-intelligence";
@@ -70,6 +70,8 @@ export type ReviewDetailData = {
   marketplace: keyof typeof MARKETPLACE_LABELS;
   status: string;
   reviewCount: number;
+  totalReviewsReported: number | null;
+  reviewsComplete: boolean | null;
   lastAnalyzedAt: string | null;
   summary: {
     positivePct: number;
@@ -201,6 +203,27 @@ export function ReviewDetailClient({
           {SOURCE_STATUS_LABELS[source.status as keyof typeof SOURCE_STATUS_LABELS] ??
             source.status}
         </span>
+
+        {source.totalReviewsReported != null &&
+        source.totalReviewsReported > source.reviewCount ? (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <p className="text-xs leading-relaxed">
+              <span className="font-semibold">Data parsial.</span> Marketplace
+              melaporkan{" "}
+              <span className="font-semibold tabular-nums">
+                {source.totalReviewsReported.toLocaleString("id-ID")}
+              </span>{" "}
+              review, namun scraper hanya berhasil mengambil{" "}
+              <span className="font-semibold tabular-nums">
+                {source.reviewCount.toLocaleString("id-ID")}
+              </span>{" "}
+              ({Math.round((source.reviewCount / source.totalReviewsReported) * 100)}
+              %). Ini batas akses API marketplace — interpretasikan insight sebagai
+              sampel, bukan populasi penuh.
+            </p>
+          </div>
+        ) : null}
       </header>
 
       {!source.summary ? (

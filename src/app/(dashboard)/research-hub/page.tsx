@@ -1,16 +1,19 @@
 import { Microscope } from "lucide-react";
 import { PageHero } from "@/components/page-hero";
-import { ResearchModuleGrid } from "@/components/research-hub/research-module-grid";
+import { ResearchCommandCenter } from "@/components/research-hub/research-command-center";
+import { getResearchDashboardData } from "@/lib/research/dashboard/get-dashboard-data";
 
-export default function ResearchHubPage() {
+export default async function ResearchHubPage() {
+  const data = await getResearchDashboardData();
+
   return (
     <div className="flex w-full flex-col gap-6 pb-6">
       <PageHero
         icon={Microscope}
         title="Research Hub"
-        subtitle="Pusat riset pasar — review intelligence, competitor tracking, dan insight produk."
+        subtitle="Command center riset pasar — review, kompetitor, tren, social listening, USP, konsep produk, hingga laporan dalam satu tempat."
       />
-      <ResearchModuleGrid />
+      <ResearchCommandCenter data={data} />
     </div>
   );
 }

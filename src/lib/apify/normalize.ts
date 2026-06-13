@@ -107,6 +107,43 @@ export function normalizeShopeeProductDetailReviews(
   return out;
 }
 
+export type ReviewScrapeMeta = {
+  /** Total review all-time yang dilaporkan marketplace (mis. Shopee `reviewCount`). */
+  totalReviewsReported: number | null;
+  /** Berapa review yang benar-benar bisa di-fetch oleh scraper. */
+  reviewsAccessible: number | null;
+  /** True bila scraper berhasil mengambil seluruh review produk. */
+  reviewsComplete: boolean | null;
+};
+
+/**
+ * Ekstrak metadata review dari item product-detail (gio21/shopee-product-detail).
+ * Dipakai untuk menandai "data parsial" di UI ketika marketplace membatasi akses review.
+ */
+export function extractReviewScrapeMeta(
+  items: Record<string, unknown>[],
+): ReviewScrapeMeta {
+  const product = items.find((x) => x.error == null && x.recentReviews != null);
+  if (!product) {
+    return {
+      totalReviewsReported: null,
+      reviewsAccessible: null,
+      reviewsComplete: null,
+    };
+  }
+
+  const reviewsComplete =
+    typeof product.reviewsComplete === "boolean"
+      ? product.reviewsComplete
+      : null;
+
+  return {
+    totalReviewsReported: pickNumber(product, ["reviewCount", "totalReviews"]),
+    reviewsAccessible: pickNumber(product, ["reviewsAccessible"]),
+    reviewsComplete,
+  };
+}
+
 export function normalizeReviewItems(
   items: Record<string, unknown>[],
 ): NormalizedReview[] {
