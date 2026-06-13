@@ -1,6 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getAvailableContextModules } from "@/lib/research/usp-gap/gather-context";
+import { listUspContextSourceOptions, parseStoredContextModules } from "@/lib/research/usp-gap/list-context-sources";
 import { PageHero } from "@/components/page-hero";
 import {
   UspAnalyzerClient,
@@ -8,22 +9,20 @@ import {
 } from "./usp-analyzer-client";
 
 export default async function UspAnalyzerPage() {
-  const [analyses, availableModules] = await Promise.all([
+  const [analyses, availableModules, sourceOptions] = await Promise.all([
     prisma.uspGapAnalysis.findMany({
       orderBy: { createdAt: "desc" },
       include: { result: true },
     }),
     getAvailableContextModules(),
+    listUspContextSourceOptions(),
   ]);
 
   const rows: UspAnalysisRow[] = analyses.map((a) => {
     const uspCandidates = Array.isArray(a.result?.uspCandidates)
       ? a.result!.uspCandidates
       : [];
-    const ctx =
-      a.contextModules && typeof a.contextModules === "object"
-        ? (a.contextModules as UspAnalysisRow["contextModules"])
-        : {};
+    const ctx = parseStoredContextModules(a.contextModules);
 
     return {
       id: a.id,
@@ -44,7 +43,11 @@ export default async function UspAnalyzerPage() {
         title="USP & Gap Analyzer"
         subtitle="Temukan celah pasar dan formulasi USP berbasis data dari modul riset."
       />
-      <UspAnalyzerClient analyses={rows} availableModules={availableModules} />
+      <UspAnalyzerClient
+        analyses={rows}
+        availableModules={availableModules}
+        sourceOptions={sourceOptions}
+      />
     </div>
   );
 }

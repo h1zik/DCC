@@ -12,6 +12,7 @@ import { refreshUspGapAnalysis } from "@/actions/research-usp-gap";
 import { ProductConceptMode } from "@prisma/client";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ClaimAnalysisPanel } from "@/components/research-hub/claim-analysis-panel";
+import { UspSourcesUsedPanel } from "@/components/research-hub/usp-sources-used-panel";
 import { DifferentiationScoreBadge } from "@/components/research-hub/differentiation-score-badge";
 import {
   GapMatrixTable,
@@ -40,6 +41,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { USP_GAP_STATUS_LABELS } from "@/lib/research/labels";
+import type { ResolvedContextSources } from "@/lib/research/usp-gap/context-types";
 import { cn } from "@/lib/utils";
 
 export type UspDetailData = {
@@ -58,6 +60,7 @@ export type UspDetailData = {
     points: { name: string; brand: string; x: number; y: number }[];
   };
   uspCandidates: UspCandidate[];
+  resolvedSources: ResolvedContextSources | null;
   rooms: {
     id: string;
     name: string;
@@ -161,38 +164,54 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href="/research-hub/usp-analyzer"
-            className="text-muted-foreground hover:text-foreground mb-2 inline-flex items-center gap-1 text-xs"
-          >
-            <ArrowLeft className="size-3" /> Kembali
-          </Link>
-          <h1 className="text-xl font-semibold">{data.category}</h1>
-          <span
-            className={cn(
-              "mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-              statusTone(data.status),
-            )}
-          >
-            {USP_GAP_STATUS_LABELS[data.status]}
-          </span>
+      <header className="border-border bg-card relative overflow-hidden rounded-2xl border shadow-sm">
+        <div
+          className="from-primary/8 absolute inset-0 bg-gradient-to-br via-transparent to-transparent"
+          aria-hidden
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+          <div className="min-w-0 space-y-2">
+            <Link
+              href="/research-hub/usp-analyzer"
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
+            >
+              <ArrowLeft className="size-3" aria-hidden />
+              Kembali ke USP Analyzer
+            </Link>
+            <div>
+              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                USP & Gap Analysis
+              </p>
+              <h1 className="text-foreground mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+                {data.category}
+              </h1>
+            </div>
+            <span
+              className={cn(
+                "inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase",
+                statusTone(data.status),
+              )}
+            >
+              {USP_GAP_STATUS_LABELS[data.status]}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <DifferentiationScoreBadge score={data.differentiationScore} />
+            <Button size="sm" onClick={handleRefresh} disabled={pending}>
+              <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
+              Refresh
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <DifferentiationScoreBadge score={data.differentiationScore} />
-          <Button size="sm" onClick={handleRefresh} disabled={pending}>
-            <RefreshCw className="mr-1.5 size-3.5" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+      </header>
 
       {data.errorMessage ? (
         <p className="text-rose-700 dark:text-rose-300 text-sm">
           {data.errorMessage}
         </p>
       ) : null}
+
+      <UspSourcesUsedPanel sources={data.resolvedSources} />
 
       {data.aiSummary ? (
         <Card>

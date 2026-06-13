@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { parseStoredContextModules } from "@/lib/research/usp-gap/list-context-sources";
 import { normalizePositioningMap } from "@/lib/research/usp-gap/positioning-chart";
 import {
   UspDetailClient,
@@ -45,6 +46,8 @@ export default async function UspAnalyzerDetailPage({
     ? (analysis.result.uspCandidates as UspDetailData["uspCandidates"])
     : [];
 
+  const storedContext = parseStoredContextModules(analysis.contextModules);
+
   const data: UspDetailData = {
     id: analysis.id,
     analysisId: analysis.id,
@@ -57,6 +60,7 @@ export default async function UspAnalyzerDetailPage({
     claimAnalysis,
     positioningMap,
     uspCandidates,
+    resolvedSources: storedContext.resolvedSources ?? null,
     rooms: rooms.map((r) => ({
       id: r.id,
       name: r.name,

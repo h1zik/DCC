@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMarketAnalyst } from "@/lib/research/auth";
+import {
+  listUspContextSourceOptions,
+  suggestContextSourceIds,
+} from "@/lib/research/usp-gap/list-context-sources";
 import { analyzeUspGap } from "@/lib/research/usp-gap/usp-analyzer";
 
 const contextModulesSchema = z.object({
@@ -12,6 +16,11 @@ const contextModulesSchema = z.object({
   trendRadar: z.boolean().optional(),
   keywordIntel: z.boolean().optional(),
   socialListening: z.boolean().optional(),
+  reviewSourceIds: z.array(z.string()).optional(),
+  competitorIds: z.array(z.string()).optional(),
+  trendDigestId: z.string().optional(),
+  keywordQueryId: z.string().optional(),
+  socialMonitorId: z.string().optional(),
 });
 
 const analysisSchema = z.object({
@@ -19,6 +28,16 @@ const analysisSchema = z.object({
   brandId: z.string().optional(),
   contextModules: contextModulesSchema,
 });
+
+export async function getUspContextSourceOptions() {
+  await requireMarketAnalyst();
+  return listUspContextSourceOptions();
+}
+
+export async function suggestUspContextSources(category: string) {
+  await requireMarketAnalyst();
+  return suggestContextSourceIds(category);
+}
 
 export async function createUspGapAnalysis(
   input: z.infer<typeof analysisSchema>,

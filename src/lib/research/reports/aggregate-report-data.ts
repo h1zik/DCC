@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { gatherUspContext } from "@/lib/research/usp-gap/gather-context";
+import { gatherUspContext, type UspGatheredContext } from "@/lib/research/usp-gap/gather-context";
 
 export type ReportAggregate = {
   periodStart: Date;
@@ -22,7 +22,7 @@ export type ReportAggregate = {
     socialPainPoints: { theme: string; count: number }[];
     latestUspSummary: string | null;
   };
-  categoryContext: Awaited<ReturnType<typeof gatherUspContext>> | null;
+  categoryContext: UspGatheredContext | null;
   competitorSnapshot: {
     name: string;
     brand: string;
@@ -166,16 +166,18 @@ export async function aggregateReportData(input: {
 
   let categoryContext: ReportAggregate["categoryContext"] = null;
   if (input.category) {
-    categoryContext = await gatherUspContext({
-      category: input.category,
-      contextModules: {
-        reviewIntel: true,
-        competitor: true,
-        trendRadar: true,
-        keywordIntel: true,
-        socialListening: true,
-      },
-    });
+    categoryContext = (
+      await gatherUspContext({
+        category: input.category,
+        contextModules: {
+          reviewIntel: true,
+          competitor: true,
+          trendRadar: true,
+          keywordIntel: true,
+          socialListening: true,
+        },
+      })
+    ).context;
   }
 
   return {
