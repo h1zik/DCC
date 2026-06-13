@@ -22,7 +22,7 @@ export async function gatherConceptContext(input: {
   uspGapAnalysisId?: string | null;
   uspIndex?: number | null;
 }): Promise<ConceptContext> {
-  const ctx = await gatherUspContext({
+  const { context } = await gatherUspContext({
     category: input.category,
     contextModules: input.sourceModules,
   });
@@ -49,5 +49,5 @@ export async function gatherConceptContext(input: {
     }
   }
 
-  return { ...ctx, uspCandidate };
+  return { ...context, uspCandidate };
 }

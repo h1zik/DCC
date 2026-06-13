@@ -5,8 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import {
   gatherUspContext,
-  type ContextModules,
 } from "@/lib/research/usp-gap/gather-context";
+import { parseContextModules } from "@/lib/research/usp-gap/list-context-sources";
 import { normalizePositioningMap } from "@/lib/research/usp-gap/positioning-chart";
 import { buildUspGapAnalysisPrompt } from "@/lib/research/usp-gap/prompts/usp-gap-analysis";
 
@@ -36,16 +36,8 @@ type AnalysisResult = {
   aiSummary: string;
 };
 
-function parseContextModules(raw: unknown): ContextModules {
-  if (!raw || typeof raw !== "object") return {};
-  const o = raw as Record<string, unknown>;
-  return {
-    reviewIntel: !!o.reviewIntel,
-    competitor: !!o.competitor,
-    trendRadar: !!o.trendRadar,
-    keywordIntel: !!o.keywordIntel,
-    socialListening: !!o.socialListening,
-  };
+function parseContextModulesFromAnalysis(raw: unknown) {
+  return parseContextModules(raw);
 }
 
 export async function analyzeUspGap(analysisId: string): Promise<void> {
@@ -54,7 +46,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
   });
   if (!analysis) throw new Error("Analisis USP tidak ditemukan.");
 
-  const contextModules = parseContextModules(analysis.contextModules);
+  const contextModules = parseContextModulesFromAnalysis(analysis.contextModules);
 
   await prisma.uspGapAnalysis.update({
     where: { id: analysisId },
@@ -62,14 +54,20 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
   });
 
   try {
-    const context = await gatherUspContext({
+    const { context, resolvedSources } = await gatherUspContext({
       category: analysis.category,
       contextModules,
     });
 
     await prisma.uspGapAnalysis.update({
       where: { id: analysisId },
-      data: { status: UspGapStatus.ANALYZING },
+      data: {
+        status: UspGapStatus.ANALYZING,
+        contextModules: {
+          ...contextModules,
+          resolvedSources,
+        },
+      },
     });
 
     const prompt = buildUspGapAnalysisPrompt(context);
@@ -99,7 +97,13 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
       }),
       prisma.uspGapAnalysis.update({
         where: { id: analysisId },
-        data: { status: UspGapStatus.READY },
+        data: {
+          status: UspGapStatus.READY,
+          contextModules: {
+            ...contextModules,
+            resolvedSources,
+          },
+        },
       }),
     ]);
   } catch (err) {
