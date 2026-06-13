@@ -1,8 +1,10 @@
 import "server-only";
 
+import { ResearchMarketplace } from "@prisma/client";
 import { resolveAgentApiKey } from "@/lib/agent/provider";
 import { isApifyConfigured } from "@/lib/apify/client";
-import { isKeywordsEverywhereConfigured } from "@/lib/research/keyword-intel/keywords-everywhere";
+import { isProductSearchConfigured } from "@/lib/apify/actors";
+import { isDataForSeoConfigured } from "@/lib/research/keyword-intel/dataforseo-keywords";
 import { isInstagramMentionsConfigured } from "@/lib/research/social-listening/scrape-instagram-mentions";
 import { isTikTokMentionsConfigured } from "@/lib/research/social-listening/scrape-tiktok-mentions";
 import { isTikTokTrendsConfigured } from "@/lib/research/trend-radar/tiktok-trends";
@@ -69,7 +71,10 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     apifyConfigured && !!process.env.APIFY_ACTOR_SHOPEE_REVIEWS?.trim();
   const shopeeShopConfigured =
     apifyConfigured && !!process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim();
-  const keywordsConfigured = isKeywordsEverywhereConfigured();
+  const productDiscoveryConfigured = isProductSearchConfigured(
+    ResearchMarketplace.SHOPEE,
+  );
+  const keywordsConfigured = isDataForSeoConfigured();
   const socialConfigured =
     isTikTokMentionsConfigured() || isInstagramMentionsConfigured();
   const trendConfigured = isTikTokTrendsConfigured();
@@ -85,6 +90,7 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     latestGlobalDigest,
     keywordReady,
     socialReady,
+    productDiscoveryReady,
     uspReady,
     conceptDrafts,
     conceptReady,
@@ -116,6 +122,7 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     }),
     prisma.keywordIntelQuery.count({ where: { status: "READY" } }),
     prisma.socialListeningBatch.count({ where: { status: "READY" } }),
+    prisma.productDiscoveryQuery.count({ where: { status: "READY" } }),
     prisma.uspGapAnalysis.count({ where: { status: "READY" } }),
     prisma.productConcept.count({ where: { status: "DRAFT" } }),
     prisma.productConcept.count({ where: { status: "READY" } }),
@@ -165,6 +172,17 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
 
   const health: ModuleHealth[] = [
     {
+      key: "product-discovery",
+      level: !productDiscoveryConfigured
+        ? "demo"
+        : productDiscoveryReady === 0
+          ? "idle"
+          : "live",
+      detail: productDiscoveryConfigured
+        ? `${productDiscoveryReady} pencarian siap`
+        : "Scraper Shopee belum dikonfigurasi",
+    },
+    {
       key: "review-intelligence",
       level: reviewHealthLevel({
         configured: shopeeReviewsConfigured,
@@ -174,8 +192,8 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
       }),
       detail: shopeeReviewsConfigured
         ? reviewPartial > 0
-          ? `${reviewPartial} sumber data parsial`
-          : `${reviewReady} sumber siap`
+          ? `Apify gio21 · ${reviewPartial} parsial`
+          : `Apify gio21 · ${reviewReady} siap`
         : "Scraper belum dikonfigurasi",
     },
     {
@@ -201,7 +219,7 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
       level: !keywordsConfigured ? "demo" : keywordReady === 0 ? "idle" : "live",
       detail: keywordsConfigured
         ? `${keywordReady} query siap`
-        : "Keywords Everywhere belum diset",
+        : "DataForSEO belum dikonfigurasi",
     },
     {
       key: "social-listening",

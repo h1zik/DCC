@@ -25,12 +25,39 @@ function itemId(item: Record<string, unknown>): string {
   return `ig-${caption.slice(0, 40)}`;
 }
 
+/** Apify kadang mengembalikan metadata hashtag, bukan post — flatten ke post. */
+function flattenInstagramItems(
+  items: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+
+  for (const item of items) {
+    const caption =
+      typeof item.caption === "string" ? item.caption.trim() : "";
+    if (caption) {
+      out.push(item);
+      continue;
+    }
+
+    const latestPosts = item.latestPosts;
+    if (Array.isArray(latestPosts)) {
+      for (const post of latestPosts) {
+        if (post && typeof post === "object") {
+          out.push(post as Record<string, unknown>);
+        }
+      }
+    }
+  }
+
+  return out;
+}
+
 function parseInstagramItems(
   items: Record<string, unknown>[],
 ): RawSocialMention[] {
   const mentions: RawSocialMention[] = [];
 
-  for (const item of items) {
+  for (const item of flattenInstagramItems(items)) {
     const text =
       (typeof item.caption === "string" ? item.caption : "") ||
       (typeof item.text === "string" ? item.text : "");
@@ -106,8 +133,8 @@ export async function scrapeInstagramMentions(
 
     try {
       const input = {
-        search: tag,
-        searchType: "hashtag",
+        directUrls: [`https://www.instagram.com/explore/tags/${tag}/`],
+        resultsType: "posts",
         resultsLimit: 15,
         addParentData: false,
       };
@@ -124,7 +151,16 @@ export async function scrapeInstagramMentions(
       }
 
       const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
-      allMentions.push(...parseInstagramItems(items));
+      const parsed = parseInstagramItems(items);
+      console.info(
+        "[social-listening/instagram]",
+        tag,
+        "items",
+        items.length,
+        "mentions",
+        parsed.length,
+      );
+      allMentions.push(...parsed);
     } catch (err) {
       console.warn("[social-listening/instagram] gagal", tag, err);
     }

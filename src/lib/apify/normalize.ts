@@ -18,6 +18,8 @@ export type NormalizedShopProduct = {
   hasPromo: boolean;
   promoText: string | null;
   categoryRank: number | null;
+  shopName: string | null;
+  soldCount: number | null;
 };
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | null {
@@ -105,6 +107,21 @@ export function normalizeShopeeProductDetailReviews(
     }
   }
   return out;
+}
+
+/** Pesan error dari output actor Apify (mis. gio21 `no_pdp_payload`). */
+export function extractApifyScrapeErrorMessage(
+  items: Record<string, unknown>[],
+): string | null {
+  for (const item of items) {
+    const err = item.error;
+    if (typeof err !== "string" || !err.trim()) continue;
+    if (err === "no_pdp_payload") {
+      return "Gio21 tidak bisa membaca halaman produk Shopee. Coba scrape ulang atau pastikan URL produk valid.";
+    }
+    return `Scraper Apify: ${err}`;
+  }
+  return null;
 }
 
 export type ReviewScrapeMeta = {
@@ -233,6 +250,15 @@ export function normalizeShopProducts(
       hasPromo: !!promoText || isOnSale || discountPct != null,
       promoText,
       categoryRank: pickNumber(item, ["rank", "categoryRank", "position"]),
+      shopName: pickString(item, [
+        "shopName",
+        "shop_name",
+        "sellerName",
+        "seller",
+        "brandName",
+        "storeName",
+      ]),
+      soldCount: sold,
     });
   }
   return out;
@@ -289,6 +315,8 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       hasPromo: true,
       promoText: "Diskon 15%",
       categoryRank: 3,
+      shopName: "GlowLab Official",
+      soldCount: 5200,
     },
     {
       externalId: "demo-sku-2",
@@ -300,6 +328,8 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       hasPromo: false,
       promoText: null,
       categoryRank: 7,
+      shopName: "PureSkin Store",
+      soldCount: 3100,
     },
     {
       externalId: "demo-sku-3",
@@ -311,6 +341,46 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       hasPromo: false,
       promoText: null,
       categoryRank: 12,
+      shopName: "CarePlus Beauty",
+      soldCount: 890,
     },
   ];
+}
+
+export function generateDemoDiscoveryProducts(
+  keyword: string,
+  limit: number,
+): NormalizedShopProduct[] {
+  const shops = [
+    "GlowLab Official",
+    "PureSkin Store",
+    "CarePlus Beauty",
+    "Natura ID",
+    "BeautyMart",
+    "SkinFirst",
+    "HerbalCare",
+    "FreshBody",
+  ];
+  const seed = keyword.trim() || "produk";
+  const count = Math.min(Math.max(limit, 1), 100);
+  const products: NormalizedShopProduct[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const shop = shops[i % shops.length]!;
+    products.push({
+      externalId: `demo-discovery-${i}`,
+      name: `${seed} ${i % 3 === 0 ? "Premium" : i % 3 === 1 ? "Original" : "Bundle"} ${100 + i * 10}ml`,
+      productUrl: `https://example.com/demo/${seed.replace(/\s+/g, "-")}/${i}`,
+      price: 35000 + i * 2500,
+      rating: 4 + (i % 10) / 10,
+      reviewCount: 100 + i * 37,
+      hasPromo: i % 4 === 0,
+      promoText: i % 4 === 0 ? "Flash Sale" : null,
+      categoryRank: i + 1,
+      shopName: shop,
+      soldCount: 500 + i * 120,
+    });
+  }
+
+  return products;
 }

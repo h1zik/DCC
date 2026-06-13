@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ResearchScrapeJobStatus } from "@prisma/client";
+import { ResearchScrapeJobStatus, ResearchScrapeJobType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   fetchApifyDataset,
@@ -76,15 +76,27 @@ export async function runApifyJobToCompletion(
 
 /** Selesaikan job RUNNING yang tertinggal (mis. setelah restart server). */
 export async function resumeStuckResearchJobs(limit = 5): Promise<void> {
+  const { resumeStuckReviewScrapeJobs } = await import(
+    "@/lib/research/run-review-scrape-job"
+  );
+  const { resumeStuckProductDiscoveryJobs } = await import(
+    "@/lib/research/run-product-discovery-job"
+  );
+  await resumeStuckReviewScrapeJobs(Math.min(limit, 5));
+  await resumeStuckProductDiscoveryJobs(Math.min(limit, 3));
+
   const jobs = await prisma.researchScrapeJob.findMany({
-    where: { status: ResearchScrapeJobStatus.RUNNING },
+    where: {
+      status: ResearchScrapeJobStatus.RUNNING,
+      type: ResearchScrapeJobType.COMPETITOR_SNAPSHOT,
+    },
     orderBy: { createdAt: "asc" },
     take: limit,
   });
 
   for (const job of jobs) {
     try {
-      await runApifyJobToCompletion(job.id, job.type);
+      await runApifyJobToCompletion(job.id, ResearchScrapeJobType.COMPETITOR_SNAPSHOT);
     } catch (err) {
       console.error("[resumeStuckResearchJobs]", job.id, err);
     }

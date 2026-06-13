@@ -16,9 +16,11 @@ export type KeywordMatrixRow = {
   keyword: string;
   volume: number;
   competition: number;
-  trend: "up" | "down" | "stable";
+  trend: "up" | "down" | "stable" | null;
   intent: "transactional" | "informational";
   source: string[];
+  /** DataForSEO punya data volume untuk baris ini. */
+  hasVolumeData?: boolean;
 };
 
 function TrendIcon({ trend }: { trend: KeywordMatrixRow["trend"] }) {
@@ -28,10 +30,26 @@ function TrendIcon({ trend }: { trend: KeywordMatrixRow["trend"] }) {
   if (trend === "down") {
     return <ArrowDown className="size-3.5 text-rose-600" aria-hidden />;
   }
-  return <Minus className="text-muted-foreground size-3.5" aria-hidden />;
+  if (trend === "stable") {
+    return <Minus className="text-muted-foreground size-3.5" aria-hidden />;
+  }
+  return <span className="text-muted-foreground text-xs">—</span>;
 }
 
-export function KeywordMatrixTable({ rows }: { rows: KeywordMatrixRow[] }) {
+function rowHasVolume(row: KeywordMatrixRow, hasGoogleVolume: boolean): boolean {
+  if (row.hasVolumeData != null) return row.hasVolumeData;
+  if (!hasGoogleVolume) return false;
+  return row.source.includes("dataforseo");
+}
+
+export function KeywordMatrixTable({
+  rows,
+  hasGoogleVolume = false,
+}: {
+  rows: KeywordMatrixRow[];
+  /** False = volume/kompetisi Google belum di-load (tampilkan —). */
+  hasGoogleVolume?: boolean;
+}) {
   const [sortKey, setSortKey] = useState<"volume" | "competition">("volume");
 
   const sorted = useMemo(() => {
@@ -70,31 +88,40 @@ export function KeywordMatrixTable({ rows }: { rows: KeywordMatrixRow[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sorted.map((row) => (
-            <TableRow key={row.keyword}>
-              <TableCell className="font-medium">{row.keyword}</TableCell>
-              <TableCell>{row.volume.toLocaleString("id-ID")}</TableCell>
-              <TableCell>{(row.competition * 100).toFixed(0)}%</TableCell>
-              <TableCell>
-                <span className="inline-flex items-center gap-1">
-                  <TrendIcon trend={row.trend} />
-                  <span className="text-xs capitalize">{row.trend}</span>
-                </span>
-              </TableCell>
-              <TableCell>
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[10px] font-medium",
-                    row.intent === "transactional"
-                      ? "bg-primary/10 text-primary"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {row.intent}
-                </span>
-              </TableCell>
-            </TableRow>
-          ))}
+          {sorted.map((row) => {
+            const hasVol = rowHasVolume(row, hasGoogleVolume);
+            return (
+              <TableRow key={row.keyword}>
+                <TableCell className="font-medium">{row.keyword}</TableCell>
+                <TableCell>
+                  {!hasVol ? "—" : row.volume.toLocaleString("id-ID")}
+                </TableCell>
+                <TableCell>
+                  {!hasVol ? "—" : `${(row.competition * 100).toFixed(0)}%`}
+                </TableCell>
+                <TableCell>
+                  <span className="inline-flex items-center gap-1">
+                    <TrendIcon trend={row.trend} />
+                    {row.trend ? (
+                      <span className="text-xs capitalize">{row.trend}</span>
+                    ) : null}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      row.intent === "transactional"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {row.intent}
+                  </span>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

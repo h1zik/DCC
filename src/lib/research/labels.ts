@@ -2,6 +2,7 @@ import {
   KeywordIntelStatus,
   ProductConceptMode,
   ProductConceptStatus,
+  ProductDiscoveryStatus,
   ResearchMarketplace,
   ResearchReportStatus,
   ResearchReportType,
@@ -25,6 +26,16 @@ export const SOURCE_STATUS_LABELS: Record<ReviewIntelSourceStatus, string> = {
   PENDING: "Menunggu",
   SCRAPING: "Scraping",
   ANALYZING: "Menganalisis",
+  READY: "Siap",
+  FAILED: "Gagal",
+};
+
+export const PRODUCT_DISCOVERY_STATUS_LABELS: Record<
+  ProductDiscoveryStatus,
+  string
+> = {
+  PENDING: "Menunggu",
+  SCRAPING: "Mengambil produk",
   READY: "Siap",
   FAILED: "Gagal",
 };

@@ -27,8 +27,9 @@ export function KeywordGapList({ gaps }: { gaps: GapKeyword[] }) {
           <div className="min-w-0 flex-1">
             <p className="font-medium">{g.keyword}</p>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              Vol {g.volume.toLocaleString("id-ID")} · Kompetisi{" "}
-              {(g.competition * 100).toFixed(0)}%
+              Vol{" "}
+              {g.volume > 0 ? g.volume.toLocaleString("id-ID") : "—"} · Kompetisi{" "}
+              {g.volume > 0 ? `${(g.competition * 100).toFixed(0)}%` : "—"}
             </p>
             <p className="text-muted-foreground mt-1 text-sm">{g.reason}</p>
           </div>

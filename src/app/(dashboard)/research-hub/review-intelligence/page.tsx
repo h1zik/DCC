@@ -8,7 +8,11 @@ import {
 } from "./review-intelligence-client";
 
 export default async function ReviewIntelligencePage() {
-  await resumeStuckResearchJobs();
+  try {
+    await resumeStuckResearchJobs();
+  } catch (err) {
+    console.error("[ReviewIntelligencePage] resumeStuckResearchJobs:", err);
+  }
 
   const sources = await prisma.reviewIntelSource.findMany({
     orderBy: { updatedAt: "desc" },

@@ -8,6 +8,7 @@ import {
   FlaskConical,
   LayoutDashboard,
   MessageSquare,
+  PackageSearch,
   Radar,
   Search,
   Star,
@@ -24,6 +25,11 @@ type SubNavItem = {
 
 const NAV_ITEMS: SubNavItem[] = [
   { href: "/research-hub", label: "Ringkasan", icon: LayoutDashboard },
+  {
+    href: "/research-hub/product-discovery",
+    label: "Product Discovery",
+    icon: PackageSearch,
+  },
   {
     href: "/research-hub/review-intelligence",
     label: "Review Intelligence",

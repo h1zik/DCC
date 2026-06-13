@@ -22,10 +22,17 @@ export async function syncSocialListeningMonitor(
   });
 
   try {
-    const { mentions, warnings } = await collectMentions({
+    const { mentions, warnings, platformCounts } = await collectMentions({
       keywords: monitor.keywords,
       platforms: monitor.platforms,
     });
+
+    const countSummary = Object.entries(platformCounts)
+      .map(([p, n]) => `${p}: ${n}`)
+      .join(", ");
+    if (countSummary) {
+      warnings.unshift(`Mention terkumpul — ${countSummary}`);
+    }
 
     if (warnings.length > 0) {
       console.warn("[social-sync] warnings:", warnings.join(" | "));

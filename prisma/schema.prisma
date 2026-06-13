@@ -328,6 +328,7 @@ model User {
   faceData                  FaceData[]
   attendances               Attendance[]
   reviewIntelSourcesCreated ReviewIntelSource[]  @relation("ReviewIntelSourceCreator")
+  productDiscoveryQueriesCreated ProductDiscoveryQuery[] @relation("ProductDiscoveryCreator")
   researchCompetitorsCreated ResearchCompetitor[] @relation("ResearchCompetitorCreator")
   trendWatchlistsCreated    TrendWatchlist[]     @relation("TrendWatchlistCreator")
   keywordIntelQueriesCreated KeywordIntelQuery[] @relation("KeywordIntelQueryCreator")
@@ -1842,6 +1843,7 @@ enum ReviewIntelSourceStatus {
 enum ResearchScrapeJobType {
   REVIEW_SCRAPE
   COMPETITOR_SNAPSHOT
+  PRODUCT_DISCOVERY
 }
 
 enum ResearchScrapeJobStatus {
@@ -1863,6 +1865,54 @@ enum CompetitorAlertType {
   NEW_SKU
   PROMO_DETECTED
   NEW_ENTRANT
+}
+
+enum ProductDiscoveryStatus {
+  PENDING
+  SCRAPING
+  READY
+  FAILED
+}
+
+model ProductDiscoveryQuery {
+  id           String                   @id @default(cuid())
+  keyword      String
+  marketplaces ResearchMarketplace[]
+  productLimit Int                      @default(50)
+  status       ProductDiscoveryStatus   @default(PENDING)
+  productCount Int                      @default(0)
+  errorMessage String?
+  /** Progress scrape multi-marketplace + peringatan per platform. */
+  scrapeState  Json?
+  createdById  String
+  createdBy    User                     @relation("ProductDiscoveryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  products     ProductDiscoveryItem[]
+
+  @@index([createdById])
+  @@index([status])
+}
+
+model ProductDiscoveryItem {
+  id          String                @id @default(cuid())
+  queryId     String
+  query       ProductDiscoveryQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  marketplace ResearchMarketplace
+  externalId  String
+  name        String
+  productUrl  String
+  shopName    String?
+  price       Float?
+  rating      Float?
+  reviewCount Int                   @default(0)
+  soldCount   Int?
+  hasPromo    Boolean               @default(false)
+  promoText   String?
+  categoryRank Int?
+
+  @@unique([queryId, marketplace, externalId])
+  @@index([queryId])
 }
 
 model ReviewIntelSource {
