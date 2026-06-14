@@ -5,6 +5,7 @@ import {
   ReportDetailClient,
   type ReportDetailData,
 } from "./report-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 export default async function ResearchReportDetailPage({
   params,
@@ -37,6 +38,7 @@ export default async function ResearchReportDetailPage({
     periodStart: report.periodStart?.toISOString() ?? null,
     periodEnd: report.periodEnd?.toISOString() ?? null,
     errorMessage: report.errorMessage,
+    aiMeta: parseResearchAiMetaClient(report.aiMeta),
     sharePath: `/research-hub/research-reports/${report.id}`,
   };
 

@@ -6,6 +6,7 @@ import {
   TrendDetailClient,
   type TrendDetailData,
 } from "./trend-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = {
   params: Promise<{ digestId: string }>;
@@ -62,6 +63,7 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
     generatedAt: digest.generatedAt?.toISOString() ?? null,
     highlightItemId: highlightItemId ?? null,
     actionPlan: digest.aiActionPlan ?? null,
+    aiMeta: parseResearchAiMetaClient(digest.aiMeta),
     sourceLabels,
     items: digest.items.map((i) => ({
       id: i.id,

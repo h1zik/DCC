@@ -44,6 +44,8 @@ import {
 import { USP_GAP_STATUS_LABELS } from "@/lib/research/labels";
 import type { ResolvedContextSources } from "@/lib/research/usp-gap/context-types";
 import { cn } from "@/lib/utils";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type UspDetailData = {
   id: string;
@@ -59,6 +61,7 @@ export type UspDetailData = {
     reason: string;
   } | null;
   actionPlan: unknown;
+  aiMeta: ResearchAiMetaView | null;
   gapMatrix: GapMatrixRow[];
   claimAnalysis: { overused?: string[]; underserved?: string[] };
   positioningMap: {
@@ -189,6 +192,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
 
   return (
     <div className="space-y-6">
+      <ResearchModelBadgeGroup meta={data.aiMeta} />
       <header className="border-border bg-card relative overflow-hidden rounded-2xl border shadow-sm">
         <div
           className="from-primary/8 absolute inset-0 bg-gradient-to-br via-transparent to-transparent"

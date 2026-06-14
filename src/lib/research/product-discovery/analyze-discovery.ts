@@ -2,6 +2,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
 import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
 import { buildActionPlanInstruction } from "@/lib/research/prescriptive/prompt";
@@ -301,11 +305,16 @@ export async function analyzeProductDiscovery(queryId: string): Promise<void> {
     console.error("[analyze-discovery] action plan gagal", err);
   }
 
+  const aiMeta = researchAiMetaFromSteps([
+    buildResearchAiStep("Ringkasan pasar & rencana aksi", "flash"),
+  ]);
+
   await prisma.productDiscoveryQuery.update({
     where: { id: queryId },
     data: {
       aiInsights: { ...insights, summary } as object,
       aiActionPlan: actionPlan ?? undefined,
+      aiMeta: aiMeta as object,
     },
   });
 

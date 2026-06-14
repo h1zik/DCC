@@ -2,6 +2,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
 import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
 import { buildActionPlanInstruction } from "@/lib/research/prescriptive/prompt";
@@ -170,6 +174,9 @@ Balas HANYA JSON valid:
         actionPlan: actionPlan ?? null,
         generatedAt: new Date().toISOString(),
       } as object,
+      aiMeta: researchAiMetaFromSteps([
+        buildResearchAiStep("Insight kompetitor", "flash"),
+      ]) as object,
     },
   });
 

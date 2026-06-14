@@ -27,6 +27,8 @@ import {
   RESEARCH_REPORT_TYPE_LABELS,
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type ReportDetailData = {
   id: string;
@@ -48,6 +50,7 @@ export type ReportDetailData = {
   periodStart: string | null;
   periodEnd: string | null;
   errorMessage: string | null;
+  aiMeta: ResearchAiMetaView | null;
   sharePath: string;
 };
 
@@ -96,6 +99,7 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
 
   return (
     <div className="space-y-6">
+      <ResearchModelBadgeGroup meta={data.aiMeta} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link

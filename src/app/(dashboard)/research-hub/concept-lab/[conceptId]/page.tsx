@@ -5,6 +5,7 @@ import {
   ConceptDetailClient,
   type ConceptDetailData,
 } from "./concept-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 export default async function ConceptDetailPage({
   params,
@@ -69,6 +70,7 @@ export default async function ConceptDetailPage({
     riskFactors: parseRiskFactors(concept.riskFactors),
     rooms,
     otherConcepts,
+    aiMeta: parseResearchAiMetaClient(concept.aiMeta),
   };
 
   return (

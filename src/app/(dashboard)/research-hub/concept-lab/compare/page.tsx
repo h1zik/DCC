@@ -3,6 +3,7 @@ import {
   ConceptCompareClient,
   type ComparePageData,
 } from "./concept-compare-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 export default async function ConceptComparePage({
   searchParams,
@@ -25,6 +26,7 @@ export default async function ConceptComparePage({
   const data: ComparePageData = {
     ...result,
     conceptIds: conceptIds.slice(0, 3),
+    aiMeta: parseResearchAiMetaClient(result.aiMeta),
   };
 
   return (

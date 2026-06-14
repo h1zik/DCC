@@ -15,6 +15,7 @@ import {
   CompetitorDetailClient,
   type CompetitorDetail,
 } from "./competitor-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = { params: Promise<{ competitorId: string }> };
 
@@ -118,6 +119,7 @@ export default async function CompetitorDetailPage({ params }: Props) {
     skus: skusWithDelta,
     insights,
     aiInsights: competitor.aiInsights ?? null,
+    aiMeta: parseResearchAiMetaClient(competitor.aiMeta),
     isScraping: Boolean(activeJob),
     currentPriceBar: buildCurrentPriceBarData(
       competitor.skus.map((s) => ({

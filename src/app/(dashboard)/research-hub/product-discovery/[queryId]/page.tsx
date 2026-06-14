@@ -4,6 +4,7 @@ import {
   ProductDiscoveryDetailClient,
   type ProductDiscoveryDetailData,
 } from "./product-discovery-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 export default async function ProductDiscoveryDetailPage({
   params,
@@ -36,6 +37,7 @@ export default async function ProductDiscoveryDetailPage({
     shopCount,
     insights: query.aiInsights ?? null,
     actionPlan: query.aiActionPlan ?? null,
+    aiMeta: parseResearchAiMetaClient(query.aiMeta),
     products: query.products.map((p) => ({
       id: p.id,
       name: p.name,

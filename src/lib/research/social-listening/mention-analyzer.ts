@@ -2,6 +2,11 @@ import "server-only";
 
 import { SocialMentionClass } from "@prisma/client";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  researchAiMetaFromSteps,
+  type ResearchAiMeta,
+} from "@/lib/research/llm";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
 import {
   attachMentionIds,
@@ -70,15 +75,24 @@ export async function classifyMentions(input: {
   monitorName: string;
   keywords: string[];
   mentions: RawSocialMention[];
-}): Promise<{ classified: ClassifiedMention[]; aiSummary: string }> {
+}): Promise<{
+  classified: ClassifiedMention[];
+  aiSummary: string;
+  aiMeta: ResearchAiMeta | null;
+}> {
   if (input.mentions.length === 0) {
-    return { classified: [], aiSummary: "Belum ada mention terkumpul." };
+    return {
+      classified: [],
+      aiSummary: "Belum ada mention terkumpul.",
+      aiMeta: null,
+    };
   }
 
   const withIds = attachMentionIds(input.mentions);
   const chunks = chunkMentions(withIds, 25);
   const classified: ClassifiedMention[] = [];
   const summaries: string[] = [];
+  let usedFlashBatch = false;
 
   for (const chunk of chunks) {
     try {
@@ -93,6 +107,7 @@ export async function classifyMentions(input: {
       });
 
       const result = await generateResearchJson<BatchResult>(prompt);
+      if (!usedFlashBatch) usedFlashBatch = true;
       const byId = new Map(
         (result.classifications ?? []).map((c) => [c.id, c]),
       );
@@ -123,5 +138,10 @@ export async function classifyMentions(input: {
   return {
     classified,
     aiSummary: summaries.join(" ") || "Analisis social listening selesai.",
+    aiMeta: usedFlashBatch
+      ? researchAiMetaFromSteps([
+          buildResearchAiStep("Klasifikasi mention", "flash"),
+        ])
+      : null,
   };
 }

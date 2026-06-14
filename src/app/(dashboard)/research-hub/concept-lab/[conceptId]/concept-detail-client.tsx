@@ -44,6 +44,8 @@ import {
 } from "@/components/ui/select";
 import { PRODUCT_CONCEPT_STATUS_LABELS } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type ConceptDetailData = {
   id: string;
@@ -64,6 +66,7 @@ export type ConceptDetailData = {
     brandId: string | null;
   }[];
   otherConcepts: { id: string; title: string }[];
+  aiMeta: ResearchAiMetaView | null;
 };
 
 function statusTone(status: ProductConceptStatus) {
@@ -167,6 +170,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
 
   return (
     <div className="space-y-6">
+      <ResearchModelBadgeGroup meta={data.aiMeta} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link

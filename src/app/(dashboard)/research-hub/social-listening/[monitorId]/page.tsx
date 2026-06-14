@@ -6,6 +6,7 @@ import {
   SocialDetailClient,
   type SocialDetailData,
 } from "./social-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 export default async function SocialListeningDetailPage({
   params,
 }: {
@@ -100,7 +101,8 @@ export default async function SocialListeningDetailPage({
     batchStatus: latestAny?.status ?? null,
     batchId: latestAny?.id ?? null,
     platformProgress,
-    errorMessage: latestAny?.errorMessage ?? null,    aiSummary: latest?.summary?.aiSummary ?? null,
+    errorMessage: latestAny?.errorMessage ?? null,
+    aiSummary: latest?.summary?.aiSummary ?? null,
     topPainPoints: painPoints,
     topWishlist: wishlist,
     influencers,
@@ -108,6 +110,7 @@ export default async function SocialListeningDetailPage({
     categoryBreakdown,
     sentimentTimeline,
     actionPlan: latest?.summary?.aiActionPlan ?? null,
+    aiMeta: parseResearchAiMetaClient(latest?.summary?.aiMeta),
     mentions:
       latest?.mentions.map((m) => ({
         id: m.id,

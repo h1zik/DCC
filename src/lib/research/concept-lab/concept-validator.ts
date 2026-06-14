@@ -3,6 +3,10 @@ import "server-only";
 import { ProductConceptStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  mergeResearchAiMeta,
+} from "@/lib/research/llm";
 import { gatherConceptContext } from "@/lib/research/concept-lab/gather-concept-context";
 import { buildConceptValidationPrompt } from "@/lib/research/concept-lab/prompts/concept-validation";
 import {
@@ -52,7 +56,9 @@ export async function validateProductConceptById(
       context,
     });
 
-    const result = await generateResearchJson<ValidationScores>(prompt);
+    const result = await generateResearchJson<ValidationScores>(prompt, {
+      tier: "pro",
+    });
     const decision =
       result.decision === "GO" || result.decision === "NO_GO"
         ? result.decision
@@ -80,6 +86,10 @@ export async function validateProductConceptById(
         validationScores: scores,
         riskFactors: context.riskFactors,
         status: ProductConceptStatus.READY,
+        aiMeta: mergeResearchAiMeta(
+          concept.aiMeta,
+          buildResearchAiStep("Validasi skor", "pro"),
+        ) as object,
       },
     });
 

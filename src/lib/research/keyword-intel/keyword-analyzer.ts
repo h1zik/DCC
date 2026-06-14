@@ -3,6 +3,10 @@ import "server-only";
 import { KeywordIntelStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
 import { collectKeywordSignals } from "@/lib/research/keyword-intel/collect-keywords";
 import {
   buildGapKeywordsFromSignals,
@@ -148,6 +152,10 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
       keywords: sanitizeStringArray(c.keywords, forbiddenBrands),
     }));
 
+    const aiMeta = researchAiMetaFromSteps([
+      buildResearchAiStep("Analisis keyword & copy", "flash"),
+    ]);
+
     await prisma.keywordIntelResult.upsert({
       where: { queryId },
       create: {
@@ -160,6 +168,7 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
         clusters,
         aiSummary: result.aiSummary ?? null,
         aiActionPlan: actionPlan ?? undefined,
+        aiMeta: aiMeta as object,
       },
       update: {
         keywordMatrix,
@@ -170,6 +179,7 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
         clusters,
         aiSummary: result.aiSummary ?? null,
         aiActionPlan: actionPlan ?? undefined,
+        aiMeta: aiMeta as object,
       },
     });
 

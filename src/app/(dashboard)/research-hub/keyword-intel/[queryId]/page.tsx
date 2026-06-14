@@ -4,6 +4,7 @@ import {
   KeywordDetailClient,
   type KeywordDetailData,
 } from "./keyword-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = { params: Promise<{ queryId: string }> };
 
@@ -92,6 +93,7 @@ export default async function KeywordDetailPage({ params }: Props) {
       ? (query.result.clusters as KeywordDetailData["clusters"])
       : [],
     actionPlan: query.result?.aiActionPlan ?? null,
+    aiMeta: parseResearchAiMetaClient(query.result?.aiMeta),
     rooms: rooms.map((r) => ({
       id: r.id,
       name: r.name,

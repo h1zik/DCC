@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ConceptCompareTable } from "@/components/research-hub/concept-compare-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type ComparePageData = {
   summary: string;
@@ -19,11 +21,13 @@ export type ComparePageData = {
   winnerId: string | null;
   recommendation: string;
   conceptIds: string[];
+  aiMeta: ResearchAiMetaView | null;
 };
 
 export function ConceptCompareClient({ data }: { data: ComparePageData }) {
   return (
     <div className="space-y-6">
+      <ResearchModelBadgeGroup meta={data.aiMeta} />
       <div>
         <Link
           href="/research-hub/concept-lab"

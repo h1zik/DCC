@@ -2,6 +2,11 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  researchAiMetaFromSteps,
+  type ResearchAiMeta,
+} from "@/lib/research/llm";
 import { buildConceptComparisonPrompt } from "@/lib/research/concept-lab/prompts/concept-comparison";
 import {
   parseConceptData,
@@ -11,7 +16,7 @@ import {
 
 export async function compareProductConcepts(
   ids: string[],
-): Promise<ConceptComparisonResult> {
+): Promise<ConceptComparisonResult & { aiMeta: ResearchAiMeta }> {
   if (ids.length < 2 || ids.length > 3) {
     throw new Error("Pilih 2–3 konsep untuk dibandingkan.");
   }
@@ -33,12 +38,17 @@ export async function compareProductConcepts(
   }));
 
   const prompt = buildConceptComparisonPrompt(payload);
-  const result = await generateResearchJson<ConceptComparisonResult>(prompt);
+  const result = await generateResearchJson<ConceptComparisonResult>(prompt, {
+    tier: "pro",
+  });
 
   return {
     summary: result.summary ?? "",
     dimensions: result.dimensions ?? [],
     winnerId: result.winnerId ?? null,
     recommendation: result.recommendation ?? "",
+    aiMeta: researchAiMetaFromSteps([
+      buildResearchAiStep("Perbandingan konsep", "pro"),
+    ]),
   };
 }
