@@ -5,6 +5,7 @@ import {
   ReviewDetailClient,
   type ReviewDetailData,
 } from "./review-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = { params: Promise<{ sourceId: string }> };
 
@@ -139,6 +140,7 @@ export default async function ReviewDetailPage({ params }: Props) {
     totalReviewsReported: source.totalReviewsReported,
     reviewsComplete: source.reviewsComplete,
     lastAnalyzedAt: source.lastAnalyzedAt?.toISOString() ?? null,
+    aiMeta: parseResearchAiMetaClient(source.summary?.aiMeta),
     summary: source.summary
       ? {
           positivePct: source.summary.positivePct,

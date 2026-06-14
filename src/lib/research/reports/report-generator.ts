@@ -3,6 +3,11 @@ import "server-only";
 import { ResearchReportStatus, ResearchReportType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  mergeResearchAiMeta,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
 import { aggregateReportData } from "@/lib/research/reports/aggregate-report-data";
 import { buildReportPrompt } from "@/lib/research/reports/prompts/report-prompts";
 import type { ReportConfig, ReportSection } from "@/lib/research/reports/types";
@@ -68,7 +73,9 @@ export async function generateResearchReport(reportId: string): Promise<void> {
       category: config.category,
     });
 
-    const result = await generateResearchJson<GenerateResult>(prompt);
+    const result = await generateResearchJson<GenerateResult>(prompt, {
+      tier: "pro",
+    });
 
     await prisma.researchReport.update({
       where: { id: reportId },
@@ -81,6 +88,9 @@ export async function generateResearchReport(reportId: string): Promise<void> {
         metrics: data.activity,
         periodStart,
         periodEnd,
+        aiMeta: researchAiMetaFromSteps([
+          buildResearchAiStep("Laporan riset", "pro"),
+        ]) as object,
       },
     });
   } catch (err) {

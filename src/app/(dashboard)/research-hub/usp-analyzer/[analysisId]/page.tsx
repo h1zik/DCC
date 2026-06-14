@@ -6,6 +6,7 @@ import {
   UspDetailClient,
   type UspDetailData,
 } from "./usp-detail-client";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 export default async function UspAnalyzerDetailPage({
   params,
@@ -60,6 +61,7 @@ export default async function UspAnalyzerDetailPage({
       (analysis.result?.categoryDecision as UspDetailData["categoryDecision"]) ??
       null,
     actionPlan: analysis.result?.aiActionPlan ?? null,
+    aiMeta: parseResearchAiMetaClient(analysis.result?.aiMeta),
     gapMatrix,
     claimAnalysis,
     positioningMap,

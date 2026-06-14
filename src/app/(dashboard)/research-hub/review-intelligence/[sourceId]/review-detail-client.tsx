@@ -45,6 +45,8 @@ import {
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 import { useReviewIntelPolling } from "../use-review-intel-polling";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 
 type Theme = { theme: string; count: number };
 type Keyword = { word: string; count: number };
@@ -81,6 +83,7 @@ export type ReviewDetailData = {
   totalReviewsReported: number | null;
   reviewsComplete: boolean | null;
   lastAnalyzedAt: string | null;
+  aiMeta: ResearchAiMetaView | null;
   summary: {
     positivePct: number;
     neutralPct: number;
@@ -161,6 +164,7 @@ export function ReviewDetailClient({
 
   return (
     <div className="flex flex-col gap-6">
+      <ResearchModelBadgeGroup meta={source.aiMeta} />
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"

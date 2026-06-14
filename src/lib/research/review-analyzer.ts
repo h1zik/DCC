@@ -4,6 +4,11 @@ import { ReviewSentiment } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import {
+  buildResearchAiStep,
+  mergeResearchAiMeta,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
+import {
   buildReviewActionPlanPrompt,
   buildReviewBatchPrompt,
 } from "@/lib/research/prompts/review-analysis";
@@ -123,6 +128,9 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
   });
 
   const pending = source.reviews;
+  let aiMeta = researchAiMetaFromSteps([]);
+  let usedFlashBatch = false;
+
   for (let i = 0; i < pending.length; i += BATCH_SIZE) {
     const batch = pending.slice(i, i + BATCH_SIZE);
     const covered = new Set<string>();
@@ -158,6 +166,13 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
     }
 
     if (parsed?.reviews?.length) {
+      if (!usedFlashBatch) {
+        aiMeta = mergeResearchAiMeta(
+          aiMeta,
+          buildResearchAiStep("Klasifikasi review", "flash"),
+        );
+        usedFlashBatch = true;
+      }
       for (const item of parsed.reviews) {
         const batchIdx =
           typeof item.idx === "number" && Number.isInteger(item.idx)
@@ -234,9 +249,14 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
         positivePct: agg.positivePct,
         negativePct: agg.negativePct,
       }),
+      { tier: "pro" },
     );
     gapOpportunity = aiResult.gapOpportunity?.trim() || null;
     actionPlan = coerceActionPlan(aiResult.actionPlan, `review-${sourceId}`);
+    aiMeta = mergeResearchAiMeta(
+      aiMeta,
+      buildResearchAiStep("Gap opportunity & rencana aksi", "pro"),
+    );
   } catch (err) {
     console.error("[review-analyzer] action plan gagal", err);
   }
@@ -256,6 +276,7 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
       severityByTheme: agg.severityByTheme,
       demographics: agg.demographics,
       aiActionPlan: actionPlan ?? undefined,
+      aiMeta: aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
     },
     update: {
       positivePct: agg.positivePct,
@@ -269,6 +290,7 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
       severityByTheme: agg.severityByTheme,
       demographics: agg.demographics,
       aiActionPlan: actionPlan ?? undefined,
+      aiMeta: aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
     },
   });
 

@@ -37,6 +37,8 @@ import {
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 import { useProductDiscoveryPolling } from "../use-product-discovery-polling";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 type DiscoveryInsights = {
   summary?: string | null;
@@ -76,6 +78,7 @@ export type ProductDiscoveryDetailData = {
   shopCount: number;
   insights: unknown;
   actionPlan: unknown;
+  aiMeta: ResearchAiMetaView | null;
   products: ProductDiscoveryRow[];
 };
 
@@ -195,6 +198,7 @@ export function ProductDiscoveryDetailClient({
 
   return (
     <div className="space-y-6">
+      <ResearchModelBadgeGroup meta={data.aiMeta} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link

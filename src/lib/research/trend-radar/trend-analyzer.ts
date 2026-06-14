@@ -7,6 +7,10 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
 import { collectTrendSources } from "@/lib/research/trend-radar/collect-sources";
 import { generateDemoTrendItems } from "@/lib/research/trend-radar/demo-trends";
 import {
@@ -122,7 +126,9 @@ export async function generateTrendDigest(input: {
         seedKeywords: input.seedKeywords,
         forbiddenBrands: marketBrands,
       });
-      result = await generateResearchJson<TrendAnalysisResult>(prompt);
+      result = await generateResearchJson<TrendAnalysisResult>(prompt, {
+        tier: "pro",
+      });
     }
 
     if (!result.items?.length) {
@@ -173,6 +179,10 @@ export async function generateTrendDigest(input: {
     });
 
     let actionPlan: ActionPlan | null = null;
+    const aiMetaSteps = [];
+    if (collected.signals.length >= 3) {
+      aiMetaSteps.push(buildResearchAiStep("Analisis tren", "pro"));
+    }
     try {
       const forbiddenBrands = trendForbiddenBrands;
 
@@ -187,12 +197,14 @@ export async function generateTrendDigest(input: {
           })),
           forbiddenBrands,
         }),
+        { tier: "pro" },
       );
       actionPlan = coerceActionPlan(
         planResult.actionPlan,
         `trend-${digestId}`,
         forbiddenBrands,
       );
+      aiMetaSteps.push(buildResearchAiStep("Rencana aksi", "pro"));
     } catch (err) {
       console.error("[trend-analyzer] action plan gagal", err);
     }
@@ -206,6 +218,10 @@ export async function generateTrendDigest(input: {
         weekStart,
         weekEnd,
         aiActionPlan: actionPlan ?? undefined,
+        aiMeta:
+          aiMetaSteps.length > 0
+            ? (researchAiMetaFromSteps(aiMetaSteps) as object)
+            : undefined,
       },
     });
 

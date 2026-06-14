@@ -3,6 +3,11 @@ import "server-only";
 import { SocialListeningPlatform, SocialListeningStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  mergeResearchAiMeta,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
 import { aggregateSocialSummary } from "@/lib/research/social-listening/aggregate-summary";
 import { generateDemoMentions } from "@/lib/research/social-listening/demo-mentions";
 import { classifyMentions } from "@/lib/research/social-listening/mention-analyzer";
@@ -157,7 +162,8 @@ export async function finalizeSocialListeningBatch(
       data: { status: SocialListeningStatus.ANALYZING },
     });
 
-    const { classified, aiSummary } = await classifyMentions({
+    const { classified, aiSummary, aiMeta: classifyMeta } =
+      await classifyMentions({
       monitorName: monitor.name,
       keywords: monitor.keywords,
       mentions,
@@ -166,6 +172,7 @@ export async function finalizeSocialListeningBatch(
     const summary = aggregateSocialSummary(classified);
 
     let actionPlan: ActionPlan | null = null;
+    let aiMeta = classifyMeta ?? researchAiMetaFromSteps([]);
     if (summary.topPainPoints.length > 0 || summary.topWishlist.length > 0) {
       try {
         const planResult = await generateResearchJson<{ actionPlan?: unknown }>(
@@ -175,8 +182,13 @@ export async function finalizeSocialListeningBatch(
             wishlist: summary.topWishlist,
             categoryBreakdown: summary.categoryBreakdown,
           }),
+          { tier: "pro" },
         );
         actionPlan = coerceActionPlan(planResult.actionPlan, `social-${batchId}`);
+        aiMeta = mergeResearchAiMeta(
+          aiMeta,
+          buildResearchAiStep("Rencana aksi sosial", "pro"),
+        );
       } catch (err) {
         console.error("[social-sync] action plan gagal", err);
       }
@@ -219,6 +231,7 @@ export async function finalizeSocialListeningBatch(
           sentimentTimeline: summary.sentimentTimeline,
           aiActionPlan: actionPlan ?? undefined,
           aiSummary: aiSummaryText,
+          aiMeta: aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
         },
         update: {
           topPainPoints: summary.topPainPoints,
@@ -229,6 +242,7 @@ export async function finalizeSocialListeningBatch(
           sentimentTimeline: summary.sentimentTimeline,
           aiActionPlan: actionPlan ?? undefined,
           aiSummary: aiSummaryText,
+          aiMeta: aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
         },
       }),
       prisma.socialListeningBatch.update({

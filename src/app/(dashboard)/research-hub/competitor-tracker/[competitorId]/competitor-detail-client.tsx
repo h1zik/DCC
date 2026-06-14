@@ -35,6 +35,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 type Sku = {
   id: string;
@@ -75,6 +77,7 @@ export type CompetitorDetail = {
   skus: Sku[];
   insights: CompetitorInsights;
   aiInsights: unknown;
+  aiMeta: ResearchAiMetaView | null;
   isScraping: boolean;
   currentPriceBar: PriceBarPoint[];
   alerts: Alert[];
@@ -114,6 +117,7 @@ export function CompetitorDetailClient({
 
   return (
     <div className="flex flex-col gap-6">
+      <ResearchModelBadgeGroup meta={competitor.aiMeta} />
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"

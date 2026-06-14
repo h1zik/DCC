@@ -3,6 +3,10 @@ import "server-only";
 import { ProductConceptMode, ProductConceptStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
+import {
+  buildResearchAiStep,
+  mergeResearchAiMeta,
+} from "@/lib/research/llm";
 import { gatherConceptContext } from "@/lib/research/concept-lab/gather-concept-context";
 import { buildConceptGenerationPrompt } from "@/lib/research/concept-lab/prompts/concept-generation";
 import type { ConceptData } from "@/lib/research/concept-lab/types";
@@ -41,7 +45,9 @@ export async function generateProductConcept(conceptId: string): Promise<void> {
       context,
     });
 
-    const result = await generateResearchJson<ConceptData>(prompt);
+    const result = await generateResearchJson<ConceptData>(prompt, {
+      tier: "pro",
+    });
 
     if (context.uspCandidate && !result.positioningStatement) {
       result.positioningStatement = context.uspCandidate.usp;
@@ -56,6 +62,10 @@ export async function generateProductConcept(conceptId: string): Promise<void> {
       data: {
         conceptData: result,
         mode: ProductConceptMode.AI_GENERATED,
+        aiMeta: mergeResearchAiMeta(
+          concept.aiMeta,
+          buildResearchAiStep("Generate konsep", "pro"),
+        ) as object,
       },
     });
 

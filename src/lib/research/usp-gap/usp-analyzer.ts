@@ -4,6 +4,10 @@ import { UspGapStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import {
+  buildResearchAiStep,
+  researchAiMetaFromSteps,
+} from "@/lib/research/llm";
+import {
   gatherUspContext,
 } from "@/lib/research/usp-gap/gather-context";
 import { parseContextModules } from "@/lib/research/usp-gap/list-context-sources";
@@ -102,13 +106,19 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
     });
 
     const prompt = buildUspGapAnalysisPrompt(context);
-    const result = await generateResearchJson<AnalysisResult>(prompt);
+    const result = await generateResearchJson<AnalysisResult>(prompt, {
+      tier: "pro",
+    });
     const positioningMap = normalizePositioningMap(result.positioningMap);
     const categoryDecision = normalizeCategoryDecision(result.categoryDecision);
     const actionPlan: ActionPlan | null = coerceActionPlan(
       result.actionPlan,
       `usp-${analysisId}`,
     );
+
+    const aiMeta = researchAiMetaFromSteps([
+      buildResearchAiStep("Gap matrix & positioning", "pro"),
+    ]);
 
     await prisma.$transaction([
       prisma.uspGapResult.upsert({
@@ -123,6 +133,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
           aiSummary: result.aiSummary ?? null,
           categoryDecision: categoryDecision ?? undefined,
           aiActionPlan: actionPlan ?? undefined,
+          aiMeta: aiMeta as object,
         },
         update: {
           gapMatrix: result.gapMatrix ?? [],
@@ -133,6 +144,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
           aiSummary: result.aiSummary ?? null,
           categoryDecision: categoryDecision ?? undefined,
           aiActionPlan: actionPlan ?? undefined,
+          aiMeta: aiMeta as object,
         },
       }),
       prisma.uspGapAnalysis.update({

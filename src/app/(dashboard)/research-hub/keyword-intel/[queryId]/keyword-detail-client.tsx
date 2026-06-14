@@ -47,6 +47,8 @@ import {
   MARKETPLACE_LABELS,
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type KeywordDetailData = {
   id: string;
@@ -71,6 +73,7 @@ export type KeywordDetailData = {
   seasonalCalendar: SeasonalMonth[];
   clusters: { name: string; keywords: string[] }[];
   actionPlan: unknown;
+  aiMeta: ResearchAiMetaView | null;
   rooms: {
     id: string;
     name: string;
@@ -139,6 +142,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
 
   return (
     <div className="flex flex-col gap-6 pb-6">
+      <ResearchModelBadgeGroup meta={data.aiMeta} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link

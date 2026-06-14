@@ -37,6 +37,8 @@ import {
   summarizeEnabledSources,
 } from "@/lib/research/trend-radar/trend-source-config-types";
 import { cn } from "@/lib/utils";
+import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type TrendDetailData = {
   id: string;
@@ -49,6 +51,7 @@ export type TrendDetailData = {
   generatedAt: string | null;
   highlightItemId: string | null;
   actionPlan: unknown;
+  aiMeta: ResearchAiMetaView | null;
   sourceLabels: string[];
   items: {
     id: string;
@@ -113,6 +116,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
 
   return (
     <div className="flex flex-col gap-6 pb-6">
+      <ResearchModelBadgeGroup meta={data.aiMeta} />
       <div>
         <Link
           href="/research-hub/trend-radar"

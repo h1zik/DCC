@@ -1889,6 +1889,8 @@ model ProductDiscoveryQuery {
   aiActionPlan Json?
   /** Ringkasan & metrik analisis pasar (price band, velocity, whitespace). */
   aiInsights   Json?
+  /** Metadata model AI yang dipakai saat analisis terakhir. */
+  aiMeta       Json?
   createdById  String
   createdBy    User                     @relation("ProductDiscoveryCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt    DateTime                 @default(now())
@@ -2002,6 +2004,8 @@ model ReviewIntelSummary {
   severityByTheme Json              @default("[]")
   /** Agregat demografi terinferensi: { ageBands[], skinTypes[], genders[] }. */
   demographics    Json              @default("{}")
+  /** Metadata model AI per langkah analisis. */
+  aiMeta          Json?
   updatedAt       DateTime          @updatedAt
 }
 
@@ -2036,6 +2040,8 @@ model ResearchCompetitor {
   isActive    Boolean             @default(true)
   /** Rencana aksi preskriptif + insight AI (response playbook). */
   aiInsights  Json?
+  /** Metadata model AI yang dipakai saat analisis terakhir. */
+  aiMeta      Json?
   createdById String
   createdBy   User                @relation("ResearchCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime            @default(now())
@@ -2164,6 +2170,8 @@ model TrendRadarDigest {
   narrative    String?          @db.Text
   /** Rencana aksi preskriptif (ActionPlan) untuk tren minggu ini. */
   aiActionPlan Json?
+  /** Metadata model AI per langkah analisis. */
+  aiMeta       Json?
   isGlobal     Boolean          @default(false)
   watchlistId  String?
   watchlist    TrendWatchlist?  @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
@@ -2228,6 +2236,8 @@ model KeywordIntelResult {
   aiSummary         String?           @db.Text
   /** Rencana aksi preskriptif (ActionPlan) berbasis keyword & intent. */
   aiActionPlan      Json?
+  /** Metadata model AI yang dipakai saat analisis terakhir. */
+  aiMeta            Json?
   updatedAt         DateTime          @updatedAt
 }
 
@@ -2323,6 +2333,8 @@ model SocialListeningSummary {
   aiSummary         String?              @db.Text
   /** Rencana aksi preskriptif (ActionPlan) dari pain point & wishlist sosial. */
   aiActionPlan      Json?
+  /** Metadata model AI per langkah analisis. */
+  aiMeta            Json?
   /** Tren sentimen harian: [{ date, positive, negative, neutral }]. */
   sentimentTimeline Json                 @default("[]")
   updatedAt         DateTime             @updatedAt
@@ -2370,6 +2382,8 @@ model UspGapResult {
   aiActionPlan         Json?
   /** Keputusan kategori: "GO" | "WATCH" | "AVOID" + alasan. */
   categoryDecision     Json?
+  /** Metadata model AI yang dipakai saat analisis terakhir. */
+  aiMeta               Json?
   updatedAt            DateTime       @updatedAt
 }
 
@@ -2404,6 +2418,8 @@ model ProductConcept {
   validationScores Json                 @default("{}")
   /** Faktor risiko deterministik (mis. keluhan review) dengan evidence ref. */
   riskFactors      Json                 @default("[]")
+  /** Metadata model AI per langkah (generate, validate, compare). */
+  aiMeta           Json?
   createdById      String
   createdBy        User                 @relation("ProductConceptCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt        DateTime             @default(now())
@@ -2444,6 +2460,8 @@ model ResearchReport {
   feedbackLoop Json?
   /** Aktivitas modul untuk chart ringkasan. */
   metrics      Json?
+  /** Metadata model AI yang dipakai saat generate laporan. */
+  aiMeta       Json?
   periodStart  DateTime?
   periodEnd    DateTime?
   errorMessage String?

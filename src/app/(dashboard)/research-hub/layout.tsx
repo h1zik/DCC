@@ -1,5 +1,6 @@
 import { ensureResearchHubPage } from "@/lib/ensure-research-hub-page";
 import { ResearchHubSubNav } from "@/components/research-hub/research-hub-sub-nav";
+import { ResearchHubModuleHint } from "@/components/research-hub/research-hub-module-hint";
 
 export default async function ResearchHubLayout({
   children,
@@ -10,6 +11,7 @@ export default async function ResearchHubLayout({
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <ResearchHubSubNav />
+      <ResearchHubModuleHint />
       {children}
     </div>
   );
