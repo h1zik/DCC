@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import {
   PipelineStage,
   ProductConceptMode,
@@ -45,11 +46,29 @@ const createSchema = z.object({
   sourceModules: sourceModulesSchema.optional(),
 });
 
+function hasAnyModule(mods?: Record<string, unknown>): boolean {
+  if (!mods) return false;
+  return Object.values(mods).some((v) => v === true);
+}
+
 export async function createProductConcept(
   input: z.infer<typeof createSchema>,
 ) {
   const session = await requireMarketAnalyst();
   const data = createSchema.parse(input);
+
+  // Inherit the parent USP analysis' context modules so Concept Lab validates
+  // with the same upstream evidence instead of an empty context.
+  let sourceModules: Record<string, unknown> = data.sourceModules ?? {};
+  if (data.uspGapAnalysisId && !hasAnyModule(sourceModules)) {
+    const parent = await prisma.uspGapAnalysis.findUnique({
+      where: { id: data.uspGapAnalysisId },
+      select: { contextModules: true },
+    });
+    if (parent?.contextModules && typeof parent.contextModules === "object") {
+      sourceModules = parent.contextModules as Record<string, unknown>;
+    }
+  }
 
   const concept = await prisma.productConcept.create({
     data: {
@@ -62,7 +81,7 @@ export async function createProductConcept(
       brandId: data.brandId ?? null,
       uspGapAnalysisId: data.uspGapAnalysisId ?? null,
       uspIndex: data.uspIndex ?? null,
-      sourceModules: data.sourceModules ?? {},
+      sourceModules: sourceModules as object,
       conceptData: emptyConceptData(),
       status: ProductConceptStatus.DRAFT,
       createdById: session.user.id,
@@ -70,7 +89,17 @@ export async function createProductConcept(
   });
 
   if (data.mode === ProductConceptMode.AI_GENERATED) {
-    await generateProductConcept(concept.id);
+    await prisma.productConcept.update({
+      where: { id: concept.id },
+      data: { status: ProductConceptStatus.VALIDATING },
+    });
+    after(async () => {
+      try {
+        await generateProductConcept(concept.id);
+      } catch (err) {
+        console.error("[createProductConcept] generate gagal", err);
+      }
+    });
   }
 
   revalidatePath("/research-hub/concept-lab");
@@ -118,7 +147,20 @@ export async function validateProductConcept(conceptId: string) {
   await requireMarketAnalyst();
   z.string().min(1).parse(conceptId);
 
-  await validateProductConceptById(conceptId);
+  await prisma.productConcept.update({
+    where: { id: conceptId },
+    data: { status: ProductConceptStatus.VALIDATING },
+  });
+
+  after(async () => {
+    try {
+      await validateProductConceptById(conceptId);
+    } catch (err) {
+      console.error("[validateProductConcept] gagal", err);
+    }
+  });
+
+  revalidatePath("/research-hub/concept-lab");
   revalidatePath(`/research-hub/concept-lab/${conceptId}`);
 }
 

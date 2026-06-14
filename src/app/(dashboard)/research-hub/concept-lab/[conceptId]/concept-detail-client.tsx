@@ -14,6 +14,8 @@ import {
 } from "@/actions/research-concept-lab";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ConceptPdfDownloadButton } from "@/components/research-hub/concept-pdf-download-button";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
+import { ConceptRiskFactorList } from "@/components/research-hub/concept-risk-factors";
 import {
   ConceptStepForm,
   type ConceptFormData,
@@ -51,6 +53,11 @@ export type ConceptDetailData = {
   status: ProductConceptStatus;
   conceptData: ConceptFormData;
   validationScores: ConceptValidationData;
+  riskFactors: {
+    label: string;
+    severity: "HIGH" | "MED" | "LOW";
+    source: { module: string; label: string; href?: string };
+  }[];
   rooms: {
     id: string;
     name: string;
@@ -235,6 +242,14 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
         </div>
       </div>
 
+      {inProgress ? (
+        <JobProgressBar
+          title="Memvalidasi konsep dengan AI"
+          percent={70}
+          stepLabel="AI sedang menilai demand, diferensiasi, pricing & risiko — halaman refresh otomatis."
+        />
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Concept Validator</CardTitle>
@@ -243,6 +258,19 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
           <ConceptValidationPanel data={data.validationScores} />
         </CardContent>
       </Card>
+
+      {data.riskFactors.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Faktor Risiko dari Riset Pasar
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ConceptRiskFactorList items={data.riskFactors} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

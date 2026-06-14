@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { ResearchMarketplace } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -47,12 +48,13 @@ export async function createResearchCompetitor(
     },
   });
 
-  try {
-    await enqueueCompetitorScrape(competitor.id);
-  } catch (err) {
-    console.error("[createResearchCompetitor] scrape gagal", err);
-    throw err;
-  }
+  after(async () => {
+    try {
+      await enqueueCompetitorScrape(competitor.id);
+    } catch (err) {
+      console.error("[createResearchCompetitor] scrape gagal", err);
+    }
+  });
 
   revalidatePath("/research-hub/competitor-tracker");
   revalidatePath(`/research-hub/competitor-tracker/${competitor.id}`);
@@ -63,12 +65,13 @@ export async function refreshResearchCompetitor(competitorId: string) {
   await requireMarketAnalyst();
   z.string().min(1).parse(competitorId);
 
-  try {
-    await enqueueCompetitorScrape(competitorId);
-  } catch (err) {
-    console.error("[refreshResearchCompetitor] gagal", err);
-    throw err;
-  }
+  after(async () => {
+    try {
+      await enqueueCompetitorScrape(competitorId);
+    } catch (err) {
+      console.error("[refreshResearchCompetitor] gagal", err);
+    }
+  });
 
   revalidatePath("/research-hub/competitor-tracker");
   revalidatePath(`/research-hub/competitor-tracker/${competitorId}`);

@@ -1,4 +1,8 @@
 import { cn } from "@/lib/utils";
+import { reportBodyToHtml } from "@/lib/research/reports/report-body-html";
+
+export const REPORT_BODY_HTML_CLASS =
+  "text-muted-foreground text-sm leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-1.5 [&_strong]:font-semibold [&_strong]:text-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground";
 
 export type ReportSectionRow = {
   id: string;
@@ -40,9 +44,10 @@ export function ReportSectionList({ sections }: { sections: ReportSectionRow[] }
               </span>
             ) : null}
           </div>
-          <div className="text-muted-foreground space-y-2 text-sm leading-relaxed whitespace-pre-wrap">
-            {section.body}
-          </div>
+          <div
+            className={cn(REPORT_BODY_HTML_CLASS)}
+            dangerouslySetInnerHTML={{ __html: reportBodyToHtml(section.body) }}
+          />
         </article>
       ))}
     </div>

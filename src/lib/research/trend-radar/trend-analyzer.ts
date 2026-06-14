@@ -9,13 +9,27 @@ import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import { collectTrendSources } from "@/lib/research/trend-radar/collect-sources";
 import { generateDemoTrendItems } from "@/lib/research/trend-radar/demo-trends";
-import { buildTrendAnalysisPrompt } from "@/lib/research/trend-radar/prompts/trend-analysis";
+import {
+  buildTrendActionPlanPrompt,
+  buildTrendAnalysisPrompt,
+} from "@/lib/research/trend-radar/prompts/trend-analysis";
 import {
   clampTrendScore,
   normalizeTrendDimension,
   normalizeTrendPhase,
 } from "@/lib/research/trend-radar/normalize-trend";
 import { enrichTrendPhases } from "@/lib/research/trend-radar/phase-enrichment";
+import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import {
+  dedupeBrandNames,
+  extractForbiddenBrandsFromStrings,
+  gatherMarketBrandNames,
+  sanitizeRelatedProducts,
+} from "@/lib/research/brand-guard";
+import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
+import type { ActionPlan } from "@/lib/research/prescriptive/types";
+import type { TrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config-types";
+import { getDefaultTrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config";
 
 type TrendAnalysisResult = {
   narrative: string;
@@ -50,8 +64,10 @@ export async function generateTrendDigest(input: {
   watchlistId?: string | null;
   seedKeywords?: string[];
   watchlistName?: string;
+  sourceConfig?: TrendSourceConfig;
 }): Promise<string> {
   const { weekStart, weekEnd } = weekBounds();
+  const sourceConfig = input.sourceConfig ?? getDefaultTrendSourceConfig();
 
   let digestId = input.digestId;
   if (!digestId) {
@@ -62,6 +78,7 @@ export async function generateTrendDigest(input: {
         isGlobal: input.isGlobal,
         watchlistId: input.watchlistId ?? null,
         status: TrendRadarStatus.COLLECTING,
+        sourceConfig: sourceConfig as object,
       },
     });
     digestId = digest.id;
@@ -71,13 +88,17 @@ export async function generateTrendDigest(input: {
       data: {
         status: TrendRadarStatus.COLLECTING,
         errorMessage: null,
+        sourceConfig: sourceConfig as object,
       },
     });
     await prisma.trendRadarItem.deleteMany({ where: { digestId } });
   }
 
   try {
-    const collected = await collectTrendSources(input.seedKeywords ?? []);
+    const collected = await collectTrendSources(
+      input.seedKeywords ?? [],
+      sourceConfig,
+    );
 
     await prisma.trendRadarDigest.update({
       where: { id: digestId },
@@ -94,10 +115,12 @@ export async function generateTrendDigest(input: {
         items: demo,
       };
     } else {
+      const marketBrands = await gatherMarketBrandNames();
       const prompt = buildTrendAnalysisPrompt({
         signals: collected.signals,
         watchlistName: input.watchlistName,
         seedKeywords: input.seedKeywords,
+        forbiddenBrands: marketBrands,
       });
       result = await generateResearchJson<TrendAnalysisResult>(prompt);
     }
@@ -112,8 +135,31 @@ export async function generateTrendDigest(input: {
         ? enrichTrendPhases(result.items, collected.signals)
         : result.items;
 
+    const marketBrandsForSanitize = await gatherMarketBrandNames();
+    const trendForbiddenBrands = dedupeBrandNames([
+      ...marketBrandsForSanitize,
+      ...extractForbiddenBrandsFromStrings(
+        finalizedItems.flatMap((i) => [
+          String(i.name),
+          ...(Array.isArray(i.relatedProducts)
+            ? i.relatedProducts.map(String)
+            : []),
+        ]),
+      ),
+    ]);
+
+    const sanitizedItems = finalizedItems.map((item) => ({
+      ...item,
+      relatedProducts: sanitizeRelatedProducts(
+        Array.isArray(item.relatedProducts)
+          ? item.relatedProducts.map(String)
+          : [],
+        trendForbiddenBrands,
+      ),
+    }));
+
     await prisma.trendRadarItem.createMany({
-      data: finalizedItems.map((item) => ({
+      data: sanitizedItems.map((item) => ({
         digestId: digestId!,
         name: String(item.name).slice(0, 200),
         dimension: normalizeTrendDimension(item.dimension),
@@ -122,11 +168,34 @@ export async function generateTrendDigest(input: {
         narrative: item.narrative ?? null,
         isGlobalPipeline: Boolean(item.isGlobalPipeline),
         sources: Array.isArray(item.sources) ? item.sources : [],
-        relatedProducts: Array.isArray(item.relatedProducts)
-          ? item.relatedProducts.map(String)
-          : [],
+        relatedProducts: item.relatedProducts,
       })),
     });
+
+    let actionPlan: ActionPlan | null = null;
+    try {
+      const forbiddenBrands = trendForbiddenBrands;
+
+      const planResult = await generateResearchJson<{ actionPlan?: unknown }>(
+        buildTrendActionPlanPrompt({
+          narrative: result.narrative,
+          items: sanitizedItems.map((i) => ({
+            name: String(i.name),
+            dimension: String(i.dimension),
+            phase: String(i.phase),
+            score: clampTrendScore(i.score),
+          })),
+          forbiddenBrands,
+        }),
+      );
+      actionPlan = coerceActionPlan(
+        planResult.actionPlan,
+        `trend-${digestId}`,
+        forbiddenBrands,
+      );
+    } catch (err) {
+      console.error("[trend-analyzer] action plan gagal", err);
+    }
 
     await prisma.trendRadarDigest.update({
       where: { id: digestId },
@@ -136,8 +205,19 @@ export async function generateTrendDigest(input: {
         generatedAt: new Date(),
         weekStart,
         weekEnd,
+        aiActionPlan: actionPlan ?? undefined,
       },
     });
+
+    if (input.isGlobal) {
+      await syncModuleRecommendations({
+        module: "trend-radar",
+        sourceId: digestId,
+        sourceLabel: "Trend Radar (mingguan)",
+        href: `/research-hub/trend-radar/${digestId}`,
+        plan: actionPlan,
+      });
+    }
 
     return digestId;
   } catch (err) {

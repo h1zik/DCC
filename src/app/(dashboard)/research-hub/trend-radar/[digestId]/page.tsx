@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { parseTrendSourceConfigJson } from "@/lib/research/trend-radar/trend-source-config";
+import { summarizeEnabledSources } from "@/lib/research/trend-radar/trend-source-config-types";
 import {
   TrendDetailClient,
   type TrendDetailData,
@@ -44,6 +46,11 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
 
   if (!digest) notFound();
 
+  const sourceConfig = parseTrendSourceConfigJson(digest.sourceConfig);
+  const sourceLabels = sourceConfig
+    ? summarizeEnabledSources(sourceConfig)
+    : [];
+
   const data: TrendDetailData = {
     id: digest.id,
     weekStart: digest.weekStart.toISOString(),
@@ -54,6 +61,8 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
     watchlistName: digest.watchlist?.name ?? null,
     generatedAt: digest.generatedAt?.toISOString() ?? null,
     highlightItemId: highlightItemId ?? null,
+    actionPlan: digest.aiActionPlan ?? null,
+    sourceLabels,
     items: digest.items.map((i) => ({
       id: i.id,
       name: i.name,

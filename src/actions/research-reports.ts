@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { ResearchReportType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMarketAnalyst } from "@/lib/research/auth";
 import {
-  createAndGenerateReport,
+  createReportRecord,
   generateResearchReport,
 } from "@/lib/research/reports/report-generator";
 import { buildReportPdfHtml } from "@/lib/research/reports/report-pdf-html";
@@ -28,6 +29,18 @@ const configSchema = z.object({
   category: z.string().optional(),
   competitorId: z.string().optional(),
   digestId: z.string().optional(),
+  sources: z
+    .object({
+      reviewSourceId: z.string().optional(),
+      competitorId: z.string().optional(),
+      digestId: z.string().optional(),
+      keywordQueryId: z.string().optional(),
+      socialMonitorId: z.string().optional(),
+      uspAnalysisId: z.string().optional(),
+      conceptId: z.string().optional(),
+      productDiscoveryQueryId: z.string().optional(),
+    })
+    .optional(),
 });
 
 const createSchema = z.object({
@@ -42,11 +55,19 @@ export async function createResearchReport(
   const session = await requireMarketAnalyst();
   const data = createSchema.parse(input);
 
-  const { id } = await createAndGenerateReport({
+  const { id } = await createReportRecord({
     type: data.type,
     title: data.title,
     config: data.config,
     createdById: session.user.id,
+  });
+
+  after(async () => {
+    try {
+      await generateResearchReport(id);
+    } catch (err) {
+      console.error("[createResearchReport] generate gagal", err);
+    }
   });
 
   revalidatePath("/research-hub/research-reports");
@@ -57,7 +78,19 @@ export async function refreshResearchReport(reportId: string) {
   await requireMarketAnalyst();
   z.string().min(1).parse(reportId);
 
-  await generateResearchReport(reportId);
+  await prisma.researchReport.update({
+    where: { id: reportId },
+    data: { status: "GENERATING", errorMessage: null },
+  });
+
+  after(async () => {
+    try {
+      await generateResearchReport(reportId);
+    } catch (err) {
+      console.error("[refreshResearchReport] generate gagal", err);
+    }
+  });
+
   revalidatePath("/research-hub/research-reports");
   revalidatePath(`/research-hub/research-reports/${reportId}`);
 }
@@ -83,10 +116,26 @@ export async function getReportPdfHtml(reportId: string) {
   });
   if (!report) throw new Error("Laporan tidak ditemukan.");
 
+  const actionItems = Array.isArray(report.actionItems)
+    ? (report.actionItems as {
+        priority: string;
+        owner: string;
+        action: string;
+        rationale: string;
+        sourceLabel: string | null;
+      }[])
+    : [];
+  const metrics =
+    report.metrics && typeof report.metrics === "object"
+      ? (report.metrics as Record<string, number>)
+      : undefined;
+
   return buildReportPdfHtml({
     title: report.title,
     aiSummary: report.aiSummary,
     sections: parseReportSections(report.sections),
+    actionItems,
+    metrics,
     periodStart: report.periodStart?.toISOString().slice(0, 10) ?? null,
     periodEnd: report.periodEnd?.toISOString().slice(0, 10) ?? null,
   });

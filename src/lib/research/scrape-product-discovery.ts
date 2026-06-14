@@ -12,6 +12,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import {
   buildSearchActorInput,
+  buildTikTokSearchActorInput,
   getSearchActorId,
 } from "@/lib/apify/actors";
 import {
@@ -21,10 +22,12 @@ import {
   startApifyActor,
 } from "@/lib/apify/client";
 import {
+  extractDatasetScrapeErrors,
   generateDemoDiscoveryProducts,
   normalizeShopProducts,
   type NormalizedShopProduct,
 } from "@/lib/apify/normalize";
+import { filterShopProductsByKeyword } from "@/lib/apify/tiktok-kulqiz";
 import {
   parseProductDiscoveryScrapeState,
   type ProductDiscoveryScrapeState,
@@ -155,6 +158,15 @@ export async function runDemoProductDiscovery(queryId: string): Promise<void> {
       errorMessage: "Data demo — Apify belum dikonfigurasi.",
     },
   });
+
+  try {
+    const { analyzeProductDiscovery } = await import(
+      "@/lib/research/product-discovery/analyze-discovery"
+    );
+    await analyzeProductDiscovery(queryId);
+  } catch (err) {
+    console.error("[runDemoProductDiscovery] analisis gagal", err);
+  }
 }
 
 export async function markProductDiscoveryFailed(
@@ -216,6 +228,15 @@ export async function finalizeProductDiscoveryJob(
       apifyRunId: null,
     },
   });
+
+  try {
+    const { analyzeProductDiscovery } = await import(
+      "@/lib/research/product-discovery/analyze-discovery"
+    );
+    await analyzeProductDiscovery(queryId);
+  } catch (err) {
+    console.error("[finalizeProductDiscoveryJob] analisis gagal", err);
+  }
 }
 
 export async function startNextMarketplaceRun(jobId: string): Promise<void> {
@@ -234,7 +255,7 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
     return;
   }
 
-  let state = parseProductDiscoveryScrapeState(
+  const state = parseProductDiscoveryScrapeState(
     query.scrapeState,
     query.marketplaces,
   );
@@ -258,10 +279,17 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
       continue;
     }
 
-    const { runId } = await startApifyActor(
-      actorId,
-      buildSearchActorInput(mp, query.keyword, remaining),
-    );
+    const actorInput =
+      mp === ResearchMarketplace.TIKTOK_SHOP
+        ? buildTikTokSearchActorInput(
+            actorId,
+            query.keyword,
+            remaining,
+            state.tiktokKulqizExpandSubcategories === true,
+          )
+        : buildSearchActorInput(mp, query.keyword, remaining);
+
+    const { runId } = await startApifyActor(actorId, actorInput);
 
     await prisma.researchScrapeJob.update({
       where: { id: jobId },
@@ -298,7 +326,7 @@ export async function pollProductDiscoveryJob(jobId: string): Promise<void> {
   });
   if (!query) return;
 
-  let state = parseProductDiscoveryScrapeState(
+  const state = parseProductDiscoveryScrapeState(
     query.scrapeState,
     query.marketplaces,
   );
@@ -310,18 +338,60 @@ export async function pollProductDiscoveryJob(jobId: string): Promise<void> {
   if (status === "SUCCEEDED" && mp) {
     try {
       const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+      const datasetError = extractDatasetScrapeErrors(items);
       const currentCount = await prisma.productDiscoveryItem.count({
         where: { queryId: query.id },
       });
       const remaining = query.productLimit - currentCount;
-      const products = normalizeShopProducts(items)
+      let normalized = normalizeShopProducts(items);
+      if (mp === ResearchMarketplace.TIKTOK_SHOP) {
+        normalized = filterShopProductsByKeyword(normalized, query.keyword);
+      }
+      const products = normalized
         .slice(0, remaining)
         .map((p) => ({ ...p, marketplace: mp }));
 
       if (products.length === 0) {
-        state.warnings.push(`${mp}: scrape selesai tapi tidak ada produk.`);
+        if (
+          mp === ResearchMarketplace.TIKTOK_SHOP &&
+          !state.tiktokKulqizExpandSubcategories &&
+          items.length > 0
+        ) {
+          state.tiktokKulqizExpandSubcategories = true;
+          state.warnings.push(
+            `${mp}: pass 1 tidak menemukan produk cocok — mencoba subkategori (max 60).`,
+          );
+          await prisma.researchScrapeJob.update({
+            where: { id: jobId },
+            data: { apifyRunId: null },
+          });
+          await prisma.productDiscoveryQuery.update({
+            where: { id: query.id },
+            data: { scrapeState: state },
+          });
+          await startNextMarketplaceRun(jobId);
+          return;
+        }
+
+        const detail =
+          datasetError ??
+          (items.length === 0
+            ? "dataset kosong"
+            : mp === ResearchMarketplace.TIKTOK_SHOP
+              ? "tidak ada produk cocok keyword di kategori beauty TikTok Shop ID"
+              : "format produk tidak dikenali");
+        state.warnings.push(`${mp}: ${detail}`);
       } else {
         await ingestDiscoveryProductsBatch(query.id, products);
+        if (
+          mp === ResearchMarketplace.TIKTOK_SHOP &&
+          products.length < remaining &&
+          !state.tiktokKulqizExpandSubcategories
+        ) {
+          state.warnings.push(
+            `${mp}: hanya ${products.length} produk cocok keyword (limit ${query.productLimit}).`,
+          );
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Ingest gagal";
@@ -331,6 +401,9 @@ export async function pollProductDiscoveryJob(jobId: string): Promise<void> {
     state.warnings.push(`${mp}: scrape gagal (${status}).`);
   }
 
+  if (mp === ResearchMarketplace.TIKTOK_SHOP) {
+    state.tiktokKulqizExpandSubcategories = false;
+  }
   state.nextIndex += 1;
   await prisma.researchScrapeJob.update({
     where: { id: jobId },

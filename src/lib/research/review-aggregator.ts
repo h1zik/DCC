@@ -11,13 +11,45 @@ export type TimelineBucket = {
   negative: number;
 };
 
+export type DemographicHints = {
+  ageBand?: string | null;
+  skinType?: string | null;
+  gender?: string | null;
+};
+
+export type SeverityByTheme = {
+  theme: string;
+  avgSeverity: number;
+  count: number;
+};
+
+export type ReviewDemographics = {
+  skinTypes: { value: string; count: number }[];
+  ageBands: { value: string; count: number }[];
+  genders: { value: string; count: number }[];
+};
+
 type AnalysisRow = {
   sentiment: ReviewSentiment;
   complaintThemes: string[];
   praiseThemes: string[];
   keywords: string[];
   reviewDate: Date | null;
+  complaintSeverity?: number | null;
+  demographicHints?: DemographicHints | null;
 };
+
+function countValues(items: (string | null | undefined)[]) {
+  const map = new Map<string, number>();
+  for (const raw of items) {
+    const value = raw?.trim().toLowerCase();
+    if (!value) continue;
+    map.set(value, (map.get(value) ?? 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count);
+}
 
 function countThemes(items: string[]): ThemeCount[] {
   const map = new Map<string, number>();
@@ -59,6 +91,10 @@ export function aggregateReviewAnalyses(rows: AnalysisRow[]) {
   const allPraises: string[] = [];
   const allKeywords: string[] = [];
   const timelineMap = new Map<string, { positive: number; neutral: number; negative: number }>();
+  const severityMap = new Map<string, { total: number; count: number }>();
+  const skinTypes: (string | null | undefined)[] = [];
+  const ageBands: (string | null | undefined)[] = [];
+  const genders: (string | null | undefined)[] = [];
 
   for (const row of rows) {
     if (row.sentiment === ReviewSentiment.POSITIVE) positive += 1;
@@ -68,6 +104,23 @@ export function aggregateReviewAnalyses(rows: AnalysisRow[]) {
     allComplaints.push(...row.complaintThemes);
     allPraises.push(...row.praiseThemes);
     allKeywords.push(...row.keywords);
+
+    if (typeof row.complaintSeverity === "number" && row.complaintSeverity > 0) {
+      for (const theme of row.complaintThemes) {
+        const key = theme.trim().toLowerCase();
+        if (!key) continue;
+        const cur = severityMap.get(key) ?? { total: 0, count: 0 };
+        cur.total += row.complaintSeverity;
+        cur.count += 1;
+        severityMap.set(key, cur);
+      }
+    }
+
+    if (row.demographicHints) {
+      skinTypes.push(row.demographicHints.skinType);
+      ageBands.push(row.demographicHints.ageBand);
+      genders.push(row.demographicHints.gender);
+    }
 
     const date = row.reviewDate ?? new Date();
     const key = monthKey(date);
@@ -86,6 +139,21 @@ export function aggregateReviewAnalyses(rows: AnalysisRow[]) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, counts]) => ({ month, ...counts }));
 
+  const severityByTheme: SeverityByTheme[] = [...severityMap.entries()]
+    .map(([theme, { total, count }]) => ({
+      theme,
+      avgSeverity: total / count,
+      count,
+    }))
+    .sort((a, b) => b.avgSeverity * b.count - a.avgSeverity * a.count)
+    .slice(0, 10);
+
+  const demographics: ReviewDemographics = {
+    skinTypes: countValues(skinTypes),
+    ageBands: countValues(ageBands),
+    genders: countValues(genders),
+  };
+
   return {
     positivePct: (positive / total) * 100,
     neutralPct: (neutral / total) * 100,
@@ -94,5 +162,7 @@ export function aggregateReviewAnalyses(rows: AnalysisRow[]) {
     topPraises: countThemes(allPraises),
     keywordCloud: countKeywords(allKeywords),
     timelineBuckets,
+    severityByTheme,
+    demographics,
   };
 }

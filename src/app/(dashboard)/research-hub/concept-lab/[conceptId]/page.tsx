@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { parseRiskFactors } from "@/lib/research/concept-lab/types";
 import {
   ConceptDetailClient,
   type ConceptDetailData,
@@ -65,6 +66,7 @@ export default async function ConceptDetailPage({
     status: concept.status,
     conceptData,
     validationScores,
+    riskFactors: parseRiskFactors(concept.riskFactors),
     rooms,
     otherConcepts,
   };

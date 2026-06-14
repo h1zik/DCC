@@ -58,6 +58,7 @@ export async function generateResearchReport(reportId: string): Promise<void> {
       competitorId: config.competitorId,
       digestId: config.digestId,
       modules: config.modules,
+      sources: config.sources,
     });
 
     const prompt = buildReportPrompt({
@@ -75,6 +76,9 @@ export async function generateResearchReport(reportId: string): Promise<void> {
         status: ResearchReportStatus.READY,
         aiSummary: result.aiSummary ?? null,
         sections: result.sections ?? [],
+        actionItems: data.actionItems,
+        feedbackLoop: data.feedbackLoop,
+        metrics: data.activity,
         periodStart,
         periodEnd,
       },
@@ -89,7 +93,8 @@ export async function generateResearchReport(reportId: string): Promise<void> {
   }
 }
 
-export async function createAndGenerateReport(input: {
+/** Create the report row only (status PENDING) without running generation. */
+export async function createReportRecord(input: {
   type: ResearchReportType;
   title?: string;
   config?: ReportConfig;
@@ -104,9 +109,7 @@ export async function createAndGenerateReport(input: {
 
   const report = await prisma.researchReport.create({
     data: {
-      title:
-        input.title ??
-        defaultTitle(input.type, input.config?.category),
+      title: input.title ?? defaultTitle(input.type, input.config?.category),
       type: input.type,
       config: input.config ?? {},
       periodStart,
@@ -115,6 +118,18 @@ export async function createAndGenerateReport(input: {
     },
   });
 
-  await generateResearchReport(report.id);
   return { id: report.id };
+}
+
+export async function createAndGenerateReport(input: {
+  type: ResearchReportType;
+  title?: string;
+  config?: ReportConfig;
+  createdById: string;
+  periodStart?: Date;
+  periodEnd?: Date;
+}): Promise<{ id: string }> {
+  const { id } = await createReportRecord(input);
+  await generateResearchReport(id);
+  return { id };
 }

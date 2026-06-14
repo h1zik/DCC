@@ -8,7 +8,14 @@ import { toast } from "sonner";
 import { createProductBriefFromInsight } from "@/actions/research-brief";
 import { rescrapeReviewIntelSource } from "@/actions/research-review-intelligence";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { CrossCompareChart } from "@/components/research-hub/cross-compare-chart";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
+import {
+  ComplaintSeverityChart,
+  DemographicDonut,
+} from "@/components/research-hub/review-enrichment-charts";
+import { statusToProgress } from "@/components/research-hub/job-status-progress";
 import { KeywordCloud } from "@/components/research-hub/keyword-cloud";
 import { ReviewSentimentChart } from "@/components/research-hub/review-sentiment-chart";
 import { ReviewTimelineChart } from "@/components/research-hub/review-timeline-chart";
@@ -83,6 +90,13 @@ export type ReviewDetailData = {
     keywordCloud: Keyword[];
     timelineBuckets: Timeline[];
     gapOpportunity: string | null;
+    severityByTheme: { theme: string; avgSeverity: number; count: number }[];
+    demographics: {
+      skinTypes: { value: string; count: number }[];
+      ageBands: { value: string; count: number }[];
+      genders: { value: string; count: number }[];
+    };
+    actionPlan: unknown;
   } | null;
 };
 
@@ -211,20 +225,12 @@ export function ReviewDetailClient({
         </span>
 
         {inProgress ? (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200">
-            <RefreshCw
-              className="mt-0.5 size-4 shrink-0 animate-spin"
-              aria-hidden
-            />
-            <p className="text-xs leading-relaxed">
-              <span className="font-semibold">
-                {source.status === "SCRAPING" ? "Scrape" : "Analisis"} berjalan
-                di background.
-              </span>{" "}
-              Halaman ini akan refresh otomatis setiap beberapa detik — kamu
-              boleh menutup tab atau lanjut browsing.
-            </p>
-          </div>
+          <JobProgressBar
+            className="mt-3"
+            title={source.status === "SCRAPING" ? "Scraping review" : "Menganalisis review"}
+            percent={statusToProgress(source.status).percent}
+            stepLabel={`${statusToProgress(source.status).label} — halaman refresh otomatis, kamu boleh lanjut browsing.`}
+          />
         ) : null}
 
         {source.totalReviewsReported != null &&
@@ -256,6 +262,12 @@ export function ReviewDetailClient({
         </div>
       ) : (
         <>
+          <ActionPlanPanel
+            plan={source.summary.actionPlan}
+            title="Rencana Aksi (AI)"
+            emptyHint="Rencana aksi belum tersedia. Jalankan analisis ulang untuk menghasilkan rekomendasi preskriptif."
+          />
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Sentiment">
               <ReviewSentimentChart
@@ -278,6 +290,28 @@ export function ReviewDetailClient({
             </Panel>
             <Panel title="Keyword Cloud">
               <KeywordCloud keywords={source.summary.keywordCloud} />
+            </Panel>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Panel title="Keparahan Keluhan (severity)">
+              <ComplaintSeverityChart items={source.summary.severityByTheme} />
+            </Panel>
+            <Panel title="Demografi Terinferensi (AI)">
+              <p className="text-muted-foreground mb-3 text-xs">
+                Estimasi dari teks review — perlakukan sebagai sinyal, bukan
+                data demografis presisi.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <DemographicDonut
+                  title="Skin type"
+                  items={source.summary.demographics.skinTypes}
+                />
+                <DemographicDonut
+                  title="Kelompok umur"
+                  items={source.summary.demographics.ageBands}
+                />
+              </div>
             </Panel>
           </div>
 

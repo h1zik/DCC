@@ -34,6 +34,8 @@ export default async function ProductDiscoveryDetailPage({
     productCount: query.productCount,
     errorMessage: query.errorMessage,
     shopCount,
+    insights: query.aiInsights ?? null,
+    actionPlan: query.aiActionPlan ?? null,
     products: query.products.map((p) => ({
       id: p.id,
       name: p.name,
@@ -46,6 +48,7 @@ export default async function ProductDiscoveryDetailPage({
       hasPromo: p.hasPromo,
       promoText: p.promoText,
       productUrl: p.productUrl,
+      categoryRank: p.categoryRank,
     })),
   };
 

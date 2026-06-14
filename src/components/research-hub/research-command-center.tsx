@@ -22,8 +22,11 @@ import type {
   DataHealthLevel,
   ModuleHealth,
 } from "@/lib/research/dashboard/get-dashboard-data";
+import { ActionCenterList } from "@/components/research-hub/action-plan-panel";
 import { formatRelativeTime } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+
+type DashboardRecommendation = DashboardData["recommendations"][number];
 
 type ModuleMeta = {
   key: string;
@@ -179,8 +182,20 @@ function severityTone(severity: DashboardAlertSeverity): string {
 
 type DashboardAlertSeverity = "info" | "warning" | "critical";
 
+function asActionCenterItems(recs: DashboardRecommendation[]) {
+  return recs.map((r) => ({
+    id: r.id,
+    owner: r.owner as never,
+    priority: r.priority as never,
+    action: r.action,
+    module: r.module,
+    href: r.href,
+    sourceLabel: r.sourceLabel,
+  }));
+}
+
 export function ResearchCommandCenter({ data }: { data: DashboardData }) {
-  const { kpis, alerts, health, latestReport } = data;
+  const { kpis, alerts, health, latestReport, recommendations } = data;
   const healthByKey = new Map<string, ModuleHealth>(
     health.map((h) => [h.key, h]),
   );
@@ -224,6 +239,23 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
           href="/research-hub/concept-lab"
         />
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Sparkles className="size-4 text-primary" aria-hidden />
+            Action Center — apa yang harus dilakukan
+          </CardTitle>
+          <span className="text-muted-foreground text-xs">
+            Rekomendasi preskriptif lintas-modul (prioritas tertinggi)
+          </span>
+        </CardHeader>
+        <CardContent>
+          <ActionCenterList
+            recommendations={asActionCenterItems(recommendations)}
+          />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">

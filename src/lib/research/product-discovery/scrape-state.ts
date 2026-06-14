@@ -4,6 +4,8 @@ export type ProductDiscoveryScrapeState = {
   marketplaces: ResearchMarketplace[];
   nextIndex: number;
   warnings: string[];
+  /** TikTok kulqiz: pass 2 crawl subkategori jika pass 1 tidak cukup. */
+  tiktokKulqizExpandSubcategories?: boolean;
 };
 
 export function parseProductDiscoveryScrapeState(
@@ -22,7 +24,12 @@ export function parseProductDiscoveryScrapeState(
     const warnings = Array.isArray(o.warnings)
       ? o.warnings.filter((w): w is string => typeof w === "string")
       : [];
-    return { marketplaces, nextIndex, warnings };
+    return {
+      marketplaces,
+      nextIndex,
+      warnings,
+      tiktokKulqizExpandSubcategories: o.tiktokKulqizExpandSubcategories === true,
+    };
   }
 
   return {

@@ -3,6 +3,7 @@ import "server-only";
 import { SocialListeningPlatform } from "@prisma/client";
 import {
   fetchApifyDataset,
+  getApifyRunStatus,
   isApifyConfigured,
   startApifyActor,
   waitForApifyRun,
@@ -25,7 +26,6 @@ function itemId(item: Record<string, unknown>): string {
   return `ig-${caption.slice(0, 40)}`;
 }
 
-/** Apify kadang mengembalikan metadata hashtag, bukan post — flatten ke post. */
 function flattenInstagramItems(
   items: Record<string, unknown>[],
 ): Record<string, unknown>[] {
@@ -52,7 +52,7 @@ function flattenInstagramItems(
   return out;
 }
 
-function parseInstagramItems(
+export function parseInstagramItems(
   items: Record<string, unknown>[],
 ): RawSocialMention[] {
   const mentions: RawSocialMention[] = [];
@@ -119,50 +119,99 @@ function parseInstagramItems(
   return mentions;
 }
 
-export async function scrapeInstagramMentions(
+function instagramTags(keywords: string[]): string[] {
+  return keywords
+    .slice(0, 5)
+    .map((k) => k.replace(/^#/, "").replace(/\s+/g, "").toLowerCase())
+    .filter(Boolean);
+}
+
+export async function startInstagramScrapes(
   keywords: string[],
-): Promise<RawSocialMention[]> {
+): Promise<string[]> {
   const actorId = getInstagramActorId();
-  if (!actorId || keywords.length === 0) return [];
+  const tags = instagramTags(keywords);
+  if (!actorId || tags.length === 0) return [];
 
-  const allMentions: RawSocialMention[] = [];
-
-  for (const keyword of keywords.slice(0, 5)) {
-    const tag = keyword.replace(/^#/, "").replace(/\s+/g, "").toLowerCase();
-    if (!tag) continue;
-
-    try {
+  const runIds = await Promise.all(
+    tags.map(async (tag) => {
       const input = {
         directUrls: [`https://www.instagram.com/explore/tags/${tag}/`],
         resultsType: "posts",
         resultsLimit: 15,
         addParentData: false,
       };
-
       const { runId } = await startApifyActor(actorId, input);
+      return runId;
+    }),
+  );
+
+  return runIds;
+}
+
+const TERMINAL = new Set(["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"]);
+
+export async function pollInstagramScrapes(runIds: string[]): Promise<{
+  done: boolean;
+  succeeded: boolean;
+  mentions: RawSocialMention[];
+  apifyStatuses: string[];
+}> {
+  if (runIds.length === 0) {
+    return { done: true, succeeded: false, mentions: [], apifyStatuses: [] };
+  }
+
+  const statuses = await Promise.all(runIds.map((id) => getApifyRunStatus(id)));
+  const apifyStatuses = statuses.map((s) => s.status);
+  const allDone = apifyStatuses.every((s) => TERMINAL.has(s));
+
+  if (!allDone) {
+    return {
+      done: false,
+      succeeded: false,
+      mentions: [],
+      apifyStatuses,
+    };
+  }
+
+  const mentions: RawSocialMention[] = [];
+  let succeeded = false;
+
+  for (const { status, datasetId } of statuses) {
+    if (status !== "SUCCEEDED") continue;
+    succeeded = true;
+    const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+    mentions.push(...parseInstagramItems(items));
+  }
+
+  return { done: true, succeeded, mentions, apifyStatuses };
+}
+
+/** Blocking scrape — kept for backwards compatibility. */
+export async function scrapeInstagramMentions(
+  keywords: string[],
+): Promise<RawSocialMention[]> {
+  const runIds = await startInstagramScrapes(keywords);
+  if (runIds.length === 0) return [];
+
+  const allMentions: RawSocialMention[] = [];
+
+  for (const runId of runIds) {
+    try {
       const { status, datasetId } = await waitForApifyRun(runId, {
         maxWaitMs: 300_000,
         pollIntervalMs: 5_000,
       });
 
       if (status !== "SUCCEEDED") {
-        console.warn("[social-listening/instagram] run gagal:", status, tag);
+        console.warn("[social-listening/instagram] run gagal:", status);
         continue;
       }
 
       const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
-      const parsed = parseInstagramItems(items);
-      console.info(
-        "[social-listening/instagram]",
-        tag,
-        "items",
-        items.length,
-        "mentions",
-        parsed.length,
-      );
-      allMentions.push(...parsed);
+      allMentions.push(...parseInstagramItems(items));
     } catch (err) {
-      console.warn("[social-listening/instagram] gagal", tag, err);
+      console.warn("[social-listening/instagram] gagal", err);
     }
   }
 

@@ -49,58 +49,128 @@ export function buildMaklonBriefHtml(input: {
   <meta charset="utf-8" />
   <title>Maklon Brief — ${esc(name)}</title>
   <style>
-    body { font-family: system-ui, sans-serif; color: #111; line-height: 1.5; padding: 32px; max-width: 800px; margin: 0 auto; }
-    h1 { font-size: 22px; margin-bottom: 4px; }
-    .meta { color: #666; font-size: 13px; margin-bottom: 24px; }
-    h2 { font-size: 15px; margin-top: 20px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-    ul { margin: 8px 0; padding-left: 20px; }
-    .scores { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
-    .score { background: #f4f4f5; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
-    .score strong { display: block; font-size: 18px; }
-    p { margin: 8px 0; }
+    @page { margin: 36pt; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #111;
+      line-height: 1.6;
+      padding: 40px;
+      max-width: 714px;
+      margin: 0;
+      font-size: 14px;
+    }
+    h1 { font-size: 22px; margin: 0 0 8px; line-height: 1.3; }
+    .meta { color: #666; font-size: 13px; margin: 0; line-height: 1.5; }
+    h2 {
+      font-size: 15px;
+      margin: 0 0 10px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 6px;
+      line-height: 1.35;
+    }
+    p { margin: 0 0 10px; line-height: 1.6; }
+    p:last-child { margin-bottom: 0; }
+    ul {
+      margin: 0;
+      padding: 0 0 0 1.35em;
+      list-style-type: disc;
+      list-style-position: outside;
+    }
+    li {
+      display: list-item;
+      margin: 0 0 8px;
+      line-height: 1.65;
+      padding-left: 0.15em;
+    }
+    li:last-child { margin-bottom: 0; }
+    .scores {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 0 0 12px;
+    }
+    .score {
+      background: #f4f4f5;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .score strong { display: block; font-size: 18px; margin-bottom: 2px; }
+    section[data-pdf-block] {
+      margin: 0 0 24px;
+      padding: 0 0 14px;
+      overflow: visible;
+    }
+    section[data-pdf-block]:last-child { margin-bottom: 0; }
   </style>
 </head>
 <body>
-  <h1>Maklon Brief: ${esc(name)}</h1>
-  <p class="meta">Kategori: ${esc(input.category)} · Target: ${esc(input.targetMarket ?? "—")} · Harga jual: ${priceRange}</p>
+  <section data-pdf-block class="pdf-block">
+    <h1>Maklon Brief: ${esc(name)}</h1>
+    <p class="meta">Kategori: ${esc(input.category)} · Target: ${esc(input.targetMarket ?? "—")} · Harga jual: ${priceRange}</p>
+  </section>
 
-  <h2>Positioning</h2>
-  <p>${esc(input.conceptData.positioningStatement || "—")}</p>
+  <section data-pdf-block class="pdf-block">
+    <h2>Positioning</h2>
+    <p>${esc(input.conceptData.positioningStatement || "—")}</p>
+  </section>
 
-  <h2>Validator Scores</h2>
-  <div class="scores">
-    <div class="score"><strong>${input.validationScores.marketDemand}</strong>Market Demand</div>
-    <div class="score"><strong>${input.validationScores.differentiation}</strong>Differentiation</div>
-    <div class="score"><strong>${input.validationScores.pricingFit}</strong>Pricing Fit</div>
-    <div class="score"><strong>${input.validationScores.overall}</strong>Overall</div>
-  </div>
-  <p>${esc(input.validationScores.aiSummary || "")}</p>
+  <section data-pdf-block class="pdf-block">
+    <h2>Validator Scores</h2>
+    <div class="scores">
+      <div class="score"><strong>${input.validationScores.marketDemand}</strong>Market Demand</div>
+      <div class="score"><strong>${input.validationScores.differentiation}</strong>Differentiation</div>
+      <div class="score"><strong>${input.validationScores.pricingFit}</strong>Pricing Fit</div>
+      <div class="score"><strong>${input.validationScores.overall}</strong>Overall</div>
+    </div>
+    <p>${esc(input.validationScores.aiSummary || "")}</p>
+  </section>
 
-  <h2>Hero Ingredients</h2>
-  <ul>${ingredients || "<li>—</li>"}</ul>
+  <section data-pdf-block class="pdf-block">
+    <h2>Hero Ingredients</h2>
+    <ul>${ingredients || "<li>—</li>"}</ul>
+  </section>
 
-  <h2>Texture & Format</h2>
-  <p>${esc(input.conceptData.textureFormat || "—")}</p>
+  <section data-pdf-block class="pdf-block">
+    <h2>Texture & Format</h2>
+    <p>${esc(input.conceptData.textureFormat || "—")}</p>
+  </section>
 
-  <h2>Key Claims</h2>
-  <ul>${claims || "<li>—</li>"}</ul>
+  <section data-pdf-block class="pdf-block">
+    <h2>Key Claims</h2>
+    <ul>${claims || "<li>—</li>"}</ul>
+  </section>
 
-  <h2>Packaging Direction</h2>
-  <p>${esc(input.conceptData.packagingDirection || "—")}</p>
+  <section data-pdf-block class="pdf-block">
+    <h2>Packaging Direction</h2>
+    <p>${esc(input.conceptData.packagingDirection || "—")}</p>
+  </section>
 
-  <h2>Estimated COGS</h2>
-  <p>${cogsStr}</p>
+  <section data-pdf-block class="pdf-block">
+    <h2>Estimated COGS</h2>
+    <p>${cogsStr}</p>
+  </section>
 
-  <h2>Competitor Comparison</h2>
-  <p>${esc(input.conceptData.competitorComparison || "—")}</p>
+  <section data-pdf-block class="pdf-block">
+    <h2>Competitor Comparison</h2>
+    <p>${esc(input.conceptData.competitorComparison || "—")}</p>
+  </section>
 
-  <h2>Why It Will Win</h2>
-  <p>${esc(input.conceptData.whyItWillWin || "—")}</p>
+  <section data-pdf-block class="pdf-block">
+    <h2>Why It Will Win</h2>
+    <p>${esc(input.conceptData.whyItWillWin || "—")}</p>
+  </section>
 
-  <h2>Risks</h2>
-  <ul>${risks || "<li>—</li>"}</ul>
+  <section data-pdf-block class="pdf-block">
+    <h2>Risks</h2>
+    <ul>${risks || "<li>—</li>"}</ul>
+  </section>
 
-  <p class="meta" style="margin-top:32px">Generated by DCC Research Hub — Product Concept Lab</p>
+  <section data-pdf-block class="pdf-block">
+    <p class="meta" style="margin-top:8px">Generated by DCC Research Hub — Product Concept Lab</p>
+  </section>
 </body>
 </html>`;
 }

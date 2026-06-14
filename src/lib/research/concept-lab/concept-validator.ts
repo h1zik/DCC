@@ -53,6 +53,10 @@ export async function validateProductConceptById(
     });
 
     const result = await generateResearchJson<ValidationScores>(prompt);
+    const decision =
+      result.decision === "GO" || result.decision === "NO_GO"
+        ? result.decision
+        : "PIVOT";
     const scores: ValidationScores = {
       marketDemand: clampScore(result.marketDemand ?? 0),
       differentiation: clampScore(result.differentiation ?? 0),
@@ -66,12 +70,15 @@ export async function validateProductConceptById(
       ),
       risks: result.risks ?? [],
       aiSummary: result.aiSummary ?? "",
+      decision,
+      decisionReason: result.decisionReason ?? "",
     };
 
     await prisma.productConcept.update({
       where: { id: conceptId },
       data: {
         validationScores: scores,
+        riskFactors: context.riskFactors,
         status: ProductConceptStatus.READY,
       },
     });

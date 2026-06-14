@@ -11,6 +11,7 @@ import { createProductConcept } from "@/actions/research-concept-lab";
 import { refreshUspGapAnalysis } from "@/actions/research-usp-gap";
 import { ProductConceptMode } from "@prisma/client";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { ClaimAnalysisPanel } from "@/components/research-hub/claim-analysis-panel";
 import { UspSourcesUsedPanel } from "@/components/research-hub/usp-sources-used-panel";
 import { DifferentiationScoreBadge } from "@/components/research-hub/differentiation-score-badge";
@@ -52,6 +53,12 @@ export type UspDetailData = {
   errorMessage: string | null;
   aiSummary: string | null;
   differentiationScore: number | null;
+  categoryDecision: {
+    verdict: "GO" | "WATCH" | "AVOID";
+    confidence: number;
+    reason: string;
+  } | null;
+  actionPlan: unknown;
   gapMatrix: GapMatrixRow[];
   claimAnalysis: { overused?: string[]; underserved?: string[] };
   positioningMap: {
@@ -67,6 +74,24 @@ export type UspDetailData = {
     brandId: string | null;
     brandName: string | null;
   }[];
+};
+
+const VERDICT_STYLE: Record<
+  "GO" | "WATCH" | "AVOID",
+  { label: string; tone: string }
+> = {
+  GO: {
+    label: "GO — Masuk kategori",
+    tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  },
+  WATCH: {
+    label: "WATCH — Pantau dulu",
+    tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  },
+  AVOID: {
+    label: "AVOID — Hindari",
+    tone: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30",
+  },
 };
 
 function statusTone(status: UspGapStatus) {
@@ -212,6 +237,31 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
       ) : null}
 
       <UspSourcesUsedPanel sources={data.resolvedSources} />
+
+      {data.categoryDecision ? (
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3",
+            VERDICT_STYLE[data.categoryDecision.verdict].tone,
+          )}
+        >
+          <span className="text-sm font-bold uppercase tracking-wide">
+            {VERDICT_STYLE[data.categoryDecision.verdict].label}
+          </span>
+          <span className="text-xs font-medium opacity-80">
+            Keyakinan {Math.round(data.categoryDecision.confidence * 100)}%
+          </span>
+          {data.categoryDecision.reason ? (
+            <span className="text-foreground/80 w-full text-xs leading-snug sm:w-auto sm:flex-1">
+              {data.categoryDecision.reason}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {data.actionPlan ? (
+        <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Gap (AI)" />
+      ) : null}
 
       {data.aiSummary ? (
         <Card>

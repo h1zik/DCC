@@ -12,6 +12,12 @@ import { toast } from "sonner";
 import { createProductBriefFromSocialInsight } from "@/actions/research-brief";
 import { refreshSocialListeningMonitor } from "@/actions/research-social-listening";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import {
+  SentimentBreakdownDonut,
+  SentimentTimelineChart,
+  ShareOfVoiceChart,
+} from "@/components/research-hub/social-insight-charts";
 import { SocialInfluencerTable } from "@/components/research-hub/social-influencer-table";
 import {
   SocialMentionFeed,
@@ -38,6 +44,8 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
+import { statusToProgress } from "@/components/research-hub/job-status-progress";
 import {
   SOCIAL_LISTENING_PLATFORM_LABELS,
   SOCIAL_LISTENING_STATUS_LABELS,
@@ -50,6 +58,12 @@ export type SocialDetailData = {
   keywords: string[];
   platforms: SocialListeningPlatform[];
   batchStatus: SocialListeningStatus | null;
+  batchId: string | null;
+  platformProgress: {
+    platform: SocialListeningPlatform;
+    status: string | null;
+    message: string | null;
+  }[];
   errorMessage: string | null;
   aiSummary: string | null;
   topPainPoints: { theme: string; count: number }[];
@@ -69,6 +83,14 @@ export type SocialDetailData = {
     views: number;
     likes: number;
   }[];
+  categoryBreakdown: { classification: string; count: number; pct: number }[];
+  sentimentTimeline: {
+    date: string;
+    positive: number;
+    negative: number;
+    neutral: number;
+  }[];
+  actionPlan: unknown;
   mentions: MentionFeedRow[];
   rooms: {
     id: string;
@@ -107,6 +129,15 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
     data.batchStatus === "COLLECTING" ||
     data.batchStatus === "ANALYZING" ||
     data.batchStatus === "PENDING";
+
+  const progress = statusToProgress(data.batchStatus ?? "PENDING");
+  const collectingPlatforms = data.platformProgress.filter(
+    (p) => p.status === "COLLECTING",
+  );
+  const stepLabel =
+    collectingPlatforms.length > 0
+      ? collectingPlatforms.map((p) => p.message).filter(Boolean).join(" · ")
+      : progress.label;
 
   const mentionCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -268,6 +299,61 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
         </div>
       </div>
 
+      {inProgress ? (
+        <div className="border-amber-300/60 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/10 rounded-lg border px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          Sync sedang berjalan. Feed mention di bawah menampilkan data sync terakhir
+          yang selesai — akan diperbarui otomatis setelah batch selesai.
+        </div>
+      ) : null}
+
+      {inProgress ? (
+        <JobProgressBar
+          percent={progress.percent}
+          stepLabel={stepLabel}
+          title="Mengumpulkan mention sosial"
+        />
+      ) : null}
+
+      {(inProgress ||
+        data.platformProgress.some((p) => p.status != null)) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">
+              Status per platform
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {data.platformProgress.map(({ platform, status, message }) => (
+              <div
+                key={platform}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm"
+              >
+                <span className="font-medium">
+                  {SOCIAL_LISTENING_PLATFORM_LABELS[platform]}
+                </span>
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                    status === "READY"
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                      : status === "FAILED"
+                        ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+                        : status === "COLLECTING"
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                          : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {status ?? "—"}
+                </span>
+                {message ? (
+                  <p className="text-muted-foreground w-full text-xs">{message}</p>
+                ) : null}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {data.errorMessage ? (
         <p className="text-amber-700 dark:text-amber-300 text-sm">
           {data.errorMessage}
@@ -284,6 +370,42 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
           </CardContent>
         </Card>
       ) : null}
+
+      {data.actionPlan ? (
+        <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Sosial (AI)" />
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Distribusi Sentimen</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SentimentBreakdownDonut data={data.categoryBreakdown} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Tren Sentimen Harian</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SentimentTimelineChart data={data.sentimentTimeline} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Share of Voice</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ShareOfVoiceChart
+              data={mentionCounts.map((m) => ({
+                platform: SOCIAL_LISTENING_PLATFORM_LABELS[m.platform],
+                count: m.count,
+              }))}
+            />
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SocialPainPointsCard items={data.topPainPoints} />

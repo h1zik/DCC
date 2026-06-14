@@ -37,6 +37,14 @@ export default async function CompetitorDetailPage({ params }: Props) {
 
   if (!competitor) notFound();
 
+  const activeJob = await prisma.researchScrapeJob.findFirst({
+    where: {
+      entityId: competitorId,
+      type: "COMPETITOR_SNAPSHOT",
+      status: { in: ["PENDING", "RUNNING"] },
+    },
+  });
+
   const latestPromoBySku = new Map<string, { hasPromo: boolean; promoText: string | null }>();
   for (const snap of [...competitor.snapshots].reverse()) {
     if (snap.skuId && !latestPromoBySku.has(snap.skuId)) {
@@ -109,6 +117,8 @@ export default async function CompetitorDetailPage({ params }: Props) {
     shopUrl: competitor.shopUrl,
     skus: skusWithDelta,
     insights,
+    aiInsights: competitor.aiInsights ?? null,
+    isScraping: Boolean(activeJob),
     currentPriceBar: buildCurrentPriceBarData(
       competitor.skus.map((s) => ({
         ...s,

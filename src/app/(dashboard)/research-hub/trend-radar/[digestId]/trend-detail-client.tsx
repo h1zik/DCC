@@ -7,8 +7,10 @@ import { ArrowLeft, FileText, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { createProductBriefFromTrend } from "@/actions/research-brief";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { TrendDimensionBadge } from "@/components/research-hub/trend-dimension-badge";
 import { TrendPhaseBoard } from "@/components/research-hub/trend-phase-board";
+import { TrendScoreChart } from "@/components/research-hub/trend-score-chart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -31,6 +33,9 @@ import {
   TREND_RADAR_STATUS_LABELS,
   formatRelativeTime,
 } from "@/lib/research/labels";
+import {
+  summarizeEnabledSources,
+} from "@/lib/research/trend-radar/trend-source-config-types";
 import { cn } from "@/lib/utils";
 
 export type TrendDetailData = {
@@ -43,6 +48,8 @@ export type TrendDetailData = {
   watchlistName: string | null;
   generatedAt: string | null;
   highlightItemId: string | null;
+  actionPlan: unknown;
+  sourceLabels: string[];
   items: {
     id: string;
     name: string;
@@ -123,12 +130,45 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
             ? ` · ${formatRelativeTime(new Date(data.generatedAt))}`
             : ""}
         </p>
+        {data.sourceLabels.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {data.sourceLabels.map((label) => (
+              <span
+                key={label}
+                className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-medium"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {data.narrative ? (
         <Card>
           <CardContent className="pt-4">
             <p className="text-sm leading-relaxed">{data.narrative}</p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {data.actionPlan ? (
+        <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Tren (AI)" />
+      ) : null}
+
+      {data.items.some((i) => typeof i.score === "number") ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Momentum Tren (score)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TrendScoreChart
+              items={data.items.map((i) => ({
+                name: i.name,
+                phase: i.phase,
+                score: i.score,
+              }))}
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -161,6 +201,11 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
                   <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-semibold">
                     {TREND_PHASE_LABELS[item.phase]}
                   </span>
+                  {typeof item.score === "number" ? (
+                    <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums">
+                      score {Math.round(item.score * 100)}
+                    </span>
+                  ) : null}
                   {item.isGlobalPipeline ? (
                     <span className="text-muted-foreground inline-flex items-center gap-0.5 text-[10px]">
                       <Globe className="size-3" aria-hidden />
@@ -224,7 +269,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
       </div>
 
       <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Explore sebagai Product Idea</DialogTitle>
           </DialogHeader>

@@ -3,9 +3,19 @@ import "server-only";
 import { ResearchMarketplace, ResearchScrapeJobType } from "@prisma/client";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
 import { isApifyConfigured } from "@/lib/apify/client";
+import {
+  buildKulqizDiscoveryInput,
+  buildKulqizReviewInput,
+  buildKulqizShopInput,
+  isKulqizTikTokShopActor,
+} from "@/lib/apify/tiktok-kulqiz";
 
 const GIO21_SHOPEE_SCRAPER = "gio21~shopee-scraper";
 const GIO21_SHOPEE_PRODUCT_DETAIL = "gio21~shopee-product-detail";
+
+function normalizeActorId(actorId: string | null): string {
+  return (actorId ?? "").replace(/\//g, "~").toLowerCase();
+}
 
 export function getReviewActorId(marketplace: ResearchMarketplace): string | null {
   switch (marketplace) {
@@ -53,17 +63,30 @@ export function shopeeCountryFromUrl(url: string): string {
 
 function isGio21ProductDetailActor(actorId: string | null): boolean {
   if (!actorId) return false;
-  const n = actorId.replace(/\//g, "~").toLowerCase();
+  const n = normalizeActorId(actorId);
   return n.includes("shopee-product-detail") || n === GIO21_SHOPEE_PRODUCT_DETAIL;
 }
 
 function isGio21ShopeeScraperActor(actorId: string | null): boolean {
   if (!actorId) return false;
-  const n = actorId.replace(/\//g, "~").toLowerCase();
+  const n = normalizeActorId(actorId);
   return (
     (n.includes("gio21") && n.includes("shopee-scraper")) ||
     n === GIO21_SHOPEE_SCRAPER
   );
+}
+
+export function buildTikTokSearchActorInput(
+  actorId: string | null,
+  _keyword: string,
+  productLimit: number,
+  expandSubcategories = false,
+): Record<string, unknown> {
+  if (isKulqizTikTokShopActor(actorId)) {
+    return buildKulqizDiscoveryInput(productLimit, expandSubcategories);
+  }
+  const limit = Math.min(Math.max(productLimit, 1), 500);
+  return { searchKeywords: [_keyword.trim()], maxProducts: Math.max(limit, 20) };
 }
 
 export function buildReviewActorInput(
@@ -90,6 +113,11 @@ export function buildReviewActorInput(
         results_wanted: 500,
         max_pages: 50,
       };
+    case ResearchMarketplace.TIKTOK_SHOP:
+      if (isKulqizTikTokShopActor(actorId)) {
+        return buildKulqizReviewInput(productUrl);
+      }
+      return { url: productUrl, maxReviews: 500 };
     default:
       return { url: productUrl, maxReviews: 500 };
   }
@@ -114,6 +142,11 @@ export function buildShopActorInput(
       return { shopUrls: [shopUrl], maxProducts: 100 };
     case ResearchMarketplace.TOKOPEDIA:
       return { shopUrl, maxProducts: 100 };
+    case ResearchMarketplace.TIKTOK_SHOP:
+      if (isKulqizTikTokShopActor(actorId)) {
+        return buildKulqizShopInput(shopUrl);
+      }
+      return { urls: [shopUrl.trim()], maxProducts: 100 };
     default:
       return { url: shopUrl, maxProducts: 100 };
   }
@@ -168,6 +201,8 @@ export function buildSearchActorInput(
       return { keywords: [keyword.trim()], maxProducts: limit };
     case ResearchMarketplace.TOKOPEDIA:
       return { keyword: keyword.trim(), maxProducts: limit };
+    case ResearchMarketplace.TIKTOK_SHOP:
+      return buildTikTokSearchActorInput(actorId, keyword, limit);
     default:
       return { search: keyword.trim(), maxProducts: limit };
   }
@@ -180,7 +215,7 @@ export function searchActorEnvHint(marketplace: ResearchMarketplace): string {
     case ResearchMarketplace.TOKOPEDIA:
       return "Set APIFY_ACTOR_TOKOPEDIA_SEARCH atau APIFY_ACTOR_TOKOPEDIA_SHOP.";
     default:
-      return "Set APIFY_ACTOR_TIKTOK_SEARCH atau APIFY_ACTOR_TIKTOK_SHOP.";
+      return "Set APIFY_ACTOR_TIKTOK_SEARCH (kulqiz~tiktok-shop-scraper).";
   }
 }
 
@@ -189,7 +224,13 @@ export function actorEnvHint(
   marketplace: ResearchMarketplace,
 ): string {
   if (type === ResearchScrapeJobType.REVIEW_SCRAPE) {
+    if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
+      return "Set APIFY_ACTOR_TIKTOK_REVIEWS (kulqiz~tiktok-shop-scraper).";
+    }
     return `Set env APIFY_ACTOR_*_REVIEWS untuk ${marketplace} (Shopee: gio21~shopee-product-detail).`;
+  }
+  if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
+    return "Set APIFY_ACTOR_TIKTOK_SHOP (kulqiz~tiktok-shop-scraper).";
   }
   return `Set env APIFY_ACTOR_*_SHOP untuk ${marketplace} (Shopee: gio21~shopee-scraper).`;
 }

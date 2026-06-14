@@ -26,6 +26,16 @@ export function buildReportPrompt(input: {
   data: ReportAggregate;
   category?: string;
 }): string {
+  const actionItemsBlock =
+    input.data.actionItems.length > 0
+      ? `\nAction items lintas-modul (WAJIB rangkum & rujuk dalam satu section "Rekomendasi Aksi"):\n${input.data.actionItems
+          .map(
+            (a) =>
+              `- [${a.priority}/${a.owner}] ${a.action} — ${a.rationale} (sumber: ${a.sourceLabel ?? a.module})`,
+          )
+          .join("\n")}`
+      : "";
+
   return `${baseInstruction(input.type)}
 
 Judul laporan: ${input.title}
@@ -34,6 +44,12 @@ Periode: ${input.data.periodStart.toISOString().slice(0, 10)} s/d ${input.data.p
 
 Data agregat:
 ${JSON.stringify(input.data, null, 2)}
+${actionItemsBlock}
+
+Panduan:
+- Jika ada uspDetail, buat section yang membahas gap matrix teratas + keputusan kategori (GO/WATCH/AVOID).
+- Jika ada conceptDetail, ringkas konsep + keputusan validasi (GO/PIVOT/NO_GO).
+- Selalu sertakan satu section "Rekomendasi Aksi" yang menyatukan action items lintas modul menjadi langkah konkret per owner.
 
 Balas JSON:
 {
@@ -43,7 +59,7 @@ Balas JSON:
       "id": "section-1",
       "title": "Judul section",
       "body": "Konten narasi markdown-style (paragraf + bullet jika perlu)",
-      "moduleRef": "reviewIntel|competitor|trendRadar|keywordIntel|socialListening|uspAnalyzer|conceptLab"
+      "moduleRef": "reviewIntel|competitor|trendRadar|keywordIntel|socialListening|uspAnalyzer|conceptLab|actionPlan"
     }
   ]
 }

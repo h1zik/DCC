@@ -7,9 +7,43 @@ import {
   withGeminiRetry,
 } from "@/lib/agent/provider";
 
+/**
+ * Extract a JSON object/array from a raw model response. Strips markdown
+ * fences and, as a last resort, slices from the first `{`/`[` to the matching
+ * last bracket so trailing prose doesn't break `JSON.parse`.
+ */
+function extractJson(raw: string): string {
+  let text = raw.trim();
+  text = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "");
+  text = text.replace(/```\s*$/i, "").trim();
+
+  try {
+    JSON.parse(text);
+    return text;
+  } catch {
+    /* fall through to bracket slicing */
+  }
+
+  const firstObj = text.indexOf("{");
+  const firstArr = text.indexOf("[");
+  const start =
+    firstObj === -1
+      ? firstArr
+      : firstArr === -1
+        ? firstObj
+        : Math.min(firstObj, firstArr);
+  if (start === -1) return text;
+
+  const openChar = text[start];
+  const closeChar = openChar === "{" ? "}" : "]";
+  const end = text.lastIndexOf(closeChar);
+  if (end > start) return text.slice(start, end + 1);
+  return text;
+}
+
 export async function generateResearchJson<T>(
   prompt: string,
-  opts?: { maxRetries?: number },
+  opts?: { maxRetries?: number; validate?: (parsed: T) => boolean },
 ): Promise<T> {
   const apiKey = resolveAgentApiKey();
   if (!apiKey) {
@@ -37,9 +71,13 @@ export async function generateResearchJson<T>(
         { maxRetries: opts?.maxRetries ?? 2 },
       );
 
-      const text = result.response.text().trim();
-      const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "");
-      return JSON.parse(cleaned) as T;
+      const text = result.response.text();
+      const parsed = JSON.parse(extractJson(text)) as T;
+
+      if (opts?.validate && !opts.validate(parsed)) {
+        throw new Error("Validasi struktur JSON gagal.");
+      }
+      return parsed;
     } catch (err) {
       lastError = err;
       console.warn(`[research/gemini] model ${modelName} gagal`, err);

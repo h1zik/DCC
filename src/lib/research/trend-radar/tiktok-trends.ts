@@ -13,25 +13,6 @@ export type TikTokTrendSignal = {
   views?: number;
 };
 
-const DEFAULT_HASHTAGS = [
-  "skincare",
-  "beautyindonesia",
-  "bodycare",
-  "sunscreen",
-  "skincareroutine",
-];
-
-function getTrendHashtags(): string[] {
-  const env = process.env.TREND_TIKTOK_HASHTAGS?.trim();
-  if (env) {
-    return env
-      .split(",")
-      .map((h) => h.trim().replace(/^#/, ""))
-      .filter(Boolean);
-  }
-  return DEFAULT_HASHTAGS;
-}
-
 /** Input schema clockworks/tiktok-scraper — tanpa download media untuk hemat biaya. */
 export function buildClockworksTikTokInput(
   hashtags: string[],
@@ -132,16 +113,23 @@ export function isTikTokTrendsConfigured(): boolean {
   );
 }
 
-export async function fetchTikTokTrendSignals(): Promise<TikTokTrendSignal[]> {
+export async function fetchTikTokTrendSignals(
+  hashtags: string[],
+): Promise<TikTokTrendSignal[]> {
   const actorId = process.env.APIFY_ACTOR_TIKTOK_TRENDS?.trim();
   if (!actorId) return [];
 
-  const hashtags = getTrendHashtags();
+  const normalized = [
+    ...new Set(
+      hashtags.map((h) => h.trim().replace(/^#/, "")).filter(Boolean),
+    ),
+  ];
+  if (normalized.length === 0) return [];
 
   try {
     const { runId } = await startApifyActor(
       actorId,
-      buildClockworksTikTokInput(hashtags),
+      buildClockworksTikTokInput(normalized),
     );
 
     const { status, datasetId } = await waitForApifyRun(runId, {
@@ -155,7 +143,7 @@ export async function fetchTikTokTrendSignals(): Promise<TikTokTrendSignal[]> {
     }
 
     const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
-    return parseTikTokScraperItems(items, hashtags);
+    return parseTikTokScraperItems(items, normalized);
   } catch (err) {
     console.warn("[trend-radar/tiktok] gagal", err);
     return [];

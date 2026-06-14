@@ -22,6 +22,17 @@ export type ReportConfig = {
   competitorId?: string;
   digestId?: string;
   dateRange?: { start: string; end: string };
+  /** Specific source records per module; omit = use latest. */
+  sources?: {
+    reviewSourceId?: string;
+    competitorId?: string;
+    digestId?: string;
+    keywordQueryId?: string;
+    socialMonitorId?: string;
+    uspAnalysisId?: string;
+    conceptId?: string;
+    productDiscoveryQueryId?: string;
+  };
 };
 
 export function parseReportSections(raw: unknown): ReportSection[] {
