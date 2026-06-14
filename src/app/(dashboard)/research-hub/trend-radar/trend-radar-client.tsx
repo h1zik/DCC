@@ -3,15 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { TrendPhase, TrendRadarStatus } from "@prisma/client";
-import { Plus, Radar, RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, Plus, Radar, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createTrendWatchlist,
   deleteTrendWatchlist,
   refreshGlobalTrendDigest,
   refreshTrendWatchlist,
+  updateTrendWatchlist,
 } from "@/actions/research-trend-radar";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import {
+  TrendSourceConfigPicker,
+  validateTrendConfigClient,
+} from "@/components/research-hub/trend-source-config-picker";
 import { TrendArchiveTable } from "@/components/research-hub/trend-archive-table";
 import { TrendPhaseBoard } from "@/components/research-hub/trend-phase-board";
 import { Button } from "@/components/ui/button";
@@ -22,11 +27,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatRelativeTime } from "@/lib/research/labels";
+import type { TrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config-types";
 
 export type TrendRadarPageData = {
   latestGlobal: {
@@ -57,20 +62,31 @@ export type TrendRadarPageData = {
     name: string;
     keywords: string[];
     isActive: boolean;
+    sourceConfig: TrendSourceConfig | null;
     latestDigest: {
       id: string;
       status: TrendRadarStatus;
       generatedAt: string | null;
     } | null;
   }[];
+  globalSourceConfig: TrendSourceConfig;
+  tiktokConfigured: boolean;
 };
+
+type DialogMode = "create" | "edit" | "global" | null;
 
 export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<DialogMode>(null);
+  const [editWatchlistId, setEditWatchlistId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [keywords, setKeywords] = useState("");
+  const [sourceConfig, setSourceConfig] = useState<TrendSourceConfig>(
+    data.globalSourceConfig,
+  );
+
+  const dialogOpen = dialogMode !== null;
 
   const hasInProgress =
     data.latestGlobal?.status === "COLLECTING" ||
@@ -87,19 +103,52 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
     return () => window.clearInterval(id);
   }, [hasInProgress, router]);
 
+  function openCreateDialog() {
+    setDialogMode("create");
+    setEditWatchlistId(null);
+    setName("");
+    setKeywords("");
+    setSourceConfig(data.globalSourceConfig);
+  }
+
+  function openEditDialog(watchlist: TrendRadarPageData["watchlists"][number]) {
+    setDialogMode("edit");
+    setEditWatchlistId(watchlist.id);
+    setName(watchlist.name);
+    setKeywords(watchlist.keywords.join(", "));
+    setSourceConfig(watchlist.sourceConfig ?? data.globalSourceConfig);
+  }
+
+  function openGlobalDialog() {
+    setDialogMode("global");
+    setSourceConfig(data.globalSourceConfig);
+  }
+
+  function closeDialog() {
+    setDialogMode(null);
+    setEditWatchlistId(null);
+  }
+
   function handleRefreshGlobal() {
+    const err = validateTrendConfigClient(sourceConfig);
+    if (err) {
+      toast.error(err);
+      openGlobalDialog();
+      return;
+    }
     startTransition(async () => {
       try {
-        await refreshGlobalTrendDigest();
+        await refreshGlobalTrendDigest(sourceConfig);
         toast.success("Digest global sedang di-generate.");
+        closeDialog();
         router.refresh();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal memproses permintaan."));
       }
     });
   }
 
-  function handleCreateWatchlist() {
+  function handleSaveWatchlist() {
     const kw = keywords
       .split(",")
       .map((k) => k.trim())
@@ -108,28 +157,54 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
       toast.error("Nama dan minimal 1 keyword diperlukan.");
       return;
     }
+    const err = validateTrendConfigClient(sourceConfig);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+
     startTransition(async () => {
       try {
-        await createTrendWatchlist({ name: name.trim(), keywords: kw });
-        toast.success("Watchlist dibuat.");
-        setDialogOpen(false);
-        setName("");
-        setKeywords("");
+        if (dialogMode === "edit" && editWatchlistId) {
+          await updateTrendWatchlist({
+            watchlistId: editWatchlistId,
+            name: name.trim(),
+            keywords: kw,
+            sourceConfig,
+          });
+          toast.success("Watchlist diperbarui.");
+        } else {
+          await createTrendWatchlist({
+            name: name.trim(),
+            keywords: kw,
+            sourceConfig,
+          });
+          toast.success("Watchlist dibuat.");
+        }
+        closeDialog();
         router.refresh();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal memproses permintaan."));
       }
     });
   }
 
   function handleRefreshWatchlist(id: string) {
+    const wl = data.watchlists.find((w) => w.id === id);
+    const cfg = wl?.sourceConfig ?? data.globalSourceConfig;
+    const err = validateTrendConfigClient(cfg);
+    if (err) {
+      toast.error(err);
+      if (wl) openEditDialog(wl);
+      return;
+    }
     startTransition(async () => {
       try {
         await refreshTrendWatchlist(id);
         toast.success("Digest watchlist sedang di-generate.");
         router.refresh();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal memproses permintaan."));
       }
     });
   }
@@ -141,11 +216,18 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
         await deleteTrendWatchlist(id);
         toast.success("Watchlist dihapus.");
         router.refresh();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal memproses permintaan."));
       }
     });
   }
+
+  const dialogTitle =
+    dialogMode === "global"
+      ? "Sumber Digest Global"
+      : dialogMode === "edit"
+        ? "Edit Watchlist"
+        : "Tambah Watchlist";
 
   return (
     <div className="flex flex-col gap-6">
@@ -158,7 +240,7 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
         <Button
           size="sm"
           variant="outline"
-          onClick={handleRefreshGlobal}
+          onClick={openGlobalDialog}
           disabled={pending}
         >
           <RefreshCw className="size-3.5" aria-hidden />
@@ -195,46 +277,10 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Watchlist</CardTitle>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger
-              render={
-                <Button size="sm" variant="outline">
-                  <Plus className="size-3.5" aria-hidden />
-                  Tambah
-                </Button>
-              }
-            />
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Tambah Watchlist</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-3 py-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="wl-name">Nama watchlist</Label>
-                  <Input
-                    id="wl-name"
-                    placeholder="Ceramide & Barrier"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="wl-kw">Seed keywords (pisahkan koma)</Label>
-                  <Input
-                    id="wl-kw"
-                    placeholder="ceramide, barrier cream, skin barrier"
-                    value={keywords}
-                    onChange={(e) => setKeywords(e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button onClick={handleCreateWatchlist} disabled={pending}>
-                  Simpan
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button size="sm" variant="outline" onClick={openCreateDialog}>
+            <Plus className="size-3.5" aria-hidden />
+            Tambah
+          </Button>
         </CardHeader>
         <CardContent>
           {data.watchlists.length === 0 ? (
@@ -267,6 +313,15 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      onClick={() => openEditDialog(w)}
+                      disabled={pending}
+                      title="Edit watchlist"
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => handleDeleteWatchlist(w.id)}
                       disabled={pending}
                       title="Hapus"
@@ -289,6 +344,73 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
           <TrendArchiveTable digests={data.digests} />
         </CardContent>
       </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent className="flex max-h-[92vh] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-border/60 border-b px-6 py-4">
+            <DialogTitle>{dialogTitle}</DialogTitle>
+          </DialogHeader>
+
+          <div className="max-h-[min(70vh,640px)] overflow-y-auto px-6 py-4">
+          {dialogMode === "global" ? (
+            <TrendSourceConfigPicker
+              config={sourceConfig}
+              onChange={setSourceConfig}
+              tiktokConfigured={data.tiktokConfigured}
+            />
+          ) : (
+            <div className="grid gap-4 py-1">
+              <div className="grid gap-1.5">
+                <Label htmlFor="wl-name">Nama watchlist</Label>
+                <Input
+                  id="wl-name"
+                  placeholder="Ceramide & Barrier"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="wl-kw">Seed keywords (pisahkan koma)</Label>
+                <Input
+                  id="wl-kw"
+                  placeholder="ceramide, barrier cream, skin barrier"
+                  value={keywords}
+                  onChange={(e) => setKeywords(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Sumber data</Label>
+                <TrendSourceConfigPicker
+                  config={sourceConfig}
+                  onChange={setSourceConfig}
+                  tiktokConfigured={data.tiktokConfigured}
+                />
+              </div>
+            </div>
+          )}
+          </div>
+
+          <DialogFooter className="border-border/60 bg-muted/15 border-t px-6 py-4">
+            <Button variant="outline" onClick={closeDialog} disabled={pending}>
+              Batal
+            </Button>
+            <Button
+              onClick={
+                dialogMode === "global" ? handleRefreshGlobal : handleSaveWatchlist
+              }
+              disabled={pending}
+            >
+              {dialogMode === "global"
+                ? pending
+                  ? "Generating…"
+                  : "Generate Digest"
+                : pending
+                  ? "Menyimpan…"
+                  : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

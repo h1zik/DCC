@@ -91,6 +91,7 @@ export default async function KeywordDetailPage({ params }: Props) {
     clusters: Array.isArray(query.result?.clusters)
       ? (query.result.clusters as KeywordDetailData["clusters"])
       : [],
+    actionPlan: query.result?.aiActionPlan ?? null,
     rooms: rooms.map((r) => ({
       id: r.id,
       name: r.name,

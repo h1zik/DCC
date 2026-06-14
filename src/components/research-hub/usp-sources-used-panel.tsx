@@ -117,9 +117,9 @@ export function UspSourcesUsedPanel({
                 </Badge>
               </div>
               <ul className="divide-border/50 divide-y p-1.5">
-                {refs.map((ref) => (
-                  <li key={ref.id}>
-                    <SourceLink ref={ref} />
+                {refs.map((src) => (
+                  <li key={src.id}>
+                    <SourceLink source={src} />
                   </li>
                 ))}
               </ul>
@@ -131,19 +131,19 @@ export function UspSourcesUsedPanel({
   );
 }
 
-function SourceLink({ ref: sourceRef }: { ref: ResolvedSourceRef }) {
+function SourceLink({ source }: { source: ResolvedSourceRef }) {
   return (
     <Link
-      href={sourceRef.href}
+      href={source.href}
       className="group hover:bg-muted/50 flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors"
     >
       <span className="min-w-0 flex-1">
         <span className="text-foreground group-hover:text-primary block truncate text-sm font-medium transition-colors">
-          {sourceRef.label}
+          {source.label}
         </span>
-        {sourceRef.meta ? (
+        {source.meta ? (
           <span className="text-muted-foreground block truncate text-[11px]">
-            {sourceRef.meta}
+            {source.meta}
           </span>
         ) : null}
       </span>

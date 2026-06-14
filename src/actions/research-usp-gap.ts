@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMarketAnalyst } from "@/lib/research/auth";
@@ -54,12 +55,15 @@ export async function createUspGapAnalysis(
     },
   });
 
-  try {
-    await analyzeUspGap(analysis.id);
-  } catch (err) {
-    console.error("[createUspGapAnalysis] analisis gagal", err);
-    throw err;
-  }
+  // Non-blocking: kembalikan segera, jalankan analisis di background.
+  // UI memantau via status (GATHERING -> ANALYZING -> READY).
+  after(async () => {
+    try {
+      await analyzeUspGap(analysis.id);
+    } catch (err) {
+      console.error("[createUspGapAnalysis] analisis gagal", err);
+    }
+  });
 
   revalidatePath("/research-hub/usp-analyzer");
   return { id: analysis.id };
@@ -69,12 +73,18 @@ export async function refreshUspGapAnalysis(analysisId: string) {
   await requireMarketAnalyst();
   z.string().min(1).parse(analysisId);
 
-  try {
-    await analyzeUspGap(analysisId);
-  } catch (err) {
-    console.error("[refreshUspGapAnalysis] gagal", err);
-    throw err;
-  }
+  await prisma.uspGapAnalysis.update({
+    where: { id: analysisId },
+    data: { status: "GATHERING", errorMessage: null },
+  });
+
+  after(async () => {
+    try {
+      await analyzeUspGap(analysisId);
+    } catch (err) {
+      console.error("[refreshUspGapAnalysis] gagal", err);
+    }
+  });
 
   revalidatePath("/research-hub/usp-analyzer");
   revalidatePath(`/research-hub/usp-analyzer/${analysisId}`);

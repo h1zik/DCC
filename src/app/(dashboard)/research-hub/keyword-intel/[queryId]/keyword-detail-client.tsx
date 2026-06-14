@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { createProductBriefFromKeyword } from "@/actions/research-brief";
 import { refreshKeywordIntelQuery } from "@/actions/research-keyword-intel";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { CopyKeywordsPanel } from "@/components/research-hub/copy-keywords-panel";
 import {
   KeywordGapList,
@@ -69,6 +70,7 @@ export type KeywordDetailData = {
   };
   seasonalCalendar: SeasonalMonth[];
   clusters: { name: string; keywords: string[] }[];
+  actionPlan: unknown;
   rooms: {
     id: string;
     name: string;
@@ -85,6 +87,16 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
   const [projectName, setProjectName] = useState(`Keyword: ${data.category}`);
 
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
+
+  const volumeByKeyword = data.matrix.reduce<Record<string, number>>(
+    (acc, row) => {
+      if (typeof row.volume === "number" && row.volume > 0) {
+        acc[row.keyword.trim().toLowerCase()] = row.volume;
+      }
+      return acc;
+    },
+    {},
+  );
 
   function handleRefresh() {
     startTransition(async () => {
@@ -247,6 +259,10 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
         </Card>
       ) : null}
 
+      {data.actionPlan ? (
+        <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Keyword (AI)" />
+      ) : null}
+
       {isProcessing ? (
         <p className="text-muted-foreground text-sm">
           Mengumpulkan dan menganalisis keyword…
@@ -284,7 +300,10 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
               <CardTitle className="text-base">Seasonal Keyword Calendar</CardTitle>
             </CardHeader>
             <CardContent>
-              <SeasonalKeywordChart data={data.seasonalCalendar} />
+              <SeasonalKeywordChart
+                data={data.seasonalCalendar}
+                volumeByKeyword={volumeByKeyword}
+              />
             </CardContent>
           </Card>
 

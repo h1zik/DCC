@@ -5,9 +5,16 @@ import { NotificationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
 import { generateTrendDigest } from "@/lib/research/trend-radar/trend-analyzer";
+import {
+  getDefaultTrendSourceConfig,
+  parseTrendSourceConfigJson,
+} from "@/lib/research/trend-radar/trend-source-config";
 
 export async function generateGlobalWeeklyDigest(): Promise<{ digestId: string }> {
-  const digestId = await generateTrendDigest({ isGlobal: true });
+  const digestId = await generateTrendDigest({
+    isGlobal: true,
+    sourceConfig: getDefaultTrendSourceConfig(),
+  });
   return { digestId };
 }
 
@@ -19,11 +26,15 @@ export async function generateWatchlistDigests(): Promise<{ queued: number }> {
   let queued = 0;
   for (const wl of watchlists) {
     try {
+      const sourceConfig =
+        parseTrendSourceConfigJson(wl.sourceConfig) ??
+        getDefaultTrendSourceConfig();
       await generateTrendDigest({
         isGlobal: false,
         watchlistId: wl.id,
         seedKeywords: wl.keywords,
         watchlistName: wl.name,
+        sourceConfig,
       });
       queued += 1;
     } catch (err) {

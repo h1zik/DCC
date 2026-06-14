@@ -34,6 +34,47 @@ function parseKeywords(raw: unknown): { word: string; count: number }[] {
     .map((x) => ({ word: String(x.word), count: Number(x.count) }));
 }
 
+function parseSeverity(
+  raw: unknown,
+): { theme: string; avgSeverity: number; count: number }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (x): x is { theme: string; avgSeverity: number; count: number } =>
+        typeof x === "object" && x != null && "theme" in x,
+    )
+    .map((x) => ({
+      theme: String(x.theme),
+      avgSeverity: Number(x.avgSeverity ?? 0),
+      count: Number(x.count ?? 0),
+    }));
+}
+
+function parseDemographics(raw: unknown): {
+  skinTypes: { value: string; count: number }[];
+  ageBands: { value: string; count: number }[];
+  genders: { value: string; count: number }[];
+} {
+  const empty = { skinTypes: [], ageBands: [], genders: [] };
+  if (!raw || typeof raw !== "object") return empty;
+  const obj = raw as Record<string, unknown>;
+  const pick = (key: string): { value: string; count: number }[] => {
+    const arr = obj[key];
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(
+        (x): x is { value: string; count: number } =>
+          typeof x === "object" && x != null && "value" in x,
+      )
+      .map((x) => ({ value: String(x.value), count: Number(x.count ?? 0) }));
+  };
+  return {
+    skinTypes: pick("skinTypes"),
+    ageBands: pick("ageBands"),
+    genders: pick("genders"),
+  };
+}
+
 function parseTimeline(
   raw: unknown,
 ): { month: string; positive: number; neutral: number; negative: number }[] {
@@ -108,6 +149,9 @@ export default async function ReviewDetailPage({ params }: Props) {
           keywordCloud: parseKeywords(source.summary.keywordCloud),
           timelineBuckets: parseTimeline(source.summary.timelineBuckets),
           gapOpportunity: source.summary.gapOpportunity,
+          severityByTheme: parseSeverity(source.summary.severityByTheme),
+          demographics: parseDemographics(source.summary.demographics),
+          actionPlan: source.summary.aiActionPlan ?? null,
         }
       : null,
   };

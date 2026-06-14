@@ -1,11 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { SocialListeningPlatform } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMarketAnalyst } from "@/lib/research/auth";
-import { syncSocialListeningMonitor } from "@/lib/research/social-listening/social-sync";
+import {
+  beginSocialListeningSync,
+  finalizeSocialListeningBatch,
+} from "@/lib/research/social-listening/social-sync";
 
 const monitorSchema = z.object({
   name: z.string().min(1).max(120),
@@ -39,12 +43,15 @@ export async function refreshSocialListeningMonitor(monitorId: string) {
   await requireMarketAnalyst();
   z.string().min(1).parse(monitorId);
 
-  try {
-    await syncSocialListeningMonitor(monitorId);
-  } catch (err) {
-    console.error("[refreshSocialListeningMonitor] gagal", err);
-    throw err;
-  }
+  const { batchId } = await beginSocialListeningSync(monitorId);
+
+  after(async () => {
+    try {
+      await finalizeSocialListeningBatch(batchId);
+    } catch (err) {
+      console.error("[refreshSocialListeningMonitor] finalize gagal", err);
+    }
+  });
 
   revalidatePath("/research-hub/social-listening");
   revalidatePath(`/research-hub/social-listening/${monitorId}`);

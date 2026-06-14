@@ -9,6 +9,15 @@ import {
 import { parseContextModules } from "@/lib/research/usp-gap/list-context-sources";
 import { normalizePositioningMap } from "@/lib/research/usp-gap/positioning-chart";
 import { buildUspGapAnalysisPrompt } from "@/lib/research/usp-gap/prompts/usp-gap-analysis";
+import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
+import type { ActionPlan } from "@/lib/research/prescriptive/types";
+
+type CategoryDecision = {
+  verdict: "GO" | "WATCH" | "AVOID";
+  confidence: number;
+  reason: string;
+};
 
 type AnalysisResult = {
   gapMatrix: {
@@ -16,6 +25,9 @@ type AnalysisResult = {
     competitors: string[];
     gapScore: number;
     opportunity: string;
+    recommendedAction?: string;
+    priority?: "P0" | "P1" | "P2";
+    evidenceRefs?: string[];
   }[];
   claimAnalysis: {
     overused: string[];
@@ -33,8 +45,27 @@ type AnalysisResult = {
     risks: string[];
   }[];
   differentiationScore: number;
+  categoryDecision?: CategoryDecision;
+  actionPlan?: unknown;
   aiSummary: string;
 };
+
+const VALID_VERDICTS = new Set(["GO", "WATCH", "AVOID"]);
+
+function normalizeCategoryDecision(raw: unknown): CategoryDecision | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const verdict = String(obj.verdict ?? "").toUpperCase();
+  if (!VALID_VERDICTS.has(verdict)) return null;
+  const confidence = Number(obj.confidence);
+  return {
+    verdict: verdict as CategoryDecision["verdict"],
+    confidence: Number.isFinite(confidence)
+      ? Math.min(1, Math.max(0, confidence))
+      : 0.5,
+    reason: typeof obj.reason === "string" ? obj.reason : "",
+  };
+}
 
 function parseContextModulesFromAnalysis(raw: unknown) {
   return parseContextModules(raw);
@@ -73,6 +104,11 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
     const prompt = buildUspGapAnalysisPrompt(context);
     const result = await generateResearchJson<AnalysisResult>(prompt);
     const positioningMap = normalizePositioningMap(result.positioningMap);
+    const categoryDecision = normalizeCategoryDecision(result.categoryDecision);
+    const actionPlan: ActionPlan | null = coerceActionPlan(
+      result.actionPlan,
+      `usp-${analysisId}`,
+    );
 
     await prisma.$transaction([
       prisma.uspGapResult.upsert({
@@ -85,6 +121,8 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
           uspCandidates: result.uspCandidates ?? [],
           differentiationScore: result.differentiationScore ?? null,
           aiSummary: result.aiSummary ?? null,
+          categoryDecision: categoryDecision ?? undefined,
+          aiActionPlan: actionPlan ?? undefined,
         },
         update: {
           gapMatrix: result.gapMatrix ?? [],
@@ -93,6 +131,8 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
           uspCandidates: result.uspCandidates ?? [],
           differentiationScore: result.differentiationScore ?? null,
           aiSummary: result.aiSummary ?? null,
+          categoryDecision: categoryDecision ?? undefined,
+          aiActionPlan: actionPlan ?? undefined,
         },
       }),
       prisma.uspGapAnalysis.update({
@@ -106,6 +146,14 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
         },
       }),
     ]);
+
+    await syncModuleRecommendations({
+      module: "usp-gap",
+      sourceId: analysisId,
+      sourceLabel: `USP & Gap: ${analysis.category}`,
+      href: `/research-hub/usp-analyzer/${analysisId}`,
+      plan: actionPlan,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Analisis gagal";
     await prisma.uspGapAnalysis.update({

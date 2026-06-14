@@ -13,6 +13,8 @@ export type ConceptData = {
   whyItWillWin: string;
 };
 
+export type ConceptDecision = "GO" | "PIVOT" | "NO_GO";
+
 export type ValidationScores = {
   marketDemand: number;
   differentiation: number;
@@ -20,6 +22,15 @@ export type ValidationScores = {
   overall: number;
   risks: string[];
   aiSummary: string;
+  decision: ConceptDecision;
+  decisionReason: string;
+};
+
+/** Deterministic risk factor mapped from upstream evidence (e.g. review complaints). */
+export type RiskFactor = {
+  label: string;
+  severity: "HIGH" | "MED" | "LOW";
+  source: { module: string; label: string; href?: string };
 };
 
 export type ConceptComparisonResult = {
@@ -54,6 +65,8 @@ export function emptyValidationScores(): ValidationScores {
     overall: 0,
     risks: [],
     aiSummary: "",
+    decision: "PIVOT",
+    decisionReason: "",
   };
 }
 
@@ -93,6 +106,10 @@ export function parseConceptData(raw: unknown): ConceptData {
 export function parseValidationScores(raw: unknown): ValidationScores {
   if (!raw || typeof raw !== "object") return emptyValidationScores();
   const o = raw as Record<string, unknown>;
+  const decisionRaw =
+    typeof o.decision === "string" ? o.decision.toUpperCase() : "";
+  const decision: ConceptDecision =
+    decisionRaw === "GO" || decisionRaw === "NO_GO" ? decisionRaw : "PIVOT";
   return {
     marketDemand: typeof o.marketDemand === "number" ? o.marketDemand : 0,
     differentiation:
@@ -101,5 +118,29 @@ export function parseValidationScores(raw: unknown): ValidationScores {
     overall: typeof o.overall === "number" ? o.overall : 0,
     risks: Array.isArray(o.risks) ? (o.risks as string[]) : [],
     aiSummary: typeof o.aiSummary === "string" ? o.aiSummary : "",
+    decision,
+    decisionReason:
+      typeof o.decisionReason === "string" ? o.decisionReason : "",
   };
+}
+
+export function parseRiskFactors(raw: unknown): RiskFactor[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (x): x is RiskFactor =>
+        typeof x === "object" && x != null && "label" in x,
+    )
+    .map((x) => ({
+      label: String((x as RiskFactor).label),
+      severity: (["HIGH", "MED", "LOW"] as const).includes(
+        (x as RiskFactor).severity,
+      )
+        ? (x as RiskFactor).severity
+        : "MED",
+      source:
+        typeof (x as RiskFactor).source === "object" && (x as RiskFactor).source
+          ? (x as RiskFactor).source
+          : { module: "", label: "" },
+    }));
 }

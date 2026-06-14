@@ -2,12 +2,18 @@ import "server-only";
 
 import { ReviewSentiment } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { generateResearchJson, generateResearchText } from "@/lib/research/gemini-client";
+import { generateResearchJson } from "@/lib/research/gemini-client";
 import {
-  buildGapOpportunityPrompt,
+  buildReviewActionPlanPrompt,
   buildReviewBatchPrompt,
 } from "@/lib/research/prompts/review-analysis";
-import { aggregateReviewAnalyses } from "@/lib/research/review-aggregator";
+import {
+  aggregateReviewAnalyses,
+  type DemographicHints,
+} from "@/lib/research/review-aggregator";
+import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
+import type { ActionPlan } from "@/lib/research/prescriptive/types";
 
 const BATCH_SIZE = 25;
 
@@ -27,8 +33,32 @@ type BatchResult = {
     complaintThemes: string[];
     praiseThemes: string[];
     keywords: string[];
+    complaintSeverity?: number | null;
+    demographicHints?: DemographicHints | null;
+    pricePerception?: string | null;
+    repeatPurchaseSignal?: boolean | null;
   }[];
 };
+
+function clampSeverity(value: unknown): number | null {
+  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  return Math.max(1, Math.min(5, Math.round(value)));
+}
+
+function cleanDemographics(
+  raw: DemographicHints | null | undefined,
+): DemographicHints | null {
+  if (!raw || typeof raw !== "object") return null;
+  const norm = (v: unknown) =>
+    typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"
+      ? v.trim().toLowerCase()
+      : null;
+  const ageBand = norm(raw.ageBand);
+  const skinType = norm(raw.skinType);
+  const gender = norm(raw.gender);
+  if (!ageBand && !skinType && !gender) return null;
+  return { ageBand, skinType, gender };
+}
 
 function toSentiment(s: string): ReviewSentiment {
   if (s === "NEGATIVE") return ReviewSentiment.NEGATIVE;
@@ -51,12 +81,26 @@ async function saveReviewAnalysis(
     complaintThemes: string[];
     praiseThemes: string[];
     keywords: string[];
+    complaintSeverity?: number | null;
+    demographicHints?: DemographicHints | null;
+    pricePerception?: string | null;
+    repeatPurchaseSignal?: boolean | null;
   },
 ) {
+  const payload = {
+    sentiment: data.sentiment,
+    complaintThemes: data.complaintThemes,
+    praiseThemes: data.praiseThemes,
+    keywords: data.keywords,
+    complaintSeverity: data.complaintSeverity ?? null,
+    demographicHints: data.demographicHints ?? undefined,
+    pricePerception: data.pricePerception ?? null,
+    repeatPurchaseSignal: data.repeatPurchaseSignal ?? null,
+  };
   await prisma.reviewAnalysis.upsert({
     where: { reviewId },
-    create: { reviewId, ...data },
-    update: data,
+    create: { reviewId, ...payload },
+    update: payload,
   });
 }
 
@@ -128,6 +172,13 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
           complaintThemes: item.complaintThemes ?? [],
           praiseThemes: item.praiseThemes ?? [],
           keywords: item.keywords ?? [],
+          complaintSeverity: clampSeverity(item.complaintSeverity),
+          demographicHints: cleanDemographics(item.demographicHints),
+          pricePerception:
+            typeof item.pricePerception === "string"
+              ? item.pricePerception
+              : null,
+          repeatPurchaseSignal: item.repeatPurchaseSignal ?? null,
         });
       }
     }
@@ -156,24 +207,38 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
       praiseThemes: r.analysis!.praiseThemes,
       keywords: r.analysis!.keywords,
       reviewDate: r.reviewDate,
+      complaintSeverity: r.analysis!.complaintSeverity,
+      demographicHints:
+        (r.analysis!.demographicHints as DemographicHints | null) ?? null,
     }));
 
   const agg = aggregateReviewAnalyses(rows);
 
   let gapOpportunity: string | null = null;
+  let actionPlan: ActionPlan | null = null;
   try {
-    gapOpportunity = await generateResearchText(
-      buildGapOpportunityPrompt({
+    const aiResult = await generateResearchJson<{
+      gapOpportunity?: string;
+      actionPlan?: unknown;
+    }>(
+      buildReviewActionPlanPrompt({
         productName: source.productName,
         competitorBrand: source.competitorBrand,
         topComplaints: agg.topComplaints,
         topPraises: agg.topPraises,
+        severityByTheme: agg.severityByTheme,
+        demographics: {
+          skinTypes: agg.demographics.skinTypes.map((s) => s.value),
+          ageBands: agg.demographics.ageBands.map((s) => s.value),
+        },
         positivePct: agg.positivePct,
         negativePct: agg.negativePct,
       }),
     );
+    gapOpportunity = aiResult.gapOpportunity?.trim() || null;
+    actionPlan = coerceActionPlan(aiResult.actionPlan, `review-${sourceId}`);
   } catch (err) {
-    console.error("[review-analyzer] gap opportunity gagal", err);
+    console.error("[review-analyzer] action plan gagal", err);
   }
 
   await prisma.reviewIntelSummary.upsert({
@@ -188,6 +253,9 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
       keywordCloud: agg.keywordCloud,
       timelineBuckets: agg.timelineBuckets,
       gapOpportunity,
+      severityByTheme: agg.severityByTheme,
+      demographics: agg.demographics,
+      aiActionPlan: actionPlan ?? undefined,
     },
     update: {
       positivePct: agg.positivePct,
@@ -198,7 +266,18 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
       keywordCloud: agg.keywordCloud,
       timelineBuckets: agg.timelineBuckets,
       gapOpportunity,
+      severityByTheme: agg.severityByTheme,
+      demographics: agg.demographics,
+      aiActionPlan: actionPlan ?? undefined,
     },
+  });
+
+  await syncModuleRecommendations({
+    module: "review-intelligence",
+    sourceId,
+    sourceLabel: `${source.competitorBrand} · ${source.productName}`,
+    href: `/research-hub/review-intelligence/${sourceId}`,
+    plan: actionPlan,
   });
 
   await prisma.reviewIntelSource.update({

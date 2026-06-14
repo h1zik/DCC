@@ -25,6 +25,7 @@ export type ProductDiscoveryRow = {
   hasPromo: boolean;
   promoText: string | null;
   productUrl: string;
+  categoryRank?: number | null;
 };
 
 export function ProductDiscoveryTable({
@@ -53,6 +54,7 @@ export function ProductDiscoveryTable({
             <TableHead className="text-right">Harga</TableHead>
             <TableHead className="text-right">Rating</TableHead>
             <TableHead className="text-right">Terjual</TableHead>
+            <TableHead className="text-right">Rank</TableHead>
             <TableHead className="w-[120px]" />
           </TableRow>
         </TableHeader>
@@ -93,6 +95,9 @@ export function ProductDiscoveryTable({
                 {row.soldCount != null
                   ? row.soldCount.toLocaleString("id-ID")
                   : "—"}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {row.categoryRank != null ? `#${row.categoryRank}` : "—"}
               </TableCell>
               <TableCell>
                 <div className="flex justify-end gap-1">

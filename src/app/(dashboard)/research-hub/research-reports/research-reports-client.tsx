@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { FileText, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { FileText, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import {
   ResearchReportStatus,
   ResearchReportType,
@@ -14,12 +14,23 @@ import {
   deleteResearchReport,
   refreshResearchReport,
 } from "@/actions/research-reports";
+import { suggestUspContextSources } from "@/actions/research-usp-gap";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import {
+  defaultReportModules,
+  ReportModuleSummaryChips,
+  ResearchReportSourcePicker,
+  reportSelectionsToConfig,
+  type ReportAvailableModules,
+  type ReportModuleToggles,
+  type ReportSourceSelections,
+} from "@/components/research-hub/research-report-source-picker";
+import type { ReportSourceOptions } from "@/lib/research/reports/list-report-source-options";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -58,11 +69,6 @@ export type ReportRow = {
   errorMessage: string | null;
 };
 
-export type ReportPickerOptions = {
-  competitors: { id: string; name: string }[];
-  digests: { id: string; label: string }[];
-};
-
 function statusTone(status: ResearchReportStatus) {
   switch (status) {
     case "READY":
@@ -80,13 +86,16 @@ export function ResearchReportsClient({
   reports,
   latestWeeklyId,
   options,
+  availableModules,
 }: {
   reports: ReportRow[];
   latestWeeklyId: string | null;
-  options: ReportPickerOptions;
+  options: ReportSourceOptions;
+  availableModules: ReportAvailableModules;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [suggestPending, setSuggestPending] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reportType, setReportType] = useState<ResearchReportType>(
     ResearchReportType.CUSTOM,
@@ -95,25 +104,63 @@ export function ResearchReportsClient({
   const [category, setCategory] = useState("");
   const [competitorId, setCompetitorId] = useState("");
   const [digestId, setDigestId] = useState("");
-  const [modules, setModules] = useState({
-    reviewIntel: true,
-    competitor: true,
-    trendRadar: true,
-    keywordIntel: true,
-    socialListening: true,
-    uspAnalyzer: true,
-    conceptLab: true,
-  });
+  const [modules, setModules] = useState<ReportModuleToggles>(() =>
+    defaultReportModules(availableModules),
+  );
+  const [selections, setSelections] = useState<ReportSourceSelections>({});
 
   const hasInProgress = reports.some(
     (r) => r.status === "GENERATING" || r.status === "PENDING",
   );
+
+  const showModulePickers =
+    reportType === ResearchReportType.CUSTOM ||
+    reportType === ResearchReportType.CATEGORY_DEEP_DIVE;
 
   useEffect(() => {
     if (!hasInProgress) return;
     const id = window.setInterval(() => router.refresh(), 12_000);
     return () => window.clearInterval(id);
   }, [hasInProgress, router]);
+
+  function resetDialog() {
+    setTitle("");
+    setCategory("");
+    setCompetitorId("");
+    setDigestId("");
+    setModules(defaultReportModules(availableModules));
+    setSelections({});
+  }
+
+  function handleSuggest() {
+    if (!category.trim()) {
+      toast.error("Isi kategori dulu untuk saran sumber.");
+      return;
+    }
+    setSuggestPending(true);
+    startTransition(async () => {
+      try {
+        const suggested = await suggestUspContextSources(category.trim());
+        setSelections((prev) => ({
+          ...prev,
+          reviewSourceIds: suggested.reviewSourceIds,
+          competitorIds: suggested.competitorIds,
+          trendDigestId: suggested.trendDigestId ?? undefined,
+          keywordQueryId: suggested.keywordQueryId ?? undefined,
+          socialMonitorId: suggested.socialMonitorId ?? undefined,
+        }));
+        toast.success("Saran sumber data diterapkan.");
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal mengambil saran."));
+      } finally {
+        setSuggestPending(false);
+      }
+    });
+  }
+
+  function toggleModule(key: keyof ReportModuleToggles) {
+    setModules((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   function handleCreate() {
     startTransition(async () => {
@@ -129,6 +176,7 @@ export function ResearchReportsClient({
             return;
           }
           config.category = category;
+          config.modules = modules;
         }
         if (reportType === ResearchReportType.COMPETITOR_BATTLE) {
           if (!competitorId) {
@@ -141,6 +189,11 @@ export function ResearchReportsClient({
           config.digestId = digestId;
         }
 
+        if (showModulePickers) {
+          const picked = reportSelectionsToConfig(modules, selections);
+          if (Object.keys(picked).length > 0) config.sources = picked;
+        }
+
         const result = await createResearchReport({
           type: reportType,
           title: title || undefined,
@@ -148,6 +201,7 @@ export function ResearchReportsClient({
         });
         toast.success("Laporan sedang dibuat.");
         setDialogOpen(false);
+        resetDialog();
         router.push(`/research-hub/research-reports/${result.id}`);
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal membuat laporan."));
@@ -194,7 +248,13 @@ export function ResearchReportsClient({
       ) : null}
 
       <div className="flex justify-end">
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetDialog();
+          }}
+        >
           <DialogTrigger
             render={
               <Button size="sm">
@@ -203,11 +263,16 @@ export function ResearchReportsClient({
               </Button>
             }
           />
-          <DialogContent className="max-w-md">
-            <DialogHeader>
+          <DialogContent className="flex max-h-[92vh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+            <DialogHeader className="border-border/60 space-y-1 border-b px-6 py-5">
               <DialogTitle>Buat Laporan Riset</DialogTitle>
+              <DialogDescription>
+                Pilih modul sumber dan record spesifik — kosongkan untuk
+                auto-suggest berdasarkan kategori.
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-3 py-2">
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
               <div className="space-y-2">
                 <Label>Tipe laporan</Label>
                 <Select
@@ -226,20 +291,12 @@ export function ResearchReportsClient({
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-2">
                 <Label>Judul (opsional)</Label>
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} />
               </div>
-              {(reportType === "CUSTOM" ||
-                reportType === "CATEGORY_DEEP_DIVE") && (
-                <div className="space-y-2">
-                  <Label>Kategori</Label>
-                  <Input
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                  />
-                </div>
-              )}
+
               {reportType === "COMPETITOR_BATTLE" && (
                 <div className="space-y-2">
                   <Label>Kompetitor</Label>
@@ -251,13 +308,14 @@ export function ResearchReportsClient({
                     <SelectContent>
                       {options.competitors.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
-                          {c.name}
+                          {c.label} — {c.meta}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               )}
+
               {reportType === "TREND_BRIEF" && (
                 <div className="space-y-2">
                   <Label>Digest tren (opsional)</Label>
@@ -266,38 +324,62 @@ export function ResearchReportsClient({
                     <SelectContent>
                       {options.digests.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
-                          {d.label}
+                          {d.label} · {d.meta}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               )}
-              {reportType === "CUSTOM" && (
-                <div className="space-y-2">
-                  <Label>Modul sumber</Label>
-                  <div className="space-y-1.5">
-                    {(Object.keys(modules) as (keyof typeof modules)[]).map(
-                      (key) => (
-                        <label key={key} className="flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={modules[key]}
-                            onCheckedChange={() =>
-                              setModules((prev) => ({
-                                ...prev,
-                                [key]: !prev[key],
-                              }))
-                            }
-                          />
-                          {key}
-                        </label>
-                      ),
-                    )}
-                  </div>
-                </div>
+
+              {showModulePickers && (
+                <>
+                  <section className="border-border/60 space-y-3 rounded-xl border p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">1. Kategori</p>
+                        <p className="text-muted-foreground text-xs">
+                          Dipakai untuk auto-suggest sumber data.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={suggestPending || pending}
+                        onClick={handleSuggest}
+                      >
+                        <Sparkles className="mr-1.5 size-3.5" />
+                        Saran
+                      </Button>
+                    </div>
+                    <Input
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      placeholder="Contoh: lip cream, moisturizer"
+                    />
+                  </section>
+
+                  <section className="space-y-3">
+                    <p className="text-sm font-medium">2. Sumber modul</p>
+                    <ResearchReportSourcePicker
+                      options={options}
+                      available={availableModules}
+                      modules={modules}
+                      selections={selections}
+                      onToggleModule={toggleModule}
+                      onSelectionsChange={setSelections}
+                    />
+                  </section>
+                </>
               )}
             </div>
-            <DialogFooter>
+
+            <DialogFooter className="border-border/60 flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:justify-between">
+              <ReportModuleSummaryChips
+                modules={modules}
+                available={availableModules}
+              />
               <Button onClick={handleCreate} disabled={pending}>
                 Generate
               </Button>

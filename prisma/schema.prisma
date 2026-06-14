@@ -331,6 +331,7 @@ model User {
   productDiscoveryQueriesCreated ProductDiscoveryQuery[] @relation("ProductDiscoveryCreator")
   researchCompetitorsCreated ResearchCompetitor[] @relation("ResearchCompetitorCreator")
   trendWatchlistsCreated    TrendWatchlist[]     @relation("TrendWatchlistCreator")
+  trendRadarUserSettings    TrendRadarUserSettings?
   keywordIntelQueriesCreated KeywordIntelQuery[] @relation("KeywordIntelQueryCreator")
   socialListeningMonitorsCreated SocialListeningMonitor[] @relation("SocialListeningMonitorCreator")
   uspGapAnalysesCreated     UspGapAnalysis[]     @relation("UspGapAnalysisCreator")
@@ -1884,6 +1885,10 @@ model ProductDiscoveryQuery {
   errorMessage String?
   /** Progress scrape multi-marketplace + peringatan per platform. */
   scrapeState  Json?
+  /** Rencana aksi preskriptif hasil analisis (ActionPlan). */
+  aiActionPlan Json?
+  /** Ringkasan & metrik analisis pasar (price band, velocity, whitespace). */
+  aiInsights   Json?
   createdById  String
   createdBy    User                     @relation("ProductDiscoveryCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt    DateTime                 @default(now())
@@ -1966,6 +1971,14 @@ model ReviewAnalysis {
   complaintThemes String[]        @default([])
   praiseThemes    String[]        @default([])
   keywords        String[]        @default([])
+  /** Tingkat keparahan keluhan 1-5 (null bila bukan keluhan). */
+  complaintSeverity Int?
+  /** Sinyal demografi terinferensi: { ageBand, skinType, gender } + confidence. */
+  demographicHints Json?
+  /** Persepsi nilai: "overpriced" | "worth_it" | "cheap" | null. */
+  pricePerception String?
+  /** Sinyal pembelian ulang terinferensi dari teks. */
+  repeatPurchaseSignal Boolean?
   createdAt       DateTime        @default(now())
 
   @@index([sentiment])
@@ -1983,6 +1996,12 @@ model ReviewIntelSummary {
   keywordCloud    Json              @default("[]")
   timelineBuckets Json              @default("[]")
   gapOpportunity  String?           @db.Text
+  /** Rencana aksi preskriptif (ActionPlan) hasil analisis review. */
+  aiActionPlan    Json?
+  /** Keparahan keluhan per tema: [{ theme, avgSeverity, count }]. */
+  severityByTheme Json              @default("[]")
+  /** Agregat demografi terinferensi: { ageBands[], skinTypes[], genders[] }. */
+  demographics    Json              @default("{}")
   updatedAt       DateTime          @updatedAt
 }
 
@@ -1996,6 +2015,11 @@ model ResearchScrapeJob {
   startedAt   DateTime?
   completedAt DateTime?
   createdAt   DateTime                @default(now())
+  /** Granular progress untuk progress bar UI. */
+  stepLabel   String?
+  percent     Int                     @default(0)
+  currentStep Int?
+  totalSteps  Int?
 
   @@index([status])
   @@index([entityId, type])
@@ -2010,6 +2034,8 @@ model ResearchCompetitor {
   marketplace ResearchMarketplace
   shopUrl     String
   isActive    Boolean             @default(true)
+  /** Rencana aksi preskriptif + insight AI (response playbook). */
+  aiInsights  Json?
   createdById String
   createdBy   User                @relation("ResearchCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime            @default(now())
@@ -2105,19 +2131,29 @@ enum KeywordIntelStatus {
 }
 
 model TrendWatchlist {
-  id          String             @id @default(cuid())
-  name        String
-  keywords    String[]           @default([])
-  dimensions  TrendDimension[]   @default([])
-  isActive    Boolean            @default(true)
-  createdById String
-  createdBy   User               @relation("TrendWatchlistCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  digests     TrendRadarDigest[]
+  id           String             @id @default(cuid())
+  name         String
+  keywords     String[]           @default([])
+  dimensions   TrendDimension[]   @default([])
+  isActive     Boolean            @default(true)
+  /** Konfigurasi sumber Trend Radar (RSS, TikTok, BPOM, Google Trends). */
+  sourceConfig Json?
+  createdById  String
+  createdBy    User               @relation("TrendWatchlistCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  digests      TrendRadarDigest[]
 
   @@index([createdById])
   @@index([isActive])
+}
+
+model TrendRadarUserSettings {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceConfig Json
+  updatedAt    DateTime @updatedAt
 }
 
 model TrendRadarDigest {
@@ -2126,9 +2162,13 @@ model TrendRadarDigest {
   weekEnd      DateTime
   status       TrendRadarStatus @default(PENDING)
   narrative    String?          @db.Text
+  /** Rencana aksi preskriptif (ActionPlan) untuk tren minggu ini. */
+  aiActionPlan Json?
   isGlobal     Boolean          @default(false)
   watchlistId  String?
   watchlist    TrendWatchlist?  @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
+  /** Snapshot konfigurasi sumber yang dipakai saat generate digest. */
+  sourceConfig Json?
   errorMessage String?
   generatedAt  DateTime?
   createdAt    DateTime         @default(now())
@@ -2186,6 +2226,8 @@ model KeywordIntelResult {
   seasonalCalendar  Json              @default("[]")
   clusters          Json              @default("[]")
   aiSummary         String?           @db.Text
+  /** Rencana aksi preskriptif (ActionPlan) berbasis keyword & intent. */
+  aiActionPlan      Json?
   updatedAt         DateTime          @updatedAt
 }
 
@@ -2234,6 +2276,10 @@ model SocialListeningBatch {
   status       SocialListeningStatus  @default(PENDING)
   errorMessage String?
   collectedAt  DateTime?
+  /** Per-platform sync state: COLLECTING | READY | FAILED | SKIPPED */
+  platformStatus Json                 @default("{}")
+  /** Apify run ID(s) per platform — string or string[] for multi-keyword IG */
+  apifyRunIds    Json                 @default("{}")
   createdAt    DateTime               @default(now())
   mentions     SocialMention[]
   summary      SocialListeningSummary?
@@ -2275,6 +2321,10 @@ model SocialListeningSummary {
   viralContent      Json                 @default("[]")
   categoryBreakdown Json                 @default("[]")
   aiSummary         String?              @db.Text
+  /** Rencana aksi preskriptif (ActionPlan) dari pain point & wishlist sosial. */
+  aiActionPlan      Json?
+  /** Tren sentimen harian: [{ date, positive, negative, neutral }]. */
+  sentimentTimeline Json                 @default("[]")
   updatedAt         DateTime             @updatedAt
 }
 
@@ -2316,6 +2366,10 @@ model UspGapResult {
   uspCandidates        Json           @default("[]")
   differentiationScore Float?
   aiSummary            String?        @db.Text
+  /** Rencana aksi preskriptif (ActionPlan) untuk eksekusi gap. */
+  aiActionPlan         Json?
+  /** Keputusan kategori: "GO" | "WATCH" | "AVOID" + alasan. */
+  categoryDecision     Json?
   updatedAt            DateTime       @updatedAt
 }
 
@@ -2348,6 +2402,8 @@ model ProductConcept {
   sourceModules    Json                 @default("{}")
   conceptData      Json                 @default("{}")
   validationScores Json                 @default("{}")
+  /** Faktor risiko deterministik (mis. keluhan review) dengan evidence ref. */
+  riskFactors      Json                 @default("[]")
   createdById      String
   createdBy        User                 @relation("ProductConceptCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt        DateTime             @default(now())
@@ -2382,6 +2438,12 @@ model ResearchReport {
   config       Json                 @default("{}")
   sections     Json                 @default("[]")
   aiSummary    String?              @db.Text
+  /** Cross-module action items (deterministic, dari ResearchRecommendation). */
+  actionItems  Json                 @default("[]")
+  /** Feedback-loop Sankey data: signal -> insight -> concept. */
+  feedbackLoop Json?
+  /** Aktivitas modul untuk chart ringkasan. */
+  metrics      Json?
   periodStart  DateTime?
   periodEnd    DateTime?
   errorMessage String?
@@ -2394,4 +2456,49 @@ model ResearchReport {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+}
+
+enum RecStatus {
+  OPEN
+  DISMISSED
+  CONVERTED
+}
+
+enum RecOwner {
+  MARKETING
+  RND
+  PRICING
+  FINANCE
+  SUPPLY
+  BRAND
+}
+
+/// Rekomendasi preskriptif lintas-modul yang menyalakan Action Center di dashboard.
+model ResearchRecommendation {
+  id             String    @id @default(cuid())
+  /** Modul asal: "review-intelligence", "competitor-tracker", dst. */
+  module         String
+  /** Id record sumber (sourceId/digestId/queryId/analysisId/conceptId). */
+  sourceId       String?
+  /** Label sumber agar bisa di-deep-link dari UI. */
+  sourceLabel    String?
+  /** Path deep-link ke detail sumber. */
+  href           String?
+  owner          RecOwner
+  priority       String    @default("P1")
+  action         String    @db.Text
+  rationale      String    @db.Text
+  expectedImpact String?   @db.Text
+  metricToWatch  String?
+  evidence       Json      @default("[]")
+  confidence     Float     @default(0.6)
+  effort         String    @default("MED")
+  horizon        String    @default("30D")
+  status         RecStatus @default(OPEN)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([module, sourceId])
+  @@index([owner])
 }

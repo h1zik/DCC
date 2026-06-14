@@ -9,41 +9,74 @@ export type RssTrendSignal = {
   link?: string;
 };
 
-/**
- * Kurasi feed RSS untuk Trend Radar (industri + konsumen).
- * Override via env TREND_RSS_FEEDS (comma-separated).
- */
-export const RECOMMENDED_RSS_FEEDS = [
-  /** WWD Beauty — berita industri: brand, launch, regulasi US */
-  "https://wwd.com/beauty-industry-news/feed/",
-  /** Global Cosmetics News — B2B global: manufaktur, packaging, teknologi */
-  "https://www.globalcosmeticsnews.com/feed/",
-  /** Premium Beauty News — Eropa: regulasi, bahan, sustainability */
-  "https://www.premiumbeautynews.com/spip.php?page=backend",
-  /** Allure — tren konsumen & produk yang ramai dibahas */
-  "https://www.allure.com/feed/rss",
-  /** NutraIngredients — bahan aktif, nutricosmetics, riset ingredient */
-  "https://www.nutraingredients.com/arc/outboundfeeds/rss/",
-] as const;
+export type TrendRssFeedEntry = {
+  url: string;
+  label?: string;
+  enabled: boolean;
+};
 
-const DEFAULT_FEEDS = [...RECOMMENDED_RSS_FEEDS];
+/** Kurasi feed RSS — label untuk UI. */
+export const RECOMMENDED_RSS_FEED_META: { url: string; label: string }[] = [
+  { url: "https://wwd.com/beauty-industry-news/feed/", label: "WWD Beauty" },
+  {
+    url: "https://www.globalcosmeticsnews.com/feed/",
+    label: "Global Cosmetics News",
+  },
+  {
+    url: "https://www.premiumbeautynews.com/spip.php?page=backend",
+    label: "Premium Beauty News",
+  },
+  { url: "https://www.allure.com/feed/rss", label: "Allure" },
+  {
+    url: "https://www.nutraingredients.com/arc/outboundfeeds/rss/",
+    label: "NutraIngredients",
+  },
+];
 
-function getFeedUrls(): string[] {
-  const env = process.env.TREND_RSS_FEEDS?.trim();
-  if (env) {
-    return env.split(",").map((u) => u.trim()).filter(Boolean);
+export const RECOMMENDED_RSS_FEEDS = RECOMMENDED_RSS_FEED_META.map(
+  (m) => m.url,
+) as readonly string[];
+
+function labelFromUrl(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return host;
+  } catch {
+    return url.slice(0, 40);
   }
-  return DEFAULT_FEEDS;
+}
+
+export function getDefaultRssFeedEntries(): TrendRssFeedEntry[] {
+  const env = process.env.TREND_RSS_FEEDS?.trim();
+  const urls = env
+    ? env
+        .split(",")
+        .map((u) => u.trim())
+        .filter(Boolean)
+    : [...RECOMMENDED_RSS_FEEDS];
+
+  const metaByUrl = new Map(
+    RECOMMENDED_RSS_FEED_META.map((m) => [m.url, m.label]),
+  );
+
+  return urls.map((url) => ({
+    url,
+    label: metaByUrl.get(url) ?? labelFromUrl(url),
+    enabled: true,
+  }));
 }
 
 const parser = new Parser({ timeout: 10000 });
 
-export async function fetchRssTrendSignals(): Promise<RssTrendSignal[]> {
-  const feeds = getFeedUrls();
+export async function fetchRssTrendSignals(
+  feedUrls: string[],
+): Promise<RssTrendSignal[]> {
+  if (feedUrls.length === 0) return [];
+
   const signals: RssTrendSignal[] = [];
 
   await Promise.allSettled(
-    feeds.map(async (feedUrl) => {
+    feedUrls.map(async (feedUrl) => {
       try {
         const feed = await parser.parseURL(feedUrl);
         for (const item of (feed.items ?? []).slice(0, 15)) {

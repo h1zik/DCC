@@ -7,6 +7,7 @@ import {
 } from "@/lib/research/trend-radar/tiktok-trends";
 import {
   fetchApifyDataset,
+  getApifyRunStatus,
   isApifyConfigured,
   startApifyActor,
   waitForApifyRun,
@@ -37,7 +38,7 @@ function playCountOf(item: Record<string, unknown>): number {
   return 0;
 }
 
-function parseTikTokMentionItems(
+export function parseTikTokMentionItems(
   items: Record<string, unknown>[],
 ): RawSocialMention[] {
   const mentions: RawSocialMention[] = [];
@@ -87,31 +88,76 @@ function parseTikTokMentionItems(
             ? item.comments
             : 0,
       views: playCountOf(item),
-      postedAt: createTime && !Number.isNaN(createTime.getTime()) ? createTime : undefined,
+      postedAt:
+        createTime && !Number.isNaN(createTime.getTime()) ? createTime : undefined,
     });
   }
 
   return mentions;
 }
 
-export async function scrapeTikTokMentions(
-  keywords: string[],
-): Promise<RawSocialMention[]> {
+function buildTikTokInput(keywords: string[]): Record<string, unknown> | null {
   const actorId = getTikTokActorId();
-  if (!actorId || keywords.length === 0) return [];
+  if (!actorId || keywords.length === 0) return null;
 
   const hashtags = keywords.map((k) => k.replace(/^#/, "").replace(/\s+/g, ""));
   const searchQueries = keywords.map((k) => k.trim()).filter(Boolean);
 
-  try {
-    const input = {
-      ...buildClockworksTikTokInput(hashtags.slice(0, 5)),
-      searchQueries: searchQueries.slice(0, 5),
-      resultsPerPage: 15,
-    };
+  return {
+    ...buildClockworksTikTokInput(hashtags.slice(0, 5)),
+    searchQueries: searchQueries.slice(0, 5),
+    resultsPerPage: 15,
+  };
+}
 
-    const { runId } = await startApifyActor(actorId, input);
-    const { status, datasetId } = await waitForApifyRun(runId, {
+export async function startTikTokScrape(
+  keywords: string[],
+): Promise<{ runId: string } | null> {
+  const actorId = getTikTokActorId();
+  const input = buildTikTokInput(keywords);
+  if (!actorId || !input) return null;
+
+  const { runId } = await startApifyActor(actorId, input);
+  return { runId };
+}
+
+const TERMINAL = new Set(["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"]);
+
+export async function pollTikTokScrape(runId: string): Promise<{
+  done: boolean;
+  succeeded: boolean;
+  mentions: RawSocialMention[];
+  apifyStatus: string;
+}> {
+  const { status, datasetId } = await getApifyRunStatus(runId);
+  if (!TERMINAL.has(status)) {
+    return { done: false, succeeded: false, mentions: [], apifyStatus: status };
+  }
+
+  if (status !== "SUCCEEDED") {
+    return { done: true, succeeded: false, mentions: [], apifyStatus: status };
+  }
+
+  const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+  const hashtags: string[] = [];
+  parseTikTokScraperItems(items, hashtags);
+  return {
+    done: true,
+    succeeded: true,
+    mentions: parseTikTokMentionItems(items),
+    apifyStatus: status,
+  };
+}
+
+/** Blocking scrape — kept for backwards compatibility. */
+export async function scrapeTikTokMentions(
+  keywords: string[],
+): Promise<RawSocialMention[]> {
+  const started = await startTikTokScrape(keywords);
+  if (!started) return [];
+
+  try {
+    const { status, datasetId } = await waitForApifyRun(started.runId, {
       maxWaitMs: 300_000,
       pollIntervalMs: 5_000,
     });
@@ -122,6 +168,7 @@ export async function scrapeTikTokMentions(
     }
 
     const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+    const hashtags = keywords.map((k) => k.replace(/^#/, "").replace(/\s+/g, ""));
     parseTikTokScraperItems(items, hashtags);
     return parseTikTokMentionItems(items);
   } catch (err) {

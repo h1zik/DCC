@@ -38,13 +38,50 @@ export type CategoryBreakdownRow = {
   pct: number;
 };
 
+export type SentimentDayRow = {
+  date: string;
+  positive: number;
+  negative: number;
+  neutral: number;
+};
+
 export type SocialSummaryData = {
   topPainPoints: PainPointRow[];
   topWishlist: WishlistRow[];
   influencers: InfluencerRow[];
   viralContent: ViralContentRow[];
   categoryBreakdown: CategoryBreakdownRow[];
+  sentimentTimeline: SentimentDayRow[];
 };
+
+const POSITIVE_CLASSES = new Set<string>([
+  SocialMentionClass.PRAISE,
+  SocialMentionClass.RECOMMENDATION,
+]);
+const NEGATIVE_CLASSES = new Set<string>([SocialMentionClass.COMPLAINT]);
+
+function buildSentimentTimeline(
+  mentions: ClassifiedMention[],
+): SentimentDayRow[] {
+  const byDay = new Map<
+    string,
+    { positive: number; negative: number; neutral: number }
+  >();
+
+  for (const m of mentions) {
+    if (!m.postedAt) continue;
+    const date = new Date(m.postedAt).toISOString().slice(0, 10);
+    const row = byDay.get(date) ?? { positive: 0, negative: 0, neutral: 0 };
+    if (POSITIVE_CLASSES.has(m.classification)) row.positive += 1;
+    else if (NEGATIVE_CLASSES.has(m.classification)) row.negative += 1;
+    else row.neutral += 1;
+    byDay.set(date, row);
+  }
+
+  return [...byDay.entries()]
+    .map(([date, v]) => ({ date, ...v }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
 
 function engagement(m: ClassifiedMention): number {
   return m.likes + m.comments * 2 + Math.floor(m.views / 100);
@@ -134,7 +171,7 @@ export function aggregateSocialSummary(
 
   return {
     topPainPoints: [...painMap.entries()]
-      .map(([theme, v]) => ({
+      .map(([, v]) => ({
         theme: v.sample,
         count: v.count,
         sampleText: v.sample,
@@ -142,7 +179,7 @@ export function aggregateSocialSummary(
       .sort((a, b) => b.count - a.count)
       .slice(0, 10),
     topWishlist: [...wishMap.entries()]
-      .map(([theme, v]) => ({
+      .map(([, v]) => ({
         theme: v.sample,
         count: v.count,
         sampleText: v.sample,
@@ -165,5 +202,6 @@ export function aggregateSocialSummary(
       count,
       pct: Math.round((count / total) * 1000) / 10,
     })),
+    sentimentTimeline: buildSentimentTimeline(mentions),
   };
 }

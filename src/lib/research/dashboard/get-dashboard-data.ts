@@ -39,10 +39,25 @@ export type DashboardKpis = {
   conceptReady: number;
 };
 
+export type DashboardRecommendation = {
+  id: string;
+  module: string;
+  owner: string;
+  priority: string;
+  action: string;
+  rationale: string;
+  confidence: number;
+  effort: string;
+  horizon: string;
+  sourceLabel: string | null;
+  href: string | null;
+};
+
 export type DashboardData = {
   kpis: DashboardKpis;
   alerts: DashboardAlert[];
   health: ModuleHealth[];
+  recommendations: DashboardRecommendation[];
   latestReport: {
     id: string;
     title: string;
@@ -51,6 +66,8 @@ export type DashboardData = {
   } | null;
   lastTrendDigestAt: string | null;
 };
+
+const PRIORITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2 };
 
 function reviewHealthLevel(opts: {
   configured: boolean;
@@ -95,6 +112,7 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     conceptDrafts,
     conceptReady,
     latestReport,
+    recommendationsRaw,
   ] = await Promise.all([
     prisma.reviewIntelSource.count({ where: { status: "READY" } }),
     prisma.reviewIntelSource.count({
@@ -130,6 +148,11 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
       where: { status: "READY" },
       orderBy: { createdAt: "desc" },
       select: { id: true, title: true, type: true, createdAt: true },
+    }),
+    prisma.researchRecommendation.findMany({
+      where: { status: "OPEN" },
+      orderBy: { createdAt: "desc" },
+      take: 40,
     }),
   ]);
 
@@ -170,6 +193,27 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
 
   alerts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
+  const recommendations: DashboardRecommendation[] = recommendationsRaw
+    .map((r) => ({
+      id: r.id,
+      module: r.module,
+      owner: r.owner,
+      priority: r.priority,
+      action: r.action,
+      rationale: r.rationale,
+      confidence: r.confidence,
+      effort: r.effort,
+      horizon: r.horizon,
+      sourceLabel: r.sourceLabel,
+      href: r.href,
+    }))
+    .sort((a, b) => {
+      const pr = (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1);
+      if (pr !== 0) return pr;
+      return b.confidence - a.confidence;
+    })
+    .slice(0, 12);
+
   const health: ModuleHealth[] = [
     {
       key: "product-discovery",
@@ -209,10 +253,12 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     },
     {
       key: "trend-radar",
-      level: !trendConfigured ? "demo" : !latestGlobalDigest ? "idle" : "partial",
-      detail: !trendConfigured
-        ? "TikTok trends belum dikonfigurasi"
-        : "BPOM masih demo",
+      level: !latestGlobalDigest ? "idle" : "live",
+      detail: latestGlobalDigest
+        ? "Digest mingguan + BPOM via cekbpom"
+        : trendConfigured
+          ? "Siap generate — atur sumber di Trend Radar"
+          : "Generate digest dari halaman Trend Radar",
     },
     {
       key: "keyword-intel",
@@ -268,6 +314,7 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     },
     alerts: alerts.slice(0, 8),
     health,
+    recommendations,
     latestReport: latestReport
       ? {
           id: latestReport.id,

@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
-import { SocialMentionClass } from "@prisma/client";
+import { SocialListeningPlatform, SocialMentionClass } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { platformStatusMessage } from "@/lib/research/social-listening/platform-scrape-runner";
 import {
   SocialDetailClient,
   type SocialDetailData,
 } from "./social-detail-client";
-
 export default async function SocialListeningDetailPage({
   params,
 }: {
@@ -36,6 +36,33 @@ export default async function SocialListeningDetailPage({
     orderBy: { createdAt: "desc" },
   });
 
+  const platformStatusRaw =
+    latestAny?.platformStatus && typeof latestAny.platformStatus === "object"
+      ? (latestAny.platformStatus as Record<string, string>)
+      : {};
+  const apifyRunIdsRaw =
+    latestAny?.apifyRunIds && typeof latestAny.apifyRunIds === "object"
+      ? (latestAny.apifyRunIds as Record<string, string | string[]>)
+      : {};
+
+  const platformProgress = monitor.platforms.map((platform) => {
+    const status = platformStatusRaw[platform] ?? null;
+    const runId = apifyRunIdsRaw[platform];
+    return {
+      platform,
+      status,
+      message:
+        status && status !== "READY"
+          ? platformStatusMessage(
+              platform as SocialListeningPlatform,
+              status as "COLLECTING" | "READY" | "FAILED" | "SKIPPED",
+              runId,
+            )
+          : status === "READY"
+            ? platformStatusMessage(platform as SocialListeningPlatform, "READY")
+            : null,
+    };
+  });
   const rooms = await prisma.room.findMany({
     select: {
       id: true,
@@ -58,6 +85,12 @@ export default async function SocialListeningDetailPage({
   const viral = Array.isArray(latest?.summary?.viralContent)
     ? (latest.summary.viralContent as SocialDetailData["viralContent"])
     : [];
+  const categoryBreakdown = Array.isArray(latest?.summary?.categoryBreakdown)
+    ? (latest.summary.categoryBreakdown as SocialDetailData["categoryBreakdown"])
+    : [];
+  const sentimentTimeline = Array.isArray(latest?.summary?.sentimentTimeline)
+    ? (latest.summary.sentimentTimeline as SocialDetailData["sentimentTimeline"])
+    : [];
 
   const data: SocialDetailData = {
     id: monitor.id,
@@ -65,12 +98,16 @@ export default async function SocialListeningDetailPage({
     keywords: monitor.keywords,
     platforms: monitor.platforms,
     batchStatus: latestAny?.status ?? null,
-    errorMessage: latestAny?.errorMessage ?? null,
-    aiSummary: latest?.summary?.aiSummary ?? null,
+    batchId: latestAny?.id ?? null,
+    platformProgress,
+    errorMessage: latestAny?.errorMessage ?? null,    aiSummary: latest?.summary?.aiSummary ?? null,
     topPainPoints: painPoints,
     topWishlist: wishlist,
     influencers,
     viralContent: viral,
+    categoryBreakdown,
+    sentimentTimeline,
+    actionPlan: latest?.summary?.aiActionPlan ?? null,
     mentions:
       latest?.mentions.map((m) => ({
         id: m.id,

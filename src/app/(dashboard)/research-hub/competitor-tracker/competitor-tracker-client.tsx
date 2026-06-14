@@ -30,7 +30,6 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
-import { cn } from "@/lib/utils";
 
 export type CompetitorCard = {
   id: string;

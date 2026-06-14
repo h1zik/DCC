@@ -3,6 +3,7 @@ import "server-only";
 import {
   ResearchScrapeJobStatus,
   ResearchScrapeJobType,
+  ResearchMarketplace,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
@@ -20,6 +21,7 @@ import {
   normalizeShopProducts,
   type NormalizedShopProduct,
 } from "@/lib/apify/normalize";
+import { filterShopProductsByShopUrl } from "@/lib/apify/tiktok-kulqiz";
 import { applyCompetitorSnapshot } from "@/lib/research/competitor-diff";
 import { runApifyJobToCompletion } from "@/lib/research/run-apify-job";
 
@@ -119,6 +121,15 @@ export async function ingestCompetitorProducts(
       { suppressNewSkuAlert: isInitialImport },
     );
   }
+
+  try {
+    const { analyzeCompetitor } = await import(
+      "@/lib/research/competitor-analyzer"
+    );
+    await analyzeCompetitor(competitorId);
+  } catch (err) {
+    console.error("[ingestCompetitorProducts] analisis gagal", err);
+  }
 }
 
 export async function pollCompetitorScrapeJob(jobId: string): Promise<void> {
@@ -134,7 +145,13 @@ export async function pollCompetitorScrapeJob(jobId: string): Promise<void> {
 
   if (status === "SUCCEEDED") {
     const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
-    const products = normalizeShopProducts(items);
+    const competitor = await prisma.researchCompetitor.findUnique({
+      where: { id: job.entityId },
+    });
+    let products = normalizeShopProducts(items);
+    if (competitor?.marketplace === ResearchMarketplace.TIKTOK_SHOP) {
+      products = filterShopProductsByShopUrl(products, competitor.shopUrl);
+    }
     await ingestCompetitorProducts(job.entityId, products);
     await prisma.researchScrapeJob.update({
       where: { id: jobId },

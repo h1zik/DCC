@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ResearchScrapeJobStatus, ResearchScrapeJobType } from "@prisma/client";
+import { ResearchScrapeJobStatus, ResearchScrapeJobType, ResearchMarketplace } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   fetchApifyDataset,
@@ -9,6 +9,7 @@ import {
 import { completeReviewScrapeFromDataset } from "@/lib/research/scrape-review-source";
 import { ingestCompetitorProducts } from "@/lib/research/scrape-competitor";
 import { normalizeShopProducts } from "@/lib/apify/normalize";
+import { filterShopProductsByShopUrl } from "@/lib/apify/tiktok-kulqiz";
 
 /** Poll Apify sampai selesai lalu proses dataset ke DB. */
 export async function runApifyJobToCompletion(
@@ -27,7 +28,13 @@ export async function runApifyJobToCompletion(
       if (type === "REVIEW_SCRAPE") {
         await completeReviewScrapeFromDataset(job.entityId, items);
       } else {
-        const products = normalizeShopProducts(items);
+        const competitor = await prisma.researchCompetitor.findUnique({
+          where: { id: job.entityId },
+        });
+        let products = normalizeShopProducts(items);
+        if (competitor?.marketplace === ResearchMarketplace.TIKTOK_SHOP) {
+          products = filterShopProductsByShopUrl(products, competitor.shopUrl);
+        }
         if (products.length === 0) {
           const hasMock = items.some((x) => x._mock === true);
           const notice = items.find((x) => typeof x._notice === "string")?._notice;

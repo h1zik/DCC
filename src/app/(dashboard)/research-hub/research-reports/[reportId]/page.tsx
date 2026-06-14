@@ -25,6 +25,15 @@ export default async function ResearchReportDetailPage({
     status: report.status,
     aiSummary: report.aiSummary,
     sections: parseReportSections(report.sections),
+    actionItems: Array.isArray(report.actionItems)
+      ? (report.actionItems as ReportDetailData["actionItems"])
+      : [],
+    feedbackLoop:
+      report.feedbackLoop &&
+      typeof report.feedbackLoop === "object" &&
+      "nodes" in report.feedbackLoop
+        ? (report.feedbackLoop as ReportDetailData["feedbackLoop"])
+        : null,
     periodStart: report.periodStart?.toISOString() ?? null,
     periodEnd: report.periodEnd?.toISOString() ?? null,
     errorMessage: report.errorMessage,

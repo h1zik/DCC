@@ -42,16 +42,56 @@ function pickNumber(obj: Record<string, unknown>, keys: string[]): number | null
   return null;
 }
 
+/** Parse compact sold counts: "10k+", "1.2k", "10rb+", "1jt", "500+" → integer. */
+export function parseCompactCount(raw: string): number | null {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+
+  const plus = s.endsWith("+") ? s.slice(0, -1) : s;
+  const numMatch = plus.match(/^([\d.,]+)(rb|ribu|k|jt|juta|m)?$/i);
+  if (!numMatch) {
+    const plain = Number(plus.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(plain) ? Math.round(plain) : null;
+  }
+
+  const base = parseFloat(numMatch[1].replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(base)) return null;
+
+  const suffix = (numMatch[2] ?? "").toLowerCase();
+  let mult = 1;
+  if (suffix === "k") mult = 1_000;
+  else if (suffix === "rb" || suffix === "ribu") mult = 1_000;
+  else if (suffix === "jt" || suffix === "juta") mult = 1_000_000;
+  else if (suffix === "m") mult = 1_000_000;
+
+  return Math.round(base * mult);
+}
+
+function pickCompactCount(obj: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
+    if (typeof v === "string") {
+      const parsed = parseCompactCount(v);
+      if (parsed != null) return parsed;
+    }
+  }
+  return null;
+}
+
 /** Shopee ID sering kirim harga dalam satuan ×100000 atau nested di price_min. */
 function pickShopeePrice(item: Record<string, unknown>): number | null {
   const raw = pickNumber(item, [
     "price",
     "currentPrice",
     "salePrice",
+    "sale_price_value",
     "amount",
     "price_min",
     "priceMin",
     "minPrice",
+    "avg_price",
+    "min_price",
   ]);
 
   if (raw == null) {
@@ -70,6 +110,13 @@ function pickDate(obj: Record<string, unknown>, keys: string[]): Date | null {
   for (const key of keys) {
     const v = obj[key];
     if (typeof v === "string" || typeof v === "number") {
+      if (typeof v === "string" && /^\d{10,13}$/.test(v.trim())) {
+        const n = Number(v);
+        if (Number.isFinite(n)) {
+          const d = new Date(n > 1e12 ? n : n * 1000);
+          if (!Number.isNaN(d.getTime())) return d;
+        }
+      }
       const d = new Date(v);
       if (!Number.isNaN(d.getTime())) return d;
     }
@@ -107,6 +154,38 @@ export function normalizeShopeeProductDetailReviews(
     }
   }
   return out;
+}
+
+/** Pesan error dari baris dataset actor (mis. sian status=error). */
+export function extractDatasetScrapeErrors(
+  items: Record<string, unknown>[],
+): string | null {
+  const messages: string[] = [];
+  for (const item of items) {
+    if (item.error != null) {
+      const err =
+        typeof item.error === "string"
+          ? item.error
+          : typeof item.error === "object" &&
+              item.error &&
+              "message" in item.error &&
+              typeof (item.error as { message: unknown }).message === "string"
+            ? (item.error as { message: string }).message
+            : null;
+      if (err?.trim()) messages.push(err.trim());
+    }
+    const status = pickString(item, ["status"]);
+    if (status === "error" || status === "failed") {
+      const msg = pickString(item, [
+        "errorMessage",
+        "error_message",
+        "message",
+      ]);
+      if (msg) messages.push(msg);
+    }
+  }
+  if (messages.length === 0) return null;
+  return [...new Set(messages)].join("; ");
 }
 
 /** Pesan error dari output actor Apify (mis. gio21 `no_pdp_payload`). */
@@ -161,11 +240,44 @@ export function extractReviewScrapeMeta(
   };
 }
 
+/** Review dari baris produk kulqiz (field `reviews` nested). */
+export function normalizeKulqizProductReviews(
+  items: Record<string, unknown>[],
+): NormalizedReview[] {
+  const out: NormalizedReview[] = [];
+  for (const item of items) {
+    const reviews = item.reviews;
+    if (!Array.isArray(reviews)) continue;
+
+    const productId =
+      pickString(item, ["product_id", "productId", "id"]) ?? "product";
+    for (let i = 0; i < reviews.length; i += 1) {
+      const r = reviews[i] as Record<string, unknown>;
+      const text =
+        pickString(r, ["text", "comment", "review", "content", "body"]) ?? "";
+      if (!text.trim()) continue;
+
+      out.push({
+        externalId:
+          pickString(r, ["id", "review_id", "reviewId"]) ?? `${productId}-${i}`,
+        author: pickString(r, ["author", "username", "user", "user_name"]),
+        rating: pickNumber(r, ["rating", "stars", "score"]),
+        text: text.trim(),
+        reviewDate: pickDate(r, ["date", "created_at", "reviewDate", "time"]),
+      });
+    }
+  }
+  return out;
+}
+
 export function normalizeReviewItems(
   items: Record<string, unknown>[],
 ): NormalizedReview[] {
   const fromPdp = normalizeShopeeProductDetailReviews(items);
   if (fromPdp.length > 0) return fromPdp;
+
+  const fromKulqiz = normalizeKulqizProductReviews(items);
+  if (fromKulqiz.length > 0) return fromKulqiz;
 
   const out: NormalizedReview[] = [];
   for (let i = 0; i < items.length; i += 1) {
@@ -176,19 +288,32 @@ export function normalizeReviewItems(
         "comment",
         "review",
         "reviewText",
+        "review_text",
         "content",
         "body",
       ]) ?? "";
     if (!text.trim()) continue;
 
     const externalId =
-      pickString(item, ["id", "reviewId", "externalId", "commentId"]) ??
+      pickString(item, ["id", "reviewId", "review_id", "externalId", "commentId"]) ??
       `row-${i}`;
 
     out.push({
       externalId,
-      author: pickString(item, ["author", "username", "userName", "buyer"]),
-      rating: pickNumber(item, ["rating", "stars", "score", "star"]),
+      author: pickString(item, [
+        "author",
+        "username",
+        "userName",
+        "buyer",
+        "reviewer_name",
+      ]),
+      rating: pickNumber(item, [
+        "rating",
+        "stars",
+        "score",
+        "star",
+        "review_rating",
+      ]),
       text: text.trim(),
       reviewDate: pickDate(item, [
         "reviewDate",
@@ -196,6 +321,8 @@ export function normalizeReviewItems(
         "createdAt",
         "timestamp",
         "time",
+        "review_time",
+        "created_at",
       ]),
     });
   }
@@ -209,39 +336,65 @@ export function normalizeShopProducts(
   for (let i = 0; i < items.length; i += 1) {
     const item = items[i]!;
     if (item.error != null) continue;
+    const status = pickString(item, ["status"]);
+    if (status === "error" || status === "failed") continue;
 
     const name =
-      pickString(item, ["name", "title", "productName", "itemName"]) ?? "";
+      pickString(item, [
+        "name",
+        "title",
+        "productName",
+        "productTitle",
+        "product_name",
+        "itemName",
+      ]) ?? "";
     const productUrl =
       pickString(item, ["url", "productUrl", "link", "href"]) ?? "";
     if (!name.trim() || !productUrl.trim()) continue;
 
     const externalId =
-      pickString(item, ["id", "productId", "itemId", "skuId"]) ??
+      pickString(item, ["id", "productId", "product_id", "itemId", "skuId"]) ??
       (item.itemId != null ? String(item.itemId) : `sku-${i}`);
 
-    const discountPct = pickNumber(item, [
+    let discountPct = pickNumber(item, [
       "discountPercent",
       "discount",
       "discount_rate",
+      "discount_percent",
     ]);
+    const discountRate = pickNumber(item, ["discountRate"]);
+    if (
+      discountPct == null &&
+      discountRate != null &&
+      discountRate > 0 &&
+      discountRate <= 1
+    ) {
+      discountPct = Math.round(discountRate * 100);
+    }
     const isOnSale = item.isOnSale === true;
     const promoText =
-      pickString(item, ["promoText", "promotion", "discountLabel", "badge"]) ??
+      pickString(item, ["promoText", "promotion", "discountLabel", "badge", "discountFormat"]) ??
       (isOnSale && discountPct != null ? `Diskon ${discountPct}%` : null);
-    const sold = pickNumber(item, ["sold", "historicalSold", "historicalSoldEstimated"]);
+    const sold = pickCompactCount(item, [
+      "sold",
+      "historicalSold",
+      "historicalSoldEstimated",
+      "soldCount",
+      "sold_count",
+    ]);
 
     out.push({
       externalId,
       name: name.trim(),
       productUrl: productUrl.trim(),
-      price: pickShopeePrice(item),
-      rating: pickNumber(item, ["rating", "stars", "score"]),
+      price: pickShopeePrice(item) ?? pickNumber(item, ["min_price", "avg_price", "max_price"]),
+      rating: pickNumber(item, ["rating", "stars", "score", "product_rating"]),
       reviewCount:
         pickNumber(item, [
           "reviewCount",
-          "reviews",
           "ratingCount",
+          "review_count",
+          "reviews",
           "totalReviews",
           "cmt_count",
         ]) ??
@@ -249,11 +402,18 @@ export function normalizeShopProducts(
         0,
       hasPromo: !!promoText || isOnSale || discountPct != null,
       promoText,
-      categoryRank: pickNumber(item, ["rank", "categoryRank", "position"]),
+      categoryRank: pickNumber(item, [
+        "rank",
+        "categoryRank",
+        "position",
+        "rank_global",
+        "rank_on_page",
+      ]),
       shopName: pickString(item, [
         "shopName",
         "shop_name",
         "sellerName",
+        "seller_name",
         "seller",
         "brandName",
         "storeName",

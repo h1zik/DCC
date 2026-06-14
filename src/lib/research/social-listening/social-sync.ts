@@ -1,12 +1,55 @@
 import "server-only";
 
-import { SocialListeningStatus } from "@prisma/client";
+import { SocialListeningPlatform, SocialListeningStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { generateResearchJson } from "@/lib/research/gemini-client";
 import { aggregateSocialSummary } from "@/lib/research/social-listening/aggregate-summary";
-import { collectMentions } from "@/lib/research/social-listening/collect-mentions";
+import { generateDemoMentions } from "@/lib/research/social-listening/demo-mentions";
 import { classifyMentions } from "@/lib/research/social-listening/mention-analyzer";
+import {
+  platformStatusMessage,
+  startPlatformScrapes,
+  waitForPlatformScrapes,
+  type PlatformRunIds,
+  type PlatformStatusMap,
+} from "@/lib/research/social-listening/platform-scrape-runner";
+import { buildSocialActionPlanPrompt } from "@/lib/research/social-listening/prompts/mention-analysis";
+import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
+import type { ActionPlan } from "@/lib/research/prescriptive/types";
+import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
 
-export async function syncSocialListeningMonitor(
+function parseJsonRecord(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return raw as Record<string, unknown>;
+}
+
+function countByPlatform(
+  mentions: RawSocialMention[],
+): Partial<Record<SocialListeningPlatform, number>> {
+  const counts: Partial<Record<SocialListeningPlatform, number>> = {};
+  for (const m of mentions) {
+    counts[m.platform] = (counts[m.platform] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function buildPlatformWarnings(
+  platforms: SocialListeningPlatform[],
+  platformStatus: PlatformStatusMap,
+  apifyRunIds: PlatformRunIds,
+): string[] {
+  return platforms
+    .map((p) => {
+      const status = platformStatus[p];
+      if (!status || status === "READY") return null;
+      return platformStatusMessage(p, status, apifyRunIds[p]);
+    })
+    .filter((w): w is string => !!w);
+}
+
+/** Create batch, start Apify runs in parallel, persist platform state. */
+export async function beginSocialListeningSync(
   monitorId: string,
 ): Promise<{ batchId: string }> {
   const monitor = await prisma.socialListeningMonitor.findUnique({
@@ -21,25 +64,96 @@ export async function syncSocialListeningMonitor(
     },
   });
 
-  try {
-    const { mentions, warnings, platformCounts } = await collectMentions({
-      keywords: monitor.keywords,
+  const { apifyRunIds, platformStatus, warnings } = await startPlatformScrapes({
+    keywords: monitor.keywords,
+    platforms: monitor.platforms,
+  });
+
+  await prisma.socialListeningBatch.update({
+    where: { id: batch.id },
+    data: {
+      platformStatus,
+      apifyRunIds,
+      errorMessage: warnings.length > 0 ? warnings.join(" | ") : null,
+    },
+  });
+
+  return { batchId: batch.id };
+}
+
+/** Poll until all platforms finish, then classify and mark READY. */
+export async function finalizeSocialListeningBatch(
+  batchId: string,
+): Promise<void> {
+  const batch = await prisma.socialListeningBatch.findUnique({
+    where: { id: batchId },
+    include: { monitor: true },
+  });
+  if (!batch?.monitor) throw new Error("Batch social listening tidak ditemukan.");
+
+  const monitor = batch.monitor;
+  const apifyRunIds = parseJsonRecord(batch.apifyRunIds) as PlatformRunIds;
+  const initialStatus = parseJsonRecord(
+    batch.platformStatus,
+  ) as PlatformStatusMap;
+
+  let mentions: RawSocialMention[] = [];
+  let platformStatus = initialStatus;
+  let warnings = buildPlatformWarnings(
+    monitor.platforms,
+    platformStatus,
+    apifyRunIds,
+  );
+
+  const hasCollecting = monitor.platforms.some(
+    (p) => platformStatus[p] === "COLLECTING",
+  );
+
+  if (hasCollecting) {
+    const pollResult = await waitForPlatformScrapes({
       platforms: monitor.platforms,
+      apifyRunIds,
+      platformStatus,
+      pollIntervalMs: 10_000,
+      maxWaitMs: 1_800_000,
     });
-
-    const countSummary = Object.entries(platformCounts)
-      .map(([p, n]) => `${p}: ${n}`)
-      .join(", ");
-    if (countSummary) {
-      warnings.unshift(`Mention terkumpul — ${countSummary}`);
-    }
-
-    if (warnings.length > 0) {
-      console.warn("[social-sync] warnings:", warnings.join(" | "));
-    }
+    platformStatus = pollResult.platformStatus;
+    mentions = pollResult.mentions;
+    warnings = [
+      ...buildPlatformWarnings(monitor.platforms, platformStatus, apifyRunIds),
+      ...pollResult.warnings,
+    ];
 
     await prisma.socialListeningBatch.update({
-      where: { id: batch.id },
+      where: { id: batchId },
+      data: { platformStatus, errorMessage: warnings.join(" | ") || null },
+    });
+  }
+
+  const platformCounts = countByPlatform(mentions);
+  const countSummary = Object.entries(platformCounts)
+    .map(([p, n]) => `${p}: ${n}`)
+    .join(", ");
+  if (countSummary) {
+    warnings.unshift(`Mention terkumpul — ${countSummary}`);
+  }
+
+  let usedDemo = false;
+  if (mentions.length === 0) {
+    mentions = generateDemoMentions(monitor.keywords, monitor.platforms);
+    usedDemo = true;
+    warnings.push(
+      "Menggunakan data demo karena scrape kosong atau API tidak tersedia.",
+    );
+  }
+
+  if (warnings.length > 0) {
+    console.warn("[social-sync] warnings:", warnings.join(" | "));
+  }
+
+  try {
+    await prisma.socialListeningBatch.update({
+      where: { id: batchId },
       data: { status: SocialListeningStatus.ANALYZING },
     });
 
@@ -51,10 +165,33 @@ export async function syncSocialListeningMonitor(
 
     const summary = aggregateSocialSummary(classified);
 
+    let actionPlan: ActionPlan | null = null;
+    if (summary.topPainPoints.length > 0 || summary.topWishlist.length > 0) {
+      try {
+        const planResult = await generateResearchJson<{ actionPlan?: unknown }>(
+          buildSocialActionPlanPrompt({
+            monitorName: monitor.name,
+            painPoints: summary.topPainPoints,
+            wishlist: summary.topWishlist,
+            categoryBreakdown: summary.categoryBreakdown,
+          }),
+        );
+        actionPlan = coerceActionPlan(planResult.actionPlan, `social-${batchId}`);
+      } catch (err) {
+        console.error("[social-sync] action plan gagal", err);
+      }
+    }
+
+    const summaryNote = usedDemo ? " (data demo)" : "";
+    const aiSummaryText =
+      warnings.length > 0
+        ? `${aiSummary}${summaryNote} (${warnings.join(" ")})`
+        : `${aiSummary}${summaryNote}`;
+
     await prisma.$transaction([
       prisma.socialMention.createMany({
         data: classified.map((m) => ({
-          batchId: batch.id,
+          batchId,
           platform: m.platform,
           externalId: m.externalId,
           text: m.text,
@@ -71,18 +208,17 @@ export async function syncSocialListeningMonitor(
         skipDuplicates: true,
       }),
       prisma.socialListeningSummary.upsert({
-        where: { batchId: batch.id },
+        where: { batchId },
         create: {
-          batchId: batch.id,
+          batchId,
           topPainPoints: summary.topPainPoints,
           topWishlist: summary.topWishlist,
           influencers: summary.influencers,
           viralContent: summary.viralContent,
           categoryBreakdown: summary.categoryBreakdown,
-          aiSummary:
-            warnings.length > 0
-              ? `${aiSummary} (${warnings.join(" ")})`
-              : aiSummary,
+          sentimentTimeline: summary.sentimentTimeline,
+          aiActionPlan: actionPlan ?? undefined,
+          aiSummary: aiSummaryText,
         },
         update: {
           topPainPoints: summary.topPainPoints,
@@ -90,34 +226,49 @@ export async function syncSocialListeningMonitor(
           influencers: summary.influencers,
           viralContent: summary.viralContent,
           categoryBreakdown: summary.categoryBreakdown,
-          aiSummary:
-            warnings.length > 0
-              ? `${aiSummary} (${warnings.join(" ")})`
-              : aiSummary,
+          sentimentTimeline: summary.sentimentTimeline,
+          aiActionPlan: actionPlan ?? undefined,
+          aiSummary: aiSummaryText,
         },
       }),
       prisma.socialListeningBatch.update({
-        where: { id: batch.id },
+        where: { id: batchId },
         data: {
           status: SocialListeningStatus.READY,
           collectedAt: new Date(),
+          platformStatus,
           errorMessage: warnings.length > 0 ? warnings.join(" | ") : null,
         },
       }),
     ]);
 
-    return { batchId: batch.id };
+    await syncModuleRecommendations({
+      module: "social-listening",
+      sourceId: monitor.id,
+      sourceLabel: `Social: ${monitor.name}`,
+      href: `/research-hub/social-listening/${monitor.id}`,
+      plan: actionPlan,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync gagal";
     await prisma.socialListeningBatch.update({
-      where: { id: batch.id },
+      where: { id: batchId },
       data: {
         status: SocialListeningStatus.FAILED,
         errorMessage: message,
+        platformStatus,
       },
     });
     throw err;
   }
+}
+
+export async function syncSocialListeningMonitor(
+  monitorId: string,
+): Promise<{ batchId: string }> {
+  const { batchId } = await beginSocialListeningSync(monitorId);
+  await finalizeSocialListeningBatch(batchId);
+  return { batchId };
 }
 
 export async function syncActiveMonitors(): Promise<{ synced: number }> {

@@ -1,10 +1,20 @@
 import { Radar } from "lucide-react";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHero } from "@/components/page-hero";
+import { isTikTokTrendsConfigured } from "@/lib/research/trend-radar/tiktok-trends";
+import {
+  getDefaultTrendSourceConfig,
+  parseTrendSourceConfigJson,
+  resolveTrendSourceConfig,
+} from "@/lib/research/trend-radar/trend-source-config";
 import { TrendRadarClient, type TrendRadarPageData } from "./trend-radar-client";
 
 export default async function TrendRadarPage() {
-  const [latestGlobal, digests, watchlists] = await Promise.all([
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  const [latestGlobal, digests, watchlists, userSettings] = await Promise.all([
     prisma.trendRadarDigest.findFirst({
       where: { isGlobal: true, status: "READY" },
       orderBy: { generatedAt: "desc" },
@@ -28,7 +38,16 @@ export default async function TrendRadarPage() {
         },
       },
     }),
+    userId
+      ? prisma.trendRadarUserSettings.findUnique({ where: { userId } })
+      : Promise.resolve(null),
   ]);
+
+  const defaults = getDefaultTrendSourceConfig();
+  const storedUserConfig = userSettings?.sourceConfig
+    ? parseTrendSourceConfigJson(userSettings.sourceConfig)
+    : null;
+  const globalSourceConfig = resolveTrendSourceConfig(storedUserConfig ?? defaults);
 
   const pageData: TrendRadarPageData = {
     latestGlobal: latestGlobal
@@ -61,6 +80,7 @@ export default async function TrendRadarPage() {
       name: w.name,
       keywords: w.keywords,
       isActive: w.isActive,
+      sourceConfig: parseTrendSourceConfigJson(w.sourceConfig),
       latestDigest: w.digests[0]
         ? {
             id: w.digests[0].id,
@@ -69,6 +89,8 @@ export default async function TrendRadarPage() {
           }
         : null,
     })),
+    globalSourceConfig,
+    tiktokConfigured: isTikTokTrendsConfigured(),
   };
 
   return (

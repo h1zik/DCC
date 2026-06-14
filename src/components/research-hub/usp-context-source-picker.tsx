@@ -262,7 +262,7 @@ export function UspContextSourcePicker({
   );
 }
 
-function ModuleSourceBox({
+export function ModuleSourceBox({
   config,
   icon: Icon,
   enabled,
@@ -365,7 +365,7 @@ function ModuleSourceBox({
   );
 }
 
-function SourceTileList({
+export function SourceTileList({
   items,
   selected,
   emptyHint,
@@ -460,7 +460,7 @@ function SourceTileList({
   );
 }
 
-function SingleSelectField({
+export function SingleSelectField({
   placeholder,
   items,
   value,

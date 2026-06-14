@@ -10,6 +10,16 @@ import {
   mergeGapReasons,
 } from "@/lib/research/keyword-intel/build-keyword-output";
 import { buildKeywordAnalysisPrompt } from "@/lib/research/keyword-intel/prompts/keyword-analysis";
+import {
+  dedupeBrandNames,
+  extractForbiddenBrandsFromKeywords,
+  gatherMarketBrandNames,
+  sanitizeCopyKeywords,
+  sanitizeStringArray,
+} from "@/lib/research/brand-guard";
+import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
+import type { ActionPlan } from "@/lib/research/prescriptive/types";
 
 type AnalysisResult = {
   intents?: { keyword: string; intent: "transactional" | "informational" }[];
@@ -23,6 +33,7 @@ type AnalysisResult = {
   seasonalCalendar: { month: string; keywords: string[] }[];
   clusters: { name: string; keywords: string[] }[];
   aiSummary: string;
+  actionPlan?: unknown;
 };
 
 function norm(keyword: string): string {
@@ -78,11 +89,18 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
       data: { status: KeywordIntelStatus.ANALYZING },
     });
 
+    const signalKeywords = collected.signals.map((s) => s.keyword);
+    const forbiddenBrands = dedupeBrandNames([
+      ...(await gatherMarketBrandNames({ category: query.category })),
+      ...extractForbiddenBrandsFromKeywords(signalKeywords, query.category),
+    ]);
+
     const prompt = buildKeywordAnalysisPrompt({
       category: query.category,
       seedKeyword: query.seedKeyword,
       signals: collected.signals,
       gapCandidates,
+      forbiddenBrands,
     });
 
     const result = await generateResearchJson<AnalysisResult>(prompt);
@@ -98,7 +116,7 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
       reasonMapFromAi(result.gapReasons),
     );
 
-    const copyKeywords = {
+    const copyKeywordsRaw = {
       ...(result.copyKeywords ?? {}),
       _meta: {
         isDemo: collected.isDemo,
@@ -106,6 +124,29 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
         dataNotice: collected.dataNotice,
       },
     };
+    const copyKeywords = sanitizeCopyKeywords(
+      copyKeywordsRaw,
+      forbiddenBrands,
+    ) as typeof copyKeywordsRaw;
+
+    const actionPlan: ActionPlan | null = coerceActionPlan(
+      result.actionPlan,
+      `keyword-${queryId}`,
+      forbiddenBrands,
+    );
+
+    const namingSuggestions = sanitizeStringArray(
+      result.namingSuggestions ?? [],
+      forbiddenBrands,
+    );
+    const seasonalCalendar = (result.seasonalCalendar ?? []).map((row) => ({
+      ...row,
+      keywords: sanitizeStringArray(row.keywords, forbiddenBrands),
+    }));
+    const clusters = (result.clusters ?? []).map((c) => ({
+      ...c,
+      keywords: sanitizeStringArray(c.keywords, forbiddenBrands),
+    }));
 
     await prisma.keywordIntelResult.upsert({
       where: { queryId },
@@ -113,26 +154,36 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
         queryId,
         keywordMatrix,
         gapKeywords,
-        namingSuggestions: result.namingSuggestions ?? [],
+        namingSuggestions,
         copyKeywords,
-        seasonalCalendar: result.seasonalCalendar ?? [],
-        clusters: result.clusters ?? [],
+        seasonalCalendar,
+        clusters,
         aiSummary: result.aiSummary ?? null,
+        aiActionPlan: actionPlan ?? undefined,
       },
       update: {
         keywordMatrix,
         gapKeywords,
-        namingSuggestions: result.namingSuggestions ?? [],
+        namingSuggestions,
         copyKeywords,
-        seasonalCalendar: result.seasonalCalendar ?? [],
-        clusters: result.clusters ?? [],
+        seasonalCalendar,
+        clusters,
         aiSummary: result.aiSummary ?? null,
+        aiActionPlan: actionPlan ?? undefined,
       },
     });
 
     await prisma.keywordIntelQuery.update({
       where: { id: queryId },
       data: { status: KeywordIntelStatus.READY },
+    });
+
+    await syncModuleRecommendations({
+      module: "keyword-intel",
+      sourceId: queryId,
+      sourceLabel: `Keyword: ${query.category}`,
+      href: `/research-hub/keyword-intel/${queryId}`,
+      plan: actionPlan,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Analisis keyword gagal.";

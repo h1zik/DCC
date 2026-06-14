@@ -56,6 +56,10 @@ export default async function UspAnalyzerDetailPage({
     errorMessage: analysis.errorMessage,
     aiSummary: analysis.result?.aiSummary ?? null,
     differentiationScore: analysis.result?.differentiationScore ?? null,
+    categoryDecision:
+      (analysis.result?.categoryDecision as UspDetailData["categoryDecision"]) ??
+      null,
+    actionPlan: analysis.result?.aiActionPlan ?? null,
     gapMatrix,
     claimAnalysis,
     positioningMap,

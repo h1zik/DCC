@@ -13,6 +13,9 @@ import {
 import { actionErrorMessage } from "@/lib/action-error-message";
 import type { CompetitorInsights } from "@/lib/research/competitor-insights";
 import { formatRp } from "@/lib/research/labels";
+import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
+import { useResearchJobProgress } from "../../use-research-job-progress";
 import { CompetitorInsightsPanel } from "@/components/research-hub/competitor-insights-panel";
 import {
   CompetitorPriceBarChart,
@@ -71,12 +74,22 @@ export type CompetitorDetail = {
   shopUrl: string;
   skus: Sku[];
   insights: CompetitorInsights;
+  aiInsights: unknown;
+  isScraping: boolean;
   currentPriceBar: PriceBarPoint[];
   alerts: Alert[];
   priceChart30: PriceChartBundle;
   priceChart60: PriceChartBundle;
   priceChart90: PriceChartBundle;
   shareOfReview: { name: string; value: number }[];
+};
+
+type CompetitorAiInsights = {
+  summary?: string | null;
+  discountDepthPct?: number | null;
+  shareOfCategoryPct?: number | null;
+  promoSkuCount?: number;
+  actionPlan?: unknown;
 };
 
 export function CompetitorDetailClient({
@@ -87,6 +100,10 @@ export function CompetitorDetailClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [priceDays, setPriceDays] = useState<30 | 60 | 90>(30);
+
+  useResearchJobProgress({ inProgress: competitor.isScraping });
+
+  const ai = (competitor.aiInsights as CompetitorAiInsights | null) ?? null;
 
   const priceChart =
     priceDays === 30
@@ -150,7 +167,43 @@ export function CompetitorDetailClient({
           {competitor.brand} · {competitor.category} ·{" "}
           {MARKETPLACE_LABELS[competitor.marketplace]}
         </p>
+        {ai &&
+        (ai.discountDepthPct != null || ai.shareOfCategoryPct != null) ? (
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            {ai.shareOfCategoryPct != null ? (
+              <span className="rounded-full bg-muted px-2.5 py-1 font-medium">
+                Share kategori (review): {ai.shareOfCategoryPct.toFixed(1)}%
+              </span>
+            ) : null}
+            {ai.discountDepthPct != null ? (
+              <span className="rounded-full bg-muted px-2.5 py-1 font-medium">
+                Kedalaman diskon: ~{ai.discountDepthPct.toFixed(0)}%
+              </span>
+            ) : null}
+            {ai.promoSkuCount != null ? (
+              <span className="rounded-full bg-muted px-2.5 py-1 font-medium">
+                {ai.promoSkuCount} SKU promo
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </header>
+
+      {competitor.isScraping ? (
+        <JobProgressBar
+          title="Mengambil & menganalisis data kompetitor"
+          percent={45}
+          stepLabel="Scrape toko + analisis playbook AI berjalan di background — halaman refresh otomatis."
+        />
+      ) : null}
+
+      {ai?.actionPlan ? (
+        <ActionPlanPanel
+          plan={ai.actionPlan}
+          title="Response Playbook (AI)"
+          subtitle={ai.summary ?? undefined}
+        />
+      ) : null}
 
       <CompetitorInsightsPanel insights={competitor.insights} />
 

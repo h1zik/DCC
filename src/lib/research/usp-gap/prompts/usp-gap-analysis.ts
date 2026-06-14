@@ -1,5 +1,6 @@
 import "server-only";
 
+import { buildActionPlanInstruction } from "@/lib/research/prescriptive/prompt";
 import type { UspGatheredContext } from "@/lib/research/usp-gap/gather-context";
 
 export function buildUspGapAnalysisPrompt(ctx: UspGatheredContext): string {
@@ -11,17 +12,25 @@ Data agregat dari modul riset:
 ${JSON.stringify(ctx, null, 2)}
 
 Tugas:
-1. Buat gap matrix: klaim/benefit vs kekosongan pasar (gapScore 0-100, opportunity ringkas)
+1. Buat gap matrix: klaim/benefit vs kekosongan pasar. Per baris WAJIB isi:
+   - gapScore 0-100, opportunity ringkas
+   - recommendedAction: aksi imperatif konkret untuk merebut gap
+   - priority: "P0" | "P1" | "P2" (P0 = gap besar & mudah dimenangkan)
+   - evidenceRefs: array string yang mengutip bukti dari data (mis. tema keluhan, kompetitor, keyword)
 2. Claim analysis: klaim overused vs masih kosong di pasar
 3. Positioning map: axisX default "Harga", axisY default "Efektivitas/Benefit", plot 5-12 poin kompetitor/kategori
 4. 5-10 kandidat USP dengan RTB (reason to believe), differentiationScore 0-100, dan risks[]
 5. differentiationScore agregat 0-100 untuk keseluruhan peluang kategori
-6. aiSummary 3-4 kalimat
+6. categoryDecision: keputusan masuk kategori — verdict "GO" | "WATCH" | "AVOID", confidence 0..1, dan reason ringkas berbasis bukti
+7. aiSummary 3-4 kalimat
+
+${buildActionPlanInstruction(["RND", "MARKETING", "BRAND", "PRICING"])}
 
 Balas JSON:
 {
   "gapMatrix": [
-    { "claim": "string", "competitors": ["string"], "gapScore": number, "opportunity": "string" }
+    { "claim": "string", "competitors": ["string"], "gapScore": number, "opportunity": "string",
+      "recommendedAction": "string", "priority": "P0"|"P1"|"P2", "evidenceRefs": ["string"] }
   ],
   "claimAnalysis": {
     "overused": ["string"],
@@ -36,6 +45,8 @@ Balas JSON:
     { "usp": "string", "rtb": "string", "differentiationScore": number, "risks": ["string"] }
   ],
   "differentiationScore": number,
-  "aiSummary": "string"
+  "categoryDecision": { "verdict": "GO"|"WATCH"|"AVOID", "confidence": number, "reason": "string" },
+  "aiSummary": "string",
+  "actionPlan": { "headline": "string", "recommendations": [ /* skema di atas */ ] }
 }`;
 }

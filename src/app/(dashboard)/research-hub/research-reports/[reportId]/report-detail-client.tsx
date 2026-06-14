@@ -8,12 +8,18 @@ import { ResearchReportStatus } from "@prisma/client";
 import { toast } from "sonner";
 import { refreshResearchReport } from "@/actions/research-reports";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import {
+  ReportFeedbackSankey,
+  type FeedbackLoopData,
+} from "@/components/research-hub/report-feedback-sankey";
 import { ReportPdfDownloadButton } from "@/components/research-hub/report-pdf-download-button";
 import {
   ReportSectionList,
+  REPORT_BODY_HTML_CLASS,
   type ReportSectionRow,
 } from "@/components/research-hub/report-section-list";
 import { ReportShareLinkButton } from "@/components/research-hub/report-share-link-button";
+import { reportBodyToHtml } from "@/lib/research/reports/report-body-html";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -29,10 +35,26 @@ export type ReportDetailData = {
   status: ResearchReportStatus;
   aiSummary: string | null;
   sections: ReportSectionRow[];
+  actionItems: {
+    module: string;
+    owner: string;
+    priority: string;
+    action: string;
+    rationale: string;
+    sourceLabel: string | null;
+    href: string | null;
+  }[];
+  feedbackLoop: FeedbackLoopData | null;
   periodStart: string | null;
   periodEnd: string | null;
   errorMessage: string | null;
   sharePath: string;
+};
+
+const PRIORITY_TONE: Record<string, string> = {
+  P0: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+  P1: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  P2: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
 };
 
 function statusTone(status: ResearchReportStatus) {
@@ -119,8 +141,64 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
           <CardHeader>
             <CardTitle className="text-base">Executive Summary</CardTitle>
           </CardHeader>
-          <CardContent className="text-muted-foreground text-sm leading-relaxed">
-            {data.aiSummary}
+          <CardContent
+            className={REPORT_BODY_HTML_CLASS}
+            dangerouslySetInnerHTML={{ __html: reportBodyToHtml(data.aiSummary) }}
+          />
+        </Card>
+      ) : null}
+
+      {data.actionItems.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Rekomendasi Aksi Lintas-Modul
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {data.actionItems.map((item, i) => {
+              const body = (
+                <div className="border-border flex items-start gap-3 rounded-lg border p-3">
+                  <span
+                    className={cn(
+                      "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                      PRIORITY_TONE[item.priority] ??
+                        "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {item.priority}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{item.action}</p>
+                    <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
+                      {item.rationale}
+                    </p>
+                    <p className="text-muted-foreground mt-1 text-[10px] uppercase tracking-wide">
+                      {item.owner}
+                      {item.sourceLabel ? ` · ${item.sourceLabel}` : ""}
+                    </p>
+                  </div>
+                </div>
+              );
+              return item.href ? (
+                <Link key={i} href={item.href} className="block hover:opacity-90">
+                  {body}
+                </Link>
+              ) : (
+                <div key={i}>{body}</div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {data.feedbackLoop ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Feedback Loop Riset</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ReportFeedbackSankey data={data.feedbackLoop} />
           </CardContent>
         </Card>
       ) : null}
