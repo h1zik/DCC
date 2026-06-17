@@ -31,6 +31,10 @@ import {
   mergePendingChatFiles,
   readClipboardImageFiles,
 } from "@/lib/chat-pending-files";
+import {
+  preventComposerBlur,
+  useChatComposerFocus,
+} from "@/lib/use-chat-composer-focus";
 import { assertSafeGifUrl } from "@/lib/room-chat-gif";
 import { toast } from "sonner";
 import { DirectChatPushSetup } from "@/components/direct-chat/direct-chat-push-setup";
@@ -179,6 +183,7 @@ export function DirectChatExperience({
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const scheduleComposerFocus = useChatComposerFocus(taRef, pending);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastSyncedAtRef = useRef<string>("");
@@ -504,6 +509,7 @@ export function DirectChatExperience({
           setBody("");
           setMessages((prev) => mergeMessageLists(prev, [updated]));
           syncLastActivityRef(lastSyncedAtRef, [updated]);
+          scheduleComposerFocus();
         } catch (e) {
           toast.error(actionErrorMessage(e, "Gagal mengedit pesan."));
         }
@@ -542,6 +548,7 @@ export function DirectChatExperience({
         scrollToBottom();
         void pollInbox();
         window.dispatchEvent(new Event("direct-chat-inbox-changed"));
+        scheduleComposerFocus();
       } catch (e) {
         toast.error(actionErrorMessage(e, "Gagal mengirim."));
       }
@@ -1083,6 +1090,7 @@ export function DirectChatExperience({
                       size="sm"
                       className="shrink-0 gap-1.5"
                       disabled={pending || !canSend}
+                      onMouseDown={preventComposerBlur}
                       onClick={submitMessage}
                     >
                       {!editingMessage ? <Send className="size-4" aria-hidden /> : null}

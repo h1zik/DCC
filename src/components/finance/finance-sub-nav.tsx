@@ -28,19 +28,19 @@ type SubNavItem = {
 };
 
 const NAV_ITEMS: SubNavItem[] = [
-  { href: "/finance", label: "Ringkasan", icon: LayoutDashboard, group: "core" },
-  { href: "/finance/chart-of-accounts", label: "Akun", icon: Scale, group: "core" },
-  { href: "/finance/journals", label: "Jurnal", icon: ScrollText, group: "core" },
-  { href: "/finance/general-ledger", label: "Buku besar", icon: Landmark, group: "core" },
-  { href: "/finance/bank", label: "Bank", icon: Wallet, group: "ops" },
-  { href: "/finance/treasury", label: "Treasury", icon: ArrowLeftRight, group: "ops" },
+  { href: "/finance", label: "Financial Overview", icon: LayoutDashboard, group: "core" },
+  { href: "/finance/chart-of-accounts", label: "Chart of Accounts", icon: Scale, group: "core" },
+  { href: "/finance/journals", label: "Journals", icon: ScrollText, group: "core" },
+  { href: "/finance/general-ledger", label: "General Ledger", icon: Landmark, group: "core" },
+  { href: "/finance/bank", label: "Bank Reconciliation", icon: Wallet, group: "ops" },
+  { href: "/finance/treasury", label: "Cash & Treasury", icon: ArrowLeftRight, group: "ops" },
   { href: "/finance/ap-ar", label: "AP & AR", icon: BadgeCent, group: "ops" },
-  { href: "/finance/currencies", label: "Kurs", icon: Coins, group: "ops" },
-  { href: "/finance/budget", label: "Anggaran", icon: PiggyBank, group: "planning" },
-  { href: "/finance/approvals", label: "Persetujuan", icon: ShieldCheck, group: "planning" },
-  { href: "/finance/fixed-assets", label: "Aset tetap", icon: Calculator, group: "planning" },
-  { href: "/finance/brands-costing", label: "Brand & costing", icon: Building2, group: "report" },
-  { href: "/finance/reports", label: "Laporan", icon: FileBarChart, group: "report" },
+  { href: "/finance/currencies", label: "Exchange Rates", icon: Coins, group: "ops" },
+  { href: "/finance/budget", label: "Budget vs Actual", icon: PiggyBank, group: "planning" },
+  { href: "/finance/approvals", label: "Expense Approvals", icon: ShieldCheck, group: "planning" },
+  { href: "/finance/fixed-assets", label: "Fixed Assets", icon: Calculator, group: "planning" },
+  { href: "/finance/brands-costing", label: "Brand & Costing", icon: Building2, group: "report" },
+  { href: "/finance/reports", label: "Reports", icon: FileBarChart, group: "report" },
 ];
 
 function isItemActive(itemHref: string, pathname: string): boolean {
