@@ -30,14 +30,15 @@ Juga untuk: bandingkan harga vs kompetitor, cek positioning, validasi claim prod
 4. **Jangan** berhenti di `list_research_competitors` saja — itu ringkasan, bukan analisis.
 5. **Jangan** bilang "tidak ada data harga" tanpa memanggil `analyze_competitor_pricing` atau `evaluate_product_with_research`.
 6. Setelah data terkumpul, berikan **verdict jelas** (make sense / dengan catatan / kurang make sense) dengan bukti:
-   - Harga vs min/max/avg pasar
+   - Harga vs min/max/avg pasar (Competitor Tracker + Product Discovery)
+   - Landscape marketplace: price band, top seller, promo (Product Discovery)
    - Claim vs keluhan/pujian di Review Intel
    - Gap positioning dari USP Analyzer
    - Sinyal tren/keyword/social jika relevan
 
 ## Tool names (prefix MCP mungkin berbeda)
 
-- `evaluate_product_with_research` — tool composite utama
+- `evaluate_product_with_research` — tool composite utama (Competitor Tracker + Product Discovery + Review Intel + tren/keyword/USP/social)
 - `analyze_competitor_pricing` — detail harga per SKU kompetitor
 - `get_research_hub_dashboard` — overview KPI riset
 - `list_research_competitors` / `get_research_competitor` — hanya ringkasan, lanjut ke tool analisis
@@ -45,4 +46,5 @@ Juga untuk: bandingkan harga vs kompetitor, cek positioning, validasi claim prod
 - `list_trend_digests` / `get_trend_digest`
 - `list_keyword_intel_queries` / `get_keyword_intel_query`
 - `list_usp_gap_analyses` / `get_usp_gap_analysis`
+- `list_product_discovery_queries` / `get_product_discovery_query` — landscape scrape marketplace (juga sudah disertakan di evaluate)
 - `list_social_listening_monitors` / `get_social_listening_monitor`

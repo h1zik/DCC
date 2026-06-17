@@ -56,7 +56,7 @@ export const RESEARCH_AGENT_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "evaluate_product_with_research",
     description:
-      "UTAMA untuk validasi ide produk/harga/launch: 'apakah make sense jual X di harga Y dengan claim Z?'. Otomatis memindai Competitor Tracker (harga SKU), Review Intel (keluhan/gap), Trend Radar, Keyword Intel, USP Analyzer, Social Listening, rekomendasi riset — lalu siapkan bahan analisis. WAJIB dipanggil untuk pertanyaan kelayakan produk/harga/positioning.",
+      "UTAMA untuk validasi ide produk/harga/launch: 'apakah make sense jual X di harga Y dengan claim Z?'. Otomatis memindai Competitor Tracker (harga SKU), Product Discovery (landscape marketplace scrape), Review Intel (keluhan/gap), Trend Radar, Keyword Intel, USP Analyzer, Social Listening, rekomendasi riset — lalu siapkan bahan analisis. WAJIB dipanggil untuk pertanyaan kelayakan produk/harga/positioning.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
