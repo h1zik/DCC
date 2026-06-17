@@ -436,9 +436,7 @@ export function TasksWorkspace({
   const kanbanTasks: KanbanTask[] = useMemo(
     () =>
       localTasks.map((t) => {
-        const columnId =
-          t.kanbanColumnId ??
-          resolveColumnIdForTask(t, resolvedKanbanColumns);
+        const columnId = resolveColumnIdForTask(t, resolvedKanbanColumns);
         const kanbanSortKey =
           columnId != null
             ? (t.kanbanPositions?.find((p) => p.columnId === columnId)

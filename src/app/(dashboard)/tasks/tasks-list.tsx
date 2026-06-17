@@ -702,8 +702,7 @@ export function TasksList({
       const colTasks = tasks
         .filter(
           (task) =>
-            (task.kanbanColumnId ??
-              resolveColumnIdForTask(task, columns)) === col.id,
+            resolveColumnIdForTask(task, columns) === col.id,
         )
         .map((task) => ({
           ...task,

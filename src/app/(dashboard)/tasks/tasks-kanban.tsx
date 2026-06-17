@@ -1074,8 +1074,8 @@ function KanbanColumnShell({
       className={cn(
         "flex min-h-[320px] flex-col gap-2 rounded-xl border border-border bg-muted/10 p-2 transition-colors",
         stretchColumns
-          ? "min-w-[220px] shrink-0 lg:min-w-0 lg:flex-1 lg:basis-0 lg:shrink"
-          : "min-w-[220px] shrink-0",
+          ? "w-full min-w-0 lg:flex-1 lg:basis-0"
+          : "w-full min-w-0 lg:min-w-[220px] lg:shrink-0",
         isOver && !readOnly && "border-primary/60 bg-primary/5 ring-2 ring-primary/30",
       )}
     >
@@ -1256,8 +1256,7 @@ export function TasksKanban({
       let changed = false;
       const next = { ...prev };
       for (const task of tasks) {
-        const serverCol =
-          task.kanbanColumnId ?? resolveColumnIdForTask(task, boardColumns);
+        const serverCol = resolveColumnIdForTask(task, boardColumns);
         if (next[task.id] !== undefined && next[task.id] === serverCol) {
           delete next[task.id];
           changed = true;
@@ -1295,9 +1294,7 @@ export function TasksKanban({
     () =>
       tasks.map((t) => {
         const kanbanColumnId =
-          localColumnIds[t.id] ??
-          t.kanbanColumnId ??
-          resolveColumnIdForTask(t, boardColumns);
+          localColumnIds[t.id] ?? resolveColumnIdForTask(t, boardColumns);
         const col = boardColumns.find((c) => c.id === kanbanColumnId);
         const status =
           localStatuses[t.id] ??
@@ -1622,11 +1619,11 @@ export function TasksKanban({
         onDragCancel={onDragCancel}
         onDragEnd={onDragEnd}
       >
-        <div className={cn("w-full", !stretchColumns && "overflow-x-auto", stretchColumns && "overflow-x-auto lg:overflow-x-visible")}>
+        <div className={cn("w-full", !stretchColumns && "lg:overflow-x-auto")}>
           <div
             className={cn(
-              "flex gap-4",
-              stretchColumns ? "min-w-max lg:w-full lg:min-w-0" : "min-w-max",
+              "flex flex-col gap-4 lg:flex-row",
+              stretchColumns ? "lg:w-full lg:min-w-0" : "lg:min-w-max",
             )}
           >
           {boardColumns.map((col, colIndex) => {
