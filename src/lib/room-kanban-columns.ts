@@ -105,7 +105,7 @@ export async function getSimpleHubKanbanColumns(
     roomProcess: RoomTaskProcess.MARKET_RESEARCH,
     customProcessPhaseId: null,
   });
-  return prisma.roomKanbanColumn.findMany({
+  const columns = await prisma.roomKanbanColumn.findMany({
     where: {
       roomId,
       roomProcess: RoomTaskProcess.MARKET_RESEARCH,
@@ -114,6 +114,8 @@ export async function getSimpleHubKanbanColumns(
     orderBy: { sortOrder: "asc" },
     select: columnSelect,
   });
+  await repairOrphanTaskKanbanColumnIds(roomId, columns, { simpleHub: true });
+  return columns;
 }
 
 /** Pastikan kolom default untuk fase proses ruangan. */
@@ -135,14 +137,16 @@ export async function getRoomKanbanColumns(
     customProcessPhaseId: phase.id,
   });
 
-  return prisma.roomKanbanColumn.findMany({
+  const columns = await prisma.roomKanbanColumn.findMany({
     where: { roomId, customProcessPhaseId: phase.id },
     orderBy: { sortOrder: "asc" },
     select: columnSelect,
   });
+  await repairOrphanTaskKanbanColumnIds(roomId, columns, {
+    customProcessPhaseId: phase.id,
+  });
+  return columns;
 }
-
-/** Resolve column for task when `kanbanColumnId` belum terisi (safety net). */
 export function resolveColumnIdForTask(
   task: {
     status: TaskStatus;
@@ -150,13 +154,67 @@ export function resolveColumnIdForTask(
   },
   columns: RoomKanbanColumnDTO[],
 ): string | null {
-  if (task.kanbanColumnId) return task.kanbanColumnId;
+  if (task.kanbanColumnId) {
+    const onBoard = columns.find((c) => c.id === task.kanbanColumnId);
+    if (onBoard) return task.kanbanColumnId;
+  }
   const core = columns.find(
     (c) => c.kind === "CORE" && c.coreRole === task.status,
   );
   if (core) return core.id;
   const byLinked = columns.find((c) => c.linkedStatus === task.status);
   return byLinked?.id ?? columns[0]?.id ?? null;
+}
+
+/** Perbaiki task yang `kanbanColumnId`-nya tidak cocok dengan kolom papan aktif. */
+export async function repairOrphanTaskKanbanColumnIds(
+  roomId: string,
+  columns: RoomKanbanColumnDTO[],
+  phaseFilter?: {
+    customProcessPhaseId?: string | null;
+    roomProcess?: RoomTaskProcess;
+    /** Ruangan tanpa brand: perbaiki semua task di ruangan, tanpa filter fase. */
+    simpleHub?: boolean;
+  },
+): Promise<void> {
+  if (columns.length === 0) return;
+  const validIds = columns.map((c) => c.id);
+  const phaseWhere = phaseFilter?.simpleHub
+    ? {}
+    : phaseFilter?.customProcessPhaseId
+      ? { customProcessPhaseId: phaseFilter.customProcessPhaseId }
+      : {
+          customProcessPhaseId: null,
+          ...(phaseFilter?.roomProcess
+            ? { roomProcess: phaseFilter.roomProcess }
+            : {}),
+        };
+  const orphans = await prisma.task.findMany({
+    where: {
+      project: { roomId },
+      archivedAt: null,
+      ...phaseWhere,
+      OR: [
+        { kanbanColumnId: null },
+        ...(validIds.length > 0
+          ? [{ kanbanColumnId: { notIn: validIds } }]
+          : []),
+      ],
+    },
+    select: {
+      id: true,
+      status: true,
+      kanbanColumnId: true,
+    },
+  });
+  for (const task of orphans) {
+    const columnId = resolveColumnIdForTask(task, columns);
+    if (!columnId || columnId === task.kanbanColumnId) continue;
+    await prisma.task.update({
+      where: { id: task.id },
+      data: { kanbanColumnId: columnId },
+    });
+  }
 }
 
 export function statusForColumn(column: RoomKanbanColumnDTO): TaskStatus {
