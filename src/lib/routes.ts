@@ -65,9 +65,18 @@ export function isAgentRoute(pathname: string): boolean {
   return pathname === "/agent" || pathname.startsWith("/agent/");
 }
 
-/** Dashboard operasional — administrator & tim studio/PM. */
+/** Home — administrator & tim studio/PM. */
+export function isHomeRoute(pathname: string): boolean {
+  return pathname === "/home" || pathname.startsWith("/home/");
+}
+
+/** @deprecated Gunakan {@link isHomeRoute}. Redirect legacy `/dashboard` tetap ada. */
 export function isWorkspaceDashboardRoute(pathname: string): boolean {
-  return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  return (
+    isHomeRoute(pathname) ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/")
+  );
 }
 
 /** Pipeline & tugas — tim studio / PM. */

@@ -79,10 +79,10 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
       const adminDest =
         isAdministratorAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
-          : "/dashboard";
+          : "/home";
       dest =
         adminDest === "/rooms" || adminDest.startsWith("/rooms/")
-          ? "/dashboard"
+          ? "/home"
           : adminDest;
     } else if (userRole === UserRole.FINANCE) {
       dest =
@@ -98,7 +98,7 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
       dest =
         isStudioWorkspaceRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
-          : "/dashboard";
+          : "/home";
     }
     router.push(dest);
     router.refresh();
