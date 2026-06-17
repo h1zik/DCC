@@ -63,5 +63,6 @@ export type TaskRow = Task & {
   comments?: TaskCommentRow[];
   attachments?: TaskAttachmentRow[];
   tags: TaskTagRow[];
-  kanbanPositions?: { status: TaskStatus; sortKey: number }[];
+  kanbanPositions?: { columnId: string; sortKey: number }[];
+  kanbanColumnId?: string | null;
 };

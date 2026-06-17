@@ -23,6 +23,7 @@ export type AgentTaskSummary = {
   id: string;
   title: string;
   status: TaskStatus;
+  kanbanColumnId?: string | null;
   statusLabel: string;
   priority: TaskPriority;
   dueDate: string | null;
@@ -40,6 +41,8 @@ export type AgentKanbanBoard = {
   roomName: string;
   phaseName: string | null;
   columns: {
+    columnId: string;
+    kind: string;
     status: TaskStatus;
     label: string;
     tasks: AgentTaskSummary[];

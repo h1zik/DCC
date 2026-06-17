@@ -74,6 +74,11 @@ enum UserRole {
   MARKET_ANALYST
 }
 
+enum KanbanColumnKind {
+  CORE
+  CUSTOM
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -666,7 +671,8 @@ model RoomGlossaryEntry {
 }
 
 /**
- * Kolom Kanban: memetakan `linkedStatus` ke judul tampilan & urutan.
+ * Kolom Kanban: judul tampilan, urutan, dan pemetaan ke `Task.status` (bucket).
+ * CORE = 4 kolom inti (To-Do, Berjalan, Overdue, Selesai); CUSTOM = bebas nama.
  */
 model RoomKanbanColumn {
   id                   String                  @id @default(cuid())
@@ -678,14 +684,24 @@ model RoomKanbanColumn {
   roomProcess          RoomTaskProcess?
   customProcessPhaseId String?
   customProcessPhase   RoomCustomProcessPhase? @relation(fields: [customProcessPhaseId], references: [id], onDelete: Cascade)
+  kind                 KanbanColumnKind        @default(CUSTOM)
+  /**
+   * Peran kolom inti — hanya untuk `kind = CORE` (max 1 per fase per role).
+   */
+  coreRole             TaskStatus?
+  /**
+   * Bucket `Task.status` saat tugas di kolom ini (CORE: sama dengan coreRole; CUSTOM: workflow bucket).
+   */
   linkedStatus         TaskStatus
   title                String
   sortOrder            Int                     @default(0)
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
+  tasks                Task[]
+  kanbanPositions      TaskKanbanPosition[]
 
-  @@unique([roomId, roomProcess, linkedStatus])
-  @@unique([roomId, customProcessPhaseId, linkedStatus])
+  @@unique([roomId, roomProcess, coreRole])
+  @@unique([roomId, customProcessPhaseId, coreRole])
   @@index([roomId, roomProcess, sortOrder])
   @@index([roomId, customProcessPhaseId, sortOrder])
 }
@@ -1038,6 +1054,11 @@ model Task {
   title                    String
   description              String?
   status                   TaskStatus              @default(TODO)
+  /**
+   * Posisi kartu di papan Kanban (kolom aktif untuk room/fase).
+   */
+  kanbanColumnId           String?
+  kanbanColumn             RoomKanbanColumn?       @relation(fields: [kanbanColumnId], references: [id], onDelete: Restrict)
   priority                 TaskPriority            @default(MEDIUM)
   dueDate                  DateTime?
   isApprovalRequired       Boolean                 @default(false)
@@ -1078,6 +1099,7 @@ model Task {
   @@index([projectId, archivedAt, status])
   @@index([projectId, createdAt])
   @@index([contentPlanItemId])
+  @@index([kanbanColumnId])
 }
 
 model TaskTag {
@@ -1151,18 +1173,18 @@ model TaskAttachment {
 }
 
 /**
- * Urutan manual kartu Kanban per kolom (status). `sortKey` lebih kecil = lebih atas.
- * Tugas tanpa baris untuk status saat ini diurutkan default (terbaru di atas).
+ * Urutan manual kartu Kanban per kolom. `sortKey` lebih kecil = lebih atas.
  */
 model TaskKanbanPosition {
   taskId    String
-  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  status    TaskStatus
-  sortKey   Float      @default(0)
-  updatedAt DateTime   @updatedAt
+  task      Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  columnId  String
+  column    RoomKanbanColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  sortKey   Float            @default(0)
+  updatedAt DateTime         @updatedAt
 
-  @@id([taskId, status])
-  @@index([status, sortKey])
+  @@id([taskId, columnId])
+  @@index([columnId, sortKey])
 }
 
 model TaskAttachmentComment {

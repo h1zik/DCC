@@ -6,7 +6,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   closestCorners,
   DndContext,
+  DragOverlay,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -24,7 +27,7 @@ import {
   addChecklistItem,
   archiveTask,
   createTaskTag,
-  moveTaskStatus,
+  moveTaskToColumn,
   reorderKanbanColumn,
   unarchiveTask,
   updateTask,
@@ -34,7 +37,19 @@ import { toast } from "sonner";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { sortTasksForKanbanColumn } from "@/lib/kanban-sort";
 import { cn } from "@/lib/utils";
-import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
+import {
+  resolveColumnIdForTask,
+  statusForColumn,
+  type RoomKanbanColumnDTO,
+} from "@/lib/room-kanban-columns";
+import {
+  addCustomKanbanColumn,
+  addSimpleHubCustomKanbanColumn,
+  deleteCustomKanbanColumn,
+  reorderRoomKanbanColumns,
+  reorderSimpleHubKanbanColumns,
+  updateRoomKanbanColumnTitle,
+} from "@/actions/room-kanban-columns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -54,14 +69,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  ArrowDown,
+  ArrowUp,
   Archive,
   CalendarDays,
   Check,
   Flag,
+  GripVertical,
+  MoreHorizontal,
   Pencil,
   Plus,
   RotateCcw,
   Tag,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { TaskChecklistPopover } from "@/components/tasks/task-checklist-popover";
@@ -91,6 +111,7 @@ export type KanbanTask = {
   tags: { id: string; name: string; colorHex: string }[];
   createdAt: string;
   updatedAt: string;
+  kanbanColumnId?: string | null;
   kanbanSortKey?: number | null;
 };
 
@@ -933,10 +954,11 @@ function DraggableTask({
   );
 }
 
-function columnAccent(status: TaskStatus): {
+function columnAccent(column: Pick<RoomKanbanColumnDTO, "kind" | "coreRole" | "linkedStatus">): {
   dot: string;
   ring: string;
 } {
+  const status = statusForColumn(column as RoomKanbanColumnDTO);
   switch (status) {
     case TaskStatus.TODO:
       return {
@@ -966,57 +988,197 @@ function columnAccent(status: TaskStatus): {
   }
 }
 
-function DroppableColumn({
+function KanbanColumnShell({
   column,
   children,
   count,
   onAddTask,
   readOnly,
+  isRoomManager,
+  roomId,
+  processKey,
+  simpleHub,
+  onRenamed,
+  onDeleted,
+  onMoveColumn,
+  canMoveUp,
+  canMoveDown,
+  stretch,
 }: {
-  column: Pick<RoomKanbanColumnDTO, "linkedStatus" | "title">;
+  column: RoomKanbanColumnDTO;
   children: React.ReactNode;
   count: number;
   onAddTask?: (status: TaskStatus) => void;
   readOnly?: boolean;
+  isRoomManager?: boolean;
+  roomId?: string | null;
+  processKey?: string;
+  simpleHub?: boolean;
+  onRenamed?: (columnId: string, title: string) => void;
+  onDeleted?: (columnId: string) => void;
+  onMoveColumn?: (columnId: string, direction: "up" | "down") => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  /** Kolom memenuhi lebar papan (≤6 kolom). */
+  stretch?: boolean;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: column.linkedStatus });
-  const accent = columnAccent(column.linkedStatus);
+  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  const accent = columnAccent(column);
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(column.title);
+  const [pending, setPending] = useState(false);
+  const isCore = column.kind === "CORE";
+
+  async function saveTitle() {
+    const next = draftTitle.trim();
+    if (!next || next === column.title) {
+      setEditing(false);
+      setDraftTitle(column.title);
+      return;
+    }
+    if (!roomId || column.id.startsWith("fallback-")) return;
+    setPending(true);
+    try {
+      await updateRoomKanbanColumnTitle({ columnId: column.id, title: next });
+      onRenamed?.(column.id, next);
+      setEditing(false);
+      toast.success("Judul kolom diperbarui.");
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal mengubah judul kolom."));
+      setDraftTitle(column.title);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!roomId || isCore) return;
+    setPending(true);
+    try {
+      await deleteCustomKanbanColumn({ columnId: column.id });
+      onDeleted?.(column.id);
+      toast.success("Kolom dihapus.");
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal menghapus kolom."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const bucketStatus = statusForColumn(column);
+  const stretchColumns = stretch ?? false;
+
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-[320px] min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border bg-muted/10 p-2 transition-colors",
+        "flex min-h-[320px] flex-col gap-2 rounded-xl border border-border bg-muted/10 p-2 transition-colors",
+        stretchColumns
+          ? "min-w-[220px] shrink-0 lg:min-w-0 lg:flex-1 lg:basis-0 lg:shrink"
+          : "min-w-[220px] shrink-0",
         isOver && !readOnly && "border-primary/60 bg-primary/5 ring-2 ring-primary/30",
       )}
     >
       <div
         className={cn(
-          "border-border/60 bg-background/85 text-foreground flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 shadow-sm backdrop-blur-sm",
+          "border-border/60 bg-background/85 text-foreground flex items-center justify-between gap-1 rounded-lg border px-2 py-1.5 shadow-sm backdrop-blur-sm",
         )}
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          {isRoomManager && !readOnly && !column.id.startsWith("fallback-") ? (
+            <span className="text-muted-foreground cursor-grab active:cursor-grabbing shrink-0">
+              <GripVertical className="size-3.5" />
+            </span>
+          ) : null}
           <span
             className={cn("size-2 shrink-0 rounded-full ring-2", accent.dot, accent.ring)}
             aria-hidden
           />
-          <span className="text-foreground line-clamp-1 text-[11px] font-semibold tracking-wide uppercase">
-            {column.title}
-          </span>
-          <span className="text-muted-foreground inline-flex items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+          {editing && isRoomManager ? (
+            <Input
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onBlur={() => void saveTitle()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveTitle();
+                if (e.key === "Escape") {
+                  setEditing(false);
+                  setDraftTitle(column.title);
+                }
+              }}
+              className="h-6 min-w-0 flex-1 px-1 text-[11px] font-semibold uppercase"
+              disabled={pending}
+              autoFocus
+            />
+          ) : (
+            <button
+              type="button"
+              className={cn(
+                "text-foreground line-clamp-1 min-w-0 flex-1 text-left text-[11px] font-semibold tracking-wide uppercase",
+                isRoomManager && !readOnly && "hover:underline",
+              )}
+              onClick={() => {
+                if (isRoomManager && !readOnly) setEditing(true);
+              }}
+            >
+              {column.title}
+            </button>
+          )}
+          <span className="text-muted-foreground inline-flex shrink-0 items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
             {count}
           </span>
         </div>
-        {onAddTask && !readOnly ? (
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={() => onAddTask(column.linkedStatus)}
-            aria-label={`Tambah tugas ${column.title}`}
-          >
-            <Plus className="size-3.5" />
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-0.5">
+          {onAddTask && !readOnly ? (
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              onClick={() => onAddTask(bucketStatus)}
+              aria-label={`Tambah tugas ${column.title}`}
+            >
+              <Plus className="size-3.5" />
+            </Button>
+          ) : null}
+          {isRoomManager && !readOnly && !column.id.startsWith("fallback-") ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                type="button"
+                className="text-muted-foreground hover:text-foreground inline-flex size-6 items-center justify-center rounded-md"
+              >
+                <MoreHorizontal className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setEditing(true)}>
+                  <Pencil className="size-3.5" />
+                  Ganti nama
+                </DropdownMenuItem>
+                {canMoveUp ? (
+                  <DropdownMenuItem onClick={() => onMoveColumn?.(column.id, "up")}>
+                    <ArrowUp className="size-3.5" />
+                    Geser kiri
+                  </DropdownMenuItem>
+                ) : null}
+                {canMoveDown ? (
+                  <DropdownMenuItem onClick={() => onMoveColumn?.(column.id, "down")}>
+                    <ArrowDown className="size-3.5" />
+                    Geser kanan
+                  </DropdownMenuItem>
+                ) : null}
+                {!isCore ? (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={count > 0 || pending}
+                    onClick={() => void handleDelete()}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Hapus kolom
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
     </div>
@@ -1036,6 +1198,11 @@ export function TasksKanban({
   kanbanReadOnly,
   isRoomManager,
   showArchived,
+  processKey = "market-research",
+  simpleHub = false,
+  onColumnsChange,
+  addColumnOpen: addColumnOpenProp,
+  onAddColumnOpenChange,
 }: {
   tasks: KanbanTask[];
   columns: RoomKanbanColumnDTO[];
@@ -1046,18 +1213,33 @@ export function TasksKanban({
   onAddTask?: (status: TaskStatus) => void;
   onTaskPatched?: (taskId: string, patch: Partial<KanbanTask>) => void;
   onTagCreated?: (tag: RoomTaskTag & { roomId: string }) => void;
-  /** Mode arsip: tidak ada drag / pindah status dari papan. */
   kanbanReadOnly?: boolean;
   isRoomManager?: boolean;
   showArchived?: boolean;
+  processKey?: string;
+  simpleHub?: boolean;
+  onColumnsChange?: () => void;
+  addColumnOpen?: boolean;
+  onAddColumnOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const [boardColumns, setBoardColumns] = useState(columns);
+  const [localColumnIds, setLocalColumnIds] = useState<Record<string, string>>({});
   const [localStatuses, setLocalStatuses] = useState<Record<string, TaskStatus>>({});
   const [localSortKeys, setLocalSortKeys] = useState<Record<string, number>>({});
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [addColumnOpenInternal, setAddColumnOpenInternal] = useState(false);
+  const addColumnOpen = addColumnOpenProp ?? addColumnOpenInternal;
+  const setAddColumnOpen = onAddColumnOpenChange ?? setAddColumnOpenInternal;
+  const [newColumnTitle, setNewColumnTitle] = useState("");
+  const [addColumnPending, setAddColumnPending] = useState(false);
   const [doneConfirmTaskId, setDoneConfirmTaskId] = useState<string | null>(null);
   const [doneConfirmUnfinished, setDoneConfirmUnfinished] = useState(0);
   const [doneConfirmPreviousStatus, setDoneConfirmPreviousStatus] =
     useState<TaskStatus | null>(null);
+  const [pendingTargetColumnId, setPendingTargetColumnId] = useState<string | null>(
+    null,
+  );
   const [pendingTargetOrder, setPendingTargetOrder] = useState<string[] | null>(
     null,
   );
@@ -1066,47 +1248,94 @@ export function TasksKanban({
   );
 
   useEffect(() => {
-    setLocalStatuses({});
-    setLocalSortKeys({});
+    setBoardColumns(columns);
+  }, [columns]);
+
+  useEffect(() => {
+    setLocalColumnIds((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const task of tasks) {
+        const serverCol =
+          task.kanbanColumnId ?? resolveColumnIdForTask(task, boardColumns);
+        if (next[task.id] !== undefined && next[task.id] === serverCol) {
+          delete next[task.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setLocalStatuses((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const task of tasks) {
+        if (next[task.id] !== undefined && next[task.id] === task.status) {
+          delete next[task.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setLocalSortKeys((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const task of tasks) {
+        if (next[task.id] === undefined) continue;
+        const serverKey = task.kanbanSortKey;
+        if (serverKey != null && next[task.id] === serverKey) {
+          delete next[task.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [tasks]);
 
   const viewTasks = useMemo(
     () =>
       tasks.map((t) => {
-        const status = localStatuses[t.id] ?? t.status;
-        const serverKey =
-          t.kanbanSortKey ??
-          tasks
-            .find((row) => row.id === t.id)
-            ?.kanbanSortKey ??
-          null;
+        const kanbanColumnId =
+          localColumnIds[t.id] ??
+          t.kanbanColumnId ??
+          resolveColumnIdForTask(t, boardColumns);
+        const col = boardColumns.find((c) => c.id === kanbanColumnId);
+        const status =
+          localStatuses[t.id] ??
+          (col ? statusForColumn(col) : t.status);
+        const serverKey = t.kanbanSortKey ?? null;
         return {
           ...t,
+          kanbanColumnId,
           status,
           kanbanSortKey: localSortKeys[t.id] ?? serverKey ?? null,
         };
       }),
-    [tasks, localStatuses, localSortKeys],
+    [tasks, localColumnIds, localStatuses, localSortKeys, boardColumns],
   );
 
-  const statusSet = new Set(columns.map((c) => c.linkedStatus));
+  const columnIdSet = new Set(boardColumns.map((c) => c.id));
 
-  function resolveDropStatus(overId: string): TaskStatus | null {
-    if (statusSet.has(overId as TaskStatus)) return overId as TaskStatus;
+  function resolveDropColumnId(overId: string): string | null {
+    if (columnIdSet.has(overId)) return overId;
     const overTask = viewTasks.find((t) => t.id === overId);
-    return overTask?.status ?? null;
+    return overTask?.kanbanColumnId ?? null;
   }
 
-  /** Status di DB — hindari kirim urutan saat optimistic `localStatuses` belum sinkron. */
-  function persistedStatus(taskId: string): TaskStatus | undefined {
-    return tasks.find((t) => t.id === taskId)?.status;
+  function filterIdsForPersistedColumn(ids: string[], columnId: string): string[] {
+    return ids.filter((id) => {
+      const row = viewTasks.find((t) => t.id === id);
+      return row?.kanbanColumnId === columnId;
+    });
   }
 
-  function filterIdsForPersistedColumn(
-    ids: string[],
-    status: TaskStatus,
-  ): string[] {
-    return ids.filter((id) => persistedStatus(id) === status);
+  function patchKanbanSortKeys(orderedIds: string[], columnId: string, status: TaskStatus) {
+    orderedIds.forEach((id, index) => {
+      onTaskPatched?.(id, {
+        kanbanSortKey: index * 1000,
+        kanbanColumnId: columnId,
+        status,
+      });
+    });
   }
 
   function applyOptimisticSortKeys(orderedIds: string[]) {
@@ -1119,15 +1348,26 @@ export function TasksKanban({
     });
   }
 
-  async function persistStatusChange(
+  async function persistColumnChange(
     taskId: string,
-    newStatus: TaskStatus,
+    targetColumnId: string,
+    previousColumnId: string,
     previousStatus: TaskStatus,
     orderedTaskIdsInTarget?: string[],
   ) {
+    const targetCol = boardColumns.find((c) => c.id === targetColumnId);
+    const newStatus = targetCol ? statusForColumn(targetCol) : previousStatus;
+
+    setLocalColumnIds((prev) => ({ ...prev, [taskId]: targetColumnId }));
     setLocalStatuses((prev) => ({ ...prev, [taskId]: newStatus }));
     if (orderedTaskIdsInTarget) {
       applyOptimisticSortKeys(orderedTaskIdsInTarget);
+      patchKanbanSortKeys(orderedTaskIdsInTarget, targetColumnId, newStatus);
+    } else {
+      onTaskPatched?.(taskId, {
+        status: newStatus,
+        kanbanColumnId: targetColumnId,
+      });
     }
     const successMsg =
       newStatus === TaskStatus.DONE
@@ -1138,36 +1378,124 @@ export function TasksKanban({
         ? "Gagal memindahkan tugas ke Selesai."
         : "Gagal memindahkan tugas.";
     try {
-      await moveTaskStatus({
+      if (targetColumnId.startsWith("fallback-")) {
+        throw new Error("Kolom tidak valid.");
+      }
+      await moveTaskToColumn({
         taskId,
-        status: newStatus,
+        columnId: targetColumnId,
         orderedTaskIdsInTarget,
       });
       router.refresh();
       toast.success(successMsg);
     } catch (err) {
+      setLocalColumnIds((prev) => ({ ...prev, [taskId]: previousColumnId }));
       setLocalStatuses((prev) => ({ ...prev, [taskId]: previousStatus }));
+      onTaskPatched?.(taskId, {
+        status: previousStatus,
+        kanbanColumnId: previousColumnId,
+      });
       if (orderedTaskIdsInTarget) setLocalSortKeys({});
       toast.error(actionErrorMessage(err, errFallback));
     }
   }
 
+  async function handleAddColumn() {
+    if (!roomId || !newColumnTitle.trim()) return;
+    setAddColumnPending(true);
+    try {
+      const col = simpleHub
+        ? await addSimpleHubCustomKanbanColumn({
+            roomId,
+            title: newColumnTitle.trim(),
+          })
+        : await addCustomKanbanColumn({
+            roomId,
+            processKey,
+            title: newColumnTitle.trim(),
+            workflowBucket: TaskStatus.IN_PROGRESS,
+          });
+      setBoardColumns((prev) => [
+        ...prev,
+        {
+          id: col.id,
+          kind: "CUSTOM",
+          coreRole: null,
+          linkedStatus: col.linkedStatus,
+          title: col.title,
+          sortOrder: col.sortOrder,
+        },
+      ]);
+      setNewColumnTitle("");
+      setAddColumnOpen(false);
+      onColumnsChange?.();
+      toast.success("Kolom ditambahkan.");
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal menambah kolom."));
+    } finally {
+      setAddColumnPending(false);
+    }
+  }
+
+  function onDragStart(e: DragStartEvent) {
+    if (kanbanReadOnly) return;
+    setActiveDragId(String(e.active.id));
+  }
+
+  function onDragOver(e: DragOverEvent) {
+    if (kanbanReadOnly) return;
+    const { active, over } = e;
+    if (!over) return;
+    const taskId = String(active.id);
+    const overColumnId = resolveDropColumnId(String(over.id));
+    if (!overColumnId) return;
+    const base = tasks.find((t) => t.id === taskId);
+    if (!base) return;
+    const currentCol =
+      localColumnIds[taskId] ??
+      base.kanbanColumnId ??
+      resolveColumnIdForTask(base, boardColumns);
+    if (currentCol !== overColumnId) {
+      setLocalColumnIds((prev) => ({ ...prev, [taskId]: overColumnId }));
+      const col = boardColumns.find((c) => c.id === overColumnId);
+      if (col) {
+        setLocalStatuses((prev) => ({
+          ...prev,
+          [taskId]: statusForColumn(col),
+        }));
+      }
+    }
+  }
+
+  function onDragCancel() {
+    setActiveDragId(null);
+    setLocalColumnIds({});
+    setLocalStatuses({});
+  }
+
   async function onDragEnd(e: DragEndEvent) {
+    setActiveDragId(null);
     if (kanbanReadOnly) return;
     const { active, over } = e;
     if (!over) return;
     const taskId = String(active.id);
     const overId = String(over.id);
     const task = viewTasks.find((t) => t.id === taskId);
-    if (!task) return;
+    if (!task || !task.kanbanColumnId) return;
 
-    const overStatus = resolveDropStatus(overId);
-    if (!overStatus) return;
+    const overColumnId = resolveDropColumnId(overId);
+    if (!overColumnId) return;
 
-    if (task.status === overStatus) {
-      const colTasks = sortTasksForKanbanColumn(viewTasks, overStatus);
+    const previousColumnId =
+      tasks.find((t) => t.id === taskId)?.kanbanColumnId ??
+      resolveColumnIdForTask(task, boardColumns) ??
+      task.kanbanColumnId;
+    const previousStatus = tasks.find((t) => t.id === taskId)?.status ?? task.status;
+
+    if (task.kanbanColumnId === overColumnId) {
+      const colTasks = sortTasksForKanbanColumn(viewTasks, overColumnId);
       const oldIndex = colTasks.findIndex((t) => t.id === taskId);
-      const newIndex = statusSet.has(overId as TaskStatus)
+      const newIndex = columnIdSet.has(overId)
         ? colTasks.length - 1
         : colTasks.findIndex((t) => t.id === overId);
       if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
@@ -1175,13 +1503,17 @@ export function TasksKanban({
       const reordered = arrayMove(colTasks, oldIndex, newIndex);
       const orderedIds = filterIdsForPersistedColumn(
         reordered.map((t) => t.id),
-        overStatus,
+        overColumnId,
       );
       if (orderedIds.length === 0) return;
+      const colStatus = statusForColumn(
+        boardColumns.find((c) => c.id === overColumnId)!,
+      );
       applyOptimisticSortKeys(orderedIds);
+      patchKanbanSortKeys(orderedIds, overColumnId, colStatus);
       try {
         await reorderKanbanColumn({
-          status: overStatus,
+          columnId: overColumnId,
           orderedTaskIds: orderedIds,
         });
         router.refresh();
@@ -1194,10 +1526,10 @@ export function TasksKanban({
 
     const targetColTasks = sortTasksForKanbanColumn(
       viewTasks.filter((t) => t.id !== taskId),
-      overStatus,
+      overColumnId,
     );
     let insertIndex = targetColTasks.length;
-    if (!statusSet.has(overId as TaskStatus)) {
+    if (!columnIdSet.has(overId)) {
       const overIdx = targetColTasks.findIndex((t) => t.id === overId);
       if (overIdx >= 0) insertIndex = overIdx;
     }
@@ -1207,56 +1539,123 @@ export function TasksKanban({
       ...targetColTasks.slice(insertIndex).map((t) => t.id),
     ];
 
-    if (overStatus === TaskStatus.DONE) {
+    const targetCol = boardColumns.find((c) => c.id === overColumnId);
+    const targetStatus = targetCol ? statusForColumn(targetCol) : task.status;
+
+    if (targetStatus === TaskStatus.DONE) {
       const unfinished = task.checklistTotal - task.checklistDone;
       if (unfinished > 0) {
         setDoneConfirmTaskId(task.id);
         setDoneConfirmUnfinished(unfinished);
-        setDoneConfirmPreviousStatus(task.status);
+        setDoneConfirmPreviousStatus(previousStatus);
+        setPendingTargetColumnId(overColumnId);
         setPendingTargetOrder(orderedIds);
         return;
       }
     }
-    await persistStatusChange(taskId, overStatus, task.status, orderedIds);
+    await persistColumnChange(
+      taskId,
+      overColumnId,
+      previousColumnId,
+      previousStatus,
+      orderedIds,
+    );
   }
 
   async function onQuickDone(taskId: string) {
     const task = viewTasks.find((t) => t.id === taskId);
     if (!task || task.status === TaskStatus.DONE) return;
+    const doneCol = boardColumns.find(
+      (c) => c.kind === "CORE" && c.coreRole === TaskStatus.DONE,
+    );
+    if (!doneCol) return;
+    const previousColumnId = task.kanbanColumnId ?? doneCol.id;
     const unfinished = task.checklistTotal - task.checklistDone;
     if (unfinished > 0) {
       setDoneConfirmTaskId(task.id);
       setDoneConfirmUnfinished(unfinished);
       setDoneConfirmPreviousStatus(task.status);
+      setPendingTargetColumnId(doneCol.id);
       return;
     }
-    await persistStatusChange(taskId, TaskStatus.DONE, task.status);
+    await persistColumnChange(
+      taskId,
+      doneCol.id,
+      previousColumnId,
+      task.status,
+    );
+  }
+
+  async function handleMoveColumn(columnId: string, direction: "up" | "down") {
+    if (!roomId) return;
+    const idx = boardColumns.findIndex((c) => c.id === columnId);
+    if (idx < 0) return;
+    const swap = direction === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= boardColumns.length) return;
+    const next = [...boardColumns];
+    [next[idx], next[swap]] = [next[swap]!, next[idx]!];
+    setBoardColumns(next);
+    try {
+      const orderedColumnIds = next.map((c) => c.id);
+      if (simpleHub) {
+        await reorderSimpleHubKanbanColumns({ roomId, orderedColumnIds });
+      } else {
+        await reorderRoomKanbanColumns({ roomId, processKey, orderedColumnIds });
+      }
+      onColumnsChange?.();
+    } catch (err) {
+      setBoardColumns(boardColumns);
+      toast.error(actionErrorMessage(err, "Gagal mengurutkan kolom."));
+    }
   }
 
   const readOnly = Boolean(kanbanReadOnly);
+  const stretchColumns = boardColumns.length <= 6;
 
   return (
     <>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragCancel={onDragCancel}
         onDragEnd={onDragEnd}
       >
-        <div className="w-full overflow-x-auto">
-          <div className="flex min-w-0 flex-col gap-4 lg:flex-row">
-          {columns.map((col) => {
-            const colTasks = sortTasksForKanbanColumn(
-              viewTasks,
-              col.linkedStatus,
-            );
+        <div className={cn("w-full", !stretchColumns && "overflow-x-auto", stretchColumns && "overflow-x-auto lg:overflow-x-visible")}>
+          <div
+            className={cn(
+              "flex gap-4",
+              stretchColumns ? "min-w-max lg:w-full lg:min-w-0" : "min-w-max",
+            )}
+          >
+          {boardColumns.map((col, colIndex) => {
+            const colTasks = sortTasksForKanbanColumn(viewTasks, col.id);
             const colTaskIds = colTasks.map((t) => t.id);
             return (
-              <DroppableColumn
+              <KanbanColumnShell
                 key={col.id}
                 column={col}
                 count={colTasks.length}
+                stretch={stretchColumns}
                 onAddTask={readOnly ? undefined : onAddTask}
                 readOnly={readOnly}
+                isRoomManager={isRoomManager}
+                roomId={roomId}
+                processKey={processKey}
+                simpleHub={simpleHub}
+                canMoveUp={colIndex > 0}
+                canMoveDown={colIndex < boardColumns.length - 1}
+                onMoveColumn={(id, dir) => void handleMoveColumn(id, dir)}
+                onRenamed={(columnId, title) => {
+                  setBoardColumns((prev) =>
+                    prev.map((c) => (c.id === columnId ? { ...c, title } : c)),
+                  );
+                }}
+                onDeleted={(columnId) => {
+                  setBoardColumns((prev) => prev.filter((c) => c.id !== columnId));
+                  onColumnsChange?.();
+                }}
               >
                 <SortableContext
                   items={colTaskIds}
@@ -1279,11 +1678,32 @@ export function TasksKanban({
                   />
                 ))}
                 </SortableContext>
-              </DroppableColumn>
+              </KanbanColumnShell>
             );
           })}
           </div>
         </div>
+        <DragOverlay dropAnimation={null}>
+          {activeDragId ? (
+            (() => {
+              const dragged = viewTasks.find((t) => t.id === activeDragId);
+              if (!dragged) return null;
+              return (
+                <div className="pointer-events-none w-[min(100%,280px)] opacity-95 shadow-lg">
+                  <DraggableTask
+                    task={dragged}
+                    users={users}
+                    roomTaskTags={roomTaskTags}
+                    roomId={roomId}
+                    dragDisabled
+                    isRoomManager={isRoomManager}
+                    showArchived={showArchived}
+                  />
+                </div>
+              );
+            })()
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       <Dialog
@@ -1294,6 +1714,7 @@ export function TasksKanban({
             setDoneConfirmUnfinished(0);
             setDoneConfirmPreviousStatus(null);
             setPendingTargetOrder(null);
+            setPendingTargetColumnId(null);
           }
         }}
       >
@@ -1313,6 +1734,8 @@ export function TasksKanban({
                 setDoneConfirmTaskId(null);
                 setDoneConfirmUnfinished(0);
                 setDoneConfirmPreviousStatus(null);
+                setPendingTargetColumnId(null);
+                setPendingTargetOrder(null);
               }}
             >
               Batalkan
@@ -1320,22 +1743,71 @@ export function TasksKanban({
             <Button
               type="button"
               onClick={async () => {
-                if (!doneConfirmTaskId || doneConfirmPreviousStatus === null) return;
+                if (
+                  !doneConfirmTaskId ||
+                  doneConfirmPreviousStatus === null ||
+                  !pendingTargetColumnId
+                )
+                  return;
                 const taskId = doneConfirmTaskId;
                 const previous = doneConfirmPreviousStatus;
+                const targetCol = pendingTargetColumnId;
+                const base = tasks.find((t) => t.id === taskId);
+                const previousCol =
+                  base?.kanbanColumnId ??
+                  resolveColumnIdForTask(base ?? { status: previous }, boardColumns) ??
+                  targetCol;
                 setDoneConfirmTaskId(null);
                 setDoneConfirmUnfinished(0);
                 setDoneConfirmPreviousStatus(null);
-                await persistStatusChange(
+                await persistColumnChange(
                   taskId,
-                  TaskStatus.DONE,
+                  targetCol,
+                  previousCol,
                   previous,
                   pendingTargetOrder ?? undefined,
                 );
                 setPendingTargetOrder(null);
+                setPendingTargetColumnId(null);
               }}
             >
               Tetap Selesaikan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addColumnOpen} onOpenChange={setAddColumnOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Tambah kolom</DialogTitle>
+            <DialogDescription>
+              Kolom custom bebas nama — misalnya Revisi, Menunggu klien.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={newColumnTitle}
+            onChange={(e) => setNewColumnTitle(e.target.value)}
+            placeholder="Nama kolom"
+            maxLength={80}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleAddColumn();
+            }}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setAddColumnOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              disabled={addColumnPending || !newColumnTitle.trim()}
+              onClick={() => void handleAddColumn()}
+            >
+              Tambah
             </Button>
           </DialogFooter>
         </DialogContent>

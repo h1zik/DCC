@@ -12,7 +12,8 @@ import {
   type User,
 } from "@prisma/client";
 import Link from "next/link";
-import { Archive, Columns3, LayoutGrid, ListChecks, Paperclip, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Archive, LayoutGrid, ListChecks, Paperclip, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   addChecklistItem,
@@ -54,11 +55,13 @@ import {
   type RoomProcessPhaseRef,
 } from "@/lib/room-process-phase";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
-import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
+import {
+  type RoomKanbanColumnDTO,
+  resolveColumnIdForTask,
+} from "@/lib/room-kanban-columns";
 import { DEFAULT_KANBAN_STATUSES, taskStatusLabel } from "@/lib/task-status-ui";
 import { cn } from "@/lib/utils";
 import type { SelectItemDef } from "@/lib/select-option-items";
-import { RoomKanbanSettingsDialog } from "./room-kanban-settings-dialog";
 
 type TaskViewTab = "kanban" | "list" | "gantt" | "calendar";
 
@@ -166,11 +169,12 @@ export function TasksWorkspace({
     sortOrder: number;
   }[];
 }) {
+  const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [localTasks, setLocalTasks] = useState<TaskRow[]>(tasks);
   const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
+  const [kanbanAddColumnOpen, setKanbanAddColumnOpen] = useState(false);
   const [activeView, setActiveView] = useState<TaskViewTab>(
     taskWorkspaceViewToTab(defaultTaskView),
   );
@@ -402,6 +406,8 @@ export function TasksWorkspace({
     if (kanbanColumns?.length) return kanbanColumns;
     return DEFAULT_KANBAN_STATUSES.map((linkedStatus, sortOrder) => ({
       id: `fallback-${linkedStatus}`,
+      kind: "CORE" as const,
+      coreRole: linkedStatus,
       linkedStatus,
       title: taskStatusLabel(linkedStatus),
       sortOrder,
@@ -429,7 +435,16 @@ export function TasksWorkspace({
 
   const kanbanTasks: KanbanTask[] = useMemo(
     () =>
-      localTasks.map((t) => ({
+      localTasks.map((t) => {
+        const columnId =
+          t.kanbanColumnId ??
+          resolveColumnIdForTask(t, resolvedKanbanColumns);
+        const kanbanSortKey =
+          columnId != null
+            ? (t.kanbanPositions?.find((p) => p.columnId === columnId)
+                ?.sortKey ?? null)
+            : null;
+        return {
         id: t.id,
         projectId: t.projectId,
         title: t.title,
@@ -465,10 +480,11 @@ export function TasksWorkspace({
         })),
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
-        kanbanSortKey:
-          t.kanbanPositions?.find((p) => p.status === t.status)?.sortKey ?? null,
-      })),
-    [localTasks],
+        kanbanColumnId: columnId,
+        kanbanSortKey,
+      };
+      }),
+    [localTasks, resolvedKanbanColumns],
   );
 
   const ganttTasks: GanttTask[] = useMemo(
@@ -536,16 +552,6 @@ export function TasksWorkspace({
         documentFolders={documentFolders}
       />
 
-      {roomId != null && activePhase && (kanbanColumns?.length ?? 0) > 0 ? (
-        <RoomKanbanSettingsDialog
-          open={kanbanSettingsOpen}
-          onOpenChange={setKanbanSettingsOpen}
-          roomId={roomId}
-          activePhase={activePhase}
-          columns={kanbanColumns!}
-        />
-      ) : null}
-
       {roomTitle && isRoomManager && projects.length === 0 && !simpleHub ? (
         <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-50">
           <p className="font-medium">Belum ada proyek di ruangan ini</p>
@@ -611,28 +617,27 @@ export function TasksWorkspace({
               {roomId != null &&
               isRoomManager &&
               !showArchived &&
-              activeView === "kanban" &&
-              (kanbanColumns?.length ?? 0) > 0 ? (
+              activeView === "kanban" ? (
                 <>
                   <Button
                     type="button"
                     size="icon-sm"
                     variant="outline"
                     className="sm:hidden"
-                    aria-label="Kolom Kanban"
-                    onClick={() => setKanbanSettingsOpen(true)}
+                    aria-label="Tambah kolom"
+                    onClick={() => setKanbanAddColumnOpen(true)}
                   >
-                    <Columns3 className="size-3.5" aria-hidden />
+                    <Plus className="size-3.5" aria-hidden />
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     className="hidden gap-1.5 sm:inline-flex"
-                    onClick={() => setKanbanSettingsOpen(true)}
+                    onClick={() => setKanbanAddColumnOpen(true)}
                   >
-                    <Columns3 className="size-3.5" aria-hidden />
-                    Kolom Kanban
+                    <Plus className="size-3.5" aria-hidden />
+                    Tambah kolom
                   </Button>
                 </>
               ) : null}
@@ -693,6 +698,13 @@ export function TasksWorkspace({
             roomId={roomId}
             kanbanReadOnly={showArchived}
             isRoomManager={isRoomManager}
+            processKey={
+              activePhase ? roomProcessPhaseKey(activePhase) : "market-research"
+            }
+            simpleHub={simpleHub}
+            onColumnsChange={() => router.refresh()}
+            addColumnOpen={kanbanAddColumnOpen}
+            onAddColumnOpenChange={setKanbanAddColumnOpen}
             showArchived={showArchived}
             onTagCreated={(created) => {
               setAvailableTags((prev) => {
@@ -713,8 +725,27 @@ export function TasksWorkspace({
                   const next: TaskRow = { ...task };
                   if (patch.title !== undefined) next.title = patch.title;
                   if (patch.priority !== undefined) next.priority = patch.priority;
+                  if (patch.status !== undefined) next.status = patch.status;
+                  if (patch.kanbanColumnId !== undefined) {
+                    next.kanbanColumnId = patch.kanbanColumnId;
+                  }
                   if (patch.dueDate !== undefined) {
                     next.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
+                  }
+                  if (patch.kanbanSortKey !== undefined && patch.kanbanSortKey != null) {
+                    const colId =
+                      patch.kanbanColumnId ??
+                      task.kanbanColumnId ??
+                      resolveColumnIdForTask(task, resolvedKanbanColumns);
+                    if (colId) {
+                      const others = (task.kanbanPositions ?? []).filter(
+                        (p) => p.columnId !== colId,
+                      );
+                      next.kanbanPositions = [
+                        ...others,
+                        { columnId: colId, sortKey: patch.kanbanSortKey },
+                      ];
+                    }
                   }
                   if (patch.assignees !== undefined) {
                     next.assignees = patch.assignees.map((a) => ({
@@ -752,8 +783,24 @@ export function TasksWorkspace({
                 const next: TaskRow = { ...prev };
                 if (patch.title !== undefined) next.title = patch.title;
                 if (patch.priority !== undefined) next.priority = patch.priority;
+                if (patch.status !== undefined) next.status = patch.status;
                 if (patch.dueDate !== undefined) {
                   next.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
+                }
+                if (patch.kanbanSortKey !== undefined && patch.kanbanSortKey != null) {
+                  const colId =
+                    patch.kanbanColumnId ??
+                    prev.kanbanColumnId ??
+                    resolveColumnIdForTask(prev, resolvedKanbanColumns);
+                  if (colId) {
+                    const others = (prev.kanbanPositions ?? []).filter(
+                      (p) => p.columnId !== colId,
+                    );
+                    next.kanbanPositions = [
+                      ...others,
+                      { columnId: colId, sortKey: patch.kanbanSortKey },
+                    ];
+                  }
                 }
                 if (patch.assignees !== undefined) {
                   next.assignees = patch.assignees.map((a) => ({

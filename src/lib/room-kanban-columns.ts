@@ -1,35 +1,64 @@
-import { RoomTaskProcess, TaskStatus } from "@prisma/client";
+import { KanbanColumnKind, RoomTaskProcess, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { RoomProcessPhaseRef } from "@/lib/room-process-phase";
 import { DEFAULT_KANBAN_STATUSES, taskStatusLabel } from "@/lib/task-status-ui";
 
 export type RoomKanbanColumnDTO = {
   id: string;
+  kind: KanbanColumnKind;
+  coreRole: TaskStatus | null;
   linkedStatus: TaskStatus;
   title: string;
   sortOrder: number;
 };
+
+const columnSelect = {
+  id: true,
+  kind: true,
+  coreRole: true,
+  linkedStatus: true,
+  title: true,
+  sortOrder: true,
+} as const;
+
+async function seedCoreColumns(
+  roomId: string,
+  roomProcess: RoomTaskProcess | null,
+  customProcessPhaseId: string | null,
+): Promise<void> {
+  for (let i = 0; i < DEFAULT_KANBAN_STATUSES.length; i++) {
+    const coreRole = DEFAULT_KANBAN_STATUSES[i]!;
+    const existing = await prisma.roomKanbanColumn.findFirst({
+      where: {
+        roomId,
+        roomProcess: customProcessPhaseId ? null : roomProcess ?? undefined,
+        customProcessPhaseId,
+        coreRole,
+      },
+    });
+    if (existing) continue;
+
+    await prisma.roomKanbanColumn.create({
+      data: {
+        roomId,
+        roomProcess: customProcessPhaseId ? null : roomProcess,
+        customProcessPhaseId,
+        kind: "CORE",
+        coreRole,
+        linkedStatus: coreRole,
+        title: taskStatusLabel(coreRole),
+        sortOrder: i,
+      },
+    });
+  }
+}
 
 /** Kolom Kanban ruangan HQ/Team (tanpa fase proses). */
 export async function ensureSimpleHubKanbanColumns(
   roomId: string,
 ): Promise<void> {
   const roomProcess = RoomTaskProcess.MARKET_RESEARCH;
-  const count = await prisma.roomKanbanColumn.count({
-    where: { roomId, roomProcess, customProcessPhaseId: null },
-  });
-  if (count > 0) return;
-
-  await prisma.roomKanbanColumn.createMany({
-    data: DEFAULT_KANBAN_STATUSES.map((linkedStatus, i) => ({
-      roomId,
-      roomProcess,
-      customProcessPhaseId: null,
-      linkedStatus,
-      title: taskStatusLabel(linkedStatus),
-      sortOrder: i,
-    })),
-  });
+  await seedCoreColumns(roomId, roomProcess, null);
 }
 
 export async function getSimpleHubKanbanColumns(
@@ -43,12 +72,7 @@ export async function getSimpleHubKanbanColumns(
       customProcessPhaseId: null,
     },
     orderBy: { sortOrder: "asc" },
-    select: {
-      id: true,
-      linkedStatus: true,
-      title: true,
-      sortOrder: true,
-    },
+    select: columnSelect,
   });
 }
 
@@ -57,21 +81,7 @@ export async function ensureDefaultRoomKanbanColumnsForCustomPhase(
   roomId: string,
   customProcessPhaseId: string,
 ): Promise<void> {
-  const count = await prisma.roomKanbanColumn.count({
-    where: { roomId, customProcessPhaseId },
-  });
-  if (count > 0) return;
-
-  await prisma.roomKanbanColumn.createMany({
-    data: DEFAULT_KANBAN_STATUSES.map((linkedStatus, i) => ({
-      roomId,
-      roomProcess: null,
-      customProcessPhaseId,
-      linkedStatus,
-      title: taskStatusLabel(linkedStatus),
-      sortOrder: i,
-    })),
-  });
+  await seedCoreColumns(roomId, null, customProcessPhaseId);
 }
 
 export async function getRoomKanbanColumns(
@@ -80,15 +90,31 @@ export async function getRoomKanbanColumns(
 ): Promise<RoomKanbanColumnDTO[]> {
   await ensureDefaultRoomKanbanColumnsForCustomPhase(roomId, phase.id);
 
-  const rows = await prisma.roomKanbanColumn.findMany({
+  return prisma.roomKanbanColumn.findMany({
     where: { roomId, customProcessPhaseId: phase.id },
     orderBy: { sortOrder: "asc" },
-    select: {
-      id: true,
-      linkedStatus: true,
-      title: true,
-      sortOrder: true,
-    },
+    select: columnSelect,
   });
-  return rows;
+}
+
+/** Resolve column for task when `kanbanColumnId` belum terisi (safety net). */
+export function resolveColumnIdForTask(
+  task: {
+    status: TaskStatus;
+    kanbanColumnId?: string | null;
+  },
+  columns: RoomKanbanColumnDTO[],
+): string | null {
+  if (task.kanbanColumnId) return task.kanbanColumnId;
+  const core = columns.find(
+    (c) => c.kind === "CORE" && c.coreRole === task.status,
+  );
+  if (core) return core.id;
+  const byLinked = columns.find((c) => c.linkedStatus === task.status);
+  return byLinked?.id ?? columns[0]?.id ?? null;
+}
+
+export function statusForColumn(column: RoomKanbanColumnDTO): TaskStatus {
+  if (column.kind === "CORE" && column.coreRole) return column.coreRole;
+  return column.linkedStatus;
 }

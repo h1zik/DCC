@@ -124,7 +124,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
             },
           },
           kanbanPositions: {
-            select: { status: true, sortKey: true },
+            select: { columnId: true, sortKey: true },
           },
         },
       }),
@@ -231,7 +231,7 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
           },
         },
         kanbanPositions: {
-          select: { status: true, sortKey: true },
+          select: { columnId: true, sortKey: true },
         },
       },
     }),
