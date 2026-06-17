@@ -1229,7 +1229,7 @@ export async function aiEvaluateProductProposal(
 
   const searchTerms = buildSearchTerms(productQuery, opts.claims);
 
-  const [pricing, reviewSources, trendDigest, keywordQueries, uspAnalyses, recommendations, socialMonitors] =
+  const [pricing, reviewSources, trendDigest, keywordQueries, uspAnalyses, recommendations, socialMonitors, discoveryQueries] =
     await Promise.all([
       aiAnalyzeCompetitorPricing(role, {
         productQuery,
@@ -1358,6 +1358,35 @@ export async function aiEvaluateProductProposal(
           },
         },
       }),
+      prisma.productDiscoveryQuery.findMany({
+        where: {
+          status: "READY",
+          OR: searchTerms.flatMap((term) => [
+            { keyword: { contains: term, mode: "insensitive" as const } },
+          ]),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 3,
+        include: {
+          products: {
+            orderBy: [{ reviewCount: "desc" }, { soldCount: "desc" }],
+            take: 15,
+            select: {
+              id: true,
+              marketplace: true,
+              name: true,
+              shopName: true,
+              price: true,
+              rating: true,
+              reviewCount: true,
+              soldCount: true,
+              hasPromo: true,
+              promoText: true,
+              categoryRank: true,
+            },
+          },
+        },
+      }),
     ]);
 
   const pricingData =
@@ -1449,6 +1478,80 @@ export async function aiEvaluateProductProposal(
     })
     .filter((x): x is NonNullable<typeof x> => x != null);
 
+  type DiscoveryInsightsShape = {
+    priceStats?: { min: number; max: number; avg: number; median: number } | null;
+    priceBands?: { label: string; min: number; max: number; count: number }[];
+    velocity?: {
+      avgSold?: number;
+      topSellers?: { name: string; soldCount: number; price: number | null }[];
+    };
+    promoShare?: number;
+    valueLeaders?: { name: string; rating: number; price: number }[];
+  };
+
+  const productDiscovery = discoveryQueries.map((q) => {
+    const insights = (q.aiInsights ?? null) as DiscoveryInsightsShape | null;
+    const topProducts = q.products.slice(0, 10).map((p) => ({
+      id: p.id,
+      marketplace: p.marketplace,
+      name: p.name,
+      shopName: p.shopName,
+      price: p.price,
+      rating: p.rating,
+      reviewCount: p.reviewCount,
+      soldCount: p.soldCount,
+      hasPromo: p.hasPromo,
+      categoryRank: p.categoryRank,
+    }));
+    const priced = topProducts.filter((p) => p.price != null && p.price > 0);
+    const discoveryMin =
+      insights?.priceStats?.min ??
+      (priced.length > 0 ? Math.min(...priced.map((p) => p.price!)) : null);
+    const discoveryMax =
+      insights?.priceStats?.max ??
+      (priced.length > 0 ? Math.max(...priced.map((p) => p.price!)) : null);
+    const discoveryAvg =
+      insights?.priceStats?.avg ??
+      (priced.length > 0
+        ? Math.round(
+            priced.reduce((sum, p) => sum + p.price!, 0) / priced.length,
+          )
+        : null);
+
+    return {
+      id: q.id,
+      keyword: q.keyword,
+      marketplaces: q.marketplaces,
+      productCount: q.productCount,
+      itemCount: q.products.length,
+      priceStats:
+        discoveryMin != null
+          ? {
+              min: discoveryMin,
+              max: discoveryMax,
+              avg: discoveryAvg,
+              median: insights?.priceStats?.median ?? null,
+            }
+          : null,
+      priceBands: insights?.priceBands?.slice(0, 5) ?? null,
+      promoShare: insights?.promoShare ?? null,
+      velocity: insights?.velocity
+        ? {
+            avgSold: insights.velocity.avgSold ?? null,
+            topSellers: insights.velocity.topSellers?.slice(0, 5) ?? null,
+          }
+        : null,
+      valueLeaders: insights?.valueLeaders?.slice(0, 5) ?? null,
+      aiActionPlan: q.aiActionPlan,
+      topProducts,
+    };
+  });
+
+  const discoveryPricedCount = productDiscovery.reduce(
+    (sum, d) => sum + d.topProducts.filter((p) => p.price != null).length,
+    0,
+  );
+
   const dataSourcesChecked = [
     {
       module: "competitor-tracker",
@@ -1499,12 +1602,22 @@ export async function aiEvaluateProductProposal(
       recordCount: recommendations.length,
       detail: `${recommendations.length} rekomendasi terbuka`,
     },
+    {
+      module: "product-discovery",
+      status: productDiscovery.length > 0 ? "found" : "empty",
+      recordCount: productDiscovery.length,
+      detail:
+        productDiscovery.length > 0
+          ? `${productDiscovery.length} query discovery · ${discoveryPricedCount} produk berharga di sample`
+          : "Tidak ada query Product Discovery READY yang cocok dengan kata kunci",
+    },
   ];
 
   const hasEnoughData =
     (pricingData?.summary?.skuWithPriceCount ?? 0) > 0 ||
     reviewIntel.length > 0 ||
-    trends.length > 0;
+    trends.length > 0 ||
+    discoveryPricedCount > 0;
 
   return {
     accessible: true as const,
@@ -1536,6 +1649,7 @@ export async function aiEvaluateProductProposal(
     keywordIntel: keywords,
     uspAnalyzer: uspGaps,
     socialListening: socialInsights,
+    productDiscovery,
     openRecommendations: recommendations.map((r) => ({
       module: r.module,
       priority: r.priority,
@@ -1546,6 +1660,7 @@ export async function aiEvaluateProductProposal(
       hasEnoughData,
       mustAddress: [
         "Posisi harga proposal vs min/max/avg kompetitor (Competitor Tracker)",
+        "Landscape marketplace dari Product Discovery (price band, top seller, promo) jika tersedia",
         "Apakah claim (mis. instant whitening) didukung atau contradicted oleh keluhan/praise di Review Intel",
         "Celah pasar dari gapOpportunity review & USP analyzer",
         "Tren naik/turun di kategori terkait",
@@ -1560,6 +1675,9 @@ export async function aiEvaluateProductProposal(
           : null,
         reviewIntel.some((r) => r.gapOpportunity)
           ? "Ada gap opportunity dari review kompetitor — manfaatkan di positioning"
+          : null,
+        productDiscovery.some((d) => d.priceStats != null)
+          ? "Ada benchmark harga dari scrape marketplace (Product Discovery) — bandingkan dengan proposal"
           : null,
       ].filter(Boolean),
     },

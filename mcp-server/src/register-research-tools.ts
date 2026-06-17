@@ -17,7 +17,7 @@ export function registerResearchTools(server: McpServer, deps: Deps) {
 
   server.tool(
     "evaluate_product_with_research",
-    "Validasi produk/harga/launch — WAJIB untuk 'apakah make sense', 'layak tidak', 'worth it', 'gimana kalau jual di harga X'. Otomatis scan Competitor Tracker (harga), Review Intel (keluhan/pujian), Trend Radar, Keyword Intel, USP Analyzer, Social Listening, rekomendasi. Satu tool composite — jangan hanya list_research_competitors.",
+    "Validasi produk/harga/launch — WAJIB untuk 'apakah make sense', 'layak tidak', 'worth it', 'gimana kalau jual di harga X'. Otomatis scan Competitor Tracker (harga), Product Discovery (landscape marketplace scrape), Review Intel (keluhan/pujian), Trend Radar, Keyword Intel, USP Analyzer, Social Listening, rekomendasi. Satu tool composite — jangan hanya list_research_competitors.",
     {
       productQuery: z.string().min(1).describe("Kategori/produk, mis. body lotion"),
       proposedPrice: z

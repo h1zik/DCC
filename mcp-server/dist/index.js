@@ -84,7 +84,7 @@ async function main() {
     requireConfig();
     const server = new McpServer({
         name: "dcc-read-api",
-        version: "3.2.0",
+        version: "3.3.0",
     });
     server.tool("get_kpi_overview", "Ringkasan KPI operasional Dominatus Control Center: tugas overdue, stok kritis, persetujuan pending.", {}, async () => asText(await dccFetch("/api/ai/kpi-overview")));
     server.tool("get_overdue_tasks", "Daftar tugas yang sudah melewati tenggat (overdue) beserta assignee dan konteks proyek/ruangan.", {
