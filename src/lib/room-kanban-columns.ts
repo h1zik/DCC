@@ -21,6 +21,41 @@ const columnSelect = {
   sortOrder: true,
 } as const;
 
+/** Perbaiki kolom custom yang salah ditandai CORE (mis. setelah migrate). */
+export async function repairDuplicateCoreKanbanColumns(where: {
+  roomId: string;
+  roomProcess?: RoomTaskProcess | null;
+  customProcessPhaseId?: string | null;
+}): Promise<void> {
+  const cols = await prisma.roomKanbanColumn.findMany({
+    where: {
+      roomId: where.roomId,
+      ...(where.customProcessPhaseId != null
+        ? { customProcessPhaseId: where.customProcessPhaseId }
+        : {
+            customProcessPhaseId: null,
+            roomProcess: where.roomProcess ?? undefined,
+          }),
+      kind: KanbanColumnKind.CORE,
+      coreRole: { not: null },
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, coreRole: true },
+  });
+
+  const seen = new Set<TaskStatus>();
+  for (const col of cols) {
+    if (!col.coreRole || seen.has(col.coreRole)) {
+      await prisma.roomKanbanColumn.update({
+        where: { id: col.id },
+        data: { kind: KanbanColumnKind.CUSTOM, coreRole: null },
+      });
+      continue;
+    }
+    seen.add(col.coreRole);
+  }
+}
+
 async function seedCoreColumns(
   roomId: string,
   roomProcess: RoomTaskProcess | null,
@@ -65,6 +100,11 @@ export async function getSimpleHubKanbanColumns(
   roomId: string,
 ): Promise<RoomKanbanColumnDTO[]> {
   await ensureSimpleHubKanbanColumns(roomId);
+  await repairDuplicateCoreKanbanColumns({
+    roomId,
+    roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+    customProcessPhaseId: null,
+  });
   return prisma.roomKanbanColumn.findMany({
     where: {
       roomId,
@@ -89,6 +129,11 @@ export async function getRoomKanbanColumns(
   phase: RoomProcessPhaseRef,
 ): Promise<RoomKanbanColumnDTO[]> {
   await ensureDefaultRoomKanbanColumnsForCustomPhase(roomId, phase.id);
+  await repairDuplicateCoreKanbanColumns({
+    roomId,
+    roomProcess: phase.legacyProcessKey ?? null,
+    customProcessPhaseId: phase.id,
+  });
 
   return prisma.roomKanbanColumn.findMany({
     where: { roomId, customProcessPhaseId: phase.id },

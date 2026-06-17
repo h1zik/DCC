@@ -34,21 +34,54 @@ BEGIN
     ALTER TABLE "RoomKanbanColumn" ADD COLUMN "coreRole" "TaskStatus";
   END IF;
 
-  -- Kolom inti: kind CORE + coreRole = linkedStatus untuk status utama.
-  UPDATE "RoomKanbanColumn"
+  -- Kolom inti: hanya satu CORE per (room, fase, linkedStatus) untuk status utama.
+  WITH keepers AS (
+    SELECT DISTINCT ON ("roomId", "roomProcess", "customProcessPhaseId", "linkedStatus")
+      id
+    FROM "RoomKanbanColumn"
+    WHERE "linkedStatus" IN ('TODO', 'IN_PROGRESS', 'OVERDUE', 'DONE')
+    ORDER BY
+      "roomId",
+      "roomProcess",
+      "customProcessPhaseId",
+      "linkedStatus",
+      "sortOrder",
+      "createdAt",
+      id
+  )
+  UPDATE "RoomKanbanColumn" c
   SET
     "kind" = 'CORE',
-    "coreRole" = "linkedStatus"
+    "coreRole" = c."linkedStatus"
+  FROM keepers k
+  WHERE c.id = k.id;
+
+  UPDATE "RoomKanbanColumn"
+  SET
+    "kind" = 'CUSTOM',
+    "coreRole" = NULL
   WHERE "linkedStatus" IN ('TODO', 'IN_PROGRESS', 'OVERDUE', 'DONE')
-    AND ("coreRole" IS NULL OR "kind" = 'CUSTOM');
+    AND id NOT IN (
+      SELECT DISTINCT ON ("roomId", "roomProcess", "customProcessPhaseId", "linkedStatus")
+        id
+      FROM "RoomKanbanColumn"
+      WHERE "linkedStatus" IN ('TODO', 'IN_PROGRESS', 'OVERDUE', 'DONE')
+      ORDER BY
+        "roomId",
+        "roomProcess",
+        "customProcessPhaseId",
+        "linkedStatus",
+        "sortOrder",
+        "createdAt",
+        id
+    );
 
   -- Kolom opsional (BLOCKED, IN_REVIEW, dll.): CUSTOM tanpa coreRole.
   UPDATE "RoomKanbanColumn"
   SET
     "kind" = 'CUSTOM',
     "coreRole" = NULL
-  WHERE "linkedStatus" NOT IN ('TODO', 'IN_PROGRESS', 'OVERDUE', 'DONE')
-    AND "coreRole" IS NOT NULL;
+  WHERE "linkedStatus" NOT IN ('TODO', 'IN_PROGRESS', 'OVERDUE', 'DONE');
 
   -- Gabung duplikat (roomId, roomProcess, customProcessPhaseId, coreRole).
   FOR dup IN
