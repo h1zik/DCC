@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import type { Vendor } from "@prisma/client";
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createVendor, deleteVendor, updateVendor } from "@/actions/vendors";
 import { DataTable } from "@/components/data-table";
+import { LogisticsNav } from "@/components/logistics/logistics-nav";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -26,13 +28,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
+type VendorRow = Vendor & {
+  _count: { preferredByProducts: number; stockLogs: number };
+};
+
+export function VendorsClient({ vendors }: { vendors: VendorRow[] }) {
+  const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Vendor | null>(null);
   const [name, setName] = useState("");
   const [picName, setPicName] = useState("");
   const [contact, setContact] = useState("");
   const [specialty, setSpecialty] = useState("");
+  const [leadTimeDays, setLeadTimeDays] = useState<number | "">("");
+  const [safetyStockDays, setSafetyStockDays] = useState(7);
+  const [reviewPeriodDays, setReviewPeriodDays] = useState(14);
   const [pending, setPending] = useState(false);
 
   function resetForm() {
@@ -41,6 +51,9 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
     setPicName("");
     setContact("");
     setSpecialty("");
+    setLeadTimeDays("");
+    setSafetyStockDays(7);
+    setReviewPeriodDays(14);
   }
 
   function openCreate() {
@@ -54,6 +67,9 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
     setPicName(v.picName ?? "");
     setContact(v.contact ?? "");
     setSpecialty(v.specialty ?? "");
+    setLeadTimeDays(v.leadTimeDays ?? "");
+    setSafetyStockDays(v.safetyStockDays ?? 7);
+    setReviewPeriodDays(v.reviewPeriodDays ?? 14);
     setOpen(true);
   }
 
@@ -65,6 +81,9 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
         picName: picName || null,
         contact: contact || null,
         specialty: specialty || null,
+        leadTimeDays: leadTimeDays === "" ? null : Number(leadTimeDays),
+        safetyStockDays,
+        reviewPeriodDays,
       };
       if (editing) {
         await updateVendor(editing.id, payload);
@@ -92,14 +111,26 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
     }
   }
 
-  const columns = useMemo<ColumnDef<Vendor>[]>(
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return vendors;
+    return vendors.filter((v) =>
+      [v.name, v.picName, v.contact, v.specialty]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [vendors, search]);
+
+  const columns = useMemo<ColumnDef<VendorRow>[]>(
     () => [
       {
         accessorKey: "name",
         header: "Nama pabrik / vendor",
         cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
       },
-      { accessorKey: "picName", header: "PIC" },
+      { accessorKey: "picName", header: "PIC", cell: ({ row }) => row.original.picName ?? "—" },
       {
         accessorKey: "contact",
         header: "Kontak",
@@ -109,7 +140,33 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
           </span>
         ),
       },
-      { accessorKey: "specialty", header: "Spesialisasi" },
+      { accessorKey: "specialty", header: "Spesialisasi", cell: ({ row }) => row.original.specialty ?? "—" },
+      {
+        id: "leadTime",
+        header: "Lead time",
+        cell: ({ row }) =>
+          row.original.leadTimeDays != null ? (
+            <span className="tabular-nums">{row.original.leadTimeDays} hari</span>
+          ) : (
+            <Badge variant="secondary">Belum diset</Badge>
+          ),
+      },
+      {
+        id: "products",
+        header: "SKU terhubung",
+        cell: ({ row }) => (
+          <Badge variant="outline">{row.original._count.preferredByProducts}</Badge>
+        ),
+      },
+      {
+        id: "receipts",
+        header: "Penerimaan",
+        cell: ({ row }) => (
+          <span className="text-muted-foreground tabular-nums text-sm">
+            {row.original._count.stockLogs} log
+          </span>
+        ),
+      },
       {
         id: "actions",
         header: "",
@@ -144,13 +201,26 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap justify-end gap-2">
+    <div className="flex flex-col gap-6">
+      <LogisticsNav />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="text-muted-foreground absolute top-2.5 left-2.5 size-4" />
+          <Input
+            className="pl-8"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cari vendor, PIC, spesialisasi…"
+          />
+        </div>
         <Button onClick={openCreate}>
           <Plus className="size-4" />
           Vendor baru
         </Button>
-        <Dialog
+      </div>
+
+      <Dialog
           open={open}
           onOpenChange={(v) => {
             setOpen(v);
@@ -197,6 +267,44 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
                   placeholder="Parfum, skincare…"
                 />
               </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="v-lead">Lead time (hari)</Label>
+                  <Input
+                    id="v-lead"
+                    type="number"
+                    min={0}
+                    value={leadTimeDays}
+                    onChange={(e) =>
+                      setLeadTimeDays(e.target.value === "" ? "" : Number(e.target.value))
+                    }
+                    placeholder="14"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="v-safety">Safety buffer (hari)</Label>
+                  <Input
+                    id="v-safety"
+                    type="number"
+                    min={0}
+                    value={safetyStockDays}
+                    onChange={(e) => setSafetyStockDays(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="v-review">Review PO (hari)</Label>
+                  <Input
+                    id="v-review"
+                    type="number"
+                    min={1}
+                    value={reviewPeriodDays}
+                    onChange={(e) => setReviewPeriodDays(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Lead time dipakai untuk forecast reorder point & tanggal PO.
+              </p>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>
@@ -208,8 +316,14 @@ export function VendorsClient({ vendors }: { vendors: Vendor[] }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-      <DataTable columns={columns} data={vendors} empty="Belum ada vendor." />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        empty="Belum ada vendor."
+        sortable
+        viewportMaxHeight="calc(100dvh - 300px)"
+        stickyHeader
+      />
     </div>
   );
 }
