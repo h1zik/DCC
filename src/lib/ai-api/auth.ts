@@ -102,6 +102,13 @@ export function canViewResearch(role: AiApiRole): boolean {
   return role === "ALL" || role === "CEO" || role === "ADMINISTRATOR";
 }
 
+/** Akses baca Research Hub — MCP (AiApiRole) + AI Agent in-app (UserRole). */
+export function canViewResearchHub(role: UserRole | AiApiRole): boolean {
+  if (role === UserRole.MARKET_ANALYST) return true;
+  if (role === UserRole.CEO || role === UserRole.ADMINISTRATOR) return true;
+  return canViewResearch(role as AiApiRole);
+}
+
 /** Map header role ke label Prisma (untuk logging). */
 export function aiRoleLabel(role: AiApiRole): string {
   if (role === "STUDIO") return UserRole.NORMAL_USER;

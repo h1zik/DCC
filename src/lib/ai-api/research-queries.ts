@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { getResearchDashboardData } from "@/lib/research/dashboard/get-dashboard-data";
+import { buildCompetitorInsights } from "@/lib/research/competitor-insights";
 import type { AiApiRole } from "./auth";
-import { canViewResearch } from "./auth";
+import { canViewResearchHub } from "./auth";
+import type { UserRole } from "@prisma/client";
+
+export type ResearchReaderRole = UserRole | AiApiRole;
 
 function denied(message: string) {
   return { accessible: false as const, message, data: null };
@@ -11,23 +15,56 @@ function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
 }
 
+function normalizeQuery(q: string): string {
+  return q.trim().toLowerCase();
+}
+
+function textMatchesQuery(text: string | null | undefined, query: string): boolean {
+  if (!query) return true;
+  if (!text) return false;
+  return normalizeQuery(text).includes(normalizeQuery(query));
+}
+
+function summarizeSkuPrices(
+  skus: { currentPrice: number | null; name: string }[],
+) {
+  const prices = skus
+    .map((s) => s.currentPrice)
+    .filter((p): p is number => p != null && p > 0);
+  if (prices.length === 0) {
+    return {
+      skuWithPriceCount: 0,
+      minPrice: null as number | null,
+      maxPrice: null as number | null,
+      avgPrice: null as number | null,
+    };
+  }
+  const sum = prices.reduce((a, b) => a + b, 0);
+  return {
+    skuWithPriceCount: prices.length,
+    minPrice: Math.min(...prices),
+    maxPrice: Math.max(...prices),
+    avgPrice: Math.round(sum / prices.length),
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Dashboard & recommendations                                                */
 /* -------------------------------------------------------------------------- */
 
-export async function aiGetResearchDashboard(role: AiApiRole) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetResearchDashboard(role: ResearchReaderRole) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   return { accessible: true as const, data: await getResearchDashboardData() };
 }
 
 export async function aiListResearchRecommendations(
-  role: AiApiRole,
+  role: ResearchReaderRole,
   limit = 30,
 ) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.researchRecommendation.findMany({
     orderBy: { createdAt: "desc" },
@@ -59,9 +96,9 @@ export async function aiListResearchRecommendations(
 /* Competitor tracker                                                         */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListResearchCompetitors(role: AiApiRole, limit = 40) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListResearchCompetitors(role: ResearchReaderRole, limit = 40) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.researchCompetitor.findMany({
     orderBy: { updatedAt: "desc" },
@@ -75,30 +112,36 @@ export async function aiListResearchCompetitors(role: AiApiRole, limit = 40) {
       shopUrl: true,
       isActive: true,
       updatedAt: true,
+      skus: { select: { currentPrice: true, name: true } },
       _count: { select: { skus: true, alerts: true } },
     },
   });
   return {
     accessible: true as const,
     count: rows.length,
-    items: rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      brand: r.brand,
-      category: r.category,
-      marketplace: r.marketplace,
-      shopUrl: r.shopUrl,
-      isActive: r.isActive,
-      skuCount: r._count.skus,
-      alertCount: r._count.alerts,
-      updatedAt: iso(r.updatedAt),
-    })),
+    note: "Ringkasan harga per kompetitor. Untuk per-SKU lengkap pakai get_research_competitor atau analyze_competitor_pricing.",
+    items: rows.map((r) => {
+      const priceSummary = summarizeSkuPrices(r.skus);
+      return {
+        id: r.id,
+        name: r.name,
+        brand: r.brand,
+        category: r.category,
+        marketplace: r.marketplace,
+        shopUrl: r.shopUrl,
+        isActive: r.isActive,
+        skuCount: r._count.skus,
+        alertCount: r._count.alerts,
+        priceSummary,
+        updatedAt: iso(r.updatedAt),
+      };
+    }),
   };
 }
 
-export async function aiGetResearchCompetitor(role: AiApiRole, competitorId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetResearchCompetitor(role: ResearchReaderRole, competitorId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const competitor = await prisma.researchCompetitor.findUnique({
     where: { id: competitorId },
@@ -164,9 +207,9 @@ export async function aiGetResearchCompetitor(role: AiApiRole, competitorId: str
 /* Review intelligence                                                        */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListReviewIntelSources(role: AiApiRole, limit = 40) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListReviewIntelSources(role: ResearchReaderRole, limit = 40) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.reviewIntelSource.findMany({
     orderBy: { updatedAt: "desc" },
@@ -197,9 +240,9 @@ export async function aiListReviewIntelSources(role: AiApiRole, limit = 40) {
   };
 }
 
-export async function aiGetReviewIntelSource(role: AiApiRole, sourceId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetReviewIntelSource(role: ResearchReaderRole, sourceId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const source = await prisma.reviewIntelSource.findUnique({
     where: { id: sourceId },
@@ -262,9 +305,9 @@ export async function aiGetReviewIntelSource(role: AiApiRole, sourceId: string) 
 /* Trend radar                                                                */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListTrendDigests(role: AiApiRole, limit = 20) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListTrendDigests(role: ResearchReaderRole, limit = 20) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.trendRadarDigest.findMany({
     orderBy: { weekStart: "desc" },
@@ -300,9 +343,9 @@ export async function aiListTrendDigests(role: AiApiRole, limit = 20) {
   };
 }
 
-export async function aiGetTrendDigest(role: AiApiRole, digestId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetTrendDigest(role: ResearchReaderRole, digestId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const digest = await prisma.trendRadarDigest.findUnique({
     where: { id: digestId },
@@ -347,9 +390,9 @@ export async function aiGetTrendDigest(role: AiApiRole, digestId: string) {
 /* Keyword intel                                                              */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListKeywordQueries(role: AiApiRole, limit = 30) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListKeywordQueries(role: ResearchReaderRole, limit = 30) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.keywordIntelQuery.findMany({
     orderBy: { updatedAt: "desc" },
@@ -381,9 +424,9 @@ export async function aiListKeywordQueries(role: AiApiRole, limit = 30) {
   };
 }
 
-export async function aiGetKeywordQuery(role: AiApiRole, queryId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetKeywordQuery(role: ResearchReaderRole, queryId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const query = await prisma.keywordIntelQuery.findUnique({
     where: { id: queryId },
@@ -424,9 +467,9 @@ export async function aiGetKeywordQuery(role: AiApiRole, queryId: string) {
 /* Social listening                                                           */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListSocialMonitors(role: AiApiRole, limit = 30) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListSocialMonitors(role: ResearchReaderRole, limit = 30) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.socialListeningMonitor.findMany({
     orderBy: { updatedAt: "desc" },
@@ -466,9 +509,9 @@ export async function aiListSocialMonitors(role: AiApiRole, limit = 30) {
   };
 }
 
-export async function aiGetSocialMonitor(role: AiApiRole, monitorId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetSocialMonitor(role: ResearchReaderRole, monitorId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const monitor = await prisma.socialListeningMonitor.findUnique({
     where: { id: monitorId },
@@ -538,9 +581,9 @@ export async function aiGetSocialMonitor(role: AiApiRole, monitorId: string) {
 /* USP analyzer                                                               */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListUspAnalyses(role: AiApiRole, limit = 30) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListUspAnalyses(role: ResearchReaderRole, limit = 30) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.uspGapAnalysis.findMany({
     orderBy: { updatedAt: "desc" },
@@ -578,9 +621,9 @@ export async function aiListUspAnalyses(role: AiApiRole, limit = 30) {
   };
 }
 
-export async function aiGetUspAnalysis(role: AiApiRole, analysisId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetUspAnalysis(role: ResearchReaderRole, analysisId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const analysis = await prisma.uspGapAnalysis.findUnique({
     where: { id: analysisId },
@@ -624,9 +667,9 @@ export async function aiGetUspAnalysis(role: AiApiRole, analysisId: string) {
 /* Concept lab                                                                */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListProductConcepts(role: AiApiRole, limit = 40) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListProductConcepts(role: ResearchReaderRole, limit = 40) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.productConcept.findMany({
     orderBy: { createdAt: "desc" },
@@ -671,9 +714,9 @@ export async function aiListProductConcepts(role: AiApiRole, limit = 40) {
   };
 }
 
-export async function aiGetProductConcept(role: AiApiRole, conceptId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetProductConcept(role: ResearchReaderRole, conceptId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const concept = await prisma.productConcept.findUnique({
     where: { id: conceptId },
@@ -710,9 +753,9 @@ export async function aiGetProductConcept(role: AiApiRole, conceptId: string) {
 /* Product discovery                                                          */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListProductDiscoveryQueries(role: AiApiRole, limit = 30) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListProductDiscoveryQueries(role: ResearchReaderRole, limit = 30) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.productDiscoveryQuery.findMany({
     orderBy: { updatedAt: "desc" },
@@ -744,9 +787,9 @@ export async function aiListProductDiscoveryQueries(role: AiApiRole, limit = 30)
   };
 }
 
-export async function aiGetProductDiscoveryQuery(role: AiApiRole, queryId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetProductDiscoveryQuery(role: ResearchReaderRole, queryId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const query = await prisma.productDiscoveryQuery.findUnique({
     where: { id: queryId },
@@ -796,9 +839,9 @@ export async function aiGetProductDiscoveryQuery(role: AiApiRole, queryId: strin
 /* Research reports                                                           */
 /* -------------------------------------------------------------------------- */
 
-export async function aiListResearchReports(role: AiApiRole, limit = 20) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiListResearchReports(role: ResearchReaderRole, limit = 20) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const rows = await prisma.researchReport.findMany({
     orderBy: { createdAt: "desc" },
@@ -829,9 +872,9 @@ export async function aiListResearchReports(role: AiApiRole, limit = 20) {
   };
 }
 
-export async function aiGetResearchReport(role: AiApiRole, reportId: string) {
-  if (!canViewResearch(role)) {
-    return denied("Research Hub hanya untuk CEO/Administrator.");
+export async function aiGetResearchReport(role: ResearchReaderRole, reportId: string) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
   }
   const report = await prisma.researchReport.findUnique({
     where: { id: reportId },
@@ -858,6 +901,667 @@ export async function aiGetResearchReport(role: AiApiRole, reportId: string) {
       periodEnd: iso(report.periodEnd),
       errorMessage: report.errorMessage,
       createdAt: iso(report.createdAt),
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Analisis komposit — pricing & perbandingan                                 */
+/* -------------------------------------------------------------------------- */
+
+export async function aiAnalyzeCompetitorPricing(
+  role: ResearchReaderRole,
+  opts: {
+    productQuery?: string;
+    competitorId?: string;
+    activeOnly?: boolean;
+    limit?: number;
+  } = {},
+) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
+  }
+
+  const query = opts.productQuery?.trim() ?? "";
+  const activeOnly = opts.activeOnly !== false;
+  const cap = Math.min(opts.limit ?? 50, 80);
+
+  const competitors = await prisma.researchCompetitor.findMany({
+    where: {
+      ...(opts.competitorId ? { id: opts.competitorId } : {}),
+      ...(activeOnly ? { isActive: true } : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+    take: opts.competitorId ? 1 : 40,
+    include: {
+      skus: { orderBy: { reviewCount: "desc" } },
+      snapshots: {
+        orderBy: { capturedAt: "desc" },
+        take: 5,
+        include: { sku: { select: { name: true } } },
+      },
+    },
+  });
+
+  const latestPromoBySku = new Map<
+    string,
+    { hasPromo: boolean; promoText: string | null }
+  >();
+
+  const competitorBlocks = competitors
+    .map((c) => {
+      latestPromoBySku.clear();
+      for (const snap of c.snapshots) {
+        if (snap.skuId && !latestPromoBySku.has(snap.skuId)) {
+          latestPromoBySku.set(snap.skuId, {
+            hasPromo: snap.hasPromo,
+            promoText: snap.promoText,
+          });
+        }
+      }
+
+      const competitorMatches =
+        !query ||
+        textMatchesQuery(c.name, query) ||
+        textMatchesQuery(c.brand, query) ||
+        textMatchesQuery(c.category, query);
+
+      const skusWithPromo = c.skus.map((s) => {
+        const promo = latestPromoBySku.get(s.id);
+        return {
+          ...s,
+          hasPromo: promo?.hasPromo ?? false,
+          promoText: promo?.promoText ?? null,
+        };
+      });
+
+      const matchedSkus = skusWithPromo.filter(
+        (s) =>
+          competitorMatches ||
+          textMatchesQuery(s.name, query),
+      );
+
+      if (!competitorMatches && matchedSkus.length === 0) {
+        return null;
+      }
+
+      const insights = buildCompetitorInsights(
+        matchedSkus.map((s) => ({
+          id: s.id,
+          name: s.name,
+          currentPrice: s.currentPrice,
+          rating: s.rating,
+          reviewCount: s.reviewCount,
+          hasPromo: s.hasPromo,
+        })),
+        c.snapshots.map((snap) => ({
+          skuId: snap.skuId,
+          price: snap.price,
+          capturedAt: snap.capturedAt,
+        })),
+      );
+
+      return {
+        competitorId: c.id,
+        name: c.name,
+        brand: c.brand,
+        category: c.category,
+        marketplace: c.marketplace,
+        shopUrl: c.shopUrl,
+        insights,
+        skus: matchedSkus.slice(0, cap).map((s) => ({
+          id: s.id,
+          name: s.name,
+          currentPrice: s.currentPrice,
+          rating: s.rating,
+          reviewCount: s.reviewCount,
+          hasPromo: s.hasPromo,
+          promoText: s.promoText,
+          productUrl: s.productUrl,
+          lastSeenAt: iso(s.lastSeenAt),
+        })),
+      };
+    })
+    .filter((b): b is NonNullable<typeof b> => b != null);
+
+  const reviewSources = query
+    ? await prisma.reviewIntelSource.findMany({
+        where: {
+          OR: [
+            { productName: { contains: query, mode: "insensitive" } },
+            { competitorBrand: { contains: query, mode: "insensitive" } },
+          ],
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 15,
+        select: {
+          id: true,
+          productName: true,
+          competitorBrand: true,
+          marketplace: true,
+          productUrl: true,
+          status: true,
+          reviewCount: true,
+          brand: { select: { name: true } },
+        },
+      })
+    : [];
+
+  const catalogProducts = query
+    ? await prisma.product.findMany({
+        where: {
+          OR: [
+            { name: { contains: query, mode: "insensitive" } },
+            { category: { contains: query, mode: "insensitive" } },
+          ],
+        },
+        take: 15,
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          category: true,
+          currentStock: true,
+          brand: { select: { name: true } },
+        },
+      })
+    : [];
+
+  const allPrices = competitorBlocks.flatMap((b) =>
+    b.skus
+      .map((s) => s.currentPrice)
+      .filter((p): p is number => p != null && p > 0),
+  );
+
+  return {
+    accessible: true as const,
+    query: query || null,
+    summary: {
+      competitorCount: competitorBlocks.length,
+      skuWithPriceCount: competitorBlocks.reduce(
+        (n, b) => n + b.skus.filter((s) => s.currentPrice != null).length,
+        0,
+      ),
+      marketMinPrice: allPrices.length ? Math.min(...allPrices) : null,
+      marketMaxPrice: allPrices.length ? Math.max(...allPrices) : null,
+      marketAvgPrice: allPrices.length
+        ? Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length)
+        : null,
+    },
+    competitors: competitorBlocks,
+    trackedReviewProducts: reviewSources.map((s) => ({
+      id: s.id,
+      productName: s.productName,
+      competitorBrand: s.competitorBrand,
+      ourBrand: s.brand?.name ?? null,
+      marketplace: s.marketplace,
+      productUrl: s.productUrl,
+      status: s.status,
+      reviewCount: s.reviewCount,
+      note: "Harga jual tidak disimpan di Review Intel — lihat marketplace URL atau Competitor Tracker SKU.",
+    })),
+    internalCatalogProducts: catalogProducts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      category: p.category,
+      brandName: p.brand.name,
+      currentStock: p.currentStock,
+      note: "Katalog inventori DCC tidak menyimpan harga jual marketplace — bandingkan dengan harga kompetitor di atas.",
+    })),
+    analysisHints: [
+      "Harga kompetitor ada di skus[].currentPrice (IDR) dan insights per kompetitor.",
+      "Jika user minta bandingkan produk sendiri: cek trackedReviewProducts + internalCatalogProducts, lalu bandingkan dengan competitors[].skus.",
+      "Jangan bilang tidak ada harga jika skuWithPriceCount > 0.",
+    ],
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Evaluasi proposal produk — multi-sumber Research Hub                     */
+/* -------------------------------------------------------------------------- */
+
+function extractClaimTerms(claims: string | undefined): string[] {
+  if (!claims?.trim()) return [];
+  const raw = claims
+    .toLowerCase()
+    .split(/[,;/]+|\s+dan\s+|\s+&\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 3);
+  return [...new Set(raw)];
+}
+
+function buildSearchTerms(productQuery: string, claims?: string): string[] {
+  const terms = new Set<string>();
+  const q = productQuery.trim().toLowerCase();
+  if (q) terms.add(q);
+  for (const c of extractClaimTerms(claims)) terms.add(c);
+  // Sub-kata penting dari kategori umum
+  for (const word of q.split(/\s+/)) {
+    if (word.length >= 4) terms.add(word);
+  }
+  return [...terms];
+}
+
+function assessProposedPrice(
+  proposed: number | undefined,
+  marketMin: number | null,
+  marketMax: number | null,
+  marketAvg: number | null,
+) {
+  if (proposed == null || proposed <= 0) {
+    return {
+      proposedPrice: null,
+      marketMin,
+      marketMax,
+      marketAvg,
+      position: null as string | null,
+      percentVsAvg: null as number | null,
+      percentVsMin: null as number | null,
+      note: "Harga proposal tidak disertakan — bandingkan secara kualitatif.",
+    };
+  }
+  if (marketAvg == null && marketMin == null) {
+    return {
+      proposedPrice: proposed,
+      marketMin,
+      marketMax,
+      marketAvg,
+      position: "unknown" as const,
+      percentVsAvg: null,
+      percentVsMin: null,
+      note: "Belum ada benchmark harga kompetitor — validasi harga terbatas.",
+    };
+  }
+  const avg = marketAvg ?? marketMin!;
+  const pctVsAvg = Math.round(((proposed - avg) / avg) * 100);
+  const pctVsMin =
+    marketMin != null
+      ? Math.round(((proposed - marketMin) / marketMin) * 100)
+      : null;
+
+  let position: string;
+  if (marketMin != null && proposed < marketMin * 0.95) position = "below_market";
+  else if (marketMax != null && proposed > marketMax * 1.05) position = "above_market";
+  else if (pctVsAvg <= -15) position = "value_budget";
+  else if (pctVsAvg >= 20) position = "premium";
+  else position = "mid_market";
+
+  return {
+    proposedPrice: proposed,
+    marketMin,
+    marketMax,
+    marketAvg,
+    position,
+    percentVsAvg: pctVsAvg,
+    percentVsMin: pctVsMin,
+    note:
+      position === "value_budget"
+        ? "Harga di bawah rata-rata pasar — menarik untuk entry, perhatikan margin & persepsi kualitas."
+        : position === "premium"
+          ? "Harga di atas rata-rata — perlu diferensiasi kuat (claim, ukuran, packaging)."
+          : position === "below_market"
+            ? "Harga paling murah vs kompetitor terlacak — agresif di harga."
+            : position === "above_market"
+              ? "Harga tertinggi vs kompetitor terlacak — risiko jika claim tidak unik."
+              : "Harga sejajar pasar — kompetisi di claim, format, dan distribusi.",
+  };
+}
+
+export async function aiEvaluateProductProposal(
+  role: ResearchReaderRole,
+  opts: {
+    productQuery: string;
+    proposedPrice?: number;
+    claims?: string;
+    sizeMl?: number;
+    packagingNotes?: string;
+  },
+) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
+  }
+
+  const productQuery = opts.productQuery.trim();
+  if (!productQuery) {
+    return denied("productQuery wajib diisi, mis. body lotion.");
+  }
+
+  const searchTerms = buildSearchTerms(productQuery, opts.claims);
+
+  const [pricing, reviewSources, trendDigest, keywordQueries, uspAnalyses, recommendations, socialMonitors] =
+    await Promise.all([
+      aiAnalyzeCompetitorPricing(role, {
+        productQuery,
+        activeOnly: true,
+        limit: 25,
+      }),
+      prisma.reviewIntelSource.findMany({
+        where: {
+          status: "READY",
+          OR: searchTerms.flatMap((term) => [
+            { productName: { contains: term, mode: "insensitive" as const } },
+            { competitorBrand: { contains: term, mode: "insensitive" as const } },
+          ]),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 8,
+        include: {
+          summary: {
+            select: {
+              positivePct: true,
+              negativePct: true,
+              topComplaints: true,
+              topPraises: true,
+              gapOpportunity: true,
+              aiActionPlan: true,
+            },
+          },
+        },
+      }),
+      prisma.trendRadarDigest.findFirst({
+        where: { status: "READY" },
+        orderBy: { weekStart: "desc" },
+        include: {
+          items: {
+            where: searchTerms.length
+              ? {
+                  OR: searchTerms.map((term) => ({
+                    name: { contains: term, mode: "insensitive" as const },
+                  })),
+                }
+              : undefined,
+            take: 12,
+            orderBy: { score: "desc" },
+          },
+        },
+      }),
+      prisma.keywordIntelQuery.findMany({
+        where: {
+          status: "READY",
+          OR: [
+            { category: { contains: productQuery, mode: "insensitive" } },
+            { seedKeyword: { contains: productQuery, mode: "insensitive" } },
+            ...searchTerms.map((term) => ({
+              category: { contains: term, mode: "insensitive" as const },
+            })),
+          ],
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 3,
+        include: {
+          result: {
+            select: {
+              aiSummary: true,
+              gapKeywords: true,
+              namingSuggestions: true,
+              copyKeywords: true,
+            },
+          },
+        },
+      }),
+      prisma.uspGapAnalysis.findMany({
+        where: {
+          status: "READY",
+          OR: [
+            { category: { contains: productQuery, mode: "insensitive" } },
+            ...searchTerms.map((term) => ({
+              category: { contains: term, mode: "insensitive" as const },
+            })),
+          ],
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 3,
+        include: {
+          result: {
+            select: {
+              differentiationScore: true,
+              aiSummary: true,
+              gapMatrix: true,
+              uspCandidates: true,
+              categoryDecision: true,
+            },
+          },
+        },
+      }),
+      prisma.researchRecommendation.findMany({
+        where: {
+          status: "OPEN",
+          OR: searchTerms.map((term) => ({
+            OR: [
+              { module: { contains: term, mode: "insensitive" as const } },
+              { action: { contains: term, mode: "insensitive" as const } },
+              { rationale: { contains: term, mode: "insensitive" as const } },
+            ],
+          })),
+        },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+      }),
+      prisma.socialListeningMonitor.findMany({
+        where: { isActive: true },
+        take: 5,
+        include: {
+          batches: {
+            where: { status: "READY" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            include: {
+              summary: {
+                select: {
+                  topPainPoints: true,
+                  topWishlist: true,
+                  aiSummary: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+  const pricingData =
+    pricing.accessible && "summary" in pricing ? pricing : null;
+  const marketMin = pricingData?.summary?.marketMinPrice ?? null;
+  const marketMax = pricingData?.summary?.marketMaxPrice ?? null;
+  const marketAvg = pricingData?.summary?.marketAvgPrice ?? null;
+
+  const pricingAssessment = assessProposedPrice(
+    opts.proposedPrice,
+    marketMin,
+    marketMax,
+    marketAvg,
+  );
+
+  const competitorSkuSamples =
+    pricingData && "competitors" in pricingData
+      ? (pricingData.competitors as { name: string; brand: string; skus: { name: string; currentPrice: number | null; rating: number | null }[] }[])
+          .flatMap((c) =>
+            c.skus
+              .filter((s) => s.currentPrice != null)
+              .slice(0, 3)
+              .map((s) => ({
+                competitor: c.name,
+                brand: c.brand,
+                skuName: s.name,
+                price: s.currentPrice,
+                rating: s.rating,
+              })),
+          )
+          .slice(0, 15)
+      : [];
+
+  const reviewIntel = reviewSources.map((s) => ({
+    id: s.id,
+    productName: s.productName,
+    competitorBrand: s.competitorBrand,
+    marketplace: s.marketplace,
+    reviewCount: s.reviewCount,
+    sentiment: s.summary
+      ? {
+          positivePct: s.summary.positivePct,
+          negativePct: s.summary.negativePct,
+        }
+      : null,
+    topComplaints: s.summary?.topComplaints ?? null,
+    topPraises: s.summary?.topPraises ?? null,
+    gapOpportunity: s.summary?.gapOpportunity ?? null,
+  }));
+
+  const trends =
+    trendDigest?.items.map((i) => ({
+      name: i.name,
+      dimension: i.dimension,
+      phase: i.phase,
+      score: i.score,
+      narrative: i.narrative?.slice(0, 300) ?? null,
+    })) ?? [];
+
+  const keywords = keywordQueries.map((q) => ({
+    id: q.id,
+    category: q.category,
+    seedKeyword: q.seedKeyword,
+    aiSummary: q.result?.aiSummary?.slice(0, 400) ?? null,
+    gapKeywords: q.result?.gapKeywords ?? null,
+    namingSuggestions: q.result?.namingSuggestions ?? null,
+  }));
+
+  const uspGaps = uspAnalyses.map((a) => ({
+    id: a.id,
+    category: a.category,
+    differentiationScore: a.result?.differentiationScore ?? null,
+    aiSummary: a.result?.aiSummary?.slice(0, 400) ?? null,
+    categoryDecision: a.result?.categoryDecision ?? null,
+    uspCandidates: a.result?.uspCandidates ?? null,
+  }));
+
+  const socialInsights = socialMonitors
+    .map((m) => {
+      const summary = m.batches[0]?.summary;
+      if (!summary) return null;
+      return {
+        monitorName: m.name,
+        keywords: m.keywords,
+        topPainPoints: summary.topPainPoints,
+        topWishlist: summary.topWishlist,
+        aiSummary: summary.aiSummary?.slice(0, 300) ?? null,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null);
+
+  const dataSourcesChecked = [
+    {
+      module: "competitor-tracker",
+      status:
+        (pricingData?.summary?.skuWithPriceCount ?? 0) > 0
+          ? "found"
+          : (pricingData?.summary?.competitorCount ?? 0) > 0
+            ? "partial"
+            : "empty",
+      recordCount: pricingData?.summary?.competitorCount ?? 0,
+      detail: `${pricingData?.summary?.skuWithPriceCount ?? 0} SKU berharga, ${pricingData?.summary?.competitorCount ?? 0} kompetitor`,
+    },
+    {
+      module: "review-intelligence",
+      status: reviewIntel.length > 0 ? "found" : "empty",
+      recordCount: reviewIntel.length,
+      detail: `${reviewIntel.length} sumber review siap analisis`,
+    },
+    {
+      module: "trend-radar",
+      status: trends.length > 0 ? "found" : trendDigest ? "partial" : "empty",
+      recordCount: trends.length,
+      detail: trends.length
+        ? `${trends.length} tren relevan di digest terbaru`
+        : "Tidak ada tren cocok di digest terbaru",
+    },
+    {
+      module: "keyword-intel",
+      status: keywords.length > 0 ? "found" : "empty",
+      recordCount: keywords.length,
+      detail: `${keywords.length} analisis keyword`,
+    },
+    {
+      module: "usp-analyzer",
+      status: uspGaps.length > 0 ? "found" : "empty",
+      recordCount: uspGaps.length,
+      detail: `${uspGaps.length} analisis USP/gap`,
+    },
+    {
+      module: "social-listening",
+      status: socialInsights.length > 0 ? "found" : "empty",
+      recordCount: socialInsights.length,
+      detail: `${socialInsights.length} monitor dengan insight`,
+    },
+    {
+      module: "research-recommendations",
+      status: recommendations.length > 0 ? "found" : "empty",
+      recordCount: recommendations.length,
+      detail: `${recommendations.length} rekomendasi terbuka`,
+    },
+  ];
+
+  const hasEnoughData =
+    (pricingData?.summary?.skuWithPriceCount ?? 0) > 0 ||
+    reviewIntel.length > 0 ||
+    trends.length > 0;
+
+  return {
+    accessible: true as const,
+    proposal: {
+      productQuery,
+      proposedPrice: opts.proposedPrice ?? null,
+      claims: opts.claims ?? null,
+      sizeMl: opts.sizeMl ?? null,
+      packagingNotes: opts.packagingNotes ?? null,
+      searchTermsUsed: searchTerms,
+    },
+    dataSourcesChecked,
+    pricingAssessment,
+    competitorTracker: {
+      summary: pricingData?.summary ?? null,
+      topSkuByPrice: competitorSkuSamples,
+      competitors:
+        pricingData && "competitors" in pricingData
+          ? (pricingData.competitors as unknown[]).slice(0, 5)
+          : [],
+    },
+    reviewIntelligence: reviewIntel,
+    trendRadar: {
+      digestWeek: trendDigest
+        ? { weekStart: iso(trendDigest.weekStart), weekEnd: iso(trendDigest.weekEnd) }
+        : null,
+      items: trends,
+    },
+    keywordIntel: keywords,
+    uspAnalyzer: uspGaps,
+    socialListening: socialInsights,
+    openRecommendations: recommendations.map((r) => ({
+      module: r.module,
+      priority: r.priority,
+      action: r.action,
+      rationale: r.rationale.slice(0, 300),
+    })),
+    evaluationGuidance: {
+      hasEnoughData,
+      mustAddress: [
+        "Posisi harga proposal vs min/max/avg kompetitor (Competitor Tracker)",
+        "Apakah claim (mis. instant whitening) didukung atau contradicted oleh keluhan/praise di Review Intel",
+        "Celah pasar dari gapOpportunity review & USP analyzer",
+        "Tren naik/turun di kategori terkait",
+        "Kesimpulan: make sense / make sense dengan catatan / kurang make sense — dengan bukti angka",
+      ],
+      verdictHints: [
+        pricingAssessment.position === "value_budget"
+          ? "Harga agresif — cocok jika claim kuat & margin OK"
+          : null,
+        pricingAssessment.position === "premium"
+          ? "Harga premium — perlu bukti diferensiasi dari review/tren"
+          : null,
+        reviewIntel.some((r) => r.gapOpportunity)
+          ? "Ada gap opportunity dari review kompetitor — manfaatkan di positioning"
+          : null,
+      ].filter(Boolean),
     },
   };
 }

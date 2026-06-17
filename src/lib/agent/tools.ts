@@ -44,6 +44,10 @@ import {
 } from "./mutations";
 import { isBulkTaskTitleSearch } from "./task-disambiguation";
 import { fetchWebsiteContent } from "./website-fetch";
+import {
+  RESEARCH_AGENT_TOOL_DECLARATIONS,
+  executeAgentResearchTool,
+} from "./research-tools";
 import type { AgentToolResult, AgentUser } from "./types";
 
 export const AGENT_TOOLS: Tool[] = [
@@ -640,6 +644,7 @@ export const AGENT_TOOLS: Tool[] = [
           required: ["url"],
         },
       },
+      ...RESEARCH_AGENT_TOOL_DECLARATIONS,
     ],
   },
 ];
@@ -669,6 +674,9 @@ export async function executeAgentTool(
   args: Record<string, unknown>,
 ): Promise<AgentToolResult> {
   try {
+    const researchResult = await executeAgentResearchTool(user, name, args);
+    if (researchResult) return researchResult;
+
     let data: unknown;
 
     switch (name) {
