@@ -214,7 +214,7 @@ export function OperationsCommandCenter({
         />
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid items-start gap-4 lg:grid-cols-5">
         <div className="flex flex-col gap-4 lg:col-span-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -301,10 +301,16 @@ export function OperationsCommandCenter({
               )}
             </CardContent>
           </Card>
+
+          <DashboardNotificationsCard
+            className="w-full"
+            notifications={data.notifications}
+            unreadCount={kpis.unreadNotifications}
+          />
         </div>
 
-        <div className="flex lg:col-span-2">
-          <Card className="flex h-full w-full flex-col">
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <DoorOpen className="text-primary size-4" aria-hidden />
@@ -318,16 +324,15 @@ export function OperationsCommandCenter({
                 <ArrowRight className="size-3.5" aria-hidden />
               </Link>
             </CardHeader>
-            <CardContent className="flex flex-1 flex-col">
+            <CardContent>
               {data.rooms.length === 0 ? (
                 <EmptyBlock
                   icon={DoorOpen}
                   title="Belum ada ruangan"
                   description="Hubungi administrator agar ditambahkan ke ruangan kerja."
-                  className="flex-1 justify-center"
                 />
               ) : (
-                <ul className="divide-border/60 -my-1 divide-y">
+                <ul className="divide-border/60 -my-1 max-h-72 divide-y overflow-y-auto pr-1">
                   {data.rooms.map((room) => (
                     <li key={room.roomId}>
                       <Link
@@ -364,19 +369,9 @@ export function OperationsCommandCenter({
               )}
             </CardContent>
           </Card>
-        </div>
 
-        <div className="flex items-stretch lg:col-span-3">
-          <DashboardNotificationsCard
-            className="w-full"
-            notifications={data.notifications}
-            unreadCount={kpis.unreadNotifications}
-          />
-        </div>
-
-        {data.canViewPipeline ? (
-          <div className="flex items-stretch lg:col-span-2">
-            <Card className="flex h-full w-full flex-col">
+          {data.canViewPipeline ? (
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <GitBranch className="text-primary size-4" aria-hidden />
@@ -390,13 +385,12 @@ export function OperationsCommandCenter({
                   <ArrowRight className="size-3.5" aria-hidden />
                 </Link>
               </CardHeader>
-              <CardContent className="flex flex-1 flex-col">
+              <CardContent>
                 {data.pendingPipeline.length === 0 ? (
                   <EmptyBlock
                     icon={GitBranch}
                     title="Tidak ada pipeline menunggu"
                     description="Tidak ada proyek yang menunggu persetujuan tahap."
-                    className="flex-1 justify-center"
                   />
                 ) : (
                   <ul className="divide-border/60 -my-1 divide-y">
@@ -422,8 +416,8 @@ export function OperationsCommandCenter({
                 )}
               </CardContent>
             </Card>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </div>
   );
