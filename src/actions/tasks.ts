@@ -55,25 +55,118 @@ const moveSchema = z.object({
   orderedTaskIdsInTarget: z.array(z.string().min(1)).optional(),
 });
 
+const moveToColumnSchema = z.object({
+  taskId: z.string().min(1),
+  columnId: z.string().min(1),
+  orderedTaskIdsInTarget: z.array(z.string().min(1)).optional(),
+});
+
 const reorderKanbanColumnSchema = z.object({
-  status: z.nativeEnum(TaskStatus),
+  status: z.nativeEnum(TaskStatus).optional(),
+  columnId: z.string().min(1).optional(),
   orderedTaskIds: z.array(z.string().min(1)),
 });
 
-async function persistKanbanColumnOrder(
-  status: TaskStatus,
+async function persistKanbanColumnOrderByColumnId(
+  columnId: string,
   orderedTaskIds: string[],
 ) {
   if (orderedTaskIds.length === 0) return;
   await prisma.$transaction(
     orderedTaskIds.map((taskId, index) =>
       prisma.taskKanbanPosition.upsert({
-        where: { taskId_status: { taskId, status } },
-        create: { taskId, status, sortKey: index * 1000 },
+        where: { taskId_columnId: { taskId, columnId } },
+        create: { taskId, columnId, sortKey: index * 1000 },
         update: { sortKey: index * 1000 },
       }),
     ),
   );
+}
+
+async function resolveColumnIdForTaskStatus(
+  taskId: string,
+  status: TaskStatus,
+): Promise<string> {
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    select: {
+      kanbanColumnId: true,
+      roomProcess: true,
+      customProcessPhaseId: true,
+      project: { select: { roomId: true } },
+    },
+  });
+  if (task.kanbanColumnId) {
+    const col = await prisma.roomKanbanColumn.findUnique({
+      where: { id: task.kanbanColumnId },
+      select: { linkedStatus: true, coreRole: true, kind: true },
+    });
+    if (col) {
+      const colStatus =
+        col.kind === "CORE" && col.coreRole ? col.coreRole : col.linkedStatus;
+      if (colStatus === status) return task.kanbanColumnId;
+    }
+  }
+  const column = await prisma.roomKanbanColumn.findFirst({
+    where: {
+      roomId: task.project.roomId,
+      customProcessPhaseId: task.customProcessPhaseId,
+      roomProcess: task.customProcessPhaseId ? null : task.roomProcess,
+      OR: [{ coreRole: status }, { linkedStatus: status }],
+    },
+    orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+  });
+  if (!column) {
+    throw new Error("Kolom Kanban untuk status ini tidak ditemukan.");
+  }
+  return column.id;
+}
+
+async function assertKanbanReorderTasksByColumn(
+  roomId: string,
+  phase: RoomProcessPhaseRef,
+  columnId: string,
+  orderedTaskIds: string[],
+  userId: string,
+) {
+  const simpleHub = await isSimpleHubRoom(roomId);
+  if (simpleHub) {
+    await assertRoomMember(roomId, userId);
+  } else {
+    await assertRoomMemberHasTaskPhase(roomId, userId, phase);
+  }
+
+  const unique = [...new Set(orderedTaskIds)];
+  if (unique.length !== orderedTaskIds.length) {
+    throw new Error("Daftar urutan tugas tidak valid.");
+  }
+
+  const rows = await prisma.task.findMany({
+    where: {
+      id: { in: orderedTaskIds },
+      kanbanColumnId: columnId,
+      project: { roomId },
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      roomProcess: true,
+      customProcessPhaseId: true,
+    },
+  });
+  if (rows.length !== orderedTaskIds.length) {
+    throw new Error("Sebagian tugas tidak valid untuk pengurutan kolom ini.");
+  }
+
+  if (!simpleHub) {
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+    for (const taskId of orderedTaskIds) {
+      const row = rowById.get(taskId);
+      if (!row || !taskBelongsToPhase(row, phase)) {
+        throw new Error("Sebagian tugas tidak valid untuk pengurutan kolom ini.");
+      }
+    }
+  }
 }
 
 async function assertKanbanReorderTasks(
@@ -216,19 +309,164 @@ export async function reorderKanbanColumn(
 ) {
   const session = await requireTasksRoomHubSession();
   const data = reorderKanbanColumnSchema.parse(input);
+  if (!data.columnId && !data.status) {
+    throw new Error("columnId atau status wajib diisi.");
+  }
   const first = await prisma.task.findFirstOrThrow({
     where: { id: data.orderedTaskIds[0] },
     select: { id: true },
   });
   const { roomId, phase } = await getTaskRoomContext(first.id);
-  await assertKanbanReorderTasks(
-    roomId,
-    phase,
-    data.status,
-    data.orderedTaskIds,
-    session.user.id,
-  );
-  await persistKanbanColumnOrder(data.status, data.orderedTaskIds);
+
+  const columnId =
+    data.columnId ??
+    (await resolveColumnIdForTaskStatus(first.id, data.status!));
+
+  if (data.status) {
+    await assertKanbanReorderTasks(
+      roomId,
+      phase,
+      data.status,
+      data.orderedTaskIds,
+      session.user.id,
+    );
+  } else {
+    await assertKanbanReorderTasksByColumn(
+      roomId,
+      phase,
+      columnId,
+      data.orderedTaskIds,
+      session.user.id,
+    );
+  }
+  await persistKanbanColumnOrderByColumnId(columnId, data.orderedTaskIds);
+  revalidateTasksAndRoomHub();
+}
+
+export async function moveTaskToColumn(
+  input: z.infer<typeof moveToColumnSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const { taskId, columnId, orderedTaskIdsInTarget } =
+    moveToColumnSchema.parse(input);
+  const { roomId, phase } = await getTaskRoomContext(taskId);
+  await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
+
+  const column = await prisma.roomKanbanColumn.findUniqueOrThrow({
+    where: { id: columnId },
+    select: {
+      id: true,
+      roomId: true,
+      kind: true,
+      coreRole: true,
+      linkedStatus: true,
+    },
+  });
+  if (column.roomId !== roomId) {
+    throw new Error("Kolom tidak valid untuk ruangan ini.");
+  }
+
+  const status =
+    column.kind === "CORE" && column.coreRole
+      ? column.coreRole
+      : column.linkedStatus;
+
+  const task = await prisma.task.findUniqueOrThrow({
+    where: { id: taskId },
+    select: {
+      id: true,
+      projectId: true,
+      title: true,
+      status: true,
+      contentPlanItemId: true,
+      contentPlanJenis: true,
+      isApprovalRequired: true,
+      isApproved: true,
+      archivedAt: true,
+      project: {
+        include: { brand: true, room: { select: { name: true, id: true } } },
+      },
+      assignees: {
+        take: 1,
+        include: { user: { select: { name: true } } },
+      },
+    },
+  });
+
+  if (task.archivedAt) {
+    throw new Error(
+      "Tugas diarsipkan. Buka tampilan Arsip dan pulihkan tugas ini untuk mengubah status.",
+    );
+  }
+
+  if (status === TaskStatus.DONE && task.isApprovalRequired && !task.isApproved) {
+    throw new Error(
+      "Tugas ini memerlukan persetujuan CEO sebelum ditandai selesai.",
+    );
+  }
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      kanbanColumnId: columnId,
+      status,
+      ...(status === TaskStatus.DONE && task.status !== TaskStatus.DONE
+        ? {
+            whatsappReminder3dSentAt: null,
+            whatsappReminder1dSentAt: null,
+          }
+        : {}),
+    },
+  });
+
+  if (orderedTaskIdsInTarget && orderedTaskIdsInTarget.length > 0) {
+    await assertKanbanReorderTasksByColumn(
+      roomId,
+      phase,
+      columnId,
+      orderedTaskIdsInTarget,
+      session.user.id,
+    );
+    await persistKanbanColumnOrderByColumnId(
+      columnId,
+      orderedTaskIdsInTarget,
+    );
+  }
+
+  if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
+    await markContentPlanDesignPublishedIfTaskDone({
+      roomId: task.project.room.id,
+      taskId: task.id,
+      contentPlanItemId: task.contentPlanItemId,
+      contentPlanJenis: task.contentPlanJenis,
+    });
+  }
+
+  const notificationJobs: Promise<unknown>[] = [];
+  if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
+    notificationJobs.push(
+      notifyTaskCompletedForCeo(
+        task.title,
+        taskProjectContextLabel(task.project),
+      ),
+    );
+    notificationJobs.push(
+      notifyRoomManagersTaskDoneViaWhatsApp({
+        roomId: task.project.roomId,
+        roomProcess:
+          phase.legacyProcessKey ?? RoomTaskProcess.MARKET_RESEARCH,
+        taskTitle: task.title,
+        project: task.project,
+        picDisplayName: task.assignees[0]?.user?.name ?? null,
+      }),
+    );
+  }
+
+  if (task.status !== status) {
+    void recomputeProjectProgress(task.projectId);
+  }
+
+  await Promise.all(notificationJobs);
   revalidateTasksAndRoomHub();
 }
 
@@ -272,10 +510,13 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     );
   }
 
+  const targetColumnId = await resolveColumnIdForTaskStatus(taskId, status);
+
   await prisma.task.update({
     where: { id: taskId },
     data: {
       status,
+      kanbanColumnId: targetColumnId,
       ...(status === TaskStatus.DONE && task.status !== TaskStatus.DONE
         ? {
             whatsappReminder3dSentAt: null,
@@ -293,7 +534,10 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
       orderedTaskIdsInTarget,
       session.user.id,
     );
-    await persistKanbanColumnOrder(status, orderedTaskIdsInTarget);
+    await persistKanbanColumnOrderByColumnId(
+      targetColumnId,
+      orderedTaskIdsInTarget,
+    );
   }
 
   if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {

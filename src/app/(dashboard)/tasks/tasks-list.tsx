@@ -19,7 +19,8 @@ import {
 import { toast } from "sonner";
 import { moveTaskStatus, updateTask, type TaskMutationResult } from "@/actions/tasks";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { sortTasksForKanbanColumn } from "@/lib/kanban-sort";
+import { sortTasksForKanbanColumn, sortTasksForKanbanStatus } from "@/lib/kanban-sort";
+import { resolveColumnIdForTask } from "@/lib/room-kanban-columns";
 import { cn } from "@/lib/utils";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { taskStatusLabel } from "@/lib/task-status-ui";
@@ -698,15 +699,21 @@ export function TasksList({
       if (list) list.push(task);
     }
     return columns.map((col) => {
-      const colTasks = (byStatus.get(col.linkedStatus) ?? []).map((task) => ({
-        ...task,
-        kanbanSortKey:
-          task.kanbanPositions?.find((p) => p.status === col.linkedStatus)
-            ?.sortKey ?? null,
-      }));
+      const colTasks = tasks
+        .filter(
+          (task) =>
+            (task.kanbanColumnId ??
+              resolveColumnIdForTask(task, columns)) === col.id,
+        )
+        .map((task) => ({
+          ...task,
+          kanbanSortKey:
+            task.kanbanPositions?.find((p) => p.columnId === col.id)?.sortKey ??
+            null,
+        }));
       return {
         column: col,
-        tasks: sortTasksForKanbanColumn(colTasks, col.linkedStatus),
+        tasks: sortTasksForKanbanColumn(colTasks, col.id),
       };
     });
   }, [tasks, columns]);
@@ -723,11 +730,13 @@ export function TasksList({
     return [...extras.entries()].map(([status, statusTasks]) => ({
       column: {
         id: `extra-${status}`,
+        kind: "CUSTOM" as const,
+        coreRole: null,
         linkedStatus: status,
         title: taskStatusLabel(status),
         sortOrder: 999,
       } satisfies RoomKanbanColumnDTO,
-      tasks: statusTasks,
+      tasks: sortTasksForKanbanStatus(statusTasks, status),
     }));
   }, [tasks, columns]);
 

@@ -1,6 +1,6 @@
 "use server";
 
-import { RoomTaskProcess, TaskStatus } from "@prisma/client";
+import { KanbanColumnKind, RoomTaskProcess, TaskStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
@@ -77,13 +77,65 @@ export async function reorderRoomKanbanColumns(
   revalidatePath("/tasks");
 }
 
+const addCustomSchema = z.object({
+  roomId: z.string().min(1),
+  processKey: z.string().min(1),
+  title: titleSchema,
+  workflowBucket: z
+    .enum([
+      TaskStatus.IN_PROGRESS,
+      TaskStatus.IN_REVIEW,
+      TaskStatus.BLOCKED,
+    ])
+    .default(TaskStatus.IN_PROGRESS),
+});
+
+/** Tambah kolom custom bebas nama. */
+export async function addCustomKanbanColumn(
+  input: z.infer<typeof addCustomSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const data = addCustomSchema.parse(input);
+  await assertRoomHubManager(data.roomId, session.user.id);
+  const phase = await resolveRoomProcessPhaseKey(data.roomId, data.processKey);
+  await ensureDefaultRoomKanbanColumnsForCustomPhase(data.roomId, phase.id);
+
+  const where = kanbanColumnWhere(data.roomId, phase);
+  const count = await prisma.roomKanbanColumn.count({ where });
+  if (count >= 20) {
+    throw new Error("Maksimal 20 kolom per papan.");
+  }
+
+  const max = await prisma.roomKanbanColumn.aggregate({
+    where,
+    _max: { sortOrder: true },
+  });
+
+  const col = await prisma.roomKanbanColumn.create({
+    data: {
+      roomId: data.roomId,
+      roomProcess: phase.legacyProcessKey ?? null,
+      customProcessPhaseId: phase.id,
+      kind: KanbanColumnKind.CUSTOM,
+      linkedStatus: data.workflowBucket,
+      title: data.title,
+      sortOrder: (max._max.sortOrder ?? -1) + 1,
+    },
+    select: { id: true, title: true, sortOrder: true, linkedStatus: true },
+  });
+  revalidateTasksAndRoomHub();
+  revalidatePath("/tasks");
+  return col;
+}
+
 const addSchema = z.object({
   roomId: z.string().min(1),
   processKey: z.string().min(1),
   linkedStatus: z.nativeEnum(TaskStatus),
+  title: titleSchema.optional(),
 });
 
-/** Tambah kolom untuk status yang belum punya kolom di papan ini. */
+/** Tambah kolom untuk status opsional (BLOCKED / IN_REVIEW) atau custom title. */
 export async function addRoomKanbanColumn(input: z.infer<typeof addSchema>) {
   const session = await requireTasksRoomHubSession();
   const data = addSchema.parse(input);
@@ -91,12 +143,21 @@ export async function addRoomKanbanColumn(input: z.infer<typeof addSchema>) {
   const phase = await resolveRoomProcessPhaseKey(data.roomId, data.processKey);
   await ensureDefaultRoomKanbanColumnsForCustomPhase(data.roomId, phase.id);
 
+  if (isDefaultKanbanLinkedStatus(data.linkedStatus)) {
+    throw new Error("Kolom inti sudah ada di papan.");
+  }
+
   const where = kanbanColumnWhere(data.roomId, phase);
   const existing = await prisma.roomKanbanColumn.findFirst({
-    where: { ...where, linkedStatus: data.linkedStatus },
+    where: {
+      ...where,
+      linkedStatus: data.linkedStatus,
+      kind: KanbanColumnKind.CUSTOM,
+      title: data.title ?? taskStatusLabel(data.linkedStatus),
+    },
   });
   if (existing) {
-    throw new Error("Kolom untuk status ini sudah ada.");
+    throw new Error("Kolom serupa sudah ada.");
   }
 
   const max = await prisma.roomKanbanColumn.aggregate({
@@ -108,8 +169,9 @@ export async function addRoomKanbanColumn(input: z.infer<typeof addSchema>) {
       roomId: data.roomId,
       roomProcess: phase.legacyProcessKey ?? null,
       customProcessPhaseId: phase.id,
+      kind: KanbanColumnKind.CUSTOM,
       linkedStatus: data.linkedStatus,
-      title: taskStatusLabel(data.linkedStatus),
+      title: data.title ?? taskStatusLabel(data.linkedStatus),
       sortOrder: (max._max.sortOrder ?? -1) + 1,
     },
   });
@@ -121,10 +183,13 @@ const deleteColumnSchema = z.object({
   columnId: z.string().min(1),
 });
 
-/**
- * Hapus kolom untuk status tambahan (bukan To‑Do / Berjalan / Overdue / Selesai).
- * Jika masih ada tugas aktif (belum diarsip) dengan status tersebut di fase ini, penghapusan ditolak.
- */
+/** Hapus kolom CUSTOM hanya jika tidak ada tugas. */
+export async function deleteCustomKanbanColumn(
+  input: z.infer<typeof deleteColumnSchema>,
+) {
+  return deleteRoomKanbanColumn(input);
+}
+
 export async function deleteRoomKanbanColumn(
   input: z.infer<typeof deleteColumnSchema>,
 ) {
@@ -135,36 +200,26 @@ export async function deleteRoomKanbanColumn(
     select: {
       id: true,
       roomId: true,
-      roomProcess: true,
-      customProcessPhaseId: true,
+      kind: true,
+      coreRole: true,
       linkedStatus: true,
+      title: true,
     },
   });
   await assertRoomHubManager(col.roomId, session.user.id);
 
-  if (isDefaultKanbanLinkedStatus(col.linkedStatus)) {
+  if (col.kind === KanbanColumnKind.CORE || isDefaultKanbanLinkedStatus(col.coreRole ?? col.linkedStatus)) {
     throw new Error(
-      "Kolom untuk status utama (To-Do, Berjalan, Overdue, Selesai) tidak dapat dihapus.",
+      "Kolom inti (To-Do, Berjalan, Overdue, Selesai) tidak dapat dihapus.",
     );
   }
 
-  const phaseFilter = col.customProcessPhaseId
-    ? { customProcessPhaseId: col.customProcessPhaseId }
-    : {
-        customProcessPhaseId: null,
-        roomProcess: col.roomProcess ?? undefined,
-      };
-  const activeTasks = await prisma.task.count({
-    where: {
-      status: col.linkedStatus,
-      ...phaseFilter,
-      project: { roomId: col.roomId },
-      archivedAt: null,
-    },
+  const taskCount = await prisma.task.count({
+    where: { kanbanColumnId: columnId, archivedAt: null },
   });
-  if (activeTasks > 0) {
+  if (taskCount > 0) {
     throw new Error(
-      `Masih ada ${activeTasks} tugas aktif dengan status "${taskStatusLabel(col.linkedStatus)}" di fase ini. Ubah status atau arsipkan tugas selesai dulu, lalu coba hapus kolom lagi.`,
+      `Masih ada ${taskCount} tugas di kolom "${col.title}". Pindahkan tugas dulu sebelum menghapus kolom.`,
     );
   }
 
@@ -173,7 +228,7 @@ export async function deleteRoomKanbanColumn(
   revalidatePath("/tasks");
 }
 
-/** Status yang belum punya kolom di papan (untuk dropdown “tambah kolom”). */
+/** Status yang belum punya kolom CUSTOM di papan (untuk dropdown legacy). */
 export async function listUnusedKanbanStatuses(input: {
   roomId: string;
   processKey: string;
@@ -187,5 +242,51 @@ export async function listUnusedKanbanStatuses(input: {
     select: { linkedStatus: true },
   });
   const used = new Set(cols.map((c) => c.linkedStatus));
-  return (Object.values(TaskStatus) as TaskStatus[]).filter((s) => !used.has(s));
+  return (Object.values(TaskStatus) as TaskStatus[]).filter(
+    (s) => !used.has(s) && !isDefaultKanbanLinkedStatus(s),
+  );
+}
+
+/** Simple hub: reorder kolom tanpa processKey. */
+export async function reorderSimpleHubKanbanColumns(input: {
+  roomId: string;
+  orderedColumnIds: string[];
+}) {
+  const session = await requireTasksRoomHubSession();
+  await assertRoomHubManager(input.roomId, session.user.id);
+  const cols = await prisma.roomKanbanColumn.findMany({
+    where: {
+      roomId: input.roomId,
+      roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+      customProcessPhaseId: null,
+    },
+    select: { id: true },
+  });
+  const valid = new Set(cols.map((c) => c.id));
+  if (input.orderedColumnIds.some((id) => !valid.has(id))) {
+    throw new Error("Urutan kolom tidak valid.");
+  }
+  await prisma.$transaction(
+    input.orderedColumnIds.map((id, i) =>
+      prisma.roomKanbanColumn.update({
+        where: { id },
+        data: { sortOrder: i },
+      }),
+    ),
+  );
+  revalidateTasksAndRoomHub();
+  revalidatePath("/tasks");
+}
+
+export async function addSimpleHubCustomKanbanColumn(input: {
+  roomId: string;
+  title: string;
+  workflowBucket?: typeof TaskStatus.IN_PROGRESS | typeof TaskStatus.IN_REVIEW | typeof TaskStatus.BLOCKED;
+}) {
+  return addCustomKanbanColumn({
+    roomId: input.roomId,
+    processKey: "market-research",
+    title: input.title,
+    workflowBucket: input.workflowBucket ?? TaskStatus.IN_PROGRESS,
+  });
 }

@@ -11,7 +11,8 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma db push",
     "db:evolve-pipeline-enum": "prisma db execute --file prisma/scripts/evolve-pipeline-stage-enum.sql --schema prisma/schema.prisma",
-    "db:backfill-room": "prisma db execute --file prisma/backfill-project-rooms.sql --schema prisma/schema.prisma",
+    "db:backfill-kanban": "npx tsx prisma/scripts/backfill-kanban-hybrid.ts",
+    "db:verify-kanban": "prisma db execute --file prisma/scripts/verify-kanban-migration.sql --schema prisma/schema.prisma",
     "db:clear-projects": "prisma db execute --file prisma/clear-projects.sql --schema prisma/schema.prisma",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio"

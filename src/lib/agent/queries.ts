@@ -20,6 +20,7 @@ import {
 import {
   getRoomKanbanColumns,
   getSimpleHubKanbanColumns,
+  resolveColumnIdForTask,
 } from "@/lib/room-kanban-columns";
 import {
   assertAgentRoomAccess,
@@ -65,6 +66,7 @@ function mapTaskRow(
     id: string;
     title: string;
     status: TaskStatus;
+    kanbanColumnId?: string | null;
     priority: TaskPriority;
     dueDate: Date | null;
     roomProcess: import("@prisma/client").RoomTaskProcess;
@@ -98,6 +100,7 @@ function mapTaskRow(
     id: t.id,
     title: t.title,
     status: t.status,
+    kanbanColumnId: t.kanbanColumnId ?? null,
     statusLabel: taskStatusLabel(t.status),
     priority: t.priority,
     dueDate: t.dueDate?.toISOString() ?? null,
@@ -119,6 +122,7 @@ const taskSelect = {
   id: true,
   title: true,
   status: true,
+  kanbanColumnId: true,
   priority: true,
   dueDate: true,
   description: true,
@@ -484,9 +488,17 @@ export async function getAgentKanbanBoard(
     roomName: room.name,
     phaseName,
     columns: columns.map((col) => ({
-      status: col.linkedStatus,
+      columnId: col.id,
+      kind: col.kind,
+      status: col.kind === "CORE" && col.coreRole ? col.coreRole : col.linkedStatus,
       label: col.title,
-      tasks: mapped.filter((t) => t.status === col.linkedStatus),
+      tasks: mapped.filter(
+        (t) =>
+          resolveColumnIdForTask(
+            { status: t.status, kanbanColumnId: t.kanbanColumnId },
+            columns,
+          ) === col.id,
+      ),
     })),
   };
 }
