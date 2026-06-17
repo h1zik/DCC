@@ -18,57 +18,46 @@ async function main() {
   console.log(`Baseline tasks: ${baselineTasks}`);
 
   await prisma.$transaction(async (tx) => {
-    // Mark existing default columns as CORE
+    // Mark CORE: satu kolom per linkedStatus utama per fase (bukan semua yang bucket-nya sama).
     for (const coreRole of CORE_STATUSES) {
-      await tx.roomKanbanColumn.updateMany({
-        where: { linkedStatus: coreRole, coreRole: null },
-        data: {
-          kind: KanbanColumnKind.CORE,
-          coreRole,
-        },
+      const groups = await tx.roomKanbanColumn.groupBy({
+        by: ["roomId", "roomProcess", "customProcessPhaseId"],
+        where: { linkedStatus: coreRole },
       });
+      for (const g of groups) {
+        const cols = await tx.roomKanbanColumn.findMany({
+          where: {
+            roomId: g.roomId,
+            roomProcess: g.customProcessPhaseId ? null : g.roomProcess,
+            customProcessPhaseId: g.customProcessPhaseId,
+            linkedStatus: coreRole,
+          },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        });
+        for (let i = 0; i < cols.length; i++) {
+          const col = cols[i]!;
+          await tx.roomKanbanColumn.update({
+            where: { id: col.id },
+            data:
+              i === 0
+                ? {
+                    kind: KanbanColumnKind.CORE,
+                    coreRole,
+                  }
+                : {
+                    kind: KanbanColumnKind.CUSTOM,
+                    coreRole: null,
+                  },
+          });
+        }
+      }
     }
 
     await tx.roomKanbanColumn.updateMany({
       where: {
-        kind: KanbanColumnKind.CUSTOM,
-        coreRole: { not: null },
-      },
-      data: { kind: KanbanColumnKind.CORE },
-    });
-
-    await tx.roomKanbanColumn.updateMany({
-      where: {
-        coreRole: null,
         linkedStatus: { notIn: CORE_STATUSES },
       },
-      data: { kind: KanbanColumnKind.CUSTOM },
-    });
-
-    const legacyCore = await tx.roomKanbanColumn.findMany({
-      where: {
-        coreRole: null,
-        linkedStatus: { in: CORE_STATUSES },
-      },
-    });
-    for (const col of legacyCore) {
-      await tx.roomKanbanColumn.update({
-        where: { id: col.id },
-        data: {
-          kind: KanbanColumnKind.CORE,
-          coreRole: col.linkedStatus,
-        },
-      });
-    }
-
-    // Seed missing CORE columns per distinct room+phase
-    const phaseKeys = await tx.roomKanbanColumn.findMany({
-      select: {
-        roomId: true,
-        roomProcess: true,
-        customProcessPhaseId: true,
-      },
-      distinct: ["roomId", "roomProcess", "customProcessPhaseId"],
+      data: { kind: KanbanColumnKind.CUSTOM, coreRole: null },
     });
 
     const rooms = await tx.room.findMany({ select: { id: true } });

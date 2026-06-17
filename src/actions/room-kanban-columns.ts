@@ -7,7 +7,9 @@ import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomHubManager } from "@/lib/room-access";
 import {
   ensureDefaultRoomKanbanColumnsForCustomPhase,
+  ensureSimpleHubKanbanColumns,
   getRoomKanbanColumns,
+  repairDuplicateCoreKanbanColumns,
 } from "@/lib/room-kanban-columns";
 import {
   kanbanColumnWhere,
@@ -117,6 +119,7 @@ export async function addCustomKanbanColumn(
       roomProcess: phase.legacyProcessKey ?? null,
       customProcessPhaseId: phase.id,
       kind: KanbanColumnKind.CUSTOM,
+      coreRole: null,
       linkedStatus: data.workflowBucket,
       title: data.title,
       sortOrder: (max._max.sortOrder ?? -1) + 1,
@@ -170,6 +173,7 @@ export async function addRoomKanbanColumn(input: z.infer<typeof addSchema>) {
       roomProcess: phase.legacyProcessKey ?? null,
       customProcessPhaseId: phase.id,
       kind: KanbanColumnKind.CUSTOM,
+      coreRole: null,
       linkedStatus: data.linkedStatus,
       title: data.title ?? taskStatusLabel(data.linkedStatus),
       sortOrder: (max._max.sortOrder ?? -1) + 1,
@@ -200,6 +204,8 @@ export async function deleteRoomKanbanColumn(
     select: {
       id: true,
       roomId: true,
+      roomProcess: true,
+      customProcessPhaseId: true,
       kind: true,
       coreRole: true,
       linkedStatus: true,
@@ -208,7 +214,18 @@ export async function deleteRoomKanbanColumn(
   });
   await assertRoomHubManager(col.roomId, session.user.id);
 
-  if (col.kind === KanbanColumnKind.CORE || isDefaultKanbanLinkedStatus(col.coreRole ?? col.linkedStatus)) {
+  await repairDuplicateCoreKanbanColumns({
+    roomId: col.roomId,
+    roomProcess: col.customProcessPhaseId ? null : col.roomProcess,
+    customProcessPhaseId: col.customProcessPhaseId,
+  });
+
+  const fresh = await prisma.roomKanbanColumn.findUniqueOrThrow({
+    where: { id: columnId },
+    select: { kind: true, title: true },
+  });
+
+  if (fresh.kind === KanbanColumnKind.CORE) {
     throw new Error(
       "Kolom inti (To-Do, Berjalan, Overdue, Selesai) tidak dapat dihapus.",
     );
@@ -219,7 +236,7 @@ export async function deleteRoomKanbanColumn(
   });
   if (taskCount > 0) {
     throw new Error(
-      `Masih ada ${taskCount} tugas di kolom "${col.title}". Pindahkan tugas dulu sebelum menghapus kolom.`,
+      `Masih ada ${taskCount} tugas di kolom "${fresh.title}". Pindahkan tugas dulu sebelum menghapus kolom.`,
     );
   }
 
@@ -278,15 +295,47 @@ export async function reorderSimpleHubKanbanColumns(input: {
   revalidatePath("/tasks");
 }
 
+/** Tambah kolom custom di ruangan HQ/Team (tanpa fase proses / tanpa brand). */
 export async function addSimpleHubCustomKanbanColumn(input: {
   roomId: string;
   title: string;
   workflowBucket?: typeof TaskStatus.IN_PROGRESS | typeof TaskStatus.IN_REVIEW | typeof TaskStatus.BLOCKED;
 }) {
-  return addCustomKanbanColumn({
+  const session = await requireTasksRoomHubSession();
+  const title = titleSchema.parse(input.title);
+  const workflowBucket = input.workflowBucket ?? TaskStatus.IN_PROGRESS;
+  await assertRoomHubManager(input.roomId, session.user.id);
+  await ensureSimpleHubKanbanColumns(input.roomId);
+
+  const where = {
     roomId: input.roomId,
-    processKey: "market-research",
-    title: input.title,
-    workflowBucket: input.workflowBucket ?? TaskStatus.IN_PROGRESS,
+    roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+    customProcessPhaseId: null,
+  };
+  const count = await prisma.roomKanbanColumn.count({ where });
+  if (count >= 20) {
+    throw new Error("Maksimal 20 kolom per papan.");
+  }
+
+  const max = await prisma.roomKanbanColumn.aggregate({
+    where,
+    _max: { sortOrder: true },
   });
+
+  const col = await prisma.roomKanbanColumn.create({
+    data: {
+      roomId: input.roomId,
+      roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+      customProcessPhaseId: null,
+      kind: KanbanColumnKind.CUSTOM,
+      coreRole: null,
+      linkedStatus: workflowBucket,
+      title,
+      sortOrder: (max._max.sortOrder ?? -1) + 1,
+    },
+    select: { id: true, title: true, sortOrder: true, linkedStatus: true },
+  });
+  revalidateTasksAndRoomHub();
+  revalidatePath("/tasks");
+  return col;
 }
