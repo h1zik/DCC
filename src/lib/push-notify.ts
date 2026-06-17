@@ -3,17 +3,7 @@ import { getAppBranding } from "@/lib/app-branding";
 import { prisma } from "@/lib/prisma";
 import { isWebPushConfigured, sendWebPushMessage } from "@/lib/web-push";
 
-function urlForNotificationType(type: NotificationType): string {
-  switch (type) {
-    case NotificationType.CEO_APPROVAL_REQUESTED:
-    case NotificationType.PROJECT_PIPELINE_APPROVAL_REQUESTED:
-      return "/approvals";
-    case NotificationType.SCHEDULE_REMINDER:
-      return "/schedule";
-    default:
-      return "/for-me";
-  }
-}
+import { hrefForNotificationType } from "@/lib/notification-link";
 
 export async function sendPushToUser(
   userId: string,
@@ -84,7 +74,7 @@ export async function sendPushForInAppNotification(
   await sendPushToUser(userId, {
     title,
     body: message,
-    url: urlForNotificationType(type),
+    url: hrefForNotificationType(type),
     icon: pushIconPath,
     tag: `dcc-notif-${type}`,
   });

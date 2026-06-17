@@ -24,7 +24,7 @@ type SubNavItem = {
 };
 
 const NAV_ITEMS: SubNavItem[] = [
-  { href: "/research-hub", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/research-hub", label: "Overview", icon: LayoutDashboard },
   {
     href: "/research-hub/product-discovery",
     label: "Product Discovery",

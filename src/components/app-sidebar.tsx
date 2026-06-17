@@ -57,70 +57,72 @@ import { TasksNav } from "@/components/nav/tasks-nav";
 import { cn } from "@/lib/utils";
 
 const navCeo = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/agent", label: "AI Agent", icon: Sparkles },
-  { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/for-me", label: "My Tasks", icon: Focus },
-  { href: "/projects", label: "Pipeline proyek", icon: GitBranch },
-  { href: "/approvals", label: "Persetujuan CEO", icon: ShieldCheck },
-  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
-  { href: "/attendance", label: "Absensi", icon: ScanFace },
-  { href: "/attendance/rekap", label: "Rekap Absensi", icon: ClipboardList },
+  { href: "/", label: "Executive Overview", icon: LayoutDashboard },
+  { href: "/agent", label: "AI Assistant", icon: Sparkles },
+  { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
+  { href: "/for-me", label: "My Work", icon: Focus },
+  { href: "/projects", label: "Projects", icon: GitBranch },
+  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
+  { href: "/schedule", label: "Calendar", icon: CalendarDays },
+  { href: "/attendance", label: "Attendance", icon: ScanFace },
+  { href: "/attendance/rekap", label: "Attendance Reports", icon: ClipboardList },
 ] as const;
 
 const navAdministrator = [
-  { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/for-me", label: "My Tasks", icon: Focus },
-  { href: "/projects", label: "Pipeline", icon: GitBranch },
-  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
-  { href: "/attendance", label: "Absensi", icon: ScanFace },
-  { href: "/attendance/rekap", label: "Rekap Absensi", icon: ClipboardList },
-  { href: "/brands", label: "Brand", icon: Tags },
-  { href: "/admin/users", label: "Pengguna", icon: Users },
-  { href: "/admin/roles", label: "Peran (role)", icon: ShieldCheck },
-  { href: "/admin/branding", label: "Web Setting", icon: WandSparkles },
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
+  { href: "/for-me", label: "My Work", icon: Focus },
+  { href: "/projects", label: "Projects", icon: GitBranch },
+  { href: "/schedule", label: "Calendar", icon: CalendarDays },
+  { href: "/attendance", label: "Attendance", icon: ScanFace },
+  { href: "/attendance/rekap", label: "Attendance Reports", icon: ClipboardList },
+  { href: "/brands", label: "Brands", icon: Tags },
+  { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/roles", label: "Roles & Access", icon: ShieldCheck },
+  { href: "/admin/branding", label: "App Settings", icon: WandSparkles },
 ] as const;
 
 const navLogistics = [
-  { href: "/inventory", label: "Inventori", icon: Boxes },
-  { href: "/products", label: "Produk & SKU", icon: Package },
-  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
-  { href: "/attendance", label: "Absensi", icon: ScanFace },
-  { href: "/vendors", label: "Vendor Maklon", icon: Factory },
+  { href: "/inventory", label: "Inventory", icon: Boxes },
+  { href: "/products", label: "Products & SKU", icon: Package },
+  { href: "/schedule", label: "Calendar", icon: CalendarDays },
+  { href: "/attendance", label: "Attendance", icon: ScanFace },
+  { href: "/vendors", label: "Contract Manufacturers", icon: Factory },
 ] as const;
 
 const navFinance = [
-  { href: "/finance", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/finance", label: "Financial Overview", icon: LayoutDashboard },
   { href: "/finance/chart-of-accounts", label: "Chart of Accounts", icon: LayoutGrid },
-  { href: "/finance/journals", label: "Jurnal", icon: ScrollText },
-  { href: "/finance/general-ledger", label: "Buku Besar", icon: FileBarChart },
-  { href: "/finance/bank", label: "Rekonsiliasi Bank", icon: Landmark },
-  { href: "/finance/currencies", label: "Kurs Mata Uang", icon: Coins },
-  { href: "/finance/treasury", label: "Kas & Treasury", icon: ArrowLeftRight },
+  { href: "/finance/journals", label: "Journals", icon: ScrollText },
+  { href: "/finance/general-ledger", label: "General Ledger", icon: FileBarChart },
+  { href: "/finance/bank", label: "Bank Reconciliation", icon: Landmark },
+  { href: "/finance/currencies", label: "Exchange Rates", icon: Coins },
+  { href: "/finance/treasury", label: "Cash & Treasury", icon: ArrowLeftRight },
   { href: "/finance/ap-ar", label: "AP & AR", icon: BadgeCent },
   { href: "/finance/brands-costing", label: "Brand & Costing", icon: Tags },
-  { href: "/finance/budget", label: "Budget vs Aktual", icon: PiggyBank },
-  { href: "/finance/approvals", label: "Persetujuan Pengeluaran", icon: ShieldCheck },
-  { href: "/finance/reports", label: "Laporan", icon: FileBarChart },
-  { href: "/finance/fixed-assets", label: "Aset Tetap", icon: Calculator },
-  { href: "/attendance", label: "Absensi", icon: ScanFace },
+  { href: "/finance/budget", label: "Budget vs Actual", icon: PiggyBank },
+  { href: "/finance/approvals", label: "Expense Approvals", icon: ShieldCheck },
+  { href: "/finance/reports", label: "Reports", icon: FileBarChart },
+  { href: "/finance/fixed-assets", label: "Fixed Assets", icon: Calculator },
+  { href: "/attendance", label: "Attendance", icon: ScanFace },
 ] as const;
 
 const navStudio = [
-  { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/for-me", label: "My Tasks", icon: Focus },
-  { href: "/projects", label: "Pipeline", icon: GitBranch },
-  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
-  { href: "/attendance", label: "Absensi", icon: ScanFace },
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
+  { href: "/for-me", label: "My Work", icon: Focus },
+  { href: "/projects", label: "Projects", icon: GitBranch },
+  { href: "/schedule", label: "Calendar", icon: CalendarDays },
+  { href: "/attendance", label: "Attendance", icon: ScanFace },
 ] as const;
 
 const navMarketAnalyst = [
   { href: "/research-hub", label: "Research Hub", icon: Microscope },
-  { href: "/tasks", label: "Tugas & Kanban", icon: LayoutGrid },
-  { href: "/for-me", label: "My Tasks", icon: Focus },
-  { href: "/projects", label: "Pipeline", icon: GitBranch },
-  { href: "/schedule", label: "Jadwal", icon: CalendarDays },
-  { href: "/attendance", label: "Absensi", icon: ScanFace },
+  { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
+  { href: "/for-me", label: "My Work", icon: Focus },
+  { href: "/projects", label: "Projects", icon: GitBranch },
+  { href: "/schedule", label: "Calendar", icon: CalendarDays },
+  { href: "/attendance", label: "Attendance", icon: ScanFace },
 ] as const;
 
 /** Tautan eksternal — tampil untuk semua pengguna yang sudah login. */
@@ -292,7 +294,7 @@ export function AppSidebar() {
                       render={<Link href={item.href} />}
                     >
                       <item.icon />
-                      <SidebarNavLabel beta={item.label === "AI Agent"}>
+                      <SidebarNavLabel beta={item.label === "AI Assistant"}>
                         {item.label}
                       </SidebarNavLabel>
                     </SidebarMenuButton>
@@ -361,7 +363,7 @@ export function AppSidebar() {
         <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:items-center">
           <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center">
             <SidebarMenuButton
-              tooltip="Keluar"
+              tooltip="Sign Out"
               className={cn(
                 sidebarMenuItemClass,
                 "text-sidebar-foreground/70 hover:text-destructive",
@@ -371,7 +373,7 @@ export function AppSidebar() {
               onClick={() => signOut({ callbackUrl: "/login" })}
             >
               <LogOut />
-              <span className="sidebar-nav-label">Keluar</span>
+              <span className="sidebar-nav-label">Sign Out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -524,7 +526,7 @@ function UserCard({
         )}
         aria-hidden
       >
-        Profil
+        Profile
       </span>
     </Link>
   );

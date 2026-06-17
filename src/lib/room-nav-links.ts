@@ -40,17 +40,17 @@ export function getRoomNavLinks(
     core.push({
       key: "content-planning",
       href: `${base}/content-planning`,
-      label: "Content planning",
+      label: "Content Plan",
       icon: ClipboardList,
     });
   }
   core.push(
-    { key: "members", href: `${base}/members`, label: "Anggota", icon: Users },
-    { key: "chat", href: `${base}/chat`, label: "Grup", icon: MessageCircle },
+    { key: "members", href: `${base}/members`, label: "Members", icon: Users },
+    { key: "chat", href: `${base}/chat`, label: "Team Chat", icon: MessageCircle },
     {
       key: "documents",
       href: `${base}/documents`,
-      label: "Documents & file",
+      label: "Documents",
       icon: Files,
     },
   );

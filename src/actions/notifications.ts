@@ -12,6 +12,7 @@ export async function markNotificationRead(id: string) {
     data: { isRead: true },
   });
   revalidatePath("/");
+  revalidatePath("/dashboard");
 }
 
 export async function markAllNotificationsRead() {
@@ -22,4 +23,5 @@ export async function markAllNotificationsRead() {
     data: { isRead: true },
   });
   revalidatePath("/");
+  revalidatePath("/dashboard");
 }

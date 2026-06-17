@@ -65,9 +65,15 @@ export function isAgentRoute(pathname: string): boolean {
   return pathname === "/agent" || pathname.startsWith("/agent/");
 }
 
+/** Dashboard operasional — administrator & tim studio/PM. */
+export function isWorkspaceDashboardRoute(pathname: string): boolean {
+  return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+}
+
 /** Pipeline & tugas — tim studio / PM. */
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
+    isWorkspaceDashboardRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||
@@ -98,6 +104,7 @@ export function isCeoAppRoute(pathname: string): boolean {
 /** Brand, ruang kerja, pengguna/hak akses, tugas/Kanban (dukungan), profil — administrator. */
 export function isAdministratorAppRoute(pathname: string): boolean {
   return (
+    isWorkspaceDashboardRoute(pathname) ||
     isProfileRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||

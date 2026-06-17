@@ -76,10 +76,14 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
           ? callbackUrl
           : "/inventory";
     } else if (userRole === UserRole.ADMINISTRATOR) {
-      dest =
+      const adminDest =
         isAdministratorAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
-          : "/rooms";
+          : "/dashboard";
+      dest =
+        adminDest === "/rooms" || adminDest.startsWith("/rooms/")
+          ? "/dashboard"
+          : adminDest;
     } else if (userRole === UserRole.FINANCE) {
       dest =
         isFinanceAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
@@ -94,7 +98,7 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
       dest =
         isStudioWorkspaceRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
-          : "/tasks";
+          : "/dashboard";
     }
     router.push(dest);
     router.refresh();

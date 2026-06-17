@@ -21,6 +21,10 @@ import {
   readClipboardImageFiles,
 } from "@/lib/chat-pending-files";
 import {
+  preventComposerBlur,
+  useChatComposerFocus,
+} from "@/lib/use-chat-composer-focus";
+import {
   DIRECT_CHAT_MAX_FILES_PER_MESSAGE,
   isDirectChatImageMime,
 } from "@/lib/direct-chat-attachments-shared";
@@ -244,6 +248,7 @@ export function RoomChatExperience({
   } | null>(null);
   const [pending, startTransition] = useTransition();
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const scheduleComposerFocus = useChatComposerFocus(taRef, pending);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -655,7 +660,7 @@ export function RoomChatExperience({
           lastSyncedAtRef.current = new Date(
             roomMessageActivityMs(updated),
           ).toISOString();
-          taRef.current?.focus();
+          scheduleComposerFocus();
         } catch (e) {
           toast.error(actionErrorMessage(e, "Gagal mengedit pesan."));
         }
@@ -706,7 +711,7 @@ export function RoomChatExperience({
         lastSyncedAtRef.current = new Date(
           roomMessageActivityMs(created),
         ).toISOString();
-        taRef.current?.focus();
+        scheduleComposerFocus();
       } catch (e) {
         toast.error(actionErrorMessage(e, "Gagal mengirim."));
       }
@@ -1348,6 +1353,7 @@ export function RoomChatExperience({
                     ? !body.trim()
                     : !body.trim() && !pendingGifUrl && pendingFiles.length === 0)
                 }
+                onMouseDown={preventComposerBlur}
                 onClick={submit}
               >
                 {!editingMessage ? <Send className="size-4" aria-hidden /> : null}
