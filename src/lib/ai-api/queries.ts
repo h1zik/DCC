@@ -6,6 +6,12 @@ import {
 import { prisma } from "@/lib/prisma";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import { getStockHealth, type StockHealth } from "@/lib/stock-status";
+import {
+  computeReorderForecasts,
+  forecastProductInclude,
+  toForecastProductInput,
+  type ReorderForecastStatus,
+} from "@/lib/reorder-forecast";
 import type { AiApiRole } from "./auth";
 import {
   canViewApprovals,
@@ -44,6 +50,12 @@ export type InventoryAlertRow = {
   currentStock: number;
   minStock: number;
   health: StockHealth;
+  reorderStatus?: ReorderForecastStatus;
+  reorderPoint?: number | null;
+  avgDailyDemand?: number;
+  daysUntilStockout?: number | null;
+  orderByDate?: string | null;
+  suggestedOrderQty?: number | null;
 };
 
 function daysOverdueFromDueDate(dueDate: Date | null): number | null {
@@ -172,32 +184,59 @@ export async function getInventoryAlerts(
   if (!canViewInventory(role)) return [];
 
   const products = await prisma.product.findMany({
-    select: {
-      id: true,
-      sku: true,
-      name: true,
-      currentStock: true,
-      minStock: true,
+    include: {
       brand: { select: { name: true } },
+      ...forecastProductInclude,
     },
     orderBy: [{ currentStock: "asc" }, { name: "asc" }],
   });
 
+  const forecasts = await computeReorderForecasts(
+    products.map((p) => toForecastProductInput(p)),
+    90,
+  );
+  const forecastById = new Map(forecasts.map((f) => [f.productId, f]));
+
   const alerts = products
-    .map((p) => ({
-      id: p.id,
-      sku: p.sku,
-      name: p.name,
-      brandName: p.brand.name,
-      currentStock: p.currentStock,
-      minStock: p.minStock,
-      health: getStockHealth(p.currentStock, p.minStock),
-    }))
-    .filter((p) => p.health !== "OK")
+    .map((p) => {
+      const fc = forecastById.get(p.id);
+      return {
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        brandName: p.brand.name,
+        currentStock: p.currentStock,
+        minStock: p.minStock,
+        health: getStockHealth(p.currentStock, p.minStock),
+        reorderStatus: fc?.status,
+        reorderPoint: fc?.reorderPoint ?? null,
+        avgDailyDemand: fc?.avgDailyDemand,
+        daysUntilStockout: fc?.daysUntilStockout ?? null,
+        orderByDate: fc?.orderByDate?.toISOString() ?? null,
+        suggestedOrderQty: fc?.suggestedOrderQty ?? null,
+      };
+    })
     .filter((p) => {
-      if (severity === "critical") return p.health === "CRITICAL";
-      if (severity === "low") return p.health === "LOW";
-      return true;
+      const forecastUrgent =
+        p.reorderStatus === "ORDER_NOW" || p.reorderStatus === "ORDER_SOON";
+      const stockAlert = p.health !== "OK";
+      if (severity === "critical") {
+        return p.health === "CRITICAL" || p.reorderStatus === "ORDER_NOW";
+      }
+      if (severity === "low") {
+        return p.health === "LOW" || p.reorderStatus === "ORDER_SOON";
+      }
+      return stockAlert || forecastUrgent;
+    })
+    .sort((a, b) => {
+      const rank = (s?: ReorderForecastStatus) => {
+        if (s === "ORDER_NOW") return 0;
+        if (s === "ORDER_SOON") return 1;
+        return 2;
+      };
+      const dr = rank(a.reorderStatus) - rank(b.reorderStatus);
+      if (dr !== 0) return dr;
+      return a.currentStock - b.currentStock;
     })
     .slice(0, limit);
 

@@ -5,8 +5,9 @@ import { StockLogType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireLogisticsStaff } from "@/lib/auth-helpers";
+import { isSystemStockLog } from "@/lib/stock-log-utils";
 
-const salesCategorySchema = z.enum(["penjualan", "sampling"]);
+const salesCategorySchema = z.enum(["penjualan", "sampling", "retur", "rusak"]);
 
 const logSchema = z.object({
   productId: z.string().min(1),
@@ -14,17 +15,28 @@ const logSchema = z.object({
   type: z.nativeEnum(StockLogType),
   salesCategory: salesCategorySchema.optional().nullable(),
   note: z.string().optional().nullable(),
+  reference: z.string().max(120).optional().nullable(),
+  vendorId: z.string().optional().nullable(),
 });
+
 const updateLogSchema = z.object({
   logId: z.string().min(1),
   amount: z.coerce.number().int().positive(),
   type: z.nativeEnum(StockLogType),
   salesCategory: salesCategorySchema.optional().nullable(),
   note: z.string().optional().nullable(),
+  reference: z.string().max(120).optional().nullable(),
   reason: z.string().min(3).max(300),
 });
+
 const deleteLogSchema = z.object({
   logId: z.string().min(1),
+  reason: z.string().min(3).max(300),
+});
+
+const adjustStockSchema = z.object({
+  productId: z.string().min(1),
+  targetStock: z.coerce.number().int().min(0),
   reason: z.string().min(3).max(300),
 });
 
@@ -34,10 +46,6 @@ function deltaOf(type: StockLogType, amount: number): number {
 
 function oppositeType(type: StockLogType): StockLogType {
   return type === StockLogType.IN ? StockLogType.OUT : StockLogType.IN;
-}
-
-function isSystemStockLog(note: string | null): boolean {
-  return (note ?? "").startsWith("[SYS]");
 }
 
 function buildSystemNote(params: {
@@ -57,7 +65,7 @@ function buildSystemNote(params: {
 }
 
 export async function createStockLog(input: z.infer<typeof logSchema>) {
-  await requireLogisticsStaff();
+  const session = await requireLogisticsStaff();
   const data = logSchema.parse(input);
 
   await prisma.$transaction(async (tx) => {
@@ -66,7 +74,7 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
     });
     const salesCategory = data.salesCategory ?? null;
     if (data.type === StockLogType.OUT && !salesCategory) {
-      throw new Error("Kategori stok keluar wajib dipilih (penjualan/sampling).");
+      throw new Error("Kategori stok keluar wajib dipilih.");
     }
 
     const delta = data.type === StockLogType.IN ? data.amount : -data.amount;
@@ -82,6 +90,10 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
         type: data.type,
         salesCategory: data.type === StockLogType.OUT ? salesCategory : null,
         note: data.note ?? undefined,
+        reference: data.reference?.trim() || undefined,
+        vendorId:
+          data.type === StockLogType.IN && data.vendorId ? data.vendorId : undefined,
+        createdById: session.user.id,
       },
     });
 
@@ -96,8 +108,53 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
   revalidatePath("/");
 }
 
+export async function adjustProductStock(input: z.infer<typeof adjustStockSchema>) {
+  const session = await requireLogisticsStaff();
+  const data = adjustStockSchema.parse(input);
+
+  await prisma.$transaction(async (tx) => {
+    const product = await tx.product.findUniqueOrThrow({
+      where: { id: data.productId },
+    });
+    const diff = data.targetStock - product.currentStock;
+    if (diff === 0) return;
+
+    if (diff > 0) {
+      await tx.stockLog.create({
+        data: {
+          productId: product.id,
+          amount: diff,
+          type: StockLogType.IN,
+          note: `Penyesuaian inventori: ${data.reason.trim()}`,
+          createdById: session.user.id,
+        },
+      });
+    } else {
+      await tx.stockLog.create({
+        data: {
+          productId: product.id,
+          amount: Math.abs(diff),
+          type: StockLogType.OUT,
+          salesCategory: "rusak",
+          note: `Penyesuaian inventori: ${data.reason.trim()}`,
+          createdById: session.user.id,
+        },
+      });
+    }
+
+    await tx.product.update({
+      where: { id: product.id },
+      data: { currentStock: data.targetStock },
+    });
+  });
+
+  revalidatePath("/inventory");
+  revalidatePath("/products");
+  revalidatePath("/");
+}
+
 export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
-  await requireLogisticsStaff();
+  const session = await requireLogisticsStaff();
   const data = updateLogSchema.parse(input);
 
   await prisma.$transaction(async (tx) => {
@@ -110,10 +167,9 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
     }
     const salesCategory = data.salesCategory ?? null;
     if (data.type === StockLogType.OUT && !salesCategory) {
-      throw new Error("Kategori stok keluar wajib dipilih (penjualan/sampling).");
+      throw new Error("Kategori stok keluar wajib dipilih.");
     }
 
-    // Append-only correction: simpan jejak dengan entri pembalik + entri pengganti.
     const reversalType = oppositeType(log.type);
     const reversalDelta = deltaOf(reversalType, log.amount);
     const replacementDelta = deltaOf(data.type, data.amount);
@@ -134,6 +190,7 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
           targetLogId: log.id,
           reason: data.reason,
         }),
+        createdById: session.user.id,
       },
     });
     await tx.stockLog.create({
@@ -148,6 +205,8 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
           reason: data.reason,
           extraNote: data.note,
         }),
+        reference: data.reference?.trim() || undefined,
+        createdById: session.user.id,
       },
     });
     await tx.product.update({
@@ -162,7 +221,7 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
 }
 
 export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
-  await requireLogisticsStaff();
+  const session = await requireLogisticsStaff();
   const data = deleteLogSchema.parse(input);
 
   await prisma.$transaction(async (tx) => {
@@ -194,6 +253,7 @@ export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
           targetLogId: log.id,
           reason: data.reason,
         }),
+        createdById: session.user.id,
       },
     });
     await tx.product.update({

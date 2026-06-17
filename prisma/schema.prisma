@@ -25,6 +25,17 @@ enum PipelineStage {
   LAUNCH
 }
 
+/**
+ * Peran vendor dalam rantai pasok satu SKU (contoh parfum: botol, packaging, maklon).
+ */
+enum ProductVendorRole {
+  MAKLON
+  BOTTLE
+  PACKAGING
+  RAW_MATERIAL
+  OTHER
+}
+
 enum UserRole {
   CEO
   /**
@@ -337,6 +348,7 @@ model User {
   uspGapAnalysesCreated     UspGapAnalysis[]     @relation("UspGapAnalysisCreator")
   productConceptsCreated    ProductConcept[]     @relation("ProductConceptCreator")
   researchReportsCreated    ResearchReport[]     @relation("ResearchReportCreator")
+  stockLogsCreated          StockLog[]           @relation("StockLogCreator")
 
   @@index([customRoleId])
 }
@@ -1225,26 +1237,82 @@ model Vendor {
   picName                 String?
   contact                 String?
   specialty               String?
+  /**
+   * Hari dari PO dikirim sampai barang masuk gudang (lead time maklon).
+   */
+  leadTimeDays            Int?
+  /**
+   * Buffer demand dalam hari untuk safety stock (default 7).
+   */
+  safetyStockDays         Int                      @default(7)
+  /**
+   * Siklus review pemesanan ulang dalam hari (default 14).
+   */
+  reviewPeriodDays        Int                      @default(14)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   tasks                   Task[]
   financeApBills          FinanceApBill[]
   financeJournalLineLinks FinanceJournalLineLink[]
+  stockLogs               StockLog[]
+  preferredByProducts     Product[]                @relation("ProductPreferredVendor")
+  productLinks            ProductVendor[]
 }
 
 model Product {
-  id            String        @id @default(cuid())
-  brandId       String
-  brand         Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  name          String
-  sku           String        @unique
-  currentStock  Int           @default(0)
-  minStock      Int           @default(0)
-  category      String?
-  pipelineStage PipelineStage @default(MARKET_RESEARCH)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  stockLogs     StockLog[]
+  id                String        @id @default(cuid())
+  brandId           String
+  brand             Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name              String
+  sku               String        @unique
+  currentStock      Int           @default(0)
+  minStock          Int           @default(0)
+  category          String?
+  pipelineStage     PipelineStage @default(MARKET_RESEARCH)
+  preferredVendorId       String?
+  preferredVendor         Vendor?       @relation("ProductPreferredVendor", fields: [preferredVendorId], references: [id], onDelete: SetNull)
+  /**
+   * Override lead time per SKU (hari). Jika null, pakai vendor.leadTimeDays.
+   */
+  leadTimeDaysOverride    Int?
+  /**
+   * Override safety stock buffer per SKU (hari demand). Jika null, pakai vendor.safetyStockDays.
+   */
+  safetyStockDaysOverride Int?
+  createdAt               DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  stockLogs         StockLog[]
+  productVendors    ProductVendor[]
+
+  @@index([brandId])
+  @@index([preferredVendorId])
+}
+
+/**
+ * Vendor dalam rantai pasok SKU — satu produk bisa punya beberapa vendor (botol, packaging, maklon).
+ */
+model ProductVendor {
+  id                   String            @id @default(cuid())
+  productId            String
+  product              Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  vendorId             String
+  vendor               Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  role                 ProductVendorRole @default(MAKLON)
+  /**
+   * Label kustom jika role OTHER.
+   */
+  roleLabel            String?
+  /**
+   * Override lead time untuk rantai vendor ini (hari).
+   */
+  leadTimeDaysOverride Int?
+  sortOrder            Int               @default(0)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@unique([productId, vendorId, role])
+  @@index([productId])
+  @@index([vendorId])
 }
 
 model StockLog {
@@ -1258,6 +1326,14 @@ model StockLog {
    */
   salesCategory String?
   note          String?
+  /**
+   * Referensi eksternal: nomor PO, invoice, batch produksi, dll.
+   */
+  reference     String?
+  vendorId      String?
+  vendor        Vendor?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdById   String?
+  createdBy     User?        @relation("StockLogCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt     DateTime     @default(now())
 
   /**
@@ -1265,6 +1341,8 @@ model StockLog {
    * Index komposit ini membuat query langsung skip baris yang tidak relevan.
    */
   @@index([type, createdAt(sort: Desc)])
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([vendorId])
 }
 
 /**

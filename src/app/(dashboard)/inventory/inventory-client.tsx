@@ -1,18 +1,33 @@
 "use client";
-import { actionErrorMessage } from "@/lib/action-error-message";
 
+import { actionErrorMessage } from "@/lib/action-error-message";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Brand, Product, StockLog } from "@prisma/client";
+import type { Brand, Product, StockLog, User, Vendor } from "@prisma/client";
 import { StockLogType } from "@prisma/client";
 import type { ColumnDef } from "@tanstack/react-table";
-import { format } from "date-fns";
+import { format, isBefore, startOfDay, subDays } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
-import { Pencil, Printer, Trash2 } from "lucide-react";
+import { Pencil, Printer, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createStockLog, deleteStockLog, updateStockLog } from "@/actions/stock";
-import { getStockHealth } from "@/lib/stock-status";
+import { computeInventoryDashboard } from "@/lib/inventory-metrics";
+import {
+  printStockCorrectionReport,
+  printStockMutationReport,
+} from "@/lib/inventory-print";
+import {
+  formatSalesCategory,
+  formatStockLogNote,
+  isSystemStockLog,
+  parseSystemMeta,
+} from "@/lib/stock-log-utils";
 import { DataTable } from "@/components/data-table";
+import { InventoryKpiCards, ReorderAlertPanel } from "@/components/logistics/inventory-kpi-cards";
+import { LogisticsNav } from "@/components/logistics/logistics-nav";
+import { ReorderForecastTab } from "@/components/logistics/reorder-forecast-tab";
+import { StockHealthBadge } from "@/components/logistics/stock-health-badge";
+import type { ProductReorderForecast } from "@/lib/reorder-forecast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,452 +47,115 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import type { SelectItemDef } from "@/lib/select-option-items";
+import {
+  brandFilterItems,
+  DAYS_FILTER_ITEMS,
+  labeledItems,
+  productSelectItems,
+  STOCK_LOG_TYPE_FILTER_ITEMS,
+  STOCK_LOG_TYPE_ITEMS,
+  vendorSelectItems,
+} from "@/lib/select-option-items";
 
-type ProductRow = Product & { brand: Brand };
-type LogRow = StockLog & { product: ProductRow };
-type SystemMeta = {
-  action: "REVERSAL" | "REPLACEMENT" | "VOID" | null;
-  targetId: string | null;
-  reason: string;
-  extraNote: string;
+type ProductRow = Product & {
+  brand: Brand;
+  preferredVendor?: { id: string; name: string } | null;
+};
+type LogRow = StockLog & {
+  product: ProductRow;
+  vendor?: { id: string; name: string } | null;
+  createdBy?: Pick<User, "id" | "name" | "email"> | null;
 };
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+type SalesCategory = "penjualan" | "sampling" | "retur" | "rusak";
 
-/** Buka jendela ringkas lalu dialog cetak browser (laporan mutasi). */
-function printStockMutationReport(logs: LogRow[]) {
-  const w = window.open("", "_blank");
-  if (!w) {
-    toast.error(
-      "Pop-up diblokir. Izinkan pop-up untuk situs ini lalu coba lagi.",
-    );
-    return;
-  }
-  const title = "Laporan riwayat mutasi stok";
-  const generated = format(new Date(), "d MMMM yyyy, HH:mm", {
-    locale: idLocale,
-  });
-  const rows = logs
-    .map(
-      (log) => `<tr>
-  <td>${escapeHtml(format(log.createdAt, "dd/MM/yyyy HH:mm", { locale: idLocale }))}</td>
-  <td>${escapeHtml(log.product.brand.name)}</td>
-  <td>${escapeHtml(log.product.name)}</td>
-  <td>${escapeHtml(log.product.sku)}</td>
-  <td>${log.type === StockLogType.IN ? "Masuk" : "Keluar"}</td>
-  <td style="text-align:right">${log.amount}</td>
-  <td>${
-    log.type === StockLogType.OUT
-      ? log.salesCategory === "penjualan"
-        ? "Penjualan"
-        : log.salesCategory === "sampling"
-          ? "Sampling"
-          : "—"
-      : "—"
-  }</td>
-  <td>${escapeHtml(formatLogNote(log))}</td>
-</tr>`,
-    )
-    .join("");
-
-  w.document.write(`<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="utf-8"/>
-<title>${escapeHtml(title)}</title>
-<style>
-  body { font-family: system-ui, Segoe UI, sans-serif; padding: 20px; color: #111; }
-  h1 { font-size: 20px; margin: 0 0 6px; }
-  .meta { color: #444; font-size: 12px; margin: 0 0 18px; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #bbb; padding: 7px 9px; vertical-align: top; }
-  th { background: #eee; text-align: left; }
-  @media print {
-    body { padding: 12px; }
-    @page { margin: 12mm; }
-  }
-</style>
-</head>
-<body>
-  <h1>${escapeHtml(title)}</h1>
-  <p class="meta">Dominatus Control Center · Dicetak: ${escapeHtml(generated)} · ${logs.length} baris</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Waktu</th>
-        <th>Brand</th>
-        <th>Produk</th>
-        <th>SKU</th>
-        <th>Tipe</th>
-        <th>Qty</th>
-        <th>Kategori jual</th>
-        <th>Catatan</th>
-      </tr>
-    </thead>
-    <tbody>${rows || `<tr><td colspan="8">Tidak ada data.</td></tr>`}</tbody>
-  </table>
-</body>
-</html>`);
-  w.document.close();
-  setTimeout(() => {
-    w.focus();
-    w.print();
-  }, 200);
-}
-
-/** Cetak laporan audit koreksi/void dalam jendela print browser. */
-function printStockCorrectionReport(logs: LogRow[]) {
-  const w = window.open("", "_blank");
-  if (!w) {
-    toast.error(
-      "Pop-up diblokir. Izinkan pop-up untuk situs ini lalu coba lagi.",
-    );
-    return;
-  }
-  const title = "Laporan log koreksi & void stok";
-  const generated = format(new Date(), "d MMMM yyyy, HH:mm", {
-    locale: idLocale,
-  });
-  const rows = logs
-    .map((log) => {
-      const meta = parseSystemMeta(log);
-      const actionLabel =
-        meta.action === "REPLACEMENT"
-          ? "Koreksi"
-          : meta.action === "VOID"
-            ? "Void"
-            : "Pembalik";
-      const shortRef = meta.targetId
-        ? meta.targetId.length > 10
-          ? `${meta.targetId.slice(0, 6)}...${meta.targetId.slice(-4)}`
-          : meta.targetId
-        : "-";
-      const reason = [meta.reason, meta.extraNote].filter(Boolean).join(" - ") || "—";
-      return `<tr>
-  <td>${escapeHtml(format(log.createdAt, "dd/MM/yyyy HH:mm", { locale: idLocale }))}</td>
-  <td>${escapeHtml(actionLabel)}</td>
-  <td>${escapeHtml(log.product.brand.name)}</td>
-  <td>${escapeHtml(log.product.name)}</td>
-  <td>${escapeHtml(shortRef)}</td>
-  <td>${escapeHtml(reason)}</td>
-</tr>`;
-    })
-    .join("");
-
-  w.document.write(`<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="utf-8"/>
-<title>${escapeHtml(title)}</title>
-<style>
-  body { font-family: system-ui, Segoe UI, sans-serif; padding: 20px; color: #111; }
-  h1 { font-size: 20px; margin: 0 0 6px; }
-  .meta { color: #444; font-size: 12px; margin: 0 0 18px; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #bbb; padding: 7px 9px; vertical-align: top; }
-  th { background: #eee; text-align: left; }
-  @media print {
-    body { padding: 12px; }
-    @page { margin: 12mm; }
-  }
-</style>
-</head>
-<body>
-  <h1>${escapeHtml(title)}</h1>
-  <p class="meta">Dominatus Control Center · Dicetak: ${escapeHtml(generated)} · ${logs.length} baris</p>
-  <table>
-    <thead>
-      <tr>
-        <th>Waktu</th>
-        <th>Aksi</th>
-        <th>Brand</th>
-        <th>Produk</th>
-        <th>Ref mutasi</th>
-        <th>Alasan</th>
-      </tr>
-    </thead>
-    <tbody>${rows || `<tr><td colspan="6">Tidak ada data.</td></tr>`}</tbody>
-  </table>
-</body>
-</html>`);
-  w.document.close();
-  setTimeout(() => {
-    w.focus();
-    w.print();
-  }, 200);
-}
-
-function statusBadge(stock: number, min: number) {
-  const h = getStockHealth(stock, min);
-  if (h === "CRITICAL")
-    return <Badge variant="destructive">Critical</Badge>;
-  if (h === "LOW") return <Badge variant="secondary">Low stock</Badge>;
-  return <Badge variant="outline">OK</Badge>;
-}
-
-function isSystemLog(log: LogRow): boolean {
-  return (log.note ?? "").startsWith("[SYS]");
-}
-
-function parseSystemMeta(log: LogRow): SystemMeta {
-  const raw = (log.note ?? "").trim();
-  if (!raw.startsWith("[SYS]")) {
-    return { action: null, targetId: null, reason: "", extraNote: "" };
-  }
-  if (raw.startsWith("[SYS] |")) {
-    const parts = raw.split("|").map((x) => x.trim());
-    const action = parts.find((p) => p.startsWith("action="))?.slice(7) ?? "";
-    const targetId = parts.find((p) => p.startsWith("target="))?.slice(7) ?? "";
-    const reason = parts.find((p) => p.startsWith("reason="))?.slice(7) ?? "";
-    const extraNote = parts.find((p) => p.startsWith("note="))?.slice(5) ?? "";
-    return {
-      action:
-        action === "REVERSAL" || action === "REPLACEMENT" || action === "VOID"
-          ? action
-          : null,
-      targetId: targetId || null,
-      reason,
-      extraNote,
-    };
-  }
-  const body = raw.replace(/^\[SYS\]\s*/i, "").trim();
-  const m = body.match(
-    /^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)(?:\s+oleh\s+[^:]+:\s*)?([\s\S]*)$/i,
-  );
-  if (!m) return { action: null, targetId: null, reason: body, extraNote: "" };
-  const rest = (m[3] ?? "").trim();
-  const [reason, extraNote] = rest.split("|").map((x) => x.trim());
-  return {
-    action: m[1]!.toUpperCase() as "REVERSAL" | "REPLACEMENT" | "VOID",
-    targetId: m[2]!.trim() || null,
-    reason: reason ?? "",
-    extraNote: extraNote ?? "",
-  };
-}
-
-function formatSystemLogNote(raw: string): string {
-  const parts = raw.split("|").map((x) => x.trim());
-  const action = parts.find((p) => p.startsWith("action="))?.slice(7) ?? "";
-  const reason = parts.find((p) => p.startsWith("reason="))?.slice(7) ?? "";
-  const note = parts.find((p) => p.startsWith("note="))?.slice(5) ?? "";
-  const actionLabel =
-    action === "REVERSAL"
-      ? "Pembalik otomatis"
-      : action === "REPLACEMENT"
-        ? "Koreksi data"
-        : action === "VOID"
-          ? "Void mutasi"
-          : "Mutasi sistem";
-  const detail = [reason, note].filter(Boolean).join(" - ");
-  return detail ? `${actionLabel}: ${detail}` : actionLabel;
-}
-
-/** Format catatan sistem versi lama (sebelum key-value `action=|target=`). */
-function formatLegacySystemLogNote(raw: string): string {
-  const body = raw.replace(/^\[SYS\]\s*/i, "").trim();
-  const m = body.match(
-    /^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)(?:\s+oleh\s+[^:]+:\s*)?([\s\S]*)$/i,
-  );
-  if (!m) {
-    return body.replace(/\s+/g, " ").trim() || "Mutasi sistem";
-  }
-  const kind = m[1]!.toUpperCase();
-  const targetId = m[2]!.trim();
-  const rest = (m[3] ?? "").trim();
-  const reason = rest.replace(/\s*\|\s*/g, " — ").trim();
-  const shortRef =
-    targetId.length > 10 ? `${targetId.slice(0, 6)}…${targetId.slice(-4)}` : targetId;
-  const actionLabel =
-    kind === "REVERSAL"
-      ? "Pembalik otomatis"
-      : kind === "REPLACEMENT"
-        ? "Koreksi data"
-        : kind === "VOID"
-          ? "Void mutasi"
-          : "Mutasi sistem";
-  const detail = [reason ? `Alasan: ${reason}` : null, `Ref: ${shortRef}`]
-    .filter(Boolean)
-    .join(" · ");
-  return `${actionLabel} · ${detail}`;
-}
-
-function formatLogNote(log: LogRow): string {
-  const raw = (log.note ?? "").trim();
-  if (!raw) return "—";
-  if (raw.startsWith("[SYS] |")) return formatSystemLogNote(raw);
-  if (raw.startsWith("[SYS]")) {
-    return formatLegacySystemLogNote(raw);
-  }
-  return raw;
-}
+const OUT_CATEGORIES: { value: SalesCategory; label: string }[] = [
+  { value: "penjualan", label: "Penjualan" },
+  { value: "sampling", label: "Sampling" },
+  { value: "retur", label: "Retur" },
+  { value: "rusak", label: "Rusak / expired" },
+];
 
 export function InventoryClient({
   products,
   logs,
+  vendors,
+  forecasts,
+  windowDays,
 }: {
   products: ProductRow[];
   logs: LogRow[];
+  vendors: Vendor[];
+  forecasts: ProductReorderForecast[];
+  windowDays: number;
 }) {
   const router = useRouter();
+  const [tab, setTab] = useState("ringkasan");
+
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [amount, setAmount] = useState(1);
   const [type, setType] = useState<StockLogType>(StockLogType.IN);
-  const [salesCategory, setSalesCategory] = useState<
-    "" | "penjualan" | "sampling"
-  >("");
+  const [salesCategory, setSalesCategory] = useState<SalesCategory | "">("");
   const [note, setNote] = useState("");
+  const [reference, setReference] = useState("");
+  const [vendorId, setVendorId] = useState("");
   const [pending, setPending] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [brandFilter, setBrandFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | StockLogType>("all");
+  const [daysFilter, setDaysFilter] = useState("30");
+  const [stockSearch, setStockSearch] = useState("");
+  const [stockBrandFilter, setStockBrandFilter] = useState("all");
+
   const [editOpen, setEditOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<LogRow | null>(null);
   const [editAmount, setEditAmount] = useState(1);
   const [editType, setEditType] = useState<StockLogType>(StockLogType.IN);
-  const [editSalesCategory, setEditSalesCategory] = useState<
-    "" | "penjualan" | "sampling"
-  >("");
+  const [editSalesCategory, setEditSalesCategory] = useState<SalesCategory | "">("");
   const [editNote, setEditNote] = useState("");
+  const [editReference, setEditReference] = useState("");
   const [editReason, setEditReason] = useState("");
   const [editPending, setEditPending] = useState(false);
-  const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
-  const [showCorrectionLogs, setShowCorrectionLogs] = useState(false);
 
-  function openEditLog(log: LogRow) {
-    if (isSystemLog(log)) {
-      toast.error("Mutasi sistem tidak dapat dikoreksi ulang langsung.");
-      return;
-    }
-    setEditingLog(log);
-    setEditAmount(log.amount);
-    setEditType(log.type);
-    setEditSalesCategory(
-      log.type === StockLogType.OUT && log.salesCategory
-        ? (log.salesCategory as "penjualan" | "sampling")
-        : "",
-    );
-    setEditNote(log.note ?? "");
-    setEditReason("");
-    setEditOpen(true);
-  }
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidingLog, setVoidingLog] = useState<LogRow | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidPending, setVoidPending] = useState(false);
 
-  async function onSaveEditLog(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingLog) return;
-    if (editType === StockLogType.OUT && !editSalesCategory.trim()) {
-      toast.error("Kategori stok keluar wajib dipilih.");
-      return;
-    }
-    if (editReason.trim().length < 3) {
-      toast.error("Alasan koreksi minimal 3 karakter.");
-      return;
-    }
-    setEditPending(true);
-    try {
-      await updateStockLog({
-        logId: editingLog.id,
-        amount: editAmount,
-        type: editType,
-        salesCategory:
-          editType === StockLogType.OUT &&
-          (editSalesCategory === "penjualan" || editSalesCategory === "sampling")
-            ? editSalesCategory
-            : null,
-        note: editNote || null,
-        reason: editReason.trim(),
-      });
-      toast.success("Koreksi mutasi berhasil dicatat.");
-      setEditOpen(false);
-      setEditingLog(null);
-      router.refresh();
-    } catch (err) {
-      const msg = actionErrorMessage(err, "Gagal memperbarui mutasi.");
-      toast.error(msg);
-    } finally {
-      setEditPending(false);
-    }
-  }
-
-  async function onDeleteLog(row: LogRow) {
-    if (isSystemLog(row)) {
-      toast.error("Mutasi sistem tidak dapat di-void langsung.");
-      return;
-    }
-    const reason = prompt("Alasan void mutasi (minimal 3 karakter):")?.trim() ?? "";
-    if (reason.length < 3) return;
-    setDeletePendingId(row.id);
-    try {
-      await deleteStockLog({ logId: row.id, reason });
-      toast.success("Mutasi di-void dengan jejak audit.");
-      router.refresh();
-    } catch (err) {
-      const msg = actionErrorMessage(err, "Gagal mem-void mutasi.");
-      toast.error(msg);
-    } finally {
-      setDeletePendingId(null);
-    }
-  }
-
-  async function onSubmitLog(e: React.FormEvent) {
-    e.preventDefault();
-    if (!productId) {
-      toast.error("Pilih produk.");
-      return;
-    }
-    setPending(true);
-    try {
-      await createStockLog({
-        productId,
-        amount,
-        type,
-        salesCategory:
-          type === StockLogType.OUT
-            ? salesCategory === ""
-              ? null
-              : salesCategory
-            : null,
-        note: note || null,
-      });
-      toast.success("Pergerakan stok tercatat.");
-      setNote("");
-      setSalesCategory("");
-      setAmount(1);
-      router.refresh();
-    } catch (err) {
-      const msg =
-        actionErrorMessage(err, "Gagal mencatat stok.");
-      toast.error(msg);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  const productSelectItems = useMemo((): SelectItemDef[] => {
-    return products.map((p) => ({
-      value: p.id,
-      label: `${p.brand.name} — ${p.name} (${p.sku})`,
-    }));
+  const brands = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of products) map.set(p.brand.id, p.brand.name);
+    return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [products]);
-  const stockTypeSelectItems = useMemo((): SelectItemDef[] => {
-    return [
-      { value: StockLogType.IN, label: "Masuk" },
-      { value: StockLogType.OUT, label: "Keluar" },
-    ];
-  }, []);
 
-  const businessLogs = useMemo(
-    () => logs.filter((l) => !isSystemLog(l)),
-    [logs],
+  const productSelectItemsList = useMemo(() => productSelectItems(products), [products]);
+  const brandFilterSelectItems = useMemo(() => brandFilterItems(brands), [brands]);
+  const vendorSelectItemsList = useMemo(
+    () => vendorSelectItems(vendors, "none", "— Tanpa vendor —"),
+    [vendors],
   );
-  const correctionLogs = useMemo(
-    () => logs.filter((l) => isSystemLog(l)),
-    [logs],
+  const salesCategorySelectItems = useMemo(
+    () => labeledItems(OUT_CATEGORIES),
+    [],
   );
+
+  const forecastById = useMemo(() => {
+    const map = new Map<string, ProductReorderForecast>();
+    for (const f of forecasts) map.set(f.productId, f);
+    return map;
+  }, [forecasts]);
+
+  const stats = useMemo(
+    () => computeInventoryDashboard(products, logs, forecasts),
+    [products, logs, forecasts],
+  );
+
+  const businessLogs = useMemo(() => logs.filter((l) => !isSystemStockLog(l.note)), [logs]);
+  const correctionLogs = useMemo(() => logs.filter((l) => isSystemStockLog(l.note)), [logs]);
+
   const businessLogStatusById = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of correctionLogs) {
@@ -495,54 +173,170 @@ export function InventoryClient({
     }
     return map;
   }, [correctionLogs]);
+
   const replacementByTargetId = useMemo(() => {
     const map = new Map<string, LogRow>();
     for (const row of correctionLogs) {
       const meta = parseSystemMeta(row);
       if (meta.action !== "REPLACEMENT" || !meta.targetId) continue;
       const prev = map.get(meta.targetId);
-      if (!prev || row.createdAt > prev.createdAt) {
-        map.set(meta.targetId, row);
-      }
+      if (!prev || row.createdAt > prev.createdAt) map.set(meta.targetId, row);
     }
     return map;
   }, [correctionLogs]);
 
-  const stockColumns = useMemo<ColumnDef<ProductRow>[]>(
-    () => [
-      {
-        accessorKey: "name",
-        header: "Produk",
-        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
-      },
-      {
-        id: "brand",
-        header: "Brand",
-        cell: ({ row }) => row.original.brand.name,
-      },
-      {
-        id: "stock",
-        header: "Stok",
-        cell: ({ row }) => (
-          <span className="tabular-nums">{row.original.currentStock}</span>
-        ),
-      },
-      {
-        id: "min",
-        header: "Min.",
-        cell: ({ row }) => (
-          <span className="tabular-nums">{row.original.minStock}</span>
-        ),
-      },
-      {
-        id: "status",
-        header: "Status",
-        cell: ({ row }) =>
-          statusBadge(row.original.currentStock, row.original.minStock),
-      },
-    ],
-    [],
-  );
+  const filteredBusinessLogs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const dayLimit = daysFilter === "all" ? null : subDays(startOfDay(new Date()), Number(daysFilter));
+    return businessLogs.filter((log) => {
+      if (brandFilter !== "all" && log.product.brandId !== brandFilter) return false;
+      if (typeFilter !== "all" && log.type !== typeFilter) return false;
+      if (dayLimit && isBefore(new Date(log.createdAt), dayLimit)) return false;
+      if (!q) return true;
+      const hay = [
+        log.product.name,
+        log.product.sku,
+        log.product.brand.name,
+        log.note,
+        log.reference,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [businessLogs, search, brandFilter, typeFilter, daysFilter]);
+
+  const filteredProducts = useMemo(() => {
+    const q = stockSearch.trim().toLowerCase();
+    return products.filter((p) => {
+      if (stockBrandFilter !== "all" && p.brandId !== stockBrandFilter) return false;
+      if (!q) return true;
+      return [p.name, p.sku, p.brand.name, p.category]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [products, stockSearch, stockBrandFilter]);
+
+  const selectedProduct = products.find((p) => p.id === productId);
+
+  async function onSubmitLog(e: React.FormEvent) {
+    e.preventDefault();
+    if (!productId) {
+      toast.error("Pilih produk.");
+      return;
+    }
+    if (type === StockLogType.OUT && !salesCategory) {
+      toast.error("Kategori stok keluar wajib dipilih.");
+      return;
+    }
+    setPending(true);
+    try {
+      await createStockLog({
+        productId,
+        amount,
+        type,
+        salesCategory: type === StockLogType.OUT ? salesCategory || null : null,
+        note: note || null,
+        reference: reference || null,
+        vendorId: type === StockLogType.IN && vendorId ? vendorId : null,
+      });
+      toast.success("Pergerakan stok tercatat.");
+      setNote("");
+      setReference("");
+      setSalesCategory("");
+      setVendorId("");
+      setAmount(1);
+      router.refresh();
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal mencatat stok."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function openEditLog(log: LogRow) {
+    if (isSystemStockLog(log.note)) {
+      toast.error("Mutasi sistem tidak dapat dikoreksi.");
+      return;
+    }
+    setEditingLog(log);
+    setEditAmount(log.amount);
+    setEditType(log.type);
+    setEditSalesCategory(
+      log.type === StockLogType.OUT && log.salesCategory
+        ? (log.salesCategory as SalesCategory)
+        : "",
+    );
+    setEditNote(log.note ?? "");
+    setEditReference(log.reference ?? "");
+    setEditReason("");
+    setEditOpen(true);
+  }
+
+  function openVoidLog(log: LogRow) {
+    if (isSystemStockLog(log.note)) {
+      toast.error("Mutasi sistem tidak dapat di-void.");
+      return;
+    }
+    setVoidingLog(log);
+    setVoidReason("");
+    setVoidOpen(true);
+  }
+
+  async function onSaveEditLog(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingLog) return;
+    if (editType === StockLogType.OUT && !editSalesCategory) {
+      toast.error("Kategori stok keluar wajib dipilih.");
+      return;
+    }
+    if (editReason.trim().length < 3) {
+      toast.error("Alasan koreksi minimal 3 karakter.");
+      return;
+    }
+    setEditPending(true);
+    try {
+      await updateStockLog({
+        logId: editingLog.id,
+        amount: editAmount,
+        type: editType,
+        salesCategory: editType === StockLogType.OUT ? editSalesCategory || null : null,
+        note: editNote || null,
+        reference: editReference || null,
+        reason: editReason.trim(),
+      });
+      toast.success("Koreksi mutasi berhasil dicatat.");
+      setEditOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal memperbarui mutasi."));
+    } finally {
+      setEditPending(false);
+    }
+  }
+
+  async function onConfirmVoid(e: React.FormEvent) {
+    e.preventDefault();
+    if (!voidingLog) return;
+    if (voidReason.trim().length < 3) {
+      toast.error("Alasan void minimal 3 karakter.");
+      return;
+    }
+    setVoidPending(true);
+    try {
+      await deleteStockLog({ logId: voidingLog.id, reason: voidReason.trim() });
+      toast.success("Mutasi di-void dengan jejak audit.");
+      setVoidOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal mem-void mutasi."));
+    } finally {
+      setVoidPending(false);
+    }
+  }
 
   const logColumns = useMemo<ColumnDef<LogRow>[]>(
     () => [
@@ -550,9 +344,7 @@ export function InventoryClient({
         accessorKey: "createdAt",
         header: "Waktu",
         cell: ({ row }) =>
-          format(row.original.createdAt, "d MMM yyyy, HH:mm", {
-            locale: idLocale,
-          }),
+          format(row.original.createdAt, "d MMM yyyy, HH:mm", { locale: idLocale }),
       },
       {
         id: "brand",
@@ -562,13 +354,11 @@ export function InventoryClient({
       {
         id: "product",
         header: "Produk",
-        cell: ({ row }) => row.original.product.name,
-      },
-      {
-        id: "sku",
-        header: "SKU",
         cell: ({ row }) => (
-          <span className="font-mono text-xs">{row.original.product.sku}</span>
+          <div className="min-w-[120px]">
+            <p className="font-medium">{row.original.product.name}</p>
+            <p className="text-muted-foreground font-mono text-[10px]">{row.original.product.sku}</p>
+          </div>
         ),
       },
       {
@@ -577,9 +367,7 @@ export function InventoryClient({
         cell: ({ row }) => {
           const effective = replacementByTargetId.get(row.original.id) ?? row.original;
           return effective.type === StockLogType.IN ? (
-            <Badge className="bg-emerald-600 text-white hover:bg-emerald-600/90">
-              Masuk
-            </Badge>
+            <Badge className="bg-emerald-600 text-white hover:bg-emerald-600/90">Masuk</Badge>
           ) : (
             <Badge variant="secondary">Keluar</Badge>
           );
@@ -590,17 +378,34 @@ export function InventoryClient({
         header: "Qty",
         cell: ({ row }) => {
           const effective = replacementByTargetId.get(row.original.id) ?? row.original;
-          return <span className="tabular-nums">{effective.amount}</span>;
+          return <span className="tabular-nums font-medium">{effective.amount}</span>;
         },
       },
       {
-        accessorKey: "note",
+        id: "category",
+        header: "Kategori",
+        cell: ({ row }) => {
+          const effective = replacementByTargetId.get(row.original.id) ?? row.original;
+          return (
+            <span className="text-xs">
+              {effective.type === StockLogType.OUT
+                ? formatSalesCategory(effective.salesCategory)
+                : row.original.vendor?.name ?? "—"}
+            </span>
+          );
+        },
+      },
+      {
+        id: "note",
         header: "Catatan",
         cell: ({ row }) => (
-          <div className="space-y-1">
-            <span className="text-muted-foreground block max-w-[200px] truncate text-xs">
-              {formatLogNote(row.original)}
-            </span>
+          <div className="max-w-[180px] space-y-1">
+            <p className="text-muted-foreground line-clamp-2 text-xs" title={formatStockLogNote(row.original)}>
+              {formatStockLogNote(row.original)}
+            </p>
+            {row.original.reference ? (
+              <p className="font-mono text-[10px] text-muted-foreground">Ref: {row.original.reference}</p>
+            ) : null}
             {businessLogStatusById.get(row.original.id) ? (
               <Badge variant="outline" className="text-[10px]">
                 {businessLogStatusById.get(row.original.id)}
@@ -610,49 +415,20 @@ export function InventoryClient({
         ),
       },
       {
-        id: "salesCategory",
-        header: "Kategori keluar",
-        cell: ({ row }) => {
-          const effective = replacementByTargetId.get(row.original.id) ?? row.original;
-          return (
-          <span className="text-xs">
-            {effective.type === StockLogType.OUT
-              ? effective.salesCategory === "penjualan"
-                ? "Penjualan"
-                : effective.salesCategory === "sampling"
-                  ? "Sampling"
-                  : "—"
-              : "—"}
-          </span>
-          );
-        },
-      },
-      {
         id: "actions",
-        header: "Aksi",
+        header: "",
         cell: ({ row }) => (
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              className="size-8"
-              disabled={isSystemLog(row.original)}
-              aria-label="Edit mutasi"
-              title={isSystemLog(row.original) ? "Mutasi sistem" : "Koreksi mutasi"}
-              onClick={() => openEditLog(row.original)}
-            >
+          <div className="flex gap-1">
+            <Button type="button" variant="ghost" size="icon-sm" onClick={() => openEditLog(row.original)} aria-label="Koreksi">
               <Pencil className="size-3.5" />
             </Button>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="icon-sm"
-              className="text-destructive hover:bg-destructive/10 size-8"
-              disabled={deletePendingId === row.original.id || isSystemLog(row.original)}
-              aria-label="Void mutasi"
-              title={isSystemLog(row.original) ? "Mutasi sistem" : "Void mutasi"}
-              onClick={() => void onDeleteLog(row.original)}
+              className="text-destructive"
+              onClick={() => openVoidLog(row.original)}
+              aria-label="Void"
             >
               <Trash2 className="size-3.5" />
             </Button>
@@ -660,7 +436,55 @@ export function InventoryClient({
         ),
       },
     ],
-    [deletePendingId, businessLogStatusById, replacementByTargetId],
+    [businessLogStatusById, replacementByTargetId],
+  );
+
+  const stockColumns = useMemo<ColumnDef<ProductRow>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Produk",
+        cell: ({ row }) => (
+          <div>
+            <p className="font-medium">{row.original.name}</p>
+            <p className="text-muted-foreground font-mono text-[10px]">{row.original.sku}</p>
+          </div>
+        ),
+      },
+      { id: "brand", header: "Brand", cell: ({ row }) => row.original.brand.name },
+      {
+        id: "stock",
+        header: "Stok",
+        cell: ({ row }) => (
+          <span className="text-lg font-semibold tabular-nums">{row.original.currentStock}</span>
+        ),
+      },
+      {
+        id: "min",
+        header: "Min.",
+        cell: ({ row }) => <span className="tabular-nums">{row.original.minStock}</span>,
+      },
+      {
+        id: "vendor",
+        header: "Vendor",
+        cell: ({ row }) => (
+          <span className="max-w-[200px] text-xs leading-snug">
+            {forecastById.get(row.original.id)?.vendorsSummary ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <StockHealthBadge
+            currentStock={row.original.currentStock}
+            minStock={row.original.minStock}
+          />
+        ),
+      },
+    ],
+    [forecastById],
   );
 
   const correctionColumns = useMemo<ColumnDef<LogRow>[]>(
@@ -669,9 +493,7 @@ export function InventoryClient({
         accessorKey: "createdAt",
         header: "Waktu",
         cell: ({ row }) =>
-          format(row.original.createdAt, "d MMM yyyy, HH:mm", {
-            locale: idLocale,
-          }),
+          format(row.original.createdAt, "d MMM yyyy, HH:mm", { locale: idLocale }),
       },
       {
         id: "action",
@@ -679,258 +501,332 @@ export function InventoryClient({
         cell: ({ row }) => {
           const action = parseSystemMeta(row.original).action;
           const label =
-            action === "VOID"
-              ? "Void"
-              : action === "REPLACEMENT"
-                ? "Koreksi"
-                : "Pembalik";
+            action === "VOID" ? "Void" : action === "REPLACEMENT" ? "Koreksi" : "Pembalik";
           return <Badge variant="secondary">{label}</Badge>;
         },
       },
-      {
-        id: "product",
-        header: "Produk",
-        cell: ({ row }) => row.original.product.name,
-      },
-      {
-        id: "target",
-        header: "Ref mutasi",
-        cell: ({ row }) => {
-          const targetId = parseSystemMeta(row.original).targetId ?? "-";
-          const shortRef =
-            targetId.length > 10
-              ? `${targetId.slice(0, 6)}...${targetId.slice(-4)}`
-              : targetId;
-          return <span className="font-mono text-xs">{shortRef}</span>;
-        },
-      },
+      { id: "product", header: "Produk", cell: ({ row }) => row.original.product.name },
       {
         id: "reason",
         header: "Alasan",
         cell: ({ row }) => {
           const meta = parseSystemMeta(row.original);
-          const parts = [meta.reason, meta.extraNote].filter(Boolean);
           return (
-            <span className="text-muted-foreground max-w-[320px] text-xs">
-              {parts.join(" - ") || formatLogNote(row.original)}
+            <span className="text-muted-foreground text-xs">
+              {[meta.reason, meta.extraNote].filter(Boolean).join(" — ") || "—"}
             </span>
           );
         },
+      },
+      {
+        id: "by",
+        header: "Oleh",
+        cell: ({ row }) => row.original.createdBy?.name ?? row.original.createdBy?.email ?? "—",
       },
     ],
     [],
   );
 
-  return (
-    <div className="flex flex-col gap-10">
-      <section>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-medium tracking-tight">Riwayat mutasi</h2>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            disabled={businessLogs.length === 0}
-            onClick={() => printStockMutationReport(businessLogs)}
-          >
-            <Printer className="size-4" />
-            Cetak laporan
-          </Button>
-        </div>
-        <p className="text-muted-foreground mb-3 text-xs">
-          Riwayat ini hanya menampilkan mutasi utama (IN/OUT). Koreksi dan void
-          ditampilkan terpisah di tabel audit agar tidak membingungkan operasional.
-        </p>
-        <DataTable
-          columns={logColumns}
-          data={businessLogs}
-          empty="Belum ada log stok."
-        />
-      </section>
+  const movementForm = (
+    <Card className="border-primary/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Catat stok masuk / keluar</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmitLog} className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-4 lg:col-span-2">
+            <div className="space-y-2">
+              <Label>Produk</Label>
+              <Select
+                value={productId}
+                items={productSelectItemsList}
+                onValueChange={(v) => v && setProductId(v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih SKU" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.brand.name} — {p.name} ({p.sku}) · stok {p.currentStock}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedProduct ? (
+                <p className="text-muted-foreground text-xs">
+                  Stok saat ini:{" "}
+                  <span className="font-semibold text-foreground">
+                    {selectedProduct.currentStock}
+                  </span>{" "}
+                  unit · min {selectedProduct.minStock}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Tipe</Label>
+            <Select
+              value={type}
+              items={STOCK_LOG_TYPE_ITEMS}
+              onValueChange={(v) => v && setType(v as StockLogType)}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={StockLogType.IN}>Masuk</SelectItem>
+                <SelectItem value={StockLogType.OUT}>Keluar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="qty">Jumlah (unit)</Label>
+            <Input id="qty" type="number" min={1} value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+          </div>
+          {type === StockLogType.OUT ? (
+            <div className="space-y-2 lg:col-span-2">
+              <Label>Kategori keluar</Label>
+              <Select
+                value={salesCategory}
+                items={salesCategorySelectItems}
+                onValueChange={(v) => v && setSalesCategory(v as SalesCategory)}
+              >
+                <SelectTrigger><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                <SelectContent>
+                  {OUT_CATEGORIES.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="space-y-2 lg:col-span-2">
+              <Label>Vendor / sumber (opsional)</Label>
+              <Select
+                value={vendorId || "none"}
+                items={vendorSelectItemsList}
+                onValueChange={(v) => setVendorId(!v || v === "none" ? "" : v)}
+              >
+                <SelectTrigger><SelectValue placeholder="Pilih vendor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Tanpa vendor —</SelectItem>
+                  {vendors.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="ref">Referensi (PO / invoice)</Label>
+            <Input id="ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="PO-2026-001" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="note">Catatan</Label>
+            <Textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Channel penjualan, batch…" />
+          </div>
+          <div className="lg:col-span-2">
+            <Button
+              type="submit"
+              className="w-full sm:w-auto"
+              disabled={pending || products.length === 0 || (type === StockLogType.OUT && !salesCategory)}
+            >
+              {pending ? "Menyimpan…" : "Simpan ke buku stok"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
 
-      <section>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-medium tracking-tight">Log koreksi & void</h2>
-          <div className="flex items-center gap-2">
+  return (
+    <div className="flex flex-col gap-6">
+      <LogisticsNav />
+
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="ringkasan">Ringkasan</TabsTrigger>
+          <TabsTrigger value="forecast">
+            Forecast & Reorder (
+            {forecasts.filter((f) => f.status === "ORDER_NOW" || f.status === "ORDER_SOON").length})
+          </TabsTrigger>
+          <TabsTrigger value="mutasi">Mutasi ({businessLogs.length})</TabsTrigger>
+          <TabsTrigger value="stok">Stok ({products.length})</TabsTrigger>
+          <TabsTrigger value="audit">Audit ({correctionLogs.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="ringkasan" className="mt-4 space-y-6">
+          <InventoryKpiCards stats={stats} />
+          <div className="grid gap-6 xl:grid-cols-3">
+            <div className="xl:col-span-2">{movementForm}</div>
+            <ReorderAlertPanel items={stats.reorderList} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="forecast" className="mt-4">
+          <ReorderForecastTab forecasts={forecasts} windowDays={windowDays} />
+        </TabsContent>
+
+        <TabsContent value="mutasi" className="mt-4 space-y-4">
+          {movementForm}
+          <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
+            <div className="min-w-[200px] flex-1 space-y-1">
+              <Label className="text-xs">Cari</Label>
+              <div className="relative">
+                <Search className="text-muted-foreground absolute top-2.5 left-2.5 size-4" />
+                <Input className="pl-8" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="SKU, produk, catatan…" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Brand</Label>
+              <Select
+                value={brandFilter}
+                items={brandFilterSelectItems}
+                onValueChange={(v) => setBrandFilter(v ?? "all")}
+              >
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua</SelectItem>
+                  {brands.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Tipe</Label>
+              <Select
+                value={typeFilter}
+                items={STOCK_LOG_TYPE_FILTER_ITEMS}
+                onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}
+              >
+                <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua</SelectItem>
+                  <SelectItem value={StockLogType.IN}>Masuk</SelectItem>
+                  <SelectItem value={StockLogType.OUT}>Keluar</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Periode</Label>
+              <Select
+                value={daysFilter}
+                items={DAYS_FILTER_ITEMS}
+                onValueChange={(v) => setDaysFilter(v ?? "30")}
+              >
+                <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 hari</SelectItem>
+                  <SelectItem value="30">30 hari</SelectItem>
+                  <SelectItem value="90">90 hari</SelectItem>
+                  <SelectItem value="all">Semua</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setShowCorrectionLogs((v) => !v)}
-            >
-              {showCorrectionLogs ? "Hide log" : "Show log"}
-            </Button>
-            {showCorrectionLogs ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                disabled={correctionLogs.length === 0}
-                onClick={() => printStockCorrectionReport(correctionLogs)}
-              >
-                <Printer className="size-4" />
-                Cetak log
-              </Button>
-            ) : null}
-          </div>
-        </div>
-        {showCorrectionLogs ? (
-          <>
-            <p className="text-muted-foreground mb-3 text-xs">
-              Jejak audit koreksi/void tersimpan sebagai entri sistem terpisah.
-            </p>
-            <DataTable
-              columns={correctionColumns}
-              data={correctionLogs}
-              empty="Belum ada koreksi/void."
-            />
-          </>
-        ) : (
-          <p className="text-muted-foreground text-xs">
-            Log audit disembunyikan. Klik <span className="font-medium">Show log</span> untuk melihat.
-          </p>
-        )}
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Stok masuk / keluar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onSubmitLog} className="flex flex-col gap-4">
-              <div className="space-y-2">
-                <Label>Produk</Label>
-                <Select
-                  value={productId}
-                  items={productSelectItems}
-                  onValueChange={(v) => {
-                    if (v) setProductId(v);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih SKU" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.brand.name} — {p.name} ({p.sku})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Tipe</Label>
-                  <Select
-                    value={type}
-                    items={stockTypeSelectItems}
-                    onValueChange={(v) => {
-                      if (v) setType(v as StockLogType);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={StockLogType.IN}>Masuk</SelectItem>
-                      <SelectItem value={StockLogType.OUT}>Keluar</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="qty">Jumlah unit</Label>
-                  <Input
-                    id="qty"
-                    type="number"
-                    min={1}
-                    value={amount}
-                    onChange={(e) => setAmount(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-              {type === StockLogType.OUT ? (
-                <div className="space-y-2">
-                  <Label htmlFor="sales-category">Kategori stok keluar</Label>
-                  <Select
-                    value={salesCategory}
-                    onValueChange={(v) => {
-                      if (v) setSalesCategory(v);
-                    }}
-                    items={[
-                      { value: "penjualan", label: "Penjualan" },
-                      { value: "sampling", label: "Sampling" },
-                    ]}
-                  >
-                    <SelectTrigger id="sales-category">
-                      <SelectValue placeholder="Pilih kategori keluar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="penjualan">Penjualan</SelectItem>
-                      <SelectItem value="sampling">Sampling</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                <Label htmlFor="note">Catatan (opsional)</Label>
-                <Textarea
-                  id="note"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  rows={2}
-                  placeholder="Referensi PO, channel penjualan…"
-                />
-              </div>
-              <Button
-                type="submit"
-                disabled={
-                  pending ||
-                  products.length === 0 ||
-                  (type === StockLogType.OUT && !salesCategory.trim())
+              className="gap-1.5"
+              disabled={filteredBusinessLogs.length === 0}
+              onClick={() => {
+                if (!printStockMutationReport(filteredBusinessLogs)) {
+                  toast.error("Pop-up diblokir. Izinkan pop-up lalu coba lagi.");
                 }
-              >
-                Simpan ke buku stok
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+              }}
+            >
+              <Printer className="size-4" />
+              Cetak ({filteredBusinessLogs.length})
+            </Button>
+          </div>
+          <DataTable
+            columns={logColumns}
+            data={filteredBusinessLogs}
+            empty="Tidak ada mutasi yang cocok dengan filter."
+            sortable
+            viewportMaxHeight="calc(100dvh - 420px)"
+            stickyHeader
+          />
+        </TabsContent>
 
-        <div>
-          <h2 className="mb-3 text-lg font-medium tracking-tight">Daftar stok</h2>
-          {products.length === 0 ? (
+        <TabsContent value="stok" className="mt-4 space-y-4">
+          <div className="flex flex-wrap gap-3">
+            <div className="relative min-w-[200px] flex-1">
+              <Search className="text-muted-foreground absolute top-2.5 left-2.5 size-4" />
+              <Input className="pl-8" value={stockSearch} onChange={(e) => setStockSearch(e.target.value)} placeholder="Cari SKU atau produk…" />
+            </div>
+            <Select
+              value={stockBrandFilter}
+              items={brandFilterSelectItems}
+              onValueChange={(v) => setStockBrandFilter(v ?? "all")}
+            >
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Brand" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua brand</SelectItem>
+                {brands.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DataTable
+            columns={stockColumns}
+            data={filteredProducts}
+            empty="Tidak ada produk."
+            sortable
+            viewportMaxHeight="calc(100dvh - 280px)"
+            stickyHeader
+          />
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between gap-2">
             <p className="text-muted-foreground text-sm">
-              Belum ada produk. Tambahkan di menu Produk & SKU.
+              Jejak koreksi dan void — entri sistem append-only, tidak dapat diedit langsung.
             </p>
-          ) : (
-            <DataTable columns={stockColumns} data={products} />
-          )}
-        </div>
-      </section>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={correctionLogs.length === 0}
+              onClick={() => {
+                if (!printStockCorrectionReport(correctionLogs)) {
+                  toast.error("Pop-up diblokir.");
+                }
+              }}
+            >
+              <Printer className="size-4" />
+              Cetak audit
+            </Button>
+          </div>
+          <DataTable
+            columns={correctionColumns}
+            data={correctionLogs}
+            empty="Belum ada koreksi atau void."
+            sortable
+            viewportMaxHeight="calc(100dvh - 280px)"
+            stickyHeader
+          />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-md">
           <form onSubmit={onSaveEditLog} className="space-y-4">
             <DialogHeader>
-              <DialogTitle>Koreksi riwayat mutasi</DialogTitle>
+              <DialogTitle>Koreksi mutasi</DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="edit-log-type">Tipe</Label>
+                <Label>Tipe</Label>
                 <Select
                   value={editType}
-                  items={stockTypeSelectItems}
-                  onValueChange={(v) => {
-                    if (v) setEditType(v as StockLogType);
-                  }}
+                  items={STOCK_LOG_TYPE_ITEMS}
+                  onValueChange={(v) => v && setEditType(v as StockLogType)}
                   disabled={editPending}
                 >
-                  <SelectTrigger id="edit-log-type">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={StockLogType.IN}>Masuk</SelectItem>
                     <SelectItem value={StockLogType.OUT}>Keluar</SelectItem>
@@ -938,81 +834,66 @@ export function InventoryClient({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-log-qty">Jumlah unit</Label>
-                <Input
-                  id="edit-log-qty"
-                  type="number"
-                  min={1}
-                  value={editAmount}
-                  onChange={(e) => setEditAmount(Number(e.target.value))}
-                  disabled={editPending}
-                />
+                <Label>Qty</Label>
+                <Input type="number" min={1} value={editAmount} onChange={(e) => setEditAmount(Number(e.target.value))} disabled={editPending} />
               </div>
             </div>
             {editType === StockLogType.OUT ? (
               <div className="space-y-2">
-                <Label htmlFor="edit-log-sales-category">Kategori stok keluar</Label>
+                <Label>Kategori keluar</Label>
                 <Select
                   value={editSalesCategory}
-                  onValueChange={(v) => {
-                    if (v) setEditSalesCategory(v as "penjualan" | "sampling");
-                  }}
-                  items={[
-                    { value: "penjualan", label: "Penjualan" },
-                    { value: "sampling", label: "Sampling" },
-                  ]}
+                  items={salesCategorySelectItems}
+                  onValueChange={(v) => v && setEditSalesCategory(v as SalesCategory)}
                   disabled={editPending}
                 >
-                  <SelectTrigger id="edit-log-sales-category">
-                    <SelectValue placeholder="Pilih kategori keluar" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Pilih" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="penjualan">Penjualan</SelectItem>
-                    <SelectItem value="sampling">Sampling</SelectItem>
+                    {OUT_CATEGORIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             ) : null}
             <div className="space-y-2">
-              <Label htmlFor="edit-log-note">Catatan (opsional)</Label>
-              <Textarea
-                id="edit-log-note"
-                value={editNote}
-                onChange={(e) => setEditNote(e.target.value)}
-                rows={2}
-                disabled={editPending}
-              />
+              <Label>Catatan</Label>
+              <Textarea value={editNote} onChange={(e) => setEditNote(e.target.value)} rows={2} disabled={editPending} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-log-reason">Alasan koreksi</Label>
-              <Textarea
-                id="edit-log-reason"
-                value={editReason}
-                onChange={(e) => setEditReason(e.target.value)}
-                rows={2}
-                placeholder="Contoh: Salah input, harusnya stok keluar"
-                disabled={editPending}
-              />
+              <Label>Alasan koreksi</Label>
+              <Textarea value={editReason} onChange={(e) => setEditReason(e.target.value)} rows={2} placeholder="Salah input jumlah…" disabled={editPending} />
             </div>
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setEditOpen(false)}
-                disabled={editPending}
-              >
-                Batal
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  editPending ||
-                  editAmount <= 0 ||
-                  editReason.trim().length < 3 ||
-                  (editType === StockLogType.OUT && !editSalesCategory.trim())
-                }
-              >
-                {editPending ? "Menyimpan..." : "Simpan koreksi"}
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={editPending}>Batal</Button>
+              <Button type="submit" disabled={editPending || editReason.trim().length < 3}>Simpan koreksi</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={voidOpen} onOpenChange={setVoidOpen}>
+        <DialogContent className="max-w-md">
+          <form onSubmit={onConfirmVoid} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Void mutasi</DialogTitle>
+            </DialogHeader>
+            {voidingLog ? (
+              <p className="text-muted-foreground text-sm">
+                {voidingLog.product.name} ·{" "}
+                {voidingLog.type === StockLogType.IN ? "Masuk" : "Keluar"}{" "}
+                {voidingLog.amount} unit —{" "}
+                {format(voidingLog.createdAt, "d MMM yyyy HH:mm", { locale: idLocale })}
+              </p>
+            ) : null}
+            <div className="space-y-2">
+              <Label>Alasan void (wajib)</Label>
+              <Textarea value={voidReason} onChange={(e) => setVoidReason(e.target.value)} rows={3} placeholder="Contoh: Duplikat entry, salah produk" disabled={voidPending} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setVoidOpen(false)} disabled={voidPending}>Batal</Button>
+              <Button type="submit" variant="destructive" disabled={voidPending || voidReason.trim().length < 3}>
+                {voidPending ? "Memproses…" : "Konfirmasi void"}
               </Button>
             </DialogFooter>
           </form>

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { StockLogType, TaskStatus, UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { unstable_cache } from "next/cache";
+import { format } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 import {
   AlertTriangle,
   Boxes,
@@ -15,6 +17,12 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getStockHealth, needsUrgentReorder } from "@/lib/stock-status";
 import { computeMilestoneProgress } from "@/lib/project-milestones";
+import {
+  computeReorderForecasts,
+  forecastProductInclude,
+  reorderStatusLabel,
+  toForecastProductInput,
+} from "@/lib/reorder-forecast";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -84,13 +92,9 @@ const getExecutiveDashboardData = unstable_cache(
       pendingTaskApprovals,
     ] = await Promise.all([
       prisma.product.findMany({
-        select: {
-          id: true,
-          name: true,
-          sku: true,
-          currentStock: true,
-          minStock: true,
+        include: {
           brand: { select: { name: true } },
+          ...forecastProductInclude,
         },
         orderBy: { name: "asc" },
       }),
@@ -160,6 +164,19 @@ const getExecutiveDashboardData = unstable_cache(
       needsUrgentReorder(p.currentStock, p.minStock),
     );
 
+    const forecasts = await computeReorderForecasts(
+      products.map((p) => toForecastProductInput(p)),
+      90,
+    );
+    const forecastPoSoon = forecasts
+      .filter((f) => f.status === "ORDER_NOW" || f.status === "ORDER_SOON")
+      .sort((a, b) => {
+        const ta = a.orderByDate?.getTime() ?? 0;
+        const tb = b.orderByDate?.getTime() ?? 0;
+        return ta - tb;
+      })
+      .slice(0, 5);
+
     const businessLogs = salesLogs.filter((row): row is SalesLogRow => !isSystemLog(row));
     const correctionLogs = salesLogs.filter((row): row is SalesLogRow => isSystemLog(row));
 
@@ -200,6 +217,7 @@ const getExecutiveDashboardData = unstable_cache(
       readyLaunchProjects,
       pendingApprovals,
       critical,
+      forecastPoSoon,
       projectMilestoneRows,
       avgMilestoneProgress,
       outgoingByBrandRows,
@@ -221,6 +239,7 @@ export default async function ExecutiveDashboardPage() {
     readyLaunchProjects,
     pendingApprovals,
     critical,
+    forecastPoSoon,
     projectMilestoneRows,
     avgMilestoneProgress,
     outgoingByBrandRows,
@@ -369,6 +388,56 @@ export default async function ExecutiveDashboardPage() {
                   </div>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="min-h-[280px]">
+          <CardHeader>
+            <CardTitle>SKU perlu PO (forecast)</CardTitle>
+            <CardDescription>
+              Berdasarkan burn rate penjualan 90 hari + lead time vendor.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {forecastPoSoon.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Tidak ada SKU yang perlu PO minggu ini menurut forecast.
+              </p>
+            ) : (
+              <ScrollArea className="h-[220px] pr-3">
+                <ul className="flex flex-col gap-3">
+                  {forecastPoSoon.map((f) => (
+                    <li
+                      key={f.productId}
+                      className="bg-card flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+                    >
+                      <div>
+                        <p className="font-medium">{f.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {f.brandName} · stok {f.currentStock} · burn{" "}
+                          {f.avgDailyDemand.toFixed(1)}/hari
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Badge
+                          variant={
+                            f.status === "ORDER_NOW" ? "destructive" : "secondary"
+                          }
+                        >
+                          {reorderStatusLabel(f.status)}
+                        </Badge>
+                        {f.orderByDate ? (
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            Order sebelum{" "}
+                            {format(f.orderByDate, "d MMM", { locale: idLocale })}
+                          </p>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea>
             )}
           </CardContent>
         </Card>
