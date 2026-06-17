@@ -91,7 +91,7 @@ async function runAgentChatWithModel(
     try {
       const nudge = await withGeminiRetry(() =>
         chat.sendMessage(
-          "Rangkum hasil tool di atas untuk user dalam Bahasa Indonesia yang natural: sertakan angka, insight, dan saran. Jangan hanya bilang 'selesai'.",
+          "Rangkum hasil tool di atas untuk user dalam Bahasa Indonesia: sertakan angka konkret, perbandingan, insight bisnis, dan rekomendasi jika relevan. Untuk data harga: sebutkan angka IDR per produk/kompetitor. Jangan bilang tidak ada data jika tool sudah mengembalikan harga. Jangan hanya bilang 'selesai'.",
         ),
       );
       text = nudge.response.text().trim();
