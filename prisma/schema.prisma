@@ -700,8 +700,7 @@ model RoomKanbanColumn {
   tasks                Task[]
   kanbanPositions      TaskKanbanPosition[]
 
-  @@unique([roomId, roomProcess, coreRole])
-  @@unique([roomId, customProcessPhaseId, coreRole])
+  @@unique([roomId, roomProcess, customProcessPhaseId, coreRole])
   @@index([roomId, roomProcess, sortOrder])
   @@index([roomId, customProcessPhaseId, sortOrder])
 }
