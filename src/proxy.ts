@@ -14,10 +14,10 @@ import { NextResponse } from "next/server";
 
 function defaultHomeForRole(role: UserRole | undefined): string {
   if (role === UserRole.CEO) return "/";
-  if (role === UserRole.ADMINISTRATOR) return "/dashboard";
+  if (role === UserRole.ADMINISTRATOR) return "/home";
   if (role === UserRole.FINANCE) return "/finance";
   if (isMarketAnalyst(role)) return "/research-hub";
-  if (isStudioOrProjectManager(role)) return "/dashboard";
+  if (isStudioOrProjectManager(role)) return "/home";
   return "/inventory";
 }
 
@@ -58,10 +58,10 @@ export default auth((req) => {
       pathname === "/rooms" ||
       pathname.startsWith("/rooms/")
     ) {
-      return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
+      return NextResponse.redirect(new URL("/home", req.nextUrl));
     }
     if (!isAdministratorAppRoute(pathname)) {
-      return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
+      return NextResponse.redirect(new URL("/home", req.nextUrl));
     }
     return NextResponse.next();
   }
@@ -96,10 +96,10 @@ export default auth((req) => {
 
   if (isStudioOrProjectManager(role)) {
     if (pathname === "/") {
-      return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
+      return NextResponse.redirect(new URL("/home", req.nextUrl));
     }
     if (!isStudioWorkspaceRoute(pathname)) {
-      return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
+      return NextResponse.redirect(new URL("/home", req.nextUrl));
     }
   }
 

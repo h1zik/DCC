@@ -7,7 +7,7 @@ export async function ensureAdminUserAccess() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== UserRole.ADMINISTRATOR) {
-    redirect("/dashboard");
+    redirect("/home");
   }
   return session;
 }

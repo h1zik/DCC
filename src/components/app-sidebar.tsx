@@ -17,6 +17,7 @@ import {
   FileBarChart,
   Focus,
   GitBranch,
+  Home,
   Landmark,
   LayoutDashboard,
   LayoutGrid,
@@ -69,7 +70,7 @@ const navCeo = [
 ] as const;
 
 const navAdministrator = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/home", label: "Home", icon: Home },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -108,7 +109,7 @@ const navFinance = [
 ] as const;
 
 const navStudio = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/home", label: "Home", icon: Home },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
