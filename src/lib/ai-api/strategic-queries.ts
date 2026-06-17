@@ -41,6 +41,7 @@ import {
   canViewFinanceSummary,
   canViewInventory,
   canViewOrgUsers,
+  canViewResearch,
   canViewTasks,
 } from "./auth";
 import {
@@ -872,6 +873,7 @@ export function aiGetMcpCapabilities(role: AiApiRole) {
       wikiDocuments: canViewBrandPipeline(role) || canViewTasks(role),
       orgUsers: canViewOrgUsers(role),
       contentPlanning: canViewBrandPipeline(role),
+      researchHub: canViewResearch(role),
     },
     note: "Semua tool read-only. Gunakan header x-dcc-role untuk simulasi peran.",
   };
