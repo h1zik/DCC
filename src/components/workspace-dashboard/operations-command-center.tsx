@@ -214,8 +214,8 @@ export function OperationsCommandCenter({
         />
       </section>
 
-      <div className="grid items-stretch gap-4 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="flex flex-col gap-4 lg:col-span-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -260,9 +260,50 @@ export function OperationsCommandCenter({
               )}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="text-amber-500 size-4" aria-hidden />
+                Deadline 7 hari ke depan
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.deadlines.length === 0 ? (
+                <EmptyBlock
+                  icon={CalendarDays}
+                  title="Tidak ada deadline mendekat"
+                  description="Tugas dengan due date minggu ini akan tampil di sini."
+                />
+              ) : (
+                <ul className="divide-border/60 -my-1 divide-y">
+                  {data.deadlines.map((d) => (
+                    <li key={d.id}>
+                      <Link
+                        href={`/room/${d.roomId}/tasks`}
+                        className="hover:bg-muted/50 -mx-2 flex items-start justify-between gap-3 rounded-lg px-2 py-2.5 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-foreground line-clamp-1 text-sm font-medium">
+                            {d.title}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            {d.roomName} · {taskStatusLabel(d.status)}
+                          </p>
+                        </div>
+                        <span className="text-foreground shrink-0 text-xs font-medium tabular-nums">
+                          {formatShortDate(d.dueDate)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="flex lg:col-span-2 lg:row-span-2">
+        <div className="flex lg:col-span-2">
           <Card className="flex h-full w-full flex-col">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -325,51 +366,7 @@ export function OperationsCommandCenter({
           </Card>
         </div>
 
-        <div className="flex lg:col-span-3">
-          <Card className="flex h-full w-full flex-col">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Clock className="text-amber-500 size-4" aria-hidden />
-                Deadline 7 hari ke depan
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col">
-              {data.deadlines.length === 0 ? (
-                <EmptyBlock
-                  icon={CalendarDays}
-                  title="Tidak ada deadline mendekat"
-                  description="Tugas dengan due date minggu ini akan tampil di sini."
-                  className="flex-1 justify-center"
-                />
-              ) : (
-                <ul className="divide-border/60 -my-1 divide-y">
-                  {data.deadlines.map((d) => (
-                    <li key={d.id}>
-                      <Link
-                        href={`/room/${d.roomId}/tasks`}
-                        className="hover:bg-muted/50 -mx-2 flex items-start justify-between gap-3 rounded-lg px-2 py-2.5 transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-foreground line-clamp-1 text-sm font-medium">
-                            {d.title}
-                          </p>
-                          <p className="text-muted-foreground text-xs">
-                            {d.roomName} · {taskStatusLabel(d.status)}
-                          </p>
-                        </div>
-                        <span className="text-foreground shrink-0 text-xs font-medium tabular-nums">
-                          {formatShortDate(d.dueDate)}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="flex lg:col-span-3">
+        <div className="flex items-stretch lg:col-span-3">
           <DashboardNotificationsCard
             className="w-full"
             notifications={data.notifications}
@@ -378,7 +375,7 @@ export function OperationsCommandCenter({
         </div>
 
         {data.canViewPipeline ? (
-          <div className="flex lg:col-span-2">
+          <div className="flex items-stretch lg:col-span-2">
             <Card className="flex h-full w-full flex-col">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
