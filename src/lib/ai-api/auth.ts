@@ -98,6 +98,10 @@ export function canViewOrgUsers(role: AiApiRole): boolean {
   return role === "ALL" || role === "CEO" || role === "ADMINISTRATOR";
 }
 
+export function canViewResearch(role: AiApiRole): boolean {
+  return role === "ALL" || role === "CEO" || role === "ADMINISTRATOR";
+}
+
 /** Map header role ke label Prisma (untuk logging). */
 export function aiRoleLabel(role: AiApiRole): string {
   if (role === "STUDIO") return UserRole.NORMAL_USER;

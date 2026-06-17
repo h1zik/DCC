@@ -166,7 +166,7 @@ async function main() {
 
     name: "dcc-read-api",
 
-    version: "3.0.0",
+    version: "3.2.0",
 
   });
 
@@ -1017,6 +1017,14 @@ async function main() {
     asText,
     limitSchema,
     roomNameSchema,
+  });
+
+  const { registerResearchTools } = await import("./register-research-tools.js");
+  registerResearchTools(server, {
+    dccFetch,
+    buildQuery,
+    asText,
+    limitSchema,
   });
 
 
