@@ -221,3 +221,13 @@ export function statusForColumn(column: RoomKanbanColumnDTO): TaskStatus {
   if (column.kind === "CORE" && column.coreRole) return column.coreRole;
   return column.linkedStatus;
 }
+
+/** Gabungkan kolom server dengan kolom lokal yang belum ada di server (mis. baru ditambah). */
+export function mergeKanbanColumns(
+  server: RoomKanbanColumnDTO[],
+  local: RoomKanbanColumnDTO[],
+): RoomKanbanColumnDTO[] {
+  const serverIds = new Set(server.map((c) => c.id));
+  const extras = local.filter((c) => !serverIds.has(c.id));
+  return extras.length === 0 ? server : [...server, ...extras];
+}
