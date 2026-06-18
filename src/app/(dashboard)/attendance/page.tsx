@@ -41,7 +41,7 @@ export default async function AttendancePage() {
   const todayRows = historyRows.filter((r) => r.date === today);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <AttendanceClient
         hasFace={faceCount > 0}
         userName={session.user.name?.trim() || session.user.email || "Anda"}

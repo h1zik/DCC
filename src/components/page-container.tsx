@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 
-/** Lebar konten maksimum (selaras dengan shell dashboard). */
-export const PAGE_MAX_WIDTH_CLASS = "max-w-[var(--page-max-width)]";
+/** Lebar konten maksimum (selaras dengan shell dashboard). Kosong = tanpa cap, mengisi lebar penuh. */
+export const PAGE_MAX_WIDTH_CLASS = "";
 
 /** Padding area konten utama (selaras dengan shell dashboard). */
-export const PAGE_PADDING_CLASS = "p-6";
+export const PAGE_PADDING_CLASS = "p-4";
 
 /** Jarak vertikal antar blok di satu halaman. */
 export const PAGE_GAP_CLASS = "gap-6";

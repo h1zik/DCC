@@ -35,7 +35,7 @@ export function DashboardShell({
             >
               <div
                 className={cn(
-                  "mx-auto flex w-full min-w-0 flex-1 flex-col",
+                  "flex w-full min-w-0 flex-1 flex-col",
                   PAGE_MAX_WIDTH_CLASS,
                   PAGE_GAP_CLASS,
                   "has-[_[data-chat-shell]]:mx-0 has-[_[data-chat-shell]]:max-w-none has-[_[data-chat-shell]]:min-h-0 has-[_[data-chat-shell]]:flex-1 has-[_[data-chat-shell]]:overflow-hidden has-[_[data-chat-shell]]:gap-0",

@@ -59,7 +59,6 @@ import { cn } from "@/lib/utils";
 
 const navCeo = [
   { href: "/", label: "Executive Overview", icon: LayoutDashboard },
-  { href: "/agent", label: "AI Assistant", icon: Sparkles },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },

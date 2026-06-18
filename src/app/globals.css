@@ -56,8 +56,8 @@
 
 :root:not([data-theme]) {
   /* Layout halaman dashboard (selaras dengan DashboardShell) */
-  --page-max-width: 87.5rem; /* 1400px */
-  --page-padding: 1.5rem; /* 24px — setara p-6 */
+  --page-max-width: none; /* tanpa cap — konten mengisi lebar penuh */
+  --page-padding: 1rem; /* 16px — setara p-4 */
   /* Latar utama putih murni, teks hitam */
   --background: oklch(1 0 0);
   --foreground: oklch(0.1 0 0);
@@ -141,8 +141,8 @@
     @apply font-sans;
     /* Layout & radius — harus ada di semua tema (termasuk data-theme kustom) */
     --radius: 0.625rem;
-    --page-max-width: 87.5rem;
-    --page-padding: 1.5rem;
+    --page-max-width: none;
+    --page-padding: 1rem;
   }
 }
 
