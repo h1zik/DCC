@@ -18,7 +18,7 @@ export default async function AttendanceRekapPage() {
   const { dashboard, registrations } = await getAttendanceAdminData();
 
   return (
-    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <RekapClient dashboard={dashboard} registrations={registrations} />
     </div>
   );

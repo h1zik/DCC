@@ -6,12 +6,14 @@ import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import {
   AlertTriangle,
+  ArrowUpRight,
   Boxes,
   Clock,
   Factory,
   ListChecks,
   Package,
   Rocket,
+  TrendingUp,
 } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -34,8 +36,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ExecutiveKpiCard } from "./executive-kpi-card";
 
 type SalesLogRow = {
   id: string;
@@ -109,10 +111,6 @@ const getExecutiveDashboardData = unstable_cache(
         orderBy: { updatedAt: "desc" },
         take: 12,
       }),
-      // Jendela 90 hari terakhir — dashboard executive hanya menampilkan
-      // ringkasan brand yang relevan untuk operasional saat ini. Tanpa batas
-      // waktu, query ini menarik SELURUH histori `OUT` setiap kali cache
-      // executive (revalidate 60s) hangus.
       prisma.stockLog.findMany({
         where: {
           type: StockLogType.OUT,
@@ -208,6 +206,10 @@ const getExecutiveDashboardData = unstable_cache(
     const outgoingByBrandRows = Object.entries(pcsByBrand).sort(
       (a, b) => b[1].total - a[1].total,
     );
+    const totalOutgoingUnits = outgoingByBrandRows.reduce(
+      (acc, [, v]) => acc + v.total,
+      0,
+    );
 
     return {
       activeSkus,
@@ -221,6 +223,7 @@ const getExecutiveDashboardData = unstable_cache(
       projectMilestoneRows,
       avgMilestoneProgress,
       outgoingByBrandRows,
+      totalOutgoingUnits,
     };
   },
   ["executive-dashboard-metrics"],
@@ -243,151 +246,221 @@ export default async function ExecutiveDashboardPage() {
     projectMilestoneRows,
     avgMilestoneProgress,
     outgoingByBrandRows,
+    totalOutgoingUnits,
   } = await getExecutiveDashboardData();
 
+  const maxBrandTotal = outgoingByBrandRows.reduce(
+    (m, [, v]) => Math.max(m, v.total),
+    0,
+  );
+  const attentionPct =
+    activeSkus > 0 ? Math.round((attentionCount / activeSkus) * 100) : 0;
+  const todayLabel = format(new Date(), "EEEE, d MMMM yyyy", { locale: idLocale });
+
   return (
-    <div className="flex w-full flex-col gap-8">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Executive overview
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          PT Dominatus Clean Solution — visibilitas stok, merek, dan jalur
-          produksi.
-        </p>
-      </div>
-
-      {critical.length > 0 ? (
-        <Alert variant="destructive" className="border-destructive/60">
-          <AlertTriangle className="size-4" />
-          <AlertTitle>Prioritas mendesak</AlertTitle>
-          <AlertDescription>
-            {critical.length} SKU memerlukan tindakan reorder segera.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">SKU aktif</CardTitle>
-            <Package className="text-muted-foreground size-4" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">{activeSkus}</p>
-            <CardDescription>Total produk terdaftar</CardDescription>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Supplier aktif</CardTitle>
-            <Factory className="text-muted-foreground size-4" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {activeSuppliers}
+    <div className="flex w-full flex-col gap-6">
+      {/* Hero header — compact, scannable */}
+      <header className="flex flex-col gap-3 border-b border-border/70 pb-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+              {todayLabel}
             </p>
-            <CardDescription>Vendor / maklon terdaftar</CardDescription>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Stok perlu perhatian</CardTitle>
-            <Boxes className="text-muted-foreground size-4" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">{attentionCount}</p>
-            <CardDescription>Low atau critical vs ambang minimum</CardDescription>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Tugas overdue</CardTitle>
-            <Clock className="text-muted-foreground size-4" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">{overdueTasks}</p>
-            <CardDescription>Seluruh proyek (Tahap 2)</CardDescription>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Siap peluncuran</CardTitle>
-            <Rocket className="text-muted-foreground size-4" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {readyLaunchProjects}
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              Executive overview
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              PT Dominatus Clean Solution — visibilitas stok, merek, dan jalur
+              produksi.
             </p>
-            <CardDescription>Semua milestone selesai</CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="border-accent/40">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Menunggu persetujuan Anda
-            </CardTitle>
-            <ListChecks className="text-muted-foreground size-4" />
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-3xl font-semibold tabular-nums">
-              {pendingApprovals}
-            </p>
-            <p className="text-muted-foreground text-xs">
-              Termasuk pengajuan pindah tahap pipeline proyek.
-            </p>
-            <Link
-              href="/approvals"
-              className="text-accent-foreground text-sm font-medium underline-offset-4 hover:underline"
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              nativeButton={false}
+              render={<Link href="/approvals" />}
+              variant="outline"
+              size="sm"
+              className="gap-2"
             >
-              Buka halaman persetujuan
+              <ListChecks className="size-4" />
+              Persetujuan
+              {pendingApprovals > 0 ? (
+                <Badge variant="destructive" className="ml-0.5">
+                  {pendingApprovals}
+                </Badge>
+              ) : null}
+            </Button>
+            <Button
+              nativeButton={false}
+              render={<Link href="/inventory" />}
+              size="sm"
+              className="gap-2"
+            >
+              Kelola stok
+              <ArrowUpRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Critical alert — inline banner, dismissible-looking but persistent */}
+        {critical.length > 0 ? (
+          <div className="flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+              <AlertTriangle className="size-4.5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-destructive">
+                {critical.length} SKU memerlukan reorder segera
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                Stok nol atau di bawah ambang kritis — koordinasikan dengan staf
+                logistik.
+              </p>
+            </div>
+            <Link
+              href="/inventory"
+              className="shrink-0 text-xs font-semibold text-destructive underline-offset-4 hover:underline"
+            >
+              Lihat detail
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        ) : null}
+      </header>
+
+      {/* KPI grid — 6 metrics in a dense, scannable row */}
+      <section
+        className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6"
+        aria-label="Metrik utama"
+      >
+        <ExecutiveKpiCard
+          label="SKU aktif"
+          value={activeSkus}
+          description="Total produk terdaftar"
+          icon={<Package className="size-4" />}
+          tone="neutral"
+        />
+        <ExecutiveKpiCard
+          label="Supplier aktif"
+          value={activeSuppliers}
+          description="Vendor / maklon terdaftar"
+          icon={<Factory className="size-4" />}
+          tone="neutral"
+        />
+        <ExecutiveKpiCard
+          label="Stok perlu perhatian"
+          value={attentionCount}
+          description={`${attentionPct}% dari total SKU`}
+          icon={<Boxes className="size-4" />}
+          tone={attentionCount > 0 ? "warning" : "success"}
+          indicator={attentionPct}
+        />
+        <ExecutiveKpiCard
+          label="Tugas overdue"
+          value={overdueTasks}
+          description="Seluruh proyek (Tahap 2)"
+          icon={<Clock className="size-4" />}
+          tone={overdueTasks > 0 ? "danger" : "success"}
+          indicator={overdueTasks > 0 ? 100 : 0}
+        />
+        <ExecutiveKpiCard
+          label="Siap peluncuran"
+          value={readyLaunchProjects}
+          description="Semua milestone selesai"
+          icon={<Rocket className="size-4" />}
+          tone={readyLaunchProjects > 0 ? "accent" : "neutral"}
+        />
+        <ExecutiveKpiCard
+          label="Menunggu Anda"
+          value={pendingApprovals}
+          description="Pengajuan pindah tahap pipeline"
+          icon={<ListChecks className="size-4" />}
+          tone={pendingApprovals > 0 ? "accent" : "neutral"}
+          href="/approvals"
+          ctaLabel="Buka persetujuan"
+          indicator={pendingApprovals > 0 ? 100 : 0}
+        />
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      {/* Operational row — outgoing per brand + PO forecast */}
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Barang keluar per brand</CardTitle>
-            <CardDescription>
-              Akumulasi PCS stok keluar, dipisah antara penjualan dan sampling.
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="size-4 text-accent" />
+                Barang keluar per brand
+              </CardTitle>
+              <CardDescription>
+                Akumulasi PCS stok keluar 90 hari terakhir — penjualan vs
+                sampling.
+              </CardDescription>
+            </div>
+            {totalOutgoingUnits > 0 ? (
+              <span className="shrink-0 rounded-lg bg-muted/60 px-2.5 py-1 font-mono text-xs tabular-nums text-muted-foreground">
+                {totalOutgoingUnits.toLocaleString("id-ID")} PCS total
+              </span>
+            ) : null}
           </CardHeader>
           <CardContent>
             {outgoingByBrandRows.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="py-8 text-center text-sm text-muted-foreground">
                 Belum ada transaksi barang keluar.
               </p>
             ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {outgoingByBrandRows.map(([brand, value]) => (
-                  <div
-                    key={brand}
-                    className="bg-muted/40 rounded-lg border border-border px-3 py-2"
-                  >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{brand}</span>
-                      <span className="font-mono text-sm tabular-nums">
-                        {value.total.toLocaleString("id-ID")} PCS
-                      </span>
-                    </div>
-                    <p className="text-muted-foreground text-xs">
-                      Penjualan:{" "}
-                      <span className="font-mono tabular-nums">
-                        {value.sales.toLocaleString("id-ID")} PCS
-                      </span>{" "}
-                      · Sampling:{" "}
-                      <span className="font-mono tabular-nums">
-                        {value.sampling.toLocaleString("id-ID")} PCS
-                      </span>
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <ul className="flex flex-col gap-2.5">
+                {outgoingByBrandRows.map(([brand, value]) => {
+                  const sharePct =
+                    maxBrandTotal > 0
+                      ? Math.round((value.total / maxBrandTotal) * 100)
+                      : 0;
+                  const salesPct =
+                    value.total > 0
+                      ? Math.round((value.sales / value.total) * 100)
+                      : 0;
+                  return (
+                    <li key={brand} className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                          {brand}
+                        </span>
+                        <span className="shrink-0 font-mono text-sm tabular-nums text-foreground">
+                          {value.total.toLocaleString("id-ID")} PCS
+                        </span>
+                      </div>
+                      <div
+                        className="relative h-2 w-full overflow-hidden rounded-full bg-muted/50"
+                        role="progressbar"
+                        aria-valuenow={sharePct}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full bg-accent/80"
+                          style={{ width: `${sharePct}%` }}
+                        />
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full bg-accent-foreground/15"
+                          style={{ width: `${(sharePct * salesPct) / 100}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                        <span>
+                          Penjualan{" "}
+                          <span className="font-mono tabular-nums text-foreground/80">
+                            {value.sales.toLocaleString("id-ID")}
+                          </span>
+                        </span>
+                        <span>
+                          Sampling{" "}
+                          <span className="font-mono tabular-nums text-foreground/80">
+                            {value.sampling.toLocaleString("id-ID")}
+                          </span>
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </CardContent>
         </Card>
@@ -396,30 +469,42 @@ export default async function ExecutiveDashboardPage() {
           <CardHeader>
             <CardTitle>SKU perlu PO (forecast)</CardTitle>
             <CardDescription>
-              Berdasarkan burn rate penjualan 90 hari + lead time vendor.
+              Burn rate penjualan 90 hari + lead time vendor.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {forecastPoSoon.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Tidak ada SKU yang perlu PO minggu ini menurut forecast.
-              </p>
+              <div className="flex h-[220px] flex-col items-center justify-center gap-2 text-center">
+                <span className="flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Package className="size-5" />
+                </span>
+                <p className="text-sm font-medium text-foreground">
+                  Stok aman minggu ini
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tidak ada SKU yang perlu PO menurut forecast.
+                </p>
+              </div>
             ) : (
               <ScrollArea className="h-[220px] pr-3">
-                <ul className="flex flex-col gap-3">
+                <ul className="flex flex-col gap-2.5">
                   {forecastPoSoon.map((f) => (
                     <li
                       key={f.productId}
-                      className="bg-card flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5"
                     >
-                      <div>
-                        <p className="font-medium">{f.name}</p>
-                        <p className="text-muted-foreground text-xs">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {f.name}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {f.brandName} · stok {f.currentStock} · burn{" "}
-                          {f.avgDailyDemand.toFixed(1)}/hari
+                          <span className="font-mono tabular-nums">
+                            {f.avgDailyDemand.toFixed(1)}/hari
+                          </span>
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="flex shrink-0 flex-col items-end gap-1">
                         <Badge
                           variant={
                             f.status === "ORDER_NOW" ? "destructive" : "secondary"
@@ -428,9 +513,11 @@ export default async function ExecutiveDashboardPage() {
                           {reorderStatusLabel(f.status)}
                         </Badge>
                         {f.orderByDate ? (
-                          <p className="text-muted-foreground mt-1 text-xs">
+                          <p className="text-xs text-muted-foreground">
                             Order sebelum{" "}
-                            {format(f.orderByDate, "d MMM", { locale: idLocale })}
+                            <span className="font-medium text-foreground">
+                              {format(f.orderByDate, "d MMM", { locale: idLocale })}
+                            </span>
                           </p>
                         ) : null}
                       </div>
@@ -441,40 +528,57 @@ export default async function ExecutiveDashboardPage() {
             )}
           </CardContent>
         </Card>
+      </section>
 
+      {/* Pipeline + critical stock row */}
+      <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
         <Card className="min-h-[280px]">
           <CardHeader>
-            <CardTitle>Stok kritis</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-destructive" />
+              Stok kritis
+            </CardTitle>
             <CardDescription>
               Reorder segera — stok nol atau di bawah ambang kritis.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {critical.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Tidak ada SKU kritis saat ini.
-              </p>
+              <div className="flex h-[220px] flex-col items-center justify-center gap-2 text-center">
+                <span className="flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Boxes className="size-5" />
+                </span>
+                <p className="text-sm font-medium text-foreground">
+                  Tidak ada SKU kritis
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Semua produk di atas ambang kritis.
+                </p>
+              </div>
             ) : (
               <ScrollArea className="h-[220px] pr-3">
-                <ul className="flex flex-col gap-3">
+                <ul className="flex flex-col gap-2.5">
                   {critical.map((p) => (
                     <li
                       key={p.id}
-                      className="bg-card flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5"
                     >
-                      <div>
-                        <p className="font-medium">{p.name}</p>
-                        <p className="text-muted-foreground text-xs">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {p.name}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {p.brand.name} · SKU {p.sku}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="destructive">
-                          Stok {p.currentStock}
-                        </Badge>
-                        <span className="text-muted-foreground max-w-[140px] text-right text-xs">
-                          Koordinasi reorder dengan staf logistik
-                        </span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="destructive">Stok {p.currentStock}</Badge>
+                        <Link
+                          href="/inventory"
+                          className="text-xs font-medium text-destructive underline-offset-4 hover:underline"
+                        >
+                          Reorder
+                        </Link>
                       </div>
                     </li>
                   ))}
@@ -489,8 +593,11 @@ export default async function ExecutiveDashboardPage() {
             <div>
               <CardTitle>Progress milestone proyek</CardTitle>
               <CardDescription>
-                Rata-rata {avgMilestoneProgress}% — pantau detail di Pipeline
-                proyek.
+                Rata-rata{" "}
+                <span className="font-semibold text-foreground">
+                  {avgMilestoneProgress}%
+                </span>{" "}
+                — pantau detail di Pipeline proyek.
               </CardDescription>
             </div>
             <Button
@@ -504,35 +611,44 @@ export default async function ExecutiveDashboardPage() {
           </CardHeader>
           <CardContent>
             {projectMilestoneRows.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <p className="py-8 text-center text-sm text-muted-foreground">
                 Belum ada proyek ber-brand.
               </p>
             ) : (
-              <ul className="space-y-3">
-                {projectMilestoneRows.map((p) => (
-                  <li key={p.id}>
-                    <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                      <span className="min-w-0 truncate font-medium">
-                        {p.name}
-                        <span className="text-muted-foreground font-normal">
-                          {" "}
-                          · {p.brandName}
+              <ul className="space-y-3.5">
+                {projectMilestoneRows.map((p) => {
+                  const done = p.pct >= 100;
+                  return (
+                    <li key={p.id}>
+                      <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate font-medium text-foreground">
+                          {p.name}
+                          <span className="font-normal text-muted-foreground">
+                            {" · "}
+                            {p.brandName}
+                          </span>
                         </span>
-                      </span>
-                      <span
+                        <span
+                          className={cn(
+                            "shrink-0 font-semibold tabular-nums",
+                            done
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-foreground",
+                          )}
+                        >
+                          {p.pct}%
+                        </span>
+                      </div>
+                      <Progress
+                        value={p.pct}
                         className={cn(
-                          "shrink-0 font-semibold tabular-nums",
-                          p.pct >= 100
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-foreground",
+                          "gap-0",
+                          done && "[&_[data-slot=progress-indicator]]:bg-emerald-500",
                         )}
-                      >
-                        {p.pct}%
-                      </span>
-                    </div>
-                    <Progress value={p.pct} className="h-1.5" />
-                  </li>
-                ))}
+                      />
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>
