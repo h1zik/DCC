@@ -50,6 +50,11 @@ export function isResearchHubRoute(pathname: string): boolean {
   );
 }
 
+/** Modul Brand & Creative Hub — Brand Manager (Project Manager). */
+export function isBrandHubRoute(pathname: string): boolean {
+  return pathname === "/brand-hub" || pathname.startsWith("/brand-hub/");
+}
+
 /** Research Hub + studio workspace — Market Analyst. */
 export function isMarketAnalystAppRoute(pathname: string): boolean {
   return isResearchHubRoute(pathname) || isStudioWorkspaceRoute(pathname);
@@ -83,6 +88,7 @@ export function isWorkspaceDashboardRoute(pathname: string): boolean {
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isWorkspaceDashboardRoute(pathname) ||
+    isBrandHubRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||

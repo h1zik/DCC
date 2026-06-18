@@ -30,9 +30,11 @@ const PHASE_ORDER: TrendPhase[] = [
 export function TrendPhaseBoard({
   items,
   digestId,
+  basePath = "/research-hub/trend-radar",
 }: {
   items: TrendBoardItem[];
   digestId: string;
+  basePath?: string;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -53,7 +55,7 @@ export function TrendPhaseBoard({
                 {phaseItems.map((item) => (
                   <li key={item.id}>
                     <Link
-                      href={`/research-hub/trend-radar/${digestId}?item=${item.id}`}
+                      href={`${basePath}/${digestId}?item=${item.id}`}
                       className="hover:bg-background/60 block rounded-md px-2 py-1.5 text-sm transition-colors"
                     >
                       <span className="font-medium">{item.name}</span>

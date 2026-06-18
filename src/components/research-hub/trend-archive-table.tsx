@@ -41,7 +41,13 @@ function statusTone(status: TrendRadarStatus) {
   }
 }
 
-export function TrendArchiveTable({ digests }: { digests: TrendDigestRow[] }) {
+export function TrendArchiveTable({
+  digests,
+  basePath = "/research-hub/trend-radar",
+}: {
+  digests: TrendDigestRow[];
+  basePath?: string;
+}) {
   if (digests.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">Belum ada digest tren.</p>
@@ -65,7 +71,7 @@ export function TrendArchiveTable({ digests }: { digests: TrendDigestRow[] }) {
             <TableRow key={d.id}>
               <TableCell>
                 <Link
-                  href={`/research-hub/trend-radar/${d.id}`}
+                  href={`${basePath}/${d.id}`}
                   className="text-primary font-medium hover:underline"
                 >
                   {new Date(d.weekStart).toLocaleDateString("id-ID", {
