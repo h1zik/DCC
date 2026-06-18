@@ -2,6 +2,7 @@
 import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
@@ -35,7 +36,7 @@ import {
   type ProfileSticker,
 } from "@/lib/profile-appearance";
 import { cn } from "@/lib/utils";
-import { Camera, Link2, Palette, Shapes, Sparkles, Type, User, UserCircle2 } from "lucide-react";
+import { ArrowLeft, Camera, Link2, Palette, Shapes, Sparkles, Type, User, UserCircle2 } from "lucide-react";
 
 const QUICK_ACCENTS = [
   "#a5b4fc",
@@ -64,6 +65,7 @@ export function ProfileForm({
   initialSticker,
   initialAvatarFrame,
   profileSharePath,
+  viewProfileHref,
 }: {
   email: string;
   initialName: string;
@@ -77,6 +79,7 @@ export function ProfileForm({
   initialSticker: ProfileSticker | null;
   initialAvatarFrame: ProfileAvatarFrame;
   profileSharePath: string;
+  viewProfileHref?: string;
 }) {
   const router = useRouter();
   const { update } = useSession();
@@ -232,19 +235,34 @@ export function ProfileForm({
         style={{ ["--profile-accent" as string]: accent }}
       >
         <CardHeader className="gap-2">
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-flex size-8 items-center justify-center rounded-lg bg-[color:var(--profile-accent)]/15 text-[color:var(--profile-accent)]"
-              aria-hidden
-            >
-              <Sparkles className="size-4" />
-            </span>
-            <div>
-              <CardTitle className="text-base">Studio tampilan profil</CardTitle>
-              <CardDescription>
-                Atur tema, pola, aksen, frame, dan stiker — pratinjau langsung di samping.
-              </CardDescription>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-flex size-8 items-center justify-center rounded-lg bg-[color:var(--profile-accent)]/15 text-[color:var(--profile-accent)]"
+                aria-hidden
+              >
+                <Sparkles className="size-4" />
+              </span>
+              <div>
+                <CardTitle className="text-base">Studio tampilan profil</CardTitle>
+                <CardDescription>
+                  Atur tema, pola, aksen, frame, dan stiker — pratinjau langsung di samping.
+                </CardDescription>
+              </div>
             </div>
+            {viewProfileHref ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                nativeButton={false}
+                render={<Link href={viewProfileHref} />}
+              >
+                <ArrowLeft className="size-4" />
+                Lihat profil
+              </Button>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="grid gap-6">
