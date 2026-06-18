@@ -294,7 +294,7 @@ export function AppSidebar() {
                       render={<Link href={item.href} />}
                     >
                       <item.icon />
-                      <SidebarNavLabel beta={item.label === "AI Assistant"}>
+                      <SidebarNavLabel>
                         {item.label}
                       </SidebarNavLabel>
                     </SidebarMenuButton>
