@@ -38,6 +38,7 @@ import { actionErrorMessage } from "@/lib/action-error-message";
 import { sortTasksForKanbanColumn } from "@/lib/kanban-sort";
 import { cn } from "@/lib/utils";
 import {
+  mergeKanbanColumns,
   resolveColumnIdForTask,
   statusForColumn,
   type RoomKanbanColumnDTO,
@@ -70,6 +71,8 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   Archive,
   CalendarDays,
@@ -1155,14 +1158,18 @@ function KanbanColumnShell({
                 </DropdownMenuItem>
                 {canMoveUp ? (
                   <DropdownMenuItem onClick={() => onMoveColumn?.(column.id, "up")}>
-                    <ArrowUp className="size-3.5" />
-                    Geser kiri
+                    <ArrowLeft className="size-3.5 hidden lg:block" />
+                    <ArrowUp className="size-3.5 lg:hidden" />
+                    <span className="hidden lg:inline">Geser kiri</span>
+                    <span className="lg:hidden">Geser atas</span>
                   </DropdownMenuItem>
                 ) : null}
                 {canMoveDown ? (
                   <DropdownMenuItem onClick={() => onMoveColumn?.(column.id, "down")}>
-                    <ArrowDown className="size-3.5" />
-                    Geser kanan
+                    <ArrowRight className="size-3.5 hidden lg:block" />
+                    <ArrowDown className="size-3.5 lg:hidden" />
+                    <span className="hidden lg:inline">Geser kanan</span>
+                    <span className="lg:hidden">Geser bawah</span>
                   </DropdownMenuItem>
                 ) : null}
                 {!isCore ? (
@@ -1201,6 +1208,7 @@ export function TasksKanban({
   processKey = "market-research",
   simpleHub = false,
   onColumnsChange,
+  onKanbanColumnAdded,
   addColumnOpen: addColumnOpenProp,
   onAddColumnOpenChange,
 }: {
@@ -1219,6 +1227,7 @@ export function TasksKanban({
   processKey?: string;
   simpleHub?: boolean;
   onColumnsChange?: () => void;
+  onKanbanColumnAdded?: (column: RoomKanbanColumnDTO) => void;
   addColumnOpen?: boolean;
   onAddColumnOpenChange?: (open: boolean) => void;
 }) {
@@ -1248,7 +1257,7 @@ export function TasksKanban({
   );
 
   useEffect(() => {
-    setBoardColumns(columns);
+    setBoardColumns((prev) => mergeKanbanColumns(columns, prev));
   }, [columns]);
 
   useEffect(() => {
@@ -1412,17 +1421,16 @@ export function TasksKanban({
             title: newColumnTitle.trim(),
             workflowBucket: TaskStatus.IN_PROGRESS,
           });
-      setBoardColumns((prev) => [
-        ...prev,
-        {
-          id: col.id,
-          kind: "CUSTOM",
-          coreRole: null,
-          linkedStatus: col.linkedStatus,
-          title: col.title,
-          sortOrder: col.sortOrder,
-        },
-      ]);
+      const added: RoomKanbanColumnDTO = {
+        id: col.id,
+        kind: "CUSTOM",
+        coreRole: null,
+        linkedStatus: col.linkedStatus,
+        title: col.title,
+        sortOrder: col.sortOrder,
+      };
+      setBoardColumns((prev) => [...prev, added]);
+      onKanbanColumnAdded?.(added);
       setNewColumnTitle("");
       setAddColumnOpen(false);
       onColumnsChange?.();
@@ -1477,6 +1485,9 @@ export function TasksKanban({
     if (!over) return;
     const taskId = String(active.id);
     const overId = String(over.id);
+    const sourceTask = tasks.find((t) => t.id === taskId);
+    if (!sourceTask) return;
+
     const task = viewTasks.find((t) => t.id === taskId);
     if (!task || !task.kanbanColumnId) return;
 
@@ -1484,12 +1495,12 @@ export function TasksKanban({
     if (!overColumnId) return;
 
     const previousColumnId =
-      tasks.find((t) => t.id === taskId)?.kanbanColumnId ??
-      resolveColumnIdForTask(task, boardColumns) ??
-      task.kanbanColumnId;
-    const previousStatus = tasks.find((t) => t.id === taskId)?.status ?? task.status;
+      sourceTask.kanbanColumnId ??
+      resolveColumnIdForTask(sourceTask, boardColumns);
+    if (!previousColumnId) return;
+    const previousStatus = sourceTask.status;
 
-    if (task.kanbanColumnId === overColumnId) {
+    if (previousColumnId === overColumnId) {
       const colTasks = sortTasksForKanbanColumn(viewTasks, overColumnId);
       const oldIndex = colTasks.findIndex((t) => t.id === taskId);
       const newIndex = columnIdSet.has(overId)

@@ -56,6 +56,7 @@ import {
 } from "@/lib/room-process-phase";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import {
+  mergeKanbanColumns,
   type RoomKanbanColumnDTO,
   resolveColumnIdForTask,
 } from "@/lib/room-kanban-columns";
@@ -108,6 +109,23 @@ function priorityLabel(p: TaskPriority) {
 
 function projectSelectLabel(p: Project & { brand: Brand | null }) {
   return p.brand ? `${p.brand.name} — ${p.name}` : p.name;
+}
+
+function fallbackKanbanColumns(): RoomKanbanColumnDTO[] {
+  return DEFAULT_KANBAN_STATUSES.map((linkedStatus, sortOrder) => ({
+    id: `fallback-${linkedStatus}`,
+    kind: "CORE" as const,
+    coreRole: linkedStatus,
+    linkedStatus,
+    title: taskStatusLabel(linkedStatus),
+    sortOrder,
+  }));
+}
+
+function kanbanColumnsFromProp(
+  columns?: RoomKanbanColumnDTO[],
+): RoomKanbanColumnDTO[] {
+  return columns?.length ? columns : fallbackKanbanColumns();
 }
 
 function roomTasksPath(opts: {
@@ -175,6 +193,9 @@ export function TasksWorkspace({
   const [detailTask, setDetailTask] = useState<TaskRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [kanbanAddColumnOpen, setKanbanAddColumnOpen] = useState(false);
+  const [localKanbanColumns, setLocalKanbanColumns] = useState<RoomKanbanColumnDTO[]>(
+    () => kanbanColumnsFromProp(kanbanColumns),
+  );
   const [activeView, setActiveView] = useState<TaskViewTab>(
     taskWorkspaceViewToTab(defaultTaskView),
   );
@@ -207,6 +228,12 @@ export function TasksWorkspace({
   useEffect(() => {
     setAvailableTags(roomTaskTags);
   }, [roomTaskTags]);
+
+  useEffect(() => {
+    setLocalKanbanColumns((prev) =>
+      mergeKanbanColumns(kanbanColumnsFromProp(kanbanColumns), prev),
+    );
+  }, [kanbanColumns]);
 
   const detailId = detailTask?.id;
   useEffect(() => {
@@ -402,17 +429,7 @@ export function TasksWorkspace({
     [detailTask?.id, localTasks],
   );
 
-  const resolvedKanbanColumns = useMemo((): RoomKanbanColumnDTO[] => {
-    if (kanbanColumns?.length) return kanbanColumns;
-    return DEFAULT_KANBAN_STATUSES.map((linkedStatus, sortOrder) => ({
-      id: `fallback-${linkedStatus}`,
-      kind: "CORE" as const,
-      coreRole: linkedStatus,
-      linkedStatus,
-      title: taskStatusLabel(linkedStatus),
-      sortOrder,
-    }));
-  }, [kanbanColumns]);
+  const resolvedKanbanColumns = localKanbanColumns;
 
   const boardPath =
     roomId != null
@@ -701,6 +718,12 @@ export function TasksWorkspace({
             }
             simpleHub={simpleHub}
             onColumnsChange={() => router.refresh()}
+            onKanbanColumnAdded={(col) => {
+              setLocalKanbanColumns((prev) => {
+                if (prev.some((c) => c.id === col.id)) return prev;
+                return [...prev, col];
+              });
+            }}
             addColumnOpen={kanbanAddColumnOpen}
             onAddColumnOpenChange={setKanbanAddColumnOpen}
             showArchived={showArchived}
