@@ -54,6 +54,11 @@ export function isProjectManager(role: UserRole | undefined): boolean {
   return role === UserRole.PROJECT_MANAGER;
 }
 
+/** Brand Manager — Project Manager yang mengelola Brand & Creative Research Hub. */
+export function isBrandManager(role: UserRole | undefined): boolean {
+  return role === UserRole.PROJECT_MANAGER;
+}
+
 export function isAdministrator(role: UserRole | undefined): boolean {
   return role === UserRole.ADMINISTRATOR;
 }

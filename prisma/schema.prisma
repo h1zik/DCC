@@ -353,6 +353,11 @@ model User {
   uspGapAnalysesCreated     UspGapAnalysis[]     @relation("UspGapAnalysisCreator")
   productConceptsCreated    ProductConcept[]     @relation("ProductConceptCreator")
   researchReportsCreated    ResearchReport[]     @relation("ResearchReportCreator")
+  brandCompetitorsCreated   BrandCompetitor[]    @relation("BrandCompetitorCreator")
+  brandReviewSourcesCreated BrandReviewSource[]  @relation("BrandReviewSourceCreator")
+  brandKeywordQueriesCreated BrandKeywordQuery[] @relation("BrandKeywordQueryCreator")
+  brandSocialMonitorsCreated BrandSocialMonitor[] @relation("BrandSocialMonitorCreator")
+  brandUspAnalysesCreated   BrandUspAnalysis[]   @relation("BrandUspAnalysisCreator")
   stockLogsCreated          StockLog[]           @relation("StockLogCreator")
 
   @@index([customRoleId])
@@ -426,6 +431,12 @@ model Brand {
   reviewIntelSources   ReviewIntelSource[]
   uspGapAnalyses       UspGapAnalysis[]
   productConcepts      ProductConcept[]
+  brandCompetitors     BrandCompetitor[]
+  brandReviewSources   BrandReviewSource[]
+  brandTrendDigests    BrandTrendDigest[]
+  brandKeywordQueries  BrandKeywordQuery[]
+  brandSocialMonitors  BrandSocialMonitor[]
+  brandUspAnalyses     BrandUspAnalysis[]
 }
 
 /**
@@ -2620,4 +2631,371 @@ model ResearchRecommendation {
   @@index([status, createdAt])
   @@index([module, sourceId])
   @@index([owner])
+}
+
+// ─── Brand & Creative Research Hub ─────────────────────────────────────────
+// Paralel Research Hub untuk Brand Manager (role PROJECT_MANAGER).
+// Data terpisah dari Research Hub Market Analyst — semua model ber-prefix
+// `Brand` dan terikat ke `Brand` via `brandId`.
+
+model BrandCompetitor {
+  id          String              @id @default(cuid())
+  name        String
+  brand       String
+  category    String
+  marketplace ResearchMarketplace
+  shopUrl     String
+  isActive    Boolean             @default(true)
+  aiInsights  Json?
+  aiMeta      Json?
+  createdById String
+  createdBy   User                @relation("BrandCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  ownerBrandId String?
+  ownerBrand   Brand?             @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  skus        BrandCompetitorSku[]
+  snapshots   BrandCompetitorSnapshot[]
+  alerts      BrandCompetitorAlert[]
+
+  @@index([createdById])
+  @@index([isActive])
+  @@index([ownerBrandId])
+}
+
+model BrandCompetitorSku {
+  id           String               @id @default(cuid())
+  competitorId String
+  competitor   BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  name         String
+  productUrl   String
+  externalId   String?
+  currentPrice Float?
+  rating       Float?
+  reviewCount  Int                  @default(0)
+  firstSeenAt  DateTime             @default(now())
+  lastSeenAt   DateTime             @default(now())
+  snapshots    BrandCompetitorSnapshot[]
+
+  @@unique([competitorId, externalId])
+  @@index([competitorId])
+}
+
+model BrandCompetitorSnapshot {
+  id           String               @id @default(cuid())
+  competitorId String
+  competitor   BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  skuId        String?
+  sku          BrandCompetitorSku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
+  price        Float?
+  rating       Float?
+  reviewCount  Int?
+  hasPromo     Boolean              @default(false)
+  promoText    String?
+  categoryRank Int?
+  capturedAt   DateTime             @default(now())
+
+  @@index([competitorId, capturedAt])
+  @@index([skuId])
+}
+
+model BrandCompetitorAlert {
+  id           String               @id @default(cuid())
+  competitorId String
+  competitor   BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  type         CompetitorAlertType
+  message      String
+  severity     String               @default("info")
+  metadata     Json?
+  isRead       Boolean              @default(false)
+  createdAt    DateTime             @default(now())
+
+  @@index([competitorId, isRead])
+  @@index([createdAt])
+}
+
+model BrandReviewSource {
+  id                   String                  @id @default(cuid())
+  productName          String
+  competitorBrand      String
+  marketplace          ResearchMarketplace
+  productUrl           String
+  status               ReviewIntelSourceStatus @default(PENDING)
+  reviewCount          Int                     @default(0)
+  totalReviewsReported Int?
+  reviewsAccessible    Int?
+  reviewsComplete      Boolean?
+  lastAnalyzedAt       DateTime?
+  errorMessage         String?
+  createdById          String
+  createdBy            User                    @relation("BrandReviewSourceCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  ownerBrandId         String?
+  ownerBrand           Brand?                  @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  reviews              BrandReviewItem[]
+  summary              BrandReviewSummary?
+
+  @@index([createdById])
+  @@index([status])
+  @@index([ownerBrandId])
+}
+
+model BrandReviewItem {
+  id         String             @id @default(cuid())
+  sourceId   String
+  source     BrandReviewSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId String?
+  author     String?
+  rating     Float?
+  text       String             @db.Text
+  reviewDate DateTime?
+  createdAt  DateTime           @default(now())
+  analysis   BrandReviewAnalysis?
+
+  @@unique([sourceId, externalId])
+  @@index([sourceId])
+}
+
+model BrandReviewAnalysis {
+  id                    String             @id @default(cuid())
+  reviewId              String             @unique
+  review                BrandReviewItem    @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  sentiment             ReviewSentiment
+  complaintThemes       String[]           @default([])
+  praiseThemes          String[]           @default([])
+  keywords              String[]           @default([])
+  complaintSeverity     Int?
+  demographicHints      Json?
+  pricePerception       String?
+  repeatPurchaseSignal  Boolean?
+  createdAt             DateTime           @default(now())
+
+  @@index([sentiment])
+}
+
+model BrandReviewSummary {
+  id              String             @id @default(cuid())
+  sourceId        String             @unique
+  source          BrandReviewSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  positivePct     Float              @default(0)
+  neutralPct      Float              @default(0)
+  negativePct     Float              @default(0)
+  topComplaints   Json               @default("[]")
+  topPraises      Json               @default("[]")
+  keywordCloud    Json               @default("[]")
+  timelineBuckets Json               @default("[]")
+  gapOpportunity  String?            @db.Text
+  aiActionPlan    Json?
+  severityByTheme Json               @default("[]")
+  demographics    Json               @default("{}")
+  aiMeta          Json?
+  updatedAt       DateTime           @updatedAt
+}
+
+model BrandTrendDigest {
+  id           String           @id @default(cuid())
+  weekStart    DateTime
+  weekEnd      DateTime
+  status       TrendRadarStatus @default(PENDING)
+  narrative    String?          @db.Text
+  aiActionPlan Json?
+  aiMeta       Json?
+  isGlobal     Boolean          @default(false)
+  ownerBrandId String?
+  ownerBrand   Brand?           @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  sourceConfig Json?
+  errorMessage String?
+  generatedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  items        BrandTrendSignal[]
+
+  @@index([status])
+  @@index([isGlobal, weekStart])
+  @@index([ownerBrandId])
+}
+
+model BrandTrendSignal {
+  id               String           @id @default(cuid())
+  digestId         String
+  digest           BrandTrendDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+  name             String
+  dimension        TrendDimension
+  phase            TrendPhase
+  score            Float?
+  narrative        String?          @db.Text
+  isGlobalPipeline Boolean          @default(false)
+  sources          Json             @default("[]")
+  relatedProducts  Json             @default("[]")
+  createdAt        DateTime         @default(now())
+
+  @@index([digestId])
+  @@index([phase])
+}
+
+model BrandKeywordQuery {
+  id           String              @id @default(cuid())
+  category     String
+  seedKeyword  String?
+  marketplace  ResearchMarketplace?
+  status       KeywordIntelStatus  @default(PENDING)
+  errorMessage String?
+  createdById  String
+  createdBy    User                @relation("BrandKeywordQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  ownerBrandId String?
+  ownerBrand   Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  result       BrandKeywordResult?
+
+  @@index([createdById])
+  @@index([status])
+  @@index([ownerBrandId])
+}
+
+model BrandKeywordResult {
+  id                String             @id @default(cuid())
+  queryId           String             @unique
+  query             BrandKeywordQuery  @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  keywordMatrix     Json               @default("[]")
+  gapKeywords       Json               @default("[]")
+  namingSuggestions Json               @default("[]")
+  copyKeywords      Json               @default("{}")
+  seasonalCalendar  Json               @default("[]")
+  clusters          Json               @default("[]")
+  aiSummary         String?            @db.Text
+  aiActionPlan      Json?
+  aiMeta            Json?
+  updatedAt         DateTime           @updatedAt
+}
+
+model BrandSocialMonitor {
+  id           String                    @id @default(cuid())
+  name         String
+  keywords     String[]                  @default([])
+  platforms    SocialListeningPlatform[] @default([])
+  isActive     Boolean                   @default(true)
+  createdById  String
+  createdBy    User                      @relation("BrandSocialMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  ownerBrandId String?
+  ownerBrand   Brand?                    @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  batches      BrandSocialBatch[]
+
+  @@index([createdById])
+  @@index([isActive])
+  @@index([ownerBrandId])
+}
+
+model BrandSocialBatch {
+  id             String                 @id @default(cuid())
+  monitorId      String
+  monitor        BrandSocialMonitor     @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status         SocialListeningStatus  @default(PENDING)
+  errorMessage   String?
+  collectedAt    DateTime?
+  platformStatus Json                   @default("{}")
+  apifyRunIds    Json                   @default("{}")
+  createdAt      DateTime               @default(now())
+  mentions       BrandSocialMention[]
+  summary        BrandSocialSummary?
+
+  @@index([monitorId])
+  @@index([status])
+}
+
+model BrandSocialMention {
+  id             String                 @id @default(cuid())
+  batchId        String
+  batch          BrandSocialBatch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  platform       SocialListeningPlatform
+  externalId     String?
+  text           String                 @db.Text
+  author         String?
+  url            String?
+  likes          Int                    @default(0)
+  comments       Int                    @default(0)
+  views          Int                    @default(0)
+  classification SocialMentionClass     @default(NEUTRAL)
+  painPoint      String?
+  isViral        Boolean                @default(false)
+  postedAt       DateTime?
+  createdAt      DateTime               @default(now())
+
+  @@unique([batchId, platform, externalId])
+  @@index([batchId])
+  @@index([classification])
+}
+
+model BrandSocialSummary {
+  id                String             @id @default(cuid())
+  batchId           String             @unique
+  batch             BrandSocialBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  topPainPoints     Json               @default("[]")
+  topWishlist       Json               @default("[]")
+  influencers       Json               @default("[]")
+  viralContent      Json               @default("[]")
+  categoryBreakdown Json               @default("[]")
+  aiSummary         String?            @db.Text
+  aiActionPlan      Json?
+  aiMeta            Json?
+  sentimentTimeline Json               @default("[]")
+  updatedAt         DateTime           @updatedAt
+}
+
+model BrandUspAnalysis {
+  id             String        @id @default(cuid())
+  category       String
+  ownerBrandId   String?
+  ownerBrand     Brand?        @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  contextModules Json          @default("{}")
+  status         UspGapStatus  @default(PENDING)
+  errorMessage   String?
+  createdById    String
+  createdBy      User          @relation("BrandUspAnalysisCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  result         BrandUspResult?
+
+  @@index([createdById])
+  @@index([status])
+  @@index([ownerBrandId])
+}
+
+model BrandUspResult {
+  id                   String             @id @default(cuid())
+  analysisId           String             @unique
+  analysis             BrandUspAnalysis   @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  gapMatrix            Json               @default("[]")
+  claimAnalysis        Json               @default("{}")
+  positioningMap       Json               @default("{}")
+  uspCandidates        Json               @default("[]")
+  differentiationScore Float?
+  aiSummary            String?            @db.Text
+  aiActionPlan         Json?
+  categoryDecision     Json?
+  aiMeta               Json?
+  updatedAt            DateTime           @updatedAt
+}
+
+model BrandResearchScrapeJob {
+  id          String                  @id @default(cuid())
+  type        ResearchScrapeJobType
+  entityId    String
+  apifyRunId  String?
+  status      ResearchScrapeJobStatus @default(PENDING)
+  error       String?                 @db.Text
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime                @default(now())
+  stepLabel   String?
+  percent     Int                     @default(0)
+  currentStep Int?
+  totalSteps  Int?
+
+  @@index([status])
+  @@index([entityId, type])
+  @@index([apifyRunId])
 }

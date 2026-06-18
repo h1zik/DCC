@@ -8,13 +8,14 @@ import { UserRole } from "@prisma/client";
 import { getSession, signIn } from "next-auth/react";
 import {
   isAdministratorAppRoute,
+  isBrandHubRoute,
   isCeoAppRoute,
   isFinanceAppRoute,
   isLogisticsRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
 } from "@/lib/routes";
-import { isMarketAnalyst, isStudioOrProjectManager } from "@/lib/roles";
+import { isBrandManager, isMarketAnalyst, isStudioOrProjectManager } from "@/lib/roles";
 import { isMarketAnalystAppRoute } from "@/lib/routes";
 import { ArrowRight, Eye, EyeOff, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -94,6 +95,13 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
         isMarketAnalystAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
           : "/research-hub";
+    } else if (isBrandManager(userRole)) {
+      dest =
+        isBrandHubRoute(callbackUrl) ||
+        isStudioWorkspaceRoute(callbackUrl) ||
+        isProfileRoute(callbackUrl)
+          ? callbackUrl
+          : "/brand-hub";
     } else if (isStudioOrProjectManager(userRole)) {
       dest =
         isStudioWorkspaceRoute(callbackUrl) || isProfileRoute(callbackUrl)
