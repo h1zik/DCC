@@ -1290,7 +1290,7 @@ export function TasksKanban({
   const addColumnOpen = addColumnOpenProp ?? addColumnOpenInternal;
   const setAddColumnOpen = onAddColumnOpenChange ?? setAddColumnOpenInternal;
   const [newColumnTitle, setNewColumnTitle] = useState("");
-  const [newColumnColorHex, setNewColumnColorHex] = useState(
+  const [newColumnColorHex, setNewColumnColorHex] = useState<string>(
     DEFAULT_KANBAN_COLUMN_COLOR,
   );
   const [addColumnPending, setAddColumnPending] = useState(false);

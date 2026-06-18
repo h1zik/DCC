@@ -12,6 +12,7 @@ export function getUploadPublicDir(): string {
   const railwayMount = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
   if (railwayMount) {
     return path.resolve(
+      /* turbopackIgnore: true */
       path.join(/* turbopackIgnore: true */ railwayMount, "uploads"),
     );
   }
@@ -30,15 +31,15 @@ export function getUploadPublicDir(): string {
 export function absolutePathFromStoredPublicPath(publicPath: string): string | null {
   if (!publicPath.startsWith("/uploads/")) return null;
   const segs = publicPath.split("/").filter(Boolean).slice(1);
-  return path.join(getUploadPublicDir(), ...segs);
+  return path.join(/* turbopackIgnore: true */ getUploadPublicDir(), ...segs);
 }
 
 /** Resolve a safe absolute path for GET /uploads/... segments (no `..`). */
 export function resolveUploadFileFromUrlSegments(segments: string[]): string | null {
   if (!segments.length) return null;
   if (segments.some((s) => s === ".." || s === "")) return null;
-  const base = path.resolve(getUploadPublicDir());
-  const resolved = path.resolve(base, ...segments);
+  const base = path.resolve(/* turbopackIgnore: true */ getUploadPublicDir());
+  const resolved = path.resolve(/* turbopackIgnore: true */ base, ...segments);
   const rel = path.relative(base, resolved);
   if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
   return resolved;
