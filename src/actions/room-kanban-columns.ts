@@ -24,23 +24,50 @@ import { revalidatePath } from "next/cache";
 
 const titleSchema = z.string().trim().min(1).max(80);
 
-export async function updateRoomKanbanColumnTitle(input: {
+const colorHexSchema = z
+  .string()
+  .regex(/^#[0-9A-Fa-f]{6}$/, "Warna tidak valid.")
+  .optional()
+  .nullable();
+
+export async function updateRoomKanbanColumn(input: {
   columnId: string;
-  title: string;
+  title?: string;
+  colorHex?: string | null;
 }) {
   const session = await requireTasksRoomHubSession();
-  const title = titleSchema.parse(input.title);
+  if (input.title === undefined && input.colorHex === undefined) {
+    throw new Error("Tidak ada perubahan untuk disimpan.");
+  }
   const col = await prisma.roomKanbanColumn.findUniqueOrThrow({
     where: { id: input.columnId },
     select: { roomId: true },
   });
   await assertRoomHubManager(col.roomId, session.user.id);
+  const data: { title?: string; colorHex?: string | null } = {};
+  if (input.title !== undefined) {
+    data.title = titleSchema.parse(input.title);
+  }
+  if (input.colorHex !== undefined) {
+    data.colorHex =
+      input.colorHex === null ? null : colorHexSchema.parse(input.colorHex);
+  }
   await prisma.roomKanbanColumn.update({
     where: { id: input.columnId },
-    data: { title },
+    data,
   });
   revalidateTasksAndRoomHub();
   revalidatePath("/tasks");
+}
+
+export async function updateRoomKanbanColumnTitle(input: {
+  columnId: string;
+  title: string;
+}) {
+  return updateRoomKanbanColumn({
+    columnId: input.columnId,
+    title: input.title,
+  });
 }
 
 const reorderSchema = z.object({
@@ -83,6 +110,7 @@ const addCustomSchema = z.object({
   roomId: z.string().min(1),
   processKey: z.string().min(1),
   title: titleSchema,
+  colorHex: colorHexSchema.optional(),
   workflowBucket: z
     .enum([
       TaskStatus.IN_PROGRESS,
@@ -101,6 +129,10 @@ export async function addCustomKanbanColumn(
   await assertRoomHubManager(data.roomId, session.user.id);
   const phase = await resolveRoomProcessPhaseKey(data.roomId, data.processKey);
   await ensureDefaultRoomKanbanColumnsForCustomPhase(data.roomId, phase.id);
+  const colorHex =
+    data.colorHex === undefined || data.colorHex === null
+      ? null
+      : colorHexSchema.parse(data.colorHex);
 
   const where = kanbanColumnWhere(data.roomId, phase);
   const count = await prisma.roomKanbanColumn.count({ where });
@@ -122,9 +154,16 @@ export async function addCustomKanbanColumn(
       coreRole: null,
       linkedStatus: data.workflowBucket,
       title: data.title,
+      colorHex,
       sortOrder: (max._max.sortOrder ?? -1) + 1,
     },
-    select: { id: true, title: true, sortOrder: true, linkedStatus: true },
+    select: {
+      id: true,
+      title: true,
+      sortOrder: true,
+      linkedStatus: true,
+      colorHex: true,
+    },
   });
   revalidateTasksAndRoomHub();
   revalidatePath("/tasks");
@@ -299,10 +338,15 @@ export async function reorderSimpleHubKanbanColumns(input: {
 export async function addSimpleHubCustomKanbanColumn(input: {
   roomId: string;
   title: string;
+  colorHex?: string | null;
   workflowBucket?: typeof TaskStatus.IN_PROGRESS | typeof TaskStatus.IN_REVIEW | typeof TaskStatus.BLOCKED;
 }) {
   const session = await requireTasksRoomHubSession();
   const title = titleSchema.parse(input.title);
+  const colorHex =
+    input.colorHex === undefined || input.colorHex === null
+      ? null
+      : colorHexSchema.parse(input.colorHex);
   const workflowBucket = input.workflowBucket ?? TaskStatus.IN_PROGRESS;
   await assertRoomHubManager(input.roomId, session.user.id);
   await ensureSimpleHubKanbanColumns(input.roomId);
@@ -331,9 +375,16 @@ export async function addSimpleHubCustomKanbanColumn(input: {
       coreRole: null,
       linkedStatus: workflowBucket,
       title,
+      colorHex,
       sortOrder: (max._max.sortOrder ?? -1) + 1,
     },
-    select: { id: true, title: true, sortOrder: true, linkedStatus: true },
+    select: {
+      id: true,
+      title: true,
+      sortOrder: true,
+      linkedStatus: true,
+      colorHex: true,
+    },
   });
   revalidateTasksAndRoomHub();
   revalidatePath("/tasks");

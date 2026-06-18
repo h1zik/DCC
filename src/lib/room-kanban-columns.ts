@@ -10,7 +10,21 @@ export type RoomKanbanColumnDTO = {
   linkedStatus: TaskStatus;
   title: string;
   sortOrder: number;
+  colorHex?: string | null;
 };
+
+export const KANBAN_COLUMN_COLOR_PRESETS = [
+  "#6366F1",
+  "#8B5CF6",
+  "#EC4899",
+  "#F43F5E",
+  "#F59E0B",
+  "#10B981",
+  "#06B6D4",
+  "#64748B",
+] as const;
+
+export const DEFAULT_KANBAN_COLUMN_COLOR = KANBAN_COLUMN_COLOR_PRESETS[0];
 
 const columnSelect = {
   id: true,
@@ -19,7 +33,68 @@ const columnSelect = {
   linkedStatus: true,
   title: true,
   sortOrder: true,
+  colorHex: true,
 } as const;
+
+export type KanbanColumnAccent = {
+  colorHex: string | null;
+  dotClassName: string;
+  ringClassName: string;
+};
+
+export function kanbanColumnAccent(
+  column: Pick<
+    RoomKanbanColumnDTO,
+    "kind" | "coreRole" | "linkedStatus" | "colorHex"
+  >,
+): KanbanColumnAccent {
+  if (column.colorHex) {
+    return {
+      colorHex: column.colorHex,
+      dotClassName: "",
+      ringClassName: "ring-black/10 dark:ring-white/20",
+    };
+  }
+  const status = statusForColumn(column as RoomKanbanColumnDTO);
+  switch (status) {
+    case TaskStatus.TODO:
+      return {
+        colorHex: null,
+        dotClassName: "bg-slate-400",
+        ringClassName: "ring-slate-300/40",
+      };
+    case TaskStatus.IN_PROGRESS:
+      return {
+        colorHex: null,
+        dotClassName: "bg-amber-500",
+        ringClassName: "ring-amber-300/40",
+      };
+    case TaskStatus.IN_REVIEW:
+      return {
+        colorHex: null,
+        dotClassName: "bg-violet-500",
+        ringClassName: "ring-violet-300/40",
+      };
+    case TaskStatus.OVERDUE:
+      return {
+        colorHex: null,
+        dotClassName: "bg-rose-500",
+        ringClassName: "ring-rose-300/40",
+      };
+    case TaskStatus.DONE:
+      return {
+        colorHex: null,
+        dotClassName: "bg-emerald-500",
+        ringClassName: "ring-emerald-300/40",
+      };
+    default:
+      return {
+        colorHex: null,
+        dotClassName: "bg-muted-foreground",
+        ringClassName: "ring-muted-foreground/30",
+      };
+  }
+}
 
 /** Perbaiki kolom custom yang salah ditandai CORE (mis. setelah migrate). */
 export async function repairDuplicateCoreKanbanColumns(where: {
@@ -228,6 +303,27 @@ export function mergeKanbanColumns(
   local: RoomKanbanColumnDTO[],
 ): RoomKanbanColumnDTO[] {
   const serverIds = new Set(server.map((c) => c.id));
-  const extras = local.filter((c) => !serverIds.has(c.id));
+  const serverHasRealColumns = server.some((c) => !c.id.startsWith("fallback-"));
+  const localIsFallbackOnly =
+    local.length > 0 && local.every((c) => c.id.startsWith("fallback-"));
+
+  if (localIsFallbackOnly && serverHasRealColumns) {
+    return server;
+  }
+
+  const localHasReal = local.some((c) => !c.id.startsWith("fallback-"));
+  if (localHasReal && serverHasRealColumns) {
+    const sharesColumnId = local.some((c) => serverIds.has(c.id));
+    if (!sharesColumnId) {
+      return server;
+    }
+  }
+
+  const extras = local.filter((c) => {
+    if (serverIds.has(c.id)) return false;
+    if (serverHasRealColumns && c.id.startsWith("fallback-")) return false;
+    return true;
+  });
+
   return extras.length === 0 ? server : [...server, ...extras];
 }

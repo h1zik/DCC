@@ -694,6 +694,8 @@ model RoomKanbanColumn {
    */
   linkedStatus         TaskStatus
   title                String
+  /** Warna aksen kolom (hex). Null = warna default menurut status. */
+  colorHex             String?
   sortOrder            Int                     @default(0)
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
