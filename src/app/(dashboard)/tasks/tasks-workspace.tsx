@@ -1,7 +1,7 @@
 "use client";
 import { actionErrorMessage } from "@/lib/action-error-message";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RoomTaskProcess,
   TaskWorkspaceView,
@@ -224,16 +224,26 @@ export function TasksWorkspace({
   const [dueDate, setDueDate] = useState("");
   const [approval, setApproval] = useState(false);
   const [pending, setPending] = useState(false);
+  const kanbanBoardKeyRef = useRef(
+    `${roomId ?? ""}:${activePhase?.id ?? "simple-hub"}`,
+  );
 
   useEffect(() => {
     setAvailableTags(roomTaskTags);
   }, [roomTaskTags]);
 
   useEffect(() => {
-    setLocalKanbanColumns((prev) =>
-      mergeKanbanColumns(kanbanColumnsFromProp(kanbanColumns), prev),
-    );
-  }, [kanbanColumns]);
+    const fromServer = kanbanColumnsFromProp(kanbanColumns);
+    const boardKey = `${roomId ?? ""}:${activePhase?.id ?? "simple-hub"}`;
+    const boardChanged = kanbanBoardKeyRef.current !== boardKey;
+    kanbanBoardKeyRef.current = boardKey;
+    setLocalKanbanColumns((prev) => {
+      if (boardChanged) {
+        return mergeKanbanColumns(fromServer, []);
+      }
+      return mergeKanbanColumns(fromServer, prev);
+    });
+  }, [kanbanColumns, roomId, activePhase?.id]);
 
   const detailId = detailTask?.id;
   useEffect(() => {
@@ -706,6 +716,13 @@ export function TasksWorkspace({
 
         <TabsContent value="kanban" className="mt-0">
           <TasksKanban
+            key={
+              roomId != null
+                ? `${roomId}:${
+                    activePhase ? roomProcessPhaseKey(activePhase) : "simple-hub"
+                  }`
+                : "tasks-kanban"
+            }
             tasks={kanbanTasks}
             columns={resolvedKanbanColumns}
             users={users}
@@ -723,6 +740,11 @@ export function TasksWorkspace({
                 if (prev.some((c) => c.id === col.id)) return prev;
                 return [...prev, col];
               });
+            }}
+            onKanbanColumnRemoved={(columnId) => {
+              setLocalKanbanColumns((prev) =>
+                prev.filter((c) => c.id !== columnId),
+              );
             }}
             addColumnOpen={kanbanAddColumnOpen}
             onAddColumnOpenChange={setKanbanAddColumnOpen}

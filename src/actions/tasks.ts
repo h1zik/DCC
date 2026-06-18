@@ -357,6 +357,8 @@ export async function moveTaskToColumn(
     select: {
       id: true,
       roomId: true,
+      roomProcess: true,
+      customProcessPhaseId: true,
       kind: true,
       coreRole: true,
       linkedStatus: true,
@@ -364,6 +366,18 @@ export async function moveTaskToColumn(
   });
   if (column.roomId !== roomId) {
     throw new Error("Kolom tidak valid untuk ruangan ini.");
+  }
+
+  const simpleHub = await isSimpleHubRoom(roomId);
+  if (simpleHub) {
+    if (
+      column.customProcessPhaseId !== null ||
+      column.roomProcess !== RoomTaskProcess.MARKET_RESEARCH
+    ) {
+      throw new Error("Kolom tidak valid untuk papan tugas ruangan ini.");
+    }
+  } else if (column.customProcessPhaseId !== phase.id) {
+    throw new Error("Kolom tidak valid untuk fase proses ini.");
   }
 
   const status =

@@ -2,14 +2,17 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   closestCorners,
   DndContext,
   DragOverlay,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  getFirstCollision,
+  pointerWithin,
   PointerSensor,
   useSensor,
   useSensors,
@@ -39,17 +42,20 @@ import { sortTasksForKanbanColumn } from "@/lib/kanban-sort";
 import { cn } from "@/lib/utils";
 import {
   mergeKanbanColumns,
+  DEFAULT_KANBAN_COLUMN_COLOR,
+  kanbanColumnAccent,
+  type RoomKanbanColumnDTO,
   resolveColumnIdForTask,
   statusForColumn,
-  type RoomKanbanColumnDTO,
 } from "@/lib/room-kanban-columns";
+import { KanbanColumnColorField } from "@/components/tasks/kanban-column-color-field";
 import {
   addCustomKanbanColumn,
   addSimpleHubCustomKanbanColumn,
   deleteCustomKanbanColumn,
   reorderRoomKanbanColumns,
   reorderSimpleHubKanbanColumns,
-  updateRoomKanbanColumnTitle,
+  updateRoomKanbanColumn,
 } from "@/actions/room-kanban-columns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -68,6 +74,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ArrowDown,
@@ -957,40 +964,6 @@ function DraggableTask({
   );
 }
 
-function columnAccent(column: Pick<RoomKanbanColumnDTO, "kind" | "coreRole" | "linkedStatus">): {
-  dot: string;
-  ring: string;
-} {
-  const status = statusForColumn(column as RoomKanbanColumnDTO);
-  switch (status) {
-    case TaskStatus.TODO:
-      return {
-        dot: "bg-slate-400",
-        ring: "ring-slate-300/40",
-      };
-    case TaskStatus.IN_PROGRESS:
-      return {
-        dot: "bg-amber-500",
-        ring: "ring-amber-300/40",
-      };
-    case TaskStatus.IN_REVIEW:
-      return {
-        dot: "bg-violet-500",
-        ring: "ring-violet-300/40",
-      };
-    case TaskStatus.DONE:
-      return {
-        dot: "bg-emerald-500",
-        ring: "ring-emerald-300/40",
-      };
-    default:
-      return {
-        dot: "bg-muted-foreground",
-        ring: "ring-muted-foreground/30",
-      };
-  }
-}
-
 function KanbanColumnShell({
   column,
   children,
@@ -1001,7 +974,7 @@ function KanbanColumnShell({
   roomId,
   processKey,
   simpleHub,
-  onRenamed,
+  onColumnUpdated,
   onDeleted,
   onMoveColumn,
   canMoveUp,
@@ -1017,7 +990,10 @@ function KanbanColumnShell({
   roomId?: string | null;
   processKey?: string;
   simpleHub?: boolean;
-  onRenamed?: (columnId: string, title: string) => void;
+  onColumnUpdated?: (
+    columnId: string,
+    patch: { title?: string; colorHex?: string | null },
+  ) => void;
   onDeleted?: (columnId: string) => void;
   onMoveColumn?: (columnId: string, direction: "up" | "down") => void;
   canMoveUp?: boolean;
@@ -1026,29 +1002,61 @@ function KanbanColumnShell({
   stretch?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
-  const accent = columnAccent(column);
-  const [editing, setEditing] = useState(false);
+  const accent = kanbanColumnAccent(column);
+  const [editOpen, setEditOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState(column.title);
+  const [draftColorHex, setDraftColorHex] = useState(
+    column.colorHex ?? DEFAULT_KANBAN_COLUMN_COLOR,
+  );
   const [pending, setPending] = useState(false);
   const isCore = column.kind === "CORE";
 
-  async function saveTitle() {
-    const next = draftTitle.trim();
-    if (!next || next === column.title) {
-      setEditing(false);
+  useEffect(() => {
+    if (!editOpen) {
       setDraftTitle(column.title);
+      setDraftColorHex(column.colorHex ?? DEFAULT_KANBAN_COLUMN_COLOR);
+    }
+  }, [column.title, column.colorHex, editOpen]);
+
+  function openEditDialog() {
+    setDraftTitle(column.title);
+    setDraftColorHex(column.colorHex ?? DEFAULT_KANBAN_COLUMN_COLOR);
+    setEditOpen(true);
+  }
+
+  async function saveColumnEdit() {
+    const nextTitle = draftTitle.trim();
+    if (!nextTitle) {
+      toast.error("Nama kolom wajib diisi.");
       return;
     }
     if (!roomId || column.id.startsWith("fallback-")) return;
+
+    const nextColor = draftColorHex.toUpperCase();
+    const titleChanged = nextTitle !== column.title;
+    const colorChanged =
+      (column.colorHex ?? null)?.toUpperCase() !== nextColor;
+
+    if (!titleChanged && !colorChanged) {
+      setEditOpen(false);
+      return;
+    }
+
     setPending(true);
     try {
-      await updateRoomKanbanColumnTitle({ columnId: column.id, title: next });
-      onRenamed?.(column.id, next);
-      setEditing(false);
-      toast.success("Judul kolom diperbarui.");
+      await updateRoomKanbanColumn({
+        columnId: column.id,
+        ...(titleChanged ? { title: nextTitle } : {}),
+        ...(colorChanged ? { colorHex: nextColor } : {}),
+      });
+      onColumnUpdated?.(column.id, {
+        ...(titleChanged ? { title: nextTitle } : {}),
+        ...(colorChanged ? { colorHex: nextColor } : {}),
+      });
+      setEditOpen(false);
+      toast.success("Kolom diperbarui.");
     } catch (err) {
-      toast.error(actionErrorMessage(err, "Gagal mengubah judul kolom."));
-      setDraftTitle(column.title);
+      toast.error(actionErrorMessage(err, "Gagal memperbarui kolom."));
     } finally {
       setPending(false);
     }
@@ -1072,13 +1080,14 @@ function KanbanColumnShell({
   const stretchColumns = stretch ?? false;
 
   return (
+    <>
     <div
       ref={setNodeRef}
       className={cn(
         "flex min-h-[320px] flex-col gap-2 rounded-xl border border-border bg-muted/10 p-2 transition-colors",
         stretchColumns
-          ? "w-full min-w-0 lg:flex-1 lg:basis-0"
-          : "w-full min-w-0 lg:min-w-[220px] lg:shrink-0",
+          ? "w-full min-w-0 lg:w-auto lg:flex-1 lg:basis-0"
+          : "w-full min-w-0 lg:w-auto lg:min-w-[220px] lg:max-w-[320px] lg:shrink-0",
         isOver && !readOnly && "border-primary/60 bg-primary/5 ring-2 ring-primary/30",
       )}
     >
@@ -1094,39 +1103,28 @@ function KanbanColumnShell({
             </span>
           ) : null}
           <span
-            className={cn("size-2 shrink-0 rounded-full ring-2", accent.dot, accent.ring)}
+            className={cn(
+              "size-2 shrink-0 rounded-full ring-2",
+              accent.dotClassName,
+              accent.ringClassName,
+            )}
+            style={
+              accent.colorHex ? { backgroundColor: accent.colorHex } : undefined
+            }
             aria-hidden
           />
-          {editing && isRoomManager ? (
-            <Input
-              value={draftTitle}
-              onChange={(e) => setDraftTitle(e.target.value)}
-              onBlur={() => void saveTitle()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void saveTitle();
-                if (e.key === "Escape") {
-                  setEditing(false);
-                  setDraftTitle(column.title);
-                }
-              }}
-              className="h-6 min-w-0 flex-1 px-1 text-[11px] font-semibold uppercase"
-              disabled={pending}
-              autoFocus
-            />
-          ) : (
-            <button
-              type="button"
-              className={cn(
-                "text-foreground line-clamp-1 min-w-0 flex-1 text-left text-[11px] font-semibold tracking-wide uppercase",
-                isRoomManager && !readOnly && "hover:underline",
-              )}
-              onClick={() => {
-                if (isRoomManager && !readOnly) setEditing(true);
-              }}
-            >
-              {column.title}
-            </button>
-          )}
+          <button
+            type="button"
+            className={cn(
+              "text-foreground line-clamp-1 min-w-0 flex-1 text-left text-[11px] font-semibold tracking-wide uppercase",
+              isRoomManager && !readOnly && "hover:underline",
+            )}
+            onClick={() => {
+              if (isRoomManager && !readOnly) openEditDialog();
+            }}
+          >
+            {column.title}
+          </button>
           <span className="text-muted-foreground inline-flex shrink-0 items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
             {count}
           </span>
@@ -1152,9 +1150,9 @@ function KanbanColumnShell({
                 <MoreHorizontal className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setEditing(true)}>
+                <DropdownMenuItem onClick={() => openEditDialog()}>
                   <Pencil className="size-3.5" />
-                  Ganti nama
+                  Edit kolom
                 </DropdownMenuItem>
                 {canMoveUp ? (
                   <DropdownMenuItem onClick={() => onMoveColumn?.(column.id, "up")}>
@@ -1189,6 +1187,55 @@ function KanbanColumnShell({
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2">{children}</div>
     </div>
+
+    <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Edit kolom</DialogTitle>
+          <DialogDescription>
+            Ubah nama dan warna aksen kolom di papan Kanban.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`column-title-${column.id}`}>Nama kolom</Label>
+            <Input
+              id={`column-title-${column.id}`}
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              maxLength={80}
+              disabled={pending}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveColumnEdit();
+              }}
+            />
+          </div>
+          <KanbanColumnColorField
+            value={draftColorHex}
+            onChange={setDraftColorHex}
+            disabled={pending}
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setEditOpen(false)}
+            disabled={pending}
+          >
+            Batal
+          </Button>
+          <Button
+            type="button"
+            disabled={pending || !draftTitle.trim()}
+            onClick={() => void saveColumnEdit()}
+          >
+            Simpan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -1209,6 +1256,7 @@ export function TasksKanban({
   simpleHub = false,
   onColumnsChange,
   onKanbanColumnAdded,
+  onKanbanColumnRemoved,
   addColumnOpen: addColumnOpenProp,
   onAddColumnOpenChange,
 }: {
@@ -1228,6 +1276,7 @@ export function TasksKanban({
   simpleHub?: boolean;
   onColumnsChange?: () => void;
   onKanbanColumnAdded?: (column: RoomKanbanColumnDTO) => void;
+  onKanbanColumnRemoved?: (columnId: string) => void;
   addColumnOpen?: boolean;
   onAddColumnOpenChange?: (open: boolean) => void;
 }) {
@@ -1241,6 +1290,9 @@ export function TasksKanban({
   const addColumnOpen = addColumnOpenProp ?? addColumnOpenInternal;
   const setAddColumnOpen = onAddColumnOpenChange ?? setAddColumnOpenInternal;
   const [newColumnTitle, setNewColumnTitle] = useState("");
+  const [newColumnColorHex, setNewColumnColorHex] = useState(
+    DEFAULT_KANBAN_COLUMN_COLOR,
+  );
   const [addColumnPending, setAddColumnPending] = useState(false);
   const [doneConfirmTaskId, setDoneConfirmTaskId] = useState<string | null>(null);
   const [doneConfirmUnfinished, setDoneConfirmUnfinished] = useState(0);
@@ -1255,10 +1307,21 @@ export function TasksKanban({
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
+  const kanbanBoardKeyRef = useRef(`${roomId ?? ""}:${processKey}`);
+  const dragTargetColumnIdRef = useRef<string | null>(null);
+  const columnIdSetRef = useRef(new Set<string>());
 
   useEffect(() => {
-    setBoardColumns((prev) => mergeKanbanColumns(columns, prev));
-  }, [columns]);
+    const boardKey = `${roomId ?? ""}:${processKey}`;
+    const boardChanged = kanbanBoardKeyRef.current !== boardKey;
+    kanbanBoardKeyRef.current = boardKey;
+    setBoardColumns((prev) => {
+      if (boardChanged) {
+        return mergeKanbanColumns(columns, []);
+      }
+      return mergeKanbanColumns(columns, prev);
+    });
+  }, [columns, roomId, processKey]);
 
   useEffect(() => {
     setLocalColumnIds((prev) => {
@@ -1320,6 +1383,17 @@ export function TasksKanban({
   );
 
   const columnIdSet = new Set(boardColumns.map((c) => c.id));
+  columnIdSetRef.current = columnIdSet;
+
+  const kanbanCollisionDetection = useCallback<CollisionDetection>((args) => {
+    const columnIds = columnIdSetRef.current;
+    const pointerHits = pointerWithin(args);
+    const columnHit = pointerHits.find((hit) => columnIds.has(String(hit.id)));
+    if (columnHit) return [columnHit];
+    const firstPointer = getFirstCollision(pointerHits);
+    if (firstPointer) return [firstPointer];
+    return closestCorners(args);
+  }, []);
 
   function resolveDropColumnId(overId: string): string | null {
     if (columnIdSet.has(overId)) return overId;
@@ -1414,11 +1488,13 @@ export function TasksKanban({
         ? await addSimpleHubCustomKanbanColumn({
             roomId,
             title: newColumnTitle.trim(),
+            colorHex: newColumnColorHex,
           })
         : await addCustomKanbanColumn({
             roomId,
             processKey,
             title: newColumnTitle.trim(),
+            colorHex: newColumnColorHex,
             workflowBucket: TaskStatus.IN_PROGRESS,
           });
       const added: RoomKanbanColumnDTO = {
@@ -1428,10 +1504,12 @@ export function TasksKanban({
         linkedStatus: col.linkedStatus,
         title: col.title,
         sortOrder: col.sortOrder,
+        colorHex: col.colorHex,
       };
       setBoardColumns((prev) => [...prev, added]);
       onKanbanColumnAdded?.(added);
       setNewColumnTitle("");
+      setNewColumnColorHex(DEFAULT_KANBAN_COLUMN_COLOR);
       setAddColumnOpen(false);
       onColumnsChange?.();
       toast.success("Kolom ditambahkan.");
@@ -1444,6 +1522,7 @@ export function TasksKanban({
 
   function onDragStart(e: DragStartEvent) {
     if (kanbanReadOnly) return;
+    dragTargetColumnIdRef.current = null;
     setActiveDragId(String(e.active.id));
   }
 
@@ -1454,6 +1533,7 @@ export function TasksKanban({
     const taskId = String(active.id);
     const overColumnId = resolveDropColumnId(String(over.id));
     if (!overColumnId) return;
+    dragTargetColumnIdRef.current = overColumnId;
     const base = tasks.find((t) => t.id === taskId);
     if (!base) return;
     const currentCol =
@@ -1474,6 +1554,7 @@ export function TasksKanban({
 
   function onDragCancel() {
     setActiveDragId(null);
+    dragTargetColumnIdRef.current = null;
     setLocalColumnIds({});
     setLocalStatuses({});
   }
@@ -1482,17 +1563,28 @@ export function TasksKanban({
     setActiveDragId(null);
     if (kanbanReadOnly) return;
     const { active, over } = e;
-    if (!over) return;
+    if (!over) {
+      dragTargetColumnIdRef.current = null;
+      return;
+    }
     const taskId = String(active.id);
     const overId = String(over.id);
     const sourceTask = tasks.find((t) => t.id === taskId);
-    if (!sourceTask) return;
+    if (!sourceTask) {
+      dragTargetColumnIdRef.current = null;
+      return;
+    }
 
     const task = viewTasks.find((t) => t.id === taskId);
-    if (!task || !task.kanbanColumnId) return;
+    if (!task || !task.kanbanColumnId) {
+      dragTargetColumnIdRef.current = null;
+      return;
+    }
 
-    const overColumnId = resolveDropColumnId(overId);
-    if (!overColumnId) return;
+    const targetColumnId =
+      dragTargetColumnIdRef.current ?? resolveDropColumnId(overId);
+    dragTargetColumnIdRef.current = null;
+    if (!targetColumnId) return;
 
     const previousColumnId =
       sourceTask.kanbanColumnId ??
@@ -1500,8 +1592,8 @@ export function TasksKanban({
     if (!previousColumnId) return;
     const previousStatus = sourceTask.status;
 
-    if (previousColumnId === overColumnId) {
-      const colTasks = sortTasksForKanbanColumn(viewTasks, overColumnId);
+    if (previousColumnId === targetColumnId) {
+      const colTasks = sortTasksForKanbanColumn(viewTasks, targetColumnId);
       const oldIndex = colTasks.findIndex((t) => t.id === taskId);
       const newIndex = columnIdSet.has(overId)
         ? colTasks.length - 1
@@ -1511,17 +1603,17 @@ export function TasksKanban({
       const reordered = arrayMove(colTasks, oldIndex, newIndex);
       const orderedIds = filterIdsForPersistedColumn(
         reordered.map((t) => t.id),
-        overColumnId,
+        targetColumnId,
       );
       if (orderedIds.length === 0) return;
       const colStatus = statusForColumn(
-        boardColumns.find((c) => c.id === overColumnId)!,
+        boardColumns.find((c) => c.id === targetColumnId)!,
       );
       applyOptimisticSortKeys(orderedIds);
-      patchKanbanSortKeys(orderedIds, overColumnId, colStatus);
+      patchKanbanSortKeys(orderedIds, targetColumnId, colStatus);
       try {
         await reorderKanbanColumn({
-          columnId: overColumnId,
+          columnId: targetColumnId,
           orderedTaskIds: orderedIds,
         });
         router.refresh();
@@ -1534,7 +1626,7 @@ export function TasksKanban({
 
     const targetColTasks = sortTasksForKanbanColumn(
       viewTasks.filter((t) => t.id !== taskId),
-      overColumnId,
+      targetColumnId,
     );
     let insertIndex = targetColTasks.length;
     if (!columnIdSet.has(overId)) {
@@ -1547,7 +1639,7 @@ export function TasksKanban({
       ...targetColTasks.slice(insertIndex).map((t) => t.id),
     ];
 
-    const targetCol = boardColumns.find((c) => c.id === overColumnId);
+    const targetCol = boardColumns.find((c) => c.id === targetColumnId);
     const targetStatus = targetCol ? statusForColumn(targetCol) : task.status;
 
     if (targetStatus === TaskStatus.DONE) {
@@ -1556,14 +1648,14 @@ export function TasksKanban({
         setDoneConfirmTaskId(task.id);
         setDoneConfirmUnfinished(unfinished);
         setDoneConfirmPreviousStatus(previousStatus);
-        setPendingTargetColumnId(overColumnId);
+        setPendingTargetColumnId(targetColumnId);
         setPendingTargetOrder(orderedIds);
         return;
       }
     }
     await persistColumnChange(
       taskId,
-      overColumnId,
+      targetColumnId,
       previousColumnId,
       previousStatus,
       orderedIds,
@@ -1624,7 +1716,7 @@ export function TasksKanban({
     <>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={kanbanCollisionDetection}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragCancel={onDragCancel}
@@ -1655,13 +1747,26 @@ export function TasksKanban({
                 canMoveUp={colIndex > 0}
                 canMoveDown={colIndex < boardColumns.length - 1}
                 onMoveColumn={(id, dir) => void handleMoveColumn(id, dir)}
-                onRenamed={(columnId, title) => {
+                onColumnUpdated={(columnId, patch) => {
                   setBoardColumns((prev) =>
-                    prev.map((c) => (c.id === columnId ? { ...c, title } : c)),
+                    prev.map((c) =>
+                      c.id === columnId
+                        ? {
+                            ...c,
+                            ...(patch.title !== undefined
+                              ? { title: patch.title }
+                              : {}),
+                            ...(patch.colorHex !== undefined
+                              ? { colorHex: patch.colorHex }
+                              : {}),
+                          }
+                        : c,
+                    ),
                   );
                 }}
                 onDeleted={(columnId) => {
                   setBoardColumns((prev) => prev.filter((c) => c.id !== columnId));
+                  onKanbanColumnRemoved?.(columnId);
                   onColumnsChange?.();
                 }}
               >
@@ -1785,7 +1890,16 @@ export function TasksKanban({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={addColumnOpen} onOpenChange={setAddColumnOpen}>
+      <Dialog
+        open={addColumnOpen}
+        onOpenChange={(open) => {
+          setAddColumnOpen(open);
+          if (!open) {
+            setNewColumnTitle("");
+            setNewColumnColorHex(DEFAULT_KANBAN_COLUMN_COLOR);
+          }
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Tambah kolom</DialogTitle>
@@ -1793,15 +1907,26 @@ export function TasksKanban({
               Kolom custom bebas nama — misalnya Revisi, Menunggu klien.
             </DialogDescription>
           </DialogHeader>
-          <Input
-            value={newColumnTitle}
-            onChange={(e) => setNewColumnTitle(e.target.value)}
-            placeholder="Nama kolom"
-            maxLength={80}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleAddColumn();
-            }}
-          />
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-kanban-column-title">Nama kolom</Label>
+              <Input
+                id="new-kanban-column-title"
+                value={newColumnTitle}
+                onChange={(e) => setNewColumnTitle(e.target.value)}
+                placeholder="Nama kolom"
+                maxLength={80}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleAddColumn();
+                }}
+              />
+            </div>
+            <KanbanColumnColorField
+              value={newColumnColorHex}
+              onChange={setNewColumnColorHex}
+              disabled={addColumnPending}
+            />
+          </div>
           <DialogFooter>
             <Button
               type="button"
