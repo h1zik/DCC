@@ -234,3 +234,30 @@ export function actorEnvHint(
   }
   return `Set env APIFY_ACTOR_*_SHOP untuk ${marketplace} (Shopee: gio21~shopee-scraper).`;
 }
+
+export function getPinterestActorId(): string | null {
+  return process.env.APIFY_ACTOR_PINTEREST?.trim() || "silentflow~pinterest-scraper-ppr";
+}
+
+export function getPinterestMaxPinsPerKeyword(): number {
+  const raw = process.env.BRAND_PINTEREST_MAX_PINS_PER_KEYWORD?.trim();
+  const n = raw ? Number(raw) : 80;
+  if (!Number.isFinite(n)) return 80;
+  return Math.min(Math.max(Math.round(n), 10), 200);
+}
+
+export function buildPinterestActorInput(keywords: string[]): Record<string, unknown> {
+  const maxPins = getPinterestMaxPinsPerKeyword();
+  const queries = keywords.map((k) => k.trim()).filter(Boolean);
+  return {
+    searchQueries: queries,
+    maxPinsPerQuery: maxPins,
+    maxResults: maxPins,
+    queries,
+    keywords: queries,
+  };
+}
+
+export function pinterestActorEnvHint(): string {
+  return "Set APIFY_ACTOR_PINTEREST (default: silentflow~pinterest-scraper-ppr).";
+}

@@ -12,6 +12,7 @@ export type NormalizedShopProduct = {
   externalId: string;
   name: string;
   productUrl: string;
+  imageUrl: string | null;
   price: number | null;
   rating: number | null;
   reviewCount: number;
@@ -39,6 +40,40 @@ function pickNumber(obj: Record<string, unknown>, keys: string[]): number | null
       if (Number.isFinite(n)) return n;
     }
   }
+  return null;
+}
+
+function pickImageUrl(obj: Record<string, unknown>): string | null {
+  const direct = pickString(obj, [
+    "imageUrl",
+    "image_url",
+    "image",
+    "mainImage",
+    "main_image",
+    "thumbnail",
+    "thumb",
+    "coverImage",
+    "cover_image",
+    "productImage",
+    "product_image",
+  ]);
+  if (direct) return direct;
+
+  const images = obj.images ?? obj.imageUrls ?? obj.image_urls;
+  if (Array.isArray(images) && images.length > 0) {
+    const first = images[0];
+    if (typeof first === "string" && first.trim()) return first.trim();
+    if (first && typeof first === "object") {
+      const img = first as Record<string, unknown>;
+      return pickString(img, ["url", "src", "imageUrl", "original"]) ?? null;
+    }
+  }
+
+  const nested = obj.item_basic ?? obj.itemBasic ?? obj.product;
+  if (nested && typeof nested === "object") {
+    return pickImageUrl(nested as Record<string, unknown>);
+  }
+
   return null;
 }
 
@@ -387,6 +422,7 @@ export function normalizeShopProducts(
       externalId,
       name: name.trim(),
       productUrl: productUrl.trim(),
+      imageUrl: pickImageUrl(item),
       price: pickShopeePrice(item) ?? pickNumber(item, ["min_price", "avg_price", "max_price"]),
       rating: pickNumber(item, ["rating", "stars", "score", "product_rating"]),
       reviewCount:
@@ -469,6 +505,7 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       externalId: "demo-sku-1",
       name: "Body Lotion Brightening 200ml",
       productUrl: "https://example.com/product/1",
+      imageUrl: null,
       price: 89000,
       rating: 4.8,
       reviewCount: 1247,
@@ -482,6 +519,7 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       externalId: "demo-sku-2",
       name: "Body Serum Glow 150ml",
       productUrl: "https://example.com/product/2",
+      imageUrl: null,
       price: 125000,
       rating: 4.6,
       reviewCount: 892,
@@ -495,6 +533,7 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       externalId: "demo-sku-3",
       name: "Hand Cream Repair 50g",
       productUrl: "https://example.com/product/3",
+      imageUrl: null,
       price: 45000,
       rating: 4.9,
       reviewCount: 445,
@@ -539,6 +578,7 @@ export function generateDemoDiscoveryProducts(
       categoryRank: i + 1,
       shopName: shop,
       soldCount: 500 + i * 120,
+      imageUrl: null,
     });
   }
 

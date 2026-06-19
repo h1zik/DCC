@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, ImageIcon, RefreshCw } from "lucide-react";
+import { harvestCompetitorVisualsAction } from "@/actions/brand-visual-research";
 import { toast } from "sonner";
 import {
   markAllCompetitorAlertsRead,
@@ -150,6 +151,26 @@ export function BrandCompetitorDetailClient({
         >
           <RefreshCw className="size-3.5" aria-hidden />
           Refresh Sekarang
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              try {
+                const result = await harvestCompetitorVisualsAction(competitor.id);
+                toast.success(`${result.harvested} gambar ditambahkan ke Visual Library.`);
+                router.refresh();
+              } catch (err) {
+                toast.error(actionErrorMessage(err, "Gagal harvest visual."));
+              }
+            })
+          }
+        >
+          <ImageIcon className="size-3.5" aria-hidden />
+          Harvest Visuals
         </Button>
         <Button
           type="button"
