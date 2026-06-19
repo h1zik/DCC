@@ -1,6 +1,5 @@
 import "server-only";
 
-import { ResearchMarketplace } from "@prisma/client";
 import { fetchShopeeAutocompleteViaApify } from "@/lib/apify/shopee-autocomplete";
 
 export type AutocompleteHit = {
@@ -49,74 +48,9 @@ async function fetchShopeeSuggestions(query: string): Promise<AutocompleteHit[]>
   }));
 }
 
-async function fetchTokopediaSuggestions(query: string): Promise<string[]> {
-  try {
-    const res = await fetch("https://gql.tokopedia.com/", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      body: JSON.stringify([
-        {
-          operationName: "SearchProductQuery",
-          variables: {
-            params: query,
-            device: "desktop",
-            source: "search_autocomplete",
-          },
-          query: `query SearchProductQuery($params: String!) {
-            searchProduct(params: $params) {
-              data { keyword }
-            }
-          }`,
-        },
-      ]),
-      next: { revalidate: 0 },
-    });
-    if (!res.ok) return [];
-
-    const json = (await res.json()) as {
-      data?: { searchProduct?: { data?: { keyword?: string }[] } };
-    }[];
-    const items = json[0]?.data?.searchProduct?.data ?? [];
-    return items
-      .map((i) => i.keyword?.trim())
-      .filter((k): k is string => !!k);
-  } catch (err) {
-    console.warn("[marketplace-autocomplete] Tokopedia gagal", err);
-    return [];
-  }
-}
-
+/** Keyword Intel: Shopee autocomplete only. */
 export async function fetchMarketplaceAutocomplete(
   query: string,
-  marketplace?: ResearchMarketplace | null,
 ): Promise<AutocompleteHit[]> {
-  const hits: AutocompleteHit[] = [];
-
-  const fetchers: Promise<void>[] = [];
-
-  if (!marketplace || marketplace === ResearchMarketplace.SHOPEE) {
-    fetchers.push(
-      fetchShopeeSuggestions(query).then((shopeeHits) => {
-        hits.push(...shopeeHits);
-      }),
-    );
-  }
-
-  if (!marketplace || marketplace === ResearchMarketplace.TOKOPEDIA) {
-    fetchers.push(
-      fetchTokopediaSuggestions(query).then((keywords) => {
-        for (const k of keywords) {
-          hits.push({ keyword: k, source: "tokopedia_autocomplete" });
-        }
-      }),
-    );
-  }
-
-  await Promise.allSettled(fetchers);
-  return hits;
+  return fetchShopeeSuggestions(query);
 }

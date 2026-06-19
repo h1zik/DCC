@@ -12,6 +12,10 @@ import {
   refreshKeywordIntelQuery,
 } from "@/actions/research-keyword-intel";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import {
+  KeywordSourceConfigPicker,
+  validateKeywordConfigClient,
+} from "@/components/research-hub/keyword-source-config-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,12 +28,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -41,6 +39,9 @@ import {
   KEYWORD_INTEL_STATUS_LABELS,
   MARKETPLACE_LABELS,
 } from "@/lib/research/labels";
+import { DEFAULT_CATEGORY_PRESETS } from "@/lib/research/keyword-intel/keyword-source-config-types";
+import type { KeywordSourceConfig } from "@/lib/research/keyword-intel/keyword-source-config-types";
+import type { KeywordSignalStats } from "@/lib/research/keyword-intel/keyword-signal-types";
 import { cn } from "@/lib/utils";
 
 export type KeywordQueryRow = {
@@ -49,7 +50,10 @@ export type KeywordQueryRow = {
   seedKeyword: string | null;
   marketplace: ResearchMarketplace | null;
   status: KeywordIntelStatus;
+  dataNotice: string | null;
+  signalStats: KeywordSignalStats | null;
   keywordCount: number;
+  gapCount: number;
   createdAt: string;
   errorMessage: string | null;
 };
@@ -68,13 +72,20 @@ function statusTone(status: KeywordIntelStatus) {
   }
 }
 
-export function KeywordIntelClient({ queries }: { queries: KeywordQueryRow[] }) {
+export function KeywordIntelClient({
+  queries,
+  defaultSourceConfig,
+}: {
+  queries: KeywordQueryRow[];
+  defaultSourceConfig: KeywordSourceConfig;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [category, setCategory] = useState("");
   const [seedKeyword, setSeedKeyword] = useState("");
-  const [marketplace, setMarketplace] = useState<ResearchMarketplace | "">("");
+  const [sourceConfig, setSourceConfig] =
+    useState<KeywordSourceConfig>(defaultSourceConfig);
 
   const hasInProgress = queries.some(
     (q) =>
@@ -90,12 +101,18 @@ export function KeywordIntelClient({ queries }: { queries: KeywordQueryRow[] }) 
   }, [hasInProgress, router]);
 
   function handleCreate() {
+    const validationError = validateKeywordConfigClient(sourceConfig);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
     startTransition(async () => {
       try {
         const result = await createKeywordIntelQuery({
           category,
           seedKeyword: seedKeyword.trim() || undefined,
-          marketplace: marketplace || undefined,
+          marketplace: ResearchMarketplace.SHOPEE,
+          sourceConfig: sourceConfig as Record<string, unknown>,
         });
         toast.success("Analisis keyword dimulai.");
         setDialogOpen(false);
@@ -148,11 +165,23 @@ export function KeywordIntelClient({ queries }: { queries: KeywordQueryRow[] }) 
               </Button>
             }
           />
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Analisis Keyword Baru</DialogTitle>
             </DialogHeader>
             <div className="grid gap-3 py-2">
+              <div className="flex flex-wrap gap-1.5">
+                {DEFAULT_CATEGORY_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    className="bg-muted hover:bg-muted/80 rounded-full px-2 py-0.5 text-[10px]"
+                    onClick={() => setCategory(preset)}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="category">Kategori produk</Label>
                 <Input
@@ -171,29 +200,10 @@ export function KeywordIntelClient({ queries }: { queries: KeywordQueryRow[] }) 
                   onChange={(e) => setSeedKeyword(e.target.value)}
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label>Marketplace focus (opsional)</Label>
-                <Select
-                  value={marketplace}
-                  onValueChange={(v) =>
-                    setMarketplace(v as ResearchMarketplace | "")
-                  }
-                >
-                  <SelectTrigger>
-                    {marketplace
-                      ? MARKETPLACE_LABELS[marketplace]
-                      : "Semua marketplace"}
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Semua</SelectItem>
-                    {Object.entries(MARKETPLACE_LABELS).map(([k, label]) => (
-                      <SelectItem key={k} value={k}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <KeywordSourceConfigPicker
+                config={sourceConfig}
+                onChange={setSourceConfig}
+              />
             </div>
             <DialogFooter>
               <Button
@@ -220,7 +230,7 @@ export function KeywordIntelClient({ queries }: { queries: KeywordQueryRow[] }) 
             <TableHeader>
               <TableRow>
                 <TableHead>Kategori</TableHead>
-                <TableHead>Keywords</TableHead>
+                <TableHead>KW / Gap</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
@@ -241,7 +251,10 @@ export function KeywordIntelClient({ queries }: { queries: KeywordQueryRow[] }) 
                       </p>
                     ) : null}
                   </TableCell>
-                  <TableCell>{q.keywordCount || "—"}</TableCell>
+                  <TableCell>
+                    {q.keywordCount || "—"}
+                    {q.gapCount > 0 ? ` / ${q.gapCount} gap` : ""}
+                  </TableCell>
                   <TableCell>
                     <span
                       className={cn(

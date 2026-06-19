@@ -18,6 +18,9 @@ import {
   SentimentTimelineChart,
   ShareOfVoiceChart,
 } from "@/components/research-hub/social-insight-charts";
+import { SocialCommentFeed, type CommentFeedRow } from "@/components/research-hub/social-comment-feed";
+import { SocialCommentInsightsSection } from "@/components/research-hub/social-comment-insights-section";
+import { SocialEngagementInsights } from "@/components/research-hub/social-engagement-insights";
 import { SocialInfluencerTable } from "@/components/research-hub/social-influencer-table";
 import {
   SocialMentionFeed,
@@ -37,6 +40,7 @@ import {
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import type { EngagementInsights } from "@/lib/research/social-listening/social-comment-types";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type SocialDetailData = {
@@ -79,6 +83,12 @@ export type SocialDetailData = {
   }[];
   actionPlan: unknown;
   aiMeta: ResearchAiMetaView | null;
+  engagementInsights: EngagementInsights | null;
+  commentAiSummary: string | null;
+  topCommentPainPoints: { theme: string; count: number }[];
+  topCommentWishlist: { theme: string; count: number }[];
+  commentCategoryBreakdown: { classification: string; count: number; pct: number }[];
+  comments: CommentFeedRow[];
   mentions: MentionFeedRow[];
   thumbnailMentionCount: number;
 };
@@ -286,6 +296,24 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
         <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Sosial (AI)" />
       ) : null}
 
+      {data.engagementInsights ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Metrik Engagement</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SocialEngagementInsights insights={data.engagementInsights} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <SocialCommentInsightsSection
+        commentAiSummary={data.commentAiSummary}
+        topCommentPainPoints={data.topCommentPainPoints}
+        topCommentWishlist={data.topCommentWishlist}
+        commentCategoryBreakdown={data.commentCategoryBreakdown}
+      />
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
@@ -347,6 +375,15 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
         </CardHeader>
         <CardContent>
           <SocialMentionFeed rows={data.mentions} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Analisis Komentar</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SocialCommentFeed rows={data.comments} />
         </CardContent>
       </Card>
     </div>

@@ -15,6 +15,11 @@ import {
   CompetitorDetailClient,
   type CompetitorDetail,
 } from "./competitor-detail-client";
+import {
+  buildReviewIntelLinkByUrl,
+  pickReviewIntelLinkForSku,
+  skuProductUrlCandidates,
+} from "@/lib/research/competitor-review-link";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = { params: Promise<{ competitorId: string }> };
@@ -38,6 +43,25 @@ export default async function CompetitorDetailPage({ params }: Props) {
 
   if (!competitor) notFound();
 
+  const skuUrlCandidates = [
+    ...new Set(
+      competitor.skus.flatMap((s) =>
+        skuProductUrlCandidates(competitor.marketplace, s.productUrl),
+      ),
+    ),
+  ];
+
+  const linkedReviewSources =
+    skuUrlCandidates.length > 0
+      ? await prisma.reviewIntelSource.findMany({
+          where: { productUrl: { in: skuUrlCandidates } },
+          select: { id: true, productUrl: true, status: true },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+
+  const reviewIntelByUrl = buildReviewIntelLinkByUrl(linkedReviewSources);
+
   const activeJob = await prisma.researchScrapeJob.findFirst({
     where: {
       entityId: competitorId,
@@ -58,6 +82,11 @@ export default async function CompetitorDetailPage({ params }: Props) {
 
   const skus = competitor.skus.map((s) => {
     const promo = latestPromoBySku.get(s.id);
+    const reviewLink = pickReviewIntelLinkForSku(
+      competitor.marketplace,
+      s.productUrl,
+      reviewIntelByUrl,
+    );
     return {
       id: s.id,
       name: s.name,
@@ -68,6 +97,8 @@ export default async function CompetitorDetailPage({ params }: Props) {
       isNew: isNewSku(s.firstSeenAt),
       hasPromo: promo?.hasPromo ?? false,
       promoText: promo?.promoText ?? null,
+      reviewIntelSourceId: reviewLink?.sourceId ?? null,
+      reviewIntelStatus: reviewLink?.status ?? null,
     };
   });
 

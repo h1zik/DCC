@@ -147,14 +147,18 @@ export function buildBrandHubModuleHealth(
     },
     {
       key: "research-keyword",
-      level: !keywordsConfigured
-        ? "demo"
-        : input.keywordReady === 0
+      level:
+        input.keywordReady === 0
           ? "idle"
-          : "live",
-      detail: keywordsConfigured
-        ? `${input.keywordReady} query siap / ${input.keywordTotal} total`
-        : "DataForSEO belum dikonfigurasi",
+          : !keywordsConfigured
+            ? "demo"
+            : "live",
+      detail:
+        input.keywordReady === 0
+          ? "Belum ada query keyword"
+          : keywordsConfigured
+            ? `${input.keywordReady} query siap / ${input.keywordTotal} total`
+            : "DataForSEO belum dikonfigurasi",
     },
     {
       key: "competitor-tracker",

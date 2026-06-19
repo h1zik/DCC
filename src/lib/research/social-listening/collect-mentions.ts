@@ -21,6 +21,8 @@ export type RawSocialMention = {
   postedAt?: Date;
   thumbnailUrl?: string;
   mediaType?: "image" | "video";
+  /** Comment texts scraped alongside the post (TikTok commentsPerPost, IG fetch). */
+  scrapedComments?: import("@/lib/research/social-listening/social-comment-types").RawSocialComment[];
 };
 
 export type CollectMentionsResult = {

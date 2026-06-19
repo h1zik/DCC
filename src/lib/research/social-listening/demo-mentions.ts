@@ -2,9 +2,32 @@ import "server-only";
 
 import { SocialListeningPlatform } from "@prisma/client";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
+import type { RawSocialComment } from "@/lib/research/social-listening/social-comment-types";
 
 function demoThumbnail(seed: string, index: number): string {
   return `https://picsum.photos/seed/${encodeURIComponent(`${seed}-${index}`)}/600/800`;
+}
+
+function demoCommentsForPost(
+  post: Omit<RawSocialMention, "platform">,
+  platform: SocialListeningPlatform,
+): RawSocialComment[] {
+  const base = post.externalId;
+  const samples = [
+    { text: "Sama banget pengalaman ku, lengket di humid weather 😭", author: "komen_user1" },
+    { text: "Ada alternatif lokal yang lebih ringan?", author: "tanya_produk" },
+    { text: "Mau beli tapi takut breakout, aman nggak buat acne prone?", author: "kulit_berminyak" },
+    { text: "Packaging kecil travel size dong please 🙏", author: "travel_beauty" },
+  ];
+
+  return samples.map((s, i) => ({
+    platform,
+    externalId: `${base}-c${i}`,
+    text: s.text,
+    author: s.author,
+    likes: 12 + i * 8,
+    parentExternalId: `${base}-${platform.toLowerCase()}-0`,
+  }));
 }
 
 export function generateDemoMentions(
@@ -94,10 +117,17 @@ export function generateDemoMentions(
   ];
 
   return samples.flatMap((sample, i) =>
-    activePlatforms.map((platform) => ({
-      ...sample,
-      platform,
-      externalId: `${sample.externalId}-${platform.toLowerCase()}-${i}`,
-    })),
+    activePlatforms.map((platform) => {
+      const externalId = `${sample.externalId}-${platform.toLowerCase()}-${i}`;
+      return {
+        ...sample,
+        platform,
+        externalId,
+        scrapedComments: demoCommentsForPost(
+          { ...sample, externalId },
+          platform,
+        ).map((c) => ({ ...c, parentExternalId: externalId })),
+      };
+    }),
   );
 }

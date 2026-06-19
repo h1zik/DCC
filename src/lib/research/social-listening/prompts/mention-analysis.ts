@@ -8,7 +8,29 @@ export function buildSocialActionPlanPrompt(input: {
   painPoints: { theme: string; count: number }[];
   wishlist: { theme: string; count: number }[];
   categoryBreakdown: { classification: string; count: number; pct: number }[];
+  commentPainPoints?: { theme: string; count: number }[];
+  commentWishlist?: { theme: string; count: number }[];
+  commentAiSummary?: string | null;
 }): string {
+  const commentSection =
+    (input.commentPainPoints?.length ?? 0) > 0 ||
+    (input.commentWishlist?.length ?? 0) > 0
+      ? `
+Pain points dari KOMENTAR (lebih jujur dari caption): ${
+          input.commentPainPoints?.length
+            ? input.commentPainPoints
+                .map((p) => `${p.theme} (${p.count}x)`)
+                .join("; ")
+            : "tidak ada"
+        }
+Wishlist dari KOMENTAR: ${
+          input.commentWishlist?.length
+            ? input.commentWishlist.map((w) => `${w.theme} (${w.count}x)`).join("; ")
+            : "tidak ada"
+        }
+${input.commentAiSummary ? `Insight komentar: ${input.commentAiSummary}` : ""}`
+      : "";
+
   return `Kamu adalah strateg brand beauty & personal care Indonesia.
 Berdasarkan social listening monitor "${input.monitorName}", buat rencana aksi konkret.
 
@@ -24,11 +46,12 @@ Top wishlist (keinginan netizen): ${
       ? input.wishlist.map((w) => `${w.theme} (${w.count}x)`).join("; ")
       : "tidak ada"
   }
-Distribusi sentimen: ${input.categoryBreakdown
+Distribusi sentimen caption: ${input.categoryBreakdown
     .map((c) => `${c.classification} ${c.pct}%`)
     .join(", ")}
+${commentSection}
 
-Pedoman: pain point → perbaikan produk/komunikasi (RND/BRAND); wishlist → peluang produk baru (RND/MARKETING); sentimen negatif tinggi → manajemen reputasi (BRAND).
+Pedoman: pain point → perbaikan produk/komunikasi (RND/BRAND); wishlist → peluang produk baru (RND/MARKETING); sentimen negatif tinggi → manajemen reputasi (BRAND). Prioritaskan pain point komentar jika ada — biasanya lebih spesifik dari caption.
 
 ${buildActionPlanInstruction(["BRAND", "MARKETING", "RND"])}
 

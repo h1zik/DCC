@@ -11,11 +11,9 @@ import { prisma } from "@/lib/prisma";
 import { fetchApifyDataset } from "@/lib/apify/client";
 import type { NormalizedReview, ReviewScrapeMeta } from "@/lib/apify/normalize";
 import {
-  extractApifyScrapeErrorMessage,
-  extractReviewScrapeMeta,
   generateDemoReviews,
-  normalizeReviewItems,
 } from "@/lib/apify/normalize";
+import { processReviewScrapeDataset } from "@/lib/review-scrape/process-dataset";
 import { analyzeReviewSource } from "@/lib/research/review-analyzer";
 import { executeReviewScrapeJob } from "@/lib/research/run-review-scrape-job";
 
@@ -143,27 +141,45 @@ export async function completeReviewScrapeFromNormalized(
 export async function completeReviewScrapeFromDataset(
   sourceId: string,
   items: Record<string, unknown>[],
+  platformKey?: string,
 ): Promise<void> {
-  const hasMock = items.some((x) => x._mock === true);
-  const actorError = extractApifyScrapeErrorMessage(items);
-  const normalized = normalizeReviewItems(items);
-  const meta = extractReviewScrapeMeta(items);
-  if (normalized.length === 0) {
-    const message = hasMock
-      ? "Apify mengembalikan data MOCK — upgrade ke plan berbayar Apify untuk data Shopee live."
-      : actorError ??
-        "Tidak ada review ditemukan dari scraper. Pastikan URL produk Shopee valid.";
+  let resolvedPlatformKey = platformKey;
+  if (!resolvedPlatformKey) {
+    const source = await prisma.reviewIntelSource.findUnique({
+      where: { id: sourceId },
+      select: { platformKey: true },
+    });
+    resolvedPlatformKey = source?.platformKey ?? "shopee";
+  }
+
+  const { normalized, meta, errorMessage } = processReviewScrapeDataset(
+    resolvedPlatformKey,
+    items,
+  );
+
+  if (errorMessage) {
     await prisma.reviewIntelSource.update({
       where: { id: sourceId },
       data: {
         status: ReviewIntelSourceStatus.FAILED,
-        errorMessage: message,
+        errorMessage,
       },
     });
-    throw new Error(message);
+    throw new Error(errorMessage);
   }
 
   await completeReviewScrapeFromNormalized(sourceId, normalized, meta);
+}
+
+export async function completeReviewScrapeFromImportedReviews(
+  sourceId: string,
+  normalized: NormalizedReview[],
+): Promise<void> {
+  await completeReviewScrapeFromNormalized(sourceId, normalized, {
+    totalReviewsReported: normalized.length,
+    reviewsAccessible: normalized.length,
+    reviewsComplete: true,
+  });
 }
 
 async function markReviewScrapeJobFailed(

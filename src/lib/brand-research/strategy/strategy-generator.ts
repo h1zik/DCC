@@ -162,7 +162,7 @@ export async function gatherStrategyEvidence(
   }
 
   const keywordQueries = config.keyword.enabled
-    ? await prisma.keywordIntelQuery.findMany({
+    ? await prisma.brandKeywordQuery.findMany({
         where: {
           status: "READY",
           ...idFilter(config.keyword.ids),
@@ -177,7 +177,7 @@ export async function gatherStrategyEvidence(
       module: "keyword-intel",
       sourceId: q.id,
       label: q.seedKeyword ?? q.category,
-      href: `/brand-hub/strategy${brandQs}`,
+      href: `/brand-hub/keyword-intel/${q.id}${brandQs}`,
     });
   }
 

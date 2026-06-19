@@ -8,9 +8,14 @@ import { toast } from "sonner";
 import { createProductBriefFromTrend } from "@/actions/research-brief";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import { TrendConfidenceBadge } from "@/components/research-hub/trend-confidence-badge";
 import { TrendDimensionBadge } from "@/components/research-hub/trend-dimension-badge";
+import { TrendEvidenceTable } from "@/components/research-hub/trend-evidence-table";
 import { TrendPhaseBoard } from "@/components/research-hub/trend-phase-board";
+import { TrendQualityBanner } from "@/components/research-hub/trend-quality-banner";
 import { TrendScoreChart } from "@/components/research-hub/trend-score-chart";
+import { TrendSignalStatsLine } from "@/components/research-hub/trend-signal-stats-line";
+import { TrendWowBadge } from "@/components/research-hub/trend-wow-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -33,9 +38,9 @@ import {
   TREND_RADAR_STATUS_LABELS,
   formatRelativeTime,
 } from "@/lib/research/labels";
-import {
-  summarizeEnabledSources,
-} from "@/lib/research/trend-radar/trend-source-config-types";
+import type { TrendEvidenceRow } from "@/lib/research/trend-radar/trend-signal-types";
+import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
+import type { TrendConfidence, TrendDigestMode, TrendWowStatus } from "@prisma/client";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -45,6 +50,10 @@ export type TrendDetailData = {
   weekStart: string;
   weekEnd: string;
   status: string;
+  digestMode: TrendDigestMode | string;
+  dataNotice: string | null;
+  signalStats: TrendSignalStats | null;
+  priorDigestId: string | null;
   narrative: string | null;
   isGlobal: boolean;
   watchlistName: string | null;
@@ -59,8 +68,12 @@ export type TrendDetailData = {
     dimension: TrendDimension;
     phase: TrendPhase;
     score: number | null;
+    tmiScore: number | null;
+    confidence: TrendConfidence | string;
+    wowStatus: TrendWowStatus | string | null;
     narrative: string | null;
     isGlobalPipeline: boolean;
+    evidence: TrendEvidenceRow[];
     sources: { type: string; snippet: string; url?: string }[];
     relatedProducts: string[];
   }[];
@@ -114,9 +127,17 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
 
   const periodLabel = `${new Date(data.weekStart).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} – ${new Date(data.weekEnd).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}`;
 
+  const canExploreBrief =
+    data.digestMode === "LIVE" &&
+    selectedItem?.confidence !== "LOW";
+
   return (
     <div className="flex flex-col gap-6 pb-6">
       <ResearchModelBadgeGroup meta={data.aiMeta} />
+      <TrendQualityBanner
+        digestMode={data.digestMode}
+        dataNotice={data.dataNotice}
+      />
       <div>
         <Link
           href="/brand-hub/trend-radar"
@@ -146,6 +167,7 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
             ))}
           </div>
         ) : null}
+        <TrendSignalStatsLine stats={data.signalStats} />
       </div>
 
       {data.narrative ? (
@@ -163,7 +185,7 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
       {data.items.some((i) => typeof i.score === "number") ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Momentum Tren (score)</CardTitle>
+            <CardTitle className="text-base">Momentum Tren (TMI)</CardTitle>
           </CardHeader>
           <CardContent>
             <TrendScoreChart
@@ -179,12 +201,16 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
 
       <TrendPhaseBoard
         digestId={data.id}
+        basePath="/brand-hub/trend-radar"
         items={data.items.map((i) => ({
           id: i.id,
           name: i.name,
           phase: i.phase,
           dimension: i.dimension,
           isGlobalPipeline: i.isGlobalPipeline,
+          tmiScore: i.tmiScore ?? i.score,
+          confidence: i.confidence,
+          wowStatus: i.wowStatus,
         }))}
       />
 
@@ -205,11 +231,13 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
                   <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-semibold">
                     {TREND_PHASE_LABELS[item.phase]}
                   </span>
-                  {typeof item.score === "number" ? (
-                    <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums">
-                      score {Math.round(item.score * 100)}
-                    </span>
+                  {typeof item.tmiScore === "number" || typeof item.score === "number" ? (
+                    <TrendConfidenceBadge
+                      confidence={item.confidence}
+                      tmiScore={item.tmiScore ?? item.score}
+                    />
                   ) : null}
+                  <TrendWowBadge status={item.wowStatus} />
                   {item.isGlobalPipeline ? (
                     <span className="text-muted-foreground inline-flex items-center gap-0.5 text-[10px]">
                       <Globe className="size-3" aria-hidden />
@@ -221,6 +249,14 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
               <Button
                 size="sm"
                 variant="outline"
+                disabled={
+                  item.confidence === "LOW" || data.digestMode !== "LIVE"
+                }
+                title={
+                  item.confidence === "LOW" || data.digestMode !== "LIVE"
+                    ? "Explore hanya untuk digest LIVE dengan confidence ≥ MED"
+                    : undefined
+                }
                 onClick={() => openBrief(item.id, item.name)}
               >
                 <FileText className="size-3.5" aria-hidden />
@@ -233,7 +269,12 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
                   {item.narrative}
                 </p>
               ) : null}
-              {item.sources.length > 0 ? (
+              {item.evidence.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-medium">Bukti sinyal</p>
+                  <TrendEvidenceTable evidence={item.evidence} />
+                </div>
+              ) : item.sources.length > 0 ? (
                 <div>
                   <p className="mb-1 text-xs font-medium">Sumber data</p>
                   <ul className="text-muted-foreground space-y-1 text-xs">
@@ -308,7 +349,7 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleBrief} disabled={pending}>
+            <Button onClick={handleBrief} disabled={pending || !canExploreBrief}>
               Buat Brief
             </Button>
           </DialogFooter>

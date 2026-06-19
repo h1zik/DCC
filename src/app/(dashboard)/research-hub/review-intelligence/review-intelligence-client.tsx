@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ResearchMarketplace, ReviewIntelSourceStatus } from "@prisma/client";
-import { Plus, RefreshCw, Star, Trash2 } from "lucide-react";
+import { FileUp, Plus, RefreshCw, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createReviewIntelSource,
+  createReviewIntelSourceFromCsv,
   deleteReviewIntelSource,
   rescrapeReviewIntelSource,
 } from "@/actions/research-review-intelligence";
@@ -26,9 +27,12 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -38,10 +42,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  MARKETPLACE_LABELS,
-  SOURCE_STATUS_LABELS,
-  formatRelativeTime,
-} from "@/lib/research/labels";
+  getReviewPlatformLabel,
+  REVIEW_PLATFORMS,
+  reviewPlatformsByCategory,
+} from "@/lib/review-platforms/platforms";
+import { SOURCE_STATUS_LABELS, formatRelativeTime } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 import { useReviewIntelPolling } from "./use-review-intel-polling";
 
@@ -49,7 +54,8 @@ export type ReviewSourceRow = {
   id: string;
   productName: string;
   competitorBrand: string;
-  marketplace: ResearchMarketplace;
+  platformKey: string;
+  marketplace: ResearchMarketplace | null;
   productUrl: string;
   status: ReviewIntelSourceStatus;
   reviewCount: number;
@@ -73,6 +79,10 @@ function statusTone(status: ReviewIntelSourceStatus) {
   }
 }
 
+function platformLabel(row: ReviewSourceRow): string {
+  return getReviewPlatformLabel(row.platformKey);
+}
+
 export function ReviewIntelligenceClient({
   sources,
 }: {
@@ -81,12 +91,17 @@ export function ReviewIntelligenceClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [mode, setMode] = useState<"scrape" | "csv">("scrape");
   const [productName, setProductName] = useState("");
   const [competitorBrand, setCompetitorBrand] = useState("");
-  const [marketplace, setMarketplace] = useState<ResearchMarketplace>(
-    ResearchMarketplace.SHOPEE,
-  );
+  const [platformKey, setPlatformKey] = useState("shopee");
   const [productUrl, setProductUrl] = useState("");
+  const [csvContent, setCsvContent] = useState("");
+
+  const selectedPlatform = useMemo(
+    () => REVIEW_PLATFORMS.find((p) => p.key === platformKey),
+    [platformKey],
+  );
 
   const hasInProgress = sources.some(
     (s) => s.status === "SCRAPING" || s.status === "ANALYZING",
@@ -94,27 +109,62 @@ export function ReviewIntelligenceClient({
 
   useReviewIntelPolling(hasInProgress);
 
-  function handleCreate() {
+  function resetForm() {
+    setProductName("");
+    setCompetitorBrand("");
+    setProductUrl("");
+    setCsvContent("");
+    setPlatformKey("shopee");
+    setMode("scrape");
+  }
+
+  function handleCreateScrape() {
     startTransition(async () => {
       try {
         const result = await createReviewIntelSource({
           productName,
           competitorBrand,
-          marketplace,
+          platformKey,
           productUrl,
         });
         toast.success(
           "Scrape dimulai di background. Halaman akan update otomatis.",
         );
         setDialogOpen(false);
-        setProductName("");
-        setCompetitorBrand("");
-        setProductUrl("");
+        resetForm();
         router.push(`/research-hub/review-intelligence/${result.id}`);
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
       }
     });
+  }
+
+  function handleCreateCsv() {
+    startTransition(async () => {
+      try {
+        const result = await createReviewIntelSourceFromCsv({
+          productName,
+          competitorBrand,
+          csvContent,
+          productUrl: productUrl.trim() || "https://manual-import.local/reviews",
+        });
+        toast.success("Review diimport dan dianalisis.");
+        setDialogOpen(false);
+        resetForm();
+        router.push(`/research-hub/review-intelligence/${result.id}`);
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal import CSV."));
+      }
+    });
+  }
+
+  function handleCsvFile(file: File | null) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCsvContent(String(reader.result ?? ""));
+    };
+    reader.readAsText(file);
   }
 
   return (
@@ -123,7 +173,13 @@ export function ReviewIntelligenceClient({
         <p className="text-muted-foreground text-sm">
           {sources.length} sumber produk dianalisis
         </p>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetForm();
+          }}
+        >
           <DialogTrigger
             render={
               <Button size="sm">
@@ -132,11 +188,34 @@ export function ReviewIntelligenceClient({
               </Button>
             }
           />
-          <DialogContent>
+          <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Review Scraper</DialogTitle>
+              <DialogTitle>Tambah Sumber Review</DialogTitle>
             </DialogHeader>
             <div className="grid gap-3 py-2">
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "scrape" ? "default" : "outline"}
+                  onClick={() => setMode("scrape")}
+                >
+                  Scrape URL
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "csv" ? "default" : "outline"}
+                  onClick={() => {
+                    setMode("csv");
+                    setPlatformKey("csv");
+                  }}
+                >
+                  <FileUp className="size-3.5" aria-hidden />
+                  Import CSV
+                </Button>
+              </div>
+
               <div className="grid gap-1.5">
                 <Label htmlFor="productName">Nama produk</Label>
                 <Input
@@ -155,47 +234,109 @@ export function ReviewIntelligenceClient({
                   placeholder="Brand X"
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label>Marketplace</Label>
-                <Select
-                  value={marketplace}
-                  onValueChange={(v) => {
-                    if (v) setMarketplace(v as ResearchMarketplace);
-                  }}
-                >
-                  <SelectTrigger>
-                    {MARKETPLACE_LABELS[marketplace]}
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(MARKETPLACE_LABELS).map(([k, label]) => (
-                      <SelectItem key={k} value={k}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="productUrl">URL produk</Label>
-                <Input
-                  id="productUrl"
-                  value={productUrl}
-                  onChange={(e) => setProductUrl(e.target.value)}
-                  placeholder="https://shopee.co.id/..."
-                />
-              </div>
+
+              {mode === "scrape" ? (
+                <>
+                  <div className="grid gap-1.5">
+                    <Label>Sumber review</Label>
+                    <Select
+                      value={platformKey}
+                      onValueChange={(v) => {
+                        if (v) setPlatformKey(v);
+                      }}
+                    >
+                      <SelectTrigger>
+                        {selectedPlatform?.label ?? platformKey}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel>Marketplace</SelectLabel>
+                          {reviewPlatformsByCategory("marketplace").map((p) => (
+                            <SelectItem key={p.key} value={p.key}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>Komunitas</SelectLabel>
+                          {reviewPlatformsByCategory("community").map((p) => (
+                            <SelectItem key={p.key} value={p.key}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="productUrl">URL produk</Label>
+                    <Input
+                      id="productUrl"
+                      value={productUrl}
+                      onChange={(e) => setProductUrl(e.target.value)}
+                      placeholder={
+                        selectedPlatform?.urlPlaceholder ??
+                        "https://..."
+                      }
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="csvFile">File CSV</Label>
+                    <Input
+                      id="csvFile"
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={(e) =>
+                        handleCsvFile(e.target.files?.[0] ?? null)
+                      }
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      Kolom wajib: text/review/ulasan. Opsional: rating, author,
+                      date.
+                    </p>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="csvPaste">Atau tempel CSV</Label>
+                    <Textarea
+                      id="csvPaste"
+                      value={csvContent}
+                      onChange={(e) => setCsvContent(e.target.value)}
+                      rows={5}
+                      placeholder={"text,rating,author\n\"Tekstur enak\",5,Sari"}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="csvRefUrl">URL referensi (opsional)</Label>
+                    <Input
+                      id="csvRefUrl"
+                      value={productUrl}
+                      onChange={(e) => setProductUrl(e.target.value)}
+                      placeholder="https://reviews.femaledaily.com/products/..."
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <DialogFooter>
               <Button
-                onClick={handleCreate}
+                onClick={mode === "csv" ? handleCreateCsv : handleCreateScrape}
                 disabled={
                   pending ||
                   !productName.trim() ||
                   !competitorBrand.trim() ||
-                  !productUrl.trim()
+                  (mode === "scrape"
+                    ? !productUrl.trim()
+                    : !csvContent.trim())
                 }
               >
-                {pending ? "Menambahkan…" : "Mulai Scrape & Analisis"}
+                {pending
+                  ? "Memproses…"
+                  : mode === "csv"
+                    ? "Import & Analisis"
+                    : "Mulai Scrape & Analisis"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -207,7 +348,8 @@ export function ReviewIntelligenceClient({
           <Star className="mx-auto mb-3 size-8 opacity-40" aria-hidden />
           <p className="text-sm font-medium">Belum ada sumber review</p>
           <p className="mt-1 text-xs">
-            Tambahkan URL produk kompetitor untuk mulai analisis sentimen.
+            Tambahkan URL produk kompetitor atau import CSV untuk mulai analisis
+            sentimen.
           </p>
         </div>
       ) : (
@@ -216,7 +358,7 @@ export function ReviewIntelligenceClient({
             <TableHeader>
               <TableRow>
                 <TableHead>Produk</TableHead>
-                <TableHead>Marketplace</TableHead>
+                <TableHead>Sumber</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Review</TableHead>
                 <TableHead>Update</TableHead>
@@ -237,9 +379,7 @@ export function ReviewIntelligenceClient({
                       {s.competitorBrand}
                     </p>
                   </TableCell>
-                  <TableCell className="text-sm">
-                    {MARKETPLACE_LABELS[s.marketplace]}
-                  </TableCell>
+                  <TableCell className="text-sm">{platformLabel(s)}</TableCell>
                   <TableCell>
                     <span
                       className={cn(
@@ -263,7 +403,7 @@ export function ReviewIntelligenceClient({
                     s.totalReviewsReported > s.reviewCount ? (
                       <p
                         className="text-amber-600 dark:text-amber-400 text-[10px] font-medium"
-                        title={`Marketplace melaporkan ${s.totalReviewsReported.toLocaleString("id-ID")} review, namun hanya ${s.reviewCount.toLocaleString("id-ID")} yang bisa diambil scraper.`}
+                        title={`Sumber melaporkan ${s.totalReviewsReported.toLocaleString("id-ID")} review, namun hanya ${s.reviewCount.toLocaleString("id-ID")} yang bisa diambil scraper.`}
                       >
                         dari {s.totalReviewsReported.toLocaleString("id-ID")} ·
                         parsial
@@ -277,26 +417,33 @@ export function ReviewIntelligenceClient({
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={pending}
-                        onClick={() =>
-                          startTransition(async () => {
-                            try {
-                              await rescrapeReviewIntelSource(s.id);
-                              toast.success("Scrape ulang dimulai.");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-                            }
-                          })
-                        }
-                        title="Scrape ulang"
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </Button>
+                      {s.platformKey !== "csv" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={pending}
+                          onClick={() =>
+                            startTransition(async () => {
+                              try {
+                                await rescrapeReviewIntelSource(s.id);
+                                toast.success("Scrape ulang dimulai.");
+                                router.refresh();
+                              } catch (err) {
+                                toast.error(
+                                  actionErrorMessage(
+                                    err,
+                                    "Gagal memproses permintaan.",
+                                  ),
+                                );
+                              }
+                            })
+                          }
+                          title="Scrape ulang"
+                        >
+                          <RefreshCw className="size-3.5" />
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="ghost"
@@ -310,7 +457,12 @@ export function ReviewIntelligenceClient({
                               toast.success("Sumber dihapus.");
                               router.refresh();
                             } catch (err) {
-                              toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+                              toast.error(
+                                actionErrorMessage(
+                                  err,
+                                  "Gagal memproses permintaan.",
+                                ),
+                              );
                             }
                           })
                         }

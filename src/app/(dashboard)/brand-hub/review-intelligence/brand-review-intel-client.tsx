@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ResearchMarketplace, ReviewIntelSourceStatus } from "@prisma/client";
-import { Plus, RefreshCw, Star, Trash2 } from "lucide-react";
+import { FileUp, Plus, RefreshCw, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createBrandReviewIntelSource,
+  createBrandReviewIntelSourceFromCsv,
   deleteBrandReviewIntelSource,
   rescrapeBrandReviewIntelSource,
 } from "@/actions/brand-review-intelligence";
@@ -26,9 +27,12 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -38,18 +42,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  MARKETPLACE_LABELS,
-  SOURCE_STATUS_LABELS,
-  formatRelativeTime,
-} from "@/lib/research/labels";
+  getReviewPlatformLabel,
+  REVIEW_PLATFORMS,
+  reviewPlatformsByCategory,
+} from "@/lib/review-platforms/platforms";
+import { SOURCE_STATUS_LABELS, formatRelativeTime } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 import { useBrandReviewIntelPolling } from "./use-brand-review-intel-polling";
 
-export type ReviewSourceRow = {
+export type BrandReviewSourceRow = {
   id: string;
   productName: string;
   competitorBrand: string;
-  marketplace: ResearchMarketplace;
+  platformKey: string;
+  marketplace: ResearchMarketplace | null;
   productUrl: string;
   status: ReviewIntelSourceStatus;
   reviewCount: number;
@@ -76,17 +82,22 @@ function statusTone(status: ReviewIntelSourceStatus) {
 export function BrandReviewIntelClient({
   sources,
 }: {
-  sources: ReviewSourceRow[];
+  sources: BrandReviewSourceRow[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [mode, setMode] = useState<"scrape" | "csv">("scrape");
   const [productName, setProductName] = useState("");
   const [competitorBrand, setCompetitorBrand] = useState("");
-  const [marketplace, setMarketplace] = useState<ResearchMarketplace>(
-    ResearchMarketplace.SHOPEE,
-  );
+  const [platformKey, setPlatformKey] = useState("shopee");
   const [productUrl, setProductUrl] = useState("");
+  const [csvContent, setCsvContent] = useState("");
+
+  const selectedPlatform = useMemo(
+    () => REVIEW_PLATFORMS.find((p) => p.key === platformKey),
+    [platformKey],
+  );
 
   const hasInProgress = sources.some(
     (s) => s.status === "SCRAPING" || s.status === "ANALYZING",
@@ -94,27 +105,58 @@ export function BrandReviewIntelClient({
 
   useBrandReviewIntelPolling(hasInProgress);
 
-  function handleCreate() {
+  function resetForm() {
+    setProductName("");
+    setCompetitorBrand("");
+    setProductUrl("");
+    setCsvContent("");
+    setPlatformKey("shopee");
+    setMode("scrape");
+  }
+
+  function handleCreateScrape() {
     startTransition(async () => {
       try {
         const result = await createBrandReviewIntelSource({
           productName,
           competitorBrand,
-          marketplace,
+          platformKey,
           productUrl,
         });
-        toast.success(
-          "Scrape dimulai di background. Halaman akan update otomatis.",
-        );
+        toast.success("Scrape dimulai di background.");
         setDialogOpen(false);
-        setProductName("");
-        setCompetitorBrand("");
-        setProductUrl("");
+        resetForm();
         router.push(`/brand-hub/review-intelligence/${result.id}`);
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
       }
     });
+  }
+
+  function handleCreateCsv() {
+    startTransition(async () => {
+      try {
+        const result = await createBrandReviewIntelSourceFromCsv({
+          productName,
+          competitorBrand,
+          csvContent,
+          productUrl: productUrl.trim() || "https://manual-import.local/reviews",
+        });
+        toast.success("Review diimport dan dianalisis.");
+        setDialogOpen(false);
+        resetForm();
+        router.push(`/brand-hub/review-intelligence/${result.id}`);
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal import CSV."));
+      }
+    });
+  }
+
+  function handleCsvFile(file: File | null) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setCsvContent(String(reader.result ?? ""));
+    reader.readAsText(file);
   }
 
   return (
@@ -123,7 +165,13 @@ export function BrandReviewIntelClient({
         <p className="text-muted-foreground text-sm">
           {sources.length} sumber produk dianalisis
         </p>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) resetForm();
+          }}
+        >
           <DialogTrigger
             render={
               <Button size="sm">
@@ -132,18 +180,39 @@ export function BrandReviewIntelClient({
               </Button>
             }
           />
-          <DialogContent>
+          <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Review Scraper</DialogTitle>
+              <DialogTitle>Tambah Sumber Review</DialogTitle>
             </DialogHeader>
             <div className="grid gap-3 py-2">
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "scrape" ? "default" : "outline"}
+                  onClick={() => setMode("scrape")}
+                >
+                  Scrape URL
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "csv" ? "default" : "outline"}
+                  onClick={() => {
+                    setMode("csv");
+                    setPlatformKey("csv");
+                  }}
+                >
+                  <FileUp className="size-3.5" aria-hidden />
+                  Import CSV
+                </Button>
+              </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="productName">Nama produk</Label>
                 <Input
                   id="productName"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
-                  placeholder="Body Lotion Brightening 200ml"
                 />
               </div>
               <div className="grid gap-1.5">
@@ -152,63 +221,84 @@ export function BrandReviewIntelClient({
                   id="competitorBrand"
                   value={competitorBrand}
                   onChange={(e) => setCompetitorBrand(e.target.value)}
-                  placeholder="Brand X"
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label>Marketplace</Label>
-                <Select
-                  value={marketplace}
-                  onValueChange={(v) => {
-                    if (v) setMarketplace(v as ResearchMarketplace);
-                  }}
-                >
-                  <SelectTrigger>
-                    {MARKETPLACE_LABELS[marketplace]}
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(MARKETPLACE_LABELS).map(([k, label]) => (
-                      <SelectItem key={k} value={k}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="productUrl">URL produk</Label>
-                <Input
-                  id="productUrl"
-                  value={productUrl}
-                  onChange={(e) => setProductUrl(e.target.value)}
-                  placeholder="https://shopee.co.id/..."
-                />
-              </div>
+              {mode === "scrape" ? (
+                <>
+                  <div className="grid gap-1.5">
+                    <Label>Sumber review</Label>
+                    <Select
+                      value={platformKey}
+                      onValueChange={(v) => v && setPlatformKey(v)}
+                    >
+                      <SelectTrigger>
+                        {selectedPlatform?.label ?? platformKey}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel>Marketplace</SelectLabel>
+                          {reviewPlatformsByCategory("marketplace").map((p) => (
+                            <SelectItem key={p.key} value={p.key}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>Komunitas</SelectLabel>
+                          {reviewPlatformsByCategory("community").map((p) => (
+                            <SelectItem key={p.key} value={p.key}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="productUrl">URL produk</Label>
+                    <Input
+                      id="productUrl"
+                      value={productUrl}
+                      onChange={(e) => setProductUrl(e.target.value)}
+                      placeholder={selectedPlatform?.urlPlaceholder}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(e) => handleCsvFile(e.target.files?.[0] ?? null)}
+                  />
+                  <Textarea
+                    value={csvContent}
+                    onChange={(e) => setCsvContent(e.target.value)}
+                    rows={5}
+                    placeholder={"text,rating,author"}
+                  />
+                </>
+              )}
             </div>
             <DialogFooter>
               <Button
-                onClick={handleCreate}
+                onClick={mode === "csv" ? handleCreateCsv : handleCreateScrape}
                 disabled={
                   pending ||
                   !productName.trim() ||
                   !competitorBrand.trim() ||
-                  !productUrl.trim()
+                  (mode === "scrape" ? !productUrl.trim() : !csvContent.trim())
                 }
               >
-                {pending ? "Menambahkan…" : "Mulai Scrape & Analisis"}
+                {pending ? "Memproses…" : mode === "csv" ? "Import & Analisis" : "Mulai Scrape"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
-
       {sources.length === 0 ? (
-        <div className="border-border text-muted-foreground rounded-xl border border-dashed px-6 py-12 text-center">
-          <Star className="mx-auto mb-3 size-8 opacity-40" aria-hidden />
-          <p className="text-sm font-medium">Belum ada sumber review</p>
-          <p className="mt-1 text-xs">
-            Tambahkan URL produk kompetitor untuk mulai analisis sentimen.
-          </p>
+        <div className="border-border text-muted-foreground rounded-xl border border-dashed px-6 py-12 text-center text-sm">
+          Belum ada sumber review
         </div>
       ) : (
         <div className="border-border overflow-hidden rounded-xl border">
@@ -216,10 +306,9 @@ export function BrandReviewIntelClient({
             <TableHeader>
               <TableRow>
                 <TableHead>Produk</TableHead>
-                <TableHead>Marketplace</TableHead>
+                <TableHead>Sumber</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Review</TableHead>
-                <TableHead>Update</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
@@ -233,13 +322,8 @@ export function BrandReviewIntelClient({
                     >
                       {s.productName}
                     </Link>
-                    <p className="text-muted-foreground text-xs">
-                      {s.competitorBrand}
-                    </p>
                   </TableCell>
-                  <TableCell className="text-sm">
-                    {MARKETPLACE_LABELS[s.marketplace]}
-                  </TableCell>
+                  <TableCell>{getReviewPlatformLabel(s.platformKey)}</TableCell>
                   <TableCell>
                     <span
                       className={cn(
@@ -249,54 +333,28 @@ export function BrandReviewIntelClient({
                     >
                       {SOURCE_STATUS_LABELS[s.status]}
                     </span>
-                    {s.errorMessage ? (
-                      <p className="text-destructive mt-1 max-w-xs truncate text-[10px]">
-                        {s.errorMessage}
-                      </p>
-                    ) : null}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <span className="tabular-nums">
-                      {s.reviewCount.toLocaleString("id-ID")}
-                    </span>
-                    {s.totalReviewsReported != null &&
-                    s.totalReviewsReported > s.reviewCount ? (
-                      <p
-                        className="text-amber-600 dark:text-amber-400 text-[10px] font-medium"
-                        title={`Marketplace melaporkan ${s.totalReviewsReported.toLocaleString("id-ID")} review, namun hanya ${s.reviewCount.toLocaleString("id-ID")} yang bisa diambil scraper.`}
-                      >
-                        dari {s.totalReviewsReported.toLocaleString("id-ID")} ·
-                        parsial
-                      </p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {formatRelativeTime(
-                      s.lastAnalyzedAt ? new Date(s.lastAnalyzedAt) : null,
-                    )}
+                  <TableCell className="text-right tabular-nums">
+                    {s.reviewCount.toLocaleString("id-ID")}
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={pending}
-                        onClick={() =>
-                          startTransition(async () => {
-                            try {
+                      {s.platformKey !== "csv" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={pending}
+                          onClick={() =>
+                            startTransition(async () => {
                               await rescrapeBrandReviewIntelSource(s.id);
-                              toast.success("Scrape ulang dimulai.");
                               router.refresh();
-                            } catch (err) {
-                              toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-                            }
-                          })
-                        }
-                        title="Scrape ulang"
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </Button>
+                            })
+                          }
+                        >
+                          <RefreshCw className="size-3.5" />
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="ghost"
@@ -304,17 +362,11 @@ export function BrandReviewIntelClient({
                         disabled={pending}
                         onClick={() =>
                           startTransition(async () => {
-                            if (!confirm("Hapus sumber ini?")) return;
-                            try {
-                              await deleteBrandReviewIntelSource(s.id);
-                              toast.success("Sumber dihapus.");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-                            }
+                            if (!confirm("Hapus?")) return;
+                            await deleteBrandReviewIntelSource(s.id);
+                            router.refresh();
                           })
                         }
-                        title="Hapus"
                       >
                         <Trash2 className="size-3.5" />
                       </Button>

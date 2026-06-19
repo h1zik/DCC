@@ -91,7 +91,7 @@ export async function getResearchSocialMonitorById(id: string) {
 }
 
 export async function listResearchKeywordQueriesForBrandHub() {
-  return prisma.keywordIntelQuery.findMany({
+  return prisma.brandKeywordQuery.findMany({
     where: { status: "READY" },
     orderBy: { updatedAt: "desc" },
     take: 20,
@@ -100,11 +100,11 @@ export async function listResearchKeywordQueriesForBrandHub() {
 }
 
 export async function countResearchKeywordQueriesReady(): Promise<number> {
-  return prisma.keywordIntelQuery.count({ where: { status: "READY" } });
+  return prisma.brandKeywordQuery.count({ where: { status: "READY" } });
 }
 
 export async function countResearchKeywordQueriesTotal(): Promise<number> {
-  return prisma.keywordIntelQuery.count();
+  return prisma.brandKeywordQuery.count();
 }
 
 export async function listResearchTrendDigestsForBrandHub() {

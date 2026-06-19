@@ -239,15 +239,27 @@ export async function pollPlatformScrapes(input: {
 }
 
 function dedupeMentions(mentions: RawSocialMention[]): RawSocialMention[] {
-  const seen = new Set<string>();
-  const out: RawSocialMention[] = [];
+  const seen = new Map<string, RawSocialMention>();
   for (const m of mentions) {
     const key = `${m.platform}:${m.externalId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(m);
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, m);
+      continue;
+    }
+    const mergedComments = [
+      ...(existing.scrapedComments ?? []),
+      ...(m.scrapedComments ?? []),
+    ];
+    seen.set(key, {
+      ...existing,
+      likes: Math.max(existing.likes, m.likes),
+      comments: Math.max(existing.comments, m.comments),
+      views: Math.max(existing.views, m.views),
+      scrapedComments: mergedComments.length > 0 ? mergedComments : undefined,
+    });
   }
-  return out;
+  return [...seen.values()];
 }
 
 export async function waitForPlatformScrapes(input: {

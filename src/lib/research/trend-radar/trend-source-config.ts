@@ -2,8 +2,11 @@ import "server-only";
 
 import { z } from "zod";
 import { getDefaultRssFeedEntries } from "@/lib/research/trend-radar/rss-feeds";
+import { isTikTokTrendsConfigured } from "@/lib/research/trend-radar/tiktok-trends";
 import {
+  DEFAULT_TIKTOK_HASHTAGS,
   normalizeHashtags,
+  normalizeTrendSourceConfig,
   type TrendSourceConfig,
 } from "@/lib/research/trend-radar/trend-source-config-types";
 
@@ -18,6 +21,7 @@ export {
   normalizeHashtags,
   parseHashtagInput,
   summarizeEnabledSources,
+  DEFAULT_TIKTOK_HASHTAGS,
 } from "@/lib/research/trend-radar/trend-source-config-types";
 
 const rssFeedEntrySchema = z.object({
@@ -33,6 +37,10 @@ export const trendSourceConfigSchema = z
       rss: z.boolean(),
       tiktok: z.boolean(),
       bpom: z.boolean(),
+      reviewIntel: z.boolean(),
+      competitor: z.boolean(),
+      keywordIntel: z.boolean(),
+      socialListening: z.boolean(),
     }),
     rssFeeds: z.array(rssFeedEntrySchema).max(20),
     tiktokHashtags: z.array(z.string().min(1).max(80)).max(20),
@@ -62,15 +70,20 @@ export const trendSourceConfigSchema = z
   });
 
 export function getDefaultTrendSourceConfig(): TrendSourceConfig {
+  const tiktokOn = isTikTokTrendsConfigured();
   return {
     enabled: {
       googleTrends: true,
       rss: true,
-      tiktok: false,
+      tiktok: tiktokOn,
       bpom: true,
+      reviewIntel: true,
+      competitor: true,
+      keywordIntel: true,
+      socialListening: true,
     },
     rssFeeds: getDefaultRssFeedEntries(),
-    tiktokHashtags: [],
+    tiktokHashtags: tiktokOn ? [...DEFAULT_TIKTOK_HASHTAGS] : [],
   };
 }
 
@@ -78,16 +91,7 @@ export function resolveTrendSourceConfig(
   override?: Partial<TrendSourceConfig> | null,
 ): TrendSourceConfig {
   const base = getDefaultTrendSourceConfig();
-  if (!override) return base;
-
-  return {
-    enabled: { ...base.enabled, ...override.enabled },
-    rssFeeds: override.rssFeeds?.length ? override.rssFeeds : base.rssFeeds,
-    tiktokHashtags:
-      override.tiktokHashtags !== undefined
-        ? normalizeHashtags(override.tiktokHashtags)
-        : base.tiktokHashtags,
-  };
+  return normalizeTrendSourceConfig(override, base);
 }
 
 export function validateTrendSourceConfig(
@@ -105,7 +109,11 @@ export function parseTrendSourceConfigJson(
 ): TrendSourceConfig | null {
   if (!value || typeof value !== "object") return null;
   try {
-    return validateTrendSourceConfig(value);
+    const merged = normalizeTrendSourceConfig(
+      value as Partial<TrendSourceConfig>,
+      getDefaultTrendSourceConfig(),
+    );
+    return validateTrendSourceConfig(merged);
   } catch {
     return null;
   }

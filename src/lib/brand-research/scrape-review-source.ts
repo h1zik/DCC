@@ -11,11 +11,9 @@ import { prisma } from "@/lib/prisma";
 import { fetchApifyDataset } from "@/lib/apify/client";
 import type { NormalizedReview, ReviewScrapeMeta } from "@/lib/apify/normalize";
 import {
-  extractApifyScrapeErrorMessage,
-  extractReviewScrapeMeta,
   generateDemoReviews,
-  normalizeReviewItems,
 } from "@/lib/apify/normalize";
+import { processReviewScrapeDataset } from "@/lib/review-scrape/process-dataset";
 import { analyzeBrandReviewSource } from "@/lib/brand-research/review-analyzer";
 import { executeBrandReviewScrapeJob } from "@/lib/brand-research/run-review-scrape-job";
 
@@ -143,27 +141,45 @@ export async function completeBrandReviewScrapeFromNormalized(
 export async function completeBrandReviewScrapeFromDataset(
   sourceId: string,
   items: Record<string, unknown>[],
+  platformKey?: string,
 ): Promise<void> {
-  const hasMock = items.some((x) => x._mock === true);
-  const actorError = extractApifyScrapeErrorMessage(items);
-  const normalized = normalizeReviewItems(items);
-  const meta = extractReviewScrapeMeta(items);
-  if (normalized.length === 0) {
-    const message = hasMock
-      ? "Apify mengembalikan data MOCK — upgrade ke plan berbayar Apify untuk data Shopee live."
-      : actorError ??
-        "Tidak ada review ditemukan dari scraper. Pastikan URL produk Shopee valid.";
+  let resolvedPlatformKey = platformKey;
+  if (!resolvedPlatformKey) {
+    const source = await prisma.brandReviewSource.findUnique({
+      where: { id: sourceId },
+      select: { platformKey: true },
+    });
+    resolvedPlatformKey = source?.platformKey ?? "shopee";
+  }
+
+  const { normalized, meta, errorMessage } = processReviewScrapeDataset(
+    resolvedPlatformKey,
+    items,
+  );
+
+  if (errorMessage) {
     await prisma.brandReviewSource.update({
       where: { id: sourceId },
       data: {
         status: ReviewIntelSourceStatus.FAILED,
-        errorMessage: message,
+        errorMessage,
       },
     });
-    throw new Error(message);
+    throw new Error(errorMessage);
   }
 
   await completeBrandReviewScrapeFromNormalized(sourceId, normalized, meta);
+}
+
+export async function completeBrandReviewScrapeFromImportedReviews(
+  sourceId: string,
+  normalized: NormalizedReview[],
+): Promise<void> {
+  await completeBrandReviewScrapeFromNormalized(sourceId, normalized, {
+    totalReviewsReported: normalized.length,
+    reviewsAccessible: normalized.length,
+    reviewsComplete: true,
+  });
 }
 
 async function markReviewScrapeJobFailed(

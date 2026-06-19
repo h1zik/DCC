@@ -9,6 +9,12 @@ import {
   buildKulqizShopInput,
   isKulqizTikTokShopActor,
 } from "@/lib/apify/tiktok-kulqiz";
+import {
+  buildReviewActorInputForPlatform,
+  getReviewActorIdForPlatform,
+  reviewPlatformEnvHint,
+} from "@/lib/review-platforms/registry";
+import { marketplaceFromPlatformKey } from "@/lib/review-platforms/platforms";
 
 const GIO21_SHOPEE_SCRAPER = "gio21~shopee-scraper";
 const GIO21_SHOPEE_PRODUCT_DETAIL = "gio21~shopee-product-detail";
@@ -28,6 +34,26 @@ export function getReviewActorId(marketplace: ResearchMarketplace): string | nul
     default:
       return null;
   }
+}
+
+/** Resolve review actor by platform registry key. */
+export { getReviewActorIdForPlatform as getReviewActorIdByPlatformKey };
+
+export function buildReviewActorInputByPlatformKey(
+  platformKey: string,
+  productUrl: string,
+): Record<string, unknown> {
+  return buildReviewActorInputForPlatform(platformKey, productUrl);
+}
+
+export function reviewActorEnvHintByPlatformKey(platformKey: string): string {
+  return reviewPlatformEnvHint(platformKey);
+}
+
+export function marketplaceToPlatformKey(
+  marketplace: ResearchMarketplace,
+): string {
+  return marketplaceFromPlatformKey(marketplace) ?? "shopee";
 }
 
 export function getShopActorId(marketplace: ResearchMarketplace): string | null {

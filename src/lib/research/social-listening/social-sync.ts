@@ -170,9 +170,9 @@ export async function finalizeSocialListeningBatch(
     });
 
     const summary = aggregateSocialSummary(classified);
+    let aiMeta = classifyMeta ?? researchAiMetaFromSteps([]);
 
     let actionPlan: ActionPlan | null = null;
-    let aiMeta = classifyMeta ?? researchAiMetaFromSteps([]);
     if (summary.topPainPoints.length > 0 || summary.topWishlist.length > 0) {
       try {
         const planResult = await generateResearchJson<{ actionPlan?: unknown }>(
@@ -200,8 +200,8 @@ export async function finalizeSocialListeningBatch(
         ? `${aiSummary}${summaryNote} (${warnings.join(" ")})`
         : `${aiSummary}${summaryNote}`;
 
-    await prisma.$transaction([
-      prisma.socialMention.createMany({
+    await prisma.$transaction(async (tx) => {
+      await tx.socialMention.createMany({
         data: classified.map((m) => ({
           batchId,
           platform: m.platform,
@@ -220,8 +220,9 @@ export async function finalizeSocialListeningBatch(
           mediaType: m.mediaType ?? null,
         })),
         skipDuplicates: true,
-      }),
-      prisma.socialListeningSummary.upsert({
+      });
+
+      await tx.socialListeningSummary.upsert({
         where: { batchId },
         create: {
           batchId,
@@ -231,6 +232,7 @@ export async function finalizeSocialListeningBatch(
           viralContent: summary.viralContent,
           categoryBreakdown: summary.categoryBreakdown,
           sentimentTimeline: summary.sentimentTimeline,
+          engagementInsights: summary.engagementInsights,
           aiActionPlan: actionPlan ?? undefined,
           aiSummary: aiSummaryText,
           aiMeta: aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
@@ -242,12 +244,14 @@ export async function finalizeSocialListeningBatch(
           viralContent: summary.viralContent,
           categoryBreakdown: summary.categoryBreakdown,
           sentimentTimeline: summary.sentimentTimeline,
+          engagementInsights: summary.engagementInsights,
           aiActionPlan: actionPlan ?? undefined,
           aiSummary: aiSummaryText,
           aiMeta: aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
         },
-      }),
-      prisma.socialListeningBatch.update({
+      });
+
+      await tx.socialListeningBatch.update({
         where: { id: batchId },
         data: {
           status: SocialListeningStatus.READY,
@@ -255,8 +259,8 @@ export async function finalizeSocialListeningBatch(
           platformStatus,
           errorMessage: warnings.length > 0 ? warnings.join(" | ") : null,
         },
-      }),
-    ]);
+      });
+    });
 
     await syncModuleRecommendations({
       module: "social-listening",

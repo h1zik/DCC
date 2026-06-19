@@ -26,6 +26,7 @@ export type MentionFeedRow = {
   author: string | null;
   classification: SocialMentionClass;
   likes: number;
+  comments: number;
   views: number;
   isViral: boolean;
   url: string | null;
@@ -112,6 +113,8 @@ export function SocialMentionFeed({ rows }: { rows: MentionFeedRow[] }) {
               </TableCell>
               <TableCell className="text-right text-xs">
                 {row.likes.toLocaleString("id-ID")} likes
+                <br />
+                {row.comments.toLocaleString("id-ID")} komentar
                 <br />
                 {row.views.toLocaleString("id-ID")} views
               </TableCell>

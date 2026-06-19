@@ -4,9 +4,13 @@ import { useState } from "react";
 import {
   Globe,
   Hash,
+  KeyRound,
+  MessageSquareText,
   Newspaper,
+  Radio,
   Search,
   ShieldCheck,
+  Target,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -45,8 +49,28 @@ const SOURCE_META: Record<
   },
   bpom: {
     label: "BPOM Kosmetika",
-    hint: "Produk terdaftar dari cekbpom.pom.go.id",
+    hint: "Delta registrasi produk dari cekbpom.pom.go.id",
     icon: ShieldCheck,
+  },
+  reviewIntel: {
+    label: "Review Intelligence",
+    hint: "Tema keluhan & pujian dari review kompetitor",
+    icon: MessageSquareText,
+  },
+  competitor: {
+    label: "Competitor Tracker",
+    hint: "Velocity review count & SKU baru",
+    icon: Target,
+  },
+  keywordIntel: {
+    label: "Keyword Intel",
+    hint: "Volume & trend keyword dari DataForSEO",
+    icon: KeyRound,
+  },
+  socialListening: {
+    label: "Social Listening",
+    hint: "Pain points & wishlist dari TikTok/Instagram",
+    icon: Radio,
   },
 };
 
@@ -127,7 +151,15 @@ export function TrendSourceConfigPicker({
       {(Object.keys(SOURCE_META) as SourceKey[]).map((key) => {
         const meta = SOURCE_META[key];
         const Icon = meta.icon;
-        const hasData = key !== "tiktok" || tiktokConfigured;
+        const hasData =
+          key === "tiktok"
+            ? tiktokConfigured
+            : key === "reviewIntel" ||
+                key === "competitor" ||
+                key === "keywordIntel" ||
+                key === "socialListening"
+              ? true
+              : true;
         const enabled = config.enabled[key];
         const isOpen = enabled && hasData;
 
@@ -222,7 +254,7 @@ export function TrendSourceConfigPicker({
                   className="text-sm"
                 />
                 <p className="text-muted-foreground text-[11px]">
-                  Tidak ada default — isi hashtag yang ingin dipantau.
+                  Default hashtag beauty Indonesia — bisa disesuaikan.
                 </p>
               </div>
             ) : null}

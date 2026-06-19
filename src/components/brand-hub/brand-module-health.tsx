@@ -48,7 +48,7 @@ const MODULE_LABELS: Record<string, { title: string; href: string }> = {
   },
   "research-review": { title: "Review Intel (Research)", href: "/brand-hub/strategy" },
   "research-trend": { title: "Trend Radar (Research)", href: "/brand-hub/strategy" },
-  "research-keyword": { title: "Keyword Intel (Research)", href: "/brand-hub/strategy" },
+  "research-keyword": { title: "Keyword Intel", href: "/brand-hub/keyword-intel" },
   "research-usp": { title: "USP Analyzer (Research)", href: "/brand-hub/strategy" },
 };
 

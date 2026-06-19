@@ -305,15 +305,53 @@ export function normalizeKulqizProductReviews(
   return out;
 }
 
-export function normalizeReviewItems(
+/** JSON-LD review extractor output (tom2turnt/review-extractor). */
+export function normalizeJsonLdReviewItems(
   items: Record<string, unknown>[],
 ): NormalizedReview[] {
-  const fromPdp = normalizeShopeeProductDetailReviews(items);
-  if (fromPdp.length > 0) return fromPdp;
+  const out: NormalizedReview[] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i]!;
+    const nested = item.reviews;
+    if (Array.isArray(nested)) {
+      for (let j = 0; j < nested.length; j += 1) {
+        const r = nested[j] as Record<string, unknown>;
+        const text =
+          pickString(r, ["body", "reviewBody", "text", "comment", "content"]) ??
+          "";
+        if (!text.trim()) continue;
+        out.push({
+          externalId:
+            pickString(r, ["id", "reviewId", "review_id"]) ?? `jsonld-${i}-${j}`,
+          author: pickString(r, ["author", "authorName", "name", "username"]),
+          rating: pickNumber(r, ["rating", "ratingValue", "stars", "score"]),
+          text: text.trim(),
+          reviewDate: pickDate(r, ["datePublished", "date", "reviewDate"]),
+        });
+      }
+      continue;
+    }
 
-  const fromKulqiz = normalizeKulqizProductReviews(items);
-  if (fromKulqiz.length > 0) return fromKulqiz;
+    const text =
+      pickString(item, ["body", "reviewBody", "text", "comment", "content"]) ??
+      "";
+    if (!text.trim()) continue;
 
+    out.push({
+      externalId:
+        pickString(item, ["id", "reviewId", "review_id"]) ?? `jsonld-${i}`,
+      author: pickString(item, ["author", "authorName", "name", "username"]),
+      rating: pickNumber(item, ["rating", "ratingValue", "stars", "score"]),
+      text: text.trim(),
+      reviewDate: pickDate(item, ["datePublished", "date", "reviewDate"]),
+    });
+  }
+  return out;
+}
+
+export function normalizeGenericReviewItems(
+  items: Record<string, unknown>[],
+): NormalizedReview[] {
   const out: NormalizedReview[] = [];
   for (let i = 0; i < items.length; i += 1) {
     const item = items[i]!;
@@ -362,6 +400,21 @@ export function normalizeReviewItems(
     });
   }
   return out;
+}
+
+export function normalizeReviewItems(
+  items: Record<string, unknown>[],
+): NormalizedReview[] {
+  const fromPdp = normalizeShopeeProductDetailReviews(items);
+  if (fromPdp.length > 0) return fromPdp;
+
+  const fromKulqiz = normalizeKulqizProductReviews(items);
+  if (fromKulqiz.length > 0) return fromKulqiz;
+
+  const fromJsonLd = normalizeJsonLdReviewItems(items);
+  if (fromJsonLd.length > 0) return fromJsonLd;
+
+  return normalizeGenericReviewItems(items);
 }
 
 export function normalizeShopProducts(
