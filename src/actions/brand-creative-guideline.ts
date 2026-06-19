@@ -61,7 +61,7 @@ export async function regenerateBrandCreativeGuideline(guidelineId: string) {
   z.string().min(1).parse(guidelineId);
 
   const existing = await prisma.brandCreativeGuideline.findFirst({
-    where: { id: guidelineId, createdById: session.user.id },
+    where: { id: guidelineId },
     select: { ownerBrandId: true, strategyDocumentId: true },
   });
   if (!existing) throw new Error("Creative guideline tidak ditemukan.");
@@ -89,7 +89,7 @@ export async function regenerateBrandCreativeGuideline(guidelineId: string) {
 export async function deleteBrandCreativeGuideline(guidelineId: string) {
   const session = await requireBrandManager();
   await prisma.brandCreativeGuideline.deleteMany({
-    where: { id: guidelineId, createdById: session.user.id },
+    where: { id: guidelineId },
   });
   revalidatePath("/brand-hub/creative-guideline");
 }
@@ -103,7 +103,6 @@ export async function getBrandCreativeGuidelinePageData(ownerBrandId?: string | 
 
   const strategyDocs = await prisma.brandStrategyDocument.findMany({
     where: {
-      createdById: session.user.id,
       status: "READY",
       ...(ownerBrandId ? { ownerBrandId } : {}),
     },

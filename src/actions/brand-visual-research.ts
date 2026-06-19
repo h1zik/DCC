@@ -157,7 +157,7 @@ export async function appendBrandVisualCollectionKeywords(
   const data = appendKeywordsSchema.parse(input);
 
   const collection = await prisma.brandVisualCollection.findFirst({
-    where: { id: data.collectionId, createdById: session.user.id },
+    where: { id: data.collectionId },
   });
   if (!collection) throw new Error("Koleksi tidak ditemukan.");
 

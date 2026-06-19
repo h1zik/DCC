@@ -6,6 +6,7 @@ import type {
   VisualLibraryAssetView,
   VisualLibraryGroups,
 } from "@/lib/brand-research/visual-library-types";
+import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
 
 export type { VisualLibraryAssetView, VisualLibraryGroups } from "@/lib/brand-research/visual-library-types";
 
@@ -206,10 +207,12 @@ export async function createManualBrandVisualAsset(input: {
 }
 
 export async function listBrandVisualAssets(
-  userId: string,
+  _userId: string,
   ownerBrandId?: string | null,
   source?: BrandVisualAssetSource,
 ) {
+  const brandFilter = brandStudioBrandFilter(ownerBrandId);
+
   const [researchCompetitors, researchMonitors] = await Promise.all([
     prisma.researchCompetitor.findMany({ select: { id: true } }),
     prisma.socialListeningMonitor.findMany({ select: { id: true } }),
@@ -219,8 +222,8 @@ export async function listBrandVisualAssets(
 
   const fromCollections = await prisma.brandVisualAsset.findMany({
     where: {
-      collection: { createdById: userId },
-      ...(ownerBrandId ? { ownerBrandId } : {}),
+      collectionId: { not: null },
+      ...brandFilter,
       ...(source ? { source } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -232,7 +235,7 @@ export async function listBrandVisualAssets(
           where: {
             collectionId: null,
             source: BrandVisualAssetSource.COMPETITOR_LISTING,
-            ...(ownerBrandId ? { ownerBrandId } : {}),
+            ...brandFilter,
           },
           orderBy: { createdAt: "desc" },
           take: 200,
@@ -245,7 +248,7 @@ export async function listBrandVisualAssets(
           where: {
             collectionId: null,
             source: BrandVisualAssetSource.SOCIAL,
-            ...(ownerBrandId ? { ownerBrandId } : {}),
+            ...brandFilter,
           },
           orderBy: { createdAt: "desc" },
           take: 200,
@@ -258,7 +261,7 @@ export async function listBrandVisualAssets(
           where: {
             collectionId: null,
             source: BrandVisualAssetSource.MANUAL,
-            ...(ownerBrandId ? { ownerBrandId } : {}),
+            ...brandFilter,
           },
           orderBy: { createdAt: "desc" },
           take: 200,
@@ -275,10 +278,7 @@ export async function listBrandVisualAssets(
     return meta?.monitorId && monitorIds.has(meta.monitorId);
   });
 
-  const filteredManual = manualAssets.filter((a) => {
-    const meta = a.metadata as { uploadedById?: string } | null;
-    return meta?.uploadedById === userId;
-  });
+  const filteredManual = manualAssets;
 
   const merged = [
     ...fromCollections,
@@ -348,12 +348,12 @@ export function computeDominantPaletteFromAssets(
   };
 }
 
-export async function listBrandVisualCollections(userId: string, ownerBrandId?: string | null) {
+export async function listBrandVisualCollections(
+  _userId: string,
+  ownerBrandId?: string | null,
+) {
   return prisma.brandVisualCollection.findMany({
-    where: {
-      createdById: userId,
-      ...(ownerBrandId ? { ownerBrandId } : {}),
-    },
+    where: brandStudioBrandFilter(ownerBrandId),
     include: { _count: { select: { assets: true } } },
     orderBy: { updatedAt: "desc" },
   });
@@ -479,21 +479,16 @@ export async function buildVisualLibraryGroups(
 
 export async function deleteBrandVisualAssetForUser(
   assetId: string,
-  userId: string,
+  _userId: string,
 ): Promise<void> {
   const asset = await prisma.brandVisualAsset.findUnique({
     where: { id: assetId },
   });
   if (!asset) throw new Error("Asset tidak ditemukan.");
 
-  if (asset.source === BrandVisualAssetSource.MANUAL) {
-    const meta = asset.metadata as { uploadedById?: string } | null;
-    if (meta?.uploadedById !== userId) {
-      throw new Error("Tidak boleh menghapus asset manual milik user lain.");
-    }
-  } else if (asset.collectionId) {
-    const collection = await prisma.brandVisualCollection.findFirst({
-      where: { id: asset.collectionId, createdById: userId },
+  if (asset.collectionId) {
+    const collection = await prisma.brandVisualCollection.findUnique({
+      where: { id: asset.collectionId },
     });
     if (!collection) throw new Error("Asset tidak ditemukan.");
   } else if (asset.source === BrandVisualAssetSource.COMPETITOR_LISTING) {
