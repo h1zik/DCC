@@ -22,6 +22,8 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { GuidelineReadiness } from "@/lib/brand-research/strategy/evidence-gate";
+import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { cn } from "@/lib/utils";
 
 type Palette = {
@@ -67,13 +69,20 @@ export function BrandCreativeGuidelineClient({
   strategyOptions,
   moodboardAssets,
   selectedGuidelineId,
+  guidelineReadiness,
+  visualAssetCount,
+  defaultBrandId,
 }: {
   guidelines: CreativeGuidelineView[];
   strategyOptions: StrategyOption[];
   moodboardAssets: { id: string; imageUrl: string; title: string | null }[];
   selectedGuidelineId: string | null;
+  guidelineReadiness: GuidelineReadiness;
+  visualAssetCount: number;
+  defaultBrandId?: string | null;
 }) {
   const router = useRouter();
+  const brandId = useBrandHubBrandId(defaultBrandId);
   const [pending, startTransition] = useTransition();
   const [selectedId, setSelectedId] = useState<string | null>(
     selectedGuidelineId ?? guidelines[0]?.id ?? null,
@@ -103,6 +112,7 @@ export function BrandCreativeGuidelineClient({
     startTransition(async () => {
       try {
         const result = await createBrandCreativeGuideline({
+          ownerBrandId: brandId,
           strategyDocumentId: strategyPick || null,
         });
         toast.success("Creative guideline dibuat — AI sedang generate.");
@@ -159,7 +169,12 @@ export function BrandCreativeGuidelineClient({
               </SelectContent>
             </Select>
           ) : null}
-          <Button size="sm" onClick={handleCreate} disabled={pending}>
+          <Button
+            size="sm"
+            onClick={handleCreate}
+            disabled={pending || !guidelineReadiness.canGenerate}
+            title={guidelineReadiness.message}
+          >
             <Plus className="size-3.5" />
             Guideline baru
           </Button>
@@ -190,6 +205,16 @@ export function BrandCreativeGuidelineClient({
       </aside>
 
       <div className="min-w-0 flex-1 flex flex-col gap-5">
+        {!guidelineReadiness.canGenerate ? (
+          <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+            {guidelineReadiness.message ??
+              "Brand Strategy READY + minimal 5 visual assets diperlukan."}
+          </p>
+        ) : null}
+        <p className="text-muted-foreground text-xs">
+          Visual Library: {visualAssetCount} asset
+          {visualAssetCount >= 5 ? " (cukup untuk palette deterministik)" : " (butuh ≥5)"}
+        </p>
         {!selected ? (
           <p className="text-muted-foreground text-sm">
             Buat creative guideline dari dokumen strategi yang sudah READY.
@@ -207,7 +232,8 @@ export function BrandCreativeGuidelineClient({
                 size="sm"
                 variant="outline"
                 onClick={handleRegenerate}
-                disabled={pending || isGenerating}
+                disabled={pending || isGenerating || !guidelineReadiness.canGenerate}
+                title={guidelineReadiness.message}
               >
                 <RefreshCw className="size-3.5" />
                 Regenerate
@@ -251,7 +277,10 @@ export function BrandCreativeGuidelineClient({
               )}
             </section>
 
-            <ColorPalettePanel palette={selected.colorPalette} />
+            <ColorPalettePanel
+              palette={selected.colorPalette}
+              derivedFromCount={visualAssetCount >= 5 ? visualAssetCount : undefined}
+            />
 
             {selected.typography ? (
               <div className="rounded-xl border border-border/70 bg-card p-4">

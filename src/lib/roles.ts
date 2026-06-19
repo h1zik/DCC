@@ -77,6 +77,12 @@ export function isMarketAnalyst(role: UserRole | undefined): boolean {
   return role === UserRole.MARKET_ANALYST;
 }
 
+/** Research Hub — Market Analyst & Project Manager (Brand Manager). */
+export function canAccessResearchHub(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  return isMarketAnalyst(role) || isProjectManager(role);
+}
+
 /** Market Analyst + studio workspace (tugas, pipeline, ruangan). */
 export function isMarketAnalystOrStudio(role: UserRole | undefined): boolean {
   if (!role) return false;

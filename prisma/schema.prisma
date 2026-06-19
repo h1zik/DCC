@@ -2181,6 +2181,7 @@ model CompetitorSku {
   competitor   ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
   name         String
   productUrl   String
+  imageUrl     String?
   externalId   String?
   currentPrice Float?
   rating       Float?
@@ -2435,6 +2436,8 @@ model SocialMention {
   painPoint    String?
   isViral      Boolean                @default(false)
   postedAt     DateTime?
+  thumbnailUrl String?
+  mediaType    String?
   createdAt    DateTime               @default(now())
 
   @@unique([batchId, platform, externalId])
@@ -2932,6 +2935,8 @@ model BrandSocialMention {
   painPoint      String?
   isViral        Boolean                @default(false)
   postedAt       DateTime?
+  thumbnailUrl   String?
+  mediaType      String?
   createdAt      DateTime               @default(now())
 
   @@unique([batchId, platform, externalId])
@@ -3039,10 +3044,11 @@ enum BrandCreativeGuidelineStatus {
 }
 
 model BrandVisualCollection {
-  id           String                      @id @default(cuid())
-  name         String
-  keywords     String[]                    @default([])
-  status       BrandVisualCollectionStatus @default(PENDING)
+  id                 String                      @id @default(cuid())
+  name               String
+  keywords           String[]                    @default([])
+  maxPinsPerKeyword  Int?
+  status             BrandVisualCollectionStatus @default(PENDING)
   sourceConfig Json?
   errorMessage String?
   ownerBrandId String?
@@ -3097,6 +3103,12 @@ model BrandStrategyDocument {
   brandPersonality Json?
   toneOfVoice      Json?
   evidenceRefs     Json                @default("[]")
+  /** User-selected modules/entities fed to AI at generation time. */
+  generationConfig Json                @default("{}")
+  /** Per-field detailed reasoning from AI generation. */
+  strategyRationales Json              @default("[]")
+  /** Deterministic input fed to AI at generation time (audit trail). */
+  evidenceSnapshot Json                @default("{}")
   aiMeta           Json?
   errorMessage     String?
   createdById      String

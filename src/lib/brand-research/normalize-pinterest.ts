@@ -28,6 +28,14 @@ function pickNumber(obj: Record<string, unknown>, keys: string[]): number | null
 }
 
 function pickBestImageUrl(item: Record<string, unknown>): string | null {
+  const imageUrls = item.imageUrls as Record<string, unknown> | undefined;
+  if (imageUrls && typeof imageUrls === "object") {
+    for (const key of ["original", "736x", "474x", "236x", "170x", "60x60"]) {
+      const val = imageUrls[key];
+      if (typeof val === "string" && val.startsWith("http")) return val;
+    }
+  }
+
   const images = item.images as Record<string, unknown> | undefined;
   if (images && typeof images === "object") {
     for (const key of ["orig", "original", "736x", "564x", "474x", "236x", "170x"]) {
@@ -77,9 +85,13 @@ export function normalizePinterestPins(
       sourceUrl: pickString(item, ["url", "link", "pinUrl", "pin_url"]),
       dominantColor: pickString(item, ["dominantColor", "dominant_color", "color"]),
       metadata: {
-        boardName: pickString(item, ["boardName", "board_name", "board"]),
-        likes: pickNumber(item, ["likeCount", "likes", "reaction_count"]),
-        saves: pickNumber(item, ["saveCount", "saves", "repin_count"]),
+        boardName:
+          pickString(item, ["boardName", "board_name"]) ??
+          (item.board && typeof item.board === "object"
+            ? pickString(item.board as Record<string, unknown>, ["name"])
+            : null),
+        likes: pickNumber(item, ["likeCount", "likes", "reaction_count", "reactions"]),
+        saves: pickNumber(item, ["saveCount", "saves", "repin_count", "repinCount"]),
         comments: pickNumber(item, ["commentCount", "comments"]),
       },
     });
@@ -87,10 +99,14 @@ export function normalizePinterestPins(
   return out;
 }
 
-export function generateDemoPinterestPins(keywords: string[]): NormalizedPinterestPin[] {
-  const seed = keywords[0] ?? "beauty";
-  return Array.from({ length: 12 }, (_, i) => ({
-    externalId: `demo-pin-${i}`,
+export function generateDemoPinterestPins(
+  keyword: string,
+  count = 12,
+): NormalizedPinterestPin[] {
+  const seed = keyword.trim() || "beauty";
+  const n = Math.min(Math.max(Math.round(count), 1), 50);
+  return Array.from({ length: n }, (_, i) => ({
+    externalId: `demo-pin-${seed}-${i}`,
     title: `${seed} aesthetic reference ${i + 1}`,
     description: `Demo moodboard pin untuk ${seed}`,
     imageUrl: `https://picsum.photos/seed/${encodeURIComponent(seed)}-${i}/600/800`,

@@ -6,32 +6,28 @@ import {
   ResearchScrapeJobType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { fetchApifyDataset, waitForApifyRun } from "@/lib/apify/client";
-import { ingestPinterestPins } from "@/lib/brand-research/scrape-pinterest";
+import { executeBrandPinterestScrape } from "@/lib/brand-research/scrape-pinterest";
 
 export async function runBrandPinterestJobToCompletion(jobId: string): Promise<void> {
   const job = await prisma.brandResearchScrapeJob.findUnique({ where: { id: jobId } });
-  if (!job?.apifyRunId || job.status !== ResearchScrapeJobStatus.RUNNING) return;
+  if (!job || job.status !== ResearchScrapeJobStatus.RUNNING) return;
   if (job.type !== ResearchScrapeJobType.PINTEREST_SCRAPE) return;
 
   try {
-    const { status, datasetId } = await waitForApifyRun(job.apifyRunId);
-
-    if (status === "SUCCEEDED") {
-      const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
-      await ingestPinterestPins(job.entityId, items);
-      await prisma.brandResearchScrapeJob.update({
-        where: { id: jobId },
-        data: {
-          status: ResearchScrapeJobStatus.COMPLETED,
-          completedAt: new Date(),
-          error: null,
-        },
-      });
-      return;
+    const count = await executeBrandPinterestScrape(job.entityId);
+    if (count === 0) {
+      throw new Error("Tidak ada pin yang berhasil diimpor dari Pinterest.");
     }
 
-    throw new Error(`Apify run status: ${status}`);
+    await prisma.brandResearchScrapeJob.update({
+      where: { id: jobId },
+      data: {
+        status: ResearchScrapeJobStatus.COMPLETED,
+        completedAt: new Date(),
+        error: null,
+        percent: 100,
+      },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Pinterest scrape gagal.";
     await prisma.brandResearchScrapeJob.update({

@@ -216,6 +216,8 @@ export async function finalizeBrandSocialListeningBatch(
           painPoint: m.painPoint,
           isViral: m.isViral,
           postedAt: m.postedAt ?? null,
+          thumbnailUrl: m.thumbnailUrl ?? null,
+          mediaType: m.mediaType ?? null,
         })),
         skipDuplicates: true,
       }),

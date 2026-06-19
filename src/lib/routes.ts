@@ -43,7 +43,7 @@ export function isFinanceAppRoute(pathname: string): boolean {
   );
 }
 
-/** Modul Research Hub — Market Analyst. */
+/** Modul Research Hub — Market Analyst & Project Manager. */
 export function isResearchHubRoute(pathname: string): boolean {
   return (
     pathname === "/research-hub" || pathname.startsWith("/research-hub/")
@@ -84,11 +84,12 @@ export function isWorkspaceDashboardRoute(pathname: string): boolean {
   );
 }
 
-/** Pipeline & tugas — tim studio / PM. */
+/** Pipeline, tugas, Brand Hub, Research Hub — tim studio / PM. */
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isWorkspaceDashboardRoute(pathname) ||
     isBrandHubRoute(pathname) ||
+    isResearchHubRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||

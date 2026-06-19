@@ -1,5 +1,5 @@
 import { Sparkles } from "lucide-react";
-import { PageHero } from "@/components/page-hero";
+import { BrandHubListPage } from "@/components/brand-hub/brand-hub-list-page";
 import { ensureBrandHubPage } from "../layout";
 import { getBrandCreativeGuidelinePageData } from "@/actions/brand-creative-guideline";
 import { listBrandVisualAssets } from "@/lib/brand-research/visual";
@@ -16,12 +16,12 @@ export default async function BrandCreativeGuidelinePage({
   const assets = await listBrandVisualAssets(session.user.id, brandId ?? null);
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={Sparkles}
-        title="Creative Guideline"
-        subtitle="Moodboard, color palette, typography, dan design references — creative direction dari strategi brand dan visual library."
-      />
+    <BrandHubListPage
+      icon={Sparkles}
+      eyebrow="Studio"
+      title="Creative Guideline"
+      subtitle="Moodboard, color palette, typography, dan design references — creative direction dari strategi brand dan visual library."
+    >
       <BrandCreativeGuidelineClient
         guidelines={data.guidelines as CreativeGuidelineView[]}
         strategyOptions={data.strategyOptions}
@@ -31,7 +31,10 @@ export default async function BrandCreativeGuidelinePage({
           title: a.title,
         }))}
         selectedGuidelineId={data.guidelines[0]?.id ?? null}
+        guidelineReadiness={data.guidelineReadiness}
+        visualAssetCount={data.visualAssetCount}
+        defaultBrandId={brandId ?? null}
       />
-    </div>
+    </BrandHubListPage>
   );
 }

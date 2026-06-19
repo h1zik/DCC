@@ -38,6 +38,33 @@ function playCountOf(item: Record<string, unknown>): number {
   return 0;
 }
 
+function pickHttpUrl(value: unknown): string | undefined {
+  if (typeof value === "string" && value.startsWith("http")) return value;
+  return undefined;
+}
+
+function pickTikTokThumbnail(item: Record<string, unknown>): string | undefined {
+  const videoMeta = item.videoMeta as Record<string, unknown> | undefined;
+  const covers = item.covers as Record<string, unknown> | undefined;
+
+  return (
+    pickHttpUrl(videoMeta?.coverUrl) ??
+    pickHttpUrl(videoMeta?.cover) ??
+    pickHttpUrl(covers?.default) ??
+    pickHttpUrl(item.dynamicCover) ??
+    pickHttpUrl(item.cover)
+  );
+}
+
+function isTikTokVideo(item: Record<string, unknown>): boolean {
+  return (
+    typeof item.webVideoUrl === "string" ||
+    typeof item.videoUrl === "string" ||
+    item.isVideo === true ||
+    !!(item.videoMeta && typeof item.videoMeta === "object")
+  );
+}
+
 export function parseTikTokMentionItems(
   items: Record<string, unknown>[],
 ): RawSocialMention[] {
@@ -90,6 +117,8 @@ export function parseTikTokMentionItems(
       views: playCountOf(item),
       postedAt:
         createTime && !Number.isNaN(createTime.getTime()) ? createTime : undefined,
+      thumbnailUrl: pickTikTokThumbnail(item),
+      mediaType: isTikTokVideo(item) ? "video" : "image",
     });
   }
 

@@ -34,8 +34,14 @@ export async function geminiGenerateJson<T>(
         },
       });
 
+      const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
+        [{ text: prompt }];
+      for (const img of opts?.imageParts ?? []) {
+        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+      }
+
       const result = await withLlmRetry(
-        () => model.generateContent(prompt),
+        () => model.generateContent(parts),
         { maxRetries: opts?.maxRetries ?? 2 },
       );
 

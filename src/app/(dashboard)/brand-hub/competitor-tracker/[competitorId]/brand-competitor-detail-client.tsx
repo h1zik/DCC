@@ -3,20 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, ExternalLink, ImageIcon, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, ImageIcon } from "lucide-react";
 import { harvestCompetitorVisualsAction } from "@/actions/brand-visual-research";
 import { toast } from "sonner";
-import {
-  markAllCompetitorAlertsRead,
-  markCompetitorAlertRead,
-  refreshBrandCompetitor,
-} from "@/actions/brand-competitor";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import type { CompetitorInsights } from "@/lib/research/competitor-insights";
 import { formatRp } from "@/lib/research/labels";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
-import { useBrandJobProgress } from "../../use-brand-job-progress";
+import { useResearchJobProgress } from "@/app/(dashboard)/research-hub/use-research-job-progress";
 import { CompetitorInsightsPanel } from "@/components/research-hub/competitor-insights-panel";
 import {
   CompetitorPriceBarChart,
@@ -24,6 +20,7 @@ import {
 } from "@/components/research-hub/competitor-price-bar-chart";
 import { CompetitorPriceChart } from "@/components/research-hub/competitor-price-chart";
 import { ShareOfReviewChart } from "@/components/research-hub/share-of-review-chart";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -86,6 +83,7 @@ export type CompetitorDetail = {
   priceChart60: PriceChartBundle;
   priceChart90: PriceChartBundle;
   shareOfReview: { name: string; value: number }[];
+  harvestableImageCount: number;
 };
 
 type CompetitorAiInsights = {
@@ -102,10 +100,11 @@ export function BrandCompetitorDetailClient({
   competitor: CompetitorDetail;
 }) {
   const router = useRouter();
+  const brandId = useBrandHubBrandId();
   const [pending, startTransition] = useTransition();
   const [priceDays, setPriceDays] = useState<30 | 60 | 90>(30);
 
-  useBrandJobProgress({ inProgress: competitor.isScraping });
+  useResearchJobProgress({ inProgress: competitor.isScraping });
 
   const ai = (competitor.aiInsights as CompetitorAiInsights | null) ?? null;
 
@@ -132,35 +131,21 @@ export function BrandCompetitorDetailClient({
             </Link>
           }
         />
+        <Badge variant="secondary" className="text-[10px]">
+          Dikelola Market Analyst
+        </Badge>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          disabled={pending}
+          disabled={pending || competitor.harvestableImageCount === 0}
           onClick={() =>
             startTransition(async () => {
               try {
-                await refreshBrandCompetitor(competitor.id);
-                toast.success("Data kompetitor diperbarui.");
-                router.refresh();
-              } catch (err) {
-                toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-              }
-            })
-          }
-        >
-          <RefreshCw className="size-3.5" aria-hidden />
-          Refresh Sekarang
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              try {
-                const result = await harvestCompetitorVisualsAction(competitor.id);
+                const result = await harvestCompetitorVisualsAction(
+                  competitor.id,
+                  brandId,
+                );
                 toast.success(`${result.harvested} gambar ditambahkan ke Visual Library.`);
                 router.refresh();
               } catch (err) {
@@ -170,7 +155,7 @@ export function BrandCompetitorDetailClient({
           }
         >
           <ImageIcon className="size-3.5" aria-hidden />
-          Harvest Visuals
+          Harvest Visuals ({competitor.harvestableImageCount})
         </Button>
         <Button
           type="button"
@@ -359,26 +344,6 @@ export function BrandCompetitorDetailClient({
         <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-foreground text-sm font-semibold">Alert Feed</h2>
-            {competitor.alerts.some((a) => !a.isRead) ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    try {
-                      await markAllCompetitorAlertsRead(competitor.id);
-                      router.refresh();
-                    } catch (err) {
-                      toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-                    }
-                  })
-                }
-              >
-                Tandai semua dibaca
-              </Button>
-            ) : null}
           </div>
           {competitor.alerts.length === 0 ? (
             <p className="text-muted-foreground text-sm">Tidak ada alert.</p>
@@ -395,32 +360,9 @@ export function BrandCompetitorDetailClient({
                   )}
                 >
                   <p>{alert.message}</p>
-                  <div className="mt-1 flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground text-[10px]">
-                      {new Date(alert.createdAt).toLocaleString("id-ID")}
-                    </span>
-                    {!alert.isRead ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[10px]"
-                        disabled={pending}
-                        onClick={() =>
-                          startTransition(async () => {
-                            try {
-                              await markCompetitorAlertRead(alert.id);
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-                            }
-                          })
-                        }
-                      >
-                        Dibaca
-                      </Button>
-                    ) : null}
-                  </div>
+                  <span className="text-muted-foreground mt-1 block text-[10px]">
+                    {new Date(alert.createdAt).toLocaleString("id-ID")}
+                  </span>
                 </li>
               ))}
             </ul>

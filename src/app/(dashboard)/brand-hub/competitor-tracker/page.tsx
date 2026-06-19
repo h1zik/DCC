@@ -1,7 +1,7 @@
 import { Target } from "lucide-react";
-import { prisma } from "@/lib/prisma";
-import { PageHero } from "@/components/page-hero";
-import { resumeStuckBrandJobs } from "@/lib/brand-research/run-apify-job";
+import { BrandHubListPage } from "@/components/brand-hub/brand-hub-list-page";
+import { listResearchCompetitorsForBrandHub } from "@/lib/brand-research/research-hub-readers";
+import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { ensureBrandHubPage } from "../layout";
 import {
   BrandCompetitorTrackerClient,
@@ -9,17 +9,9 @@ import {
 } from "./brand-competitor-tracker-client";
 
 export default async function BrandCompetitorTrackerPage() {
-  const session = await ensureBrandHubPage();
-  await resumeStuckBrandJobs();
+  await ensureBrandHubPage();
 
-  const competitors = await prisma.brandCompetitor.findMany({
-    where: { createdById: session.user.id },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      skus: { select: { rating: true } },
-      _count: { select: { skus: true, alerts: { where: { isRead: false } } } },
-    },
-  });
+  const competitors = await listResearchCompetitorsForBrandHub();
 
   const cards: CompetitorCard[] = competitors.map((c) => {
     const ratings = c.skus
@@ -29,6 +21,7 @@ export default async function BrandCompetitorTrackerPage() {
       ratings.length > 0
         ? ratings.reduce((a, b) => a + b, 0) / ratings.length
         : null;
+    const imageSkuCount = c.skus.filter((s) => s.imageUrl).length;
 
     return {
       id: c.id,
@@ -39,19 +32,20 @@ export default async function BrandCompetitorTrackerPage() {
       shopUrl: c.shopUrl,
       isActive: c.isActive,
       skuCount: c._count.skus,
+      imageSkuCount,
       avgRating,
       unreadAlerts: c._count.alerts,
     };
   });
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={Target}
-        title="Competitor Tracker"
-        subtitle="Pantau harga, positioning, dan perubahan portfolio kompetitor secara real-time."
-      />
+    <BrandHubListPage
+      icon={Target}
+      eyebrow="Market Intelligence"
+      title="Competitor Tracker"
+      subtitle="Data kompetitor dari Research Hub (Market Analyst). Lihat detail dan harvest visual ke library."
+    >
       <BrandCompetitorTrackerClient competitors={cards} />
-    </div>
+    </BrandHubListPage>
   );
 }
