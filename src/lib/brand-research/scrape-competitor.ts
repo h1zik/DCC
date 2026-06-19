@@ -93,6 +93,7 @@ export async function ingestBrandCompetitorProducts(
         externalId: product.externalId,
         name: product.name,
         productUrl: product.productUrl,
+        imageUrl: product.imageUrl,
         currentPrice: product.price,
         rating: product.rating,
         reviewCount: product.reviewCount,
@@ -100,6 +101,7 @@ export async function ingestBrandCompetitorProducts(
       update: {
         name: product.name,
         productUrl: product.productUrl,
+        imageUrl: product.imageUrl ?? undefined,
         currentPrice: product.price,
         rating: product.rating,
         reviewCount: product.reviewCount,

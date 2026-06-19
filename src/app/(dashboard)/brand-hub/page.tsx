@@ -13,7 +13,7 @@ export default async function BrandHubPage() {
       <PageHero
         icon={Palette}
         title="Brand & Creative Hub"
-        subtitle="Command center riset brand & creative — pantau kompetitor, review konsumen, tren visual, social listening, dan USP untuk mempercepat decision-making tim brand."
+        subtitle="Workspace brand strategy & creative direction — dokumen strategi, creative guideline, visual library, plus market evidence sebagai bahan baku riset."
       />
       <BrandHubCommandCenter data={data} />
     </div>

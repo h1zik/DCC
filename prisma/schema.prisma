@@ -358,6 +358,9 @@ model User {
   brandKeywordQueriesCreated BrandKeywordQuery[] @relation("BrandKeywordQueryCreator")
   brandSocialMonitorsCreated BrandSocialMonitor[] @relation("BrandSocialMonitorCreator")
   brandUspAnalysesCreated   BrandUspAnalysis[]   @relation("BrandUspAnalysisCreator")
+  brandVisualCollectionsCreated BrandVisualCollection[] @relation("BrandVisualCollectionCreator")
+  brandStrategyDocumentsCreated BrandStrategyDocument[] @relation("BrandStrategyDocumentCreator")
+  brandCreativeGuidelinesCreated BrandCreativeGuideline[] @relation("BrandCreativeGuidelineCreator")
   stockLogsCreated          StockLog[]           @relation("StockLogCreator")
 
   @@index([customRoleId])
@@ -437,6 +440,10 @@ model Brand {
   brandKeywordQueries  BrandKeywordQuery[]
   brandSocialMonitors  BrandSocialMonitor[]
   brandUspAnalyses     BrandUspAnalysis[]
+  brandVisualCollections BrandVisualCollection[]
+  brandVisualAssets    BrandVisualAsset[]
+  brandStrategyDocuments BrandStrategyDocument[]
+  brandCreativeGuidelines BrandCreativeGuideline[]
 }
 
 /**
@@ -1957,6 +1964,8 @@ enum ResearchScrapeJobType {
   REVIEW_SCRAPE
   COMPETITOR_SNAPSHOT
   PRODUCT_DISCOVERY
+  PINTEREST_SCRAPE
+  VISUAL_HARVEST
 }
 
 enum ResearchScrapeJobStatus {
@@ -2669,6 +2678,7 @@ model BrandCompetitorSku {
   competitor   BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
   name         String
   productUrl   String
+  imageUrl     String?
   externalId   String?
   currentPrice Float?
   rating       Float?
@@ -2998,4 +3008,129 @@ model BrandResearchScrapeJob {
   @@index([status])
   @@index([entityId, type])
   @@index([apifyRunId])
+}
+
+enum BrandVisualAssetSource {
+  PINTEREST
+  COMPETITOR_LISTING
+  SOCIAL
+  MANUAL
+}
+
+enum BrandVisualCollectionStatus {
+  PENDING
+  COLLECTING
+  READY
+  FAILED
+}
+
+enum BrandStrategyStatus {
+  DRAFT
+  GENERATING
+  READY
+  FAILED
+}
+
+enum BrandCreativeGuidelineStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+model BrandVisualCollection {
+  id           String                      @id @default(cuid())
+  name         String
+  keywords     String[]                    @default([])
+  status       BrandVisualCollectionStatus @default(PENDING)
+  sourceConfig Json?
+  errorMessage String?
+  ownerBrandId String?
+  ownerBrand   Brand?                      @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdById  String
+  createdBy    User                        @relation("BrandVisualCollectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+  assets       BrandVisualAsset[]
+
+  @@index([createdById])
+  @@index([ownerBrandId])
+  @@index([status])
+}
+
+model BrandVisualAsset {
+  id             String                 @id @default(cuid())
+  collectionId   String?
+  collection     BrandVisualCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  ownerBrandId   String?
+  ownerBrand     Brand?                 @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  source         BrandVisualAssetSource
+  imageUrl       String
+  thumbnailUrl   String?
+  title          String?
+  description    String?                @db.Text
+  sourceUrl      String?
+  externalId     String?
+  tags           String[]               @default([])
+  aestheticTags  String[]               @default([])
+  dominantColors Json?
+  metadata       Json?
+  createdAt      DateTime               @default(now())
+
+  @@unique([collectionId, source, externalId])
+  @@index([collectionId])
+  @@index([ownerBrandId])
+  @@index([source])
+}
+
+model BrandStrategyDocument {
+  id               String              @id @default(cuid())
+  ownerBrandId     String?
+  ownerBrand       Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  version          Int                 @default(1)
+  status           BrandStrategyStatus @default(DRAFT)
+  brandPurpose     String?             @db.Text
+  brandEssence     String?             @db.Text
+  coreMessage      String?             @db.Text
+  brandUsp         String?             @db.Text
+  stp              Json?
+  brandPersonality Json?
+  toneOfVoice      Json?
+  evidenceRefs     Json                @default("[]")
+  aiMeta           Json?
+  errorMessage     String?
+  createdById      String
+  createdBy        User                @relation("BrandStrategyDocumentCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  creativeGuidelines BrandCreativeGuideline[]
+
+  @@index([createdById])
+  @@index([ownerBrandId])
+  @@index([status])
+}
+
+model BrandCreativeGuideline {
+  id                 String                       @id @default(cuid())
+  strategyDocumentId String?
+  strategyDocument   BrandStrategyDocument?       @relation(fields: [strategyDocumentId], references: [id], onDelete: SetNull)
+  ownerBrandId       String?
+  ownerBrand         Brand?                       @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  status             BrandCreativeGuidelineStatus @default(PENDING)
+  moodboardAssetIds  Json                         @default("[]")
+  colorPalette       Json?
+  typography         Json?
+  designReferences   Json                         @default("[]")
+  aiSummary          String?                      @db.Text
+  aiMeta             Json?
+  errorMessage       String?
+  createdById        String
+  createdBy          User                         @relation("BrandCreativeGuidelineCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  @@index([createdById])
+  @@index([ownerBrandId])
+  @@index([strategyDocumentId])
+  @@index([status])
 }
