@@ -130,6 +130,7 @@ const navMarketAnalyst = [
 const navBrandManager = [
   { href: "/home", label: "Home", icon: Home },
   { href: "/brand-hub", label: "Brand & Creative Hub", icon: Palette },
+  { href: "/research-hub", label: "Research Hub", icon: Microscope },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },

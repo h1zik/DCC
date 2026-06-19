@@ -7,14 +7,40 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireBrandManager } from "@/lib/brand-research/auth";
 import {
+  assessBrandEvidenceReadiness,
+  formatEvidenceGateError,
+} from "@/lib/brand-research/strategy/evidence-gate";
+import {
   generateBrandStrategyDocument,
   getBrandStrategyDocument,
   listBrandStrategyDocuments,
 } from "@/lib/brand-research/strategy/strategy-generator";
+import {
+  defaultStrategyGenerationConfig,
+  getStrategySourceCatalog,
+  validateStrategyGenerationConfig,
+} from "@/lib/brand-research/strategy/strategy-source-catalog";
+import type { StrategyGenerationConfig } from "@/lib/brand-research/strategy/evidence-types";
 import { buildBrandStrategyPdfHtml } from "@/lib/brand-research/strategy/strategy-pdf-html";
+
+const generationConfigSchema = z.object({
+  review: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+  social: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+  visual: z.object({
+    enabled: z.boolean(),
+    ids: z.array(z.string()),
+    analyzeImages: z.boolean(),
+    maxSamples: z.number().int().min(1).max(16),
+  }),
+  competitor: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+  keyword: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+  trend: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+  usp: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+});
 
 const createSchema = z.object({
   ownerBrandId: z.string().optional().nullable(),
+  generationConfig: generationConfigSchema.optional(),
 });
 
 const updateSchema = z.object({
@@ -52,17 +78,37 @@ export async function createBrandStrategyDocument(
   const session = await requireBrandManager();
   const data = createSchema.parse(input);
 
+  const readiness = await assessBrandEvidenceReadiness(
+    session.user.id,
+    data.ownerBrandId ?? null,
+  );
+  if (!readiness.canGenerate) {
+    throw new Error(formatEvidenceGateError(readiness));
+  }
+
+  const catalog = await getStrategySourceCatalog(
+    session.user.id,
+    data.ownerBrandId ?? null,
+  );
+  const genConfig =
+    data.generationConfig ?? defaultStrategyGenerationConfig(catalog);
+  const validation = validateStrategyGenerationConfig(genConfig, catalog);
+  if (!validation.ok) {
+    throw new Error(validation.message ?? "Konfigurasi sumber tidak valid.");
+  }
+
   const doc = await prisma.brandStrategyDocument.create({
     data: {
       ownerBrandId: data.ownerBrandId ?? null,
       status: BrandStrategyStatus.DRAFT,
       createdById: session.user.id,
+      generationConfig: genConfig as object,
     },
   });
 
   after(async () => {
     try {
-      await generateBrandStrategyDocument(doc.id, session.user.id);
+      await generateBrandStrategyDocument(doc.id, session.user.id, genConfig);
     } catch (err) {
       console.error("[createBrandStrategyDocument]", err);
     }
@@ -72,13 +118,41 @@ export async function createBrandStrategyDocument(
   return { id: doc.id };
 }
 
-export async function regenerateBrandStrategyDocument(documentId: string) {
+export async function regenerateBrandStrategyDocument(
+  documentId: string,
+  generationConfig?: StrategyGenerationConfig,
+) {
   const session = await requireBrandManager();
   z.string().min(1).parse(documentId);
 
+  const doc = await prisma.brandStrategyDocument.findFirst({
+    where: { id: documentId, createdById: session.user.id },
+    select: { ownerBrandId: true, generationConfig: true },
+  });
+  if (!doc) throw new Error("Dokumen strategi tidak ditemukan.");
+
+  const readiness = await assessBrandEvidenceReadiness(
+    session.user.id,
+    doc.ownerBrandId,
+  );
+  if (!readiness.canGenerate) {
+    throw new Error(formatEvidenceGateError(readiness));
+  }
+
+  const catalog = await getStrategySourceCatalog(session.user.id, doc.ownerBrandId);
+  const config =
+    generationConfig ??
+    (doc.generationConfig as StrategyGenerationConfig | null) ??
+    defaultStrategyGenerationConfig(catalog);
+
+  const validation = validateStrategyGenerationConfig(config, catalog);
+  if (!validation.ok) {
+    throw new Error(validation.message ?? "Konfigurasi sumber tidak valid.");
+  }
+
   after(async () => {
     try {
-      await generateBrandStrategyDocument(documentId, session.user.id);
+      await generateBrandStrategyDocument(documentId, session.user.id, config);
     } catch (err) {
       console.error("[regenerateBrandStrategyDocument]", err);
     }
@@ -122,11 +196,15 @@ export async function deleteBrandStrategyDocument(documentId: string) {
 
 export async function getBrandStrategyPageData(ownerBrandId?: string | null) {
   const session = await requireBrandManager();
-  const documents = await listBrandStrategyDocuments(
-    session.user.id,
-    ownerBrandId,
-  );
+  const [documents, evidenceReadiness, sourceCatalog] = await Promise.all([
+    listBrandStrategyDocuments(session.user.id, ownerBrandId),
+    assessBrandEvidenceReadiness(session.user.id, ownerBrandId ?? null),
+    getStrategySourceCatalog(session.user.id, ownerBrandId ?? null),
+  ]);
   return {
+    evidenceReadiness,
+    sourceCatalog,
+    defaultGenerationConfig: defaultStrategyGenerationConfig(sourceCatalog),
     documents: documents.map((d) => ({
       id: d.id,
       status: d.status,
@@ -139,6 +217,9 @@ export async function getBrandStrategyPageData(ownerBrandId?: string | null) {
       brandPersonality: d.brandPersonality,
       toneOfVoice: d.toneOfVoice,
       evidenceRefs: d.evidenceRefs,
+      strategyRationales: d.strategyRationales,
+      generationConfig: d.generationConfig,
+      evidenceSnapshot: d.evidenceSnapshot,
       errorMessage: d.errorMessage,
       updatedAt: d.updatedAt.toISOString(),
     })),

@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowLeft, FileText, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useTransition } from "react";
+import { ArrowLeft, ImageIcon } from "lucide-react";
 import {
   SocialListeningPlatform,
   SocialListeningStatus,
 } from "@prisma/client";
 import { toast } from "sonner";
-import { createProductBriefFromSocialInsight } from "@/actions/research-brief";
-import { refreshBrandSocialListeningMonitor } from "@/actions/brand-social-listening";
+import { harvestSocialVisualsAction } from "@/actions/brand-visual-research";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import {
   SentimentBreakdownDonut,
@@ -26,24 +26,9 @@ import {
 import { SocialPainPointsCard } from "@/components/research-hub/social-pain-points-list";
 import { SocialViralCards } from "@/components/research-hub/social-viral-cards";
 import { SocialWishlistCard } from "@/components/research-hub/social-wishlist-list";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { statusToProgress } from "@/components/research-hub/job-status-progress";
 import {
@@ -95,12 +80,7 @@ export type SocialDetailData = {
   actionPlan: unknown;
   aiMeta: ResearchAiMetaView | null;
   mentions: MentionFeedRow[];
-  rooms: {
-    id: string;
-    name: string;
-    brandId: string | null;
-    brandName: string | null;
-  }[];
+  thumbnailMentionCount: number;
 };
 
 function statusTone(status: SocialListeningStatus | null) {
@@ -119,15 +99,9 @@ function statusTone(status: SocialListeningStatus | null) {
 
 export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
   const router = useRouter();
+  const brandId = useBrandHubBrandId();
   const [pending, startTransition] = useTransition();
-  const [briefOpen, setBriefOpen] = useState(false);
-  const [insightType, setInsightType] = useState<"pain" | "wishlist" | "viral">(
-    "pain",
-  );
-  const [roomId, setRoomId] = useState(data.rooms[0]?.id ?? "");
-  const [projectName, setProjectName] = useState(`Social: ${data.name}`);
 
-  const selectedRoom = data.rooms.find((r) => r.id === roomId);
   const inProgress =
     data.batchStatus === "COLLECTING" ||
     data.batchStatus === "ANALYZING" ||
@@ -159,37 +133,16 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
     return () => window.clearInterval(id);
   }, [inProgress, router]);
 
-  function handleRefresh() {
+  const canHarvestVisuals = data.thumbnailMentionCount > 0;
+
+  function handleHarvestVisuals() {
     startTransition(async () => {
       try {
-        await refreshBrandSocialListeningMonitor(data.id);
-        toast.success("Sync dimulai.");
+        const result = await harvestSocialVisualsAction(data.id, brandId);
+        toast.success(`${result.harvested} gambar ditambahkan ke Visual Library.`);
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal refresh."));
-      }
-    });
-  }
-
-  function handleBrief() {
-    if (!selectedRoom?.brandId) {
-      toast.error("Pilih room dengan brand.");
-      return;
-    }
-    startTransition(async () => {
-      try {
-        const result = await createProductBriefFromSocialInsight({
-          monitorId: data.id,
-          insightType,
-          roomId,
-          brandId: selectedRoom.brandId!,
-          projectName,
-        });
-        toast.success("Product brief dibuat.");
-        setBriefOpen(false);
-        router.push(`/projects/${result.projectId}`);
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal membuat brief."));
+        toast.error(actionErrorMessage(err, "Gagal harvest visual."));
       }
     });
   }
@@ -223,90 +176,44 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
                 .join(" · ")}
             </p>
           ) : null}
-          <span
-            className={cn(
-              "mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-              statusTone(data.batchStatus),
-            )}
-          >
-            {data.batchStatus
-              ? SOCIAL_LISTENING_STATUS_LABELS[data.batchStatus]
-              : "Belum sync"}
-          </span>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                statusTone(data.batchStatus),
+              )}
+            >
+              {data.batchStatus
+                ? SOCIAL_LISTENING_STATUS_LABELS[data.batchStatus]
+                : "Belum sync"}
+            </span>
+            <Badge variant="secondary" className="text-[10px]">
+              Dikelola Market Analyst
+            </Badge>
+          </div>
         </div>
         <div className="flex gap-2">
-          <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
-            <DialogTrigger
-              render={
-                <Button size="sm" variant="outline" disabled={!data.aiSummary}>
-                  <FileText className="mr-1.5 size-3.5" />
-                  Buat Brief
-                </Button>
-              }
-            />
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Buat Product Brief dari Social Insight</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <div className="space-y-2">
-                  <Label>Jenis insight</Label>
-                  <Select
-                    value={insightType}
-                    onValueChange={(v) =>
-                      setInsightType(v as "pain" | "wishlist" | "viral")
-                    }
-                  >
-                    <SelectTrigger />
-                    <SelectContent>
-                      <SelectItem value="pain">Top Pain Points</SelectItem>
-                      <SelectItem value="wishlist">Top Wishlist</SelectItem>
-                      <SelectItem value="viral">Viral Content</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Room</Label>
-                  <Select
-                    value={roomId}
-                    onValueChange={(v) => v && setRoomId(v)}
-                  >
-                    <SelectTrigger />
-                    <SelectContent>
-                      {data.rooms.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Nama proyek</Label>
-                  <Input
-                    value={projectName}
-                    onChange={(e) => setProjectName(e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button onClick={handleBrief} disabled={pending}>
-                  Buat Brief
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Button size="sm" onClick={handleRefresh} disabled={pending}>
-            <RefreshCw className="mr-1.5 size-3.5" />
-            Refresh
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleHarvestVisuals}
+            disabled={pending || !canHarvestVisuals}
+            title={
+              canHarvestVisuals
+                ? undefined
+                : "Batch READY dengan thumbnail diperlukan"
+            }
+          >
+            <ImageIcon className="mr-1.5 size-3.5" />
+            Harvest Visuals ({data.thumbnailMentionCount})
           </Button>
         </div>
       </div>
 
       {inProgress ? (
         <div className="border-amber-300/60 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/10 rounded-lg border px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-          Sync sedang berjalan. Feed mention di bawah menampilkan data sync terakhir
-          yang selesai — akan diperbarui otomatis setelah batch selesai.
+          Sync sedang berjalan di Research Hub. Data di bawah dari batch terakhir
+          yang selesai — halaman akan diperbarui otomatis.
         </div>
       ) : null}
 

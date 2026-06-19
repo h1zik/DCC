@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Compass, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createBrandStrategyDocument,
@@ -12,12 +12,27 @@ import {
   updateBrandStrategyDocument,
 } from "@/actions/brand-strategy";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { BrandEvidencePanel } from "@/components/brand-hub/brand-evidence-panel";
+import { BrandStrategyRationalePanel } from "@/components/brand-hub/brand-strategy-rationale-panel";
+import { BrandStrategySourcePicker } from "@/components/brand-hub/brand-strategy-source-picker";
 import { BrandPdfExportButton } from "@/components/brand-hub/brand-pdf-export-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import type { EvidenceReadiness } from "@/lib/brand-research/strategy/evidence-types";
+import type {
+  StrategyGenerationConfig,
+  StrategySourceCatalog,
+} from "@/lib/brand-research/strategy/evidence-types";
+import {
+  BrandHubDocumentSidebar,
+  BrandHubEmptyState,
+  hub,
+} from "@/components/brand-hub/brand-hub-primitives";
+import { normalizeStrategyGenerationConfig } from "@/lib/brand-research/strategy/strategy-visual-config";
 import { cn } from "@/lib/utils";
 
 type Stp = {
@@ -50,6 +65,9 @@ export type StrategyDocumentView = {
   brandPersonality: Personality | null;
   toneOfVoice: Tone | null;
   evidenceRefs: unknown;
+  strategyRationales?: unknown;
+  generationConfig?: unknown;
+  evidenceSnapshot?: unknown;
   errorMessage: string | null;
   updatedAt: string;
 };
@@ -67,17 +85,29 @@ function linesJoin(arr: string[] | undefined): string {
 
 export function BrandStrategyClient({
   documents,
+  evidenceReadiness,
+  sourceCatalog,
+  defaultGenerationConfig,
+  defaultBrandId,
 }: {
   documents: StrategyDocumentView[];
+  evidenceReadiness: EvidenceReadiness;
+  sourceCatalog: StrategySourceCatalog;
+  defaultGenerationConfig: StrategyGenerationConfig;
+  defaultBrandId?: string | null;
 }) {
   const router = useRouter();
+  const brandId = useBrandHubBrandId(defaultBrandId);
   const [pending, startTransition] = useTransition();
-  const [selectedId, setSelectedId] = useState<string | null>(
-    documents[0]?.id ?? null,
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composeMode, setComposeMode] = useState(false);
+  const [generationConfig, setGenerationConfig] =
+    useState<StrategyGenerationConfig>(defaultGenerationConfig);
 
   const selected = documents.find((d) => d.id === selectedId) ?? null;
+  const showWorkspace = composeMode || selectedId !== null;
   const isGenerating = selected?.status === "GENERATING";
+  const canGenerate = evidenceReadiness.canGenerate;
 
   const [brandPurpose, setBrandPurpose] = useState("");
   const [brandEssence, setBrandEssence] = useState("");
@@ -92,6 +122,18 @@ export function BrandStrategyClient({
   const [tonePrinciples, setTonePrinciples] = useState("");
   const [toneDo, setToneDo] = useState("");
   const [toneDont, setToneDont] = useState("");
+
+  useEffect(() => {
+    setGenerationConfig(defaultGenerationConfig);
+  }, [defaultGenerationConfig]);
+
+  useEffect(() => {
+    if (!selected?.generationConfig) return;
+    const saved = selected.generationConfig as StrategyGenerationConfig;
+    if (saved.review) {
+      setGenerationConfig(normalizeStrategyGenerationConfig(saved, sourceCatalog));
+    }
+  }, [selected?.id, selected?.generationConfig, sourceCatalog]);
 
   useEffect(() => {
     if (!selected) return;
@@ -116,11 +158,35 @@ export function BrandStrategyClient({
     return () => clearInterval(t);
   }, [isGenerating, router]);
 
+  useEffect(() => {
+    if (selectedId && !documents.some((d) => d.id === selectedId)) {
+      setSelectedId(null);
+      setComposeMode(false);
+    }
+  }, [documents, selectedId]);
+
+  function startCompose() {
+    setSelectedId(null);
+    setComposeMode(true);
+    setGenerationConfig(
+      normalizeStrategyGenerationConfig(defaultGenerationConfig, sourceCatalog),
+    );
+  }
+
+  function selectDocument(id: string) {
+    setComposeMode(false);
+    setSelectedId(id);
+  }
+
   function handleCreate() {
     startTransition(async () => {
       try {
-        const result = await createBrandStrategyDocument({});
+        const result = await createBrandStrategyDocument({
+          ownerBrandId: brandId,
+          generationConfig,
+        });
         toast.success("Dokumen strategi dibuat — AI sedang generate.");
+        setComposeMode(false);
         setSelectedId(result.id);
         router.refresh();
       } catch (err) {
@@ -167,7 +233,7 @@ export function BrandStrategyClient({
     if (!selected) return;
     startTransition(async () => {
       try {
-        await regenerateBrandStrategyDocument(selected.id);
+        await regenerateBrandStrategyDocument(selected.id, generationConfig);
         toast.success("Regenerate dimulai.");
         router.refresh();
       } catch (err) {
@@ -181,6 +247,10 @@ export function BrandStrategyClient({
     startTransition(async () => {
       try {
         await deleteBrandStrategyDocument(id);
+        if (selectedId === id) {
+          setSelectedId(null);
+          setComposeMode(false);
+        }
         toast.success("Dokumen dihapus.");
         router.refresh();
       } catch (err) {
@@ -190,44 +260,112 @@ export function BrandStrategyClient({
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      <aside className="flex shrink-0 flex-col gap-3 lg:w-56">
-        <Button size="sm" onClick={handleCreate} disabled={pending}>
-          <Plus className="size-3.5" />
-          Dokumen baru
-        </Button>
-        <ul className="flex flex-col gap-1">
-          {documents.map((d) => (
-            <li key={d.id}>
-              <button
-                type="button"
-                onClick={() => setSelectedId(d.id)}
-                className={cn(
-                  "w-full rounded-lg px-3 py-2 text-left text-xs transition-colors",
-                  d.id === selectedId
-                    ? "bg-foreground text-background"
-                    : "hover:bg-muted text-muted-foreground",
-                )}
-              >
-                <span className="font-medium line-clamp-1">
-                  {d.brandEssence || "Brand Strategy"}
-                </span>
-                <Badge variant="secondary" className="mt-1 text-[10px]">
-                  {d.status}
-                </Badge>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
+    <div className="flex flex-col gap-8 lg:flex-row">
+      <BrandHubDocumentSidebar
+        title="Dokumen"
+        action={
+          <Button
+            size="sm"
+            variant={composeMode ? "default" : "outline"}
+            onClick={startCompose}
+            disabled={pending}
+          >
+            <Plus className="size-3.5" />
+            Baru
+          </Button>
+        }
+      >
+        {documents.map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            onClick={() => selectDocument(d.id)}
+            className={cn(
+              "flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left text-xs transition-colors",
+              d.id === selectedId && !composeMode
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+            )}
+          >
+            <span className="font-medium line-clamp-2">
+              {d.brandEssence || "Brand Strategy"}
+            </span>
+            <Badge
+              variant="secondary"
+              className={cn(
+                "w-fit text-[10px]",
+                d.id === selectedId && !composeMode && "bg-primary-foreground/15 text-primary-foreground",
+              )}
+            >
+              {d.status}
+            </Badge>
+          </button>
+        ))}
+      </BrandHubDocumentSidebar>
 
       <div className="min-w-0 flex-1">
-        {!selected ? (
-          <p className="text-muted-foreground text-sm">
-            Buat dokumen strategi brand pertama untuk mulai.
-          </p>
-        ) : (
+        {!showWorkspace ? (
+          <BrandHubEmptyState
+            icon={Compass}
+            title="Belum ada dokumen dipilih"
+            description={
+              documents.length > 0
+                ? "Pilih dokumen di daftar kiri, atau klik Baru untuk membuat strategi dengan AI."
+                : "Klik Baru untuk memilih sumber data dan generate dokumen strategi pertama."
+            }
+            action={
+              <Button size="sm" onClick={startCompose}>
+                <Sparkles className="size-3.5" />
+                Buat dokumen baru
+              </Button>
+            }
+          />
+        ) : composeMode && !selected ? (
           <div className="flex flex-col gap-5">
+            <BrandStrategySourcePicker
+              catalog={sourceCatalog}
+              config={generationConfig}
+              onChange={setGenerationConfig}
+            />
+            <BrandEvidencePanel
+              readiness={evidenceReadiness}
+              brandId={brandId}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={handleCreate}
+                disabled={pending || !canGenerate}
+                title={
+                  canGenerate
+                    ? undefined
+                    : "Lengkapi Market Evidence terlebih dahulu"
+                }
+              >
+                <Sparkles className="size-3.5" />
+                Generate dokumen
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setComposeMode(false)}
+                disabled={pending}
+              >
+                Batal
+              </Button>
+            </div>
+          </div>
+        ) : selected ? (
+          <div className="flex flex-col gap-5">
+            <BrandStrategySourcePicker
+              catalog={sourceCatalog}
+              config={generationConfig}
+              onChange={setGenerationConfig}
+            />
+            <BrandEvidencePanel
+              readiness={evidenceReadiness}
+              evidenceRefs={selected.evidenceRefs}
+              brandId={brandId}
+            />
             <div className="flex flex-wrap items-center gap-2">
               {isGenerating ? (
                 <span className="inline-flex items-center gap-1.5 text-xs text-primary">
@@ -235,7 +373,13 @@ export function BrandStrategyClient({
                   Generating…
                 </span>
               ) : null}
-              <Button size="sm" variant="outline" onClick={handleRegenerate} disabled={pending || isGenerating}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleRegenerate}
+                disabled={pending || isGenerating || !canGenerate}
+                title={canGenerate ? undefined : "Evidence belum cukup"}
+              >
                 <RefreshCw className="size-3.5" />
                 Regenerate
               </Button>
@@ -264,6 +408,11 @@ export function BrandStrategyClient({
               </p>
             ) : null}
 
+            <BrandStrategyRationalePanel
+              rationales={selected.strategyRationales}
+              brandId={brandId}
+            />
+
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Brand Purpose" value={brandPurpose} onChange={setBrandPurpose} />
               <Field label="Brand Essence" value={brandEssence} onChange={setBrandEssence} />
@@ -271,8 +420,8 @@ export function BrandStrategyClient({
               <Field label="Brand USP (branding)" value={brandUsp} onChange={setBrandUsp} className="md:col-span-2" />
             </div>
 
-            <section className="rounded-xl border border-border/70 bg-card p-4">
-              <h3 className="mb-3 text-sm font-semibold">STP</h3>
+            <section className={cn(hub.panel)}>
+              <h3 className={cn(hub.sectionTitle, "mb-4")}>STP</h3>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <Label className="text-xs">Segment</Label>
@@ -289,8 +438,8 @@ export function BrandStrategyClient({
               </div>
             </section>
 
-            <section className="rounded-xl border border-border/70 bg-card p-4">
-              <h3 className="mb-3 text-sm font-semibold">Brand Personality</h3>
+            <section className={cn(hub.panel)}>
+              <h3 className={cn(hub.sectionTitle, "mb-4")}>Brand Personality</h3>
               <div className="grid gap-3">
                 <div>
                   <Label className="text-xs">Archetype</Label>
@@ -307,8 +456,8 @@ export function BrandStrategyClient({
               </div>
             </section>
 
-            <section className="rounded-xl border border-border/70 bg-card p-4">
-              <h3 className="mb-3 text-sm font-semibold">Tone of Voice</h3>
+            <section className={cn(hub.panel)}>
+              <h3 className={cn(hub.sectionTitle, "mb-4")}>Tone of Voice</h3>
               <div className="grid gap-3 md:grid-cols-3">
                 <div>
                   <Label className="text-xs">Principles</Label>
@@ -325,7 +474,7 @@ export function BrandStrategyClient({
               </div>
             </section>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

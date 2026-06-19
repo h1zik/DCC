@@ -7,7 +7,10 @@ import {
   buildResearchAiStep,
   researchAiMetaFromSteps,
 } from "@/lib/research/llm";
-import { listBrandVisualAssets } from "@/lib/brand-research/visual";
+import {
+  computeDominantPaletteFromAssets,
+  listBrandVisualAssets,
+} from "@/lib/brand-research/visual";
 
 type GuidelineResult = {
   moodboardAssetIds: string[];
@@ -32,6 +35,20 @@ type GuidelineResult = {
   aiSummary: string;
 };
 
+function mergePaletteWithBaseline(
+  ai: GuidelineResult["colorPalette"],
+  baseline: ReturnType<typeof computeDominantPaletteFromAssets>,
+): GuidelineResult["colorPalette"] {
+  if (!baseline) return ai;
+  return {
+    primary: baseline.primary,
+    secondary: baseline.secondary,
+    accent: baseline.accent,
+    neutrals: baseline.neutrals,
+    rationale: ai.rationale,
+  };
+}
+
 export async function generateBrandCreativeGuideline(
   guidelineId: string,
   userId: string,
@@ -42,6 +59,10 @@ export async function generateBrandCreativeGuideline(
   });
   if (!guideline) throw new Error("Creative guideline tidak ditemukan.");
 
+  if (!guideline.strategyDocument || guideline.strategyDocument.status !== "READY") {
+    throw new Error("Brand Strategy belum READY — pilih dokumen strategi yang siap.");
+  }
+
   await prisma.brandCreativeGuideline.update({
     where: { id: guidelineId },
     data: { status: BrandCreativeGuidelineStatus.GENERATING, errorMessage: null },
@@ -50,6 +71,13 @@ export async function generateBrandCreativeGuideline(
   try {
     const strategy = guideline.strategyDocument;
     const assets = await listBrandVisualAssets(userId, guideline.ownerBrandId);
+    if (assets.length < 5) {
+      throw new Error(
+        `Visual Library butuh minimal 5 asset (saat ini ${assets.length}).`,
+      );
+    }
+
+    const baselinePalette = computeDominantPaletteFromAssets(assets);
     const assetPool = assets.slice(0, 60).map((a) => ({
       id: a.id,
       source: a.source,
@@ -58,6 +86,22 @@ export async function generateBrandCreativeGuideline(
       tags: a.tags,
       dominantColors: a.dominantColors,
     }));
+
+    const baselineSection = baselinePalette
+      ? `
+PALETTE BASELINE (WAJIB — hex dari agregasi ${baselinePalette.sampleCount} sampel warna visual library, JANGAN ubah hex):
+${JSON.stringify(
+  {
+    primary: baselinePalette.primary,
+    secondary: baselinePalette.secondary,
+    accent: baselinePalette.accent,
+    neutrals: baselinePalette.neutrals,
+  },
+  null,
+  2,
+)}
+Tulis rationale yang menjelaskan mengapa palette baseline cocok dengan brand personality & visual refs.`
+      : "";
 
     const prompt = `Kamu adalah Creative Director beauty brand Indonesia.
 
@@ -80,10 +124,11 @@ ${JSON.stringify(
 
 Visual asset pool (pilih moodboardAssetIds HANYA dari id yang ada di daftar):
 ${JSON.stringify(assetPool, null, 2)}
+${baselineSection}
 
 Tugas:
 1. moodboardAssetIds: pilih 12-20 id terbaik untuk moodboard (urutan grid)
-2. colorPalette: hex colors + rationale selaras personality & visual refs
+2. colorPalette: gunakan hex baseline di atas jika ada; tulis rationale saja
 3. typography: rekomendasi font pairing (Google Fonts style names) + stylingNotes
 4. designReferences: 3-5 grup (packaging, social, editorial, competitor contrast) dengan assetIds + narrative
 5. aiSummary: 2-3 kalimat arahan creative untuk tim desain
@@ -107,12 +152,17 @@ Balas HANYA JSON:
       validIds.has(id),
     );
 
+    const colorPalette = mergePaletteWithBaseline(
+      result.colorPalette,
+      baselinePalette,
+    );
+
     await prisma.brandCreativeGuideline.update({
       where: { id: guidelineId },
       data: {
         status: BrandCreativeGuidelineStatus.READY,
         moodboardAssetIds: moodboardIds as object,
-        colorPalette: result.colorPalette as object,
+        colorPalette: colorPalette as object,
         typography: result.typography as object,
         designReferences: (result.designReferences ?? []) as object,
         aiSummary: result.aiSummary,
@@ -143,7 +193,7 @@ export async function listBrandCreativeGuidelines(
       createdById: userId,
       ...(ownerBrandId ? { ownerBrandId } : {}),
     },
-    include: { strategyDocument: { select: { id: true, brandEssence: true } } },
+    include: { strategyDocument: { select: { id: true, brandEssence: true, status: true } } },
     orderBy: { updatedAt: "desc" },
     take: 20,
   });

@@ -6,6 +6,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireBrandManager } from "@/lib/brand-research/auth";
 import {
+  assessCreativeGuidelineReadiness,
+} from "@/lib/brand-research/strategy/evidence-gate";
+import {
   generateBrandCreativeGuideline,
   getBrandCreativeGuideline,
   listBrandCreativeGuidelines,
@@ -23,6 +26,15 @@ export async function createBrandCreativeGuideline(
 ) {
   const session = await requireBrandManager();
   const data = createSchema.parse(input);
+
+  const readiness = await assessCreativeGuidelineReadiness(
+    session.user.id,
+    data.ownerBrandId ?? null,
+    data.strategyDocumentId ?? null,
+  );
+  if (!readiness.canGenerate) {
+    throw new Error(readiness.message ?? "Syarat creative guideline belum terpenuhi.");
+  }
 
   const guideline = await prisma.brandCreativeGuideline.create({
     data: {
@@ -47,6 +59,21 @@ export async function createBrandCreativeGuideline(
 export async function regenerateBrandCreativeGuideline(guidelineId: string) {
   const session = await requireBrandManager();
   z.string().min(1).parse(guidelineId);
+
+  const existing = await prisma.brandCreativeGuideline.findFirst({
+    where: { id: guidelineId, createdById: session.user.id },
+    select: { ownerBrandId: true, strategyDocumentId: true },
+  });
+  if (!existing) throw new Error("Creative guideline tidak ditemukan.");
+
+  const readiness = await assessCreativeGuidelineReadiness(
+    session.user.id,
+    existing.ownerBrandId,
+    existing.strategyDocumentId,
+  );
+  if (!readiness.canGenerate) {
+    throw new Error(readiness.message ?? "Syarat creative guideline belum terpenuhi.");
+  }
 
   after(async () => {
     try {
@@ -85,6 +112,14 @@ export async function getBrandCreativeGuidelinePageData(ownerBrandId?: string | 
     take: 10,
   });
 
+  const visualAssets = await listBrandVisualAssets(session.user.id, ownerBrandId);
+  const defaultStrategyId = strategyDocs[0]?.id ?? null;
+  const guidelineReadiness = await assessCreativeGuidelineReadiness(
+    session.user.id,
+    ownerBrandId ?? null,
+    defaultStrategyId,
+  );
+
   return {
     guidelines: guidelines.map((g) => ({
       id: g.id,
@@ -101,6 +136,8 @@ export async function getBrandCreativeGuidelinePageData(ownerBrandId?: string | 
       updatedAt: g.updatedAt.toISOString(),
     })),
     strategyOptions: strategyDocs,
+    guidelineReadiness,
+    visualAssetCount: visualAssets.length,
   };
 }
 

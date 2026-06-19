@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
 import { SocialListeningPlatform, SocialMentionClass } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { countResearchSocialThumbnailMentions } from "@/lib/brand-research/research-hub-readers";
 import { platformStatusMessage } from "@/lib/research/social-listening/platform-scrape-runner";
 import {
   BrandSocialDetailClient,
   type SocialDetailData,
 } from "./brand-social-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+
 export default async function SocialListeningDetailPage({
   params,
 }: {
@@ -14,7 +16,7 @@ export default async function SocialListeningDetailPage({
 }) {
   const { monitorId } = await params;
 
-  const monitor = await prisma.brandSocialMonitor.findUnique({
+  const monitor = await prisma.socialListeningMonitor.findUnique({
     where: { id: monitorId },
     include: {
       batches: {
@@ -32,10 +34,14 @@ export default async function SocialListeningDetailPage({
   if (!monitor) notFound();
 
   const latest = monitor.batches[0];
-  const latestAny = await prisma.brandSocialBatch.findFirst({
+  const latestAny = await prisma.socialListeningBatch.findFirst({
     where: { monitorId },
     orderBy: { createdAt: "desc" },
   });
+
+  const thumbnailMentionCount = latest
+    ? await countResearchSocialThumbnailMentions(latest.id)
+    : 0;
 
   const platformStatusRaw =
     latestAny?.platformStatus && typeof latestAny.platformStatus === "object"
@@ -63,15 +69,6 @@ export default async function SocialListeningDetailPage({
             ? platformStatusMessage(platform as SocialListeningPlatform, "READY")
             : null,
     };
-  });
-  const rooms = await prisma.room.findMany({
-    select: {
-      id: true,
-      name: true,
-      brandId: true,
-      brand: { select: { name: true } },
-    },
-    orderBy: { name: "asc" },
   });
 
   const painPoints = Array.isArray(latest?.summary?.topPainPoints)
@@ -123,12 +120,7 @@ export default async function SocialListeningDetailPage({
         isViral: m.isViral,
         url: m.url,
       })) ?? [],
-    rooms: rooms.map((r) => ({
-      id: r.id,
-      name: r.name,
-      brandId: r.brandId,
-      brandName: r.brand?.name ?? null,
-    })),
+    thumbnailMentionCount,
   };
 
   return (

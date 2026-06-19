@@ -19,6 +19,8 @@ export type RawSocialMention = {
   comments: number;
   views: number;
   postedAt?: Date;
+  thumbnailUrl?: string;
+  mediaType?: "image" | "video";
 };
 
 export type CollectMentionsResult = {

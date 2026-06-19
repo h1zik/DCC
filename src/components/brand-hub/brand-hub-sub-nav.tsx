@@ -3,16 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  BarChart3,
   Compass,
   ImageIcon,
   LayoutDashboard,
   MessageSquare,
-  Radar,
-  Search,
+  Palette,
   Sparkles,
-  Star,
   Target,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -20,7 +18,9 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
+import { hub } from "@/components/brand-hub/brand-hub-primitives";
 
 type SubNavItem = {
   href: string;
@@ -30,52 +30,17 @@ type SubNavItem = {
 
 type BrandOption = { id: string; name: string };
 
-const PRIMARY_NAV: SubNavItem[] = [
+const STUDIO_NAV: SubNavItem[] = [
   { href: "/brand-hub", label: "Overview", icon: LayoutDashboard },
-  { href: "/brand-hub/strategy", label: "Brand Strategy", icon: Compass },
-  {
-    href: "/brand-hub/creative-guideline",
-    label: "Creative Guideline",
-    icon: Sparkles,
-  },
-  {
-    href: "/brand-hub/visual-library",
-    label: "Visual Library",
-    icon: ImageIcon,
-  },
+  { href: "/brand-hub/strategy", label: "Strategy", icon: Compass },
+  { href: "/brand-hub/creative-guideline", label: "Guideline", icon: Sparkles },
+  { href: "/brand-hub/visual-library", label: "Visual", icon: ImageIcon },
 ];
 
-const MARKET_EVIDENCE_NAV: SubNavItem[] = [
-  {
-    href: "/brand-hub/competitor-tracker",
-    label: "Competitor Tracker",
-    icon: Target,
-  },
-  {
-    href: "/brand-hub/review-intelligence",
-    label: "Review Intel",
-    icon: Star,
-  },
-  {
-    href: "/brand-hub/trend-radar",
-    label: "Trend Radar",
-    icon: Radar,
-  },
-  {
-    href: "/brand-hub/keyword-intel",
-    label: "Keyword Intel",
-    icon: Search,
-  },
-  {
-    href: "/brand-hub/social-listening",
-    label: "Social Listening",
-    icon: MessageSquare,
-  },
-  {
-    href: "/brand-hub/usp-analyzer",
-    label: "USP Analyzer",
-    icon: BarChart3,
-  },
+const INTELLIGENCE_NAV: SubNavItem[] = [
+  { href: "/brand-hub/competitor-tracker", label: "Competitor", icon: Target },
+  { href: "/brand-hub/social-listening", label: "Social", icon: MessageSquare },
+  { href: "/brand-hub/visual-trend", label: "Visual Trend", icon: TrendingUp },
 ];
 
 function isItemActive(itemHref: string, pathname: string): boolean {
@@ -105,7 +70,7 @@ function NavLink({
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
         active
-          ? "bg-foreground text-background shadow-sm"
+          ? "bg-primary text-primary-foreground shadow-sm"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
@@ -132,50 +97,52 @@ export function BrandHubSubNav({ brands }: { brands: BrandOption[] }) {
 
   return (
     <nav
-      aria-label="Modul Brand & Creative Hub"
-      className="border-border/70 bg-card/80 sticky top-0 z-20 -mt-2 border-b backdrop-blur supports-backdrop-filter:bg-card/60"
+      aria-label="Brand & Creative Hub"
+      className={cn(hub.stickyToolbar, "-mx-1 rounded-xl border px-2 py-2")}
     >
-      <div className="flex w-full flex-col gap-2 py-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
+            <span className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg border border-primary/20">
+              <Palette className="size-4" aria-hidden />
+            </span>
+            <span className="text-xs font-semibold tracking-tight">Brand Hub</span>
+          </div>
+          <div className="bg-border/60 hidden h-6 w-px sm:block" aria-hidden />
           <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {PRIMARY_NAV.map((item) => (
+            {STUDIO_NAV.map((item) => (
               <NavLink key={item.href} item={item} pathname={pathname} brandId={brandId} />
             ))}
           </div>
-          {brands.length > 0 ? (
-            <div className="flex shrink-0 items-center gap-2 px-1">
-              <span className="text-muted-foreground hidden text-[10px] font-medium uppercase tracking-wide sm:inline">
-                Brand
-              </span>
-              <Select
-                value={brandId ?? "all"}
-                onValueChange={(v) => handleBrandChange(v === "all" ? null : v)}
-              >
-                <SelectTrigger className="h-8 w-[160px] text-xs">
-                  {selectedBrand?.name ?? "Semua brand"}
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua brand</SelectItem>
-                  {brands.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-1.5 px-1">
-          <span className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">
-            Market Evidence
-          </span>
+          <div className="bg-border/60 mx-1 hidden h-6 w-px md:block" aria-hidden />
           <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {MARKET_EVIDENCE_NAV.map((item) => (
+            {INTELLIGENCE_NAV.map((item) => (
               <NavLink key={item.href} item={item} pathname={pathname} brandId={brandId} />
             ))}
           </div>
         </div>
+
+        {brands.length > 0 ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <span className={cn(hub.label, "hidden sm:inline")}>Brand</span>
+            <Select
+              value={brandId ?? "all"}
+              onValueChange={(v) => handleBrandChange(v === "all" ? null : v)}
+            >
+              <SelectTrigger className="h-8 w-full min-w-[140px] rounded-lg text-xs sm:w-[168px]">
+                <SelectValue>{selectedBrand?.name ?? "Semua brand"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua brand</SelectItem>
+                {brands.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
       </div>
     </nav>
   );

@@ -52,6 +52,50 @@ function flattenInstagramItems(
   return out;
 }
 
+function pickHttpUrl(value: unknown): string | undefined {
+  if (typeof value === "string" && value.startsWith("http")) return value;
+  return undefined;
+}
+
+function pickInstagramThumbnail(item: Record<string, unknown>): string | undefined {
+  const images = item.images;
+  if (Array.isArray(images)) {
+    for (const img of images) {
+      const url = pickHttpUrl(img);
+      if (url) return url;
+      if (img && typeof img === "object") {
+        const nested = pickHttpUrl((img as Record<string, unknown>).url);
+        if (nested) return nested;
+      }
+    }
+  }
+
+  const childPosts = item.childPosts;
+  if (Array.isArray(childPosts)) {
+    for (const child of childPosts) {
+      if (child && typeof child === "object") {
+        const url = pickInstagramThumbnail(child as Record<string, unknown>);
+        if (url) return url;
+      }
+    }
+  }
+
+  return (
+    pickHttpUrl(item.displayUrl) ??
+    pickHttpUrl(item.thumbnailUrl) ??
+    pickHttpUrl(item.imageUrl) ??
+    pickHttpUrl(item.previewUrl)
+  );
+}
+
+function isInstagramVideo(item: Record<string, unknown>): boolean {
+  return (
+    item.isVideo === true ||
+    typeof item.videoUrl === "string" ||
+    (typeof item.type === "string" && item.type.toLowerCase().includes("video"))
+  );
+}
+
 export function parseInstagramItems(
   items: Record<string, unknown>[],
 ): RawSocialMention[] {
@@ -113,6 +157,8 @@ export function parseInstagramItems(
             : 0,
       postedAt:
         timestamp && !Number.isNaN(timestamp.getTime()) ? timestamp : undefined,
+      thumbnailUrl: pickInstagramThumbnail(item),
+      mediaType: isInstagramVideo(item) ? "video" : "image",
     });
   }
 

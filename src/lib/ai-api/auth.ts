@@ -104,7 +104,9 @@ export function canViewResearch(role: AiApiRole): boolean {
 
 /** Akses baca Research Hub — MCP (AiApiRole) + AI Agent in-app (UserRole). */
 export function canViewResearchHub(role: UserRole | AiApiRole): boolean {
-  if (role === UserRole.MARKET_ANALYST) return true;
+  if (role === UserRole.MARKET_ANALYST || role === UserRole.PROJECT_MANAGER) {
+    return true;
+  }
   if (role === UserRole.CEO || role === UserRole.ADMINISTRATOR) return true;
   return canViewResearch(role as AiApiRole);
 }

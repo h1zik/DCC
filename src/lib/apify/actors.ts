@@ -246,15 +246,19 @@ export function getPinterestMaxPinsPerKeyword(): number {
   return Math.min(Math.max(Math.round(n), 10), 200);
 }
 
-export function buildPinterestActorInput(keywords: string[]): Record<string, unknown> {
-  const maxPins = getPinterestMaxPinsPerKeyword();
-  const queries = keywords.map((k) => k.trim()).filter(Boolean);
+export function buildPinterestActorInput(
+  keyword: string,
+  maxItems?: number,
+): Record<string, unknown> {
+  const search = keyword.trim();
+  if (!search) {
+    throw new Error("Keyword Pinterest kosong.");
+  }
   return {
-    searchQueries: queries,
-    maxPinsPerQuery: maxPins,
-    maxResults: maxPins,
-    queries,
-    keywords: queries,
+    search,
+    maxItems: maxItems ?? getPinterestMaxPinsPerKeyword(),
+    includeDetails: false,
+    includeUserInfoOnly: false,
   };
 }
 

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { resumeStuckBrandJobs } from "@/lib/brand-research/run-apify-job";
+import { resumeStuckResearchJobs } from "@/lib/research/run-apify-job";
 import {
   buildCurrentPriceBarData,
   buildPriceChartData,
@@ -11,20 +11,20 @@ import {
   buildCompetitorInsights,
   buildSkuPriceChanges,
 } from "@/lib/research/competitor-insights";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 import {
   BrandCompetitorDetailClient,
   type CompetitorDetail,
 } from "./brand-competitor-detail-client";
-import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = { params: Promise<{ competitorId: string }> };
 
-export default async function CompetitorDetailPage({ params }: Props) {
+export default async function BrandCompetitorDetailPage({ params }: Props) {
   const { competitorId } = await params;
 
-  await resumeStuckBrandJobs();
+  await resumeStuckResearchJobs();
 
-  const competitor = await prisma.brandCompetitor.findUnique({
+  const competitor = await prisma.researchCompetitor.findUnique({
     where: { id: competitorId },
     include: {
       skus: { orderBy: { reviewCount: "desc" } },
@@ -38,7 +38,7 @@ export default async function CompetitorDetailPage({ params }: Props) {
 
   if (!competitor) notFound();
 
-  const activeJob = await prisma.brandResearchScrapeJob.findFirst({
+  const activeJob = await prisma.researchScrapeJob.findFirst({
     where: {
       entityId: competitorId,
       type: "COMPETITOR_SNAPSHOT",
@@ -139,6 +139,7 @@ export default async function CompetitorDetailPage({ params }: Props) {
     priceChart60: buildPriceChartData(snapshotRows, competitor.skus, 60),
     priceChart90: buildPriceChartData(snapshotRows, competitor.skus, 90),
     shareOfReview: buildShareOfReviewData(competitor.skus),
+    harvestableImageCount: competitor.skus.filter((s) => s.imageUrl).length,
   };
 
   return (

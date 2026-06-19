@@ -11,6 +11,7 @@ import type { GenerateResearchJsonOpts, GenerateResearchTextOpts } from "./types
 export type {
   GenerateResearchJsonOpts,
   GenerateResearchTextOpts,
+  LlmImagePart,
   ResearchLlmProvider,
   ResearchModelTier,
 } from "./types";

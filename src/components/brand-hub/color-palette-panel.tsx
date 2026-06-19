@@ -1,5 +1,6 @@
 export function ColorPalettePanel({
   palette,
+  derivedFromCount,
 }: {
   palette: {
     primary?: string;
@@ -8,6 +9,7 @@ export function ColorPalettePanel({
     neutrals?: string[];
     rationale?: string;
   } | null;
+  derivedFromCount?: number;
 }) {
   if (!palette) return null;
   const swatches = [
@@ -19,7 +21,14 @@ export function ColorPalettePanel({
 
   return (
     <div className="rounded-xl border border-border/70 bg-card p-4">
-      <h3 className="mb-3 text-sm font-semibold">Color Palette</h3>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold">Color Palette</h3>
+        {derivedFromCount != null ? (
+          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+            Derived from {derivedFromCount} visual assets
+          </span>
+        ) : null}
+      </div>
       <div className="flex flex-wrap gap-2">
         {swatches.map((hex) => (
           <div key={hex} className="flex flex-col items-center gap-1">

@@ -3,6 +3,10 @@ import "server-only";
 import { SocialListeningPlatform } from "@prisma/client";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
 
+function demoThumbnail(seed: string, index: number): string {
+  return `https://picsum.photos/seed/${encodeURIComponent(`${seed}-${index}`)}/600/800`;
+}
+
 export function generateDemoMentions(
   keywords: string[],
   platforms: SocialListeningPlatform[],
@@ -24,6 +28,8 @@ export function generateDemoMentions(
       comments: 312,
       views: 89000,
       postedAt: new Date(now - 2 * 86400000),
+      thumbnailUrl: demoThumbnail(seed, 1),
+      mediaType: "video",
     },
     {
       externalId: "demo-2",
@@ -34,6 +40,8 @@ export function generateDemoMentions(
       comments: 245,
       views: 45000,
       postedAt: new Date(now - 1 * 86400000),
+      thumbnailUrl: demoThumbnail(seed, 2),
+      mediaType: "image",
     },
     {
       externalId: "demo-3",
@@ -44,6 +52,8 @@ export function generateDemoMentions(
       comments: 890,
       views: 210000,
       postedAt: new Date(now - 3 * 86400000),
+      thumbnailUrl: demoThumbnail(seed, 3),
+      mediaType: "video",
     },
     {
       externalId: "demo-4",
@@ -54,6 +64,8 @@ export function generateDemoMentions(
       comments: 98,
       views: 67000,
       postedAt: new Date(now - 4 * 86400000),
+      thumbnailUrl: demoThumbnail(seed, 4),
+      mediaType: "image",
     },
     {
       externalId: "demo-5",
@@ -64,6 +76,8 @@ export function generateDemoMentions(
       comments: 421,
       views: 120000,
       postedAt: new Date(now - 5 * 86400000),
+      thumbnailUrl: demoThumbnail(seed, 5),
+      mediaType: "video",
     },
     {
       externalId: "demo-6",
@@ -74,6 +88,8 @@ export function generateDemoMentions(
       comments: 156,
       views: 22000,
       postedAt: new Date(now - 6 * 86400000),
+      thumbnailUrl: demoThumbnail(seed, 6),
+      mediaType: "image",
     },
   ];
 
