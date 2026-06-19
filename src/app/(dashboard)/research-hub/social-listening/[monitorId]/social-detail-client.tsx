@@ -10,7 +10,10 @@ import {
 } from "@prisma/client";
 import { toast } from "sonner";
 import { createProductBriefFromSocialInsight } from "@/actions/research-brief";
-import { refreshSocialListeningMonitor } from "@/actions/research-social-listening";
+import {
+  analyzeSocialListeningCommentsAction,
+  refreshSocialListeningMonitor,
+} from "@/actions/research-social-listening";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import {
@@ -18,6 +21,9 @@ import {
   SentimentTimelineChart,
   ShareOfVoiceChart,
 } from "@/components/research-hub/social-insight-charts";
+import { SocialCommentAnalyzeSection } from "@/components/research-hub/social-comment-analyze-section";
+import type { CommentFeedRow } from "@/components/research-hub/social-comment-feed";
+import { SocialEngagementInsights } from "@/components/research-hub/social-engagement-insights";
 import { SocialInfluencerTable } from "@/components/research-hub/social-influencer-table";
 import {
   SocialMentionFeed,
@@ -52,6 +58,7 @@ import {
 } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import type { EngagementInsights } from "@/lib/research/social-listening/social-comment-types";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 export type SocialDetailData = {
@@ -94,6 +101,12 @@ export type SocialDetailData = {
   }[];
   actionPlan: unknown;
   aiMeta: ResearchAiMetaView | null;
+  engagementInsights: EngagementInsights | null;
+  commentAiSummary: string | null;
+  topCommentPainPoints: { theme: string; count: number }[];
+  topCommentWishlist: { theme: string; count: number }[];
+  commentCategoryBreakdown: { classification: string; count: number; pct: number }[];
+  comments: CommentFeedRow[];
   mentions: MentionFeedRow[];
   rooms: {
     id: string;
@@ -130,8 +143,11 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
   const inProgress =
     data.batchStatus === "COLLECTING" ||
-    data.batchStatus === "ANALYZING" ||
-    data.batchStatus === "PENDING";
+    data.batchStatus === "PENDING" ||
+    (data.batchStatus === "ANALYZING" && data.mentions.length === 0);
+
+  const commentAnalysisInProgress =
+    data.batchStatus === "ANALYZING" && data.mentions.length > 0;
 
   const progress = statusToProgress(data.batchStatus ?? "PENDING");
   const collectingPlatforms = data.platformProgress.filter(
@@ -154,10 +170,10 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
   }, [data.mentions, data.platforms]);
 
   useEffect(() => {
-    if (!inProgress) return;
+    if (!inProgress && !commentAnalysisInProgress) return;
     const id = window.setInterval(() => router.refresh(), 12_000);
     return () => window.clearInterval(id);
-  }, [inProgress, router]);
+  }, [inProgress, commentAnalysisInProgress, router]);
 
   function handleRefresh() {
     startTransition(async () => {
@@ -379,6 +395,18 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
         <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Sosial (AI)" />
       ) : null}
 
+      {data.engagementInsights &&
+      data.engagementInsights.scrapedCommentTexts > 0 ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Metrik Engagement</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SocialEngagementInsights insights={data.engagementInsights} />
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
@@ -442,6 +470,22 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
           <SocialMentionFeed rows={data.mentions} />
         </CardContent>
       </Card>
+
+      <SocialCommentAnalyzeSection
+        monitorId={data.id}
+        batchStatus={
+          commentAnalysisInProgress ? "ANALYZING" : data.batchStatus
+        }
+        hasMentions={data.mentions.length > 0}
+        comments={data.comments}
+        insights={{
+          commentAiSummary: data.commentAiSummary,
+          topCommentPainPoints: data.topCommentPainPoints,
+          topCommentWishlist: data.topCommentWishlist,
+          commentCategoryBreakdown: data.commentCategoryBreakdown,
+        }}
+        onAnalyze={analyzeSocialListeningCommentsAction}
+      />
     </div>
   );
 }

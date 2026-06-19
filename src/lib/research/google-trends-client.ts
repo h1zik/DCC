@@ -88,7 +88,11 @@ export async function fetchRelatedQueriesPayload(
 export async function fetchInterestOverTimePayload(
   keyword: string,
   startTime: Date,
-): Promise<{ default?: { timelineData?: { value?: number[] }[] } } | null> {
+): Promise<{
+  default?: {
+    timelineData?: { value?: number[]; formattedTime?: string; time?: string }[];
+  };
+} | null> {
   const raw = await withRetry(() =>
     googleTrends.interestOverTime({
       keyword,

@@ -2047,7 +2047,9 @@ model ReviewIntelSource {
   id              String                  @id @default(cuid())
   productName     String
   competitorBrand String
-  marketplace     ResearchMarketplace
+  /** Registry key: shopee, tokopedia, femaledaily, sociolla, csv, … */
+  platformKey     String                  @default("shopee")
+  marketplace     ResearchMarketplace?
   productUrl      String
   status          ReviewIntelSourceStatus @default(PENDING)
   reviewCount     Int                     @default(0)
@@ -2068,6 +2070,7 @@ model ReviewIntelSource {
   @@index([createdById])
   @@index([status])
   @@index([brandId])
+  @@index([platformKey])
 }
 
 model ReviewRaw {
@@ -2258,6 +2261,12 @@ enum KeywordIntelStatus {
   FAILED
 }
 
+enum KeywordDigestMode {
+  LIVE
+  PARTIAL
+  FAILED
+}
+
 model TrendWatchlist {
   id           String             @id @default(cuid())
   name         String
@@ -2284,11 +2293,44 @@ model TrendRadarUserSettings {
   updatedAt    DateTime @updatedAt
 }
 
+enum TrendDigestMode {
+  LIVE
+  PARTIAL
+  FAILED
+}
+
+enum TrendConfidence {
+  HIGH
+  MED
+  LOW
+}
+
+enum TrendWowStatus {
+  NEW
+  ACCELERATING
+  STABLE
+  FADING
+  GONE
+}
+
+enum TrendPhaseSource {
+  computed
+  llm_fallback
+}
+
 model TrendRadarDigest {
   id           String           @id @default(cuid())
   weekStart    DateTime
   weekEnd      DateTime
   status       TrendRadarStatus @default(PENDING)
+  /** LIVE | PARTIAL | FAILED — kualitas data digest (bukan demo). */
+  digestMode   TrendDigestMode  @default(LIVE)
+  /** Ringkasan jumlah sinyal per sumber saat koleksi. */
+  signalStats  Json?
+  /** Pesan kualitas data untuk UI (mirip Keyword Intel dataNotice). */
+  dataNotice   String?          @db.Text
+  /** Digest minggu sebelumnya untuk perbandingan WoW. */
+  priorDigestId String?
   narrative    String?          @db.Text
   /** Rencana aksi preskriptif (ActionPlan) untuk tren minggu ini. */
   aiActionPlan Json?
@@ -2308,24 +2350,43 @@ model TrendRadarDigest {
   @@index([status])
   @@index([isGlobal, weekStart])
   @@index([watchlistId])
+  @@index([digestMode])
 }
 
 model TrendRadarItem {
-  id               String         @id @default(cuid())
+  id               String            @id @default(cuid())
   digestId         String
-  digest           TrendRadarDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+  digest           TrendRadarDigest  @relation(fields: [digestId], references: [id], onDelete: Cascade)
   name             String
   dimension        TrendDimension
   phase            TrendPhase
+  /** Trend Momentum Index 0–1 (metrik utama). */
+  tmiScore         Float?
+  /** Alias backward-compat — diset sama dengan tmiScore. */
   score            Float?
-  narrative        String?        @db.Text
-  isGlobalPipeline Boolean        @default(false)
-  sources          Json           @default("[]")
-  relatedProducts  Json           @default("[]")
-  createdAt        DateTime       @default(now())
+  confidence       TrendConfidence   @default(MED)
+  phaseSource      TrendPhaseSource  @default(computed)
+  wowStatus        TrendWowStatus?
+  narrative        String?           @db.Text
+  isGlobalPipeline Boolean           @default(false)
+  /** Bukti terstruktur per sinyal. */
+  evidence         Json              @default("[]")
+  sources          Json              @default("[]")
+  relatedProducts  Json              @default("[]")
+  createdAt        DateTime          @default(now())
 
   @@index([digestId])
   @@index([phase])
+}
+
+/** Cache hitungan BPOM per seed keyword untuk delta mingguan. */
+model TrendBpomSnapshot {
+  id        String   @id @default(cuid())
+  seed      String
+  count     Int
+  capturedAt DateTime @default(now())
+
+  @@index([seed, capturedAt])
 }
 
 model KeywordIntelQuery {
@@ -2334,6 +2395,12 @@ model KeywordIntelQuery {
   seedKeyword  String?
   marketplace  ResearchMarketplace?
   status       KeywordIntelStatus  @default(PENDING)
+  digestMode   KeywordDigestMode   @default(LIVE)
+  signalStats  Json?
+  dataNotice   String?             @db.Text
+  volumeSource String?
+  priorQueryId String?
+  sourceConfig Json?
   errorMessage String?
   createdById  String
   createdBy    User                @relation("KeywordIntelQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
@@ -2343,6 +2410,7 @@ model KeywordIntelQuery {
 
   @@index([createdById])
   @@index([status])
+  @@index([digestMode])
 }
 
 model KeywordIntelResult {
@@ -2354,6 +2422,7 @@ model KeywordIntelResult {
   namingSuggestions Json              @default("[]")
   copyKeywords      Json              @default("{}")
   seasonalCalendar  Json              @default("[]")
+  seasonalCurves    Json?
   clusters          Json              @default("[]")
   aiSummary         String?           @db.Text
   /** Rencana aksi preskriptif (ActionPlan) berbasis keyword & intent. */
@@ -2414,6 +2483,7 @@ model SocialListeningBatch {
   apifyRunIds    Json                 @default("{}")
   createdAt    DateTime               @default(now())
   mentions     SocialMention[]
+  comments     SocialComment[]
   summary      SocialListeningSummary?
 
   @@index([monitorId])
@@ -2440,8 +2510,32 @@ model SocialMention {
   mediaType    String?
   createdAt    DateTime               @default(now())
 
+  socialComments SocialComment[]
+
   @@unique([batchId, platform, externalId])
   @@index([batchId])
+  @@index([classification])
+}
+
+model SocialComment {
+  id             String                 @id @default(cuid())
+  batchId        String
+  batch          SocialListeningBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  mentionId      String?
+  mention        SocialMention?         @relation(fields: [mentionId], references: [id], onDelete: SetNull)
+  platform       SocialListeningPlatform
+  externalId     String?
+  text           String                 @db.Text
+  author         String?
+  likes          Int                    @default(0)
+  classification SocialMentionClass     @default(NEUTRAL)
+  painPoint      String?
+  postedAt       DateTime?
+  createdAt      DateTime               @default(now())
+
+  @@unique([batchId, platform, externalId])
+  @@index([batchId])
+  @@index([mentionId])
   @@index([classification])
 }
 
@@ -2461,6 +2555,16 @@ model SocialListeningSummary {
   aiMeta            Json?
   /** Tren sentimen harian: [{ date, positive, negative, neutral }]. */
   sentimentTimeline Json                 @default("[]")
+  /** Pain points dari komentar (bukan caption). */
+  topCommentPainPoints Json             @default("[]")
+  /** Wishlist dari komentar. */
+  topCommentWishlist Json                @default("[]")
+  /** Distribusi klasifikasi komentar. */
+  commentCategoryBreakdown Json          @default("[]")
+  /** Ringkasan AI khusus komentar. */
+  commentAiSummary String?              @db.Text
+  /** Metrik engagement: avg likes, comment ratio, dll. */
+  engagementInsights Json                @default("{}")
   updatedAt         DateTime             @updatedAt
 }
 
@@ -2731,7 +2835,8 @@ model BrandReviewSource {
   id                   String                  @id @default(cuid())
   productName          String
   competitorBrand      String
-  marketplace          ResearchMarketplace
+  platformKey          String                  @default("shopee")
+  marketplace          ResearchMarketplace?
   productUrl           String
   status               ReviewIntelSourceStatus @default(PENDING)
   reviewCount          Int                     @default(0)
@@ -2752,6 +2857,7 @@ model BrandReviewSource {
   @@index([createdById])
   @@index([status])
   @@index([ownerBrandId])
+  @@index([platformKey])
 }
 
 model BrandReviewItem {
@@ -2811,6 +2917,10 @@ model BrandTrendDigest {
   weekStart    DateTime
   weekEnd      DateTime
   status       TrendRadarStatus @default(PENDING)
+  digestMode   TrendDigestMode  @default(LIVE)
+  signalStats  Json?
+  dataNotice   String?          @db.Text
+  priorDigestId String?
   narrative    String?          @db.Text
   aiActionPlan Json?
   aiMeta       Json?
@@ -2827,6 +2937,7 @@ model BrandTrendDigest {
   @@index([status])
   @@index([isGlobal, weekStart])
   @@index([ownerBrandId])
+  @@index([digestMode])
 }
 
 model BrandTrendSignal {
@@ -2836,9 +2947,14 @@ model BrandTrendSignal {
   name             String
   dimension        TrendDimension
   phase            TrendPhase
+  tmiScore         Float?
   score            Float?
+  confidence       TrendConfidence   @default(MED)
+  phaseSource      TrendPhaseSource  @default(computed)
+  wowStatus        TrendWowStatus?
   narrative        String?          @db.Text
   isGlobalPipeline Boolean          @default(false)
+  evidence         Json             @default("[]")
   sources          Json             @default("[]")
   relatedProducts  Json             @default("[]")
   createdAt        DateTime         @default(now())
@@ -2853,6 +2969,12 @@ model BrandKeywordQuery {
   seedKeyword  String?
   marketplace  ResearchMarketplace?
   status       KeywordIntelStatus  @default(PENDING)
+  digestMode   KeywordDigestMode   @default(LIVE)
+  signalStats  Json?
+  dataNotice   String?             @db.Text
+  volumeSource String?
+  priorQueryId String?
+  sourceConfig Json?
   errorMessage String?
   createdById  String
   createdBy    User                @relation("BrandKeywordQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
@@ -2865,6 +2987,7 @@ model BrandKeywordQuery {
   @@index([createdById])
   @@index([status])
   @@index([ownerBrandId])
+  @@index([digestMode])
 }
 
 model BrandKeywordResult {
@@ -2876,6 +2999,7 @@ model BrandKeywordResult {
   namingSuggestions Json               @default("[]")
   copyKeywords      Json               @default("{}")
   seasonalCalendar  Json               @default("[]")
+  seasonalCurves    Json?
   clusters          Json               @default("[]")
   aiSummary         String?            @db.Text
   aiActionPlan      Json?

@@ -10,7 +10,9 @@ import {
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMarketAnalyst } from "@/lib/research/auth";
+import { requireBrandManager } from "@/lib/brand-research/auth";
 import { seedDefaultProjectMilestones } from "@/lib/project-milestones";
+import { getReviewPlatformLabel } from "@/lib/review-platforms/platforms";
 
 const briefSchema = z.object({
   sourceId: z.string().min(1),
@@ -45,7 +47,7 @@ export async function createProductBriefFromInsight(
     `## Product Brief dari Review Intelligence`,
     ``,
     `**Produk kompetitor:** ${source.productName} (${source.competitorBrand})`,
-    `**Marketplace:** ${source.marketplace}`,
+    `**Sumber review:** ${getReviewPlatformLabel(source.platformKey)}`,
     ``,
     `### Gap Opportunity`,
     source.summary.gapOpportunity ?? "—",
@@ -179,15 +181,28 @@ const keywordBriefSchema = z.object({
 export async function createProductBriefFromKeyword(
   input: z.infer<typeof keywordBriefSchema>,
 ) {
-  await requireMarketAnalyst();
   const data = keywordBriefSchema.parse(input);
 
-  const query = await prisma.keywordIntelQuery.findUnique({
-    where: { id: data.queryId },
-    include: { result: true },
-  });
+  const [researchQuery, brandQuery] = await Promise.all([
+    prisma.keywordIntelQuery.findUnique({
+      where: { id: data.queryId },
+      include: { result: true },
+    }),
+    prisma.brandKeywordQuery.findUnique({
+      where: { id: data.queryId },
+      include: { result: true },
+    }),
+  ]);
+
+  const query = researchQuery ?? brandQuery;
   if (!query?.result) {
     throw new Error("Hasil keyword belum siap.");
+  }
+
+  if (brandQuery && !researchQuery) {
+    await requireBrandManager();
+  } else {
+    await requireMarketAnalyst();
   }
 
   const gaps = Array.isArray(query.result.gapKeywords)

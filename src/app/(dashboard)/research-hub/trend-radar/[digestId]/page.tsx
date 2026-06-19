@@ -6,6 +6,8 @@ import {
   TrendDetailClient,
   type TrendDetailData,
 } from "./trend-detail-client";
+import type { TrendEvidenceRow } from "@/lib/research/trend-radar/trend-signal-types";
+import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = {
@@ -21,6 +23,24 @@ function parseSources(raw: unknown) {
   );
 }
 
+function parseEvidence(raw: unknown): TrendEvidenceRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (x): x is TrendEvidenceRow =>
+      typeof x === "object" &&
+      x != null &&
+      typeof (x as TrendEvidenceRow).signalId === "string" &&
+      typeof (x as TrendEvidenceRow).source === "string",
+  );
+}
+
+function parseSignalStats(raw: unknown): TrendSignalStats | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as TrendSignalStats;
+  if (typeof s.total !== "number") return null;
+  return s;
+}
+
 export default async function TrendDetailPage({ params, searchParams }: Props) {
   const { digestId } = await params;
   const { item: highlightItemId } = await searchParams;
@@ -29,7 +49,7 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
     prisma.trendRadarDigest.findUnique({
       where: { id: digestId },
       include: {
-        items: { orderBy: [{ phase: "asc" }, { score: "desc" }] },
+        items: { orderBy: [{ phase: "asc" }, { tmiScore: "desc" }] },
         watchlist: { select: { name: true } },
       },
     }),
@@ -57,6 +77,10 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
     weekStart: digest.weekStart.toISOString(),
     weekEnd: digest.weekEnd.toISOString(),
     status: digest.status,
+    digestMode: digest.digestMode,
+    dataNotice: digest.dataNotice,
+    signalStats: parseSignalStats(digest.signalStats),
+    priorDigestId: digest.priorDigestId,
     narrative: digest.narrative,
     isGlobal: digest.isGlobal,
     watchlistName: digest.watchlist?.name ?? null,
@@ -70,9 +94,13 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
       name: i.name,
       dimension: i.dimension,
       phase: i.phase,
-      score: i.score,
+      score: i.tmiScore ?? i.score,
+      tmiScore: i.tmiScore ?? i.score,
+      confidence: i.confidence,
+      wowStatus: i.wowStatus,
       narrative: i.narrative,
       isGlobalPipeline: i.isGlobalPipeline,
+      evidence: parseEvidence(i.evidence),
       sources: parseSources(i.sources),
       relatedProducts: Array.isArray(i.relatedProducts)
         ? (i.relatedProducts as string[])

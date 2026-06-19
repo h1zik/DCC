@@ -9,6 +9,7 @@ import {
   waitForApifyRun,
 } from "@/lib/apify/client";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
+import { extractEmbeddedComments } from "@/lib/research/social-listening/parse-embedded-comments";
 
 function getInstagramActorId(): string | null {
   return process.env.APIFY_ACTOR_INSTAGRAM?.trim() || null;
@@ -159,6 +160,12 @@ export function parseInstagramItems(
         timestamp && !Number.isNaN(timestamp.getTime()) ? timestamp : undefined,
       thumbnailUrl: pickInstagramThumbnail(item),
       mediaType: isInstagramVideo(item) ? "video" : "image",
+      scrapedComments: extractEmbeddedComments(
+        item,
+        SocialListeningPlatform.INSTAGRAM,
+        itemId(item),
+        15,
+      ),
     });
   }
 

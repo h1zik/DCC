@@ -7,15 +7,20 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  buildReviewActorInput,
-  getReviewActorId,
-  actorEnvHint,
+  buildReviewActorInputByPlatformKey,
+  getReviewActorIdByPlatformKey,
+  reviewActorEnvHintByPlatformKey,
 } from "@/lib/apify/actors";
 import { getApifyRunStatus, isApifyConfigured, startApifyActor } from "@/lib/apify/client";
 import {
+  completeBrandReviewScrapeFromNormalized,
   pollBrandReviewScrapeJob,
   runDemoBrandReviewScrape,
 } from "@/lib/brand-research/scrape-review-source";
+import {
+  scrapeReviewsNative,
+  usesNativeReviewScrape,
+} from "@/lib/review-scrape/native-scrape";
 
 /** Job yang sedang jalan di proses Node ini — cegah scrape ganda dari polling. */
 const activeReviewScrapeJobIds = new Set<string>();
@@ -141,16 +146,31 @@ export async function executeBrandReviewScrapeJob(jobId: string): Promise<void> 
       return;
     }
 
-    const actorId = getReviewActorId(source.marketplace);
-    if (!actorId) {
-      throw new Error(
-        actorEnvHint(ResearchScrapeJobType.REVIEW_SCRAPE, source.marketplace),
+    const platformKey = source.platformKey ?? "shopee";
+
+    if (platformKey === "csv") {
+      await markJobFailed(jobId, "Sumber CSV tidak memerlukan scrape Apify.");
+      return;
+    }
+
+    if (usesNativeReviewScrape(platformKey)) {
+      const { reviews, meta } = await scrapeReviewsNative(
+        platformKey,
+        source.productUrl,
       );
+      await completeBrandReviewScrapeFromNormalized(source.id, reviews, meta);
+      await markJobCompleted(jobId);
+      return;
+    }
+
+    const actorId = getReviewActorIdByPlatformKey(platformKey);
+    if (!actorId) {
+      throw new Error(reviewActorEnvHintByPlatformKey(platformKey));
     }
 
     const { runId } = await startApifyActor(
       actorId,
-      buildReviewActorInput(source.marketplace, source.productUrl),
+      buildReviewActorInputByPlatformKey(platformKey, source.productUrl),
     );
 
     await prisma.brandResearchScrapeJob.update({

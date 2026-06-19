@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, ExternalLink, RefreshCw } from "lucide-react";
+import type { ReviewIntelSourceStatus } from "@prisma/client";
+import { ArrowLeft, ExternalLink, Loader2, MessageSquareText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   markAllCompetitorAlertsRead,
   markCompetitorAlertRead,
   refreshResearchCompetitor,
 } from "@/actions/research-competitor";
+import { createReviewIntelFromCompetitorSku } from "@/actions/research-review-intelligence";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import type { CompetitorInsights } from "@/lib/research/competitor-insights";
 import { formatRp } from "@/lib/research/labels";
@@ -33,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MARKETPLACE_LABELS } from "@/lib/research/labels";
+import { MARKETPLACE_LABELS, SOURCE_STATUS_LABELS } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -50,6 +52,8 @@ type Sku = {
   promoText: string | null;
   priceDeltaPct: number | null;
   priceDirection: "up" | "down" | null;
+  reviewIntelSourceId: string | null;
+  reviewIntelStatus: ReviewIntelSourceStatus | null;
 };
 
 type PriceChartBundle = {
@@ -102,9 +106,36 @@ export function CompetitorDetailClient({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [reviewSkuId, setReviewSkuId] = useState<string | null>(null);
   const [priceDays, setPriceDays] = useState<30 | 60 | 90>(30);
 
   useResearchJobProgress({ inProgress: competitor.isScraping });
+
+  function handleSkuReviewIntel(sku: Sku) {
+    if (sku.reviewIntelSourceId) {
+      router.push(
+        `/research-hub/review-intelligence/${sku.reviewIntelSourceId}`,
+      );
+      return;
+    }
+
+    setReviewSkuId(sku.id);
+    startTransition(async () => {
+      try {
+        const result = await createReviewIntelFromCompetitorSku(sku.id);
+        toast.success(
+          result.created
+            ? "Scrape review dimulai — membuka Review Intelligence."
+            : "Membuka sumber Review Intelligence yang sudah ada.",
+        );
+        router.push(`/research-hub/review-intelligence/${result.id}`);
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal membuka Review Intelligence."));
+      } finally {
+        setReviewSkuId(null);
+      }
+    });
+  }
 
   const ai = (competitor.aiInsights as CompetitorAiInsights | null) ?? null;
 
@@ -224,8 +255,9 @@ export function CompetitorDetailClient({
                 <TableHead>Produk</TableHead>
                 <TableHead className="text-right">Harga</TableHead>
                 <TableHead className="text-right">Rating</TableHead>
-                <TableHead className="text-right">Review</TableHead>
+                <TableHead className="text-right">Jumlah Review</TableHead>
                 <TableHead>Promo</TableHead>
+                <TableHead className="w-[140px]">Review Intel</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -280,6 +312,28 @@ export function CompetitorDetailClient({
                     ) : (
                       "—"
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant={sku.reviewIntelSourceId ? "secondary" : "outline"}
+                      size="sm"
+                      className="h-8 w-full text-xs"
+                      disabled={pending && reviewSkuId === sku.id}
+                      onClick={() => handleSkuReviewIntel(sku)}
+                    >
+                      {pending && reviewSkuId === sku.id ? (
+                        <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <MessageSquareText className="size-3.5" aria-hidden />
+                      )}
+                      {sku.reviewIntelSourceId ? "Lihat Intel" : "Analisis"}
+                    </Button>
+                    {sku.reviewIntelStatus ? (
+                      <p className="text-muted-foreground mt-1 text-center text-[10px]">
+                        {SOURCE_STATUS_LABELS[sku.reviewIntelStatus]}
+                      </p>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}

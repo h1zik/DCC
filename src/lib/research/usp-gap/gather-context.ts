@@ -306,6 +306,8 @@ export async function gatherUspContext(input: {
               keyword: string;
               volume: number;
               reason: string;
+              koiScore?: number;
+              confidence?: string;
             }[])
           : [],
         clusters: Array.isArray(query.result.clusters)

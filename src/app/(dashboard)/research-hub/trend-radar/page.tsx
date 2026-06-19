@@ -10,6 +10,15 @@ import {
 } from "@/lib/research/trend-radar/trend-source-config";
 import { TrendRadarClient, type TrendRadarPageData } from "./trend-radar-client";
 
+import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
+
+function parseSignalStats(raw: unknown): TrendSignalStats | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as TrendSignalStats;
+  if (typeof s.total !== "number") return null;
+  return s;
+}
+
 export default async function TrendRadarPage() {
   const session = await auth();
   const userId = session?.user?.id;
@@ -56,12 +65,18 @@ export default async function TrendRadarPage() {
           narrative: latestGlobal.narrative,
           generatedAt: latestGlobal.generatedAt?.toISOString() ?? null,
           status: latestGlobal.status,
+          digestMode: latestGlobal.digestMode,
+          dataNotice: latestGlobal.dataNotice,
+          signalStats: parseSignalStats(latestGlobal.signalStats),
           items: latestGlobal.items.map((i) => ({
             id: i.id,
             name: i.name,
             phase: i.phase,
             dimension: i.dimension,
             isGlobalPipeline: i.isGlobalPipeline,
+            tmiScore: i.tmiScore ?? i.score,
+            confidence: i.confidence,
+            wowStatus: i.wowStatus,
           })),
         }
       : null,

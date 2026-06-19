@@ -165,8 +165,8 @@ export async function assessBrandEvidenceReadiness(
     warnings.push({
       key: "keyword-intel",
       label: "Keyword Intel belum siap",
-      href: `/brand-hub/strategy${brandQs}`,
-      detail: "Tambahkan query keyword di Research Hub.",
+      href: `/brand-hub/keyword-intel${brandQs}`,
+      detail: "Buat analisis keyword di Brand Hub Keyword Intel.",
     });
   }
 

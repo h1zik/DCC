@@ -3,8 +3,11 @@ import "server-only";
 import { ResearchMarketplace } from "@prisma/client";
 import { resolveAgentApiKey } from "@/lib/agent/provider";
 import { isApifyConfigured } from "@/lib/apify/client";
+import {
+  configuredReviewPlatformLabels,
+  isAnyReviewScrapeConfigured,
+} from "@/lib/review-platforms/registry";
 import { isProductSearchConfigured } from "@/lib/apify/actors";
-import { isDataForSeoConfigured } from "@/lib/research/keyword-intel/dataforseo-keywords";
 import { isInstagramMentionsConfigured } from "@/lib/research/social-listening/scrape-instagram-mentions";
 import { isTikTokMentionsConfigured } from "@/lib/research/social-listening/scrape-tiktok-mentions";
 import { isTikTokTrendsConfigured } from "@/lib/research/trend-radar/tiktok-trends";
@@ -84,14 +87,13 @@ function reviewHealthLevel(opts: {
 export async function getResearchDashboardData(): Promise<DashboardData> {
   const aiConfigured = !!resolveAgentApiKey();
   const apifyConfigured = isApifyConfigured();
-  const shopeeReviewsConfigured =
-    apifyConfigured && !!process.env.APIFY_ACTOR_SHOPEE_REVIEWS?.trim();
+  const reviewScrapeConfigured = isAnyReviewScrapeConfigured();
+  const reviewPlatformLabels = configuredReviewPlatformLabels();
   const shopeeShopConfigured =
     apifyConfigured && !!process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim();
   const productDiscoveryConfigured = isProductSearchConfigured(
     ResearchMarketplace.SHOPEE,
   );
-  const keywordsConfigured = isDataForSeoConfigured();
   const socialConfigured =
     isTikTokMentionsConfigured() || isInstagramMentionsConfigured();
   const trendConfigured = isTikTokTrendsConfigured();
@@ -128,12 +130,12 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
       include: { competitor: { select: { name: true, brand: true } } },
     }),
     prisma.trendRadarDigest.findFirst({
-      where: { isGlobal: true, status: "READY" },
+      where: { isGlobal: true, status: "READY", digestMode: "LIVE" },
       orderBy: { generatedAt: "desc" },
       include: {
         items: {
-          where: { phase: "EMERGING" },
-          orderBy: { score: "desc" },
+          where: { phase: "EMERGING", confidence: { not: "LOW" } },
+          orderBy: { tmiScore: "desc" },
           take: 5,
         },
       },
@@ -175,8 +177,9 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     });
   }
 
-  if (latestGlobalDigest) {
+  if (latestGlobalDigest && latestGlobalDigest.digestMode === "LIVE") {
     for (const item of latestGlobalDigest.items) {
+      if (item.confidence === "LOW") continue;
       alerts.push({
         id: item.id,
         kind: "trend",
@@ -229,16 +232,16 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     {
       key: "review-intelligence",
       level: reviewHealthLevel({
-        configured: shopeeReviewsConfigured,
+        configured: reviewScrapeConfigured,
         ready: reviewReady,
         failed: reviewFailed,
         partial: reviewPartial,
       }),
-      detail: shopeeReviewsConfigured
+      detail: reviewScrapeConfigured
         ? reviewPartial > 0
-          ? `Apify gio21 · ${reviewPartial} parsial`
-          : `Apify gio21 · ${reviewReady} siap`
-        : "Scraper belum dikonfigurasi",
+          ? `${reviewPlatformLabels.join(", ")} · ${reviewPartial} parsial`
+          : `${reviewPlatformLabels.join(", ")} · ${reviewReady} siap`
+        : "Scraper review belum dikonfigurasi (Apify actor per platform)",
     },
     {
       key: "competitor-tracker",
@@ -262,10 +265,11 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     },
     {
       key: "keyword-intel",
-      level: !keywordsConfigured ? "demo" : keywordReady === 0 ? "idle" : "live",
-      detail: keywordsConfigured
-        ? `${keywordReady} query siap`
-        : "DataForSEO belum dikonfigurasi",
+      level: keywordReady === 0 ? "idle" : "live",
+      detail:
+        keywordReady === 0
+          ? "Buat query di Keyword Intel"
+          : `${keywordReady} query siap`,
     },
     {
       key: "social-listening",
@@ -308,7 +312,10 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
       reviewPartial,
       competitorsActive,
       unreadAlerts,
-      emergingTrends: latestGlobalDigest?.items.length ?? 0,
+      emergingTrends:
+        latestGlobalDigest?.digestMode === "LIVE"
+          ? latestGlobalDigest.items.filter((i) => i.confidence !== "LOW").length
+          : 0,
       conceptDrafts,
       conceptReady,
     },

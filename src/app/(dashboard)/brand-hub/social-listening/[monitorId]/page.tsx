@@ -8,6 +8,11 @@ import {
   type SocialDetailData,
 } from "./brand-social-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import {
+  parseCategoryBreakdown,
+  parseEngagementInsights,
+  parseThemeRows,
+} from "@/lib/research/social-listening/parse-summary-client";
 
 export default async function SocialListeningDetailPage({
   params,
@@ -26,6 +31,7 @@ export default async function SocialListeningDetailPage({
         include: {
           summary: true,
           mentions: { orderBy: { likes: "desc" }, take: 100 },
+          comments: { orderBy: { likes: "desc" }, take: 80 },
         },
       },
     },
@@ -71,12 +77,16 @@ export default async function SocialListeningDetailPage({
     };
   });
 
-  const painPoints = Array.isArray(latest?.summary?.topPainPoints)
-    ? (latest.summary.topPainPoints as { theme: string; count: number }[])
-    : [];
-  const wishlist = Array.isArray(latest?.summary?.topWishlist)
-    ? (latest.summary.topWishlist as { theme: string; count: number }[])
-    : [];
+  const painPoints = parseThemeRows(latest?.summary?.topPainPoints);
+  const wishlist = parseThemeRows(latest?.summary?.topWishlist);
+  const topCommentPainPoints = parseThemeRows(latest?.summary?.topCommentPainPoints);
+  const topCommentWishlist = parseThemeRows(latest?.summary?.topCommentWishlist);
+  const commentCategoryBreakdown = parseCategoryBreakdown(
+    latest?.summary?.commentCategoryBreakdown,
+  );
+  const engagementInsights = parseEngagementInsights(
+    latest?.summary?.engagementInsights,
+  );
   const influencers = Array.isArray(latest?.summary?.influencers)
     ? (latest.summary.influencers as SocialDetailData["influencers"])
     : [];
@@ -108,6 +118,21 @@ export default async function SocialListeningDetailPage({
     sentimentTimeline,
     actionPlan: latest?.summary?.aiActionPlan ?? null,
     aiMeta: parseResearchAiMetaClient(latest?.summary?.aiMeta),
+    engagementInsights,
+    commentAiSummary: latest?.summary?.commentAiSummary ?? null,
+    topCommentPainPoints,
+    topCommentWishlist,
+    commentCategoryBreakdown,
+    comments:
+      latest?.comments.map((c) => ({
+        id: c.id,
+        text: c.text,
+        author: c.author,
+        platform: c.platform,
+        classification: c.classification as SocialMentionClass,
+        likes: c.likes,
+        painPoint: c.painPoint,
+      })) ?? [],
     mentions:
       latest?.mentions.map((m) => ({
         id: m.id,
@@ -116,6 +141,7 @@ export default async function SocialListeningDetailPage({
         author: m.author,
         classification: m.classification as SocialMentionClass,
         likes: m.likes,
+        comments: m.comments,
         views: m.views,
         isViral: m.isViral,
         url: m.url,

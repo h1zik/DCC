@@ -11,14 +11,12 @@ import { refreshBrandKeywordIntelQuery } from "@/actions/brand-keyword-intel";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { CopyKeywordsPanel } from "@/components/research-hub/copy-keywords-panel";
-import {
-  KeywordGapList,
-  type GapKeyword,
-} from "@/components/research-hub/keyword-gap-list";
-import {
-  KeywordMatrixTable,
-  type KeywordMatrixRow,
-} from "@/components/research-hub/keyword-matrix-table";
+import { KeywordEvidenceTable } from "@/components/research-hub/keyword-evidence-table";
+import { KeywordGapList } from "@/components/research-hub/keyword-gap-list";
+import { KeywordMatrixTable } from "@/components/research-hub/keyword-matrix-table";
+import { KeywordOpportunityChart } from "@/components/research-hub/keyword-opportunity-chart";
+import { KeywordQualityBanner } from "@/components/research-hub/keyword-quality-banner";
+import { KeywordSignalStatsLine } from "@/components/research-hub/keyword-signal-stats-line";
 import { NamingSuggestionsCard } from "@/components/research-hub/naming-suggestions-card";
 import {
   SeasonalKeywordChart,
@@ -46,6 +44,12 @@ import {
   KEYWORD_INTEL_STATUS_LABELS,
   MARKETPLACE_LABELS,
 } from "@/lib/research/labels";
+import type {
+  GapKeywordRow,
+  KeywordMatrixRow,
+  KeywordSignalStats,
+  SeasonalCurve,
+} from "@/lib/research/keyword-intel/keyword-signal-types";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -56,14 +60,14 @@ export type KeywordDetailData = {
   seedKeyword: string | null;
   marketplace: ResearchMarketplace | null;
   status: KeywordIntelStatus;
+  dataNotice: string | null;
+  signalStats: KeywordSignalStats | null;
+  volumeSource: string | null;
   errorMessage: string | null;
   aiSummary: string | null;
-  dataNotice: string | null;
-  isDemo: boolean;
-  /** Volume Google dari DataForSEO tersedia di matrix. */
   hasGoogleVolume: boolean;
   matrix: KeywordMatrixRow[];
-  gaps: GapKeyword[];
+  gaps: GapKeywordRow[];
   namingSuggestions: string[];
   copyKeywords: {
     listingTitle?: string[];
@@ -71,6 +75,7 @@ export type KeywordDetailData = {
     socialMedia?: string[];
   };
   seasonalCalendar: SeasonalMonth[];
+  seasonalCurves: SeasonalCurve[];
   clusters: { name: string; keywords: string[] }[];
   actionPlan: unknown;
   aiMeta: ResearchAiMetaView | null;
@@ -90,6 +95,7 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
   const [projectName, setProjectName] = useState(`Keyword: ${data.category}`);
 
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
+  const canBrief = data.status === "READY";
 
   const volumeByKeyword = data.matrix.reduce<Record<string, number>>(
     (acc, row) => {
@@ -100,6 +106,16 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
     },
     {},
   );
+
+  const opportunityPoints = data.matrix
+    .filter((m) => (m.koiScore ?? 0) > 0)
+    .slice(0, 40)
+    .map((m) => ({
+      keyword: m.keyword,
+      volume: m.volume,
+      listingSampleCount: m.listingSampleCount ?? 0,
+      koiScore: m.koiScore ?? 0,
+    }));
 
   function handleRefresh() {
     startTransition(async () => {
@@ -143,6 +159,7 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
   return (
     <div className="flex flex-col gap-6 pb-6">
       <ResearchModelBadgeGroup meta={data.aiMeta} />
+      <KeywordQualityBanner dataNotice={data.dataNotice} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
@@ -170,7 +187,9 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
             >
               {KEYWORD_INTEL_STATUS_LABELS[data.status]}
             </span>
+            {data.volumeSource ? ` · ${data.volumeSource}` : ""}
           </p>
+          <KeywordSignalStatsLine stats={data.signalStats} />
         </div>
         <div className="flex gap-2">
           <Button
@@ -186,7 +205,7 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
             <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
               <DialogTrigger
                 render={
-                  <Button size="sm">
+                  <Button size="sm" disabled={!canBrief}>
                     <FileText className="size-3.5" aria-hidden />
                     Buat Brief
                   </Button>
@@ -224,7 +243,7 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button onClick={handleBrief} disabled={pending}>
+                  <Button onClick={handleBrief} disabled={pending || !canBrief}>
                     Buat Brief
                   </Button>
                 </DialogFooter>
@@ -233,20 +252,6 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
           ) : null}
         </div>
       </div>
-
-      {data.dataNotice ? (
-        <p
-          className={cn(
-            "rounded-lg border px-4 py-3 text-sm",
-            data.isDemo
-              ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
-              : "border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-100",
-          )}
-        >
-          {data.isDemo ? "Data demo — " : ""}
-          {data.dataNotice}
-        </p>
-      ) : null}
 
       {data.errorMessage ? (
         <p className="text-rose-600 text-sm">{data.errorMessage}</p>
@@ -275,6 +280,15 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
         <>
           <Card>
             <CardHeader className="pb-2">
+              <CardTitle className="text-base">Peta Peluang (Volume vs Saturasi)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <KeywordOpportunityChart points={opportunityPoints} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
               <CardTitle className="text-base">Keyword Matrix</CardTitle>
             </CardHeader>
             <CardContent>
@@ -297,6 +311,19 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
             <NamingSuggestionsCard suggestions={data.namingSuggestions} />
           </div>
 
+          {data.matrix.some((m) => (m.evidence?.length ?? 0) > 0) ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Bukti Sinyal (top keyword)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <KeywordEvidenceTable
+                  evidence={data.matrix[0]?.evidence ?? []}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+
           <CopyKeywordsPanel data={data.copyKeywords} />
 
           <Card>
@@ -307,6 +334,7 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
               <SeasonalKeywordChart
                 data={data.seasonalCalendar}
                 volumeByKeyword={volumeByKeyword}
+                seasonalCurves={data.seasonalCurves}
               />
             </CardContent>
           </Card>
@@ -328,6 +356,29 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
               </CardContent>
             </Card>
           ) : null}
+
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Link
+              href="/brand-hub/competitor-tracker"
+              className="text-primary hover:underline"
+            >
+              Competitor Tracker
+            </Link>
+            <span className="text-muted-foreground">·</span>
+            <Link
+              href="/brand-hub/trend-radar"
+              className="text-primary hover:underline"
+            >
+              Trend Radar
+            </Link>
+            <span className="text-muted-foreground">·</span>
+            <Link
+              href="/brand-hub/review-intelligence"
+              className="text-primary hover:underline"
+            >
+              Review Intel
+            </Link>
+          </div>
         </>
       )}
     </div>

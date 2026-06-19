@@ -2,75 +2,18 @@ import "server-only";
 
 import { KeywordIntelStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { generateResearchJson } from "@/lib/research/gemini-client";
+import { runKeywordIntelPipeline } from "@/lib/research/keyword-intel/generate-keyword-intel-core";
 import {
-  buildResearchAiStep,
-  researchAiMetaFromSteps,
-} from "@/lib/research/llm";
-import { collectKeywordSignals } from "@/lib/research/keyword-intel/collect-keywords";
-import {
-  buildGapKeywordsFromSignals,
-  buildKeywordMatrixFromSignals,
-  mergeGapReasons,
-} from "@/lib/research/keyword-intel/build-keyword-output";
-import { buildKeywordAnalysisPrompt } from "@/lib/research/keyword-intel/prompts/keyword-analysis";
-import {
-  dedupeBrandNames,
-  extractForbiddenBrandsFromKeywords,
-  gatherMarketBrandNames,
-  sanitizeCopyKeywords,
-  sanitizeStringArray,
-} from "@/lib/research/brand-guard";
-import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+  parseKeywordSourceConfigJson,
+  resolveKeywordSourceConfig,
+} from "@/lib/research/keyword-intel/keyword-source-config";
+import { researchAiMetaFromSteps } from "@/lib/research/llm";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
-import type { ActionPlan } from "@/lib/research/prescriptive/types";
-
-type AnalysisResult = {
-  intents?: { keyword: string; intent: "transactional" | "informational" }[];
-  gapReasons?: { keyword: string; reason: string }[];
-  namingSuggestions: string[];
-  copyKeywords: {
-    listingTitle: string[];
-    listingDescription: string[];
-    socialMedia: string[];
-  };
-  seasonalCalendar: { month: string; keywords: string[] }[];
-  clusters: { name: string; keywords: string[] }[];
-  aiSummary: string;
-  actionPlan?: unknown;
-};
-
-function norm(keyword: string): string {
-  return keyword.trim().toLowerCase();
-}
-
-function intentMapFromAi(
-  intents: AnalysisResult["intents"],
-): Map<string, "transactional" | "informational"> {
-  const map = new Map<string, "transactional" | "informational">();
-  for (const row of intents ?? []) {
-    if (row?.keyword && row.intent) {
-      map.set(norm(row.keyword), row.intent);
-    }
-  }
-  return map;
-}
-
-function reasonMapFromAi(
-  reasons: AnalysisResult["gapReasons"],
-): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const row of reasons ?? []) {
-    if (row?.keyword && row.reason) {
-      map.set(norm(row.keyword), row.reason);
-    }
-  }
-  return map;
-}
 
 export async function analyzeKeywordQuery(queryId: string): Promise<void> {
   const query = await prisma.keywordIntelQuery.findUnique({
     where: { id: queryId },
+    include: { result: true },
   });
   if (!query) throw new Error("Query keyword tidak ditemukan.");
 
@@ -80,112 +23,78 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
   });
 
   try {
-    const collected = await collectKeywordSignals({
-      category: query.category,
-      seedKeyword: query.seedKeyword,
-      marketplace: query.marketplace,
-    });
+    const priorMatrix = query.result
+      ? (Array.isArray(query.result.keywordMatrix)
+          ? (query.result.keywordMatrix as { keyword?: string; koiScore?: number }[])
+          : []
+        )
+          .filter((r) => r.keyword)
+          .map((r) => ({ keyword: r.keyword!, koiScore: r.koiScore ?? null }))
+      : query.priorQueryId != null
+        ? await loadPriorMatrix(query.priorQueryId)
+        : [];
 
-    const gapCandidates = buildGapKeywordsFromSignals(collected.signals);
+    await prisma.keywordIntelResult.deleteMany({ where: { queryId } });
+
+    const sourceConfig = resolveKeywordSourceConfig(
+      parseKeywordSourceConfigJson(query.sourceConfig),
+    );
 
     await prisma.keywordIntelQuery.update({
       where: { id: queryId },
       data: { status: KeywordIntelStatus.ANALYZING },
     });
 
-    const signalKeywords = collected.signals.map((s) => s.keyword);
-    const forbiddenBrands = dedupeBrandNames([
-      ...(await gatherMarketBrandNames({ category: query.category })),
-      ...extractForbiddenBrandsFromKeywords(signalKeywords, query.category),
-    ]);
-
-    const prompt = buildKeywordAnalysisPrompt({
+    const pipeline = await runKeywordIntelPipeline({
       category: query.category,
       seedKeyword: query.seedKeyword,
-      signals: collected.signals,
-      gapCandidates,
-      forbiddenBrands,
+      marketplace: query.marketplace,
+      sourceConfig,
+      priorMatrix,
+      queryIdForPlan: queryId,
     });
 
-    const result = await generateResearchJson<AnalysisResult>(prompt);
-
-    const intents = intentMapFromAi(result.intents);
-    const keywordMatrix = buildKeywordMatrixFromSignals(
-      collected.signals,
-      intents,
-    ).sort((a, b) => b.volume - a.volume);
-
-    const gapKeywords = mergeGapReasons(
-      gapCandidates,
-      reasonMapFromAi(result.gapReasons),
-    );
-
-    const copyKeywordsRaw = {
-      ...(result.copyKeywords ?? {}),
-      _meta: {
-        isDemo: collected.isDemo,
-        volumeSource: collected.volumeSource,
-        dataNotice: collected.dataNotice,
-      },
-    };
-    const copyKeywords = sanitizeCopyKeywords(
-      copyKeywordsRaw,
-      forbiddenBrands,
-    ) as typeof copyKeywordsRaw;
-
-    const actionPlan: ActionPlan | null = coerceActionPlan(
-      result.actionPlan,
-      `keyword-${queryId}`,
-      forbiddenBrands,
-    );
-
-    const namingSuggestions = sanitizeStringArray(
-      result.namingSuggestions ?? [],
-      forbiddenBrands,
-    );
-    const seasonalCalendar = (result.seasonalCalendar ?? []).map((row) => ({
-      ...row,
-      keywords: sanitizeStringArray(row.keywords, forbiddenBrands),
-    }));
-    const clusters = (result.clusters ?? []).map((c) => ({
-      ...c,
-      keywords: sanitizeStringArray(c.keywords, forbiddenBrands),
-    }));
-
-    const aiMeta = researchAiMetaFromSteps([
-      buildResearchAiStep("Analisis keyword & copy", "flash"),
-    ]);
+    const aiMeta = researchAiMetaFromSteps(pipeline.aiMetaSteps);
 
     await prisma.keywordIntelResult.upsert({
       where: { queryId },
       create: {
         queryId,
-        keywordMatrix,
-        gapKeywords,
-        namingSuggestions,
-        copyKeywords,
-        seasonalCalendar,
-        clusters,
-        aiSummary: result.aiSummary ?? null,
-        aiActionPlan: actionPlan ?? undefined,
+        keywordMatrix: pipeline.matrix,
+        gapKeywords: pipeline.gapKeywords,
+        namingSuggestions: pipeline.namingSuggestions,
+        copyKeywords: pipeline.copyKeywords,
+        seasonalCalendar: pipeline.seasonalCalendar,
+        seasonalCurves: pipeline.seasonalCurves,
+        clusters: pipeline.clusters,
+        aiSummary: pipeline.aiSummary,
+        aiActionPlan: pipeline.actionPlan ?? undefined,
         aiMeta: aiMeta as object,
       },
       update: {
-        keywordMatrix,
-        gapKeywords,
-        namingSuggestions,
-        copyKeywords,
-        seasonalCalendar,
-        clusters,
-        aiSummary: result.aiSummary ?? null,
-        aiActionPlan: actionPlan ?? undefined,
+        keywordMatrix: pipeline.matrix,
+        gapKeywords: pipeline.gapKeywords,
+        namingSuggestions: pipeline.namingSuggestions,
+        copyKeywords: pipeline.copyKeywords,
+        seasonalCalendar: pipeline.seasonalCalendar,
+        seasonalCurves: pipeline.seasonalCurves,
+        clusters: pipeline.clusters,
+        aiSummary: pipeline.aiSummary,
+        aiActionPlan: pipeline.actionPlan ?? undefined,
         aiMeta: aiMeta as object,
       },
     });
 
     await prisma.keywordIntelQuery.update({
       where: { id: queryId },
-      data: { status: KeywordIntelStatus.READY },
+      data: {
+        status: KeywordIntelStatus.READY,
+        digestMode: "LIVE",
+        signalStats: pipeline.signalStats as object,
+        dataNotice: pipeline.dataNotice,
+        volumeSource: pipeline.quality.volumeSource,
+        errorMessage: null,
+      },
     });
 
     await syncModuleRecommendations({
@@ -193,7 +102,7 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
       sourceId: queryId,
       sourceLabel: `Keyword: ${query.category}`,
       href: `/research-hub/keyword-intel/${queryId}`,
-      plan: actionPlan,
+      plan: pipeline.actionPlan,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Analisis keyword gagal.";
@@ -203,6 +112,19 @@ export async function analyzeKeywordQuery(queryId: string): Promise<void> {
     });
     throw err;
   }
+}
+
+async function loadPriorMatrix(priorQueryId: string) {
+  const prior = await prisma.keywordIntelResult.findUnique({
+    where: { queryId: priorQueryId },
+  });
+  if (!prior || !Array.isArray(prior.keywordMatrix)) return [];
+  return (prior.keywordMatrix as { keyword?: string; koiScore?: number }[])
+    .filter((r) => r.keyword)
+    .map((r) => ({
+      keyword: r.keyword!,
+      koiScore: r.koiScore ?? null,
+    }));
 }
 
 export async function enqueueKeywordAnalysis(queryId: string): Promise<void> {

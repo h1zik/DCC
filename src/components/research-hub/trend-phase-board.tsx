@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { TrendPhase } from "@prisma/client";
 import { TREND_PHASE_LABELS } from "@/lib/research/labels";
+import { TrendConfidenceBadge } from "@/components/research-hub/trend-confidence-badge";
+import { TrendWowBadge } from "@/components/research-hub/trend-wow-badge";
 import { cn } from "@/lib/utils";
 
 export type TrendBoardItem = {
@@ -11,6 +13,9 @@ export type TrendBoardItem = {
   phase: TrendPhase;
   dimension: string;
   isGlobalPipeline: boolean;
+  tmiScore?: number | null;
+  confidence?: string | null;
+  wowStatus?: string | null;
 };
 
 const PHASE_STYLES: Record<TrendPhase, string> = {
@@ -64,6 +69,15 @@ export function TrendPhaseBoard({
                           🌏
                         </span>
                       ) : null}
+                      <span className="mt-0.5 flex flex-wrap gap-1">
+                        {typeof item.tmiScore === "number" ? (
+                          <TrendConfidenceBadge
+                            confidence={item.confidence ?? "MED"}
+                            tmiScore={item.tmiScore}
+                          />
+                        ) : null}
+                        <TrendWowBadge status={item.wowStatus} />
+                      </span>
                     </Link>
                   </li>
                 ))}

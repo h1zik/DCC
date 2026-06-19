@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /** Shared layout + surface styles for Brand & Creative Hub. */
 export const hub = {
-  page: "flex w-full max-w-[1440px] flex-col gap-8 pb-10",
+  page: "flex w-full flex-col gap-8 pb-10",
   section: "flex flex-col gap-4",
   sectionTitle: "text-base font-semibold tracking-tight text-foreground",
   sectionDesc: "text-muted-foreground text-sm leading-relaxed",
@@ -19,7 +19,7 @@ export const hub = {
   label:
     "text-muted-foreground text-[11px] font-semibold uppercase tracking-[0.14em]",
   stickyToolbar:
-    "border-border/60 bg-background/90 sticky top-0 z-10 border-b backdrop-blur-md supports-backdrop-filter:bg-background/75",
+    "border-border/70 bg-card/80 sticky top-0 z-20 -mt-2 border-b backdrop-blur supports-backdrop-filter:bg-card/60",
 } as const;
 
 export function BrandHubPageShell({

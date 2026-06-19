@@ -7,6 +7,18 @@ import {
   type SocialDetailData,
 } from "./social-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import {
+  parseCategoryBreakdown,
+  parseEngagementInsights,
+  parseThemeRows,
+} from "@/lib/research/social-listening/parse-summary-client";
+
+const batchInclude = {
+  summary: true,
+  mentions: { orderBy: { likes: "desc" as const }, take: 100 },
+  comments: { orderBy: { likes: "desc" as const }, take: 80 },
+};
+
 export default async function SocialListeningDetailPage({
   params,
 }: {
@@ -16,26 +28,29 @@ export default async function SocialListeningDetailPage({
 
   const monitor = await prisma.socialListeningMonitor.findUnique({
     where: { id: monitorId },
-    include: {
-      batches: {
-        where: { status: "READY" },
-        orderBy: { collectedAt: "desc" },
-        take: 1,
-        include: {
-          summary: true,
-          mentions: { orderBy: { likes: "desc" }, take: 100 },
-        },
-      },
-    },
   });
 
   if (!monitor) notFound();
 
-  const latest = monitor.batches[0];
   const latestAny = await prisma.socialListeningBatch.findFirst({
     where: { monitorId },
     orderBy: { createdAt: "desc" },
+    include: batchInclude,
   });
+
+  const latestReady = await prisma.socialListeningBatch.findFirst({
+    where: { monitorId, status: "READY" },
+    orderBy: { collectedAt: "desc" },
+    include: batchInclude,
+  });
+
+  const displayBatch =
+    latestAny &&
+    (latestAny.status === "READY" ||
+      latestAny.status === "ANALYZING" ||
+      latestAny.status === "COLLECTING")
+      ? latestAny
+      : latestReady;
 
   const platformStatusRaw =
     latestAny?.platformStatus && typeof latestAny.platformStatus === "object"
@@ -74,23 +89,31 @@ export default async function SocialListeningDetailPage({
     orderBy: { name: "asc" },
   });
 
-  const painPoints = Array.isArray(latest?.summary?.topPainPoints)
-    ? (latest.summary.topPainPoints as { theme: string; count: number }[])
+  const painPoints = parseThemeRows(displayBatch?.summary?.topPainPoints);
+  const wishlist = parseThemeRows(displayBatch?.summary?.topWishlist);
+  const topCommentPainPoints = parseThemeRows(
+    displayBatch?.summary?.topCommentPainPoints,
+  );
+  const topCommentWishlist = parseThemeRows(
+    displayBatch?.summary?.topCommentWishlist,
+  );
+  const commentCategoryBreakdown = parseCategoryBreakdown(
+    displayBatch?.summary?.commentCategoryBreakdown,
+  );
+  const engagementInsights = parseEngagementInsights(
+    displayBatch?.summary?.engagementInsights,
+  );
+  const influencers = Array.isArray(displayBatch?.summary?.influencers)
+    ? (displayBatch.summary.influencers as SocialDetailData["influencers"])
     : [];
-  const wishlist = Array.isArray(latest?.summary?.topWishlist)
-    ? (latest.summary.topWishlist as { theme: string; count: number }[])
+  const viral = Array.isArray(displayBatch?.summary?.viralContent)
+    ? (displayBatch.summary.viralContent as SocialDetailData["viralContent"])
     : [];
-  const influencers = Array.isArray(latest?.summary?.influencers)
-    ? (latest.summary.influencers as SocialDetailData["influencers"])
+  const categoryBreakdown = Array.isArray(displayBatch?.summary?.categoryBreakdown)
+    ? (displayBatch.summary.categoryBreakdown as SocialDetailData["categoryBreakdown"])
     : [];
-  const viral = Array.isArray(latest?.summary?.viralContent)
-    ? (latest.summary.viralContent as SocialDetailData["viralContent"])
-    : [];
-  const categoryBreakdown = Array.isArray(latest?.summary?.categoryBreakdown)
-    ? (latest.summary.categoryBreakdown as SocialDetailData["categoryBreakdown"])
-    : [];
-  const sentimentTimeline = Array.isArray(latest?.summary?.sentimentTimeline)
-    ? (latest.summary.sentimentTimeline as SocialDetailData["sentimentTimeline"])
+  const sentimentTimeline = Array.isArray(displayBatch?.summary?.sentimentTimeline)
+    ? (displayBatch.summary.sentimentTimeline as SocialDetailData["sentimentTimeline"])
     : [];
 
   const data: SocialDetailData = {
@@ -102,23 +125,39 @@ export default async function SocialListeningDetailPage({
     batchId: latestAny?.id ?? null,
     platformProgress,
     errorMessage: latestAny?.errorMessage ?? null,
-    aiSummary: latest?.summary?.aiSummary ?? null,
+    aiSummary: displayBatch?.summary?.aiSummary ?? null,
     topPainPoints: painPoints,
     topWishlist: wishlist,
     influencers,
     viralContent: viral,
     categoryBreakdown,
     sentimentTimeline,
-    actionPlan: latest?.summary?.aiActionPlan ?? null,
-    aiMeta: parseResearchAiMetaClient(latest?.summary?.aiMeta),
+    actionPlan: displayBatch?.summary?.aiActionPlan ?? null,
+    aiMeta: parseResearchAiMetaClient(displayBatch?.summary?.aiMeta),
+    engagementInsights,
+    commentAiSummary: displayBatch?.summary?.commentAiSummary ?? null,
+    topCommentPainPoints,
+    topCommentWishlist,
+    commentCategoryBreakdown,
+    comments:
+      displayBatch?.comments.map((c) => ({
+        id: c.id,
+        text: c.text,
+        author: c.author,
+        platform: c.platform,
+        classification: c.classification as SocialMentionClass,
+        likes: c.likes,
+        painPoint: c.painPoint,
+      })) ?? [],
     mentions:
-      latest?.mentions.map((m) => ({
+      displayBatch?.mentions.map((m) => ({
         id: m.id,
         platform: m.platform,
         text: m.text,
         author: m.author,
         classification: m.classification as SocialMentionClass,
         likes: m.likes,
+        comments: m.comments,
         views: m.views,
         isViral: m.isViral,
         url: m.url,

@@ -2,11 +2,14 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { parseTrendSourceConfigJson } from "@/lib/research/trend-radar/trend-source-config";
 import { summarizeEnabledSources } from "@/lib/research/trend-radar/trend-source-config-types";
+import type { TrendEvidenceRow } from "@/lib/research/trend-radar/trend-signal-types";
+import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
+import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import { ensureBrandHubPage } from "../../layout";
 import {
   BrandTrendDetailClient,
   type TrendDetailData,
 } from "./brand-trend-detail-client";
-import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 type Props = {
   params: Promise<{ digestId: string }>;
@@ -21,7 +24,30 @@ function parseSources(raw: unknown) {
   );
 }
 
-export default async function TrendDetailPage({ params, searchParams }: Props) {
+function parseEvidence(raw: unknown): TrendEvidenceRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (x): x is TrendEvidenceRow =>
+      typeof x === "object" &&
+      x != null &&
+      typeof (x as TrendEvidenceRow).signalId === "string" &&
+      typeof (x as TrendEvidenceRow).source === "string",
+  );
+}
+
+function parseSignalStats(raw: unknown): TrendSignalStats | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as TrendSignalStats;
+  if (typeof s.total !== "number") return null;
+  return s;
+}
+
+export default async function BrandTrendDetailPage({
+  params,
+  searchParams,
+}: Props) {
+  await ensureBrandHubPage();
+
   const { digestId } = await params;
   const { item: highlightItemId } = await searchParams;
 
@@ -29,7 +55,7 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
     prisma.brandTrendDigest.findUnique({
       where: { id: digestId },
       include: {
-        items: { orderBy: [{ phase: "asc" }, { score: "desc" }] },
+        items: { orderBy: [{ phase: "asc" }, { tmiScore: "desc" }] },
         ownerBrand: { select: { name: true } },
       },
     }),
@@ -57,6 +83,10 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
     weekStart: digest.weekStart.toISOString(),
     weekEnd: digest.weekEnd.toISOString(),
     status: digest.status,
+    digestMode: digest.digestMode,
+    dataNotice: digest.dataNotice,
+    signalStats: parseSignalStats(digest.signalStats),
+    priorDigestId: digest.priorDigestId,
     narrative: digest.narrative,
     isGlobal: digest.isGlobal,
     watchlistName: digest.ownerBrand?.name ?? null,
@@ -70,9 +100,13 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
       name: i.name,
       dimension: i.dimension,
       phase: i.phase,
-      score: i.score,
+      score: i.tmiScore ?? i.score,
+      tmiScore: i.tmiScore ?? i.score,
+      confidence: i.confidence,
+      wowStatus: i.wowStatus,
       narrative: i.narrative,
       isGlobalPipeline: i.isGlobalPipeline,
+      evidence: parseEvidence(i.evidence),
       sources: parseSources(i.sources),
       relatedProducts: Array.isArray(i.relatedProducts)
         ? (i.relatedProducts as string[])

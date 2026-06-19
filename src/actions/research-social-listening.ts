@@ -7,6 +7,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMarketAnalyst } from "@/lib/research/auth";
 import {
+  analyzeSocialListeningComments,
+  resolveCommentAnalysisBatchId,
+} from "@/lib/research/social-listening/analyze-social-listening-comments";
+import {
   beginSocialListeningSync,
   finalizeSocialListeningBatch,
 } from "@/lib/research/social-listening/social-sync";
@@ -50,6 +54,31 @@ export async function refreshSocialListeningMonitor(monitorId: string) {
       await finalizeSocialListeningBatch(batchId);
     } catch (err) {
       console.error("[refreshSocialListeningMonitor] finalize gagal", err);
+    }
+  });
+
+  revalidatePath("/research-hub/social-listening");
+  revalidatePath(`/research-hub/social-listening/${monitorId}`);
+}
+
+export async function analyzeSocialListeningCommentsAction(
+  monitorId: string,
+) {
+  await requireMarketAnalyst();
+  z.string().min(1).parse(monitorId);
+
+  const batchId = await resolveCommentAnalysisBatchId(monitorId);
+
+  await prisma.socialListeningBatch.update({
+    where: { id: batchId },
+    data: { status: "ANALYZING" },
+  });
+
+  after(async () => {
+    try {
+      await analyzeSocialListeningComments(batchId);
+    } catch (err) {
+      console.error("[analyzeSocialListeningComments] gagal", err);
     }
   });
 

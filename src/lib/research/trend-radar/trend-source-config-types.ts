@@ -9,7 +9,19 @@ export type TrendSourceEnabled = {
   rss: boolean;
   tiktok: boolean;
   bpom: boolean;
+  reviewIntel: boolean;
+  competitor: boolean;
+  keywordIntel: boolean;
+  socialListening: boolean;
 };
+
+export const DEFAULT_TIKTOK_HASHTAGS = [
+  "skincareindonesia",
+  "bodycare",
+  "sunscreen",
+  "serumwajah",
+  "brightening",
+] as const;
 
 export type TrendSourceConfig = {
   enabled: TrendSourceEnabled;
@@ -44,7 +56,30 @@ export function summarizeEnabledSources(config: TrendSourceConfig): string[] {
   if (config.enabled.rss) labels.push("RSS");
   if (config.enabled.tiktok) labels.push("TikTok");
   if (config.enabled.bpom) labels.push("BPOM");
+  if (config.enabled.reviewIntel) labels.push("Review Intel");
+  if (config.enabled.competitor) labels.push("Competitor");
+  if (config.enabled.keywordIntel) labels.push("Keyword Intel");
+  if (config.enabled.socialListening) labels.push("Social Listening");
   return labels;
+}
+
+/** Merge config lama yang belum punya flag internal. */
+export function normalizeTrendSourceConfig(
+  raw: Partial<TrendSourceConfig> | null | undefined,
+  defaults: TrendSourceConfig,
+): TrendSourceConfig {
+  if (!raw) return defaults;
+  return {
+    enabled: {
+      ...defaults.enabled,
+      ...(raw.enabled ?? {}),
+    },
+    rssFeeds: raw.rssFeeds?.length ? raw.rssFeeds : defaults.rssFeeds,
+    tiktokHashtags:
+      raw.tiktokHashtags !== undefined
+        ? normalizeHashtags(raw.tiktokHashtags)
+        : defaults.tiktokHashtags,
+  };
 }
 
 export function labelFromRssUrl(url: string): string {

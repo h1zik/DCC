@@ -6,7 +6,11 @@ import { useMemo, useState, useTransition } from "react";
 import { AlertTriangle, ArrowLeft, FileText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { createProductBriefFromInsight } from "@/actions/research-brief";
-import { rescrapeBrandReviewIntelSource } from "@/actions/brand-review-intelligence";
+import {
+  exportBrandReviewRawReviewsCsv,
+  getBrandReviewRawReviews,
+  rescrapeBrandReviewIntelSource,
+} from "@/actions/brand-review-intelligence";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { CrossCompareChart } from "@/components/research-hub/cross-compare-chart";
@@ -17,6 +21,7 @@ import {
 } from "@/components/research-hub/review-enrichment-charts";
 import { statusToProgress } from "@/components/research-hub/job-status-progress";
 import { KeywordCloud } from "@/components/research-hub/keyword-cloud";
+import { ReviewRawDataPanel } from "@/components/research-hub/review-raw-data-panel";
 import { ReviewSentimentChart } from "@/components/research-hub/review-sentiment-chart";
 import { ReviewTimelineChart } from "@/components/research-hub/review-timeline-chart";
 import { ThemeRankList } from "@/components/research-hub/theme-rank-list";
@@ -38,8 +43,8 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import { getReviewPlatformLabel } from "@/lib/review-platforms/platforms";
 import {
-  MARKETPLACE_LABELS,
   SOURCE_STATUS_LABELS,
   formatRelativeTime,
 } from "@/lib/research/labels";
@@ -77,7 +82,8 @@ export type ReviewDetailData = {
   id: string;
   productName: string;
   competitorBrand: string;
-  marketplace: keyof typeof MARKETPLACE_LABELS;
+  platformKey: string;
+  marketplace: string | null;
   status: string;
   reviewCount: number;
   totalReviewsReported: number | null;
@@ -178,6 +184,7 @@ export function BrandReviewDetailClient({
             </Link>
           }
         />
+        {source.platformKey !== "csv" ? (
         <Button
           type="button"
           variant="outline"
@@ -200,6 +207,7 @@ export function BrandReviewDetailClient({
           <RefreshCw className="size-3.5" aria-hidden />
           Scrape Ulang
         </Button>
+        ) : null}
       </div>
 
       <header className="border-border bg-card rounded-2xl border p-5 shadow-sm">
@@ -210,7 +218,7 @@ export function BrandReviewDetailClient({
           {source.productName}
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          {source.competitorBrand} · {MARKETPLACE_LABELS[source.marketplace]} ·{" "}
+          {source.competitorBrand} · {getReviewPlatformLabel(source.platformKey)} ·{" "}
           {source.reviewCount.toLocaleString("id-ID")} review dianalisa · Update:{" "}
           {formatRelativeTime(
             source.lastAnalyzedAt ? new Date(source.lastAnalyzedAt) : null,
@@ -252,12 +260,20 @@ export function BrandReviewDetailClient({
                 {source.reviewCount.toLocaleString("id-ID")}
               </span>{" "}
               ({Math.round((source.reviewCount / source.totalReviewsReported) * 100)}
-              %). Ini batas akses API marketplace — interpretasikan insight sebagai
+              %). Ini batas akses scraper — interpretasikan insight sebagai
               sampel, bukan populasi penuh.
             </p>
           </div>
         ) : null}
       </header>
+
+      <ReviewRawDataPanel
+        sourceId={source.id}
+        productName={source.productName}
+        reviewCount={source.reviewCount}
+        fetchPage={getBrandReviewRawReviews}
+        exportCsv={exportBrandReviewRawReviewsCsv}
+      />
 
       {!source.summary ? (
         <div className="border-border text-muted-foreground rounded-xl border border-dashed px-6 py-12 text-center text-sm">

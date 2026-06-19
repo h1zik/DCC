@@ -18,6 +18,8 @@ import {
   validateTrendConfigClient,
 } from "@/components/research-hub/trend-source-config-picker";
 import { TrendArchiveTable } from "@/components/research-hub/trend-archive-table";
+import { TrendQualityBanner } from "@/components/research-hub/trend-quality-banner";
+import { TrendSignalStatsLine } from "@/components/research-hub/trend-signal-stats-line";
 import { TrendPhaseBoard } from "@/components/research-hub/trend-phase-board";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +33,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatRelativeTime } from "@/lib/research/labels";
+import type { TrendDigestMode } from "@prisma/client";
+import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
 import type { TrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config-types";
 
 export type TrendRadarPageData = {
@@ -39,12 +43,18 @@ export type TrendRadarPageData = {
     narrative: string | null;
     generatedAt: string | null;
     status: TrendRadarStatus;
+    digestMode: TrendDigestMode | string;
+    dataNotice: string | null;
+    signalStats: TrendSignalStats | null;
     items: {
       id: string;
       name: string;
       phase: TrendPhase;
       dimension: string;
       isGlobalPipeline: boolean;
+      tmiScore?: number | null;
+      confidence?: string | null;
+      wowStatus?: string | null;
     }[];
   } | null;
   digests: {
@@ -252,8 +262,13 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Trend Radar — Digest Global</CardTitle>
+            <TrendSignalStatsLine stats={data.latestGlobal.signalStats} />
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            <TrendQualityBanner
+              digestMode={data.latestGlobal.digestMode}
+              dataNotice={data.latestGlobal.dataNotice}
+            />
             {data.latestGlobal.narrative ? (
               <p className="text-muted-foreground text-sm leading-relaxed">
                 {data.latestGlobal.narrative}

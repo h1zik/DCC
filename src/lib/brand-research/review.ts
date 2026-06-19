@@ -5,7 +5,8 @@ export type BrandReviewSourceRow = {
   id: string;
   productName: string;
   competitorBrand: string;
-  marketplace: ResearchMarketplace;
+  platformKey: string;
+  marketplace: ResearchMarketplace | null;
   status: string;
   reviewCount: number;
   ownerBrandId: string | null;
@@ -21,6 +22,7 @@ export async function listBrandReviewSources(userId: string): Promise<BrandRevie
     id: r.id,
     productName: r.productName,
     competitorBrand: r.competitorBrand,
+    platformKey: r.platformKey,
     marketplace: r.marketplace,
     status: r.status,
     reviewCount: r.reviewCount,

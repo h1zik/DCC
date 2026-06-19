@@ -17,6 +17,8 @@ import {
   validateTrendConfigClient,
 } from "@/components/research-hub/trend-source-config-picker";
 import { TrendArchiveTable } from "@/components/research-hub/trend-archive-table";
+import { TrendQualityBanner } from "@/components/research-hub/trend-quality-banner";
+import { TrendSignalStatsLine } from "@/components/research-hub/trend-signal-stats-line";
 import { TrendPhaseBoard } from "@/components/research-hub/trend-phase-board";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatRelativeTime } from "@/lib/research/labels";
 import type { TrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config-types";
+import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
 
 export type BrandTrendRadarPageData = {
   latestGlobal: {
@@ -38,12 +41,18 @@ export type BrandTrendRadarPageData = {
     narrative: string | null;
     generatedAt: string | null;
     status: TrendRadarStatus;
+    digestMode: string;
+    dataNotice: string | null;
+    signalStats: TrendSignalStats | null;
     items: {
       id: string;
       name: string;
       phase: TrendPhase;
       dimension: string;
       isGlobalPipeline: boolean;
+      tmiScore?: number | null;
+      confidence?: string | null;
+      wowStatus?: string | null;
     }[];
   } | null;
   digests: {
@@ -149,6 +158,7 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
           <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
             <div>
               <CardTitle className="text-base">Digest Global Terbaru</CardTitle>
+              <TrendSignalStatsLine stats={data.latestGlobal.signalStats} />
               {data.latestGlobal.generatedAt ? (
                 <p className="text-muted-foreground text-xs">
                   {formatRelativeTime(new Date(data.latestGlobal.generatedAt))}
@@ -173,6 +183,10 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            <TrendQualityBanner
+              digestMode={data.latestGlobal.digestMode}
+              dataNotice={data.latestGlobal.dataNotice}
+            />
             {data.latestGlobal.narrative ? (
               <p className="text-sm leading-relaxed">{data.latestGlobal.narrative}</p>
             ) : null}

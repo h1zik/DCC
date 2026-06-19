@@ -134,6 +134,7 @@ export default async function ReviewDetailPage({ params }: Props) {
     id: source.id,
     productName: source.productName,
     competitorBrand: source.competitorBrand,
+    platformKey: source.platformKey,
     marketplace: source.marketplace,
     status: source.status,
     reviewCount: source.reviewCount,

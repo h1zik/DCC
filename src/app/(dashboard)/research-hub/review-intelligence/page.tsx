@@ -20,6 +20,7 @@ export default async function ReviewIntelligencePage() {
       id: true,
       productName: true,
       competitorBrand: true,
+      platformKey: true,
       marketplace: true,
       productUrl: true,
       status: true,

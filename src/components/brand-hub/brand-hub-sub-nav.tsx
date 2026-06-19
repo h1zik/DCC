@@ -96,11 +96,8 @@ export function BrandHubSubNav({ brands }: { brands: BrandOption[] }) {
   }
 
   return (
-    <nav
-      aria-label="Brand & Creative Hub"
-      className={cn(hub.stickyToolbar, "-mx-1 rounded-xl border px-2 py-2")}
-    >
-      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+    <nav aria-label="Brand & Creative Hub" className={hub.stickyToolbar}>
+      <div className="flex flex-col gap-2 py-2 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-3 overflow-hidden">
           <div className="hidden shrink-0 items-center gap-2 sm:flex">
             <span className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg border border-primary/20">
