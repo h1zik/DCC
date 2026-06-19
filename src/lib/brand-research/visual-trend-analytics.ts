@@ -5,6 +5,7 @@ import {
   computeDominantPaletteFromAssets,
   type ComputedPalette,
 } from "@/lib/brand-research/visual";
+import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
 
 export type VisualTrendCollectionAnalytics = {
   id: string;
@@ -32,14 +33,11 @@ function countTags(tagsList: string[][]): { tag: string; count: number }[] {
 }
 
 export async function buildVisualTrendAnalytics(
-  userId: string,
+  _userId: string,
   ownerBrandId?: string | null,
 ): Promise<VisualTrendCollectionAnalytics[]> {
   const collections = await prisma.brandVisualCollection.findMany({
-    where: {
-      createdById: userId,
-      ...(ownerBrandId ? { ownerBrandId } : {}),
-    },
+    where: brandStudioBrandFilter(ownerBrandId),
     orderBy: { updatedAt: "desc" },
     include: {
       assets: {

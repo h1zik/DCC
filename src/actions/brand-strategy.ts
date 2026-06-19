@@ -126,7 +126,7 @@ export async function regenerateBrandStrategyDocument(
   z.string().min(1).parse(documentId);
 
   const doc = await prisma.brandStrategyDocument.findFirst({
-    where: { id: documentId, createdById: session.user.id },
+    where: { id: documentId },
     select: { ownerBrandId: true, generationConfig: true },
   });
   if (!doc) throw new Error("Dokumen strategi tidak ditemukan.");
@@ -168,7 +168,7 @@ export async function updateBrandStrategyDocument(
   const data = updateSchema.parse(input);
 
   await prisma.brandStrategyDocument.updateMany({
-    where: { id: data.documentId, createdById: session.user.id },
+    where: { id: data.documentId },
     data: {
       ...(data.brandPurpose !== undefined ? { brandPurpose: data.brandPurpose } : {}),
       ...(data.brandEssence !== undefined ? { brandEssence: data.brandEssence } : {}),
@@ -189,7 +189,7 @@ export async function updateBrandStrategyDocument(
 export async function deleteBrandStrategyDocument(documentId: string) {
   const session = await requireBrandManager();
   await prisma.brandStrategyDocument.deleteMany({
-    where: { id: documentId, createdById: session.user.id },
+    where: { id: documentId },
   });
   revalidatePath("/brand-hub/strategy");
 }

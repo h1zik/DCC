@@ -19,6 +19,7 @@ import {
   countResearchUspAnalysesReady,
   countResearchUspAnalysesTotal,
 } from "@/lib/brand-research/research-hub-readers";
+import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
 
 export type BrandHubDashboardData = {
   strategyCount: number;
@@ -39,19 +40,14 @@ export type BrandHubDashboardData = {
 };
 
 function brandFilter(ownerBrandId?: string | null) {
-  return ownerBrandId ? { ownerBrandId } : {};
-}
-
-function userBrandFilter(userId: string, ownerBrandId?: string | null) {
-  return { createdById: userId, ...brandFilter(ownerBrandId) };
+  return brandStudioBrandFilter(ownerBrandId);
 }
 
 export async function getBrandHubDashboardData(
-  userId: string,
+  _userId: string,
   ownerBrandId?: string | null,
 ): Promise<BrandHubDashboardData> {
   const brandFilterClause = brandFilter(ownerBrandId);
-  const userBrandFilterClause = userBrandFilter(userId, ownerBrandId);
 
   const [
     strategyCount,
@@ -78,22 +74,22 @@ export async function getBrandHubDashboardData(
     trendDemo,
   ] = await Promise.all([
     prisma.brandStrategyDocument.count({
-      where: userBrandFilterClause,
+      where: brandFilterClause,
     }),
     prisma.brandStrategyDocument.count({
-      where: { ...userBrandFilterClause, status: "READY" },
+      where: { ...brandFilterClause, status: "READY" },
     }),
     prisma.brandCreativeGuideline.count({
-      where: userBrandFilterClause,
+      where: brandFilterClause,
     }),
     prisma.brandCreativeGuideline.count({
-      where: { ...userBrandFilterClause, status: "READY" },
+      where: { ...brandFilterClause, status: "READY" },
     }),
     prisma.brandVisualAsset.count({
       where: brandFilterClause,
     }),
     prisma.brandVisualCollection.count({
-      where: userBrandFilterClause,
+      where: brandFilterClause,
     }),
     countResearchCompetitorsTotal(),
     countResearchCompetitorsActive(),

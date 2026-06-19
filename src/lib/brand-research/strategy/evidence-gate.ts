@@ -3,6 +3,7 @@ import "server-only";
 import { isApifyConfigured } from "@/lib/apify/client";
 import { prisma } from "@/lib/prisma";
 import { listBrandVisualAssets } from "@/lib/brand-research/visual";
+import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
 import {
   countResearchCompetitorsActive,
   countResearchKeywordQueriesReady,
@@ -21,15 +22,11 @@ import type {
 const MIN_VISUAL_ASSETS = 5;
 
 function brandFilter(ownerBrandId?: string | null) {
-  return ownerBrandId ? { ownerBrandId } : {};
-}
-
-function userBrandFilter(userId: string, ownerBrandId?: string | null) {
-  return { createdById: userId, ...brandFilter(ownerBrandId) };
+  return brandStudioBrandFilter(ownerBrandId);
 }
 
 async function detectDemoFlags(
-  userId: string,
+  _userId: string,
   ownerBrandId?: string | null,
 ): Promise<DemoFlag[]> {
   const flags: DemoFlag[] = [];
@@ -44,7 +41,7 @@ async function detectDemoFlags(
     const demoAssets = await prisma.brandVisualAsset.count({
       where: {
         source: "PINTEREST",
-        collection: userBrandFilter(userId, ownerBrandId),
+        collection: brandFilter(ownerBrandId),
         metadata: { path: ["demo"], equals: true },
       },
     });
@@ -210,7 +207,6 @@ export async function assessCreativeGuidelineReadiness(
   const strategy = await prisma.brandStrategyDocument.findFirst({
     where: {
       id: strategyDocumentId,
-      createdById: userId,
       status: "READY",
     },
   });

@@ -32,6 +32,7 @@ import {
   sampleVisualAssetsForVision,
 } from "@/lib/brand-research/strategy/visual-vision";
 import { listBrandVisualAssets } from "@/lib/brand-research/visual";
+import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
 import { resolveResearchProvider } from "@/lib/research/llm/config";
 
 type StrategyResult = {
@@ -351,7 +352,7 @@ export async function generateBrandStrategyDocument(
   generationConfig?: StrategyGenerationConfig,
 ): Promise<void> {
   const doc = await prisma.brandStrategyDocument.findFirst({
-    where: { id: documentId, createdById: userId },
+    where: { id: documentId },
   });
   if (!doc) throw new Error("Dokumen strategi tidak ditemukan.");
 
@@ -489,19 +490,19 @@ export async function generateBrandStrategyDocument(
   }
 }
 
-export async function getBrandStrategyDocument(documentId: string, userId: string) {
+export async function getBrandStrategyDocument(documentId: string, _userId: string) {
   return prisma.brandStrategyDocument.findFirst({
-    where: { id: documentId, createdById: userId },
+    where: { id: documentId },
     include: { creativeGuidelines: { orderBy: { updatedAt: "desc" }, take: 1 } },
   });
 }
 
-export async function listBrandStrategyDocuments(userId: string, ownerBrandId?: string | null) {
+export async function listBrandStrategyDocuments(
+  _userId: string,
+  ownerBrandId?: string | null,
+) {
   return prisma.brandStrategyDocument.findMany({
-    where: {
-      createdById: userId,
-      ...(ownerBrandId ? { ownerBrandId } : {}),
-    },
+    where: brandStudioBrandFilter(ownerBrandId),
     orderBy: { updatedAt: "desc" },
     take: 20,
   });

@@ -11,6 +11,7 @@ import {
   computeDominantPaletteFromAssets,
   listBrandVisualAssets,
 } from "@/lib/brand-research/visual";
+import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
 
 type GuidelineResult = {
   moodboardAssetIds: string[];
@@ -54,7 +55,7 @@ export async function generateBrandCreativeGuideline(
   userId: string,
 ): Promise<void> {
   const guideline = await prisma.brandCreativeGuideline.findFirst({
-    where: { id: guidelineId, createdById: userId },
+    where: { id: guidelineId },
     include: { strategyDocument: true },
   });
   if (!guideline) throw new Error("Creative guideline tidak ditemukan.");
@@ -185,23 +186,20 @@ Balas HANYA JSON:
 }
 
 export async function listBrandCreativeGuidelines(
-  userId: string,
+  _userId: string,
   ownerBrandId?: string | null,
 ) {
   return prisma.brandCreativeGuideline.findMany({
-    where: {
-      createdById: userId,
-      ...(ownerBrandId ? { ownerBrandId } : {}),
-    },
+    where: brandStudioBrandFilter(ownerBrandId),
     include: { strategyDocument: { select: { id: true, brandEssence: true, status: true } } },
     orderBy: { updatedAt: "desc" },
     take: 20,
   });
 }
 
-export async function getBrandCreativeGuideline(guidelineId: string, userId: string) {
+export async function getBrandCreativeGuideline(guidelineId: string, _userId: string) {
   return prisma.brandCreativeGuideline.findFirst({
-    where: { id: guidelineId, createdById: userId },
+    where: { id: guidelineId },
     include: { strategyDocument: true },
   });
 }
