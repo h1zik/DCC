@@ -19,6 +19,7 @@ import type {
   ClassifiedComment,
   RawSocialComment,
 } from "@/lib/research/social-listening/social-comment-types";
+import { truncatePrismaString } from "@/lib/prisma-safe-string";
 
 type CommentBatchResult = {
   classifications: {
@@ -63,14 +64,14 @@ function heuristicComment(c: RawSocialComment): ClassifiedComment {
 
   if (/pengen|semoga|wish|kepingin|ada nggak|mau yang/.test(lower)) {
     classification = "WISHLIST";
-    painPoint = c.text.slice(0, 120);
+    painPoint = truncatePrismaString(c.text, 120);
   } else if (/bagus|suka|rekomend|mantap|worth|love|joss/.test(lower)) {
     classification = "PRAISE";
   } else if (/\?|gimana|kenapa|tips|bener nggak/.test(lower)) {
     classification = "QUESTION";
   } else if (/kecewa|jelek|lengket|mahal|ribet|gagal|zona|breakout|irritasi/.test(lower)) {
     classification = "COMPLAINT";
-    painPoint = c.text.slice(0, 120);
+    painPoint = truncatePrismaString(c.text, 120);
   } else if (/coba|pakai|udah|pake|review/.test(lower)) {
     classification = "RECOMMENDATION";
   }

@@ -12,9 +12,9 @@ import type { RawSocialComment } from "@/lib/research/social-listening/social-co
 import { extractEmbeddedComments } from "@/lib/research/social-listening/parse-embedded-comments";
 import {
   isTikTokCommentsConfigured,
+  pickTikTokPostsForCommentScrape,
   scrapeTikTokCommentsForPosts,
   TIKTOK_COMMENTS_PER_POST,
-  TOP_POSTS_FOR_TT_COMMENTS,
 } from "@/lib/research/social-listening/scrape-tiktok-comments";
 
 const TOP_POSTS_FOR_IG_COMMENTS = 5;
@@ -87,14 +87,22 @@ export async function collectPostComments(
     ...flattenEmbedded(mentions, SocialListeningPlatform.INSTAGRAM),
   );
 
-  const topTikTokPosts = mentions
-    .filter(
-      (m) =>
-        m.platform === SocialListeningPlatform.TIKTOK &&
-        !!m.url?.includes("tiktok.com"),
-    )
-    .sort((a, b) => engagementScore(b) - engagementScore(a))
-    .slice(0, TOP_POSTS_FOR_TT_COMMENTS);
+  const tiktokMentionsWithUrl = mentions.filter(
+    (m) =>
+      m.platform === SocialListeningPlatform.TIKTOK &&
+      !!m.url?.includes("tiktok.com"),
+  );
+  const topTikTokPosts = pickTikTokPostsForCommentScrape(mentions);
+
+  if (
+    isTikTokCommentsConfigured() &&
+    tiktokMentionsWithUrl.length > 0 &&
+    topTikTokPosts.length === 0
+  ) {
+    warnings.push(
+      "TikTok: tidak ada video dengan commentCount > 0 — deep-fetch komentar dilewati (hemat run Apify).",
+    );
+  }
 
   if (isTikTokCommentsConfigured() && topTikTokPosts.length > 0) {
     const { comments: tiktokComments, warnings: ttWarnings } =

@@ -4,6 +4,10 @@ import {
   SocialListeningStatus,
   type SocialMention,
 } from "@prisma/client";
+import {
+  sanitizePrismaOptionalText,
+  sanitizePrismaText,
+} from "@/lib/prisma-safe-string";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import {
@@ -176,12 +180,12 @@ export async function analyzeSocialListeningComments(
               mentionIdByExternal.get(`${c.platform}:${c.parentExternalId}`) ??
               null,
             platform: c.platform,
-            externalId: c.externalId,
-            text: c.text,
-            author: c.author ?? null,
+            externalId: sanitizePrismaOptionalText(c.externalId, 200),
+            text: sanitizePrismaText(c.text) || "[komentar]",
+            author: sanitizePrismaOptionalText(c.author, 120),
             likes: c.likes,
             classification: c.classification,
-            painPoint: c.painPoint,
+            painPoint: sanitizePrismaOptionalText(c.painPoint, 120),
             postedAt: c.postedAt ?? null,
           })),
           skipDuplicates: true,
@@ -206,10 +210,13 @@ export async function analyzeSocialListeningComments(
           topCommentPainPoints: summary.topCommentPainPoints,
           topCommentWishlist: summary.topCommentWishlist,
           commentCategoryBreakdown: summary.commentCategoryBreakdown,
-          commentAiSummary,
+          commentAiSummary: sanitizePrismaOptionalText(commentAiSummary, 4000),
           engagementInsights: summary.engagementInsights,
           aiActionPlan: actionPlan ?? undefined,
-          aiSummary: `${baseSummary}${commentNote}${notice}`.trim(),
+          aiSummary: sanitizePrismaText(
+            `${baseSummary}${commentNote}${notice}`.trim(),
+            8000,
+          ),
           aiMeta:
             aiMeta && aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
         },
@@ -217,10 +224,13 @@ export async function analyzeSocialListeningComments(
           topCommentPainPoints: summary.topCommentPainPoints,
           topCommentWishlist: summary.topCommentWishlist,
           commentCategoryBreakdown: summary.commentCategoryBreakdown,
-          commentAiSummary,
+          commentAiSummary: sanitizePrismaOptionalText(commentAiSummary, 4000),
           engagementInsights: summary.engagementInsights,
           aiActionPlan: actionPlan ?? undefined,
-          aiSummary: `${baseSummary}${commentNote}${notice}`.trim(),
+          aiSummary: sanitizePrismaText(
+            `${baseSummary}${commentNote}${notice}`.trim(),
+            8000,
+          ),
           aiMeta:
             aiMeta && aiMeta.steps.length > 0 ? (aiMeta as object) : undefined,
         },
