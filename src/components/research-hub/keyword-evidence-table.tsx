@@ -27,8 +27,7 @@ export function KeywordEvidenceTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Sumber</TableHead>
@@ -39,7 +38,10 @@ export function KeywordEvidenceTable({
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={row.signalId}>
+            <TableRow
+              key={row.signalId}
+              className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+            >
               <TableCell className="text-xs">{row.source}</TableCell>
               <TableCell className="text-xs">{row.metric}</TableCell>
               <TableCell className="text-xs tabular-nums">
@@ -67,6 +69,5 @@ export function KeywordEvidenceTable({
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }

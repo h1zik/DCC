@@ -11,7 +11,9 @@ export const hub = {
   card:
     "relative overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm",
   cardHover:
-    "transition-all duration-300 hover:border-border hover:shadow-md hover:-translate-y-0.5",
+    "transition-[transform,shadow,border-color] duration-200 ease-out motion-reduce:transition-none hover:border-border hover:shadow-md hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
+  entrance:
+    "animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none",
   cardBody: "p-5 sm:p-6",
   panel:
     "rounded-2xl border border-border/50 bg-card/80 p-5 shadow-sm backdrop-blur-sm",
@@ -58,6 +60,7 @@ export function BrandHubPageHeader({
     <header
       className={cn(
         hub.card,
+        hub.entrance,
         "isolate",
         isDetail ? "border-primary/20 bg-gradient-to-br from-card via-card to-primary/5" : "",
         className,
@@ -131,15 +134,20 @@ export function BrandHubSection({
   action,
   children,
   className,
+  delayMs = 0,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  delayMs?: number;
 }) {
   return (
-    <section className={cn(hub.section, className)}>
+    <section
+      className={cn(hub.section, hub.entrance, className)}
+      style={delayMs > 0 ? { animationDelay: `${delayMs}ms` } : undefined}
+    >
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className={hub.sectionTitle}>{title}</h2>
@@ -169,6 +177,7 @@ export function BrandHubEmptyState({
     <div
       className={cn(
         "flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border/70 bg-muted/15 px-8 py-14 text-center",
+        "animate-in fade-in duration-500 motion-reduce:animate-none",
         className,
       )}
     >
@@ -263,7 +272,7 @@ export function BrandHubSidebarItem({
   badge?: ReactNode;
 }) {
   const className = cn(
-    "flex w-full flex-col gap-0.5 rounded-xl px-3 py-2.5 text-left text-xs transition-colors",
+    "flex w-full flex-col gap-0.5 rounded-xl px-3 py-2.5 text-left text-xs transition-colors duration-200 ease-out motion-reduce:transition-none",
     active
       ? "bg-foreground text-background shadow-sm"
       : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",

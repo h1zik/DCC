@@ -19,6 +19,7 @@ import {
   refreshProductDiscoveryQuery,
 } from "@/actions/research-product-discovery";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,18 +33,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   MARKETPLACE_LABELS,
   PRODUCT_DISCOVERY_STATUS_LABELS,
   formatRelativeTime,
 } from "@/lib/research/labels";
+import {
+  hub,
+  ResearchHubEmptyState,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 import { useProductDiscoveryPolling } from "./use-product-discovery-polling";
 
@@ -64,16 +63,19 @@ const ALL_MARKETPLACES: ResearchMarketplace[] = [
   ResearchMarketplace.TIKTOK_SHOP,
 ];
 
-function statusTone(status: ProductDiscoveryStatus) {
+function statusChipTone(
+  status: ProductDiscoveryStatus,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "SCRAPING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
 }
 
@@ -92,6 +94,9 @@ export function ProductDiscoveryClient({
   ]);
 
   const hasInProgress = queries.some((q) => q.status === "SCRAPING");
+  const readyCount = queries.filter((q) => q.status === "READY").length;
+  const totalProducts = queries.reduce((sum, q) => sum + q.productCount, 0);
+
   useProductDiscoveryPolling(hasInProgress);
 
   function toggleMarketplace(mp: ResearchMarketplace) {
@@ -128,12 +133,25 @@ export function ProductDiscoveryClient({
   }
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
-          {queries.length} pencarian · limit {MIN_PRODUCT_LIMIT}–{MAX_PRODUCT_LIMIT}{" "}
-          produk per query
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <ResearchHubStatChip
+            label="Pencarian"
+            value={queries.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <ResearchHubStatChip
+            label="Siap"
+            value={readyCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+          <ResearchHubStatChip
+            label="Total produk"
+            value={totalProducts.toLocaleString("id-ID")}
+          />
+        </div>
+
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger
             render={
@@ -207,112 +225,137 @@ export function ProductDiscoveryClient({
         </Dialog>
       </div>
 
-      {queries.length === 0 ? (
-        <div className="border-border/70 flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center">
-          <PackageSearch className="text-muted-foreground mb-3 size-10" />
-          <p className="font-medium">Belum ada pencarian produk</p>
-          <p className="text-muted-foreground mt-1 max-w-sm text-sm">
-            Masukkan keyword seperti &quot;body serum&quot; untuk menarik puluhan
-            produk dari berbagai brand di Shopee, Tokopedia, atau TikTok Shop.
+      {hasInProgress ? (
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Scraping produk berjalan"
+            percent={35}
+            stepLabel="Satu atau lebih pencarian sedang menarik produk dari marketplace."
+          />
+          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
+            Halaman diperbarui otomatis setiap beberapa detik.
           </p>
         </div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Keyword</TableHead>
-                <TableHead>Marketplace</TableHead>
-                <TableHead>Limit</TableHead>
-                <TableHead>Produk</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Dibuat</TableHead>
-                <TableHead className="w-[100px]" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {queries.map((q) => (
-                <TableRow key={q.id}>
-                  <TableCell>
+      ) : null}
+
+      <ResearchHubSection
+        title="Pencarian"
+        description={`Limit ${MIN_PRODUCT_LIMIT}–${MAX_PRODUCT_LIMIT} produk per query`}
+      >
+        {queries.length === 0 ? (
+          <ResearchHubEmptyState
+            icon={PackageSearch}
+            title="Belum ada pencarian produk"
+            description='Masukkan keyword seperti "body serum" untuk menarik puluhan produk dari berbagai brand di Shopee, Tokopedia, atau TikTok Shop.'
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Pencarian Baru
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {queries.map((q, index) => (
+              <div
+                key={q.id}
+                className={cn(hub.panel, hub.cardHover, hub.entrance)}
+                style={
+                  index > 0 && index < 8
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <Link
                       href={`/research-hub/product-discovery/${q.id}`}
-                      className="font-medium hover:underline"
+                      className="hover:text-primary text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
                     >
-                      {q.keyword}
+                      &quot;{q.keyword}&quot;
                     </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {q.marketplaces
-                      .map((mp) => MARKETPLACE_LABELS[mp])
-                      .join(", ")}
-                  </TableCell>
-                  <TableCell>{q.productLimit}</TableCell>
-                  <TableCell>{q.productCount}</TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                        statusTone(q.status),
-                      )}
-                    >
-                      {PRODUCT_DISCOVERY_STATUS_LABELS[q.status]}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {formatRelativeTime(new Date(q.createdAt))}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0"
-                        disabled={pending || q.status === "SCRAPING"}
-                        onClick={() =>
-                          startTransition(async () => {
-                            try {
-                              await refreshProductDiscoveryQuery(q.id);
-                              toast.success("Refresh dimulai.");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(
-                                actionErrorMessage(err, "Gagal refresh."),
-                              );
-                            }
-                          })
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {q.marketplaces
+                        .map((mp) => MARKETPLACE_LABELS[mp])
+                        .join(", ")}{" "}
+                      · limit {q.productLimit}
+                    </p>
+                  </div>
+                  <ResearchHubStatChip
+                    label="Status"
+                    value={PRODUCT_DISCOVERY_STATUS_LABELS[q.status]}
+                    tone={statusChipTone(q.status)}
+                  />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <ResearchHubStatChip
+                    label="Produk"
+                    value={q.productCount.toLocaleString("id-ID")}
+                    tone="primary"
+                  />
+                  <ResearchHubStatChip
+                    label="Dibuat"
+                    value={formatRelativeTime(new Date(q.createdAt))}
+                  />
+                </div>
+
+                {q.errorMessage ? (
+                  <p className="text-amber-700 dark:text-amber-300 mt-2 text-xs">
+                    {q.errorMessage}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending || q.status === "SCRAPING"}
+                    onClick={() =>
+                      startTransition(async () => {
+                        try {
+                          await refreshProductDiscoveryQuery(q.id);
+                          toast.success("Refresh dimulai.");
+                          router.refresh();
+                        } catch (err) {
+                          toast.error(
+                            actionErrorMessage(err, "Gagal refresh."),
+                          );
                         }
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive h-8 w-8 p-0"
-                        disabled={pending}
-                        onClick={() =>
-                          startTransition(async () => {
-                            try {
-                              await deleteProductDiscoveryQuery(q.id);
-                              toast.success("Pencarian dihapus.");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(
-                                actionErrorMessage(err, "Gagal hapus."),
-                              );
-                            }
-                          })
+                      })
+                    }
+                  >
+                    <RefreshCw className="size-3.5" aria-hidden />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        try {
+                          await deleteProductDiscoveryQuery(q.id);
+                          toast.success("Pencarian dihapus.");
+                          router.refresh();
+                        } catch (err) {
+                          toast.error(
+                            actionErrorMessage(err, "Gagal hapus."),
+                          );
                         }
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </>
+                      })
+                    }
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Hapus
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ResearchHubSection>
+    </div>
   );
 }

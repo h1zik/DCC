@@ -196,6 +196,7 @@ export async function getBrandReviewRawReviews(input: {
   sourceId: string;
   page?: number;
   search?: string;
+  sentiment?: "POSITIVE" | "NEUTRAL" | "NEGATIVE";
 }): Promise<ReviewRawPage> {
   await requireBrandManager();
   const sourceId = z.string().min(1).parse(input.sourceId);
@@ -210,12 +211,14 @@ export async function getBrandReviewRawReviews(input: {
     sourceId,
     page: input.page,
     search: input.search,
+    sentiment: input.sentiment,
   });
 }
 
 export async function exportBrandReviewRawReviewsCsv(
   sourceId: string,
   search?: string,
+  sentiment?: "POSITIVE" | "NEUTRAL" | "NEGATIVE",
 ): Promise<string> {
   await requireBrandManager();
   const id = z.string().min(1).parse(sourceId);
@@ -226,5 +229,5 @@ export async function exportBrandReviewRawReviewsCsv(
   });
   if (!source) throw new Error("Sumber review tidak ditemukan.");
 
-  return exportBrandReviewRawCsv(id, search);
+  return exportBrandReviewRawCsv(id, search, sentiment);
 }

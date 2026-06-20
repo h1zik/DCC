@@ -55,8 +55,7 @@ export function TrendArchiveTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Periode</TableHead>
@@ -68,7 +67,10 @@ export function TrendArchiveTable({
         </TableHeader>
         <TableBody>
           {digests.map((d) => (
-            <TableRow key={d.id}>
+            <TableRow
+              key={d.id}
+              className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+            >
               <TableCell>
                 <Link
                   href={`${basePath}/${d.id}`}
@@ -109,6 +111,5 @@ export function TrendArchiveTable({
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }

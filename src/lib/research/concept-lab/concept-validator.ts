@@ -20,6 +20,78 @@ function clampScore(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+function blendValidationScores(
+  scores: ValidationScores,
+  context: Awaited<ReturnType<typeof gatherConceptContext>>,
+  priceTargetMin: number | null,
+  priceTargetMax: number | null,
+): ValidationScores {
+  let pricingFit = scores.pricingFit;
+  let overall = scores.overall;
+  const notes: string[] = [];
+
+  const priceRange = context.competitor?.priceRange;
+  if (
+    priceRange &&
+    priceTargetMin != null &&
+    priceTargetMax != null &&
+    priceRange.max > priceRange.min
+  ) {
+    const mid = (priceTargetMin + priceTargetMax) / 2;
+    const marketMid = (priceRange.min + priceRange.max) / 2;
+    const spread = priceRange.max - priceRange.min;
+    const deviation = Math.abs(mid - marketMid) / spread;
+    if (deviation > 0.45) {
+      const penalty = Math.min(25, Math.round(deviation * 30));
+      pricingFit = clampScore(pricingFit - penalty);
+      notes.push(
+        `Target harga konsep (${Math.round(mid).toLocaleString("id-ID")}) jauh dari median kompetitor.`,
+      );
+    }
+  }
+
+  const modulesWithData = [
+    context.reviewIntel,
+    context.competitor,
+    context.trendRadar,
+    context.keywordIntel,
+    context.socialListening,
+  ].filter(Boolean).length;
+
+  if (modulesWithData <= 1) {
+    overall = clampScore(Math.min(overall, 72));
+    notes.push("Validasi berbasis ≤1 modul riset — tingkatkan cakupan data sebelum GO.");
+  }
+
+  if (context.uspCandidate) {
+    const floor = context.uspCandidate.differentiationScore - 12;
+    const differentiation = clampScore(
+      Math.max(scores.differentiation, floor),
+    );
+    overall = clampScore(
+      Math.round((differentiation + pricingFit + scores.marketDemand) / 3),
+    );
+    return {
+      ...scores,
+      pricingFit,
+      differentiation,
+      overall,
+      decisionReason: [scores.decisionReason, ...notes].filter(Boolean).join(" "),
+    };
+  }
+
+  overall = clampScore(
+    Math.round((scores.differentiation + pricingFit + scores.marketDemand) / 3),
+  );
+
+  return {
+    ...scores,
+    pricingFit,
+    overall,
+    decisionReason: [scores.decisionReason, ...notes].filter(Boolean).join(" "),
+  };
+}
+
 export async function validateProductConceptById(
   conceptId: string,
 ): Promise<ValidationScores> {
@@ -63,22 +135,27 @@ export async function validateProductConceptById(
       result.decision === "GO" || result.decision === "NO_GO"
         ? result.decision
         : "PIVOT";
-    const scores: ValidationScores = {
-      marketDemand: clampScore(result.marketDemand ?? 0),
-      differentiation: clampScore(result.differentiation ?? 0),
-      pricingFit: clampScore(result.pricingFit ?? 0),
-      overall: clampScore(
-        result.overall ??
-          ((result.marketDemand ?? 0) +
-            (result.differentiation ?? 0) +
-            (result.pricingFit ?? 0)) /
-            3,
-      ),
-      risks: result.risks ?? [],
-      aiSummary: result.aiSummary ?? "",
-      decision,
-      decisionReason: result.decisionReason ?? "",
-    };
+    const scores: ValidationScores = blendValidationScores(
+      {
+        marketDemand: clampScore(result.marketDemand ?? 0),
+        differentiation: clampScore(result.differentiation ?? 0),
+        pricingFit: clampScore(result.pricingFit ?? 0),
+        overall: clampScore(
+          result.overall ??
+            ((result.marketDemand ?? 0) +
+              (result.differentiation ?? 0) +
+              (result.pricingFit ?? 0)) /
+              3,
+        ),
+        risks: result.risks ?? [],
+        aiSummary: result.aiSummary ?? "",
+        decision,
+        decisionReason: result.decisionReason ?? "",
+      },
+      context,
+      concept.priceTargetMin,
+      concept.priceTargetMax,
+    );
 
     await prisma.productConcept.update({
       where: { id: conceptId },

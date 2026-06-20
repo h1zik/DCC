@@ -1,6 +1,6 @@
 import { PackageSearch } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import { resumeStuckProductDiscoveryJobs } from "@/lib/research/run-product-discovery-job";
 import {
   ProductDiscoveryClient,
@@ -31,13 +31,12 @@ export default async function ProductDiscoveryPage() {
   }));
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={PackageSearch}
-        title="Product Discovery"
-        subtitle="Tarik daftar produk kompetitor dari keyword — puluhan produk dari berbagai brand/toko sekaligus."
-      />
+    <ResearchHubModulePage
+      icon={PackageSearch}
+      title="Product Discovery"
+      description="Tarik daftar produk kompetitor dari keyword — puluhan produk dari berbagai brand/toko sekaligus."
+    >
       <ProductDiscoveryClient queries={rows} />
-    </div>
+    </ResearchHubModulePage>
   );
 }

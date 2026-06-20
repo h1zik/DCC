@@ -3,11 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, ExternalLink, ImageIcon } from "lucide-react";
+import {
+  Bell,
+  ExternalLink,
+  ImageIcon,
+  LineChart,
+  Package,
+  Sparkles,
+  Target,
+} from "lucide-react";
 import { harvestCompetitorVisualsAction } from "@/actions/brand-visual-research";
 import { toast } from "sonner";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import type { CompetitorInsights } from "@/lib/research/competitor-insights";
 import { formatRp } from "@/lib/research/labels";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
@@ -30,8 +38,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
+import {
+  BrandHubPageHeader,
+  BrandHubSection,
+  BrandHubStatChip,
+  hub,
+} from "@/components/brand-hub/brand-hub-primitives";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -94,6 +108,9 @@ type CompetitorAiInsights = {
   actionPlan?: unknown;
 };
 
+const tabContentClass =
+  "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
+
 export function BrandCompetitorDetailClient({
   competitor,
 }: {
@@ -107,6 +124,7 @@ export function BrandCompetitorDetailClient({
   useResearchJobProgress({ inProgress: competitor.isScraping });
 
   const ai = (competitor.aiInsights as CompetitorAiInsights | null) ?? null;
+  const unreadAlerts = competitor.alerts.filter((a) => !a.isRead).length;
 
   const priceChart =
     priceDays === 30
@@ -116,259 +134,334 @@ export function BrandCompetitorDetailClient({
         : competitor.priceChart90;
 
   return (
-    <div className="flex flex-col gap-6">
-      <ResearchModelBadgeGroup meta={competitor.aiMeta} />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          render={
-            <Link href="/brand-hub/competitor-tracker">
-              <ArrowLeft className="size-3.5" aria-hidden />
-              Kembali
-            </Link>
-          }
-        />
-        <Badge variant="secondary" className="text-[10px]">
-          Dikelola Market Analyst
-        </Badge>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={pending || competitor.harvestableImageCount === 0}
-          onClick={() =>
-            startTransition(async () => {
-              try {
-                const result = await harvestCompetitorVisualsAction(
-                  competitor.id,
-                  brandId,
-                );
-                toast.success(`${result.harvested} gambar ditambahkan ke Visual Library.`);
-                router.refresh();
-              } catch (err) {
-                toast.error(actionErrorMessage(err, "Gagal harvest visual."));
-              }
-            })
-          }
-        >
-          <ImageIcon className="size-3.5" aria-hidden />
-          Harvest Visuals ({competitor.harvestableImageCount})
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          render={
-            <a href={competitor.shopUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="size-3.5" aria-hidden />
-              Buka Toko
-            </a>
-          }
-        />
-      </div>
+    <div className="flex flex-col gap-6 pb-6">
+      <Link
+        href={brandHubHref("/brand-hub/competitor-tracker", brandId)}
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
+      >
+        <Target className="size-3" aria-hidden />
+        Kembali ke Competitor Tracker
+      </Link>
 
-      <header className="border-border bg-card rounded-2xl border p-5 shadow-sm">
-        <h1 className="text-foreground text-2xl font-semibold">{competitor.name}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {competitor.brand} · {competitor.category} ·{" "}
-          {MARKETPLACE_LABELS[competitor.marketplace]}
-        </p>
-        {ai &&
-        (ai.discountDepthPct != null || ai.shareOfCategoryPct != null) ? (
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            {ai.shareOfCategoryPct != null ? (
-              <span className="rounded-full bg-muted px-2.5 py-1 font-medium">
-                Share kategori (review): {ai.shareOfCategoryPct.toFixed(1)}%
-              </span>
+      <BrandHubPageHeader
+        variant="detail"
+        icon={Target}
+        eyebrow="Competitor Tracker"
+        title={competitor.name}
+        description={`${competitor.brand} · ${competitor.category} · ${MARKETPLACE_LABELS[competitor.marketplace]}`}
+        right={
+          <>
+            <ResearchModelBadgeGroup meta={competitor.aiMeta} />
+            <Badge variant="secondary" className="text-[10px]">
+              Dikelola Market Analyst
+            </Badge>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              render={
+                <a
+                  href={competitor.shopUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+            >
+              <ExternalLink className="mr-1.5 size-3.5" />
+              Buka Toko
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending || competitor.harvestableImageCount === 0}
+              onClick={() =>
+                startTransition(async () => {
+                  try {
+                    const result = await harvestCompetitorVisualsAction(
+                      competitor.id,
+                      brandId,
+                    );
+                    toast.success(
+                      `${result.harvested} gambar ditambahkan ke Visual Library.`,
+                    );
+                    router.refresh();
+                  } catch (err) {
+                    toast.error(actionErrorMessage(err, "Gagal harvest visual."));
+                  }
+                })
+              }
+            >
+              <ImageIcon className="mr-1.5 size-3.5" />
+              Harvest Visuals ({competitor.harvestableImageCount})
+            </Button>
+          </>
+        }
+        footer={
+          <div className="flex flex-wrap items-center gap-2">
+            <BrandHubStatChip
+              label="SKU"
+              value={competitor.skus.length.toLocaleString("id-ID")}
+              tone="primary"
+            />
+            <BrandHubStatChip
+              label="Alert"
+              value={unreadAlerts.toLocaleString("id-ID")}
+              tone={unreadAlerts > 0 ? "warning" : "neutral"}
+            />
+            {ai?.shareOfCategoryPct != null ? (
+              <BrandHubStatChip
+                label="Share kategori"
+                value={`${ai.shareOfCategoryPct.toFixed(1)}%`}
+              />
             ) : null}
-            {ai.discountDepthPct != null ? (
-              <span className="rounded-full bg-muted px-2.5 py-1 font-medium">
-                Kedalaman diskon: ~{ai.discountDepthPct.toFixed(0)}%
-              </span>
+            {ai?.discountDepthPct != null ? (
+              <BrandHubStatChip
+                label="Kedalaman diskon"
+                value={`~${ai.discountDepthPct.toFixed(0)}%`}
+              />
             ) : null}
-            {ai.promoSkuCount != null ? (
-              <span className="rounded-full bg-muted px-2.5 py-1 font-medium">
-                {ai.promoSkuCount} SKU promo
-              </span>
+            {ai?.promoSkuCount != null ? (
+              <BrandHubStatChip
+                label="SKU promo"
+                value={ai.promoSkuCount.toLocaleString("id-ID")}
+              />
             ) : null}
           </div>
-        ) : null}
-      </header>
+        }
+      />
 
       {competitor.isScraping ? (
-        <JobProgressBar
-          title="Mengambil & menganalisis data kompetitor"
-          percent={45}
-          stepLabel="Scrape toko + analisis playbook AI berjalan di background — halaman refresh otomatis."
-        />
-      ) : null}
-
-      {ai?.actionPlan ? (
-        <ActionPlanPanel
-          plan={ai.actionPlan}
-          title="Response Playbook (AI)"
-          subtitle={ai.summary ?? undefined}
-        />
-      ) : null}
-
-      <CompetitorInsightsPanel insights={competitor.insights} />
-
-      <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-        <h2 className="text-foreground mb-3 text-sm font-semibold">SKU Tracker</h2>
-        {competitor.skus.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Belum ada SKU — refresh atau tunggu scrape selesai.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produk</TableHead>
-                <TableHead className="text-right">Harga</TableHead>
-                <TableHead className="text-right">Rating</TableHead>
-                <TableHead className="text-right">Review</TableHead>
-                <TableHead>Promo</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {competitor.skus.map((sku) => (
-                <TableRow key={sku.id}>
-                  <TableCell>
-                    <a
-                      href={sku.productUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-primary font-medium"
-                    >
-                      {sku.name}
-                    </a>
-                    {sku.isNew ? (
-                      <span className="bg-primary/15 text-primary ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase">
-                        Baru
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <span>
-                      {sku.currentPrice != null
-                        ? formatRp(sku.currentPrice)
-                        : "—"}
-                    </span>
-                    {sku.priceDeltaPct != null && sku.priceDirection ? (
-                      <span
-                        className={cn(
-                          "mt-0.5 block text-[10px] font-medium",
-                          sku.priceDirection === "up"
-                            ? "text-rose-600 dark:text-rose-400"
-                            : "text-emerald-600 dark:text-emerald-400",
-                        )}
-                      >
-                        {sku.priceDirection === "up" ? "▲" : "▼"}{" "}
-                        {sku.priceDeltaPct}%
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {sku.rating?.toFixed(1) ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {sku.reviewCount.toLocaleString("id-ID")}
-                  </TableCell>
-                  <TableCell>
-                    {sku.hasPromo ? (
-                      <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full px-2 py-0.5 text-[10px] font-semibold">
-                        {sku.promoText ?? "Promo"}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </section>
-
-      <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-        <h2 className="text-foreground mb-1 text-sm font-semibold">
-          Harga Saat Ini (Top SKU)
-        </h2>
-        <p className="text-muted-foreground mb-3 text-xs">
-          Perbandingan harga hero SKU berdasarkan snapshot terakhir — berguna
-          meski belum ada riwayat multi-hari.
-        </p>
-        <CompetitorPriceBarChart data={competitor.currentPriceBar} />
-      </section>
-
-      <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-foreground text-sm font-semibold">
-              Trend Harga
-            </h2>
-            <p className="text-muted-foreground text-xs">
-              Pergerakan harga per hari (butuh refresh harian / cron).
-            </p>
-          </div>
-          <Tabs
-            value={String(priceDays)}
-            onValueChange={(v) => setPriceDays(Number(v) as 30 | 60 | 90)}
-          >
-            <TabsList>
-              <TabsTrigger value="30">30 hari</TabsTrigger>
-              <TabsTrigger value="60">60 hari</TabsTrigger>
-              <TabsTrigger value="90">90 hari</TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Mengambil & menganalisis data kompetitor"
+            percent={45}
+            stepLabel="Scrape toko berjalan di Research Hub — halaman refresh otomatis."
+          />
         </div>
-        <CompetitorPriceChart
-          data={priceChart.data}
-          skuNames={priceChart.skuNames}
-          hasTrend={priceChart.hasTrend}
-        />
-      </section>
+      ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-          <h2 className="text-foreground mb-3 text-sm font-semibold">
-            Share of Review
-          </h2>
-          <ShareOfReviewChart data={competitor.shareOfReview} />
-        </section>
+      <Tabs defaultValue="ringkasan" className="gap-0">
+        <div className={cn(hub.stickyToolbar, "pb-0")}>
+          <TabsList variant="line" className="h-9 w-full justify-start gap-4">
+            <TabsTrigger value="ringkasan" className="px-1">
+              <Sparkles className="size-3.5" aria-hidden />
+              Ringkasan
+            </TabsTrigger>
+            <TabsTrigger value="sku" className="px-1">
+              <Package className="size-3.5" aria-hidden />
+              SKU
+              {competitor.skus.length > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {competitor.skus.length}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="analitik" className="px-1">
+              <LineChart className="size-3.5" aria-hidden />
+              Analitik
+            </TabsTrigger>
+            <TabsTrigger value="alert" className="px-1">
+              <Bell className="size-3.5" aria-hidden />
+              Alert
+              {unreadAlerts > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {unreadAlerts}
+                </span>
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-foreground text-sm font-semibold">Alert Feed</h2>
-          </div>
-          {competitor.alerts.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Tidak ada alert.</p>
-          ) : (
-            <ul className="max-h-64 space-y-2 overflow-y-auto">
-              {competitor.alerts.map((alert) => (
-                <li
-                  key={alert.id}
-                  className={cn(
-                    "rounded-lg border px-3 py-2 text-sm",
-                    alert.isRead
-                      ? "border-border/60 opacity-60"
-                      : "border-primary/20 bg-primary/5",
-                  )}
-                >
-                  <p>{alert.message}</p>
-                  <span className="text-muted-foreground mt-1 block text-[10px]">
-                    {new Date(alert.createdAt).toLocaleString("id-ID")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+        <TabsContent value="ringkasan" className={tabContentClass}>
+          {ai?.actionPlan ? (
+            <BrandHubSection
+              title="Response Playbook"
+              description={ai.summary ?? "Rekomendasi respons kompetitif dari AI."}
+              delayMs={0}
+            >
+              <ActionPlanPanel
+                plan={ai.actionPlan}
+                title="Response Playbook (AI)"
+                subtitle={ai.summary ?? undefined}
+              />
+            </BrandHubSection>
+          ) : null}
+
+          <BrandHubSection title="Ringkasan & Kesimpulan" delayMs={50}>
+            <CompetitorInsightsPanel insights={competitor.insights} bare />
+          </BrandHubSection>
+
+          <BrandHubSection
+            title="Harga Saat Ini (Top SKU)"
+            description="Perbandingan harga hero SKU berdasarkan snapshot terakhir."
+            delayMs={100}
+          >
+            <div className={hub.panel}>
+              <CompetitorPriceBarChart data={competitor.currentPriceBar} />
+            </div>
+          </BrandHubSection>
+        </TabsContent>
+
+        <TabsContent value="sku" className={tabContentClass}>
+          <BrandHubSection
+            title="SKU Tracker"
+            description="Produk kompetitor dari scrape Research Hub."
+          >
+            {competitor.skus.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Belum ada SKU — tunggu scrape selesai.
+              </p>
+            ) : (
+              <div className={hub.panel}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Produk</TableHead>
+                      <TableHead className="text-right">Harga</TableHead>
+                      <TableHead className="text-right">Rating</TableHead>
+                      <TableHead className="text-right">Review</TableHead>
+                      <TableHead>Promo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {competitor.skus.map((sku) => (
+                      <TableRow key={sku.id}>
+                        <TableCell>
+                          <a
+                            href={sku.productUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-primary font-medium"
+                          >
+                            {sku.name}
+                          </a>
+                          {sku.isNew ? (
+                            <span className="bg-primary/15 text-primary ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase">
+                              Baru
+                            </span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          <span>
+                            {sku.currentPrice != null
+                              ? formatRp(sku.currentPrice)
+                              : "—"}
+                          </span>
+                          {sku.priceDeltaPct != null && sku.priceDirection ? (
+                            <span
+                              className={cn(
+                                "mt-0.5 block text-[10px] font-medium",
+                                sku.priceDirection === "up"
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-emerald-600 dark:text-emerald-400",
+                              )}
+                            >
+                              {sku.priceDirection === "up" ? "▲" : "▼"}{" "}
+                              {sku.priceDeltaPct}%
+                            </span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {sku.rating?.toFixed(1) ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {sku.reviewCount.toLocaleString("id-ID")}
+                        </TableCell>
+                        <TableCell>
+                          {sku.hasPromo ? (
+                            <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                              {sku.promoText ?? "Promo"}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </BrandHubSection>
+        </TabsContent>
+
+        <TabsContent value="analitik" className={tabContentClass}>
+          <BrandHubSection
+            title="Trend Harga"
+            description="Pergerakan harga per hari (butuh refresh harian / cron)."
+            action={
+              <Tabs
+                value={String(priceDays)}
+                onValueChange={(v) => v && setPriceDays(Number(v) as 30 | 60 | 90)}
+              >
+                <TabsList className="h-8">
+                  <TabsTrigger value="30" className="text-xs">
+                    30 hari
+                  </TabsTrigger>
+                  <TabsTrigger value="60" className="text-xs">
+                    60 hari
+                  </TabsTrigger>
+                  <TabsTrigger value="90" className="text-xs">
+                    90 hari
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            }
+          >
+            <div className={hub.panel}>
+              <CompetitorPriceChart
+                data={priceChart.data}
+                skuNames={priceChart.skuNames}
+                hasTrend={priceChart.hasTrend}
+              />
+            </div>
+          </BrandHubSection>
+
+          <BrandHubSection title="Share of Review">
+            <div className={hub.panel}>
+              <ShareOfReviewChart data={competitor.shareOfReview} />
+            </div>
+          </BrandHubSection>
+        </TabsContent>
+
+        <TabsContent value="alert" className={tabContentClass}>
+          <BrandHubSection
+            title="Alert Feed"
+            description="Perubahan harga, SKU baru, dan promo dari kompetitor."
+          >
+            {competitor.alerts.length === 0 ? (
+              <p className="text-muted-foreground text-sm">Tidak ada alert.</p>
+            ) : (
+              <ul className="max-h-[480px] space-y-2 overflow-y-auto">
+                {competitor.alerts.map((alert, index) => (
+                  <li
+                    key={alert.id}
+                    className={cn(
+                      hub.nestedPanel,
+                      hub.entrance,
+                      "text-sm",
+                      alert.isRead
+                        ? "opacity-60"
+                        : "border-primary/20 bg-primary/5",
+                    )}
+                    style={
+                      index > 0 && index < 8
+                        ? { animationDelay: `${index * 30}ms` }
+                        : undefined
+                    }
+                  >
+                    <p>{alert.message}</p>
+                    <span className="text-muted-foreground mt-2 block text-[10px]">
+                      {new Date(alert.createdAt).toLocaleString("id-ID")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </BrandHubSection>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

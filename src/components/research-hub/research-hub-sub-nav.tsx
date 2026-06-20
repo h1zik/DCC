@@ -2,125 +2,127 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
-  BarChart3,
-  FileText,
-  FlaskConical,
-  LayoutDashboard,
-  MessageSquare,
-  PackageSearch,
-  Radar,
-  Search,
-  Star,
-  Target,
-} from "lucide-react";
+  RESEARCH_HUB_OVERVIEW,
+  RESEARCH_HUB_ZONES,
+  isResearchHubNavActive,
+} from "@/components/research-hub/research-hub-module-nav";
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
-type SubNavItem = {
-  href?: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  comingSoon?: boolean;
-};
+type PillGeom = { left: number; width: number; visible: boolean };
 
-const NAV_ITEMS: SubNavItem[] = [
-  { href: "/research-hub", label: "Overview", icon: LayoutDashboard },
-  {
-    href: "/research-hub/product-discovery",
-    label: "Product Discovery",
-    icon: PackageSearch,
-  },
-  {
-    href: "/research-hub/review-intelligence",
-    label: "Review Intelligence",
-    icon: Star,
-  },
-  {
-    href: "/research-hub/competitor-tracker",
-    label: "Competitor Tracker",
-    icon: Target,
-  },
-  {
-    href: "/research-hub/trend-radar",
-    label: "Trend Radar",
-    icon: Radar,
-  },
-  {
-    href: "/research-hub/keyword-intel",
-    label: "Keyword Intel",
-    icon: Search,
-  },
-  {
-    href: "/research-hub/social-listening",
-    label: "Social Listening",
-    icon: MessageSquare,
-  },
-  {
-    href: "/research-hub/usp-analyzer",
-    label: "USP Analyzer",
-    icon: BarChart3,
-  },
-  {
-    href: "/research-hub/concept-lab",
-    label: "Concept Lab",
-    icon: FlaskConical,
-  },
-  {
-    href: "/research-hub/research-reports",
-    label: "Research Reports",
-    icon: FileText,
-  },
+const MOBILE_NAV_ITEMS = [
+  RESEARCH_HUB_OVERVIEW,
+  ...RESEARCH_HUB_ZONES.flatMap((z) => z.items),
 ];
 
-function isItemActive(itemHref: string, pathname: string): boolean {
-  if (itemHref === "/research-hub") return pathname === "/research-hub";
-  return pathname.startsWith(itemHref);
-}
-
-export function ResearchHubSubNav() {
+export function ResearchHubSubNav({ className }: { className?: string }) {
   const pathname = usePathname() ?? "/research-hub";
+  const itemRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [pill, setPill] = useState<PillGeom>({
+    left: 0,
+    width: 0,
+    visible: false,
+  });
+
+  useLayoutEffect(() => {
+    const activeItem = MOBILE_NAV_ITEMS.find((item) =>
+      isResearchHubNavActive(item.href, pathname),
+    );
+    const node = activeItem
+      ? itemRefs.current.get(activeItem.href)
+      : undefined;
+    const track = trackRef.current;
+    if (!node || !track) {
+      setPill((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+    const trackRect = track.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    setPill({
+      left: nodeRect.left - trackRect.left + track.scrollLeft,
+      width: nodeRect.width,
+      visible: true,
+    });
+  }, [pathname]);
 
   return (
     <nav
       aria-label="Modul Research Hub"
-      className="border-border/70 bg-card/80 sticky top-0 z-20 -mt-2 border-b backdrop-blur supports-backdrop-filter:bg-card/60"
+      className={cn(hub.stickyToolbar, className)}
     >
-      <div className="flex w-full items-center gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {NAV_ITEMS.map((item) => {
-          if (item.comingSoon || !item.href) {
-            return (
-              <span
-                key={item.label}
-                className="text-muted-foreground/60 inline-flex shrink-0 cursor-not-allowed items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
-                title="Segera hadir"
-              >
-                <item.icon className="size-3.5 shrink-0 opacity-50" aria-hidden />
-                {item.label}
-                <span className="bg-muted text-muted-foreground rounded px-1 py-px text-[9px] font-semibold uppercase">
-                  Segera
-                </span>
-              </span>
-            );
-          }
+      <div
+        ref={trackRef}
+        className="relative flex w-full items-center gap-1 overflow-x-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "bg-primary/10 ring-primary/20 pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-lg ring-1",
+            "transition-[left,width,opacity] duration-300 ease-out motion-reduce:transition-none",
+            pill.visible ? "opacity-100" : "opacity-0",
+          )}
+          style={{ left: pill.left, width: pill.width, height: 30 }}
+        />
 
-          const active = isItemActive(item.href, pathname);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
-                active
-                  ? "bg-foreground text-background shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              <item.icon className="size-3.5 shrink-0" aria-hidden />
-              {item.label}
-            </Link>
-          );
-        })}
+        <Link
+          ref={(el) => {
+            if (el) itemRefs.current.set(RESEARCH_HUB_OVERVIEW.href, el);
+          }}
+          href={RESEARCH_HUB_OVERVIEW.href}
+          aria-current={
+            isResearchHubNavActive(RESEARCH_HUB_OVERVIEW.href, pathname)
+              ? "page"
+              : undefined
+          }
+          className={cn(
+            "relative z-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap",
+            "transition-[colors,transform] duration-200 ease-out motion-reduce:transition-none",
+            "hover:-translate-y-px motion-reduce:hover:translate-y-0",
+            isResearchHubNavActive(RESEARCH_HUB_OVERVIEW.href, pathname)
+              ? "text-primary"
+              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          )}
+        >
+          <RESEARCH_HUB_OVERVIEW.icon className="size-3.5 shrink-0" aria-hidden />
+          {RESEARCH_HUB_OVERVIEW.label}
+        </Link>
+
+        {RESEARCH_HUB_ZONES.map((zone) => (
+          <span key={zone.id} className="contents">
+            <span
+              aria-hidden
+              className="bg-border/60 mx-0.5 hidden h-4 w-px shrink-0 sm:block"
+            />
+            {zone.items.map((item) => {
+              const active = isResearchHubNavActive(item.href, pathname);
+              return (
+                <Link
+                  key={item.href}
+                  ref={(el) => {
+                    if (el) itemRefs.current.set(item.href, el);
+                  }}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "relative z-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap",
+                    "transition-[colors,transform] duration-200 ease-out motion-reduce:transition-none",
+                    "hover:-translate-y-px motion-reduce:hover:translate-y-0",
+                    active
+                      ? "text-primary"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  <item.icon className="size-3.5 shrink-0" aria-hidden />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </span>
+        ))}
       </div>
     </nav>
   );

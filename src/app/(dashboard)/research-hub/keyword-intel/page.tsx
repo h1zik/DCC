@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import { getDefaultKeywordSourceConfig } from "@/lib/research/keyword-intel/keyword-source-config";
 import type { KeywordSignalStats } from "@/lib/research/keyword-intel/keyword-signal-types";
 import {
@@ -46,16 +46,15 @@ export default async function KeywordIntelPage() {
   });
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={Search}
-        title="Keyword & Search Intel"
-        subtitle="Eksplorasi keyword marketplace dan Google — volume, gap, naming, dan copywriting berbasis sinyal terverifikasi."
-      />
+    <ResearchHubModulePage
+      icon={Search}
+      title="Keyword & Search Intel"
+      description="Eksplorasi keyword marketplace dan Google — volume, gap, naming, dan copywriting berbasis sinyal terverifikasi."
+    >
       <KeywordIntelClient
         queries={rows}
         defaultSourceConfig={getDefaultKeywordSourceConfig()}
       />
-    </div>
+    </ResearchHubModulePage>
   );
 }

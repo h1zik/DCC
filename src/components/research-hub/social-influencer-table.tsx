@@ -34,7 +34,10 @@ export function SocialInfluencerTable({ rows }: { rows: InfluencerRow[] }) {
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
-          <TableRow key={`${row.platform}-${row.author}`}>
+          <TableRow
+            key={`${row.platform}-${row.author}`}
+            className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+          >
             <TableCell className="font-medium">
               {row.topUrl ? (
                 <a
@@ -52,8 +55,8 @@ export function SocialInfluencerTable({ rows }: { rows: InfluencerRow[] }) {
             <TableCell className="text-muted-foreground text-xs uppercase">
               {row.platform}
             </TableCell>
-            <TableCell className="text-right">{row.mentions}</TableCell>
-            <TableCell className="text-right">
+            <TableCell className="text-right tabular-nums">{row.mentions}</TableCell>
+            <TableCell className="text-right tabular-nums">
               {row.totalEngagement.toLocaleString("id-ID")}
             </TableCell>
           </TableRow>

@@ -1,7 +1,7 @@
 import { Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { resumeStuckResearchJobs } from "@/lib/research/run-apify-job";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import {
   CompetitorTrackerClient,
   type CompetitorCard,
@@ -42,13 +42,12 @@ export default async function CompetitorTrackerPage() {
   });
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={Target}
-        title="Competitor Tracker"
-        subtitle="Pantau harga, SKU baru, rating, dan promo kompetitor — update otomatis harian."
-      />
+    <ResearchHubModulePage
+      icon={Target}
+      title="Competitor Tracker"
+      description="Pantau harga, SKU baru, rating, dan promo kompetitor — update otomatis harian."
+    >
       <CompetitorTrackerClient competitors={cards} />
-    </div>
+    </ResearchHubModulePage>
   );
 }

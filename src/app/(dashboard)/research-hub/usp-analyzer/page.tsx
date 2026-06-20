@@ -2,7 +2,7 @@ import { BarChart3 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getAvailableContextModules } from "@/lib/research/usp-gap/gather-context";
 import { listUspContextSourceOptions, parseStoredContextModules } from "@/lib/research/usp-gap/list-context-sources";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import {
   UspAnalyzerClient,
   type UspAnalysisRow,
@@ -37,17 +37,16 @@ export default async function UspAnalyzerPage() {
   });
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={BarChart3}
-        title="USP & Gap Analyzer"
-        subtitle="Temukan celah pasar dan formulasi USP berbasis data dari modul riset."
-      />
+    <ResearchHubModulePage
+      icon={BarChart3}
+      title="USP & Gap Analyzer"
+      description="Temukan celah pasar dan formulasi USP berbasis data dari modul riset."
+    >
       <UspAnalyzerClient
         analyses={rows}
         availableModules={availableModules}
         sourceOptions={sourceOptions}
       />
-    </div>
+    </ResearchHubModulePage>
   );
 }

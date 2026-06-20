@@ -1,7 +1,7 @@
 import { Star } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { resumeStuckResearchJobs } from "@/lib/research/run-apify-job";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import {
   ReviewIntelligenceClient,
   type ReviewSourceRow,
@@ -38,13 +38,12 @@ export default async function ReviewIntelligencePage() {
   }));
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={Star}
-        title="Review Intelligence"
-        subtitle="Scrape ribuan review kompetitor — sentimen, keluhan, pujian, dan gap opportunity."
-      />
+    <ResearchHubModulePage
+      icon={Star}
+      title="Review Intelligence"
+      description="Scrape ribuan review kompetitor — sentimen, keluhan, pujian, dan gap opportunity."
+    >
       <ReviewIntelligenceClient sources={rows} />
-    </div>
+    </ResearchHubModulePage>
   );
 }

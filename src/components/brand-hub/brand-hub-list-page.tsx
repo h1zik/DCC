@@ -25,12 +25,40 @@ export function BrandHubListPage({
   return (
     <BrandHubPageShell>
       <BrandHubPageHeader
+        variant="compact"
         icon={icon}
         eyebrow={eyebrow}
         title={title}
         description={subtitle}
         right={right}
         footer={footer}
+      />
+      {children}
+    </BrandHubPageShell>
+  );
+}
+
+export function BrandHubDetailPage({
+  icon,
+  title,
+  description,
+  right,
+  children,
+}: {
+  icon?: LucideIcon;
+  title: string;
+  description?: string;
+  right?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <BrandHubPageShell>
+      <BrandHubPageHeader
+        variant="detail"
+        icon={icon}
+        title={title}
+        description={description}
+        right={right}
       />
       {children}
     </BrandHubPageShell>

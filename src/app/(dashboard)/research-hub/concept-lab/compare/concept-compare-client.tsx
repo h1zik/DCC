@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { GitCompare, Trophy } from "lucide-react";
 import { ConceptCompareTable } from "@/components/research-hub/concept-compare-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  hub,
+  ResearchHubPageHeader,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
+import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
@@ -25,42 +31,71 @@ export type ComparePageData = {
 };
 
 export function ConceptCompareClient({ data }: { data: ComparePageData }) {
-  return (
-    <div className="space-y-6">
-      <ResearchModelBadgeGroup meta={data.aiMeta} />
-      <div>
-        <Link
-          href="/research-hub/concept-lab"
-          className="text-muted-foreground hover:text-foreground mb-2 inline-flex items-center gap-1 text-xs"
-        >
-          <ArrowLeft className="size-3" /> Kembali ke Concept Lab
-        </Link>
-        <h1 className="text-xl font-semibold">Perbandingan Konsep</h1>
-        <p className="text-muted-foreground text-sm">
-          {data.conceptIds.length} konsep dibandingkan head-to-head
-        </p>
-      </div>
+  const winnerTitle = data.dimensions[0]?.scores.find(
+    (s) => s.conceptId === data.winnerId,
+  )?.conceptTitle;
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Ringkasan</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm leading-relaxed">
+  return (
+    <div className="flex flex-col gap-6 pb-6">
+      <Link
+        href="/research-hub/concept-lab"
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
+      >
+        <GitCompare className="size-3" aria-hidden />
+        Kembali ke Concept Lab
+      </Link>
+
+      <ResearchHubPageHeader
+        variant="detail"
+        icon={GitCompare}
+        eyebrow="Concept Lab"
+        title="Perbandingan Konsep"
+        description={`${data.conceptIds.length} konsep dibandingkan head-to-head`}
+        right={<ResearchModelBadgeGroup meta={data.aiMeta} />}
+        footer={
+          <div className="flex flex-wrap gap-2">
+            <ResearchHubStatChip
+              label="Konsep"
+              value={data.conceptIds.length.toLocaleString("id-ID")}
+              tone="primary"
+            />
+            {winnerTitle ? (
+              <ResearchHubStatChip
+                label="Pemenang"
+                value={winnerTitle.slice(0, 24)}
+                tone="success"
+              />
+            ) : null}
+          </div>
+        }
+      />
+
+      <ResearchHubSection title="Ringkasan AI" delayMs={0}>
+        <div className={cn(hub.panel, "space-y-3 text-sm leading-relaxed")}>
           <p>{data.summary}</p>
           {data.recommendation ? (
-            <p className="font-medium">{data.recommendation}</p>
+            <p
+              className={cn(
+                hub.nestedPanel,
+                "border-emerald-500/30 font-medium",
+              )}
+            >
+              <Trophy className="mr-1.5 inline size-4 text-emerald-600" aria-hidden />
+              {data.recommendation}
+            </p>
           ) : null}
-        </CardContent>
-      </Card>
+        </div>
+      </ResearchHubSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Matrix Perbandingan</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <ResearchHubSection
+        title="Matrix Perbandingan"
+        description="Skor per dimensi validasi untuk setiap konsep."
+        delayMs={50}
+      >
+        <div className={hub.panel}>
           <ConceptCompareTable dimensions={data.dimensions} />
-        </CardContent>
-      </Card>
+        </div>
+      </ResearchHubSection>
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { hub } from "@/components/research-hub/research-hub-primitives";
+import { cn } from "@/lib/utils";
 
 export type WishlistRow = {
   theme: string;
@@ -18,10 +19,13 @@ export function SocialWishlistList({ items }: { items: WishlistRow[] }) {
       {items.map((item, i) => (
         <li
           key={`${item.theme}-${i}`}
-          className="border-border/60 flex items-start justify-between gap-3 rounded-lg border px-3 py-2"
+          className={cn(
+            hub.nestedPanel,
+            "flex items-start justify-between gap-3",
+          )}
         >
           <span className="text-sm leading-snug">{item.theme}</span>
-          <span className="bg-violet-500/10 text-violet-700 dark:text-violet-300 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold">
+          <span className="bg-violet-500/10 text-violet-700 dark:text-violet-300 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums">
             {item.count}
           </span>
         </li>
@@ -30,15 +34,18 @@ export function SocialWishlistList({ items }: { items: WishlistRow[] }) {
   );
 }
 
-export function SocialWishlistCard({ items }: { items: WishlistRow[] }) {
+export function SocialWishlistCard({
+  items,
+  bare = false,
+}: {
+  items: WishlistRow[];
+  bare?: boolean;
+}) {
+  if (bare) return <SocialWishlistList items={items} />;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Top Wishlist</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <SocialWishlistList items={items} />
-      </CardContent>
-    </Card>
+    <div className={hub.panel}>
+      <p className="mb-3 text-sm font-semibold">Top Wishlist</p>
+      <SocialWishlistList items={items} />
+    </div>
   );
 }

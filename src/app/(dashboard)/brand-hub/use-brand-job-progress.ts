@@ -2,39 +2,60 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { pollBrandHubBackgroundJobs } from "@/actions/brand-jobs";
+
+function isPageVisible(): boolean {
+  return typeof document === "undefined" || document.visibilityState === "visible";
+}
 
 /**
- * Generalized polling hook for Research Hub background jobs. While `inProgress`
- * is true it optionally runs a server `poll` action (e.g. to advance Apify
- * jobs) and then `router.refresh()` so server-rendered progress fields
- * (percent / stepLabel) update without a manual reload.
- *
- * Replaces the per-module bespoke polling effects with one consistent hook.
+ * Poll Brand Hub background jobs while work is in progress.
+ * Skips ticks when the tab is hidden to avoid refresh lag.
  */
 export function useBrandJobProgress(opts: {
   inProgress: boolean;
   poll?: () => Promise<unknown>;
   intervalMs?: number;
+  /** When false, only runs poll — no router.refresh(). Default true. */
+  refresh?: boolean;
 }): void {
-  const { inProgress, poll, intervalMs = 8_000 } = opts;
+  const {
+    inProgress,
+    poll = pollBrandHubBackgroundJobs,
+    intervalMs = 12_000,
+    refresh = true,
+  } = opts;
   const router = useRouter();
 
   useEffect(() => {
     if (!inProgress) return;
 
     const tick = async () => {
+      if (!isPageVisible()) return;
+
       if (poll) {
         try {
           await poll();
         } catch {
-          /* ignore — refresh tetap jalan */
+          /* ignore — refresh may still run */
         }
       }
-      router.refresh();
+      if (refresh) {
+        router.refresh();
+      }
     };
 
     void tick();
     const id = window.setInterval(() => void tick(), intervalMs);
-    return () => window.clearInterval(id);
-  }, [inProgress, poll, intervalMs, router]);
+
+    const onVisible = () => {
+      if (isPageVisible()) void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [inProgress, poll, intervalMs, refresh, router]);
 }

@@ -16,7 +16,7 @@ export type {
   ResearchModelTier,
 } from "./types";
 
-export { extractJson } from "./extract-json";
+export { extractJson, isJsonParseError, parseExtractedJson } from "./extract-json";
 export {
   buildResearchAiStep,
   mergeResearchAiMeta,

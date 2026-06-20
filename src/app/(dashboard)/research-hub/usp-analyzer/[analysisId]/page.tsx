@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { parseStoredContextModules } from "@/lib/research/usp-gap/list-context-sources";
 import { normalizePositioningMap } from "@/lib/research/usp-gap/positioning-chart";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import {
   UspDetailClient,
   type UspDetailData,
@@ -67,6 +68,7 @@ export default async function UspAnalyzerDetailPage({
     positioningMap,
     uspCandidates,
     resolvedSources: storedContext.resolvedSources ?? null,
+    contextModules: storedContext,
     rooms: rooms.map((r) => ({
       id: r.id,
       name: r.name,
@@ -76,8 +78,8 @@ export default async function UspAnalyzerDetailPage({
   };
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
+    <ResearchHubPageShell>
       <UspDetailClient data={data} />
-    </div>
+    </ResearchHubPageShell>
   );
 }

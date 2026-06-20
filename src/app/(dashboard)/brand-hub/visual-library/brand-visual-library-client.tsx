@@ -37,7 +37,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { useBrandJobProgress } from "../use-brand-job-progress";
 import type { VisualLibraryGroups } from "@/lib/brand-research/visual-library-types";
+import { hub } from "@/components/brand-hub/brand-hub-primitives";
+import { cn } from "@/lib/utils";
 
 export type VisualLibraryData = {
   groups: VisualLibraryGroups;
@@ -127,6 +130,11 @@ export function BrandVisualLibraryClient({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const { groups } = data;
+
+  const hasCollecting = groups.pinterest.some(
+    (p) => p.collection.status === "COLLECTING",
+  );
+  useBrandJobProgress({ inProgress: hasCollecting });
 
   const selectedPinterest = useMemo(
     () => groups.pinterest.find((p) => p.collection.id === entityId),
@@ -235,7 +243,7 @@ export function BrandVisualLibraryClient({
           maxPinsPerKeyword: maxPins,
         });
         await scrapeBrandVisualCollection({ collectionId: result.id });
-        toast.success("Koleksi dibuat — Pinterest scrape berjalan.");
+        toast.success("Koleksi dibuat — Pinterest scrape berjalan di background.");
         setOpen(false);
         setName("");
         setKeywords("");
@@ -466,7 +474,7 @@ export function BrandVisualLibraryClient({
 
       return (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/50 bg-muted/10 p-3">
+          <div className={cn(hub.panel, "flex flex-wrap items-start justify-between gap-3")}>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm font-semibold">{collection.name}</h3>
@@ -587,7 +595,7 @@ export function BrandVisualLibraryClient({
 
       return (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/10 px-3 py-2">
+          <div className={cn(hub.panel, "flex items-center justify-between gap-2 px-3 py-2")}>
             <span className="text-sm font-medium">{selected.name}</span>
             <Link
               href={brandHubHref(
@@ -628,7 +636,7 @@ export function BrandVisualLibraryClient({
 
       return (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/10 px-3 py-2">
+          <div className={cn(hub.panel, "flex items-center justify-between gap-2 px-3 py-2")}>
             <span className="text-sm font-medium">{selected.name}</span>
             <Link
               href={brandHubHref(
@@ -689,6 +697,7 @@ export function BrandVisualLibraryClient({
   const showEntityPicker = source !== "manual" && entities.length > 0;
 
   return (
+    <div className={hub.entrance}>
     <>
       <VisualLibraryShell
         toolbar={
@@ -867,5 +876,6 @@ export function BrandVisualLibraryClient({
         </DialogContent>
       </Dialog>
     </>
+    </div>
   );
 }

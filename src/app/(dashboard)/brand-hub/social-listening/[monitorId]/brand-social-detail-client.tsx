@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useTransition } from "react";
-import { ArrowLeft, ImageIcon } from "lucide-react";
+import { useMemo, useTransition } from "react";
+import {
+  ImageIcon,
+  MessageSquare,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import {
   SocialListeningPlatform,
   SocialListeningStatus,
@@ -11,14 +16,16 @@ import {
 import { toast } from "sonner";
 import { harvestSocialVisualsAction } from "@/actions/brand-visual-research";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { useBrandJobProgress } from "../../use-brand-job-progress";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import {
   SentimentBreakdownDonut,
   SentimentTimelineChart,
   ShareOfVoiceChart,
 } from "@/components/research-hub/social-insight-charts";
-import { SocialCommentFeed, type CommentFeedRow } from "@/components/research-hub/social-comment-feed";
+import type { CommentFeedRow } from "@/components/research-hub/social-comment-feed";
+import { SocialCommentFeed } from "@/components/research-hub/social-comment-feed";
 import { SocialCommentInsightsSection } from "@/components/research-hub/social-comment-insights-section";
 import { SocialEngagementInsights } from "@/components/research-hub/social-engagement-insights";
 import { SocialInfluencerTable } from "@/components/research-hub/social-influencer-table";
@@ -26,22 +33,28 @@ import {
   SocialMentionFeed,
   type MentionFeedRow,
 } from "@/components/research-hub/social-mention-feed";
-import { SocialPainPointsCard } from "@/components/research-hub/social-pain-points-list";
+import { SocialPainPointsList } from "@/components/research-hub/social-pain-points-list";
+import { SocialSyncStatusStrip } from "@/components/research-hub/social-sync-status-strip";
 import { SocialViralCards } from "@/components/research-hub/social-viral-cards";
-import { SocialWishlistCard } from "@/components/research-hub/social-wishlist-list";
+import { SocialWishlistList } from "@/components/research-hub/social-wishlist-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { statusToProgress } from "@/components/research-hub/job-status-progress";
 import {
   SOCIAL_LISTENING_PLATFORM_LABELS,
   SOCIAL_LISTENING_STATUS_LABELS,
 } from "@/lib/research/labels";
-import { cn } from "@/lib/utils";
+import {
+  BrandHubPageHeader,
+  BrandHubSection,
+  BrandHubStatChip,
+  hub,
+} from "@/components/brand-hub/brand-hub-primitives";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import type { EngagementInsights } from "@/lib/research/social-listening/social-comment-types";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import { cn } from "@/lib/utils";
 
 export type SocialDetailData = {
   id: string;
@@ -93,19 +106,25 @@ export type SocialDetailData = {
   thumbnailMentionCount: number;
 };
 
-function statusTone(status: SocialListeningStatus | null) {
+function statusChipTone(
+  status: SocialListeningStatus | null,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "COLLECTING":
     case "ANALYZING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
 }
+
+const tabContentClass =
+  "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
 
 export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
   const router = useRouter();
@@ -114,8 +133,11 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
 
   const inProgress =
     data.batchStatus === "COLLECTING" ||
-    data.batchStatus === "ANALYZING" ||
-    data.batchStatus === "PENDING";
+    data.batchStatus === "PENDING" ||
+    (data.batchStatus === "ANALYZING" && data.mentions.length === 0);
+
+  const commentAnalysisInProgress =
+    data.batchStatus === "ANALYZING" && data.mentions.length > 0;
 
   const progress = statusToProgress(data.batchStatus ?? "PENDING");
   const collectingPlatforms = data.platformProgress.filter(
@@ -137,13 +159,17 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
     }));
   }, [data.mentions, data.platforms]);
 
-  useEffect(() => {
-    if (!inProgress) return;
-    const id = window.setInterval(() => router.refresh(), 12_000);
-    return () => window.clearInterval(id);
-  }, [inProgress, router]);
+  const totalMentions = data.mentions.length;
+  const showSyncStrip =
+    inProgress ||
+    commentAnalysisInProgress ||
+    data.platformProgress.some((p) => p.status != null);
 
   const canHarvestVisuals = data.thumbnailMentionCount > 0;
+
+  useBrandJobProgress({
+    inProgress: inProgress || commentAnalysisInProgress,
+  });
 
   function handleHarvestVisuals() {
     startTransition(async () => {
@@ -157,235 +183,272 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
     });
   }
 
+  const headerDescription = `${data.keywords.join(", ")} · ${data.platforms
+    .map((p) => SOCIAL_LISTENING_PLATFORM_LABELS[p])
+    .join(", ")}`;
+
   return (
-    <div className="space-y-6">
-      <ResearchModelBadgeGroup meta={data.aiMeta} />
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href="/brand-hub/social-listening"
-            className="text-muted-foreground hover:text-foreground mb-2 inline-flex items-center gap-1 text-xs"
-          >
-            <ArrowLeft className="size-3" /> Kembali
-          </Link>
-          <h1 className="text-xl font-semibold">{data.name}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {data.keywords.join(", ")} ·{" "}
-            {data.platforms
-              .map((p) => SOCIAL_LISTENING_PLATFORM_LABELS[p])
-              .join(", ")}
-          </p>
-          {data.mentions.length > 0 ? (
-            <p className="text-muted-foreground mt-1 text-xs">
-              Mention:{" "}
-              {mentionCounts
-                .map(
-                  ({ platform, count }) =>
-                    `${SOCIAL_LISTENING_PLATFORM_LABELS[platform]} ${count}`,
-                )
-                .join(" · ")}
-            </p>
-          ) : null}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span
-              className={cn(
-                "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                statusTone(data.batchStatus),
-              )}
-            >
-              {data.batchStatus
-                ? SOCIAL_LISTENING_STATUS_LABELS[data.batchStatus]
-                : "Belum sync"}
-            </span>
+    <div className="flex flex-col gap-6 pb-6">
+      <Link
+        href={brandHubHref("/brand-hub/social-listening", brandId)}
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
+      >
+        <MessageSquare className="size-3" aria-hidden />
+        Kembali ke Social Listening
+      </Link>
+
+      <BrandHubPageHeader
+        variant="detail"
+        icon={MessageSquare}
+        eyebrow="Social Listening"
+        title={data.name}
+        description={headerDescription}
+        right={
+          <>
+            <ResearchModelBadgeGroup meta={data.aiMeta} />
             <Badge variant="secondary" className="text-[10px]">
               Dikelola Market Analyst
             </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleHarvestVisuals}
+              disabled={pending || !canHarvestVisuals}
+              title={
+                canHarvestVisuals
+                  ? undefined
+                  : "Batch READY dengan thumbnail diperlukan"
+              }
+            >
+              <ImageIcon className="mr-1.5 size-3.5" />
+              Harvest Visuals ({data.thumbnailMentionCount})
+            </Button>
+          </>
+        }
+        footer={
+          <div className="flex flex-wrap items-center gap-2">
+            <BrandHubStatChip
+              label="Status"
+              value={
+                data.batchStatus
+                  ? SOCIAL_LISTENING_STATUS_LABELS[data.batchStatus]
+                  : "Belum sync"
+              }
+              tone={statusChipTone(data.batchStatus)}
+            />
+            <BrandHubStatChip
+              label="Total mention"
+              value={totalMentions.toLocaleString("id-ID")}
+              tone="primary"
+            />
+            {mentionCounts.map(({ platform, count }) => (
+              <BrandHubStatChip
+                key={platform}
+                label={SOCIAL_LISTENING_PLATFORM_LABELS[platform]}
+                value={count.toLocaleString("id-ID")}
+              />
+            ))}
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleHarvestVisuals}
-            disabled={pending || !canHarvestVisuals}
-            title={
-              canHarvestVisuals
-                ? undefined
-                : "Batch READY dengan thumbnail diperlukan"
-            }
-          >
-            <ImageIcon className="mr-1.5 size-3.5" />
-            Harvest Visuals ({data.thumbnailMentionCount})
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
-      {inProgress ? (
-        <div className="border-amber-300/60 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/10 rounded-lg border px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-          Sync sedang berjalan di Research Hub. Data di bawah dari batch terakhir
-          yang selesai — halaman akan diperbarui otomatis.
-        </div>
-      ) : null}
-
-      {inProgress ? (
-        <JobProgressBar
-          percent={progress.percent}
+      {showSyncStrip ? (
+        <SocialSyncStatusStrip
+          showProgress={inProgress || commentAnalysisInProgress}
+          progressPercent={progress.percent}
+          progressTitle={
+            commentAnalysisInProgress
+              ? "Menganalisis komentar sosial"
+              : "Mengumpulkan mention sosial"
+          }
           stepLabel={stepLabel}
-          title="Mengumpulkan mention sosial"
+          progressNote={
+            inProgress
+              ? "Feed menampilkan data sync terakhir yang selesai — akan diperbarui otomatis setelah batch selesai."
+              : commentAnalysisInProgress
+                ? "Mengambil komentar dari video teratas via Apify. Halaman akan refresh otomatis."
+                : null
+          }
+          platformProgress={data.platformProgress}
         />
       ) : null}
 
-      {(inProgress ||
-        data.platformProgress.some((p) => p.status != null)) && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Status per platform
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {data.platformProgress.map(({ platform, status, message }) => (
-              <div
-                key={platform}
-                className="flex flex-wrap items-center justify-between gap-2 text-sm"
-              >
-                <span className="font-medium">
-                  {SOCIAL_LISTENING_PLATFORM_LABELS[platform]}
-                </span>
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                    status === "READY"
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                      : status === "FAILED"
-                        ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
-                        : status === "COLLECTING"
-                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                          : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {status ?? "—"}
-                </span>
-                {message ? (
-                  <p className="text-muted-foreground w-full text-xs">{message}</p>
-                ) : null}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
       {data.errorMessage ? (
-        <p className="text-amber-700 dark:text-amber-300 text-sm">
+        <p
+          className={cn(
+            hub.nestedPanel,
+            "text-amber-800 dark:text-amber-200 text-sm",
+          )}
+          role="alert"
+        >
           {data.errorMessage}
         </p>
       ) : null}
 
-      {data.aiSummary ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">AI Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="text-muted-foreground text-sm leading-relaxed">
-            {data.aiSummary}
-          </CardContent>
-        </Card>
-      ) : null}
+      <Tabs defaultValue="ringkasan" className="gap-0">
+        <div className={cn(hub.stickyToolbar, "pb-0")}>
+          <TabsList variant="line" className="h-9 w-full justify-start gap-4">
+            <TabsTrigger value="ringkasan" className="px-1">
+              <Sparkles className="size-3.5" aria-hidden />
+              Ringkasan
+            </TabsTrigger>
+            <TabsTrigger value="mention" className="px-1">
+              <MessageSquare className="size-3.5" aria-hidden />
+              Mention
+              {totalMentions > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {totalMentions}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="komentar" className="px-1">
+              Komentar
+              {data.comments.length > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {data.comments.length}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="kreator" className="px-1">
+              <Users className="size-3.5" aria-hidden />
+              Kreator & Viral
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-      {data.actionPlan ? (
-        <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Sosial (AI)" />
-      ) : null}
+        <TabsContent value="ringkasan" className={tabContentClass}>
+          {data.aiSummary ? (
+            <BrandHubSection title="AI Summary" delayMs={0}>
+              <div className={cn(hub.panel, "text-muted-foreground text-sm leading-relaxed")}>
+                {data.aiSummary}
+              </div>
+            </BrandHubSection>
+          ) : null}
 
-      {data.engagementInsights ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Metrik Engagement</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SocialEngagementInsights insights={data.engagementInsights} />
-          </CardContent>
-        </Card>
-      ) : null}
+          {data.actionPlan ? (
+            <BrandHubSection
+              title="Rencana Aksi"
+              description="Rekomendasi langkah berikutnya dari analisis AI."
+              delayMs={50}
+            >
+              <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Sosial (AI)" />
+            </BrandHubSection>
+          ) : null}
 
-      <SocialCommentInsightsSection
-        commentAiSummary={data.commentAiSummary}
-        topCommentPainPoints={data.topCommentPainPoints}
-        topCommentWishlist={data.topCommentWishlist}
-        commentCategoryBreakdown={data.commentCategoryBreakdown}
-      />
+          {data.engagementInsights &&
+          data.engagementInsights.scrapedCommentTexts > 0 ? (
+            <BrandHubSection
+              title="Metrik Engagement"
+              description="Rata-rata interaksi dan rasio komentar dari mention yang terkumpul."
+              delayMs={100}
+            >
+              <div className={hub.panel}>
+                <SocialEngagementInsights insights={data.engagementInsights} />
+              </div>
+            </BrandHubSection>
+          ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Distribusi Sentimen</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SentimentBreakdownDonut data={data.categoryBreakdown} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Tren Sentimen Harian</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SentimentTimelineChart data={data.sentimentTimeline} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Share of Voice</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ShareOfVoiceChart
-              data={mentionCounts.map((m) => ({
-                platform: SOCIAL_LISTENING_PLATFORM_LABELS[m.platform],
-                count: m.count,
-              }))}
+          <BrandHubSection
+            title="Analitik Sentimen"
+            description="Distribusi klasifikasi, tren harian, dan share of voice per platform."
+            delayMs={150}
+          >
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className={cn(hub.panel, "flex min-h-[280px] flex-col")}>
+                <p className="mb-3 text-sm font-medium">Distribusi Sentimen</p>
+                <div className="flex flex-1 items-center justify-center">
+                  <SentimentBreakdownDonut data={data.categoryBreakdown} />
+                </div>
+              </div>
+              <div className={cn(hub.panel, "flex min-h-[280px] flex-col")}>
+                <p className="mb-3 text-sm font-medium">Tren Sentimen Harian</p>
+                <div className="flex flex-1 items-center">
+                  <SentimentTimelineChart data={data.sentimentTimeline} />
+                </div>
+              </div>
+              <div className={cn(hub.panel, "flex min-h-[280px] flex-col")}>
+                <p className="mb-3 text-sm font-medium">Share of Voice</p>
+                <div className="flex flex-1 items-center justify-center">
+                  <ShareOfVoiceChart
+                    data={mentionCounts.map((m) => ({
+                      platform: SOCIAL_LISTENING_PLATFORM_LABELS[m.platform],
+                      count: m.count,
+                    }))}
+                  />
+                </div>
+              </div>
+            </div>
+          </BrandHubSection>
+
+          <BrandHubSection
+            title="Tema dari Mention"
+            description="Pain points dan wishlist yang terdeteksi dari teks mention."
+            delayMs={200}
+          >
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className={hub.panel}>
+                <p className="mb-3 text-sm font-medium">Top Pain Points</p>
+                <SocialPainPointsList items={data.topPainPoints} />
+              </div>
+              <div className={hub.panel}>
+                <p className="mb-3 text-sm font-medium">Top Wishlist</p>
+                <SocialWishlistList items={data.topWishlist} />
+              </div>
+            </div>
+          </BrandHubSection>
+        </TabsContent>
+
+        <TabsContent value="mention" className={tabContentClass}>
+          <BrandHubSection
+            title="Mention Feed"
+            description="Semua mention yang terkumpul dari platform yang dipantau."
+          >
+            <div className={hub.panel}>
+              <SocialMentionFeed rows={data.mentions} />
+            </div>
+          </BrandHubSection>
+        </TabsContent>
+
+        <TabsContent value="komentar" className={tabContentClass}>
+          <BrandHubSection
+            title="Analisis Komentar"
+            description="Insight dari komentar video teratas."
+          >
+            <SocialCommentInsightsSection
+              commentAiSummary={data.commentAiSummary}
+              topCommentPainPoints={data.topCommentPainPoints}
+              topCommentWishlist={data.topCommentWishlist}
+              commentCategoryBreakdown={data.commentCategoryBreakdown}
             />
-          </CardContent>
-        </Card>
-      </div>
+            {data.comments.length > 0 ? (
+              <div className={cn(hub.panel, "mt-4")}>
+                <SocialCommentFeed rows={data.comments} />
+              </div>
+            ) : null}
+          </BrandHubSection>
+        </TabsContent>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SocialPainPointsCard items={data.topPainPoints} />
-        <SocialWishlistCard items={data.topWishlist} />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Influencer Radar</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SocialInfluencerTable rows={data.influencers} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Viral Content Tracker</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SocialViralCards items={data.viralContent} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Mention Feed</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SocialMentionFeed rows={data.mentions} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Analisis Komentar</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SocialCommentFeed rows={data.comments} />
-        </CardContent>
-      </Card>
+        <TabsContent value="kreator" className={tabContentClass}>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <BrandHubSection
+              title="Influencer Radar"
+              description="Akun dengan mention dan engagement tertinggi."
+            >
+              <div className={hub.panel}>
+                <SocialInfluencerTable rows={data.influencers} />
+              </div>
+            </BrandHubSection>
+            <BrandHubSection
+              title="Viral Content Tracker"
+              description="Konten dengan performa engagement terbaik."
+            >
+              <div className={hub.panel}>
+                <SocialViralCards items={data.viralContent} />
+              </div>
+            </BrandHubSection>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

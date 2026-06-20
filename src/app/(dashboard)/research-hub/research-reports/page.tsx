@@ -4,7 +4,7 @@ import {
   listReportSourceOptions,
 } from "@/lib/research/reports/list-report-source-options";
 import { prisma } from "@/lib/prisma";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import {
   ResearchReportsClient,
   type ReportRow,
@@ -34,18 +34,17 @@ export default async function ResearchReportsPage() {
   }));
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={FileText}
-        title="Research Reports"
-        subtitle="Laporan riset terdokumentasi — weekly digest, deep dive, battle card, dan export PDF."
-      />
+    <ResearchHubModulePage
+      icon={FileText}
+      title="Research Reports"
+      description="Laporan riset terdokumentasi — weekly digest, deep dive, battle card, dan export PDF."
+    >
       <ResearchReportsClient
         reports={rows}
         latestWeeklyId={latestWeekly?.id ?? null}
         options={sourceOptions}
         availableModules={availableModules}
       />
-    </div>
+    </ResearchHubModulePage>
   );
 }

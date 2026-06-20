@@ -8,6 +8,8 @@ export type ReviewRawRow = {
   sentiment: "POSITIVE" | "NEUTRAL" | "NEGATIVE" | null;
 };
 
+export type ReviewSentimentFilter = "POSITIVE" | "NEUTRAL" | "NEGATIVE";
+
 export type ReviewRawPage = {
   rows: ReviewRawRow[];
   total: number;

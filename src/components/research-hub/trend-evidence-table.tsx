@@ -36,8 +36,7 @@ export function TrendEvidenceTable({
   if (rows.length === 0) return null;
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
+    <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Sumber</TableHead>
@@ -55,7 +54,10 @@ export function TrendEvidenceTable({
                 ? row.moduleHref.replace(/^\/research-hub/, moduleBasePath)
                 : row.url ?? row.moduleHref;
             return (
-              <TableRow key={row.signalId}>
+              <TableRow
+                key={row.signalId}
+                className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+              >
                 <TableCell className="text-xs font-medium">
                   {SOURCE_LABELS[row.source] ?? row.source}
                 </TableCell>
@@ -98,6 +100,5 @@ export function TrendEvidenceTable({
           })}
         </TableBody>
       </Table>
-    </div>
   );
 }

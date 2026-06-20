@@ -8,10 +8,9 @@ import { generateVisualTrendBriefAction } from "@/actions/brand-visual-trend";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { useBrandHubBrandId, brandHubHref } from "@/hooks/use-brand-hub-brand-id";
 import type { VisualTrendCollectionAnalytics } from "@/lib/brand-research/visual-trend-analytics";
-import { BrandHubEmptyState } from "@/components/brand-hub/brand-hub-primitives";
+import { BrandHubEmptyState, BrandHubSection, hub } from "@/components/brand-hub/brand-hub-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type MarketItem = {
@@ -132,39 +131,36 @@ export function BrandVisualTrendClient({
   const generatingAll = pending && activeBriefKey === ALL_BRIEF_KEY;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_minmax(240px,300px)]">
+    <div className={cn("grid gap-6 lg:grid-cols-[1fr_minmax(240px,300px)]", hub.entrance)}>
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-muted-foreground text-sm">
-            {collections.length} koleksi Pinterest
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={() => runBrief(null, "Semua koleksi")}
-          >
-            {generatingAll ? (
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="mr-1.5 size-3.5" />
-            )}
-            {generatingAll ? "Menghasilkan…" : "Generate brief (semua)"}
-          </Button>
-        </div>
-
-        {generatingAll ? (
-          <Card className="border-dashed">
-            <CardContent className="text-muted-foreground flex items-center gap-2 py-6 text-sm">
+        <BrandHubSection
+          title="Koleksi Pinterest"
+          description={`${collections.length} koleksi — generate brief estetika per koleksi atau semua sekaligus.`}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => runBrief(null, "Semua koleksi")}
+            >
+              {generatingAll ? (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-1.5 size-3.5" />
+              )}
+              {generatingAll ? "Menghasilkan…" : "Generate brief (semua)"}
+            </Button>
+          }
+        >
+          {generatingAll ? (
+            <div className={cn(hub.nestedPanel, "text-muted-foreground flex items-center gap-2 text-sm")}>
               <Loader2 className="size-4 animate-spin" />
               AI menulis brief estetika untuk semua koleksi…
-            </CardContent>
-          </Card>
-        ) : null}
+            </div>
+          ) : null}
 
-        {allBrief ? (
-          <Card className="border-primary/25">
-            <CardContent className="pt-4">
+          {allBrief ? (
+            <div className={cn(hub.panel, "border-primary/25")}>
               <BriefOutputPanel
                 entry={allBrief}
                 innerRef={(el) => {
@@ -172,20 +168,28 @@ export function BrandVisualTrendClient({
                 }}
                 onCopy={() => copyBrief(ALL_BRIEF_KEY)}
               />
-            </CardContent>
-          </Card>
-        ) : null}
+            </div>
+          ) : null}
+        </BrandHubSection>
 
-        {collections.map((c) => {
+        {collections.map((c, index) => {
           const key = c.id;
           const entry = briefByKey[key];
           const generating = pending && activeBriefKey === key;
 
           return (
-            <Card key={c.id}>
-              <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
+            <div
+              key={c.id}
+              className={cn(hub.panel, hub.entrance, "space-y-4")}
+              style={
+                index > 0 && index < 8
+                  ? { animationDelay: `${index * 50}ms` }
+                  : undefined
+              }
+            >
+              <div className="flex flex-row items-start justify-between gap-3">
                 <div>
-                  <CardTitle className="text-base">{c.name}</CardTitle>
+                  <h3 className="text-base font-semibold">{c.name}</h3>
                   <p className="text-muted-foreground mt-1 text-xs">
                     {c.keywords.join(", ") || "Tanpa keyword"}
                   </p>
@@ -193,8 +197,7 @@ export function BrandVisualTrendClient({
                 <Badge variant="secondary" className="shrink-0 tabular-nums">
                   {c.assetCount} asset
                 </Badge>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              </div>
                 <div className="flex flex-wrap gap-3 text-xs">
                   <span className="text-muted-foreground">
                     Scrape terakhir:{" "}
@@ -278,37 +281,27 @@ export function BrandVisualTrendClient({
                     onCopy={() => copyBrief(key)}
                   />
                 ) : null}
-              </CardContent>
-            </Card>
+            </div>
           );
         })}
       </div>
 
       <aside className="flex flex-col gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Konteks pasar (Research)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <BrandHubSection title="Konteks pasar (Research)" delayMs={0}>
+          <div className={hub.panel}>
             <p className="text-muted-foreground text-xs leading-relaxed">
               Sinyal kategori dari Trend Radar Research Hub — untuk strategi, bukan
               estetika visual.
             </p>
             {marketNarrative ? (
-              <p className="text-xs leading-relaxed">{marketNarrative}</p>
+              <p className="mt-3 text-xs leading-relaxed">{marketNarrative}</p>
             ) : null}
             {marketContext.length === 0 ? (
-              <p className="text-muted-foreground text-xs">Belum ada digest tren siap.</p>
+              <p className="text-muted-foreground mt-3 text-xs">Belum ada digest tren siap.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="mt-3 space-y-2">
                 {marketContext.map((item) => (
-                  <li
-                    key={item.id}
-                    className={cn(
-                      "rounded-lg border px-3 py-2 text-xs",
-                      "border-border/80",
-                    )}
-                  >
+                  <li key={item.id} className={cn(hub.nestedPanel, "text-xs")}>
                     <p className="font-medium">{item.title}</p>
                     <p className="text-muted-foreground mt-1">
                       Skor {item.score.toFixed(1)}
@@ -322,7 +315,7 @@ export function BrandVisualTrendClient({
             <Button
               size="sm"
               variant="outline"
-              className="w-full"
+              className="mt-4 w-full"
               nativeButton={false}
               render={
                 <Link href={brandHubHref("/brand-hub/strategy", brandId)}>
@@ -330,14 +323,11 @@ export function BrandVisualTrendClient({
                 </Link>
               }
             />
-          </CardContent>
-        </Card>
+          </div>
+        </BrandHubSection>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Visual Library</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <BrandHubSection title="Visual Library" delayMs={50}>
+          <div className={hub.panel}>
             <p className="text-muted-foreground mb-3 text-xs">
               Tambah koleksi Pinterest untuk memperkaya analisis tren visual.
             </p>
@@ -353,8 +343,8 @@ export function BrandVisualTrendClient({
                 </Link>
               }
             />
-          </CardContent>
-        </Card>
+          </div>
+        </BrandHubSection>
       </aside>
     </div>
   );

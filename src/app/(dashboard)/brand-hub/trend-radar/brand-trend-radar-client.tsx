@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { TrendPhase, TrendRadarStatus } from "@prisma/client";
-import { Plus, Radar, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, Radar, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteBrandTrendDigest,
@@ -17,11 +17,11 @@ import {
   validateTrendConfigClient,
 } from "@/components/research-hub/trend-source-config-picker";
 import { TrendArchiveTable } from "@/components/research-hub/trend-archive-table";
+import { TrendDigestProgressStrip } from "@/components/research-hub/trend-digest-progress-strip";
 import { TrendQualityBanner } from "@/components/research-hub/trend-quality-banner";
-import { TrendSignalStatsLine } from "@/components/research-hub/trend-signal-stats-line";
+import { TrendSignalStatsChips } from "@/components/research-hub/trend-signal-stats-line";
 import { TrendPhaseBoard } from "@/components/research-hub/trend-phase-board";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -31,9 +31,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatRelativeTime } from "@/lib/research/labels";
+import {
+  TREND_RADAR_STATUS_LABELS,
+  formatRelativeTime,
+} from "@/lib/research/labels";
 import type { TrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config-types";
 import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
+import {
+  hub,
+  BrandHubEmptyState,
+  BrandHubSection,
+  BrandHubStatChip,
+} from "@/components/brand-hub/brand-hub-primitives";
+import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { cn } from "@/lib/utils";
+import { useBrandJobProgress } from "../use-brand-job-progress";
 
 export type BrandTrendRadarPageData = {
   latestGlobal: {
@@ -69,14 +81,34 @@ export type BrandTrendRadarPageData = {
   tiktokConfigured: boolean;
 };
 
+function statusChipTone(
+  status: TrendRadarStatus | null | undefined,
+): "neutral" | "success" | "warning" | "primary" {
+  switch (status) {
+    case "READY":
+      return "success";
+    case "FAILED":
+      return "warning";
+    case "COLLECTING":
+    case "ANALYZING":
+    case "PENDING":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
 export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData }) {
   const router = useRouter();
+  const brandId = useBrandHubBrandId();
   const [pending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [seedKeywords, setSeedKeywords] = useState("");
   const [sourceConfig, setSourceConfig] = useState<TrendSourceConfig>(
     data.globalSourceConfig,
   );
+
+  const trendBasePath = "/brand-hub/trend-radar";
 
   const hasInProgress =
     data.latestGlobal?.status === "COLLECTING" ||
@@ -85,11 +117,23 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
       (d) => d.status === "COLLECTING" || d.status === "ANALYZING",
     );
 
-  useEffect(() => {
-    if (!hasInProgress) return;
-    const id = window.setInterval(() => router.refresh(), 15_000);
-    return () => window.clearInterval(id);
-  }, [hasInProgress, router]);
+  const progressSubtitle = (() => {
+    if (data.latestGlobal?.status === "COLLECTING") {
+      return "Digest global — mengumpulkan sinyal";
+    }
+    if (data.latestGlobal?.status === "ANALYZING") {
+      return "Digest global — menganalisis tren";
+    }
+    const digest = data.digests.find(
+      (d) => d.status === "COLLECTING" || d.status === "ANALYZING",
+    );
+    if (digest) {
+      return `Digest ${digest.isGlobal ? "global" : digest.brandName ?? "brand"} — ${digest.status === "COLLECTING" ? "mengumpulkan" : "menganalisis"}`;
+    }
+    return null;
+  })();
+
+  useBrandJobProgress({ inProgress: hasInProgress });
 
   function handleRefreshGlobal() {
     const validationError = validateTrendConfigClient(sourceConfig);
@@ -141,88 +185,154 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
-          {data.digests.length} digest tersimpan
-          {!data.tiktokConfigured ? " · TikTok Trends belum dikonfigurasi" : ""}
-        </p>
-        <Button size="sm" onClick={() => setDialogOpen(true)} disabled={pending}>
-          <Plus className="size-3.5" aria-hidden />
-          Buat Digest Baru
-        </Button>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap gap-2">
+        <BrandHubStatChip
+          label="Digest global"
+          value={
+            data.latestGlobal
+              ? TREND_RADAR_STATUS_LABELS[data.latestGlobal.status]
+              : "Belum ada"
+          }
+          tone={statusChipTone(data.latestGlobal?.status)}
+        />
+        {data.latestGlobal?.signalStats ? (
+          <BrandHubStatChip
+            label="Sinyal"
+            value={data.latestGlobal.signalStats.total.toLocaleString("id-ID")}
+            tone="primary"
+          />
+        ) : null}
+        <BrandHubStatChip
+          label="Arsip"
+          value={data.digests.length.toLocaleString("id-ID")}
+        />
+        {!data.tiktokConfigured ? (
+          <BrandHubStatChip label="TikTok" value="Belum dikonfigurasi" tone="warning" />
+        ) : null}
       </div>
 
-      {data.latestGlobal ? (
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-            <div>
-              <CardTitle className="text-base">Digest Global Terbaru</CardTitle>
-              <TrendSignalStatsLine stats={data.latestGlobal.signalStats} />
-              {data.latestGlobal.generatedAt ? (
-                <p className="text-muted-foreground text-xs">
-                  {formatRelativeTime(new Date(data.latestGlobal.generatedAt))}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex gap-1">
+      {hasInProgress ? (
+        <TrendDigestProgressStrip subtitle={progressSubtitle} />
+      ) : null}
+
+      <BrandHubSection
+        title="Digest Global Terbaru"
+        description={
+          data.latestGlobal?.generatedAt
+            ? `Update terakhir: ${formatRelativeTime(new Date(data.latestGlobal.generatedAt))}`
+            : "Belum ada digest global"
+        }
+        action={
+          <div className="flex gap-2">
+            {data.latestGlobal ? (
               <Button
-                variant="outline"
                 size="sm"
-                disabled={pending}
-                onClick={() => handleRefreshDigest(data.latestGlobal!.id)}
+                variant="outline"
+                render={
+                  <Link
+                    href={brandHubHref(
+                      `/brand-hub/trend-radar/${data.latestGlobal.id}`,
+                      brandId,
+                    )}
+                  />
+                }
               >
-                <RefreshCw className="size-3.5" aria-hidden />
+                <ExternalLink className="size-3.5" aria-hidden />
+                Buka digest
               </Button>
-              <Link
-                href={`/brand-hub/trend-radar/${data.latestGlobal.id}`}
-                className="inline-flex h-8 items-center justify-center rounded-lg border border-input bg-background px-3 text-xs font-medium shadow-xs hover:bg-accent"
-              >
-                Detail
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
+            ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDialogOpen(true)}
+              disabled={pending}
+            >
+              <Plus className="size-3.5" aria-hidden />
+              Buat Digest Baru
+            </Button>
+          </div>
+        }
+      >
+        {data.latestGlobal ? (
+          <div className="flex flex-col gap-4">
             <TrendQualityBanner
               digestMode={data.latestGlobal.digestMode}
               dataNotice={data.latestGlobal.dataNotice}
             />
+            {data.latestGlobal.signalStats ? (
+              <TrendSignalStatsChips stats={data.latestGlobal.signalStats} />
+            ) : null}
             {data.latestGlobal.narrative ? (
-              <p className="text-sm leading-relaxed">{data.latestGlobal.narrative}</p>
+              <div
+                className={cn(
+                  hub.panel,
+                  "text-muted-foreground text-sm leading-relaxed",
+                )}
+              >
+                {data.latestGlobal.narrative}
+              </div>
             ) : null}
             <TrendPhaseBoard
-              items={data.latestGlobal.items}
               digestId={data.latestGlobal.id}
-              basePath="/brand-hub/trend-radar"
+              items={data.latestGlobal.items}
+              basePath={trendBasePath}
             />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-12 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <Radar className="size-6" />
-          </span>
-          <p className="text-sm font-semibold">Belum ada digest tren</p>
-          <p className="text-muted-foreground text-xs">
-            Buat digest pertama untuk mendeteksi tren visual, bahan, dan kategori.
-          </p>
-        </div>
-      )}
+            <div className="flex gap-1 border-t border-border/40 pt-3">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => handleRefreshDigest(data.latestGlobal!.id)}
+              >
+                <RefreshCw className="size-3.5" aria-hidden />
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                disabled={pending}
+                onClick={() => handleDelete(data.latestGlobal!.id)}
+              >
+                <Trash2 className="size-3.5" aria-hidden />
+                Hapus
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <BrandHubEmptyState
+            icon={Radar}
+            title="Belum ada digest tren"
+            description="Buat digest pertama untuk mendeteksi tren visual, bahan, dan kategori."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)} disabled={pending}>
+                <Plus className="size-3.5" aria-hidden />
+                Buat Digest Baru
+              </Button>
+            }
+          />
+        )}
+      </BrandHubSection>
 
       {data.digests.length > 0 ? (
-        <TrendArchiveTable
-          digests={data.digests.map((d) => ({
-            id: d.id,
-            weekStart: d.weekStart,
-            weekEnd: d.weekEnd,
-            status: d.status,
-            isGlobal: d.isGlobal,
-            watchlistName: d.brandName,
-            itemCount: d.itemCount,
-            generatedAt: d.generatedAt,
-          }))}
-          basePath="/brand-hub/trend-radar"
-        />
+        <BrandHubSection title="Arsip Digest" delayMs={80}>
+          <div className={hub.panel}>
+            <TrendArchiveTable
+              digests={data.digests.map((d) => ({
+                id: d.id,
+                weekStart: d.weekStart,
+                weekEnd: d.weekEnd,
+                status: d.status,
+                isGlobal: d.isGlobal,
+                watchlistName: d.brandName,
+                itemCount: d.itemCount,
+                generatedAt: d.generatedAt,
+              }))}
+              basePath={trendBasePath}
+            />
+          </div>
+        </BrandHubSection>
       ) : null}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

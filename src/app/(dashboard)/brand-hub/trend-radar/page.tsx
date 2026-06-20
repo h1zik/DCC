@@ -1,6 +1,6 @@
 import { Radar } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { PageHero } from "@/components/page-hero";
+import { BrandHubListPage } from "@/components/brand-hub/brand-hub-list-page";
 import { isTikTokTrendsConfigured } from "@/lib/research/trend-radar/tiktok-trends";
 import { getDefaultTrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config";
 import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
@@ -73,13 +73,13 @@ export default async function BrandTrendRadarPage() {
   };
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={Radar}
-        title="Trend Radar"
-        subtitle="Deteksi tren bahan, klaim, dan kategori — digest mingguan berbasis sinyal terverifikasi."
-      />
+    <BrandHubListPage
+      icon={Radar}
+      eyebrow="Market Intelligence"
+      title="Trend Radar"
+      subtitle="Deteksi tren bahan, klaim, dan kategori — digest mingguan berbasis sinyal terverifikasi."
+    >
       <BrandTrendRadarClient data={pageData} />
-    </div>
+    </BrandHubListPage>
   );
 }

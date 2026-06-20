@@ -1,6 +1,6 @@
 import { MessageSquare } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import {
   SocialListeningClient,
   type SocialMonitorRow,
@@ -36,13 +36,12 @@ export default async function SocialListeningPage() {
   });
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={MessageSquare}
-        title="Social Listening"
-        subtitle="Monitor percakapan organik TikTok & Instagram — pain points, wishlist, influencer, dan konten viral."
-      />
+    <ResearchHubModulePage
+      icon={MessageSquare}
+      title="Social Listening"
+      description="Monitor percakapan organik TikTok & Instagram — pain points, wishlist, influencer, dan konten viral."
+    >
       <SocialListeningClient monitors={rows} />
-    </div>
+    </ResearchHubModulePage>
   );
 }

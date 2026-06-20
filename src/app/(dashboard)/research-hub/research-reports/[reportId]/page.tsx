@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { parseReportSections } from "@/lib/research/reports/types";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import {
   ReportDetailClient,
   type ReportDetailData,
@@ -19,6 +20,13 @@ export default async function ResearchReportDetailPage({
   });
   if (!report) notFound();
 
+  const metrics =
+    report.metrics &&
+    typeof report.metrics === "object" &&
+    "reviewSourcesReady" in (report.metrics as object)
+      ? (report.metrics as ReportDetailData["metrics"])
+      : null;
+
   const data: ReportDetailData = {
     id: report.id,
     title: report.title,
@@ -35,6 +43,7 @@ export default async function ResearchReportDetailPage({
       "nodes" in report.feedbackLoop
         ? (report.feedbackLoop as ReportDetailData["feedbackLoop"])
         : null,
+    metrics,
     periodStart: report.periodStart?.toISOString() ?? null,
     periodEnd: report.periodEnd?.toISOString() ?? null,
     errorMessage: report.errorMessage,
@@ -43,8 +52,8 @@ export default async function ResearchReportDetailPage({
   };
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
+    <ResearchHubPageShell>
       <ReportDetailClient data={data} />
-    </div>
+    </ResearchHubPageShell>
   );
 }

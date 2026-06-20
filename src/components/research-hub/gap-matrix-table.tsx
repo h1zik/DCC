@@ -1,3 +1,4 @@
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import {
   Table,
   TableBody,
@@ -56,7 +57,10 @@ export function GapMatrixTable({ rows }: { rows: GapMatrixRow[] }) {
       </TableHeader>
       <TableBody>
         {rows.map((row, i) => (
-          <TableRow key={`${row.claim}-${i}`}>
+          <TableRow
+            key={`${row.claim}-${i}`}
+            className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+          >
             <TableCell className="align-top font-medium">
               {row.claim}
               {row.competitors?.length > 0 ? (
@@ -101,7 +105,10 @@ export function GapMatrixTable({ rows }: { rows: GapMatrixRow[] }) {
                   {row.evidenceRefs.slice(0, 4).map((ref, j) => (
                     <span
                       key={j}
-                      className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
+                      className={cn(
+                        hub.nestedPanel,
+                        "text-muted-foreground px-1.5 py-0.5 text-[10px]",
+                      )}
                     >
                       {ref}
                     </span>

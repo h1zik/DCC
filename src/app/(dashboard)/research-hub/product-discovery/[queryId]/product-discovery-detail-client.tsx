@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import {
+  PackageSearch,
+  RefreshCw,
+  Sparkles,
+  Store,
+  Tags,
+} from "lucide-react";
 import {
   ProductDiscoveryStatus,
   ResearchMarketplace,
@@ -14,10 +20,7 @@ import {
   sendDiscoveryProductToReviewIntel,
 } from "@/actions/research-product-discovery";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import {
-  ProductDiscoveryTable,
-  type ProductDiscoveryRow,
-} from "@/components/research-hub/product-discovery-table";
+import { ProductDiscoveryProductsView } from "@/components/research-hub/product-discovery-products-view";
 import {
   Table,
   TableBody,
@@ -30,15 +33,22 @@ import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { DiscoveryBubbleChart } from "@/components/research-hub/discovery-bubble-chart";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   MARKETPLACE_LABELS,
   PRODUCT_DISCOVERY_STATUS_LABELS,
 } from "@/lib/research/labels";
+import {
+  hub,
+  ResearchHubPageHeader,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 import { useProductDiscoveryPolling } from "../use-product-discovery-polling";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import type { ProductDiscoveryRow } from "@/components/research-hub/product-discovery-table";
 
 type DiscoveryInsights = {
   summary?: string | null;
@@ -82,18 +92,24 @@ export type ProductDiscoveryDetailData = {
   products: ProductDiscoveryRow[];
 };
 
-function statusTone(status: ProductDiscoveryStatus) {
+function statusChipTone(
+  status: ProductDiscoveryStatus,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "SCRAPING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
 }
+
+const tabContentClass =
+  "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
 
 export function ProductDiscoveryDetailClient({
   data,
@@ -197,209 +213,248 @@ export function ProductDiscoveryDetailClient({
   }
 
   return (
-    <div className="space-y-6">
-      <ResearchModelBadgeGroup meta={data.aiMeta} />
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href="/research-hub/product-discovery"
-            className="text-muted-foreground hover:text-foreground mb-2 inline-flex items-center gap-1 text-xs"
-          >
-            <ArrowLeft className="size-3" /> Kembali
-          </Link>
-          <h1 className="text-xl font-semibold">&quot;{data.keyword}&quot;</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {data.marketplaces
-              .map((mp) => MARKETPLACE_LABELS[mp])
-              .join(", ")}{" "}
-            · target {data.productLimit} produk
-          </p>
-          <span
-            className={cn(
-              "mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-              statusTone(data.status),
-            )}
-          >
-            {PRODUCT_DISCOVERY_STATUS_LABELS[data.status]}
-          </span>
-        </div>
-        <Button size="sm" onClick={handleRefresh} disabled={pending || inProgress}>
-          <RefreshCw className="mr-1.5 size-3.5" />
-          Refresh
-        </Button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <Link
+        href="/research-hub/product-discovery"
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
+      >
+        <PackageSearch className="size-3" aria-hidden />
+        Kembali ke Product Discovery
+      </Link>
+
+      <ResearchHubPageHeader
+        variant="detail"
+        icon={PackageSearch}
+        eyebrow="Product Discovery"
+        title={`"${data.keyword}"`}
+        description={`${data.marketplaces.map((mp) => MARKETPLACE_LABELS[mp]).join(", ")} · target ${data.productLimit} produk`}
+        right={
+          <>
+            <ResearchModelBadgeGroup meta={data.aiMeta} />
+            <Button
+              size="sm"
+              onClick={handleRefresh}
+              disabled={pending || inProgress}
+            >
+              <RefreshCw className="mr-1.5 size-3.5" />
+              Refresh
+            </Button>
+          </>
+        }
+        footer={
+          <div className="flex flex-wrap items-center gap-2">
+            <ResearchHubStatChip
+              label="Status"
+              value={PRODUCT_DISCOVERY_STATUS_LABELS[data.status]}
+              tone={statusChipTone(data.status)}
+            />
+            <ResearchHubStatChip
+              label="Produk"
+              value={data.productCount.toLocaleString("id-ID")}
+              tone="primary"
+            />
+            <ResearchHubStatChip
+              label="Brand / toko"
+              value={data.shopCount.toLocaleString("id-ID")}
+            />
+            {marketplaceSummary.map(({ mp, count }) => (
+              <ResearchHubStatChip
+                key={mp}
+                label={MARKETPLACE_LABELS[mp]}
+                value={count.toLocaleString("id-ID")}
+              />
+            ))}
+          </div>
+        }
+      />
 
       {inProgress ? (
-        <JobProgressBar
-          title="Scraping & menganalisis produk"
-          percent={40}
-          stepLabel="Menarik produk dari marketplace lalu menganalisis price band & velocity — refresh otomatis."
-        />
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Scraping & menganalisis produk"
+            percent={40}
+            stepLabel="Menarik produk dari marketplace lalu menganalisis price band & velocity — refresh otomatis."
+          />
+        </div>
       ) : null}
 
       {data.errorMessage ? (
-        <p className="text-amber-700 dark:text-amber-300 text-sm">
+        <p
+          className={cn(
+            hub.nestedPanel,
+            "text-amber-800 dark:text-amber-200 text-sm",
+          )}
+          role="alert"
+        >
           {data.errorMessage}
         </p>
       ) : null}
 
-      {data.actionPlan ? (
-        <ActionPlanPanel
-          plan={data.actionPlan}
-          title="Rencana Aksi Pasar (AI)"
-          subtitle={insights?.summary ?? undefined}
-        />
-      ) : null}
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium">
-              Produk ditemukan
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold tabular-nums">
-            {data.productCount}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium">
-              Brand / toko unik
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold tabular-nums">
-            {data.shopCount}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-xs font-medium">
-              Per marketplace
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {marketplaceSummary
-              .map(({ mp, count }) => `${MARKETPLACE_LABELS[mp]} ${count}`)
-              .join(" · ")}
-          </CardContent>
-        </Card>
-      </div>
-
-      {brandBreakdown.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Brand / Toko dalam Hasil</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Brand / Toko</TableHead>
-                  <TableHead className="text-right">Produk</TableHead>
-                  <TableHead className="text-right">Avg Rating</TableHead>
-                  <TableHead className="text-right">Total Terjual</TableHead>
-                  <TableHead>Marketplace</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {brandBreakdown.map((b) => (
-                  <TableRow key={b.shopName}>
-                    <TableCell className="font-medium">{b.shopName}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {b.productCount}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {b.avgRating > 0 ? b.avgRating.toFixed(1) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {b.totalSold.toLocaleString("id-ID")}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {b.marketplaces
-                        .map((mp) => MARKETPLACE_LABELS[mp as ResearchMarketplace] ?? mp)
-                        .join(", ")}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {insights?.bubble && insights.bubble.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Peta Harga × Rating × Volume
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DiscoveryBubbleChart points={insights.bubble} />
-            <p className="text-muted-foreground mt-2 text-xs">
-              Ukuran gelembung = jumlah terjual. Klaster kanan-atas = premium
-              dengan rating tinggi; kiri-atas = value champion; area kosong =
-              white space.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {insights?.priceBands && insights.priceBands.length > 0 ? (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Price Bands</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {insights.priceBands.map((b) => (
-                <div
-                  key={b.label}
-                  className="flex items-center justify-between gap-3 text-sm"
-                >
-                  <span className="font-medium tabular-nums">{b.label}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {b.count} produk · rating {b.avgRating.toFixed(1)} · ~
-                    {Math.round(b.avgSold).toLocaleString("id-ID")} terjual
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Value Leaders (rating × velocity ÷ harga)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {(insights.valueLeaders ?? []).map((v) => (
-                <div key={v.name} className="text-sm">
-                  <p className="line-clamp-1 font-medium">{v.name}</p>
-                  <p className="text-muted-foreground text-xs tabular-nums">
-                    Rating {v.rating.toFixed(1)} · Rp
-                    {v.price.toLocaleString("id-ID")}
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+      <Tabs defaultValue="ringkasan" className="gap-0">
+        <div className={cn(hub.stickyToolbar, "pb-0")}>
+          <TabsList variant="line" className="h-9 w-full justify-start gap-4">
+            <TabsTrigger value="ringkasan" className="px-1">
+              <Sparkles className="size-3.5" aria-hidden />
+              Ringkasan
+            </TabsTrigger>
+            <TabsTrigger value="produk" className="px-1">
+              <Tags className="size-3.5" aria-hidden />
+              Produk
+              {data.products.length > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {data.products.length}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="brand" className="px-1">
+              <Store className="size-3.5" aria-hidden />
+              Brand
+            </TabsTrigger>
+          </TabsList>
         </div>
-      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Daftar Produk</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProductDiscoveryTable
-            rows={data.products}
-            onAnalyze={handleAnalyze}
-            analyzingId={analyzingId}
-          />
-        </CardContent>
-      </Card>
+        <TabsContent value="ringkasan" className={tabContentClass}>
+          {data.actionPlan ? (
+            <ResearchHubSection
+              title="Rencana Aksi Pasar"
+              description={insights?.summary ?? "Rekomendasi langkah dari analisis AI."}
+              delayMs={0}
+            >
+              <ActionPlanPanel
+                plan={data.actionPlan}
+                title="Rencana Aksi Pasar (AI)"
+                subtitle={insights?.summary ?? undefined}
+              />
+            </ResearchHubSection>
+          ) : null}
+
+          {insights?.bubble && insights.bubble.length > 0 ? (
+            <ResearchHubSection
+              title="Peta Harga × Rating × Volume"
+              description="Ukuran gelembung = jumlah terjual. Area kosong = white space."
+              delayMs={50}
+            >
+              <div className={hub.panel}>
+                <DiscoveryBubbleChart points={insights.bubble} />
+              </div>
+            </ResearchHubSection>
+          ) : null}
+
+          {insights?.priceBands && insights.priceBands.length > 0 ? (
+            <ResearchHubSection
+              title="Price Bands & Value Leaders"
+              delayMs={100}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className={hub.panel}>
+                  <p className="mb-3 text-sm font-medium">Price Bands</p>
+                  <div className="space-y-2">
+                    {insights.priceBands.map((b) => (
+                      <div
+                        key={b.label}
+                        className={cn(
+                          hub.nestedPanel,
+                          "flex items-center justify-between gap-3 text-sm",
+                        )}
+                      >
+                        <span className="font-medium tabular-nums">{b.label}</span>
+                        <span className="text-muted-foreground text-xs">
+                          {b.count} produk · rating {b.avgRating.toFixed(1)} · ~
+                          {Math.round(b.avgSold).toLocaleString("id-ID")} terjual
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className={hub.panel}>
+                  <p className="mb-3 text-sm font-medium">
+                    Value Leaders (rating × velocity ÷ harga)
+                  </p>
+                  <div className="space-y-2">
+                    {(insights.valueLeaders ?? []).map((v) => (
+                      <div key={v.name} className={hub.nestedPanel}>
+                        <p className="line-clamp-1 text-sm font-medium">{v.name}</p>
+                        <p className="text-muted-foreground text-xs tabular-nums">
+                          Rating {v.rating.toFixed(1)} · Rp
+                          {v.price.toLocaleString("id-ID")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </ResearchHubSection>
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="produk" className={tabContentClass}>
+          <ResearchHubSection
+            title="Daftar Produk"
+            description="Tampilkan sebagai kartu atau daftar. Klik Review untuk kirim ke Review Intelligence."
+          >
+            <ProductDiscoveryProductsView
+              rows={data.products}
+              onAnalyze={handleAnalyze}
+              analyzingId={analyzingId}
+            />
+          </ResearchHubSection>
+        </TabsContent>
+
+        <TabsContent value="brand" className={tabContentClass}>
+          <ResearchHubSection
+            title="Brand / Toko dalam Hasil"
+            description="Distribusi produk per toko dan performa agregat."
+          >
+            {brandBreakdown.length > 0 ? (
+              <div className={hub.panel}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Brand / Toko</TableHead>
+                      <TableHead className="text-right">Produk</TableHead>
+                      <TableHead className="text-right">Avg Rating</TableHead>
+                      <TableHead className="text-right">Total Terjual</TableHead>
+                      <TableHead>Marketplace</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {brandBreakdown.map((b) => (
+                      <TableRow
+                        key={b.shopName}
+                        className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+                      >
+                        <TableCell className="font-medium">{b.shopName}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {b.productCount}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {b.avgRating > 0 ? b.avgRating.toFixed(1) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {b.totalSold.toLocaleString("id-ID")}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">
+                          {b.marketplaces
+                            .map(
+                              (mp) =>
+                                MARKETPLACE_LABELS[mp as ResearchMarketplace] ??
+                                mp,
+                            )
+                            .join(", ")}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Belum ada data brand/toko.
+              </p>
+            )}
+          </ResearchHubSection>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

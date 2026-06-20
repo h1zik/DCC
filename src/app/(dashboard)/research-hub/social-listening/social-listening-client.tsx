@@ -16,6 +16,7 @@ import {
   toggleSocialListeningMonitorActive,
 } from "@/actions/research-social-listening";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -29,17 +30,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   SOCIAL_LISTENING_PLATFORM_LABELS,
   SOCIAL_LISTENING_STATUS_LABELS,
+  formatRelativeTime,
 } from "@/lib/research/labels";
+import {
+  hub,
+  ResearchHubEmptyState,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 export type SocialMonitorRow = {
@@ -54,18 +54,29 @@ export type SocialMonitorRow = {
   errorMessage: string | null;
 };
 
-function statusTone(status: SocialListeningStatus | null) {
+function statusChipTone(
+  status: SocialListeningStatus | null,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "COLLECTING":
     case "ANALYZING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
+}
+
+function isInProgress(status: SocialListeningStatus | null) {
+  return (
+    status === "COLLECTING" ||
+    status === "ANALYZING" ||
+    status === "PENDING"
+  );
 }
 
 const ALL_PLATFORMS: SocialListeningPlatform[] = [
@@ -88,12 +99,10 @@ export function SocialListeningClient({
     SocialListeningPlatform.INSTAGRAM,
   ]);
 
-  const hasInProgress = monitors.some(
-    (m) =>
-      m.latestStatus === "COLLECTING" ||
-      m.latestStatus === "ANALYZING" ||
-      m.latestStatus === "PENDING",
-  );
+  const hasInProgress = monitors.some((m) => isInProgress(m.latestStatus));
+  const readyCount = monitors.filter((m) => m.latestStatus === "READY").length;
+  const activeCount = monitors.filter((m) => m.isActive).length;
+  const totalMentions = monitors.reduce((sum, m) => sum + m.mentionCount, 0);
 
   useEffect(() => {
     if (!hasInProgress) return;
@@ -155,6 +164,7 @@ export function SocialListeningClient({
   }
 
   function handleDelete(id: string) {
+    if (!confirm("Hapus monitor ini?")) return;
     startTransition(async () => {
       try {
         await deleteSocialListeningMonitor(id);
@@ -178,16 +188,34 @@ export function SocialListeningClient({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
-          Pantau percakapan organik TikTok & Instagram berdasarkan keyword.
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <ResearchHubStatChip
+            label="Monitor"
+            value={monitors.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <ResearchHubStatChip
+            label="Aktif"
+            value={activeCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+          <ResearchHubStatChip
+            label="Siap"
+            value={readyCount.toLocaleString("id-ID")}
+          />
+          <ResearchHubStatChip
+            label="Total mention"
+            value={totalMentions.toLocaleString("id-ID")}
+          />
+        </div>
+
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger
             render={
               <Button size="sm">
-                <Plus className="mr-1.5 size-4" />
+                <Plus className="mr-1.5 size-3.5" aria-hidden />
                 Tambah Monitor
               </Button>
             }
@@ -239,97 +267,145 @@ export function SocialListeningClient({
         </Dialog>
       </div>
 
-      <div className="border-border/60 overflow-hidden rounded-xl border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Monitor</TableHead>
-              <TableHead>Platform</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Mentions</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {monitors.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground py-10 text-center">
-                  <MessageSquare className="mx-auto mb-2 size-8 opacity-40" />
-                  Belum ada monitor. Tambahkan keyword untuk mulai listening.
-                </TableCell>
-              </TableRow>
-            ) : (
-              monitors.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>
+      {hasInProgress ? (
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Sync social listening berjalan"
+            percent={40}
+            stepLabel="Satu atau lebih monitor sedang mengumpulkan mention dari TikTok & Instagram."
+          />
+          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
+            Halaman diperbarui otomatis setiap beberapa detik.
+          </p>
+        </div>
+      ) : null}
+
+      <ResearchHubSection
+        title="Monitor Social Listening"
+        description="Pantau percakapan organik TikTok & Instagram berdasarkan keyword."
+      >
+        {monitors.length === 0 ? (
+          <ResearchHubEmptyState
+            icon={MessageSquare}
+            title="Belum ada monitor"
+            description="Tambahkan keyword untuk mulai listening — sistem akan mengumpulkan mention, pain points, wishlist, dan konten viral."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Tambah Monitor
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {monitors.map((m, index) => (
+              <div
+                key={m.id}
+                className={cn(
+                  hub.panel,
+                  hub.cardHover,
+                  hub.entrance,
+                  !m.isActive && "opacity-80",
+                )}
+                style={
+                  index > 0 && index < 8
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <Link
                       href={`/research-hub/social-listening/${m.id}`}
-                      className="font-medium hover:underline"
+                      className="hover:text-primary text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
                     >
                       {m.name}
                     </Link>
-                    <p className="text-muted-foreground mt-0.5 text-xs">
+                    <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
                       {m.keywords.join(", ")}
                     </p>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {m.platforms
-                      .map((p) => SOCIAL_LISTENING_PLATFORM_LABELS[p])
-                      .join(", ")}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                        statusTone(m.latestStatus),
-                      )}
-                    >
-                      {m.latestStatus
-                        ? SOCIAL_LISTENING_STATUS_LABELS[m.latestStatus]
-                        : "Belum sync"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {m.mentionCount}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        disabled={pending}
-                        onClick={() => handleRefresh(m.id)}
-                        title="Refresh"
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 text-xs"
-                        disabled={pending}
-                        onClick={() => handleToggleActive(m.id, !m.isActive)}
-                      >
-                        {m.isActive ? "Nonaktif" : "Aktif"}
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8 text-rose-600"
-                        disabled={pending}
-                        onClick={() => handleDelete(m.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      {m.platforms
+                        .map((p) => SOCIAL_LISTENING_PLATFORM_LABELS[p])
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <ResearchHubStatChip
+                      label="Status"
+                      value={
+                        m.latestStatus
+                          ? SOCIAL_LISTENING_STATUS_LABELS[m.latestStatus]
+                          : "Belum sync"
+                      }
+                      tone={statusChipTone(m.latestStatus)}
+                    />
+                    {!m.isActive ? (
+                      <span className="text-muted-foreground text-[10px] font-medium uppercase">
+                        Nonaktif
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <ResearchHubStatChip
+                    label="Mention"
+                    value={m.mentionCount.toLocaleString("id-ID")}
+                    tone="primary"
+                  />
+                  <ResearchHubStatChip
+                    label="Keyword"
+                    value={m.keywords.length.toLocaleString("id-ID")}
+                  />
+                  <ResearchHubStatChip
+                    label="Sync"
+                    value={formatRelativeTime(
+                      m.collectedAt ? new Date(m.collectedAt) : null,
+                    )}
+                  />
+                </div>
+
+                {m.errorMessage ? (
+                  <p className="text-rose-700 dark:text-rose-300 mt-2 text-xs">
+                    {m.errorMessage}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending || isInProgress(m.latestStatus)}
+                    onClick={() => handleRefresh(m.id)}
+                  >
+                    <RefreshCw className="size-3.5" aria-hidden />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => handleToggleActive(m.id, !m.isActive)}
+                  >
+                    {m.isActive ? "Nonaktifkan" : "Aktifkan"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={pending}
+                    onClick={() => handleDelete(m.id)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Hapus
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ResearchHubSection>
     </div>
   );
 }

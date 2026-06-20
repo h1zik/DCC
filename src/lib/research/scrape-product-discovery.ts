@@ -108,6 +108,7 @@ export async function ingestDiscoveryProductsBatch(
       hasPromo: p.hasPromo,
       promoText: p.promoText,
       categoryRank: p.categoryRank,
+      imageUrl: p.imageUrl,
     })),
     skipDuplicates: true,
   });

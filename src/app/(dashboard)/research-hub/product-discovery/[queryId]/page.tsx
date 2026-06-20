@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import {
   ProductDiscoveryDetailClient,
   type ProductDiscoveryDetailData,
@@ -51,12 +52,13 @@ export default async function ProductDiscoveryDetailPage({
       promoText: p.promoText,
       productUrl: p.productUrl,
       categoryRank: p.categoryRank,
+      imageUrl: p.imageUrl ?? null,
     })),
   };
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
+    <ResearchHubPageShell>
       <ProductDiscoveryDetailClient data={data} />
-    </div>
+    </ResearchHubPageShell>
   );
 }

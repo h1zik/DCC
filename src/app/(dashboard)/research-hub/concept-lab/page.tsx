@@ -1,6 +1,6 @@
 import { FlaskConical } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { PageHero } from "@/components/page-hero";
+import { ResearchHubModulePage } from "@/components/research-hub/research-hub-module-page";
 import {
   ConceptLabClient,
   type ConceptRow,
@@ -14,7 +14,7 @@ export default async function ConceptLabPage() {
   const rows: ConceptRow[] = concepts.map((c) => {
     const scores =
       c.validationScores && typeof c.validationScores === "object"
-        ? (c.validationScores as { overall?: number })
+        ? (c.validationScores as { overall?: number; decision?: string })
         : {};
     return {
       id: c.id,
@@ -24,18 +24,20 @@ export default async function ConceptLabPage() {
       status: c.status,
       overallScore:
         typeof scores.overall === "number" ? scores.overall : null,
+      decision:
+        typeof scores.decision === "string" ? scores.decision : null,
+      uspGapAnalysisId: c.uspGapAnalysisId,
       createdAt: c.createdAt.toISOString(),
     };
   });
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
-      <PageHero
-        icon={FlaskConical}
-        title="Product Concept Lab"
-        subtitle="Bangun dan validasi konsep produk siap brief ke R&D — manual atau AI generate."
-      />
+    <ResearchHubModulePage
+      icon={FlaskConical}
+      title="Product Concept Lab"
+      description="Bangun dan validasi konsep produk siap brief ke R&D — manual atau AI generate."
+    >
       <ConceptLabClient concepts={rows} />
-    </div>
+    </ResearchHubModulePage>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { resumeStuckResearchJobs } from "@/lib/research/run-apify-job";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import {
   ReviewDetailClient,
   type ReviewDetailData,
@@ -171,7 +172,7 @@ export default async function ReviewDetailPage({ params }: Props) {
     }));
 
   return (
-    <div className="pb-6">
+    <ResearchHubPageShell>
       <ReviewDetailClient
         source={detail}
         compareOptions={compareOptions}
@@ -182,6 +183,6 @@ export default async function ReviewDetailPage({ params }: Props) {
           brandName: r.brand?.name ?? null,
         }))}
       />
-    </div>
+    </ResearchHubPageShell>
   );
 }

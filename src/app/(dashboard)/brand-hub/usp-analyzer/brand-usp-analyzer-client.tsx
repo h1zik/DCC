@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { BarChart3, Layers, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { UspGapStatus } from "@prisma/client";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import {
   UspContextSourcePicker,
   UspModuleSummaryChips,
 } from "@/components/research-hub/usp-context-source-picker";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,15 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { USP_GAP_STATUS_LABELS } from "@/lib/research/labels";
+import { USP_GAP_STATUS_LABELS, formatRelativeTime } from "@/lib/research/labels";
 import type {
   ContextModuleToggles,
   ContextSourceIds,
@@ -45,7 +38,15 @@ import type {
   UspContextSourceOptions,
 } from "@/lib/research/usp-gap/context-types";
 import type { AvailableContextModules } from "@/lib/research/usp-gap/gather-context";
+import {
+  hub,
+  BrandHubEmptyState,
+  BrandHubSection,
+  BrandHubStatChip,
+} from "@/components/brand-hub/brand-hub-primitives";
+import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { cn } from "@/lib/utils";
+import { useBrandJobProgress } from "../use-brand-job-progress";
 
 export type UspAnalysisRow = {
   id: string;
@@ -60,18 +61,39 @@ export type UspAnalysisRow = {
 
 export type AvailableModules = AvailableContextModules;
 
-function statusTone(status: UspGapStatus) {
+function statusChipTone(
+  status: UspGapStatus,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "GATHERING":
     case "ANALYZING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
+}
+
+function isInProgress(status: UspGapStatus) {
+  return (
+    status === "GATHERING" ||
+    status === "ANALYZING" ||
+    status === "PENDING"
+  );
+}
+
+function countActiveModules(modules: StoredContextModules): number {
+  return [
+    modules.reviewIntel,
+    modules.competitor,
+    modules.trendRadar,
+    modules.keywordIntel,
+    modules.socialListening,
+  ].filter(Boolean).length;
 }
 
 function defaultModules(available: AvailableModules): ContextModuleToggles {
@@ -94,6 +116,7 @@ export function BrandUspAnalyzerClient({
   sourceOptions: UspContextSourceOptions;
 }) {
   const router = useRouter();
+  const brandId = useBrandHubBrandId();
   const [pending, startTransition] = useTransition();
   const [suggestPending, setSuggestPending] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -103,18 +126,20 @@ export function BrandUspAnalyzerClient({
   );
   const [selections, setSelections] = useState<ContextSourceIds>({});
 
-  const hasInProgress = analyses.some(
-    (a) =>
-      a.status === "GATHERING" ||
-      a.status === "ANALYZING" ||
-      a.status === "PENDING",
-  );
+  const hasInProgress = analyses.some((a) => isInProgress(a.status));
+  const readyCount = analyses.filter((a) => a.status === "READY").length;
+  const totalUsps = analyses.reduce((sum, a) => sum + a.uspCount, 0);
+  const avgScore =
+    analyses.filter((a) => a.differentiationScore != null).length > 0
+      ? Math.round(
+          analyses
+            .filter((a) => a.differentiationScore != null)
+            .reduce((sum, a) => sum + (a.differentiationScore ?? 0), 0) /
+            analyses.filter((a) => a.differentiationScore != null).length,
+        )
+      : null;
 
-  useEffect(() => {
-    if (!hasInProgress) return;
-    const id = window.setInterval(() => router.refresh(), 12_000);
-    return () => window.clearInterval(id);
-  }, [hasInProgress, router]);
+  useBrandJobProgress({ inProgress: hasInProgress });
 
   function resetDialog() {
     setCategory("");
@@ -158,21 +183,21 @@ export function BrandUspAnalyzerClient({
       return;
     }
 
-    const contextModules = {
-      ...modules,
-      ...selections,
-    };
+    const contextModules = { ...modules, ...selections };
 
     startTransition(async () => {
       try {
         const result = await createBrandUspGapAnalysis({
           category: category.trim(),
+          ownerBrandId: brandId ?? undefined,
           contextModules,
         });
-        toast.success("Analisis USP selesai.");
+        toast.success("Analisis USP dimulai.");
         setDialogOpen(false);
         resetDialog();
-        router.push(`/brand-hub/usp-analyzer/${result.id}`);
+        router.push(
+          brandHubHref(`/brand-hub/usp-analyzer/${result.id}`, brandId),
+        );
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal menjalankan analisis."));
       }
@@ -192,6 +217,7 @@ export function BrandUspAnalyzerClient({
   }
 
   function handleDelete(id: string) {
+    if (!confirm("Hapus analisis ini?")) return;
     startTransition(async () => {
       try {
         await deleteBrandUspGapAnalysis(id);
@@ -204,12 +230,31 @@ export function BrandUspAnalyzerClient({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
-          Agregasi data modul 1–5 untuk gap matrix, positioning, dan kandidat
-          USP. Pilih sumber riset per modul untuk kontrol penuh.
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <BrandHubStatChip
+            label="Analisis"
+            value={analyses.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <BrandHubStatChip
+            label="Siap"
+            value={readyCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+          <BrandHubStatChip
+            label="Total USP"
+            value={totalUsps.toLocaleString("id-ID")}
+          />
+          {avgScore != null ? (
+            <BrandHubStatChip
+              label="Avg score"
+              value={avgScore.toLocaleString("id-ID")}
+            />
+          ) : null}
+        </div>
+
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -220,7 +265,7 @@ export function BrandUspAnalyzerClient({
           <DialogTrigger
             render={
               <Button size="sm">
-                <Plus className="mr-1.5 size-4" />
+                <Plus className="mr-1.5 size-3.5" aria-hidden />
                 Analisis Baru
               </Button>
             }
@@ -235,9 +280,9 @@ export function BrandUspAnalyzerClient({
             </DialogHeader>
 
             <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-              <section className="border-border/60 bg-muted/20 space-y-3 rounded-xl border p-4">
+              <section className={cn(hub.nestedPanel, "space-y-3")}>
                 <div className="flex items-center gap-2">
-                  <span className="border-primary/30 bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg border text-xs font-bold">
+                  <span className="bg-primary/15 text-primary flex size-7 items-center justify-center rounded-lg text-xs font-bold">
                     1
                   </span>
                   <Label htmlFor="usp-category" className="text-sm font-medium">
@@ -250,7 +295,7 @@ export function BrandUspAnalyzerClient({
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
                     placeholder="Contoh: helm cleaner, body serum brightening"
-                    className="bg-background h-10"
+                    className="h-10"
                   />
                   <Button
                     type="button"
@@ -267,7 +312,7 @@ export function BrandUspAnalyzerClient({
 
               <section className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="border-primary/30 bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg border text-xs font-bold">
+                  <span className="bg-primary/15 text-primary flex size-7 items-center justify-center rounded-lg text-xs font-bold">
                     2
                   </span>
                   <span className="text-sm font-medium">Pilih sumber data</span>
@@ -306,85 +351,121 @@ export function BrandUspAnalyzerClient({
         </Dialog>
       </div>
 
-      <div className="border-border/60 overflow-hidden rounded-xl border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Kategori</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">USP</TableHead>
-              <TableHead className="text-right">Score</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {analyses.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-muted-foreground py-10 text-center"
-                >
-                  <BarChart3 className="mx-auto mb-2 size-8 opacity-40" />
-                  Belum ada analisis USP. Buat analisis untuk kategori produk.
-                </TableCell>
-              </TableRow>
-            ) : (
-              analyses.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
+      {hasInProgress ? (
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Analisis USP & gap berjalan"
+            percent={45}
+            stepLabel="Mengumpulkan konteks modul 1–5 lalu menjalankan AI gap matrix & positioning."
+          />
+          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
+            Halaman diperbarui otomatis setiap beberapa detik.
+          </p>
+        </div>
+      ) : null}
+
+      <BrandHubSection
+        title="Analisis USP & Gap"
+        description="Agregasi data modul riset untuk gap matrix, positioning, dan kandidat USP."
+      >
+        {analyses.length === 0 ? (
+          <BrandHubEmptyState
+            icon={BarChart3}
+            title="Belum ada analisis USP"
+            description="Buat analisis untuk kategori produk — pilih modul riset dan sumber spesifik agar hasil lebih terbukti."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Analisis Baru
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {analyses.map((a, index) => (
+              <div
+                key={a.id}
+                className={cn(hub.panel, hub.cardHover, hub.entrance)}
+                style={
+                  index > 0 && index < 8
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <Link
-                      href={`/brand-hub/usp-analyzer/${a.id}`}
-                      className="font-medium hover:underline"
+                      href={brandHubHref(
+                        `/brand-hub/usp-analyzer/${a.id}`,
+                        brandId,
+                      )}
+                      className="hover:text-primary text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
                     >
                       {a.category}
                     </Link>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                        statusTone(a.status),
-                      )}
-                    >
-                      {USP_GAP_STATUS_LABELS[a.status]}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {a.uspCount}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {a.differentiationScore != null
-                      ? Math.round(a.differentiationScore)
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        disabled={pending}
-                        onClick={() => handleRefresh(a.id)}
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8 text-rose-600"
-                        disabled={pending}
-                        onClick={() => handleDelete(a.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {countActiveModules(a.contextModules)} modul aktif
+                    </p>
+                  </div>
+                  <BrandHubStatChip
+                    label="Status"
+                    value={USP_GAP_STATUS_LABELS[a.status]}
+                    tone={statusChipTone(a.status)}
+                  />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <BrandHubStatChip
+                    label="USP"
+                    value={a.uspCount.toLocaleString("id-ID")}
+                    tone="primary"
+                  />
+                  <BrandHubStatChip
+                    label="Score"
+                    value={
+                      a.differentiationScore != null
+                        ? Math.round(a.differentiationScore).toLocaleString("id-ID")
+                        : "—"
+                    }
+                  />
+                  <BrandHubStatChip
+                    label="Dibuat"
+                    value={formatRelativeTime(new Date(a.createdAt))}
+                  />
+                </div>
+
+                {a.errorMessage ? (
+                  <p className="text-rose-700 dark:text-rose-300 mt-2 text-xs">
+                    {a.errorMessage}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending || isInProgress(a.status)}
+                    onClick={() => handleRefresh(a.id)}
+                  >
+                    <RefreshCw className="size-3.5" aria-hidden />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={pending}
+                    onClick={() => handleDelete(a.id)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Hapus
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </BrandHubSection>
     </div>
   );
 }

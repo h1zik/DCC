@@ -1,8 +1,9 @@
 "use client";
 
 import { Copy } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 export type CopyKeywords = {
   listingTitle?: string[];
@@ -19,7 +20,7 @@ function KeywordChips({ items }: { items: string[] }) {
       {items.map((k) => (
         <span
           key={k}
-          className="bg-muted text-foreground rounded-full px-2.5 py-1 text-xs"
+          className={cn(hub.nestedPanel, "text-foreground px-2.5 py-1 text-xs")}
         >
           {k}
         </span>
@@ -28,33 +29,49 @@ function KeywordChips({ items }: { items: string[] }) {
   );
 }
 
-export function CopyKeywordsPanel({ data }: { data: CopyKeywords }) {
+export function CopyKeywordsPanel({
+  data,
+  bare = false,
+}: {
+  data: CopyKeywords;
+  bare?: boolean;
+}) {
+  const tabs = (
+    <Tabs defaultValue="title">
+      <TabsList className="mb-3 h-8">
+        <TabsTrigger value="title" className="text-xs">
+          Judul Listing
+        </TabsTrigger>
+        <TabsTrigger value="desc" className="text-xs">
+          Deskripsi
+        </TabsTrigger>
+        <TabsTrigger value="social" className="text-xs">
+          Sosmed
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="title" className="animate-in fade-in duration-200 motion-reduce:animate-none">
+        <KeywordChips items={data.listingTitle ?? []} />
+      </TabsContent>
+      <TabsContent value="desc" className="animate-in fade-in duration-200 motion-reduce:animate-none">
+        <KeywordChips items={data.listingDescription ?? []} />
+      </TabsContent>
+      <TabsContent value="social" className="animate-in fade-in duration-200 motion-reduce:animate-none">
+        <KeywordChips items={data.socialMedia ?? []} />
+      </TabsContent>
+    </Tabs>
+  );
+
+  if (bare) {
+    return <div className={hub.panel}>{tabs}</div>;
+  }
+
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Copy className="size-4" aria-hidden />
-          Copywriting Keywords
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="title">
-          <TabsList className="mb-3">
-            <TabsTrigger value="title">Judul Listing</TabsTrigger>
-            <TabsTrigger value="desc">Deskripsi</TabsTrigger>
-            <TabsTrigger value="social">Sosmed</TabsTrigger>
-          </TabsList>
-          <TabsContent value="title">
-            <KeywordChips items={data.listingTitle ?? []} />
-          </TabsContent>
-          <TabsContent value="desc">
-            <KeywordChips items={data.listingDescription ?? []} />
-          </TabsContent>
-          <TabsContent value="social">
-            <KeywordChips items={data.socialMedia ?? []} />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+    <div className={hub.panel}>
+      <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
+        <Copy className="size-4" aria-hidden />
+        Copywriting Keywords
+      </p>
+      {tabs}
+    </div>
   );
 }

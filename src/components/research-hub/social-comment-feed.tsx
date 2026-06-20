@@ -61,7 +61,10 @@ export function SocialCommentFeed({ rows }: { rows: CommentFeedRow[] }) {
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
-          <TableRow key={row.id}>
+          <TableRow
+            key={row.id}
+            className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+          >
             <TableCell>
               <span
                 className={cn(
