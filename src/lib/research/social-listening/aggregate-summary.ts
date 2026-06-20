@@ -6,6 +6,10 @@ import type {
   ClassifiedComment,
   EngagementInsights,
 } from "@/lib/research/social-listening/social-comment-types";
+import {
+  sanitizePrismaText,
+  truncatePrismaString,
+} from "@/lib/prisma-safe-string";
 
 export type PainPointRow = {
   theme: string;
@@ -96,7 +100,7 @@ function engagement(m: ClassifiedMention): number {
 }
 
 function themeKey(text: string): string {
-  return text.trim().slice(0, 80).toLowerCase();
+  return truncatePrismaString(text.trim(), 80).toLowerCase();
 }
 
 function buildThemeMap(
@@ -119,9 +123,9 @@ function mapToThemeRows(
 ): PainPointRow[] {
   return [...map.entries()]
     .map(([, v]) => ({
-      theme: v.sample,
+      theme: sanitizePrismaText(v.sample, 120),
       count: v.count,
-      sampleText: v.sample,
+      sampleText: sanitizePrismaText(v.sample, 200),
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, limit);
@@ -228,7 +232,7 @@ export function aggregateSocialSummary(
     .sort((a, b) => b.views - a.views || b.likes - a.likes)
     .slice(0, 10)
     .map((m) => ({
-      text: m.text.slice(0, 200),
+      text: sanitizePrismaText(m.text, 200),
       author: m.author ?? null,
       platform: m.platform,
       url: m.url ?? null,

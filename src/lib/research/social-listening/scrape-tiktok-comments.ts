@@ -9,6 +9,7 @@ import {
 } from "@/lib/apify/client";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
 import type { RawSocialComment } from "@/lib/research/social-listening/social-comment-types";
+import { sanitizePrismaText } from "@/lib/prisma-safe-string";
 
 export const DEFAULT_TIKTOK_COMMENTS_ACTOR = "clockworks~tiktok-comments-scraper";
 export const TIKTOK_COMMENTS_PER_POST = 50;
@@ -37,6 +38,39 @@ export function normalizeTikTokVideoUrl(url: string): string {
   }
 }
 
+/** URL bersih tanpa query/hash — lebih stabil untuk clockworks comments-scraper. */
+export function canonicalTikTokVideoUrl(url: string): string {
+  const base = url.split("?")[0]?.split("#")[0]?.trim() ?? url.trim();
+  try {
+    const parsed = new URL(base.startsWith("http") ? base : `https://${base}`);
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return base.replace(/\/+$/, "");
+  }
+}
+
+function engagementScore(m: RawSocialMention): number {
+  return m.likes + m.comments * 2 + Math.floor(m.views / 100);
+}
+
+/** Top video TikTok yang punya commentCount > 0 — hindari run Apify sia-sia. */
+export function pickTikTokPostsForCommentScrape(
+  mentions: RawSocialMention[],
+  limit = TOP_POSTS_FOR_TT_COMMENTS,
+): RawSocialMention[] {
+  return mentions
+    .filter(
+      (m) =>
+        m.platform === SocialListeningPlatform.TIKTOK &&
+        m.comments > 0 &&
+        !!m.url?.includes("tiktok.com"),
+    )
+    .sort((a, b) => engagementScore(b) - engagementScore(a))
+    .slice(0, limit);
+}
+
 export function buildTikTokCommentsInput(
   postURLs: string[],
   commentsPerPost = TIKTOK_COMMENTS_PER_POST,
@@ -60,7 +94,9 @@ export function parseTikTokCommentItems(
     const item = items[i]!;
     if (item.errorCode != null) continue;
 
-    const text = typeof item.text === "string" ? item.text.trim() : "";
+    const text = sanitizePrismaText(
+      typeof item.text === "string" ? item.text : "",
+    );
     if (!text || text.length < 3) continue;
 
     const videoUrl =
@@ -141,7 +177,7 @@ export async function scrapeTikTokCommentsForPosts(
   const postURLs: string[] = [];
 
   for (const mention of posts) {
-    const url = mention.url!;
+    const url = canonicalTikTokVideoUrl(mention.url!);
     const normalized = normalizeTikTokVideoUrl(url);
     if (parentByVideoUrl.has(normalized)) continue;
     parentByVideoUrl.set(normalized, mention.externalId);
@@ -158,6 +194,7 @@ export async function scrapeTikTokCommentsForPosts(
   const allItems: Record<string, unknown>[] = [];
   let timedOutRuns = 0;
   let failedRuns = 0;
+  let emptyRuns = 0;
 
   for (const url of postURLs) {
     try {
@@ -171,7 +208,14 @@ export async function scrapeTikTokCommentsForPosts(
       });
 
       if (status === "SUCCEEDED") {
-        allItems.push(...(await fetchApifyDataset<Record<string, unknown>>(datasetId)));
+        const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+        allItems.push(...items);
+        if (items.length === 0) {
+          emptyRuns += 1;
+          warnings.push(
+            `TikTok komentar: 0 hasil untuk ${normalizeTikTokVideoUrl(url)} (run sukses, dataset kosong).`,
+          );
+        }
         continue;
       }
 
@@ -198,9 +242,19 @@ export async function scrapeTikTokCommentsForPosts(
       `${timedOutRuns} scrape komentar TikTok melebihi batas waktu — kurangi video viral / cek run di Apify Console.`,
     );
   }
+  if (emptyRuns > 0 && allItems.length > 0) {
+    warnings.push(
+      `${emptyRuns} video TikTok tidak mengembalikan komentar meski commentCount > 0.`,
+    );
+  }
   if (failedRuns > 0 && allItems.length === 0) {
     warnings.push(
       "TikTok komentar: semua run gagal — coba refresh atau periksa URL video.",
+    );
+  }
+  if (emptyRuns > 0 && allItems.length === 0) {
+    warnings.push(
+      "TikTok komentar: semua run kosong — komentar mungkin dibatasi TikTok atau URL tidak bisa di-scrape.",
     );
   }
 
