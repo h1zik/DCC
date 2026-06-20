@@ -1,4 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { hub } from "@/components/research-hub/research-hub-primitives";
+import { cn } from "@/lib/utils";
 
 export type ClaimAnalysisData = {
   overused?: string[];
@@ -11,44 +12,40 @@ export function ClaimAnalysisPanel({ data }: { data: ClaimAnalysisData }) {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Klaim Overused</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {overused.length === 0 ? (
-            <p className="text-muted-foreground text-sm">—</p>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {overused.map((item, i) => (
-                <li key={`over-${i}`} className="flex gap-2">
-                  <span className="text-muted-foreground">•</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Klaim Underserved</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {underserved.length === 0 ? (
-            <p className="text-muted-foreground text-sm">—</p>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {underserved.map((item, i) => (
-                <li key={`under-${i}`} className="flex gap-2">
-                  <span className="text-emerald-600 dark:text-emerald-400">•</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <div className={hub.panel}>
+        <p className="mb-3 text-sm font-medium">Klaim Overused</p>
+        {overused.length === 0 ? (
+          <p className="text-muted-foreground text-sm">—</p>
+        ) : (
+          <ul className="space-y-2">
+            {overused.map((item, i) => (
+              <li key={`over-${i}`} className={cn(hub.nestedPanel, "text-sm")}>
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className={hub.panel}>
+        <p className="mb-3 text-sm font-medium">Klaim Underserved</p>
+        {underserved.length === 0 ? (
+          <p className="text-muted-foreground text-sm">—</p>
+        ) : (
+          <ul className="space-y-2">
+            {underserved.map((item, i) => (
+              <li
+                key={`under-${i}`}
+                className={cn(
+                  hub.nestedPanel,
+                  "border-emerald-500/30 text-sm",
+                )}
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { resumeStuckResearchJobs } from "@/lib/research/run-apify-job";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import {
   buildCurrentPriceBarData,
   buildPriceChartData,
@@ -91,6 +92,7 @@ export default async function CompetitorDetailPage({ params }: Props) {
       id: s.id,
       name: s.name,
       productUrl: s.productUrl,
+      imageUrl: s.imageUrl ?? null,
       currentPrice: s.currentPrice,
       rating: s.rating,
       reviewCount: s.reviewCount,
@@ -173,8 +175,8 @@ export default async function CompetitorDetailPage({ params }: Props) {
   };
 
   return (
-    <div className="pb-6">
+    <ResearchHubPageShell>
       <CompetitorDetailClient competitor={detail} />
-    </div>
+    </ResearchHubPageShell>
   );
 }

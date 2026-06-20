@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import {
   KeywordDetailClient,
   type KeywordDetailData,
@@ -111,5 +112,9 @@ export default async function KeywordDetailPage({ params }: Props) {
     })),
   };
 
-  return <KeywordDetailClient data={data} />;
+  return (
+    <ResearchHubPageShell>
+      <KeywordDetailClient data={data} />
+    </ResearchHubPageShell>
+  );
 }

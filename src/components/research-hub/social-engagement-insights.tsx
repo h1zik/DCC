@@ -1,5 +1,6 @@
 "use client";
 
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import type { EngagementInsights } from "@/lib/research/social-listening/social-comment-types";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,7 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border p-3">
+    <div className={cn(hub.nestedPanel)}>
       <p className="text-muted-foreground text-xs">{label}</p>
       <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
       {hint ? <p className="text-muted-foreground mt-0.5 text-[10px]">{hint}</p> : null}

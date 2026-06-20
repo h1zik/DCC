@@ -24,6 +24,12 @@ import {
 } from "@/components/ui/select";
 import type { GuidelineReadiness } from "@/lib/brand-research/strategy/evidence-gate";
 import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { useBrandStudioGenerationPoll } from "../use-brand-studio-generation-poll";
+import {
+  BrandHubDocumentSidebar,
+  BrandHubSection,
+  hub,
+} from "@/components/brand-hub/brand-hub-primitives";
 import { cn } from "@/lib/utils";
 
 type Palette = {
@@ -102,11 +108,11 @@ export function BrandCreativeGuidelineClient({
       ? moodboardAssets.filter((a) => moodboardIds.includes(a.id))
       : moodboardAssets.slice(0, 12);
 
-  useEffect(() => {
-    if (!isGenerating) return;
-    const t = setInterval(() => router.refresh(), 4000);
-    return () => clearInterval(t);
-  }, [isGenerating, router]);
+  useBrandStudioGenerationPoll({
+    active: isGenerating,
+    selectedId,
+    brandId,
+  });
 
   function handleCreate() {
     startTransition(async () => {
@@ -115,7 +121,7 @@ export function BrandCreativeGuidelineClient({
           ownerBrandId: brandId,
           strategyDocumentId: strategyPick || null,
         });
-        toast.success("Creative guideline dibuat — AI sedang generate.");
+        toast.success("Creative guideline dibuat — AI sedang generate di background.");
         setSelectedId(result.id);
         router.refresh();
       } catch (err) {
@@ -151,62 +157,68 @@ export function BrandCreativeGuidelineClient({
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      <aside className="flex shrink-0 flex-col gap-3 lg:w-56">
-        <div className="grid gap-2">
-          {strategyOptions.length > 0 ? (
-            <Select value={strategyPick} onValueChange={(v) => setStrategyPick(v ?? "")}>
-              <SelectTrigger className="h-8 text-xs">
-                {strategyOptions.find((s) => s.id === strategyPick)?.brandEssence ??
-                  "Pilih strategy"}
-              </SelectTrigger>
-              <SelectContent>
-                {strategyOptions.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.brandEssence ?? s.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            disabled={pending || !guidelineReadiness.canGenerate}
-            title={guidelineReadiness.message}
+    <div className={cn("flex flex-col gap-6 lg:flex-row", hub.entrance)}>
+      <BrandHubDocumentSidebar
+        title="Guideline"
+        action={
+          <div className="grid w-full gap-2">
+            {strategyOptions.length > 0 ? (
+              <Select value={strategyPick} onValueChange={(v) => setStrategyPick(v ?? "")}>
+                <SelectTrigger className="h-8 text-xs">
+                  {strategyOptions.find((s) => s.id === strategyPick)?.brandEssence ??
+                    "Pilih strategy"}
+                </SelectTrigger>
+                <SelectContent>
+                  {strategyOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.brandEssence ?? s.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              disabled={pending || !guidelineReadiness.canGenerate}
+              title={guidelineReadiness.message}
+            >
+              <Plus className="size-3.5" />
+              Guideline baru
+            </Button>
+          </div>
+        }
+      >
+        {guidelines.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            onClick={() => setSelectedId(g.id)}
+            className={cn(
+              "flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left text-xs transition-colors",
+              g.id === selectedId
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+            )}
           >
-            <Plus className="size-3.5" />
-            Guideline baru
-          </Button>
-        </div>
-        <ul className="flex flex-col gap-1">
-          {guidelines.map((g) => (
-            <li key={g.id}>
-              <button
-                type="button"
-                onClick={() => setSelectedId(g.id)}
-                className={cn(
-                  "w-full rounded-lg px-3 py-2 text-left text-xs transition-colors",
-                  g.id === selectedId
-                    ? "bg-foreground text-background"
-                    : "hover:bg-muted text-muted-foreground",
-                )}
-              >
-                <span className="font-medium line-clamp-1">
-                  {g.strategyEssence ?? "Creative Guideline"}
-                </span>
-                <Badge variant="secondary" className="mt-1 text-[10px]">
-                  {g.status}
-                </Badge>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
+            <span className="font-medium line-clamp-1">
+              {g.strategyEssence ?? "Creative Guideline"}
+            </span>
+            <Badge variant="secondary" className="mt-1 w-fit text-[10px]">
+              {g.status}
+            </Badge>
+          </button>
+        ))}
+      </BrandHubDocumentSidebar>
 
       <div className="min-w-0 flex-1 flex flex-col gap-5">
         {!guidelineReadiness.canGenerate ? (
-          <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+          <p
+            className={cn(
+              hub.nestedPanel,
+              "text-amber-800 dark:text-amber-200 text-sm",
+            )}
+          >
             {guidelineReadiness.message ??
               "Brand Strategy READY + minimal 5 visual assets diperlukan."}
           </p>
@@ -255,72 +267,87 @@ export function BrandCreativeGuidelineClient({
             </div>
 
             {selected.errorMessage ? (
-              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p
+                className={cn(
+                  hub.nestedPanel,
+                  "text-destructive text-sm",
+                )}
+                role="alert"
+              >
                 {selected.errorMessage}
               </p>
             ) : null}
 
             {selected.aiSummary ? (
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {selected.aiSummary}
-              </p>
+              <BrandHubSection title="AI Summary" delayMs={0}>
+                <div className={cn(hub.panel, "text-muted-foreground text-sm leading-relaxed")}>
+                  {selected.aiSummary}
+                </div>
+              </BrandHubSection>
             ) : null}
 
-            <section>
-              <h3 className="mb-3 text-sm font-semibold">Moodboard</h3>
+            <BrandHubSection title="Moodboard" delayMs={50}>
               {moodboard.length > 0 ? (
-                <MoodboardGrid assets={moodboard} />
+                <div className={hub.panel}>
+                  <MoodboardGrid assets={moodboard} />
+                </div>
               ) : (
                 <p className="text-muted-foreground text-xs">
                   Tambahkan visual di Visual Library terlebih dahulu.
                 </p>
               )}
-            </section>
+            </BrandHubSection>
 
-            <ColorPalettePanel
-              palette={selected.colorPalette}
-              derivedFromCount={visualAssetCount >= 5 ? visualAssetCount : undefined}
-            />
+            <BrandHubSection title="Color Palette" delayMs={100}>
+              <div className={hub.panel}>
+                <ColorPalettePanel
+                  palette={selected.colorPalette}
+                  derivedFromCount={visualAssetCount >= 5 ? visualAssetCount : undefined}
+                />
+              </div>
+            </BrandHubSection>
 
             {selected.typography ? (
-              <div className="rounded-xl border border-border/70 bg-card p-4">
-                <h3 className="mb-3 text-sm font-semibold">Typography & Styling</h3>
-                <dl className="grid gap-2 text-sm sm:grid-cols-3">
-                  <div>
-                    <dt className="text-muted-foreground text-xs">Heading</dt>
-                    <dd className="font-medium">{selected.typography.heading ?? "—"}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground text-xs">Body</dt>
-                    <dd className="font-medium">{selected.typography.body ?? "—"}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground text-xs">Accent</dt>
-                    <dd className="font-medium">{selected.typography.accent ?? "—"}</dd>
-                  </div>
-                </dl>
-                {selected.typography.stylingNotes ? (
-                  <p className="text-muted-foreground mt-3 text-sm">
-                    {selected.typography.stylingNotes}
-                  </p>
-                ) : null}
-              </div>
+              <BrandHubSection title="Typography & Styling" delayMs={150}>
+                <div className={hub.panel}>
+                  <dl className="grid gap-2 text-sm sm:grid-cols-3">
+                    <div>
+                      <dt className="text-muted-foreground text-xs">Heading</dt>
+                      <dd className="font-medium">{selected.typography.heading ?? "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground text-xs">Body</dt>
+                      <dd className="font-medium">{selected.typography.body ?? "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground text-xs">Accent</dt>
+                      <dd className="font-medium">{selected.typography.accent ?? "—"}</dd>
+                    </div>
+                  </dl>
+                  {selected.typography.stylingNotes ? (
+                    <p className="text-muted-foreground mt-3 text-sm">
+                      {selected.typography.stylingNotes}
+                    </p>
+                  ) : null}
+                </div>
+              </BrandHubSection>
             ) : null}
 
             {selected.designReferences?.length ? (
-              <section className="rounded-xl border border-border/70 bg-card p-4">
-                <h3 className="mb-3 text-sm font-semibold">Design References</h3>
-                <ul className="flex flex-col gap-3">
-                  {selected.designReferences.map((ref, i) => (
-                    <li key={i} className="border-border/50 border-b pb-3 last:border-0">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {ref.category ?? "Reference"}
-                      </p>
-                      <p className="mt-1 text-sm">{ref.narrative ?? ""}</p>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+              <BrandHubSection title="Design References" delayMs={200}>
+                <div className={hub.panel}>
+                  <ul className="flex flex-col gap-3">
+                    {selected.designReferences.map((ref, i) => (
+                      <li key={i} className="border-border/50 border-b pb-3 last:border-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {ref.category ?? "Reference"}
+                        </p>
+                        <p className="mt-1 text-sm">{ref.narrative ?? ""}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </BrandHubSection>
             ) : null}
           </>
         )}

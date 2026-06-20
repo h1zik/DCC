@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { useBrandStudioGenerationPoll } from "../use-brand-studio-generation-poll";
 import type { EvidenceReadiness } from "@/lib/brand-research/strategy/evidence-types";
 import type {
   StrategyGenerationConfig,
@@ -30,6 +31,7 @@ import type {
 import {
   BrandHubDocumentSidebar,
   BrandHubEmptyState,
+  BrandHubSection,
   hub,
 } from "@/components/brand-hub/brand-hub-primitives";
 import { normalizeStrategyGenerationConfig } from "@/lib/brand-research/strategy/strategy-visual-config";
@@ -152,11 +154,11 @@ export function BrandStrategyClient({
     setToneDont(linesJoin(selected.toneOfVoice?.dontExamples));
   }, [selected]);
 
-  useEffect(() => {
-    if (!isGenerating) return;
-    const t = setInterval(() => router.refresh(), 4000);
-    return () => clearInterval(t);
-  }, [isGenerating, router]);
+  useBrandStudioGenerationPoll({
+    active: isGenerating,
+    selectedId,
+    brandId,
+  });
 
   useEffect(() => {
     if (selectedId && !documents.some((d) => d.id === selectedId)) {
@@ -185,7 +187,7 @@ export function BrandStrategyClient({
           ownerBrandId: brandId,
           generationConfig,
         });
-        toast.success("Dokumen strategi dibuat — AI sedang generate.");
+        toast.success("Dokumen strategi dibuat — AI sedang generate di background.");
         setComposeMode(false);
         setSelectedId(result.id);
         router.refresh();
@@ -260,7 +262,7 @@ export function BrandStrategyClient({
   }
 
   return (
-    <div className="flex flex-col gap-8 lg:flex-row">
+    <div className={cn("flex flex-col gap-8 lg:flex-row", hub.entrance)}>
       <BrandHubDocumentSidebar
         title="Dokumen"
         action={
@@ -321,7 +323,7 @@ export function BrandStrategyClient({
             }
           />
         ) : composeMode && !selected ? (
-          <div className="flex flex-col gap-5">
+          <div className={cn("flex flex-col gap-5", hub.entrance)}>
             <BrandStrategySourcePicker
               catalog={sourceCatalog}
               config={generationConfig}
@@ -355,7 +357,7 @@ export function BrandStrategyClient({
             </div>
           </div>
         ) : selected ? (
-          <div className="flex flex-col gap-5">
+          <div className={cn("flex flex-col gap-5", hub.entrance)}>
             <BrandStrategySourcePicker
               catalog={sourceCatalog}
               config={generationConfig}
@@ -403,7 +405,13 @@ export function BrandStrategyClient({
             </div>
 
             {selected.errorMessage ? (
-              <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p
+                className={cn(
+                  hub.nestedPanel,
+                  "text-destructive text-sm",
+                )}
+                role="alert"
+              >
                 {selected.errorMessage}
               </p>
             ) : null}
@@ -413,16 +421,18 @@ export function BrandStrategyClient({
               brandId={brandId}
             />
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Brand Purpose" value={brandPurpose} onChange={setBrandPurpose} />
-              <Field label="Brand Essence" value={brandEssence} onChange={setBrandEssence} />
-              <Field label="Core Message" value={coreMessage} onChange={setCoreMessage} className="md:col-span-2" />
-              <Field label="Brand USP (branding)" value={brandUsp} onChange={setBrandUsp} className="md:col-span-2" />
-            </div>
+            <BrandHubSection title="Brand Foundation" description="Purpose, essence, message, dan USP branding.">
+              <div className={cn(hub.panel, "grid gap-4 md:grid-cols-2")}>
+                <Field label="Brand Purpose" value={brandPurpose} onChange={setBrandPurpose} />
+                <Field label="Brand Essence" value={brandEssence} onChange={setBrandEssence} />
+                <Field label="Core Message" value={coreMessage} onChange={setCoreMessage} className="md:col-span-2" />
+                <Field label="Brand USP (branding)" value={brandUsp} onChange={setBrandUsp} className="md:col-span-2" />
+              </div>
+            </BrandHubSection>
 
-            <section className={cn(hub.panel)}>
-              <h3 className={cn(hub.sectionTitle, "mb-4")}>STP</h3>
-              <div className="grid gap-3 md:grid-cols-2">
+            <BrandHubSection title="STP" delayMs={50}>
+              <div className={hub.panel}>
+                <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <Label className="text-xs">Segment</Label>
                   <Input value={stpSegment} onChange={(e) => setStpSegment(e.target.value)} />
@@ -435,12 +445,13 @@ export function BrandStrategyClient({
                   <Label className="text-xs">Positioning Statement</Label>
                   <Textarea value={stpPositioning} onChange={(e) => setStpPositioning(e.target.value)} rows={2} />
                 </div>
+                </div>
               </div>
-            </section>
+            </BrandHubSection>
 
-            <section className={cn(hub.panel)}>
-              <h3 className={cn(hub.sectionTitle, "mb-4")}>Brand Personality</h3>
-              <div className="grid gap-3">
+            <BrandHubSection title="Brand Personality" delayMs={100}>
+              <div className={hub.panel}>
+                <div className="grid gap-3">
                 <div>
                   <Label className="text-xs">Archetype</Label>
                   <Input value={archetype} onChange={(e) => setArchetype(e.target.value)} />
@@ -453,12 +464,13 @@ export function BrandStrategyClient({
                   <Label className="text-xs">Anti-trait (satu per baris)</Label>
                   <Textarea value={antiTraits} onChange={(e) => setAntiTraits(e.target.value)} rows={3} />
                 </div>
+                </div>
               </div>
-            </section>
+            </BrandHubSection>
 
-            <section className={cn(hub.panel)}>
-              <h3 className={cn(hub.sectionTitle, "mb-4")}>Tone of Voice</h3>
-              <div className="grid gap-3 md:grid-cols-3">
+            <BrandHubSection title="Tone of Voice" delayMs={150}>
+              <div className={hub.panel}>
+                <div className="grid gap-3 md:grid-cols-3">
                 <div>
                   <Label className="text-xs">Principles</Label>
                   <Textarea value={tonePrinciples} onChange={(e) => setTonePrinciples(e.target.value)} rows={4} />
@@ -471,8 +483,9 @@ export function BrandStrategyClient({
                   <Label className="text-xs">Don&apos;t examples</Label>
                   <Textarea value={toneDont} onChange={(e) => setToneDont(e.target.value)} rows={4} />
                 </div>
+                </div>
               </div>
-            </section>
+            </BrandHubSection>
           </div>
         ) : null}
       </div>

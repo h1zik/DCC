@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import { parseTrendSourceConfigJson } from "@/lib/research/trend-radar/trend-source-config";
 import { summarizeEnabledSources } from "@/lib/research/trend-radar/trend-source-config-types";
 import {
@@ -114,5 +115,9 @@ export default async function TrendDetailPage({ params, searchParams }: Props) {
     })),
   };
 
-  return <TrendDetailClient data={data} />;
+  return (
+    <ResearchHubPageShell>
+      <TrendDetailClient data={data} />
+    </ResearchHubPageShell>
+  );
 }

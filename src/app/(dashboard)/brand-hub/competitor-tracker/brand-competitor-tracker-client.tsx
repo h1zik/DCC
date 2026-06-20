@@ -4,7 +4,13 @@ import Link from "next/link";
 import { ResearchMarketplace } from "@prisma/client";
 import { Bell, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { BrandHubEmptyState, hub } from "@/components/brand-hub/brand-hub-primitives";
+import {
+  hub,
+  BrandHubEmptyState,
+  BrandHubSection,
+  BrandHubStatChip,
+} from "@/components/brand-hub/brand-hub-primitives";
+import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 
@@ -27,68 +33,116 @@ export function BrandCompetitorTrackerClient({
 }: {
   competitors: CompetitorCard[];
 }) {
+  const brandId = useBrandHubBrandId();
+
+  const totalSkus = competitors.reduce((sum, c) => sum + c.skuCount, 0);
+  const totalVisual = competitors.reduce((sum, c) => sum + c.imageSkuCount, 0);
+  const totalAlerts = competitors.reduce((sum, c) => sum + c.unreadAlerts, 0);
+  const activeCount = competitors.filter((c) => c.isActive).length;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
-          {competitors.length} kompetitor dari Research Hub
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <BrandHubStatChip
+            label="Kompetitor"
+            value={competitors.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <BrandHubStatChip
+            label="Aktif"
+            value={activeCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+          <BrandHubStatChip
+            label="Total SKU"
+            value={totalSkus.toLocaleString("id-ID")}
+          />
+          <BrandHubStatChip
+            label="Visual"
+            value={totalVisual.toLocaleString("id-ID")}
+          />
+          <BrandHubStatChip
+            label="Alert"
+            value={totalAlerts.toLocaleString("id-ID")}
+            tone={totalAlerts > 0 ? "warning" : "neutral"}
+          />
+        </div>
+
         <Badge variant="secondary" className="text-[10px]">
           Dikelola Market Analyst
         </Badge>
       </div>
 
-      {competitors.length === 0 ? (
-        <BrandHubEmptyState
-          icon={Target}
-          title="Belum ada data kompetitor"
-          description="Mintakan Market Analyst menambahkan kompetitor di Research Hub. Data akan muncul di sini secara otomatis."
-        />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {competitors.map((c) => (
-            <article key={c.id} className={cn(hub.card, hub.cardHover, "relative p-5")}>
-              {c.unreadAlerts > 0 ? (
-                <span className="bg-primary text-primary-foreground absolute top-3 right-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
-                  <Bell className="size-3" aria-hidden />
-                  {c.unreadAlerts}
-                </span>
-              ) : null}
-              <Link
-                href={`/brand-hub/competitor-tracker/${c.id}`}
-                className="block"
+      <BrandHubSection
+        title="Kompetitor dipantau"
+        description="Pantau harga, SKU baru, rating, dan promo kompetitor — data dari Research Hub."
+      >
+        {competitors.length === 0 ? (
+          <BrandHubEmptyState
+            icon={Target}
+            title="Belum ada kompetitor"
+            description="Mintakan Market Analyst menambahkan brand kompetitor di Research Hub. Data akan muncul di sini secara otomatis."
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {competitors.map((c, index) => (
+              <article
+                key={c.id}
+                className={cn(hub.panel, hub.cardHover, hub.entrance, "relative")}
+                style={
+                  index > 0 && index < 9
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
               >
-                <p className="text-foreground pr-16 font-semibold">{c.name}</p>
-                <p className="text-muted-foreground text-xs">{c.brand}</p>
-                <p className="text-muted-foreground mt-2 text-xs">
-                  {MARKETPLACE_LABELS[c.marketplace]} · {c.category}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-4 text-sm">
-                  <span>
-                    <span className="text-muted-foreground text-xs">SKU </span>
-                    <span className="font-medium tabular-nums">{c.skuCount}</span>
+                {c.unreadAlerts > 0 ? (
+                  <span className="bg-primary text-primary-foreground absolute top-3 right-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                    <Bell className="size-3" aria-hidden />
+                    {c.unreadAlerts}
                   </span>
-                  <span>
-                    <span className="text-muted-foreground text-xs">Visual </span>
-                    <span className="font-medium tabular-nums">{c.imageSkuCount}</span>
-                  </span>
-                  <span>
-                    <span className="text-muted-foreground text-xs">Rating </span>
-                    <span className="font-medium tabular-nums">
-                      {c.avgRating != null ? c.avgRating.toFixed(1) : "—"}
-                    </span>
-                  </span>
+                ) : null}
+
+                <Link
+                  href={brandHubHref(
+                    `/brand-hub/competitor-tracker/${c.id}`,
+                    brandId,
+                  )}
+                  className="block"
+                >
+                  <p className="text-foreground pr-16 font-semibold">{c.name}</p>
+                  <p className="text-muted-foreground text-xs">{c.brand}</p>
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    {MARKETPLACE_LABELS[c.marketplace]} · {c.category}
+                  </p>
+                </Link>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <BrandHubStatChip
+                    label="SKU"
+                    value={c.skuCount.toLocaleString("id-ID")}
+                    tone="primary"
+                  />
+                  <BrandHubStatChip
+                    label="Visual"
+                    value={c.imageSkuCount.toLocaleString("id-ID")}
+                  />
+                  <BrandHubStatChip
+                    label="Rating"
+                    value={c.avgRating != null ? c.avgRating.toFixed(1) : "—"}
+                  />
                 </div>
-              </Link>
-              {!c.isActive ? (
-                <span className="text-muted-foreground mt-2 block text-[10px] uppercase">
-                  Nonaktif
-                </span>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      )}
+
+                {!c.isActive ? (
+                  <span className="text-muted-foreground mt-2 block text-[10px] uppercase">
+                    Nonaktif
+                  </span>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        )}
+      </BrandHubSection>
     </div>
   );
 }

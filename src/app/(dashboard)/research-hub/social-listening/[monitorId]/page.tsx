@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { SocialListeningPlatform, SocialMentionClass } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import { platformStatusMessage } from "@/lib/research/social-listening/platform-scrape-runner";
 import {
   SocialDetailClient,
@@ -171,8 +172,8 @@ export default async function SocialListeningDetailPage({
   };
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
+    <ResearchHubPageShell>
       <SocialDetailClient data={data} />
-    </div>
+    </ResearchHubPageShell>
   );
 }

@@ -6,7 +6,7 @@ import {
   resolveOllamaModel,
   resolveOllamaThink,
 } from "./config";
-import { extractJson } from "./extract-json";
+import { isJsonParseError, parseExtractedJson } from "./extract-json";
 import { withLlmRetry } from "./retry";
 import type {
   GenerateResearchJsonOpts,
@@ -25,8 +25,15 @@ type OllamaChatResponse = {
 };
 
 function jsonPromptSuffix(): string {
-  return "\n\nBalas HANYA dengan JSON valid. Tanpa markdown fence, tanpa penjelasan di luar JSON.";
+  return (
+    "\n\nBalas HANYA dengan satu objek JSON valid (bukan array di root kecuali diminta)." +
+    " Tanpa markdown fence, tanpa penjelasan, tanpa teks sebelum/sesudah JSON."
+  );
 }
+
+const JSON_REPAIR_SUFFIX =
+  "\n\nPERINGATAN: Respons sebelumnya bukan JSON valid. " +
+  "Output HARUS satu objek JSON parsable saja — tanpa kalimat penjelasan dalam bahasa Indonesia atau Inggris.";
 
 async function ollamaChat(
   prompt: string,
@@ -104,27 +111,50 @@ export async function ollamaGenerateJson<T>(
 ): Promise<T> {
   const tier = opts?.tier ?? "flash";
   const model = resolveOllamaModel(tier);
+  const parseAttempts = Math.max(1, (opts?.maxRetries ?? 2) + 1);
+  let lastError: unknown;
 
-  try {
-    const text = await ollamaChat(prompt, tier, {
-      json: true,
-      temperature: 0.2,
-      maxRetries: opts?.maxRetries,
-    });
+  for (let attempt = 0; attempt < parseAttempts; attempt += 1) {
+    const attemptPrompt =
+      attempt === 0 ? prompt : `${prompt}${JSON_REPAIR_SUFFIX}`;
 
-    const parsed = JSON.parse(extractJson(text)) as T;
+    try {
+      const text = await ollamaChat(attemptPrompt, tier, {
+        json: true,
+        temperature: attempt === 0 ? 0.2 : 0.1,
+        maxRetries: opts?.maxRetries,
+      });
 
-    if (opts?.validate && !opts.validate(parsed)) {
-      throw new Error("Validasi struktur JSON gagal.");
+      const parsed = parseExtractedJson<T>(text);
+
+      if (opts?.validate && !opts.validate(parsed)) {
+        throw new Error("Validasi struktur JSON gagal.");
+      }
+
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      const validationFailed =
+        err instanceof Error && err.message === "Validasi struktur JSON gagal.";
+      const shouldRetry =
+        attempt < parseAttempts - 1 &&
+        (isJsonParseError(err) || validationFailed);
+
+      if (shouldRetry) {
+        console.warn(
+          `[research/llm/ollama] model ${model} JSON tidak valid (attempt ${attempt + 1}/${parseAttempts}), retry…`,
+        );
+        continue;
+      }
+
+      console.warn(`[research/llm/ollama] model ${model} gagal`, err);
+      break;
     }
-
-    return parsed;
-  } catch (err) {
-    console.warn(`[research/llm/ollama] model ${model} gagal`, err);
-    throw err instanceof Error
-      ? err
-      : new Error("Gagal memanggil Ollama Cloud untuk analisis riset.");
   }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Gagal memanggil Ollama Cloud untuk analisis riset.");
 }
 
 export async function ollamaGenerateText(

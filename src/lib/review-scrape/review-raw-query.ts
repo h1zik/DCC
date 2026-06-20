@@ -6,6 +6,7 @@ import {
   REVIEW_RAW_PAGE_SIZE,
   type ReviewRawPage,
   type ReviewRawRow,
+  type ReviewSentimentFilter,
 } from "@/lib/review-scrape/review-raw-types";
 
 type RawReviewRecord = {
@@ -33,33 +34,41 @@ function mapRow(row: RawReviewRecord): ReviewRawRow {
 function buildSearchWhere(
   sourceId: string,
   search?: string,
+  sentiment?: ReviewSentimentFilter,
 ): Prisma.ReviewRawWhereInput {
+  const where: Prisma.ReviewRawWhereInput = { sourceId };
   const q = search?.trim();
-  if (!q) return { sourceId };
-  return {
-    sourceId,
-    OR: [
+  if (q) {
+    where.OR = [
       { text: { contains: q, mode: "insensitive" } },
       { author: { contains: q, mode: "insensitive" } },
       { externalId: { contains: q, mode: "insensitive" } },
-    ],
-  };
+    ];
+  }
+  if (sentiment) {
+    where.analysis = { is: { sentiment } };
+  }
+  return where;
 }
 
 function buildBrandSearchWhere(
   sourceId: string,
   search?: string,
+  sentiment?: ReviewSentimentFilter,
 ): Prisma.BrandReviewItemWhereInput {
+  const where: Prisma.BrandReviewItemWhereInput = { sourceId };
   const q = search?.trim();
-  if (!q) return { sourceId };
-  return {
-    sourceId,
-    OR: [
+  if (q) {
+    where.OR = [
       { text: { contains: q, mode: "insensitive" } },
       { author: { contains: q, mode: "insensitive" } },
       { externalId: { contains: q, mode: "insensitive" } },
-    ],
-  };
+    ];
+  }
+  if (sentiment) {
+    where.analysis = { is: { sentiment } };
+  }
+  return where;
 }
 
 function paginate(total: number, page: number, pageSize: number): ReviewRawPage {
@@ -78,10 +87,11 @@ export async function queryResearchReviewRawPage(input: {
   page?: number;
   pageSize?: number;
   search?: string;
+  sentiment?: ReviewSentimentFilter;
 }): Promise<ReviewRawPage> {
   const pageSize = input.pageSize ?? REVIEW_RAW_PAGE_SIZE;
   const page = Math.max(1, input.page ?? 1);
-  const where = buildSearchWhere(input.sourceId, input.search);
+  const where = buildSearchWhere(input.sourceId, input.search, input.sentiment);
 
   const [total, rows] = await Promise.all([
     prisma.reviewRaw.count({ where }),
@@ -111,10 +121,11 @@ export async function queryBrandReviewRawPage(input: {
   page?: number;
   pageSize?: number;
   search?: string;
+  sentiment?: ReviewSentimentFilter;
 }): Promise<ReviewRawPage> {
   const pageSize = input.pageSize ?? REVIEW_RAW_PAGE_SIZE;
   const page = Math.max(1, input.page ?? 1);
-  const where = buildBrandSearchWhere(input.sourceId, input.search);
+  const where = buildBrandSearchWhere(input.sourceId, input.search, input.sentiment);
 
   const [total, rows] = await Promise.all([
     prisma.brandReviewItem.count({ where }),
@@ -166,8 +177,9 @@ function rowsToCsv(rows: ReviewRawRow[]): string {
 export async function exportResearchReviewRawCsv(
   sourceId: string,
   search?: string,
+  sentiment?: ReviewSentimentFilter,
 ): Promise<string> {
-  const where = buildSearchWhere(sourceId, search);
+  const where = buildSearchWhere(sourceId, search, sentiment);
   const rows = await prisma.reviewRaw.findMany({
     where,
     orderBy: [{ reviewDate: "desc" }, { createdAt: "desc" }],
@@ -187,8 +199,9 @@ export async function exportResearchReviewRawCsv(
 export async function exportBrandReviewRawCsv(
   sourceId: string,
   search?: string,
+  sentiment?: ReviewSentimentFilter,
 ): Promise<string> {
-  const where = buildBrandSearchWhere(sourceId, search);
+  const where = buildBrandSearchWhere(sourceId, search, sentiment);
   const rows = await prisma.brandReviewItem.findMany({
     where,
     orderBy: [{ reviewDate: "desc" }, { createdAt: "desc" }],

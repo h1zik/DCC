@@ -2,6 +2,7 @@
 
 import { formatRp, formatRelativeTime } from "@/lib/research/labels";
 import type { CompetitorInsights } from "@/lib/research/competitor-insights";
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 function KpiCard({
@@ -14,7 +15,7 @@ function KpiCard({
   sub?: string;
 }) {
   return (
-    <div className="border-border bg-muted/30 rounded-lg border px-3 py-2.5">
+    <div className={hub.nestedPanel}>
       <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
         {label}
       </p>
@@ -30,23 +31,18 @@ function KpiCard({
 
 export function CompetitorInsightsPanel({
   insights,
+  bare = false,
 }: {
   insights: CompetitorInsights;
+  bare?: boolean;
 }) {
-  return (
-    <section className="border-border bg-card rounded-xl border p-4 shadow-sm">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-foreground text-sm font-semibold">
-            Ringkasan & Kesimpulan
-          </h2>
-          {insights.lastSyncedAt ? (
-            <p className="text-muted-foreground mt-0.5 text-xs">
-              Terakhir sync {formatRelativeTime(new Date(insights.lastSyncedAt))}
-            </p>
-          ) : null}
-        </div>
-      </div>
+  const content = (
+    <>
+      {insights.lastSyncedAt ? (
+        <p className="text-muted-foreground mb-3 text-xs">
+          Terakhir sync {formatRelativeTime(new Date(insights.lastSyncedAt))}
+        </p>
+      ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <KpiCard label="SKU" value={String(insights.skuCount)} />
@@ -83,7 +79,7 @@ export function CompetitorInsightsPanel({
 
       <div
         className={cn(
-          "rounded-lg border px-4 py-3",
+          hub.nestedPanel,
           insights.promoPct >= 50
             ? "border-amber-500/30 bg-amber-500/10"
             : "border-primary/20 bg-primary/5",
@@ -96,6 +92,19 @@ export function CompetitorInsightsPanel({
           ))}
         </ul>
       </div>
+    </>
+  );
+
+  if (bare) {
+    return <div className={hub.panel}>{content}</div>;
+  }
+
+  return (
+    <section className={cn(hub.panel)}>
+      <h2 className="text-foreground mb-3 text-sm font-semibold">
+        Ringkasan & Kesimpulan
+      </h2>
+      {content}
     </section>
   );
 }

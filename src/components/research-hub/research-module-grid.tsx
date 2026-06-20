@@ -87,14 +87,14 @@ const MODULES = [
 export function ResearchModuleGrid() {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {MODULES.map((mod) => {
+      {MODULES.map((mod, i) => {
         const Icon = mod.icon;
         const inner = (
           <Card
             className={cn(
-              "h-full transition-shadow",
+              "group h-full transition-[transform,shadow,border-color] duration-200 ease-out motion-reduce:transition-none",
               mod.active
-                ? "hover:border-primary/40 hover:shadow-md"
+                ? "hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 hover:border-primary/40 hover:shadow-md"
                 : "opacity-60",
             )}
           >
@@ -102,7 +102,7 @@ export function ResearchModuleGrid() {
               <div className="flex items-start justify-between gap-2">
                 <span
                   className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg border transition-transform duration-200 ease-out motion-reduce:transition-none group-hover:scale-105",
                     mod.active
                       ? "border-primary/30 bg-primary/10 text-primary"
                       : "border-border bg-muted text-muted-foreground",
@@ -125,16 +125,25 @@ export function ResearchModuleGrid() {
           </Card>
         );
 
+        const wrapperClass =
+          "block h-full animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none";
+        const wrapperStyle = { animationDelay: `${(i % 4) * 50}ms` };
+
         if (mod.active && "href" in mod && mod.href) {
           return (
-            <Link key={mod.title} href={mod.href} className="block h-full">
+            <Link
+              key={mod.title}
+              href={mod.href}
+              className={wrapperClass}
+              style={wrapperStyle}
+            >
               {inner}
             </Link>
           );
         }
 
         return (
-          <div key={mod.title} className="h-full cursor-not-allowed">
+          <div key={mod.title} className={cn(wrapperClass, "cursor-not-allowed")} style={wrapperStyle}>
             {inner}
           </div>
         );

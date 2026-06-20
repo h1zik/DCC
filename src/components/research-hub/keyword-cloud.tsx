@@ -1,5 +1,6 @@
 "use client";
 
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 type Keyword = { word: string; count: number };
@@ -21,7 +22,8 @@ export function KeywordCloud({ keywords }: { keywords: Keyword[] }) {
           <span
             key={k.word}
             className={cn(
-              "bg-muted text-foreground inline-flex rounded-full px-2.5 py-1 font-medium",
+              hub.nestedPanel,
+              "text-foreground inline-flex px-2.5 py-1 font-medium",
             )}
             style={{ fontSize: `${scale}rem` }}
             title={`${k.count} kali`}

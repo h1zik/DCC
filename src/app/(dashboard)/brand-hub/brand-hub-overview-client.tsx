@@ -179,11 +179,15 @@ export function BrandHubCommandCenter({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_minmax(260px,320px)]">
         <div className="flex flex-col gap-8">
-          <section className={cn(hub.card, hub.cardBody)}>
+          <section className={cn(hub.card, hub.cardBody, hub.entrance)}>
             <p className={hub.label}>Alur kerja</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-3">
               {WORKFLOW.map((w, i) => (
-                <div key={w.step} className="relative flex flex-col gap-2">
+                <div
+                  key={w.step}
+                  className={cn("relative flex flex-col gap-2", hub.entrance)}
+                  style={i > 0 ? { animationDelay: `${i * 60}ms` } : undefined}
+                >
                   <span className="text-primary text-xs font-bold tabular-nums">
                     {w.step}
                   </span>
@@ -232,7 +236,7 @@ function ModuleBento({
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {modules.map((m) => {
+      {modules.map((m, index) => {
         const level = m.healthKey
           ? healthLevelForModule(health, m.healthKey)
           : "idle";
@@ -244,11 +248,17 @@ function ModuleBento({
             className={cn(
               hub.card,
               hub.cardHover,
+              hub.entrance,
               "group flex flex-col gap-4 p-5",
               m.zone === "studio"
                 ? "border-l-[3px] border-l-primary/50"
                 : "border-l-[3px] border-l-muted-foreground/25",
             )}
+            style={
+              index > 0 && index < 8
+                ? { animationDelay: `${index * 50}ms` }
+                : undefined
+            }
           >
             <div className="flex items-start justify-between gap-3">
               <span

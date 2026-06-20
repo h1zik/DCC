@@ -1,3 +1,4 @@
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 import { reportBodyToHtml } from "@/lib/research/reports/report-body-html";
 
@@ -29,15 +30,28 @@ export function ReportSectionList({ sections }: { sections: ReportSectionRow[] }
   }
 
   return (
-    <div className="space-y-8">
-      {sections.map((section) => (
-        <article key={section.id} className="border-border/60 border-b pb-6 last:border-0">
+    <div className="space-y-6">
+      {sections.map((section, index) => (
+        <article
+          key={section.id}
+          className={cn(
+            hub.nestedPanel,
+            hub.entrance,
+            "border-b-0",
+          )}
+          style={
+            index > 0 && index < 8
+              ? { animationDelay: `${index * 40}ms` }
+              : undefined
+          }
+        >
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold">{section.title}</h2>
             {section.moduleRef ? (
               <span
                 className={cn(
-                  "bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                  hub.nestedPanel,
+                  "text-muted-foreground px-2 py-0.5 text-[10px] font-semibold uppercase",
                 )}
               >
                 {MODULE_LABELS[section.moduleRef] ?? section.moduleRef}

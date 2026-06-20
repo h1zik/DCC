@@ -1,5 +1,7 @@
 import "server-only";
 
+import { after } from "next/server";
+
 import {
   BrandVisualAssetSource,
   BrandVisualCollectionStatus,
@@ -346,7 +348,13 @@ export async function enqueueBrandPinterestScrape(
   });
 
   if (!isApifyConfigured()) {
-    await runDemoPinterestScrape(collectionId, keywordsToScrape);
+    after(async () => {
+      try {
+        await runDemoPinterestScrape(collectionId, keywordsToScrape);
+      } catch (err) {
+        console.error("[enqueueBrandPinterestScrape] demo", collectionId, err);
+      }
+    });
     return;
   }
 
@@ -354,7 +362,7 @@ export async function enqueueBrandPinterestScrape(
     data: {
       type: ResearchScrapeJobType.PINTEREST_SCRAPE,
       entityId: collectionId,
-      status: ResearchScrapeJobStatus.RUNNING,
+      status: ResearchScrapeJobStatus.PENDING,
       startedAt: new Date(),
       totalSteps: keywordsToScrape.length,
       currentStep: 0,
@@ -362,7 +370,17 @@ export async function enqueueBrandPinterestScrape(
     },
   });
 
-  await runBrandPinterestJobToCompletion(job.id);
+  after(async () => {
+    try {
+      await prisma.brandResearchScrapeJob.update({
+        where: { id: job.id },
+        data: { status: ResearchScrapeJobStatus.RUNNING },
+      });
+      await runBrandPinterestJobToCompletion(job.id);
+    } catch (err) {
+      console.error("[enqueueBrandPinterestScrape]", job.id, err);
+    }
+  });
 }
 
 export async function pollBrandPinterestScrapeJob(jobId: string): Promise<void> {

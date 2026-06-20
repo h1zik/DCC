@@ -13,6 +13,7 @@ import {
   rescrapeReviewIntelSource,
 } from "@/actions/research-review-intelligence";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,19 +35,17 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   getReviewPlatformLabel,
   REVIEW_PLATFORMS,
   reviewPlatformsByCategory,
 } from "@/lib/review-platforms/platforms";
 import { SOURCE_STATUS_LABELS, formatRelativeTime } from "@/lib/research/labels";
+import {
+  hub,
+  ResearchHubEmptyState,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 import { useReviewIntelPolling } from "./use-review-intel-polling";
 
@@ -65,22 +64,31 @@ export type ReviewSourceRow = {
   errorMessage: string | null;
 };
 
-function statusTone(status: ReviewIntelSourceStatus) {
+function statusChipTone(
+  status: ReviewIntelSourceStatus,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "SCRAPING":
     case "ANALYZING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
 }
 
-function platformLabel(row: ReviewSourceRow): string {
-  return getReviewPlatformLabel(row.platformKey);
+function isInProgress(status: ReviewIntelSourceStatus) {
+  return status === "SCRAPING" || status === "ANALYZING";
+}
+
+function isPartial(row: ReviewSourceRow) {
+  return (
+    row.totalReviewsReported != null &&
+    row.totalReviewsReported > row.reviewCount
+  );
 }
 
 export function ReviewIntelligenceClient({
@@ -103,9 +111,10 @@ export function ReviewIntelligenceClient({
     [platformKey],
   );
 
-  const hasInProgress = sources.some(
-    (s) => s.status === "SCRAPING" || s.status === "ANALYZING",
-  );
+  const hasInProgress = sources.some((s) => isInProgress(s.status));
+  const readyCount = sources.filter((s) => s.status === "READY").length;
+  const totalReviews = sources.reduce((sum, s) => sum + s.reviewCount, 0);
+  const partialCount = sources.filter(isPartial).length;
 
   useReviewIntelPolling(hasInProgress);
 
@@ -118,44 +127,61 @@ export function ReviewIntelligenceClient({
     setMode("scrape");
   }
 
-  function handleCreateScrape() {
-    startTransition(async () => {
-      try {
-        const result = await createReviewIntelSource({
-          productName,
-          competitorBrand,
-          platformKey,
-          productUrl,
+  async function handleCreateScrape() {
+    let result;
+    try {
+      result = await new Promise<{ id: string }>((resolve, reject) => {
+        startTransition(async () => {
+          try {
+            resolve(await createReviewIntelSource({
+              productName,
+              competitorBrand,
+              platformKey,
+              productUrl,
+            }));
+          } catch (err) {
+            reject(err);
+          }
         });
-        toast.success(
-          "Scrape dimulai di background. Halaman akan update otomatis.",
-        );
-        setDialogOpen(false);
-        resetForm();
-        router.push(`/research-hub/review-intelligence/${result.id}`);
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-      }
-    });
+      });
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+      return;
+    }
+    toast.success(
+      "Scrape dimulai di background. Halaman akan update otomatis.",
+    );
+    setDialogOpen(false);
+    resetForm();
+    router.push(`/research-hub/review-intelligence/${result.id}`);
   }
 
-  function handleCreateCsv() {
-    startTransition(async () => {
-      try {
-        const result = await createReviewIntelSourceFromCsv({
-          productName,
-          competitorBrand,
-          csvContent,
-          productUrl: productUrl.trim() || "https://manual-import.local/reviews",
+  async function handleCreateCsv() {
+    let result;
+    try {
+      result = await new Promise<{ id: string }>((resolve, reject) => {
+        startTransition(async () => {
+          try {
+            resolve(await createReviewIntelSourceFromCsv({
+              productName,
+              competitorBrand,
+              csvContent,
+              productUrl:
+                productUrl.trim() || "https://manual-import.local/reviews",
+            }));
+          } catch (err) {
+            reject(err);
+          }
         });
-        toast.success("Review diimport dan dianalisis.");
-        setDialogOpen(false);
-        resetForm();
-        router.push(`/research-hub/review-intelligence/${result.id}`);
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal import CSV."));
-      }
-    });
+      });
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal import CSV."));
+      return;
+    }
+    toast.success("Review diimport dan dianalisis.");
+    setDialogOpen(false);
+    resetForm();
+    router.push(`/research-hub/review-intelligence/${result.id}`);
   }
 
   function handleCsvFile(file: File | null) {
@@ -168,11 +194,32 @@ export function ReviewIntelligenceClient({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
-          {sources.length} sumber produk dianalisis
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <ResearchHubStatChip
+            label="Sumber"
+            value={sources.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <ResearchHubStatChip
+            label="Siap"
+            value={readyCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+          <ResearchHubStatChip
+            label="Total review"
+            value={totalReviews.toLocaleString("id-ID")}
+          />
+          {partialCount > 0 ? (
+            <ResearchHubStatChip
+              label="Parsial"
+              value={partialCount.toLocaleString("id-ID")}
+              tone="warning"
+            />
+          ) : null}
+        </div>
+
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -183,7 +230,7 @@ export function ReviewIntelligenceClient({
           <DialogTrigger
             render={
               <Button size="sm">
-                <Plus className="size-3.5" aria-hidden />
+                <Plus className="mr-1.5 size-3.5" aria-hidden />
                 Tambah Produk
               </Button>
             }
@@ -275,8 +322,7 @@ export function ReviewIntelligenceClient({
                       value={productUrl}
                       onChange={(e) => setProductUrl(e.target.value)}
                       placeholder={
-                        selectedPlatform?.urlPlaceholder ??
-                        "https://..."
+                        selectedPlatform?.urlPlaceholder ?? "https://..."
                       }
                     />
                   </div>
@@ -305,7 +351,7 @@ export function ReviewIntelligenceClient({
                       value={csvContent}
                       onChange={(e) => setCsvContent(e.target.value)}
                       rows={5}
-                      placeholder={"text,rating,author\n\"Tekstur enak\",5,Sari"}
+                      placeholder={'text,rating,author\n"Tekstur enak",5,Sari'}
                     />
                   </div>
                   <div className="grid gap-1.5">
@@ -343,141 +389,162 @@ export function ReviewIntelligenceClient({
         </Dialog>
       </div>
 
-      {sources.length === 0 ? (
-        <div className="border-border text-muted-foreground rounded-xl border border-dashed px-6 py-12 text-center">
-          <Star className="mx-auto mb-3 size-8 opacity-40" aria-hidden />
-          <p className="text-sm font-medium">Belum ada sumber review</p>
-          <p className="mt-1 text-xs">
-            Tambahkan URL produk kompetitor atau import CSV untuk mulai analisis
-            sentimen.
+      {hasInProgress ? (
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Scrape & analisis review berjalan"
+            percent={40}
+            stepLabel="Satu atau lebih sumber sedang mengambil review dan menjalankan AI."
+          />
+          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
+            Halaman diperbarui otomatis setiap beberapa detik.
           </p>
         </div>
-      ) : (
-        <div className="border-border overflow-hidden rounded-xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produk</TableHead>
-                <TableHead>Sumber</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Review</TableHead>
-                <TableHead>Update</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sources.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>
+      ) : null}
+
+      <ResearchHubSection
+        title="Sumber Review"
+        description="Produk kompetitor yang sudah atau sedang dianalisis."
+      >
+        {sources.length === 0 ? (
+          <ResearchHubEmptyState
+            icon={Star}
+            title="Belum ada sumber review"
+            description="Tambahkan URL produk kompetitor atau import CSV untuk mulai analisis sentimen, keluhan, dan gap opportunity."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Tambah Produk
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {sources.map((s, index) => (
+              <div
+                key={s.id}
+                className={cn(hub.panel, hub.cardHover, hub.entrance)}
+                style={
+                  index > 0 && index < 8
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <Link
                       href={`/research-hub/review-intelligence/${s.id}`}
-                      className="hover:text-primary font-medium"
+                      className="hover:text-primary line-clamp-2 text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
                     >
                       {s.productName}
                     </Link>
-                    <p className="text-muted-foreground text-xs">
-                      {s.competitorBrand}
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {s.competitorBrand} · {getReviewPlatformLabel(s.platformKey)}
                     </p>
-                  </TableCell>
-                  <TableCell className="text-sm">{platformLabel(s)}</TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                        statusTone(s.status),
-                      )}
-                    >
-                      {SOURCE_STATUS_LABELS[s.status]}
-                    </span>
-                    {s.errorMessage ? (
-                      <p className="text-destructive mt-1 max-w-xs truncate text-[10px]">
-                        {s.errorMessage}
-                      </p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className="tabular-nums">
-                      {s.reviewCount.toLocaleString("id-ID")}
-                    </span>
-                    {s.totalReviewsReported != null &&
-                    s.totalReviewsReported > s.reviewCount ? (
-                      <p
-                        className="text-amber-600 dark:text-amber-400 text-[10px] font-medium"
-                        title={`Sumber melaporkan ${s.totalReviewsReported.toLocaleString("id-ID")} review, namun hanya ${s.reviewCount.toLocaleString("id-ID")} yang bisa diambil scraper.`}
-                      >
-                        dari {s.totalReviewsReported.toLocaleString("id-ID")} ·
-                        parsial
-                      </p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {formatRelativeTime(
+                  </div>
+                  <ResearchHubStatChip
+                    label="Status"
+                    value={SOURCE_STATUS_LABELS[s.status]}
+                    tone={statusChipTone(s.status)}
+                  />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <ResearchHubStatChip
+                    label="Review"
+                    value={s.reviewCount.toLocaleString("id-ID")}
+                    tone="primary"
+                  />
+                  {isPartial(s) ? (
+                    <ResearchHubStatChip
+                      label="Dari total"
+                      value={s.totalReviewsReported!.toLocaleString("id-ID")}
+                      tone="warning"
+                    />
+                  ) : null}
+                  <ResearchHubStatChip
+                    label="Update"
+                    value={formatRelativeTime(
                       s.lastAnalyzedAt ? new Date(s.lastAnalyzedAt) : null,
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {s.platformKey !== "csv" ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          disabled={pending}
-                          onClick={() =>
-                            startTransition(async () => {
-                              try {
-                                await rescrapeReviewIntelSource(s.id);
-                                toast.success("Scrape ulang dimulai.");
-                                router.refresh();
-                              } catch (err) {
-                                toast.error(
-                                  actionErrorMessage(
-                                    err,
-                                    "Gagal memproses permintaan.",
-                                  ),
-                                );
-                              }
-                            })
+                  />
+                </div>
+
+                {s.errorMessage ? (
+                  <p className="text-rose-700 dark:text-rose-300 mt-2 text-xs">
+                    {s.errorMessage}
+                  </p>
+                ) : null}
+
+                {isPartial(s) ? (
+                  <p className="text-amber-700 dark:text-amber-300 mt-2 text-xs">
+                    Data parsial — scraper mengambil{" "}
+                    {Math.round(
+                      (s.reviewCount / s.totalReviewsReported!) * 100,
+                    )}
+                    % dari total yang dilaporkan marketplace.
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  {s.platformKey !== "csv" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending || isInProgress(s.status)}
+                      onClick={() =>
+                        startTransition(async () => {
+                          try {
+                            await rescrapeReviewIntelSource(s.id);
+                            toast.success("Scrape ulang dimulai.");
+                            router.refresh();
+                          } catch (err) {
+                            toast.error(
+                              actionErrorMessage(
+                                err,
+                                "Gagal memproses permintaan.",
+                              ),
+                            );
                           }
-                          title="Scrape ulang"
-                        >
-                          <RefreshCw className="size-3.5" />
-                        </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={pending}
-                        onClick={() =>
-                          startTransition(async () => {
-                            if (!confirm("Hapus sumber ini?")) return;
-                            try {
-                              await deleteReviewIntelSource(s.id);
-                              toast.success("Sumber dihapus.");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(
-                                actionErrorMessage(
-                                  err,
-                                  "Gagal memproses permintaan.",
-                                ),
-                              );
-                            }
-                          })
+                        })
+                      }
+                    >
+                      <RefreshCw className="size-3.5" aria-hidden />
+                      Refresh
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        if (!confirm("Hapus sumber ini?")) return;
+                        try {
+                          await deleteReviewIntelSource(s.id);
+                          toast.success("Sumber dihapus.");
+                          router.refresh();
+                        } catch (err) {
+                          toast.error(
+                            actionErrorMessage(
+                              err,
+                              "Gagal memproses permintaan.",
+                            ),
+                          );
                         }
-                        title="Hapus"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                      })
+                    }
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Hapus
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ResearchHubSection>
     </div>
   );
 }

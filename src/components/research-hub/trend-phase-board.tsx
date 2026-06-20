@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { TrendPhase } from "@prisma/client";
+import { Globe } from "lucide-react";
 import { TREND_PHASE_LABELS } from "@/lib/research/labels";
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import { TrendConfidenceBadge } from "@/components/research-hub/trend-confidence-badge";
 import { TrendWowBadge } from "@/components/research-hub/trend-wow-badge";
 import { cn } from "@/lib/utils";
@@ -43,12 +45,21 @@ export function TrendPhaseBoard({
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {PHASE_ORDER.map((phase) => {
+      {PHASE_ORDER.map((phase, colIndex) => {
         const phaseItems = items.filter((i) => i.phase === phase);
         return (
           <div
             key={phase}
-            className={cn("rounded-xl border p-3", PHASE_STYLES[phase])}
+            className={cn(
+              hub.nestedPanel,
+              PHASE_STYLES[phase],
+              hub.entrance,
+            )}
+            style={
+              colIndex > 0
+                ? { animationDelay: `${colIndex * 50}ms` }
+                : undefined
+            }
           >
             <h3 className="mb-2 text-sm font-semibold">
               {TREND_PHASE_LABELS[phase]}
@@ -61,13 +72,14 @@ export function TrendPhaseBoard({
                   <li key={item.id}>
                     <Link
                       href={`${basePath}/${digestId}?item=${item.id}`}
-                      className="hover:bg-background/60 block rounded-md px-2 py-1.5 text-sm transition-colors"
+                      className="hover:bg-background/60 block rounded-md px-2 py-1.5 text-sm transition-colors duration-150 motion-reduce:transition-none"
                     >
                       <span className="font-medium">{item.name}</span>
                       {item.isGlobalPipeline ? (
-                        <span className="text-muted-foreground ml-1 text-[10px]">
-                          🌏
-                        </span>
+                        <Globe
+                          className="text-muted-foreground ml-1 inline size-3"
+                          aria-label="Global pipeline"
+                        />
                       ) : null}
                       <span className="mt-0.5 flex flex-wrap gap-1">
                         {typeof item.tmiScore === "number" ? (

@@ -16,9 +16,9 @@ Tugas:
    - gapScore 0-100, opportunity ringkas
    - recommendedAction: aksi imperatif konkret untuk merebut gap
    - priority: "P0" | "P1" | "P2" (P0 = gap besar & mudah dimenangkan)
-   - evidenceRefs: array string yang mengutip bukti dari data (mis. tema keluhan, kompetitor, keyword)
-2. Claim analysis: klaim overused vs masih kosong di pasar
-3. Positioning map: axisX default "Harga", axisY default "Efektivitas/Benefit", plot 5-12 poin kompetitor/kategori
+   - evidenceRefs: array string yang HARUS mengutip teks/tema/keyword yang benar-benar ada di data JSON di atas — jangan mengarang bukti
+2. Claim analysis: klaim overused vs masih kosong di pasar (hanya dari data, bukan asumsi)
+3. Positioning map: axisX default "Harga", axisY default "Efektivitas/Benefit", plot 5-12 poin kompetitor/kategori — koordinat x/y harus konsisten dengan range harga & benefit di data competitor bila tersedia
 4. 5-10 kandidat USP dengan RTB (reason to believe), differentiationScore 0-100, dan risks[]
 5. differentiationScore agregat 0-100 untuk keseluruhan peluang kategori
 6. categoryDecision: keputusan masuk kategori — verdict "GO" | "WATCH" | "AVOID", confidence 0..1, dan reason ringkas berbasis bukti

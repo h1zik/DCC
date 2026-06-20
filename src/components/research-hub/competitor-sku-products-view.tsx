@@ -1,0 +1,255 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { ReviewIntelSourceStatus } from "@prisma/client";
+import {
+  ExternalLink,
+  LayoutGrid,
+  List,
+  Loader2,
+  MessageSquareText,
+} from "lucide-react";
+import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
+import {
+  CompetitorSkuTable,
+  type CompetitorSkuRow,
+} from "@/components/research-hub/competitor-sku-table";
+import { formatRp, SOURCE_STATUS_LABELS } from "@/lib/research/labels";
+import { hub } from "@/components/research-hub/research-hub-primitives";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+export type SkuViewMode = "card" | "list";
+
+const VIEW_STORAGE_KEY = "research-hub:competitor-sku-view";
+
+function CompetitorSkuCard({
+  sku,
+  onReviewIntel,
+  reviewSkuId,
+  pending,
+}: {
+  sku: CompetitorSkuRow;
+  onReviewIntel?: (sku: CompetitorSkuRow) => void;
+  reviewSkuId?: string | null;
+  pending?: boolean;
+}) {
+  return (
+    <article
+      className={cn(
+        hub.panel,
+        hub.cardHover,
+        "flex flex-col overflow-hidden p-0",
+      )}
+    >
+      <div className="relative aspect-[4/3] w-full overflow-hidden border-b border-border/40">
+        <ProductDiscoveryProductThumb
+          imageUrl={sku.imageUrl ?? null}
+          name={sku.name}
+          className="size-full"
+        />
+        {sku.isNew ? (
+          <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase">
+            Baru
+          </span>
+        ) : null}
+        {sku.hasPromo && sku.promoText ? (
+          <span className="bg-amber-500 text-amber-950 absolute top-2 right-2 rounded-md px-2 py-0.5 text-[10px] font-semibold">
+            {sku.promoText}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h3 className="line-clamp-2 text-sm leading-snug font-medium">
+            {sku.name}
+          </h3>
+          {sku.priceDeltaPct != null && sku.priceDirection ? (
+            <p
+              className={cn(
+                "text-xs font-medium tabular-nums",
+                sku.priceDirection === "up"
+                  ? "text-rose-600 dark:text-rose-400"
+                  : "text-emerald-600 dark:text-emerald-400",
+              )}
+            >
+              {sku.priceDirection === "up" ? "▲" : "▼"} {sku.priceDeltaPct}%
+            </p>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className={hub.nestedPanel}>
+            <p className="text-muted-foreground text-[10px]">Harga</p>
+            <p className="mt-0.5 text-xs font-semibold tabular-nums">
+              {sku.currentPrice != null ? formatRp(sku.currentPrice) : "—"}
+            </p>
+          </div>
+          <div className={hub.nestedPanel}>
+            <p className="text-muted-foreground text-[10px]">Rating</p>
+            <p className="mt-0.5 text-xs font-semibold tabular-nums">
+              {sku.rating != null ? sku.rating.toFixed(1) : "—"}
+            </p>
+          </div>
+          <div className={hub.nestedPanel}>
+            <p className="text-muted-foreground text-[10px]">Review</p>
+            <p className="mt-0.5 text-xs font-semibold tabular-nums">
+              {sku.reviewCount.toLocaleString("id-ID")}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 border-t border-border/40 pt-3">
+          {onReviewIntel ? (
+            <Button
+              type="button"
+              variant={sku.reviewIntelSourceId ? "secondary" : "outline"}
+              size="sm"
+              className="flex-1 text-xs"
+              disabled={pending && reviewSkuId === sku.id}
+              onClick={() => onReviewIntel(sku)}
+            >
+              {pending && reviewSkuId === sku.id ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <MessageSquareText className="size-3.5" aria-hidden />
+              )}
+              {sku.reviewIntelSourceId ? "Lihat Intel" : "Analisis"}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="shrink-0"
+            render={
+              <a
+                href={sku.productUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Buka ${sku.name}`}
+              />
+            }
+          >
+            <ExternalLink className="size-3.5" aria-hidden />
+          </Button>
+        </div>
+        {sku.reviewIntelStatus ? (
+          <p className="text-muted-foreground text-center text-[10px]">
+            {SOURCE_STATUS_LABELS[sku.reviewIntelStatus as ReviewIntelSourceStatus]}
+          </p>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+export function CompetitorSkuProductsView({
+  rows,
+  onReviewIntel,
+  reviewSkuId,
+  pending,
+  defaultView = "card",
+}: {
+  rows: CompetitorSkuRow[];
+  onReviewIntel?: (sku: CompetitorSkuRow) => void;
+  reviewSkuId?: string | null;
+  pending?: boolean;
+  defaultView?: SkuViewMode;
+}) {
+  const [view, setView] = useState<SkuViewMode>(defaultView);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+      if (stored === "card" || stored === "list") setView(stored);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function changeView(next: SkuViewMode) {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        Belum ada SKU — refresh atau tunggu scrape selesai.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-muted-foreground text-sm tabular-nums">
+          {rows.length} SKU
+        </p>
+        <div className="bg-muted inline-flex rounded-lg p-0.5">
+          <Button
+            type="button"
+            size="sm"
+            variant={view === "card" ? "secondary" : "ghost"}
+            className="h-7 gap-1 px-2.5 text-xs"
+            onClick={() => changeView("card")}
+            aria-pressed={view === "card"}
+          >
+            <LayoutGrid className="size-3.5" aria-hidden />
+            Kartu
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={view === "list" ? "secondary" : "ghost"}
+            className="h-7 gap-1 px-2.5 text-xs"
+            onClick={() => changeView("list")}
+            aria-pressed={view === "list"}
+          >
+            <List className="size-3.5" aria-hidden />
+            Daftar
+          </Button>
+        </div>
+      </div>
+
+      {view === "card" ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {rows.map((sku, index) => (
+            <div
+              key={sku.id}
+              className={hub.entrance}
+              style={
+                index > 0 && index < 12
+                  ? { animationDelay: `${Math.min(index * 30, 300)}ms` }
+                  : undefined
+              }
+            >
+              <CompetitorSkuCard
+                sku={sku}
+                onReviewIntel={onReviewIntel}
+                reviewSkuId={reviewSkuId}
+                pending={pending}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={cn(hub.panel, "p-0 sm:p-1", hub.entrance)}>
+          <CompetitorSkuTable
+            rows={rows}
+            onReviewIntel={onReviewIntel}
+            reviewSkuId={reviewSkuId}
+            pending={pending}
+            showImages
+          />
+        </div>
+      )}
+    </div>
+  );
+}

@@ -2030,6 +2030,7 @@ model ProductDiscoveryItem {
   externalId  String
   name        String
   productUrl  String
+  imageUrl    String?
   shopName    String?
   price       Float?
   rating      Float?

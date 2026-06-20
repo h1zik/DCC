@@ -16,6 +16,7 @@ import {
 } from "@/actions/research-reports";
 import { suggestUspContextSources } from "@/actions/research-usp-gap";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import {
   defaultReportModules,
   ReportModuleSummaryChips,
@@ -45,17 +46,16 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   RESEARCH_REPORT_STATUS_LABELS,
   RESEARCH_REPORT_TYPE_LABELS,
+  formatRelativeTime,
 } from "@/lib/research/labels";
+import {
+  hub,
+  ResearchHubEmptyState,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 export type ReportRow = {
@@ -69,17 +69,24 @@ export type ReportRow = {
   errorMessage: string | null;
 };
 
-function statusTone(status: ResearchReportStatus) {
+function statusChipTone(
+  status: ResearchReportStatus,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "GENERATING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
+}
+
+function isInProgress(status: ResearchReportStatus) {
+  return status === "GENERATING" || status === "PENDING";
 }
 
 export function ResearchReportsClient({
@@ -109,9 +116,8 @@ export function ResearchReportsClient({
   );
   const [selections, setSelections] = useState<ReportSourceSelections>({});
 
-  const hasInProgress = reports.some(
-    (r) => r.status === "GENERATING" || r.status === "PENDING",
-  );
+  const hasInProgress = reports.some((r) => isInProgress(r.status));
+  const readyCount = reports.filter((r) => r.status === "READY").length;
 
   const showModulePickers =
     reportType === ResearchReportType.CUSTOM ||
@@ -222,6 +228,7 @@ export function ResearchReportsClient({
   }
 
   function handleDelete(id: string) {
+    if (!confirm("Hapus laporan ini?")) return;
     startTransition(async () => {
       try {
         await deleteResearchReport(id);
@@ -234,20 +241,39 @@ export function ResearchReportsClient({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-6">
       {latestWeeklyId ? (
-        <div className="border-primary/30 bg-primary/5 rounded-lg border px-4 py-3 text-sm">
+        <div
+          className={cn(
+            hub.nestedPanel,
+            hub.entrance,
+            "border-primary/30 bg-primary/5 text-sm",
+          )}
+        >
           Laporan mingguan terbaru:{" "}
           <Link
             href={`/research-hub/research-reports/${latestWeeklyId}`}
             className="text-primary font-medium hover:underline"
           >
-            Buka laporan
+            Buka laporan →
           </Link>
         </div>
       ) : null}
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <ResearchHubStatChip
+            label="Laporan"
+            value={reports.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <ResearchHubStatChip
+            label="Siap"
+            value={readyCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+        </div>
+
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -258,7 +284,7 @@ export function ResearchReportsClient({
           <DialogTrigger
             render={
               <Button size="sm">
-                <Plus className="mr-1.5 size-4" />
+                <Plus className="mr-1.5 size-3.5" aria-hidden />
                 Buat Laporan
               </Button>
             }
@@ -334,7 +360,7 @@ export function ResearchReportsClient({
 
               {showModulePickers && (
                 <>
-                  <section className="border-border/60 space-y-3 rounded-xl border p-4">
+                  <section className={cn(hub.nestedPanel, "space-y-3")}>
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <p className="text-sm font-medium">1. Kategori</p>
@@ -349,7 +375,7 @@ export function ResearchReportsClient({
                         disabled={suggestPending || pending}
                         onClick={handleSuggest}
                       >
-                        <Sparkles className="mr-1.5 size-3.5" />
+                        <Sparkles className="mr-1.5 size-3.5" aria-hidden />
                         Saran
                       </Button>
                     </div>
@@ -388,82 +414,108 @@ export function ResearchReportsClient({
         </Dialog>
       </div>
 
-      <div className="border-border/60 overflow-hidden rounded-xl border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Laporan</TableHead>
-              <TableHead>Tipe</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Periode</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reports.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground py-10 text-center">
-                  <FileText className="mx-auto mb-2 size-8 opacity-40" />
-                  Belum ada laporan riset.
-                </TableCell>
-              </TableRow>
-            ) : (
-              reports.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>
+      {hasInProgress ? (
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Generate laporan berjalan"
+            percent={50}
+            stepLabel="Mengagregasi data modul riset lalu menulis section laporan dengan AI."
+          />
+        </div>
+      ) : null}
+
+      <ResearchHubSection
+        title="Laporan Riset"
+        description="Weekly digest, deep dive, battle card — export PDF & share link."
+      >
+        {reports.length === 0 ? (
+          <ResearchHubEmptyState
+            icon={FileText}
+            title="Belum ada laporan riset"
+            description="Buat laporan custom atau deep dive — pilih sumber modul spesifik agar isi laporan lebih terbukti."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Buat Laporan
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {reports.map((r, index) => (
+              <div
+                key={r.id}
+                className={cn(hub.panel, hub.cardHover, hub.entrance)}
+                style={
+                  index > 0 && index < 8
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <Link
                       href={`/research-hub/research-reports/${r.id}`}
-                      className="font-medium hover:underline"
+                      className="hover:text-primary line-clamp-2 text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
                     >
                       {r.title}
                     </Link>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {RESEARCH_REPORT_TYPE_LABELS[r.type]}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                        statusTone(r.status),
-                      )}
-                    >
-                      {RESEARCH_REPORT_STATUS_LABELS[r.status]}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {r.periodStart && r.periodEnd
-                      ? `${r.periodStart.slice(0, 10)} – ${r.periodEnd.slice(0, 10)}`
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        disabled={pending}
-                        onClick={() => handleRefresh(r.id)}
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8 text-rose-600"
-                        disabled={pending}
-                        onClick={() => handleDelete(r.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {RESEARCH_REPORT_TYPE_LABELS[r.type]}
+                    </p>
+                  </div>
+                  <ResearchHubStatChip
+                    label="Status"
+                    value={RESEARCH_REPORT_STATUS_LABELS[r.status]}
+                    tone={statusChipTone(r.status)}
+                  />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {r.periodStart && r.periodEnd ? (
+                    <ResearchHubStatChip
+                      label="Periode"
+                      value={`${r.periodStart.slice(0, 10)} – ${r.periodEnd.slice(0, 10)}`}
+                    />
+                  ) : null}
+                  <ResearchHubStatChip
+                    label="Dibuat"
+                    value={formatRelativeTime(new Date(r.createdAt))}
+                  />
+                </div>
+
+                {r.errorMessage ? (
+                  <p className="text-rose-700 dark:text-rose-300 mt-2 text-xs">
+                    {r.errorMessage}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending || isInProgress(r.status)}
+                    onClick={() => handleRefresh(r.id)}
+                  >
+                    <RefreshCw className="size-3.5" aria-hidden />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={pending}
+                    onClick={() => handleDelete(r.id)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Hapus
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ResearchHubSection>
     </div>
   );
 }

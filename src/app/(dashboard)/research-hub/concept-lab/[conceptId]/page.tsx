@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import { parseRiskFactors } from "@/lib/research/concept-lab/types";
 import {
   ConceptDetailClient,
@@ -68,14 +69,15 @@ export default async function ConceptDetailPage({
     conceptData,
     validationScores,
     riskFactors: parseRiskFactors(concept.riskFactors),
+    uspGapAnalysisId: concept.uspGapAnalysisId,
     rooms,
     otherConcepts,
     aiMeta: parseResearchAiMetaClient(concept.aiMeta),
   };
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
+    <ResearchHubPageShell>
       <ConceptDetailClient data={data} />
-    </div>
+    </ResearchHubPageShell>
   );
 }

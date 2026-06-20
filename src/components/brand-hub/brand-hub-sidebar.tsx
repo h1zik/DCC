@@ -119,10 +119,12 @@ function NavSection({
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+              "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium",
+              "transition-[color,background-color,transform] duration-200 ease-out motion-reduce:transition-none",
+              "hover:-translate-y-px motion-reduce:hover:translate-y-0",
               active
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
             <item.icon className="size-4 shrink-0 opacity-90" aria-hidden />

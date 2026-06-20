@@ -125,7 +125,7 @@ export function KeywordMatrixTable({
           CSV
         </Button>
       </div>
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -157,7 +157,10 @@ export function KeywordMatrixTable({
             {sorted.map((row) => {
               const hasVol = rowHasVolume(row, hasGoogleVolume);
               return (
-                <TableRow key={row.keyword}>
+                <TableRow
+                  key={row.keyword}
+                  className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+                >
                   <TableCell className="font-medium">
                     <span className="flex flex-wrap items-center gap-1">
                       {row.keyword}

@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import {
+  BarChart3,
+  FileText,
+  Grid3x3,
+  Layers,
+  Map,
+  RefreshCw,
+  Sparkles,
+  Target,
+} from "lucide-react";
 import { UspGapStatus } from "@prisma/client";
 import { toast } from "sonner";
 import { createProductBriefFromUsp } from "@/actions/research-brief";
@@ -13,6 +22,7 @@ import { ProductConceptMode } from "@prisma/client";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { ClaimAnalysisPanel } from "@/components/research-hub/claim-analysis-panel";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { UspSourcesUsedPanel } from "@/components/research-hub/usp-sources-used-panel";
 import { DifferentiationScoreBadge } from "@/components/research-hub/differentiation-score-badge";
 import {
@@ -25,7 +35,6 @@ import {
   type UspCandidate,
 } from "@/components/research-hub/usp-candidate-cards";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -41,8 +50,17 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { USP_GAP_STATUS_LABELS } from "@/lib/research/labels";
 import type { ResolvedContextSources } from "@/lib/research/usp-gap/context-types";
+import {
+  BrandHubPageHeader,
+  BrandHubSection,
+  BrandHubStatChip,
+  hub,
+} from "@/components/brand-hub/brand-hub-primitives";
+import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import { useBrandJobProgress } from "../../use-brand-job-progress";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -85,34 +103,41 @@ const VERDICT_STYLE: Record<
 > = {
   GO: {
     label: "GO — Masuk kategori",
-    tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+    tone: "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
   },
   WATCH: {
     label: "WATCH — Pantau dulu",
-    tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+    tone: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200",
   },
   AVOID: {
     label: "AVOID — Hindari",
-    tone: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30",
+    tone: "border-rose-500/40 bg-rose-500/10 text-rose-800 dark:text-rose-200",
   },
 };
 
-function statusTone(status: UspGapStatus) {
+function statusChipTone(
+  status: UspGapStatus,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "GATHERING":
     case "ANALYZING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
 }
 
+const tabContentClass =
+  "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
+
 export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
   const router = useRouter();
+  const brandId = useBrandHubBrandId();
   const [pending, startTransition] = useTransition();
   const [briefOpen, setBriefOpen] = useState(false);
   const [uspIndex, setUspIndex] = useState(0);
@@ -125,11 +150,7 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
     data.status === "ANALYZING" ||
     data.status === "PENDING";
 
-  useEffect(() => {
-    if (!inProgress) return;
-    const id = window.setInterval(() => router.refresh(), 12_000);
-    return () => window.clearInterval(id);
-  }, [inProgress, router]);
+  useBrandJobProgress({ inProgress });
 
   function handleRefresh() {
     startTransition(async () => {
@@ -191,61 +212,95 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
   }
 
   return (
-    <div className="space-y-6">
-      <ResearchModelBadgeGroup meta={data.aiMeta} />
-      <header className="border-border bg-card relative overflow-hidden rounded-2xl border shadow-sm">
-        <div
-          className="from-primary/8 absolute inset-0 bg-gradient-to-br via-transparent to-transparent"
-          aria-hidden
-        />
-        <div className="relative flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
-          <div className="min-w-0 space-y-2">
-            <Link
-              href="/brand-hub/usp-analyzer"
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
-            >
-              <ArrowLeft className="size-3" aria-hidden />
-              Kembali ke USP Analyzer
-            </Link>
-            <div>
-              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                USP & Gap Analysis
-              </p>
-              <h1 className="text-foreground mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-                {data.category}
-              </h1>
-            </div>
-            <span
-              className={cn(
-                "inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase",
-                statusTone(data.status),
-              )}
-            >
-              {USP_GAP_STATUS_LABELS[data.status]}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-col gap-6 pb-6">
+      <Link
+        href={brandHubHref("/brand-hub/usp-analyzer", brandId)}
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
+      >
+        <BarChart3 className="size-3" aria-hidden />
+        Kembali ke USP Analyzer
+      </Link>
+
+      <BrandHubPageHeader
+        variant="detail"
+        icon={BarChart3}
+        eyebrow="USP & Gap Analyzer"
+        title={data.category}
+        description="Gap matrix, positioning map, dan kandidat USP dari agregasi modul riset."
+        right={
+          <>
+            <ResearchModelBadgeGroup meta={data.aiMeta} />
             <DifferentiationScoreBadge score={data.differentiationScore} />
-            <Button size="sm" onClick={handleRefresh} disabled={pending}>
+            <Button size="sm" onClick={handleRefresh} disabled={pending || inProgress}>
               <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
               Refresh
             </Button>
+          </>
+        }
+        footer={
+          <div className="flex flex-wrap items-center gap-2">
+            <BrandHubStatChip
+              label="Status"
+              value={USP_GAP_STATUS_LABELS[data.status]}
+              tone={statusChipTone(data.status)}
+            />
+            <BrandHubStatChip
+              label="USP"
+              value={data.uspCandidates.length.toLocaleString("id-ID")}
+              tone="primary"
+            />
+            <BrandHubStatChip
+              label="Gap"
+              value={data.gapMatrix.length.toLocaleString("id-ID")}
+            />
+            {data.categoryDecision ? (
+              <BrandHubStatChip
+                label="Verdict"
+                value={data.categoryDecision.verdict}
+                tone={
+                  data.categoryDecision.verdict === "GO"
+                    ? "success"
+                    : data.categoryDecision.verdict === "AVOID"
+                      ? "warning"
+                      : "neutral"
+                }
+              />
+            ) : null}
           </div>
+        }
+      />
+
+      {inProgress ? (
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title={
+              data.status === "GATHERING"
+                ? "Mengumpulkan konteks riset"
+                : "Menganalisis gap & USP"
+            }
+            percent={data.status === "GATHERING" ? 35 : 65}
+            stepLabel="Pipeline modul 1–5 + AI pro berjalan di background — halaman refresh otomatis."
+          />
         </div>
-      </header>
+      ) : null}
 
       {data.errorMessage ? (
-        <p className="text-rose-700 dark:text-rose-300 text-sm">
+        <p
+          className={cn(
+            hub.nestedPanel,
+            "text-rose-800 dark:text-rose-200 text-sm",
+          )}
+          role="alert"
+        >
           {data.errorMessage}
         </p>
       ) : null}
 
-      <UspSourcesUsedPanel sources={data.resolvedSources} />
-
       {data.categoryDecision ? (
         <div
           className={cn(
-            "flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3",
+            hub.nestedPanel,
+            "flex flex-wrap items-center gap-3",
             VERDICT_STYLE[data.categoryDecision.verdict].tone,
           )}
         >
@@ -263,64 +318,130 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
         </div>
       ) : null}
 
-      {data.actionPlan ? (
-        <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Gap (AI)" />
-      ) : null}
+      <Tabs defaultValue="ringkasan" className="gap-0">
+        <div className={cn(hub.stickyToolbar, "pb-0")}>
+          <TabsList variant="line" className="h-9 w-full justify-start gap-4">
+            <TabsTrigger value="ringkasan" className="px-1">
+              <Sparkles className="size-3.5" aria-hidden />
+              Ringkasan
+            </TabsTrigger>
+            <TabsTrigger value="gap" className="px-1">
+              <Grid3x3 className="size-3.5" aria-hidden />
+              Gap Matrix
+              {data.gapMatrix.length > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {data.gapMatrix.length}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="positioning" className="px-1">
+              <Map className="size-3.5" aria-hidden />
+              Positioning
+            </TabsTrigger>
+            <TabsTrigger value="usp" className="px-1">
+              <Target className="size-3.5" aria-hidden />
+              USP
+              {data.uspCandidates.length > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {data.uspCandidates.length}
+                </span>
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="sumber" className="px-1">
+              <Layers className="size-3.5" aria-hidden />
+              Sumber
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-      {data.aiSummary ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">AI Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="text-muted-foreground text-sm leading-relaxed">
-            {data.aiSummary}
-          </CardContent>
-        </Card>
-      ) : null}
+        <TabsContent value="ringkasan" className={tabContentClass}>
+          {data.aiSummary ? (
+            <BrandHubSection title="AI Summary" delayMs={0}>
+              <div className={cn(hub.panel, "text-sm leading-relaxed")}>
+                {data.aiSummary}
+              </div>
+            </BrandHubSection>
+          ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Gap Matrix</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <GapMatrixTable rows={data.gapMatrix} />
-        </CardContent>
-      </Card>
+          {data.actionPlan ? (
+            <BrandHubSection
+              title="Rencana Aksi"
+              description="Langkah prioritas dari analisis gap."
+              delayMs={50}
+            >
+              <ActionPlanPanel plan={data.actionPlan} title="Rencana Aksi Gap (AI)" />
+            </BrandHubSection>
+          ) : null}
 
-      <ClaimAnalysisPanel data={data.claimAnalysis} />
+          <BrandHubSection
+            title="Claim Analysis"
+            description="Klaim yang sudah dipakai kompetitor vs yang masih kosong."
+            delayMs={100}
+          >
+            <ClaimAnalysisPanel data={data.claimAnalysis} />
+          </BrandHubSection>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Positioning Map</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PositioningScatterChart
-            axisX={data.positioningMap.axisX}
-            axisY={data.positioningMap.axisY}
-            points={data.positioningMap.points}
-          />
-        </CardContent>
-      </Card>
+        <TabsContent value="gap" className={tabContentClass}>
+          <BrandHubSection
+            title="Gap Matrix"
+            description="Skor peluang per klaim/benefit dengan bukti dari modul riset."
+          >
+            <div className={hub.panel}>
+              <GapMatrixTable rows={data.gapMatrix} />
+            </div>
+          </BrandHubSection>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">USP Generator</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <UspCandidateCards
-            candidates={data.uspCandidates}
-            onCreateBrief={openBrief}
-            onCreateConcept={handleCreateConcept}
-            briefPending={pending}
-            conceptPending={pending}
-          />
-        </CardContent>
-      </Card>
+        <TabsContent value="positioning" className={tabContentClass}>
+          <BrandHubSection
+            title="Positioning Map"
+            description={`${data.positioningMap.axisX} × ${data.positioningMap.axisY}`}
+          >
+            <div className={hub.panel}>
+              <PositioningScatterChart
+                axisX={data.positioningMap.axisX}
+                axisY={data.positioningMap.axisY}
+                points={data.positioningMap.points}
+              />
+            </div>
+          </BrandHubSection>
+        </TabsContent>
+
+        <TabsContent value="usp" className={tabContentClass}>
+          <BrandHubSection
+            title="USP Generator"
+            description="Kandidat USP dengan RTB, skor diferensiasi, dan risiko."
+          >
+            <div className={hub.panel}>
+              <UspCandidateCards
+                candidates={data.uspCandidates}
+                onCreateBrief={openBrief}
+                onCreateConcept={handleCreateConcept}
+                briefPending={pending}
+                conceptPending={pending}
+              />
+            </div>
+          </BrandHubSection>
+        </TabsContent>
+
+        <TabsContent value="sumber" className={tabContentClass}>
+          <BrandHubSection
+            title="Sumber Data Digunakan"
+            description="Provenance dari modul riset yang mengisi analisis ini."
+          >
+            <UspSourcesUsedPanel sources={data.resolvedSources} />
+          </BrandHubSection>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Buat Product Brief dari USP</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="size-4" aria-hidden />
+              Buat Product Brief dari USP
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm font-medium">
@@ -328,10 +449,7 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
             </p>
             <div className="space-y-2">
               <Label>Room</Label>
-              <Select
-                value={roomId}
-                onValueChange={(v) => v && setRoomId(v)}
-              >
+              <Select value={roomId} onValueChange={(v) => v && setRoomId(v)}>
                 <SelectTrigger />
                 <SelectContent>
                   {data.rooms.map((r) => (

@@ -26,6 +26,8 @@ export function PageHero({
     <header
       className={cn(
         "border-border bg-card relative isolate overflow-hidden rounded-2xl border shadow-sm",
+        "animate-in fade-in slide-in-from-top-1 duration-300 motion-reduce:animate-none",
+        "transition-shadow duration-300 ease-out",
         className,
       )}
     >

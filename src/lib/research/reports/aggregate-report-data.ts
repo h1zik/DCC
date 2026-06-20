@@ -311,6 +311,15 @@ export async function aggregateReportData(input: {
           trendRadar: isEnabled("trendRadar"),
           keywordIntel: isEnabled("keywordIntel"),
           socialListening: isEnabled("socialListening"),
+          reviewSourceIds: sources?.reviewSourceId
+            ? [sources.reviewSourceId]
+            : undefined,
+          competitorIds: sources?.competitorId
+            ? [sources.competitorId]
+            : undefined,
+          trendDigestId: sources?.digestId,
+          keywordQueryId: sources?.keywordQueryId,
+          socialMonitorId: sources?.socialMonitorId,
         },
       })
     ).context;

@@ -16,6 +16,7 @@ import {
   KeywordSourceConfigPicker,
   validateKeywordConfigClient,
 } from "@/components/research-hub/keyword-source-config-picker";
+import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,20 +29,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   KEYWORD_INTEL_STATUS_LABELS,
   MARKETPLACE_LABELS,
+  formatRelativeTime,
 } from "@/lib/research/labels";
 import { DEFAULT_CATEGORY_PRESETS } from "@/lib/research/keyword-intel/keyword-source-config-types";
 import type { KeywordSourceConfig } from "@/lib/research/keyword-intel/keyword-source-config-types";
 import type { KeywordSignalStats } from "@/lib/research/keyword-intel/keyword-signal-types";
+import {
+  hub,
+  ResearchHubEmptyState,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 export type KeywordQueryRow = {
@@ -58,18 +58,29 @@ export type KeywordQueryRow = {
   errorMessage: string | null;
 };
 
-function statusTone(status: KeywordIntelStatus) {
+function statusChipTone(
+  status: KeywordIntelStatus,
+): "neutral" | "success" | "warning" | "primary" {
   switch (status) {
     case "READY":
-      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+      return "success";
     case "FAILED":
-      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+      return "warning";
     case "COLLECTING":
     case "ANALYZING":
-      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    case "PENDING":
+      return "warning";
     default:
-      return "bg-muted text-muted-foreground";
+      return "neutral";
   }
+}
+
+function isInProgress(status: KeywordIntelStatus) {
+  return (
+    status === "COLLECTING" ||
+    status === "ANALYZING" ||
+    status === "PENDING"
+  );
 }
 
 export function KeywordIntelClient({
@@ -87,12 +98,10 @@ export function KeywordIntelClient({
   const [sourceConfig, setSourceConfig] =
     useState<KeywordSourceConfig>(defaultSourceConfig);
 
-  const hasInProgress = queries.some(
-    (q) =>
-      q.status === "COLLECTING" ||
-      q.status === "ANALYZING" ||
-      q.status === "PENDING",
-  );
+  const hasInProgress = queries.some((q) => isInProgress(q.status));
+  const readyCount = queries.filter((q) => q.status === "READY").length;
+  const totalKeywords = queries.reduce((sum, q) => sum + q.keywordCount, 0);
+  const totalGaps = queries.reduce((sum, q) => sum + q.gapCount, 0);
 
   useEffect(() => {
     if (!hasInProgress) return;
@@ -151,16 +160,35 @@ export function KeywordIntelClient({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
-          {queries.length} analisis keyword
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <ResearchHubStatChip
+            label="Analisis"
+            value={queries.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <ResearchHubStatChip
+            label="Siap"
+            value={readyCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+          <ResearchHubStatChip
+            label="Total keyword"
+            value={totalKeywords.toLocaleString("id-ID")}
+          />
+          <ResearchHubStatChip
+            label="Gap"
+            value={totalGaps.toLocaleString("id-ID")}
+            tone={totalGaps > 0 ? "warning" : "neutral"}
+          />
+        </div>
+
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger
             render={
               <Button size="sm">
-                <Plus className="size-4" aria-hidden />
+                <Plus className="mr-1.5 size-3.5" aria-hidden />
                 Analisis Baru
               </Button>
             }
@@ -175,7 +203,7 @@ export function KeywordIntelClient({
                   <button
                     key={preset}
                     type="button"
-                    className="bg-muted hover:bg-muted/80 rounded-full px-2 py-0.5 text-[10px]"
+                    className="bg-muted hover:bg-muted/80 rounded-full px-2.5 py-0.5 text-[10px] transition-colors duration-150 motion-reduce:transition-none"
                     onClick={() => setCategory(preset)}
                   >
                     {preset}
@@ -217,82 +245,136 @@ export function KeywordIntelClient({
         </Dialog>
       </div>
 
-      {queries.length === 0 ? (
-        <div className="border-border/70 flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center">
-          <Search className="text-muted-foreground size-10" aria-hidden />
-          <p className="text-muted-foreground text-sm">
-            Belum ada analisis. Mulai dengan kategori produk yang ingin diteliti.
+      {hasInProgress ? (
+        <div className={hub.entrance}>
+          <JobProgressBar
+            title="Analisis keyword berjalan"
+            percent={40}
+            stepLabel="Satu atau lebih query sedang mengumpulkan sinyal & menjalankan AI."
+          />
+          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
+            Halaman diperbarui otomatis setiap beberapa detik.
           </p>
         </div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Kategori</TableHead>
-                <TableHead>KW / Gap</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {queries.map((q) => (
-                <TableRow key={q.id}>
-                  <TableCell>
+      ) : null}
+
+      <ResearchHubSection
+        title="Analisis Keyword"
+        description="Peluang, gap, dan copywriting dari marketplace & sinyal internal."
+      >
+        {queries.length === 0 ? (
+          <ResearchHubEmptyState
+            icon={Search}
+            title="Belum ada analisis keyword"
+            description="Mulai dengan kategori produk yang ingin diteliti — sistem akan mengumpulkan volume, gap, dan rekomendasi naming."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Analisis Baru
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {queries.map((q, index) => (
+              <div
+                key={q.id}
+                className={cn(hub.panel, hub.cardHover, hub.entrance)}
+                style={
+                  index > 0 && index < 8
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <Link
                       href={`/research-hub/keyword-intel/${q.id}`}
-                      className="font-medium hover:underline"
+                      className="hover:text-primary text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
                     >
                       {q.category}
                     </Link>
-                    {q.seedKeyword ? (
-                      <p className="text-muted-foreground text-xs">
-                        seed: {q.seedKeyword}
-                      </p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    {q.keywordCount || "—"}
-                    {q.gapCount > 0 ? ` / ${q.gapCount} gap` : ""}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                        statusTone(q.status),
-                      )}
-                    >
-                      {KEYWORD_INTEL_STATUS_LABELS[q.status]}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleRefresh(q.id)}
-                        disabled={pending}
-                        title="Refresh"
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleDelete(q.id)}
-                        disabled={pending}
-                        title="Hapus"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {q.seedKeyword ? `Seed: ${q.seedKeyword} · ` : ""}
+                      {q.marketplace
+                        ? MARKETPLACE_LABELS[q.marketplace]
+                        : "Semua marketplace"}
+                    </p>
+                  </div>
+                  <ResearchHubStatChip
+                    label="Status"
+                    value={KEYWORD_INTEL_STATUS_LABELS[q.status]}
+                    tone={statusChipTone(q.status)}
+                  />
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <ResearchHubStatChip
+                    label="Keyword"
+                    value={
+                      q.keywordCount > 0
+                        ? q.keywordCount.toLocaleString("id-ID")
+                        : "—"
+                    }
+                    tone="primary"
+                  />
+                  {q.gapCount > 0 ? (
+                    <ResearchHubStatChip
+                      label="Gap"
+                      value={q.gapCount.toLocaleString("id-ID")}
+                      tone="warning"
+                    />
+                  ) : null}
+                  {q.signalStats ? (
+                    <ResearchHubStatChip
+                      label="Sinyal"
+                      value={q.signalStats.total.toLocaleString("id-ID")}
+                    />
+                  ) : null}
+                  <ResearchHubStatChip
+                    label="Dibuat"
+                    value={formatRelativeTime(new Date(q.createdAt))}
+                  />
+                </div>
+
+                {q.dataNotice ? (
+                  <p className="text-sky-800 dark:text-sky-200 mt-2 text-xs">
+                    {q.dataNotice}
+                  </p>
+                ) : null}
+
+                {q.errorMessage ? (
+                  <p className="text-amber-700 dark:text-amber-300 mt-2 text-xs">
+                    {q.errorMessage}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending || isInProgress(q.status)}
+                    onClick={() => handleRefresh(q.id)}
+                  >
+                    <RefreshCw className="size-3.5" aria-hidden />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={pending}
+                    onClick={() => handleDelete(q.id)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Hapus
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ResearchHubSection>
     </div>
   );
 }

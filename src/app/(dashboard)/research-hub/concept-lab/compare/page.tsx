@@ -1,4 +1,5 @@
 import { compareConcepts } from "@/actions/research-concept-lab";
+import { ResearchHubPageShell } from "@/components/research-hub/research-hub-primitives";
 import {
   ConceptCompareClient,
   type ComparePageData,
@@ -15,9 +16,11 @@ export default async function ConceptComparePage({
 
   if (conceptIds.length < 2) {
     return (
-      <div className="text-muted-foreground py-10 text-center text-sm">
-        Pilih minimal 2 konsep dari halaman detail untuk dibandingkan.
-      </div>
+      <ResearchHubPageShell>
+        <div className="text-muted-foreground py-10 text-center text-sm">
+          Pilih minimal 2 konsep dari halaman detail untuk dibandingkan.
+        </div>
+      </ResearchHubPageShell>
     );
   }
 
@@ -30,8 +33,8 @@ export default async function ConceptComparePage({
   };
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
+    <ResearchHubPageShell>
       <ConceptCompareClient data={data} />
-    </div>
+    </ResearchHubPageShell>
   );
 }

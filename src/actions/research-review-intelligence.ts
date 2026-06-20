@@ -302,6 +302,7 @@ export async function getReviewIntelRawReviews(input: {
   sourceId: string;
   page?: number;
   search?: string;
+  sentiment?: "POSITIVE" | "NEUTRAL" | "NEGATIVE";
 }): Promise<ReviewRawPage> {
   await requireMarketAnalyst();
   const sourceId = z.string().min(1).parse(input.sourceId);
@@ -316,12 +317,14 @@ export async function getReviewIntelRawReviews(input: {
     sourceId,
     page: input.page,
     search: input.search,
+    sentiment: input.sentiment,
   });
 }
 
 export async function exportReviewIntelRawReviewsCsv(
   sourceId: string,
   search?: string,
+  sentiment?: "POSITIVE" | "NEUTRAL" | "NEGATIVE",
 ): Promise<string> {
   await requireMarketAnalyst();
   const id = z.string().min(1).parse(sourceId);
@@ -332,5 +335,5 @@ export async function exportReviewIntelRawReviewsCsv(
   });
   if (!source) throw new Error("Sumber review tidak ditemukan.");
 
-  return exportResearchReviewRawCsv(id, search);
+  return exportResearchReviewRawCsv(id, search, sentiment);
 }

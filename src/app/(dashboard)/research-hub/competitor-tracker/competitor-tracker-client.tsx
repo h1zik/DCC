@@ -30,6 +30,13 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
+import {
+  hub,
+  ResearchHubEmptyState,
+  ResearchHubSection,
+  ResearchHubStatChip,
+} from "@/components/research-hub/research-hub-primitives";
+import { cn } from "@/lib/utils";
 
 export type CompetitorCard = {
   id: string;
@@ -60,6 +67,10 @@ export function CompetitorTrackerClient({
   );
   const [shopUrl, setShopUrl] = useState("");
 
+  const totalSkus = competitors.reduce((sum, c) => sum + c.skuCount, 0);
+  const totalAlerts = competitors.reduce((sum, c) => sum + c.unreadAlerts, 0);
+  const activeCount = competitors.filter((c) => c.isActive).length;
+
   function handleCreate() {
     startTransition(async () => {
       try {
@@ -84,11 +95,30 @@ export function CompetitorTrackerClient({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
-          {competitors.length} kompetitor dipantau
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <ResearchHubStatChip
+            label="Kompetitor"
+            value={competitors.length.toLocaleString("id-ID")}
+            tone="primary"
+          />
+          <ResearchHubStatChip
+            label="Aktif"
+            value={activeCount.toLocaleString("id-ID")}
+            tone="success"
+          />
+          <ResearchHubStatChip
+            label="Total SKU"
+            value={totalSkus.toLocaleString("id-ID")}
+          />
+          <ResearchHubStatChip
+            label="Alert"
+            value={totalAlerts.toLocaleString("id-ID")}
+            tone={totalAlerts > 0 ? "warning" : "neutral"}
+          />
+        </div>
+
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger
             render={
@@ -166,101 +196,123 @@ export function CompetitorTrackerClient({
         </Dialog>
       </div>
 
-      {competitors.length === 0 ? (
-        <div className="border-border text-muted-foreground rounded-xl border border-dashed px-6 py-12 text-center">
-          <Target className="mx-auto mb-3 size-8 opacity-40" aria-hidden />
-          <p className="text-sm font-medium">Belum ada kompetitor</p>
-          <p className="mt-1 text-xs">
-            Tambahkan brand kompetitor untuk pantau harga, SKU, dan promo.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {competitors.map((c) => (
-            <article
-              key={c.id}
-              className="border-border bg-card relative rounded-xl border p-4 shadow-sm"
-            >
-              {c.unreadAlerts > 0 ? (
-                <span className="bg-primary text-primary-foreground absolute top-3 right-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
-                  <Bell className="size-3" aria-hidden />
-                  {c.unreadAlerts}
-                </span>
-              ) : null}
-              <Link
-                href={`/research-hub/competitor-tracker/${c.id}`}
-                className="block"
+      <ResearchHubSection
+        title="Kompetitor dipantau"
+        description="Pantau harga, SKU baru, rating, dan promo kompetitor."
+      >
+        {competitors.length === 0 ? (
+          <ResearchHubEmptyState
+            icon={Target}
+            title="Belum ada kompetitor"
+            description="Tambahkan brand kompetitor untuk pantau harga, SKU, dan promo."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Tambah Kompetitor
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {competitors.map((c, index) => (
+              <article
+                key={c.id}
+                className={cn(hub.panel, hub.cardHover, hub.entrance, "relative")}
+                style={
+                  index > 0 && index < 9
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
               >
-                <p className="text-foreground pr-16 font-semibold">{c.name}</p>
-                <p className="text-muted-foreground text-xs">{c.brand}</p>
-                <p className="text-muted-foreground mt-2 text-xs">
-                  {MARKETPLACE_LABELS[c.marketplace]} · {c.category}
-                </p>
-                <div className="mt-3 flex gap-4 text-sm">
-                  <span>
-                    <span className="text-muted-foreground text-xs">SKU </span>
-                    <span className="font-medium tabular-nums">{c.skuCount}</span>
+                {c.unreadAlerts > 0 ? (
+                  <span className="bg-primary text-primary-foreground absolute top-3 right-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                    <Bell className="size-3" aria-hidden />
+                    {c.unreadAlerts}
                   </span>
-                  <span>
-                    <span className="text-muted-foreground text-xs">Rating </span>
-                    <span className="font-medium tabular-nums">
-                      {c.avgRating != null ? c.avgRating.toFixed(1) : "—"}
-                    </span>
-                  </span>
+                ) : null}
+
+                <Link
+                  href={`/research-hub/competitor-tracker/${c.id}`}
+                  className="block"
+                >
+                  <p className="text-foreground pr-16 font-semibold">{c.name}</p>
+                  <p className="text-muted-foreground text-xs">{c.brand}</p>
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    {MARKETPLACE_LABELS[c.marketplace]} · {c.category}
+                  </p>
+                </Link>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <ResearchHubStatChip
+                    label="SKU"
+                    value={c.skuCount.toLocaleString("id-ID")}
+                    tone="primary"
+                  />
+                  <ResearchHubStatChip
+                    label="Rating"
+                    value={c.avgRating != null ? c.avgRating.toFixed(1) : "—"}
+                  />
                 </div>
-              </Link>
-              <div className="mt-3 flex justify-end gap-1 border-t pt-3">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  disabled={pending}
-                  onClick={() =>
-                    startTransition(async () => {
-                      try {
-                        await refreshResearchCompetitor(c.id);
-                        toast.success("Refresh dimulai.");
-                        router.refresh();
-                      } catch (err) {
-                        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-                      }
-                    })
-                  }
-                  title="Refresh"
-                >
-                  <RefreshCw className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  disabled={pending}
-                  onClick={() =>
-                    startTransition(async () => {
-                      if (!confirm("Hapus kompetitor ini?")) return;
-                      try {
-                        await deleteResearchCompetitor(c.id);
-                        toast.success("Kompetitor dihapus.");
-                        router.refresh();
-                      } catch (err) {
-                        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-                      }
-                    })
-                  }
-                  title="Hapus"
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-              {!c.isActive ? (
-                <span className="text-muted-foreground mt-2 block text-[10px] uppercase">
-                  Nonaktif
-                </span>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      )}
+
+                {!c.isActive ? (
+                  <span className="text-muted-foreground mt-2 block text-[10px] uppercase">
+                    Nonaktif
+                  </span>
+                ) : null}
+
+                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        try {
+                          await refreshResearchCompetitor(c.id);
+                          toast.success("Refresh dimulai.");
+                          router.refresh();
+                        } catch (err) {
+                          toast.error(
+                            actionErrorMessage(err, "Gagal memproses permintaan."),
+                          );
+                        }
+                      })
+                    }
+                  >
+                    <RefreshCw className="size-3.5" aria-hidden />
+                    Refresh
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        if (!confirm("Hapus kompetitor ini?")) return;
+                        try {
+                          await deleteResearchCompetitor(c.id);
+                          toast.success("Kompetitor dihapus.");
+                          router.refresh();
+                        } catch (err) {
+                          toast.error(
+                            actionErrorMessage(err, "Gagal memproses permintaan."),
+                          );
+                        }
+                      })
+                    }
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Hapus
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </ResearchHubSection>
     </div>
   );
 }

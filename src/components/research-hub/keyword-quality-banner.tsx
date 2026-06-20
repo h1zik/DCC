@@ -1,5 +1,6 @@
 "use client";
 
+import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 export function KeywordQualityBanner(props: {
@@ -10,8 +11,10 @@ export function KeywordQualityBanner(props: {
 
   return (
     <p
+      role="alert"
       className={cn(
-        "rounded-lg border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm leading-relaxed text-sky-950 dark:text-sky-100",
+        hub.nestedPanel,
+        "border-sky-500/40 bg-sky-500/10 text-sm leading-relaxed text-sky-950 dark:text-sky-100",
         props.className,
       )}
     >

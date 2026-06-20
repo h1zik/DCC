@@ -5,7 +5,7 @@ import {
   resolveAgentApiKey,
   resolveAgentModelCandidates,
 } from "@/lib/agent/provider";
-import { extractJson } from "./extract-json";
+import { parseExtractedJson } from "./extract-json";
 import { withLlmRetry } from "./retry";
 import type { GenerateResearchJsonOpts, GenerateResearchTextOpts } from "./types";
 
@@ -46,7 +46,7 @@ export async function geminiGenerateJson<T>(
       );
 
       const text = result.response.text();
-      const parsed = JSON.parse(extractJson(text)) as T;
+      const parsed = parseExtractedJson<T>(text);
 
       if (opts?.validate && !opts.validate(parsed)) {
         throw new Error("Validasi struktur JSON gagal.");
