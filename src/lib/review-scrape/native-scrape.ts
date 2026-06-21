@@ -9,9 +9,16 @@ import {
   scrapeSociollaReviews,
   type SociollaScrapeResult,
 } from "@/lib/review-scrape/sociolla-scraper";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { fetchTokopediaReviewsViaVps } from "@/lib/scraper-api/tokopedia-reviews";
+
+export function usesVpsReviewScrape(platformKey: string): boolean {
+  return platformKey === "tokopedia" && isScraperApiConfigured();
+}
 
 export function usesNativeReviewScrape(platformKey: string): boolean {
-  return platformKey === "femaledaily" || platformKey === "sociolla";
+  if (platformKey === "femaledaily" || platformKey === "sociolla") return true;
+  return usesVpsReviewScrape(platformKey);
 }
 
 export type NativeReviewScrapeResult = {
@@ -65,6 +72,15 @@ export async function scrapeReviewsNative(
         reviews: result.reviews,
         meta: metaFromSociolla(result),
       };
+    }
+    case "tokopedia": {
+      const result = await fetchTokopediaReviewsViaVps(productUrl);
+      if (result.reviews.length === 0) {
+        throw new Error(
+          "Tidak ada review dari VPS scraper. Pastikan URL produk Tokopedia valid dan SCRAPER_API_URL benar.",
+        );
+      }
+      return result;
     }
     default:
       throw new Error(`Scrape native tidak tersedia untuk platform: ${platformKey}`);

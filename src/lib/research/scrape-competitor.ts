@@ -1,5 +1,6 @@
 import "server-only";
 
+import { revalidatePath } from "next/cache";
 import {
   ResearchScrapeJobStatus,
   ResearchScrapeJobType,
@@ -24,6 +25,8 @@ import {
 import { filterShopProductsByShopUrl } from "@/lib/apify/tiktok-kulqiz";
 import { applyCompetitorSnapshot } from "@/lib/research/competitor-diff";
 import { runApifyJobToCompletion } from "@/lib/research/run-apify-job";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { fetchTokopediaShopViaVps } from "@/lib/scraper-api/tokopedia-products";
 
 export async function enqueueCompetitorScrape(
   competitorId: string,
@@ -32,6 +35,53 @@ export async function enqueueCompetitorScrape(
     where: { id: competitorId },
   });
   if (!competitor) throw new Error("Kompetitor tidak ditemukan.");
+
+  if (
+    competitor.marketplace === ResearchMarketplace.TOKOPEDIA &&
+    isScraperApiConfigured()
+  ) {
+    const job = await prisma.researchScrapeJob.create({
+      data: {
+        type: ResearchScrapeJobType.COMPETITOR_SNAPSHOT,
+        entityId: competitorId,
+        status: ResearchScrapeJobStatus.RUNNING,
+        startedAt: new Date(),
+      },
+    });
+
+    try {
+      const products = await fetchTokopediaShopViaVps(competitor.shopUrl);
+      if (products.length === 0) {
+        throw new Error(
+          "Tidak ada produk dari toko Tokopedia. Pastikan URL toko valid.",
+        );
+      }
+      await ingestCompetitorProducts(competitorId, products);
+      await prisma.researchScrapeJob.update({
+        where: { id: job.id },
+        data: {
+          status: ResearchScrapeJobStatus.COMPLETED,
+          completedAt: new Date(),
+          error: null,
+        },
+      });
+      revalidatePath("/research-hub/competitor-tracker");
+      revalidatePath(`/research-hub/competitor-tracker/${competitorId}`);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Scrape kompetitor gagal.";
+      await prisma.researchScrapeJob.update({
+        where: { id: job.id },
+        data: {
+          status: ResearchScrapeJobStatus.FAILED,
+          error: message,
+          completedAt: new Date(),
+        },
+      });
+      throw err;
+    }
+    return;
+  }
 
   if (!isApifyConfigured()) {
     await runDemoCompetitorScrape(competitorId);
