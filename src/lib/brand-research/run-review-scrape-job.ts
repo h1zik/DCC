@@ -140,12 +140,6 @@ export async function executeBrandReviewScrapeJob(jobId: string): Promise<void> 
       return;
     }
 
-    if (!isApifyConfigured()) {
-      await runDemoBrandReviewScrape(source.id);
-      await markJobCompleted(jobId);
-      return;
-    }
-
     const platformKey = source.platformKey ?? "shopee";
 
     if (platformKey === "csv") {
@@ -159,6 +153,12 @@ export async function executeBrandReviewScrapeJob(jobId: string): Promise<void> 
         source.productUrl,
       );
       await completeBrandReviewScrapeFromNormalized(source.id, reviews, meta);
+      await markJobCompleted(jobId);
+      return;
+    }
+
+    if (!isApifyConfigured()) {
+      await runDemoBrandReviewScrape(source.id);
       await markJobCompleted(jobId);
       return;
     }

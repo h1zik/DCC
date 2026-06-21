@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   Bell,
   ExternalLink,
@@ -101,8 +101,26 @@ export function CompetitorDetailClient({
   const [pending, startTransition] = useTransition();
   const [reviewSkuId, setReviewSkuId] = useState<string | null>(null);
   const [priceDays, setPriceDays] = useState<30 | 60 | 90>(30);
+  const [awaitingScrape, setAwaitingScrape] = useState(false);
 
-  useResearchJobProgress({ inProgress: competitor.isScraping });
+  useResearchJobProgress({
+    inProgress: competitor.isScraping || awaitingScrape,
+    intervalMs: 5_000,
+  });
+
+  useEffect(() => {
+    if (!awaitingScrape) return;
+    if (competitor.isScraping) return;
+    if (competitor.skus.length > 0) {
+      setAwaitingScrape(false);
+    }
+  }, [awaitingScrape, competitor.isScraping, competitor.skus.length]);
+
+  useEffect(() => {
+    if (!awaitingScrape) return;
+    const timer = window.setTimeout(() => setAwaitingScrape(false), 120_000);
+    return () => window.clearTimeout(timer);
+  }, [awaitingScrape]);
 
   const ai = (competitor.aiInsights as CompetitorAiInsights | null) ?? null;
   const unreadAlerts = competitor.alerts.filter((a) => !a.isRead).length;
@@ -153,10 +171,12 @@ export function CompetitorDetailClient({
   function handleRefresh() {
     startTransition(async () => {
       try {
+        setAwaitingScrape(true);
         await refreshResearchCompetitor(competitor.id);
-        toast.success("Data kompetitor diperbarui.");
+        toast.success("Scrape kompetitor dimulai di background.");
         router.refresh();
       } catch (err) {
+        setAwaitingScrape(false);
         toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
       }
     });
@@ -200,7 +220,7 @@ export function CompetitorDetailClient({
               type="button"
               size="sm"
               onClick={handleRefresh}
-              disabled={pending || competitor.isScraping}
+              disabled={pending || competitor.isScraping || awaitingScrape}
             >
               <RefreshCw className="mr-1.5 size-3.5" />
               Refresh
@@ -241,7 +261,7 @@ export function CompetitorDetailClient({
         }
       />
 
-      {competitor.isScraping ? (
+      {competitor.isScraping || awaitingScrape ? (
         <div className={hub.entrance}>
           <JobProgressBar
             title="Mengambil & menganalisis data kompetitor"

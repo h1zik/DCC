@@ -13,6 +13,7 @@ import {
   getReviewPlatformLabel,
   type ReviewPlatformMeta,
 } from "@/lib/review-platforms/platforms";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 
 const GIO21_SHOPEE_PRODUCT_DETAIL = "gio21~shopee-product-detail";
 
@@ -71,6 +72,7 @@ export function getReviewActorIdForPlatform(platformKey: string): string | null 
 export function isReviewPlatformConfigured(platformKey: string): boolean {
   if (platformKey === "csv") return true;
   if (platformKey === "femaledaily" || platformKey === "sociolla") return true;
+  if (platformKey === "tokopedia" && isScraperApiConfigured()) return true;
   return !!getReviewActorIdForPlatform(platformKey);
 }
 
@@ -88,6 +90,10 @@ export function reviewPlatformEnvHint(platformKey: string): string {
 
   if (platformKey === "sociolla") {
     return "Scrape native Sociolla (bj-public-api.sociolla.com) — tidak perlu Apify.";
+  }
+
+  if (platformKey === "tokopedia" && isScraperApiConfigured()) {
+    return "Scrape Tokopedia via VPS (SCRAPER_API_URL + SCRAPER_API_KEY).";
   }
 
   if (meta.category === "community" && jsonLdActorId()) {

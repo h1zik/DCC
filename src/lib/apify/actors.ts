@@ -3,6 +3,7 @@ import "server-only";
 import { ResearchMarketplace, ResearchScrapeJobType } from "@prisma/client";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
 import { isApifyConfigured } from "@/lib/apify/client";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import {
   buildKulqizDiscoveryInput,
   buildKulqizReviewInput,
@@ -204,7 +205,25 @@ export function getSearchActorId(
 export function isProductSearchConfigured(
   marketplace: ResearchMarketplace,
 ): boolean {
+  if (
+    marketplace === ResearchMarketplace.TOKOPEDIA &&
+    isScraperApiConfigured()
+  ) {
+    return true;
+  }
   return isApifyConfigured() && !!getSearchActorId(marketplace);
+}
+
+export function isShopScrapeConfigured(
+  marketplace: ResearchMarketplace,
+): boolean {
+  if (
+    marketplace === ResearchMarketplace.TOKOPEDIA &&
+    isScraperApiConfigured()
+  ) {
+    return true;
+  }
+  return isApifyConfigured() && !!getShopActorId(marketplace);
 }
 
 export function buildSearchActorInput(
@@ -239,7 +258,9 @@ export function searchActorEnvHint(marketplace: ResearchMarketplace): string {
     case ResearchMarketplace.SHOPEE:
       return "Set APIFY_ACTOR_SHOPEE_SHOP (gio21~shopee-scraper mendukung keyword search).";
     case ResearchMarketplace.TOKOPEDIA:
-      return "Set APIFY_ACTOR_TOKOPEDIA_SEARCH atau APIFY_ACTOR_TOKOPEDIA_SHOP.";
+      return isScraperApiConfigured()
+        ? "Tokopedia search via VPS (SCRAPER_API_URL)."
+        : "Set APIFY_ACTOR_TOKOPEDIA_SEARCH atau SCRAPER_API_URL untuk VPS.";
     default:
       return "Set APIFY_ACTOR_TIKTOK_SEARCH (kulqiz~tiktok-shop-scraper).";
   }
@@ -257,6 +278,12 @@ export function actorEnvHint(
   }
   if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
     return "Set APIFY_ACTOR_TIKTOK_SHOP (kulqiz~tiktok-shop-scraper).";
+  }
+  if (
+    marketplace === ResearchMarketplace.TOKOPEDIA &&
+    isScraperApiConfigured()
+  ) {
+    return "Tokopedia shop scrape via VPS (SCRAPER_API_URL).";
   }
   return `Set env APIFY_ACTOR_*_SHOP untuk ${marketplace} (Shopee: gio21~shopee-scraper).`;
 }

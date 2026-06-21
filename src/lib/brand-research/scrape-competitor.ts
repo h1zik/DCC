@@ -24,6 +24,8 @@ import {
 import { filterShopProductsByShopUrl } from "@/lib/apify/tiktok-kulqiz";
 import { applyBrandCompetitorSnapshot } from "@/lib/brand-research/competitor-diff";
 import { runBrandApifyJobToCompletion } from "@/lib/brand-research/run-apify-job";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { fetchTokopediaShopViaVps } from "@/lib/scraper-api/tokopedia-products";
 
 export async function enqueueBrandCompetitorScrape(
   competitorId: string,
@@ -32,6 +34,51 @@ export async function enqueueBrandCompetitorScrape(
     where: { id: competitorId },
   });
   if (!competitor) throw new Error("Kompetitor tidak ditemukan.");
+
+  if (
+    competitor.marketplace === ResearchMarketplace.TOKOPEDIA &&
+    isScraperApiConfigured()
+  ) {
+    const job = await prisma.brandResearchScrapeJob.create({
+      data: {
+        type: ResearchScrapeJobType.COMPETITOR_SNAPSHOT,
+        entityId: competitorId,
+        status: ResearchScrapeJobStatus.RUNNING,
+        startedAt: new Date(),
+      },
+    });
+
+    try {
+      const products = await fetchTokopediaShopViaVps(competitor.shopUrl);
+      if (products.length === 0) {
+        throw new Error(
+          "Tidak ada produk dari toko Tokopedia. Pastikan URL toko valid.",
+        );
+      }
+      await ingestBrandCompetitorProducts(competitorId, products);
+      await prisma.brandResearchScrapeJob.update({
+        where: { id: job.id },
+        data: {
+          status: ResearchScrapeJobStatus.COMPLETED,
+          completedAt: new Date(),
+          error: null,
+        },
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Scrape kompetitor gagal.";
+      await prisma.brandResearchScrapeJob.update({
+        where: { id: job.id },
+        data: {
+          status: ResearchScrapeJobStatus.FAILED,
+          error: message,
+          completedAt: new Date(),
+        },
+      });
+      throw err;
+    }
+    return;
+  }
 
   if (!isApifyConfigured()) {
     await runDemoBrandCompetitorScrape(competitorId);
