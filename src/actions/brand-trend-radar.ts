@@ -1,10 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { TrendRadarStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireBrandManager } from "@/lib/brand-research/auth";
-import { generateBrandTrendDigest } from "@/lib/brand-research/trend-analyzer";
+import {
+  generateBrandTrendDigest,
+  weekBounds,
+} from "@/lib/brand-research/trend-analyzer";
 import {
   getDefaultTrendSourceConfig,
   parseTrendSourceConfigJson,
@@ -35,20 +40,51 @@ export async function refreshGlobalBrandTrendDigest(
     ? validateTrendSourceConfig(data.sourceConfig)
     : getDefaultTrendSourceConfig();
 
-  try {
-    await generateBrandTrendDigest({
+  const inFlight = await prisma.brandTrendDigest.findFirst({
+    where: {
       isGlobal: true,
-      ownerBrandId: data.ownerBrandId ?? null,
-      seedKeywords: data.seedKeywords,
-      digestLabel: data.digestLabel,
-      sourceConfig,
-    });
-  } catch (err) {
-    console.error("[refreshGlobalBrandTrendDigest] gagal", err);
-    throw err;
+      status: {
+        in: [TrendRadarStatus.COLLECTING, TrendRadarStatus.ANALYZING],
+      },
+    },
+  });
+  if (inFlight) {
+    throw new Error(
+      "Digest global sedang diproses. Tunggu hingga selesai sebelum generate ulang.",
+    );
   }
 
+  const { weekStart, weekEnd } = weekBounds();
+  const digest = await prisma.brandTrendDigest.create({
+    data: {
+      weekStart,
+      weekEnd,
+      isGlobal: true,
+      ownerBrandId: data.ownerBrandId ?? null,
+      status: TrendRadarStatus.COLLECTING,
+      sourceConfig: sourceConfig as object,
+    },
+  });
+
+  after(async () => {
+    try {
+      await generateBrandTrendDigest({
+        digestId: digest.id,
+        isGlobal: true,
+        ownerBrandId: data.ownerBrandId ?? null,
+        seedKeywords: data.seedKeywords,
+        digestLabel: data.digestLabel,
+        sourceConfig,
+      });
+    } catch (err) {
+      console.error("[refreshGlobalBrandTrendDigest] background gagal", err);
+    } finally {
+      revalidatePath("/brand-hub/trend-radar");
+    }
+  });
+
   revalidatePath("/brand-hub/trend-radar");
+  return { digestId: digest.id };
 }
 
 export async function refreshBrandTrendDigest(

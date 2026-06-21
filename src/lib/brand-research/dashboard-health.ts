@@ -1,6 +1,9 @@
 import "server-only";
 
-import { isApifyConfigured } from "@/lib/apify/client";
+import { isPinterestScrapeConfigured } from "@/lib/brand-research/pinterest-limits";
+import { isShopScrapeConfigured } from "@/lib/apify/actors";
+import { ResearchMarketplace } from "@prisma/client";
+import { isAnyReviewScrapeConfigured } from "@/lib/review-platforms/registry";
 import { isDataForSeoConfigured } from "@/lib/research/keyword-intel/dataforseo-keywords";
 import { isInstagramMentionsConfigured } from "@/lib/research/social-listening/scrape-instagram-mentions";
 import { isTikTokMentionsConfigured } from "@/lib/research/social-listening/scrape-tiktok-mentions";
@@ -50,11 +53,9 @@ function reviewHealthLevel(opts: {
 export function buildBrandHubModuleHealth(
   input: BrandHubHealthInput,
 ): BrandModuleHealth[] {
-  const apifyConfigured = isApifyConfigured();
-  const shopeeReviewsConfigured =
-    apifyConfigured && !!process.env.APIFY_ACTOR_SHOPEE_REVIEWS?.trim();
-  const shopeeShopConfigured =
-    apifyConfigured && !!process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim();
+  const pinterestConfigured = isPinterestScrapeConfigured();
+  const shopeeReviewsConfigured = isAnyReviewScrapeConfigured();
+  const shopeeShopConfigured = isShopScrapeConfigured(ResearchMarketplace.SHOPEE);
   const socialConfigured =
     isTikTokMentionsConfigured() || isInstagramMentionsConfigured();
   const keywordsConfigured = isDataForSeoConfigured();
@@ -82,30 +83,30 @@ export function buildBrandHubModuleHealth(
     },
     {
       key: "visual-library",
-      level: !apifyConfigured
+      level: !pinterestConfigured
         ? "demo"
         : input.visualDemoAsset
           ? "demo"
           : input.visualAssetCount === 0
             ? "idle"
             : "live",
-      detail: !apifyConfigured
-        ? "APIFY_API_TOKEN tidak diset — Pinterest demo"
+      detail: !pinterestConfigured
+        ? "SCRAPER_API_URL / APIFY belum diset — Pinterest demo"
         : input.visualDemoAsset
           ? `${input.visualAssetCount} asset · sebagian demo`
           : `${input.visualAssetCount} asset visual`,
     },
     {
       key: "visual-trend",
-      level: !apifyConfigured
+      level: !pinterestConfigured
         ? "demo"
         : input.visualCollectionCount === 0
           ? input.visualAssetCount === 0
             ? "idle"
             : "partial"
           : "live",
-      detail: !apifyConfigured
-        ? "Pinterest scrape belum dikonfigurasi"
+      detail: !pinterestConfigured
+        ? "Pinterest scrape belum dikonfigurasi (VPS atau Apify)"
         : `${input.visualCollectionCount} koleksi Pinterest · ${input.visualAssetCount} asset`,
     },
     {

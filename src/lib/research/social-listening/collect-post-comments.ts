@@ -11,11 +11,17 @@ import type { RawSocialMention } from "@/lib/research/social-listening/collect-m
 import type { RawSocialComment } from "@/lib/research/social-listening/social-comment-types";
 import { extractEmbeddedComments } from "@/lib/research/social-listening/parse-embedded-comments";
 import {
+  canonicalTikTokVideoUrl,
   isTikTokCommentsConfigured,
   pickTikTokPostsForCommentScrape,
   scrapeTikTokCommentsForPosts,
   TIKTOK_COMMENTS_PER_POST,
 } from "@/lib/research/social-listening/scrape-tiktok-comments";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import {
+  fetchVpsInstagramPostComments,
+  fetchVpsTikTokVideoComments,
+} from "@/lib/scraper-api/social-mentions";
 
 const TOP_POSTS_FOR_IG_COMMENTS = 5;
 const IG_COMMENTS_PER_POST = 25;
@@ -53,8 +59,23 @@ function parseInstagramCommentItems(
 async function scrapeInstagramPostComments(
   mention: RawSocialMention,
 ): Promise<RawSocialComment[]> {
+  if (!mention.url?.includes("instagram.com")) return [];
+
+  if (isScraperApiConfigured()) {
+    try {
+      return await fetchVpsInstagramPostComments(
+        mention.url,
+        mention.externalId,
+        IG_COMMENTS_PER_POST,
+      );
+    } catch (err) {
+      console.warn("[social-listening/ig-comments/vps] gagal", mention.url, err);
+      return [];
+    }
+  }
+
   const actorId = process.env.APIFY_ACTOR_INSTAGRAM?.trim();
-  if (!actorId || !mention.url?.includes("instagram.com")) return [];
+  if (!actorId) return [];
 
   try {
     const { runId } = await startApifyActor(actorId, {
@@ -105,21 +126,85 @@ export async function collectPostComments(
   }
 
   if (isTikTokCommentsConfigured() && topTikTokPosts.length > 0) {
-    const { comments: tiktokComments, warnings: ttWarnings } =
-      await scrapeTikTokCommentsForPosts(topTikTokPosts, {
-        commentsPerPost: TIKTOK_COMMENTS_PER_POST,
-      });
-    warnings.push(...ttWarnings);
+    if (isScraperApiConfigured()) {
+      let vpsFailures = 0;
+      let apifyFallbackAdded = 0;
 
-    if (tiktokComments.length > 0) {
-      comments.push(...tiktokComments);
-      warnings.push(
-        `TikTok: ${tiktokComments.length} komentar dari comments-scraper (${topTikTokPosts.length} video).`,
-      );
+      for (const post of topTikTokPosts) {
+        if (!post.url) continue;
+        const videoUrl = canonicalTikTokVideoUrl(post.url);
+
+        const scraped = await fetchVpsTikTokVideoComments(
+          videoUrl,
+          post.externalId,
+          TIKTOK_COMMENTS_PER_POST,
+        );
+
+        if (scraped.length > 0) {
+          comments.push(...scraped);
+          continue;
+        }
+
+        vpsFailures += 1;
+
+        if (
+          isApifyConfigured() &&
+          (process.env.APIFY_ACTOR_TIKTOK_COMMENTS?.trim() ||
+            process.env.APIFY_API_TOKEN?.trim())
+        ) {
+          try {
+            const { comments: fallbackComments } =
+              await scrapeTikTokCommentsForPosts([post], {
+                commentsPerPost: TIKTOK_COMMENTS_PER_POST,
+              });
+            if (fallbackComments.length > 0) {
+              apifyFallbackAdded += fallbackComments.length;
+              comments.push(...fallbackComments);
+            }
+          } catch (fallbackErr) {
+            console.warn(
+              "[social-listening/tt-comments/apify-fallback] gagal",
+              videoUrl,
+              fallbackErr,
+            );
+          }
+        }
+      }
+
+      if (comments.length > 0) {
+        warnings.push(
+          `TikTok: ${comments.length} komentar dari VPS scraper (${topTikTokPosts.length} video).`,
+        );
+      } else if (vpsFailures > 0) {
+        warnings.push(
+          "TikTok: VPS gagal ambil komentar (TikTok invalid response) — cek TIKTOK_MS_TOKEN di VPS atau coba lagi.",
+        );
+      } else {
+        warnings.push("TikTok: tidak ada teks komentar dari VPS scraper.");
+      }
+
+      if (apifyFallbackAdded > 0) {
+        warnings.push(
+          `TikTok: ${apifyFallbackAdded} komentar dari fallback Apify setelah VPS gagal.`,
+        );
+      }
     } else {
-      warnings.push(
-        "TikTok: tidak ada teks komentar — cek run clockworks/tiktok-comments-scraper di Apify Console.",
-      );
+      const { comments: tiktokComments, warnings: ttWarnings } =
+        await scrapeTikTokCommentsForPosts(topTikTokPosts, {
+          commentsPerPost: TIKTOK_COMMENTS_PER_POST,
+        });
+      warnings.push(...ttWarnings);
+
+      if (tiktokComments.length > 0) {
+        comments.push(...tiktokComments);
+        warnings.push(
+          `TikTok: ${tiktokComments.length} komentar dari comments-scraper (${topTikTokPosts.length} video).`,
+        );
+      } else {
+        warnings.push(
+          "TikTok: tidak ada teks komentar — cek run clockworks/tiktok-comments-scraper di Apify Console.",
+        );
+      }
     }
   } else {
     if (
@@ -128,7 +213,7 @@ export async function collectPostComments(
       isApifyConfigured()
     ) {
       warnings.push(
-        "TikTok: set APIFY_ACTOR_TIKTOK_COMMENTS (clockworks~tiktok-comments-scraper) untuk deep-fetch komentar.",
+        "TikTok: set SCRAPER_API_URL atau APIFY_ACTOR_TIKTOK_COMMENTS untuk deep-fetch komentar.",
       );
     }
     comments.push(...flattenEmbedded(mentions, SocialListeningPlatform.TIKTOK));
@@ -146,8 +231,8 @@ export async function collectPostComments(
 
   if (
     igWithoutComments.length > 0 &&
-    isApifyConfigured() &&
-    process.env.APIFY_ACTOR_INSTAGRAM?.trim()
+    (isScraperApiConfigured() ||
+      (isApifyConfigured() && process.env.APIFY_ACTOR_INSTAGRAM?.trim()))
   ) {
     let igDeepFetchAdded = 0;
     for (const post of igWithoutComments) {

@@ -23,6 +23,7 @@ import {
 } from "@/actions/brand-review-intelligence";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { CrossCompareChart } from "@/components/research-hub/cross-compare-chart";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import {
@@ -66,6 +67,7 @@ import {
   hub,
 } from "@/components/brand-hub/brand-hub-primitives";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 import { cn } from "@/lib/utils";
 import { useBrandReviewIntelPolling } from "../use-brand-review-intel-polling";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -108,6 +110,7 @@ export type ReviewDetailData = {
   reviewsComplete: boolean | null;
   lastAnalyzedAt: string | null;
   aiMeta: ResearchAiMetaView | null;
+  dataProvenance: DataProvenanceEntry[];
   summary: {
     positivePct: number;
     neutralPct: number;
@@ -420,6 +423,8 @@ export function BrandReviewDetailClient({
           </p>
         </div>
       ) : null}
+
+      <DataSourceProvenancePanel entries={source.dataProvenance} />
 
       {!source.summary ? (
         <div className={cn(hub.panel, "text-center")}>

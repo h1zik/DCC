@@ -7,6 +7,7 @@ import {
   SocialDetailClient,
   type SocialDetailData,
 } from "./social-detail-client";
+import { resolveSearchLimits } from "@/lib/research/social-listening/search-limits";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 import {
   parseCategoryBreakdown,
@@ -117,15 +118,18 @@ export default async function SocialListeningDetailPage({
     ? (displayBatch.summary.sentimentTimeline as SocialDetailData["sentimentTimeline"])
     : [];
 
+  const scrapeLimits = resolveSearchLimits(monitor);
+
   const data: SocialDetailData = {
     id: monitor.id,
     name: monitor.name,
     keywords: monitor.keywords,
     platforms: monitor.platforms,
+    tiktokSearchLimit: scrapeLimits.tiktok,
+    instagramSearchLimit: scrapeLimits.instagram,
     batchStatus: latestAny?.status ?? null,
     batchId: latestAny?.id ?? null,
     platformProgress,
-    errorMessage: latestAny?.errorMessage ?? null,
     aiSummary: displayBatch?.summary?.aiSummary ?? null,
     topPainPoints: painPoints,
     topWishlist: wishlist,

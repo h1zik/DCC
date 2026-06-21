@@ -1,9 +1,12 @@
 import type { ResearchMarketplace } from "@prisma/client";
+import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
 
 export type ProductDiscoveryScrapeState = {
   marketplaces: ResearchMarketplace[];
   nextIndex: number;
   warnings: string[];
+  /** Sumber scrape per marketplace (VPS vs Apify). */
+  sources?: Partial<Record<ResearchMarketplace, ScrapeDataProvider>>;
   /** TikTok kulqiz: pass 2 crawl subkategori jika pass 1 tidak cukup. */
   tiktokKulqizExpandSubcategories?: boolean;
 };
@@ -24,10 +27,17 @@ export function parseProductDiscoveryScrapeState(
     const warnings = Array.isArray(o.warnings)
       ? o.warnings.filter((w): w is string => typeof w === "string")
       : [];
+    const sourcesRaw = o.sources;
+    const sources =
+      sourcesRaw && typeof sourcesRaw === "object" && !Array.isArray(sourcesRaw)
+        ? (sourcesRaw as Partial<Record<ResearchMarketplace, ScrapeDataProvider>>)
+        : undefined;
+
     return {
       marketplaces,
       nextIndex,
       warnings,
+      sources,
       tiktokKulqizExpandSubcategories: o.tiktokKulqizExpandSubcategories === true,
     };
   }

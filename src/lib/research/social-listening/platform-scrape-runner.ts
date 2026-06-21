@@ -12,6 +12,10 @@ import {
   pollTikTokScrape,
   startTikTokScrape,
 } from "@/lib/research/social-listening/scrape-tiktok-mentions";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
+import { PLATFORM_STATUS_PROVIDERS_KEY } from "@/lib/research/scrape-data-provider";
+import type { SocialListeningSearchLimits } from "@/lib/research/social-listening/search-limits";
 
 export type PlatformSyncStatus = "COLLECTING" | "READY" | "FAILED" | "SKIPPED";
 
@@ -44,13 +48,13 @@ export function platformStatusMessage(
   switch (status) {
     case "COLLECTING":
       return ref
-        ? `${label} masih mengumpulkan data (Apify run ${ref.slice(0, 12)}…)`
+        ? `${label} masih mengumpulkan data (run ${ref.slice(0, 12)}…)`
         : `${label} masih mengumpulkan data…`;
     case "READY":
       return `${label} selesai`;
     case "FAILED":
       return ref
-        ? `${label} gagal atau timeout (Apify run ${ref.slice(0, 12)}…)`
+        ? `${label} gagal atau timeout (run ${ref.slice(0, 12)}…)`
         : `${label} gagal atau timeout`;
     case "SKIPPED":
       return `${label} dilewati — API belum dikonfigurasi`;
@@ -59,34 +63,66 @@ export function platformStatusMessage(
   }
 }
 
+export type PlatformStatusPayload = PlatformStatusMap & {
+  [PLATFORM_STATUS_PROVIDERS_KEY]?: Partial<
+    Record<SocialListeningPlatform, ScrapeDataProvider>
+  >;
+};
+
+function platformScrapeProvider(
+  platform: SocialListeningPlatform,
+): ScrapeDataProvider {
+  if (platform === SocialListeningPlatform.TIKTOK) {
+    return isScraperApiConfigured() ? "vps" : "apify";
+  }
+  if (platform === SocialListeningPlatform.INSTAGRAM) {
+    return isScraperApiConfigured() ? "vps" : "apify";
+  }
+  return "apify";
+}
+
 export async function startPlatformScrapes(input: {
   platforms: SocialListeningPlatform[];
   keywords: string[];
+  searchLimits?: Partial<SocialListeningSearchLimits>;
 }): Promise<{
   apifyRunIds: PlatformRunIds;
-  platformStatus: PlatformStatusMap;
+  platformStatus: PlatformStatusPayload;
+  scrapeProviders: Partial<Record<SocialListeningPlatform, ScrapeDataProvider>>;
   warnings: string[];
 }> {
   const apifyRunIds: PlatformRunIds = {};
-  const platformStatus: PlatformStatusMap = {};
+  const platformStatus: PlatformStatusPayload = {};
+  const scrapeProviders: Partial<
+    Record<SocialListeningPlatform, ScrapeDataProvider>
+  > = {};
   const warnings: string[] = [];
+
+  const tiktokLimit = input.searchLimits?.tiktok;
+  const instagramLimit = input.searchLimits?.instagram;
 
   const starters = input.platforms.map(async (platform) => {
     if (platform === SocialListeningPlatform.TIKTOK) {
       if (!isTikTokMentionsConfigured()) {
         platformStatus[platform] = "SKIPPED";
-        warnings.push("TikTok Apify belum dikonfigurasi — lewati platform TikTok.");
+        warnings.push("TikTok scraper belum dikonfigurasi — lewati platform TikTok.");
         return;
       }
       try {
-        const started = await startTikTokScrape(input.keywords);
+        const started = await startTikTokScrape(input.keywords, {
+          searchLimit: tiktokLimit,
+        });
         if (!started) {
           platformStatus[platform] = "FAILED";
           warnings.push("TikTok: gagal memulai scrape.");
           return;
         }
+        if (started.warnings?.length) {
+          warnings.push(...started.warnings);
+        }
         apifyRunIds[platform] = started.runId;
         platformStatus[platform] = "COLLECTING";
+        scrapeProviders[platform] = platformScrapeProvider(platform);
       } catch (err) {
         platformStatus[platform] = "FAILED";
         warnings.push(
@@ -100,20 +136,29 @@ export async function startPlatformScrapes(input: {
       if (!isInstagramMentionsConfigured()) {
         platformStatus[platform] = "SKIPPED";
         warnings.push(
-          "APIFY_ACTOR_INSTAGRAM belum diset — lewati platform Instagram.",
+          "Instagram scraper belum dikonfigurasi (SCRAPER_API_URL atau APIFY_ACTOR_INSTAGRAM).",
         );
         return;
       }
       try {
-        const runIds = await startInstagramScrapes(input.keywords);
+        const started = await startInstagramScrapes(input.keywords, {
+          searchLimit: instagramLimit,
+        });
+        if (started.warnings.length > 0) {
+          warnings.push(...started.warnings);
+        }
+        const runIds = started.runIds;
         if (runIds.length === 0) {
           platformStatus[platform] = "FAILED";
-          warnings.push("Instagram: gagal memulai scrape.");
+          warnings.push(
+            "Instagram: gagal memulai scrape — hashtag tidak mengembalikan post.",
+          );
           return;
         }
         apifyRunIds[platform] =
           runIds.length === 1 ? runIds[0]! : runIds;
         platformStatus[platform] = "COLLECTING";
+        scrapeProviders[platform] = platformScrapeProvider(platform);
       } catch (err) {
         platformStatus[platform] = "FAILED";
         warnings.push(
@@ -124,7 +169,8 @@ export async function startPlatformScrapes(input: {
   });
 
   await Promise.all(starters);
-  return { apifyRunIds, platformStatus, warnings };
+  platformStatus[PLATFORM_STATUS_PROVIDERS_KEY] = scrapeProviders;
+  return { apifyRunIds, platformStatus, scrapeProviders, warnings };
 }
 
 export async function pollPlatformScrapes(input: {
@@ -172,7 +218,7 @@ export async function pollPlatformScrapes(input: {
         continue;
       }
 
-      if (result.succeeded) {
+      if (result.succeeded || result.mentions.length > 0) {
         platformStatus[platform] = "READY";
         readyMentions[platform] = result.mentions;
         mentionBatches.push(result.mentions);
@@ -204,7 +250,7 @@ export async function pollPlatformScrapes(input: {
         continue;
       }
 
-      if (result.succeeded) {
+      if (result.succeeded || result.mentions.length > 0) {
         platformStatus[platform] = "READY";
         readyMentions[platform] = result.mentions;
         mentionBatches.push(result.mentions);

@@ -11,6 +11,13 @@ import {
   resolveCommentAnalysisBatchId,
 } from "@/lib/research/social-listening/analyze-social-listening-comments";
 import {
+  DEFAULT_INSTAGRAM_SEARCH_LIMIT,
+  DEFAULT_TIKTOK_SEARCH_LIMIT,
+  MAX_INSTAGRAM_SEARCH_LIMIT,
+  MAX_TIKTOK_SEARCH_LIMIT,
+  clampSocialSearchLimit,
+} from "@/lib/research/social-listening/search-limits-public";
+import {
   beginSocialListeningSync,
   finalizeSocialListeningBatch,
 } from "@/lib/research/social-listening/social-sync";
@@ -22,6 +29,19 @@ const monitorSchema = z.object({
     .array(z.nativeEnum(SocialListeningPlatform))
     .min(1)
     .max(2),
+  tiktokSearchLimit: z.number().int().min(1).max(MAX_TIKTOK_SEARCH_LIMIT).optional(),
+  instagramSearchLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_INSTAGRAM_SEARCH_LIMIT)
+    .optional(),
+});
+
+const updateSearchLimitsSchema = z.object({
+  monitorId: z.string().min(1),
+  tiktokSearchLimit: z.number().int().min(1).max(MAX_TIKTOK_SEARCH_LIMIT),
+  instagramSearchLimit: z.number().int().min(1).max(MAX_INSTAGRAM_SEARCH_LIMIT),
 });
 
 export async function createSocialListeningMonitor(
@@ -35,12 +55,44 @@ export async function createSocialListeningMonitor(
       name: data.name,
       keywords: data.keywords.map((k) => k.trim()),
       platforms: data.platforms,
+      tiktokSearchLimit: clampSocialSearchLimit(
+        data.tiktokSearchLimit ?? DEFAULT_TIKTOK_SEARCH_LIMIT,
+        MAX_TIKTOK_SEARCH_LIMIT,
+      ),
+      instagramSearchLimit: clampSocialSearchLimit(
+        data.instagramSearchLimit ?? DEFAULT_INSTAGRAM_SEARCH_LIMIT,
+        MAX_INSTAGRAM_SEARCH_LIMIT,
+      ),
       createdById: session.user.id,
     },
   });
 
   revalidatePath("/research-hub/social-listening");
   return { id: monitor.id };
+}
+
+export async function updateSocialListeningMonitorSearchLimits(
+  input: z.infer<typeof updateSearchLimitsSchema>,
+) {
+  await requireMarketAnalyst();
+  const data = updateSearchLimitsSchema.parse(input);
+
+  await prisma.socialListeningMonitor.update({
+    where: { id: data.monitorId },
+    data: {
+      tiktokSearchLimit: clampSocialSearchLimit(
+        data.tiktokSearchLimit,
+        MAX_TIKTOK_SEARCH_LIMIT,
+      ),
+      instagramSearchLimit: clampSocialSearchLimit(
+        data.instagramSearchLimit,
+        MAX_INSTAGRAM_SEARCH_LIMIT,
+      ),
+    },
+  });
+
+  revalidatePath("/research-hub/social-listening");
+  revalidatePath(`/research-hub/social-listening/${data.monitorId}`);
 }
 
 export async function refreshSocialListeningMonitor(monitorId: string) {

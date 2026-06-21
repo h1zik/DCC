@@ -18,6 +18,7 @@ export type VisualLibraryGroups = {
       assetCount: number;
       errorMessage: string | null;
       maxPinsPerKeyword: number | null;
+      dataProvenance: import("@/lib/research/scrape-data-provider").DataProvenanceEntry[];
     };
     assets: VisualLibraryAssetView[];
   }[];

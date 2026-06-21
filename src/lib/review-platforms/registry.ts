@@ -71,8 +71,15 @@ export function getReviewActorIdForPlatform(platformKey: string): string | null 
 
 export function isReviewPlatformConfigured(platformKey: string): boolean {
   if (platformKey === "csv") return true;
-  if (platformKey === "femaledaily" || platformKey === "sociolla") return true;
-  if (platformKey === "tokopedia" && isScraperApiConfigured()) return true;
+  if (
+    (platformKey === "femaledaily" ||
+      platformKey === "sociolla" ||
+      platformKey === "tokopedia" ||
+      platformKey === "shopee") &&
+    isScraperApiConfigured()
+  ) {
+    return true;
+  }
   return !!getReviewActorIdForPlatform(platformKey);
 }
 
@@ -84,16 +91,36 @@ export function reviewPlatformEnvHint(platformKey: string): string {
   const dedicated = readActorEnv(meta.actorEnvKey);
   if (dedicated) return meta.actorEnvHint;
 
+  if (
+    (platformKey === "femaledaily" ||
+      platformKey === "sociolla" ||
+      platformKey === "tokopedia" ||
+      platformKey === "shopee") &&
+    isScraperApiConfigured()
+  ) {
+    const label =
+      platformKey === "femaledaily"
+        ? "Female Daily"
+        : platformKey === "sociolla"
+          ? "Sociolla"
+          : platformKey === "tokopedia"
+            ? "Tokopedia"
+            : "Shopee";
+    const suffix =
+      platformKey === "shopee" ? ", fallback Apify jika VPS gagal" : "";
+    return `Scrape ${label} via VPS (SCRAPER_API_URL + SCRAPER_API_KEY)${suffix}.`;
+  }
+
+  if (platformKey === "shopee") {
+    return "Set SCRAPER_API_URL + SCRAPER_API_KEY untuk Shopee via VPS, atau APIFY_ACTOR_SHOPEE_REVIEWS sebagai fallback.";
+  }
+
   if (platformKey === "femaledaily") {
-    return "Scrape native Female Daily (reviews.femaledaily.com) — tidak perlu Apify.";
+    return "Set SCRAPER_API_URL + SCRAPER_API_KEY untuk scrape Female Daily via VPS.";
   }
 
   if (platformKey === "sociolla") {
-    return "Scrape native Sociolla (bj-public-api.sociolla.com) — tidak perlu Apify.";
-  }
-
-  if (platformKey === "tokopedia" && isScraperApiConfigured()) {
-    return "Scrape Tokopedia via VPS (SCRAPER_API_URL + SCRAPER_API_KEY).";
+    return "Set SCRAPER_API_URL + SCRAPER_API_KEY untuk scrape Sociolla via VPS.";
   }
 
   if (meta.category === "community" && jsonLdActorId()) {

@@ -1,15 +1,22 @@
 import "server-only";
 
+import {
+  inferTrendFromTimelineValues,
+  type KeywordTrendDirection,
+} from "@/lib/research/keyword-intel/keyword-trend";
+
 const API_BASE = "https://api.dataforseo.com/v3";
 const DEFAULT_LOCATION_CODE = 2360; // Indonesia (Google Ads)
 const DEFAULT_LANGUAGE_CODE = "id";
-const DEFAULT_MAX_KEYWORDS = 30;
+const DEFAULT_MAX_KEYWORDS = 80;
 
 export type DfsKeywordVolume = {
   keyword: string;
   volume: number;
   /** 0–1, dari competition_index Google Ads */
   competition: number;
+  /** Arah tren dari monthly_searches (12 bulan terakhir). */
+  trend: KeywordTrendDirection | null;
 };
 
 export type DfsVolumeFetchResult = {
@@ -18,11 +25,42 @@ export type DfsVolumeFetchResult = {
   errorMessage: string | null;
 };
 
+type DfsMonthlySearchItem = {
+  year?: number;
+  month?: number;
+  search_volume?: number | null;
+};
+
 type DfsSearchVolumeItem = {
   keyword?: string;
   search_volume?: number | null;
   competition_index?: number | null;
+  monthly_searches?: DfsMonthlySearchItem[] | null;
 };
+
+export function inferTrendFromDfsMonthlySearches(
+  monthly: DfsMonthlySearchItem[] | null | undefined,
+): KeywordTrendDirection | null {
+  if (!monthly?.length) return null;
+
+  const values = [...monthly]
+    .filter(
+      (m) =>
+        m.search_volume != null &&
+        Number.isFinite(m.search_volume) &&
+        m.search_volume > 0,
+    )
+    .sort((a, b) => {
+      const ya = a.year ?? 0;
+      const yb = b.year ?? 0;
+      if (ya !== yb) return ya - yb;
+      return (a.month ?? 0) - (b.month ?? 0);
+    })
+    .map((m) => m.search_volume!);
+
+  if (values.length < 4) return null;
+  return inferTrendFromTimelineValues(values);
+}
 
 type DfsApiResponse = {
   status_code?: number;
@@ -90,10 +128,36 @@ export async function fetchKeywordVolumesFromDataForSeo(
     return { data: [], balanceExhausted: false, errorMessage: null };
   }
 
-  const unique = [...new Set(keywords.map((k) => k.trim()).filter(Boolean))].slice(
-    0,
-    getDataForSeoMaxKeywords(),
-  );
+  const unique = [...new Set(keywords.map((k) => k.trim()).filter(Boolean))];
+  const batchSize = getDataForSeoMaxKeywords();
+  const allData: DfsKeywordVolume[] = [];
+  let balanceExhausted = false;
+  let errorMessage: string | null = null;
+
+  for (let i = 0; i < unique.length; i += batchSize) {
+    const batch = unique.slice(i, i + batchSize);
+    const result = await fetchKeywordVolumesBatch(creds, batch);
+    allData.push(...result.data);
+    if (result.balanceExhausted) {
+      balanceExhausted = true;
+      errorMessage = result.errorMessage;
+      break;
+    }
+    if (result.errorMessage && result.data.length === 0 && allData.length === 0) {
+      errorMessage = result.errorMessage;
+    }
+  }
+
+  return { data: allData, balanceExhausted, errorMessage };
+}
+
+async function fetchKeywordVolumesBatch(
+  creds: { login: string; password: string },
+  keywords: string[],
+): Promise<DfsVolumeFetchResult> {
+  if (keywords.length === 0) {
+    return { data: [], balanceExhausted: false, errorMessage: null };
+  }
 
   try {
     const res = await fetch(
@@ -109,7 +173,7 @@ export async function fetchKeywordVolumesFromDataForSeo(
             location_code: getLocationCode(),
             language_code: getLanguageCode(),
             search_partners: false,
-            keywords: unique,
+            keywords,
           },
         ]),
       },
@@ -152,13 +216,17 @@ export async function fetchKeywordVolumesFromDataForSeo(
     for (const item of items) {
       const keyword = item.keyword?.trim();
       if (!keyword) continue;
-      const volume = item.search_volume;
-      if (volume == null || !Number.isFinite(volume)) continue;
+      const rawVolume = item.search_volume;
+      const volume =
+        rawVolume == null || !Number.isFinite(rawVolume)
+          ? 0
+          : Math.max(0, rawVolume);
 
       data.push({
         keyword,
         volume,
         competition: normalizeCompetition(item.competition_index),
+        trend: inferTrendFromDfsMonthlySearches(item.monthly_searches),
       });
     }
 

@@ -48,6 +48,10 @@ import { cn } from "@/lib/utils";
 import { useBrandJobProgress } from "../use-brand-job-progress";
 
 export type BrandTrendRadarPageData = {
+  globalInProgress: {
+    id: string;
+    status: TrendRadarStatus;
+  } | null;
   latestGlobal: {
     id: string;
     narrative: string | null;
@@ -110,18 +114,20 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
 
   const trendBasePath = "/brand-hub/trend-radar";
 
+  const globalJobStatus = data.globalInProgress?.status;
+
   const hasInProgress =
-    data.latestGlobal?.status === "COLLECTING" ||
-    data.latestGlobal?.status === "ANALYZING" ||
+    globalJobStatus === "COLLECTING" ||
+    globalJobStatus === "ANALYZING" ||
     data.digests.some(
       (d) => d.status === "COLLECTING" || d.status === "ANALYZING",
     );
 
   const progressSubtitle = (() => {
-    if (data.latestGlobal?.status === "COLLECTING") {
+    if (globalJobStatus === "COLLECTING") {
       return "Digest global — mengumpulkan sinyal";
     }
-    if (data.latestGlobal?.status === "ANALYZING") {
+    if (globalJobStatus === "ANALYZING") {
       return "Digest global — menganalisis tren";
     }
     const digest = data.digests.find(
@@ -190,11 +196,13 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
         <BrandHubStatChip
           label="Digest global"
           value={
-            data.latestGlobal
-              ? TREND_RADAR_STATUS_LABELS[data.latestGlobal.status]
-              : "Belum ada"
+            globalJobStatus
+              ? TREND_RADAR_STATUS_LABELS[globalJobStatus]
+              : data.latestGlobal
+                ? TREND_RADAR_STATUS_LABELS[data.latestGlobal.status]
+                : "Belum ada"
           }
-          tone={statusChipTone(data.latestGlobal?.status)}
+          tone={statusChipTone(globalJobStatus ?? data.latestGlobal?.status)}
         />
         {data.latestGlobal?.signalStats ? (
           <BrandHubStatChip

@@ -3,12 +3,20 @@ import "server-only";
 import { ResearchMarketplace } from "@prisma/client";
 import { fetchMarketplaceAutocomplete } from "@/lib/research/keyword-intel/marketplace-autocomplete";
 import {
-  fetchInterestTrend,
+  fetchInterestTrendsForKeywords,
   fetchRelatedKeywords,
 } from "@/lib/research/keyword-intel/google-trends-keywords";
+import { mergeKeywordTrend, inferTrendFromAutocompleteMeta } from "@/lib/research/keyword-intel/keyword-trend";
+import {
+  getGoogleTrendsUnavailableNotice,
+  isGoogleTrendsCircuitOpen,
+} from "@/lib/research/google-trends-client";
+import {
+  enrichKeywordVolumeMetrics,
+  countProxyVolumeKeywords,
+} from "@/lib/research/keyword-intel/keyword-volume-proxy";
 import {
   fetchKeywordVolumesFromDataForSeo,
-  getDataForSeoMaxKeywords,
   isDataForSeoConfigured,
 } from "@/lib/research/keyword-intel/dataforseo-keywords";
 import {
@@ -41,7 +49,7 @@ function mergeBatch(signals: NormalizedKeywordSignal[]): NormalizedKeywordSignal
     ) {
       existing.competition = s.competition;
     }
-    if (s.trend && s.trend !== "stable") existing.trend = s.trend;
+    existing.trend = mergeKeywordTrend(existing.trend, s.trend) ?? undefined;
   }
 
   return [...map.values()];
@@ -69,7 +77,16 @@ export async function collectExternalKeywordSignals(input: {
         source: hit.source,
         keyword: hit.keyword,
         metric: "autocomplete",
-        value: 1,
+        value: hit.rank != null ? Math.max(1, 21 - hit.rank) : 1,
+        meta:
+          hit.rank != null || hit.suggestionType
+            ? {
+                ...(hit.rank != null ? { rank: hit.rank } : {}),
+                ...(hit.suggestionType
+                  ? { suggestion_type: hit.suggestionType }
+                  : {}),
+              }
+            : undefined,
       });
     }
   }
@@ -95,7 +112,7 @@ export async function collectExternalKeywordSignals(input: {
   let merged = mergeBatch(signals);
 
   if (input.enabled.dataforseo && isDataForSeoConfigured() && merged.length > 0) {
-    const forVolume = merged.slice(0, getDataForSeoMaxKeywords()).map((m) => m.keyword);
+    const forVolume = merged.map((m) => m.keyword);
     const dfsResult = await fetchKeywordVolumesFromDataForSeo(forVolume);
 
     if (dfsResult.balanceExhausted) {
@@ -117,6 +134,7 @@ export async function collectExternalKeywordSignals(input: {
           competition: dfs.competition,
           metric: "search_volume",
           value: dfs.volume,
+          trend: mergeKeywordTrend(m.trend, dfs.trend) ?? dfs.trend ?? undefined,
         };
       });
     }
@@ -125,15 +143,38 @@ export async function collectExternalKeywordSignals(input: {
       "Volume Google tidak tersedia (DataForSEO belum dikonfigurasi). Ranking berdasarkan sumber marketplace/Trends.";
   }
 
-  const needTrend = merged
-    .filter((m) => !m.trend)
-    .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
-    .slice(0, 15);
-
   if (input.enabled.googleTrends) {
-    for (const m of needTrend) {
-      m.trend = await fetchInterestTrend(m.keyword);
+    const needTrend = merged
+      .filter((m) => !m.trend)
+      .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+      .map((m) => m.keyword);
+    const trendMap = await fetchInterestTrendsForKeywords(needTrend);
+    for (const m of merged) {
+      const fetched = trendMap.get(m.keyword.toLowerCase());
+      if (fetched) {
+        m.trend = mergeKeywordTrend(m.trend, fetched) ?? undefined;
+      }
     }
+
+    if (isGoogleTrendsCircuitOpen()) {
+      for (const m of merged) {
+        if (m.trend) continue;
+        const fallback = inferTrendFromAutocompleteMeta(m.meta);
+        if (fallback) {
+          m.trend = mergeKeywordTrend(m.trend, fallback) ?? undefined;
+        }
+      }
+      const notice = getGoogleTrendsUnavailableNotice();
+      dataNotice = dataNotice ? `${dataNotice} ${notice}` : notice;
+    }
+  }
+
+  merged = enrichKeywordVolumeMetrics(merged);
+
+  const proxyCount = countProxyVolumeKeywords(merged);
+  if (proxyCount > 0) {
+    const proxyNotice = `${proxyCount} keyword memakai estimasi volume/kompetisi dari Shopee autocomplete (tanpa volume Google).`;
+    dataNotice = dataNotice ? `${dataNotice} ${proxyNotice}` : proxyNotice;
   }
 
   return {

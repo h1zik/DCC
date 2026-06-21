@@ -72,7 +72,9 @@ export async function collectMentions(input: {
       }
       batches.push(tiktok);
     } else {
-      warnings.push("TikTok Apify belum dikonfigurasi — lewati platform TikTok.");
+      warnings.push(
+        "TikTok Apify belum dikonfigurasi — lewati platform TikTok.",
+      );
     }
   }
 
@@ -87,7 +89,7 @@ export async function collectMentions(input: {
       batches.push(instagram);
     } else {
       warnings.push(
-        "APIFY_ACTOR_INSTAGRAM belum diset — lewati platform Instagram.",
+        "Instagram scraper belum dikonfigurasi — lewati platform Instagram.",
       );
     }
   }

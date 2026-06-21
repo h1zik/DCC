@@ -2461,6 +2461,10 @@ model SocialListeningMonitor {
   keywords    String[]                  @default([])
   platforms   SocialListeningPlatform[] @default([])
   isActive    Boolean                   @default(true)
+  /** Video TikTok per keyword saat sync. */
+  tiktokSearchLimit     Int @default(20)
+  /** Post Instagram per hashtag saat sync. */
+  instagramSearchLimit  Int @default(20)
   createdById String
   createdBy   User                      @relation("SocialListeningMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt   DateTime                  @default(now())
@@ -3014,6 +3018,8 @@ model BrandSocialMonitor {
   keywords     String[]                  @default([])
   platforms    SocialListeningPlatform[] @default([])
   isActive     Boolean                   @default(true)
+  tiktokSearchLimit     Int @default(20)
+  instagramSearchLimit  Int @default(20)
   createdById  String
   createdBy    User                      @relation("BrandSocialMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
   ownerBrandId String?

@@ -26,6 +26,7 @@ import { filterShopProductsByShopUrl } from "@/lib/apify/tiktok-kulqiz";
 import { applyCompetitorSnapshot } from "@/lib/research/competitor-diff";
 import { runApifyJobToCompletion } from "@/lib/research/run-apify-job";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { fetchShopeeShopViaVps } from "@/lib/scraper-api/shopee-products";
 import { fetchTokopediaShopViaVps } from "@/lib/scraper-api/tokopedia-products";
 
 export async function enqueueCompetitorScrape(
@@ -81,6 +82,63 @@ export async function enqueueCompetitorScrape(
       throw err;
     }
     return;
+  }
+
+  if (
+    competitor.marketplace === ResearchMarketplace.SHOPEE &&
+    isScraperApiConfigured()
+  ) {
+    let shopeeProducts: NormalizedShopProduct[] | null = null;
+    try {
+      shopeeProducts = await fetchShopeeShopViaVps(competitor.shopUrl);
+    } catch (err) {
+      console.warn("[competitor/shopee/vps] gagal — fallback Apify", err);
+    }
+
+    if (shopeeProducts != null && shopeeProducts.length === 0) {
+      console.warn(
+        "[competitor/shopee/vps] kosong — fallback Apify",
+        competitor.shopUrl,
+      );
+    }
+
+    if (shopeeProducts != null && shopeeProducts.length > 0) {
+      const job = await prisma.researchScrapeJob.create({
+        data: {
+          type: ResearchScrapeJobType.COMPETITOR_SNAPSHOT,
+          entityId: competitorId,
+          status: ResearchScrapeJobStatus.RUNNING,
+          startedAt: new Date(),
+        },
+      });
+
+      try {
+        await ingestCompetitorProducts(competitorId, shopeeProducts);
+        await prisma.researchScrapeJob.update({
+          where: { id: job.id },
+          data: {
+            status: ResearchScrapeJobStatus.COMPLETED,
+            completedAt: new Date(),
+            error: null,
+          },
+        });
+        revalidatePath("/research-hub/competitor-tracker");
+        revalidatePath(`/research-hub/competitor-tracker/${competitorId}`);
+        return;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Scrape kompetitor gagal.";
+        await prisma.researchScrapeJob.update({
+          where: { id: job.id },
+          data: {
+            status: ResearchScrapeJobStatus.FAILED,
+            error: message,
+            completedAt: new Date(),
+          },
+        });
+        throw err;
+      }
+    }
   }
 
   if (!isApifyConfigured()) {

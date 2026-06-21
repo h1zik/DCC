@@ -9,6 +9,7 @@ import {
 import { collectAllTrendSignals } from "@/lib/research/trend-radar/collect-all-trend-signals";
 import { clusterTrendSignals } from "@/lib/research/trend-radar/cluster-trends";
 import { computeClusteredTrends } from "@/lib/research/trend-radar/compute-tmi";
+import { enrichTrendPhases } from "@/lib/research/trend-radar/phase-enrichment";
 import {
   applyWowDiff,
   type PriorTrendItem,
@@ -96,6 +97,16 @@ export async function runTrendDigestPipeline(input: {
     clusters,
     digestModePartial: quality.digestMode === "PARTIAL",
   });
+
+  const signalsForPhase = signals.map((s) => ({
+    term: s.term,
+    source: s.source,
+    meta: { ...s.meta, value: s.value, rising: s.meta?.rising },
+  }));
+  items = enrichTrendPhases(
+    items.map((item) => ({ ...item, score: item.tmiScore })),
+    signalsForPhase,
+  ).map(({ score: _score, ...item }) => item);
 
   if (input.priorItems?.length) {
     items = applyWowDiff(items, input.priorItems);

@@ -21,7 +21,8 @@ export const REVIEW_PLATFORMS: ReviewPlatformMeta[] = [
     urlPlaceholder: "https://shopee.co.id/product/...",
     urlPatternSources: ["shopee\\."],
     actorEnvKey: "APIFY_ACTOR_SHOPEE_REVIEWS",
-    actorEnvHint: "Set APIFY_ACTOR_SHOPEE_REVIEWS (mis. gio21~shopee-product-detail).",
+    actorEnvHint:
+      "Scrape Shopee via VPS (SCRAPER_API_URL) — fallback Apify jika VPS gagal.",
   },
   {
     key: "tokopedia",
@@ -49,7 +50,7 @@ export const REVIEW_PLATFORMS: ReviewPlatformMeta[] = [
     urlPatternSources: ["femaledaily\\.com"],
     actorEnvKey: "APIFY_ACTOR_REVIEW_FEMALEDAILY",
     actorEnvHint:
-      "Scrape native — paste URL halaman produk dari reviews.femaledaily.com (tanpa Apify).",
+      "Scrape Female Daily via VPS — paste URL dari reviews.femaledaily.com (SCRAPER_API_URL).",
   },
   {
     key: "sociolla",
@@ -59,7 +60,7 @@ export const REVIEW_PLATFORMS: ReviewPlatformMeta[] = [
     urlPatternSources: ["sociolla\\.com"],
     actorEnvKey: "APIFY_ACTOR_REVIEW_SOCIOLLA",
     actorEnvHint:
-      "Scrape native — paste URL halaman produk dari www.sociolla.com (tanpa Apify).",
+      "Scrape Sociolla via VPS — paste URL halaman produk dari www.sociolla.com (SCRAPER_API_URL).",
   },
   {
     key: "csv",

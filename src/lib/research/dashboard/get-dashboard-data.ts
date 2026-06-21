@@ -7,7 +7,7 @@ import {
   configuredReviewPlatformLabels,
   isAnyReviewScrapeConfigured,
 } from "@/lib/review-platforms/registry";
-import { isProductSearchConfigured } from "@/lib/apify/actors";
+import { isProductSearchConfigured, isShopScrapeConfigured } from "@/lib/apify/actors";
 import { isInstagramMentionsConfigured } from "@/lib/research/social-listening/scrape-instagram-mentions";
 import { isTikTokMentionsConfigured } from "@/lib/research/social-listening/scrape-tiktok-mentions";
 import { isTikTokTrendsConfigured } from "@/lib/research/trend-radar/tiktok-trends";
@@ -89,8 +89,7 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
   const apifyConfigured = isApifyConfigured();
   const reviewScrapeConfigured = isAnyReviewScrapeConfigured();
   const reviewPlatformLabels = configuredReviewPlatformLabels();
-  const shopeeShopConfigured =
-    apifyConfigured && !!process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim();
+  const shopeeShopConfigured = isShopScrapeConfigured(ResearchMarketplace.SHOPEE);
   const productDiscoveryConfigured = isProductSearchConfigured(
     ResearchMarketplace.SHOPEE,
   );

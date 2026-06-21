@@ -1,11 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { TrendDimension } from "@prisma/client";
+import { after } from "next/server";
+import { TrendDimension, TrendRadarStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMarketAnalyst } from "@/lib/research/auth";
-import { generateTrendDigest } from "@/lib/research/trend-radar/trend-analyzer";
+import {
+  generateTrendDigest,
+  weekBounds,
+} from "@/lib/research/trend-radar/trend-analyzer";
 import {
   getDefaultTrendSourceConfig,
   parseTrendSourceConfigJson,
@@ -181,14 +185,47 @@ export async function refreshGlobalTrendDigest(
     sourceConfig = stored ?? getDefaultTrendSourceConfig();
   }
 
-  try {
-    await generateTrendDigest({ isGlobal: true, sourceConfig });
-  } catch (err) {
-    console.error("[refreshGlobalTrendDigest] gagal", err);
-    throw err;
+  const inFlight = await prisma.trendRadarDigest.findFirst({
+    where: {
+      isGlobal: true,
+      status: {
+        in: [TrendRadarStatus.COLLECTING, TrendRadarStatus.ANALYZING],
+      },
+    },
+  });
+  if (inFlight) {
+    throw new Error(
+      "Digest global sedang diproses. Tunggu hingga selesai sebelum generate ulang.",
+    );
   }
 
+  const { weekStart, weekEnd } = weekBounds();
+  const digest = await prisma.trendRadarDigest.create({
+    data: {
+      weekStart,
+      weekEnd,
+      isGlobal: true,
+      status: TrendRadarStatus.COLLECTING,
+      sourceConfig: sourceConfig as object,
+    },
+  });
+
+  after(async () => {
+    try {
+      await generateTrendDigest({
+        digestId: digest.id,
+        isGlobal: true,
+        sourceConfig,
+      });
+    } catch (err) {
+      console.error("[refreshGlobalTrendDigest] background gagal", err);
+    } finally {
+      revalidatePath("/research-hub/trend-radar");
+    }
+  });
+
   revalidatePath("/research-hub/trend-radar");
+  return { digestId: digest.id };
 }
 
 export async function deleteTrendDigest(digestId: string) {

@@ -9,6 +9,12 @@ import { enqueueProductDiscoveryScrape } from "@/lib/research/scrape-product-dis
 import { pollProductDiscoveryInProgress } from "@/lib/research/run-product-discovery-job";
 import { enqueueReviewScrape } from "@/lib/research/scrape-review-source";
 import {
+  isReviewPlatformConfigured,
+  marketplaceForPlatformKey,
+  validateReviewPlatformUrl,
+} from "@/lib/review-platforms/registry";
+import { platformKeyFromMarketplace } from "@/lib/review-platforms/platforms";
+import {
   MAX_PRODUCT_LIMIT,
   MIN_PRODUCT_LIMIT,
 } from "@/lib/research/product-discovery/constants";
@@ -94,6 +100,17 @@ export async function sendDiscoveryProductToReviewIntel(input: {
   });
   if (!product) throw new Error("Produk tidak ditemukan.");
 
+  const platformKey = platformKeyFromMarketplace(product.marketplace);
+
+  if (!isReviewPlatformConfigured(platformKey)) {
+    throw new Error(
+      `Platform review ${platformKey} belum dikonfigurasi. Cek SCRAPER_API_URL atau env Apify di server.`,
+    );
+  }
+
+  const urlError = validateReviewPlatformUrl(platformKey, product.productUrl);
+  if (urlError) throw new Error(urlError);
+
   const source = await prisma.reviewIntelSource.create({
     data: {
       productName: product.name,
@@ -101,7 +118,8 @@ export async function sendDiscoveryProductToReviewIntel(input: {
         input.competitorBrand?.trim() ||
         product.shopName?.trim() ||
         "Kompetitor",
-      marketplace: product.marketplace,
+      platformKey,
+      marketplace: marketplaceForPlatformKey(platformKey),
       productUrl: product.productUrl,
       createdById: session.user.id,
     },

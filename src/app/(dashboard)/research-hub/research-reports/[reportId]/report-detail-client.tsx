@@ -197,18 +197,6 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
         </div>
       ) : null}
 
-      {data.errorMessage ? (
-        <p
-          className={cn(
-            hub.nestedPanel,
-            "text-rose-800 dark:text-rose-200 text-sm",
-          )}
-          role="alert"
-        >
-          {data.errorMessage}
-        </p>
-      ) : null}
-
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(hub.stickyToolbar, "pb-0")}>
           <TabsList variant="line" className="h-9 w-full justify-start gap-4">

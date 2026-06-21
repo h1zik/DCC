@@ -16,10 +16,11 @@ export type TikTokTrendSignal = {
 /** Input schema clockworks/tiktok-scraper — tanpa download media untuk hemat biaya. */
 export function buildClockworksTikTokInput(
   hashtags: string[],
+  resultsPerPage = 20,
 ): Record<string, unknown> {
   return {
     hashtags: hashtags.map((h) => h.replace(/^#/, "")),
-    resultsPerPage: 20,
+    resultsPerPage,
     proxyCountryCode: "ID",
     shouldDownloadVideos: false,
     shouldDownloadCovers: false,

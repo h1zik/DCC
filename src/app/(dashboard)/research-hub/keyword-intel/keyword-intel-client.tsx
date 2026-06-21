@@ -343,12 +343,6 @@ export function KeywordIntelClient({
                   </p>
                 ) : null}
 
-                {q.errorMessage ? (
-                  <p className="text-amber-700 dark:text-amber-300 mt-2 text-xs">
-                    {q.errorMessage}
-                  </p>
-                ) : null}
-
                 <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
                   <Button
                     size="sm"

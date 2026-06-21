@@ -29,12 +29,22 @@ import {
 } from "@/lib/apify/normalize";
 import { filterShopProductsByKeyword } from "@/lib/apify/tiktok-kulqiz";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { fetchShopeeSearchViaVps } from "@/lib/scraper-api/shopee-products";
 import { fetchTokopediaSearchViaVps } from "@/lib/scraper-api/tokopedia-products";
 import {
   parseProductDiscoveryScrapeState,
   type ProductDiscoveryScrapeState,
 } from "@/lib/research/product-discovery/scrape-state";
+import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
 import { executeProductDiscoveryJob } from "@/lib/research/run-product-discovery-job";
+
+function recordDiscoverySource(
+  state: ProductDiscoveryScrapeState,
+  marketplace: ResearchMarketplace,
+  provider: ScrapeDataProvider,
+): void {
+  state.sources = { ...(state.sources ?? {}), [marketplace]: provider };
+}
 
 export type DiscoveryProductInput = NormalizedShopProduct & {
   marketplace: ResearchMarketplace;
@@ -275,33 +285,63 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
     const mp = state.marketplaces[state.nextIndex]!;
     const remaining = query.productLimit - currentCount;
 
-    if (
-      mp === ResearchMarketplace.TOKOPEDIA &&
-      isScraperApiConfigured()
-    ) {
-      try {
-        const normalized = await fetchTokopediaSearchViaVps(
-          query.keyword,
-          remaining,
-        );
-        const products = normalized
-          .slice(0, remaining)
-          .map((p) => ({ ...p, marketplace: mp }));
+    if (isScraperApiConfigured()) {
+      let vpsHandled = false;
 
-        if (products.length === 0) {
-          state.warnings.push(
-            `${mp}: tidak ada produk ditemukan untuk keyword ini.`,
+      if (mp === ResearchMarketplace.SHOPEE) {
+        try {
+          const normalized = await fetchShopeeSearchViaVps(
+            query.keyword,
+            remaining,
           );
-        } else {
-          await ingestDiscoveryProductsBatch(query.id, products);
+          const products = normalized
+            .slice(0, remaining)
+            .map((p) => ({ ...p, marketplace: mp }));
+
+          if (products.length > 0) {
+            await ingestDiscoveryProductsBatch(query.id, products);
+            recordDiscoverySource(state, mp, "vps");
+            vpsHandled = true;
+          } else {
+            state.warnings.push(
+              `${mp}: VPS tidak menemukan produk — fallback Apify.`,
+            );
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
+          state.warnings.push(`${mp}: VPS gagal (${msg}) — fallback Apify.`);
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
-        state.warnings.push(`${mp}: ${msg}`);
       }
 
-      state.nextIndex += 1;
-      continue;
+      if (mp === ResearchMarketplace.TOKOPEDIA) {
+        try {
+          const normalized = await fetchTokopediaSearchViaVps(
+            query.keyword,
+            remaining,
+          );
+          const products = normalized
+            .slice(0, remaining)
+            .map((p) => ({ ...p, marketplace: mp }));
+
+          if (products.length === 0) {
+            state.warnings.push(
+              `${mp}: tidak ada produk ditemukan untuk keyword ini.`,
+            );
+          } else {
+            await ingestDiscoveryProductsBatch(query.id, products);
+          }
+          recordDiscoverySource(state, mp, "vps");
+          vpsHandled = true;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
+          state.warnings.push(`${mp}: ${msg}`);
+        }
+      }
+
+      if (vpsHandled) {
+        state.nextIndex += 1;
+        continue;
+      }
     }
 
     const actorId = getSearchActorId(mp);
@@ -416,6 +456,7 @@ export async function pollProductDiscoveryJob(jobId: string): Promise<void> {
         state.warnings.push(`${mp}: ${detail}`);
       } else {
         await ingestDiscoveryProductsBatch(query.id, products);
+        recordDiscoverySource(state, mp, "apify");
         if (
           mp === ResearchMarketplace.TIKTOK_SHOP &&
           products.length < remaining &&

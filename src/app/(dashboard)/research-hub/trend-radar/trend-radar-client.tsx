@@ -59,6 +59,10 @@ import {
 import { cn } from "@/lib/utils";
 
 export type TrendRadarPageData = {
+  globalInProgress: {
+    id: string;
+    status: TrendRadarStatus;
+  } | null;
   latestGlobal: {
     id: string;
     narrative: string | null;
@@ -139,9 +143,11 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
 
   const dialogOpen = dialogMode !== null;
 
+  const globalJobStatus = data.globalInProgress?.status;
+
   const hasInProgress =
-    data.latestGlobal?.status === "COLLECTING" ||
-    data.latestGlobal?.status === "ANALYZING" ||
+    globalJobStatus === "COLLECTING" ||
+    globalJobStatus === "ANALYZING" ||
     data.watchlists.some(
       (w) =>
         w.latestDigest?.status === "COLLECTING" ||
@@ -149,10 +155,10 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
     );
 
   const progressSubtitle = (() => {
-    if (data.latestGlobal?.status === "COLLECTING") {
+    if (globalJobStatus === "COLLECTING") {
       return "Digest global — mengumpulkan sinyal";
     }
-    if (data.latestGlobal?.status === "ANALYZING") {
+    if (globalJobStatus === "ANALYZING") {
       return "Digest global — menganalisis tren";
     }
     const wl = data.watchlists.find(
@@ -304,11 +310,13 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
         <ResearchHubStatChip
           label="Digest global"
           value={
-            data.latestGlobal
-              ? TREND_RADAR_STATUS_LABELS[data.latestGlobal.status]
-              : "Belum ada"
+            globalJobStatus
+              ? TREND_RADAR_STATUS_LABELS[globalJobStatus]
+              : data.latestGlobal
+                ? TREND_RADAR_STATUS_LABELS[data.latestGlobal.status]
+                : "Belum ada"
           }
-          tone={statusChipTone(data.latestGlobal?.status)}
+          tone={statusChipTone(globalJobStatus ?? data.latestGlobal?.status)}
         />
         {data.latestGlobal?.signalStats ? (
           <ResearchHubStatChip

@@ -40,6 +40,13 @@ import {
   ResearchHubSection,
   ResearchHubStatChip,
 } from "@/components/research-hub/research-hub-primitives";
+import {
+  DEFAULT_INSTAGRAM_SEARCH_LIMIT,
+  DEFAULT_TIKTOK_SEARCH_LIMIT,
+  MAX_INSTAGRAM_SEARCH_LIMIT,
+  MAX_TIKTOK_SEARCH_LIMIT,
+  parseSearchLimitInput,
+} from "@/lib/research/social-listening/search-limits-public";
 import { cn } from "@/lib/utils";
 
 export type SocialMonitorRow = {
@@ -98,6 +105,12 @@ export function SocialListeningClient({
     SocialListeningPlatform.TIKTOK,
     SocialListeningPlatform.INSTAGRAM,
   ]);
+  const [tiktokLimit, setTiktokLimit] = useState(
+    String(DEFAULT_TIKTOK_SEARCH_LIMIT),
+  );
+  const [instagramLimit, setInstagramLimit] = useState(
+    String(DEFAULT_INSTAGRAM_SEARCH_LIMIT),
+  );
 
   const hasInProgress = monitors.some((m) => isInProgress(m.latestStatus));
   const readyCount = monitors.filter((m) => m.latestStatus === "READY").length;
@@ -139,6 +152,22 @@ export function SocialListeningClient({
           name,
           keywords,
           platforms,
+          tiktokSearchLimit: platforms.includes(SocialListeningPlatform.TIKTOK)
+            ? parseSearchLimitInput(
+                tiktokLimit,
+                DEFAULT_TIKTOK_SEARCH_LIMIT,
+                MAX_TIKTOK_SEARCH_LIMIT,
+              )
+            : DEFAULT_TIKTOK_SEARCH_LIMIT,
+          instagramSearchLimit: platforms.includes(
+            SocialListeningPlatform.INSTAGRAM,
+          )
+            ? parseSearchLimitInput(
+                instagramLimit,
+                DEFAULT_INSTAGRAM_SEARCH_LIMIT,
+                MAX_INSTAGRAM_SEARCH_LIMIT,
+              )
+            : DEFAULT_INSTAGRAM_SEARCH_LIMIT,
         });
         toast.success("Monitor dibuat. Jalankan refresh untuk mulai sync.");
         setDialogOpen(false);
@@ -257,6 +286,42 @@ export function SocialListeningClient({
                   ))}
                 </div>
               </div>
+              {platforms.includes(SocialListeningPlatform.TIKTOK) ? (
+                <div className="space-y-2">
+                  <Label htmlFor="sl-tiktok-limit">
+                    Limit video TikTok per keyword
+                  </Label>
+                  <Input
+                    id="sl-tiktok-limit"
+                    type="number"
+                    min={1}
+                    max={MAX_TIKTOK_SEARCH_LIMIT}
+                    value={tiktokLimit}
+                    onChange={(e) => setTiktokLimit(e.target.value)}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Maks {MAX_TIKTOK_SEARCH_LIMIT} video per keyword.
+                  </p>
+                </div>
+              ) : null}
+              {platforms.includes(SocialListeningPlatform.INSTAGRAM) ? (
+                <div className="space-y-2">
+                  <Label htmlFor="sl-instagram-limit">
+                    Limit post Instagram per hashtag
+                  </Label>
+                  <Input
+                    id="sl-instagram-limit"
+                    type="number"
+                    min={1}
+                    max={MAX_INSTAGRAM_SEARCH_LIMIT}
+                    value={instagramLimit}
+                    onChange={(e) => setInstagramLimit(e.target.value)}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Maks {MAX_INSTAGRAM_SEARCH_LIMIT} post per hashtag.
+                  </p>
+                </div>
+              ) : null}
             </div>
             <DialogFooter>
               <Button onClick={handleCreate} disabled={pending || !name.trim()}>
@@ -365,12 +430,6 @@ export function SocialListeningClient({
                     )}
                   />
                 </div>
-
-                {m.errorMessage ? (
-                  <p className="text-rose-700 dark:text-rose-300 mt-2 text-xs">
-                    {m.errorMessage}
-                  </p>
-                ) : null}
 
                 <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
                   <Button

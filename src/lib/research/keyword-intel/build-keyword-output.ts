@@ -17,6 +17,21 @@ function norm(keyword: string): string {
   return keyword.trim().toLowerCase();
 }
 
+function resolveKeywordTrend(
+  keywordSignals: NormalizedKeywordSignal[],
+): KeywordMatrixRow["trend"] {
+  const trends = keywordSignals
+    .map((s) => s.trend)
+    .filter((t): t is NonNullable<typeof t> => !!t);
+  if (trends.includes("up")) return "up";
+  if (trends.includes("down")) return "down";
+  if (trends.includes("stable")) return "stable";
+  if (keywordSignals.some((s) => s.source === "google_trends_rising")) {
+    return "up";
+  }
+  return null;
+}
+
 function defaultIntent(keyword: string): "transactional" | "informational" {
   const info = /\b(cara|tips|review|apa itu|beda|vs|pengertian)\b/i;
   return info.test(keyword) ? "informational" : "transactional";
@@ -48,14 +63,13 @@ export function buildKeywordMatrixFromSignals(
       (s) => s.keyword.toLowerCase() === keyword.toLowerCase(),
     );
     const hasVolumeData = keywordSignals.some(
-      (s) => s.source === "dataforseo" && s.volume != null,
+      (s) => s.volume != null && s.competition != null,
     );
     const volume =
-      keywordSignals.find((s) => s.volume != null)?.volume ??
-      (hasVolumeData ? 0 : 0);
+      keywordSignals.find((s) => s.volume != null)?.volume ?? 0;
     const competition =
-      keywordSignals.find((s) => s.competition != null)?.competition ?? 0;
-    const trend = keywordSignals.find((s) => s.trend)?.trend ?? null;
+      keywordSignals.find((s) => s.competition != null)?.competition ?? 0.45;
+    const trend = resolveKeywordTrend(keywordSignals);
     const listingSampleCount =
       keywordSignals.find((s) => s.listingSampleCount != null)?.listingSampleCount ??
       null;
@@ -73,8 +87,8 @@ export function buildKeywordMatrixFromSignals(
 
     return {
       keyword,
-      volume: hasVolumeData ? volume : 0,
-      competition: hasVolumeData ? competition : 0,
+      volume,
+      competition,
       trend,
       intent: intents.get(norm(keyword)) ?? defaultIntent(keyword),
       source: sources,

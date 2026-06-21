@@ -470,12 +470,6 @@ export function ReviewIntelligenceClient({
                   />
                 </div>
 
-                {s.errorMessage ? (
-                  <p className="text-rose-700 dark:text-rose-300 mt-2 text-xs">
-                    {s.errorMessage}
-                  </p>
-                ) : null}
-
                 {isPartial(s) ? (
                   <p className="text-amber-700 dark:text-amber-300 mt-2 text-xs">
                     Data parsial — scraper mengambil{" "}

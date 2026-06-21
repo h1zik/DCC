@@ -1,6 +1,8 @@
 import "server-only";
 
 import { getPinterestMaxPinsPerKeyword } from "@/lib/apify/actors";
+import { isApifyConfigured } from "@/lib/apify/client";
+import { isVpsPinterestConfigured } from "@/lib/scraper-api/pinterest-pins";
 
 export const PINTEREST_PINS_MIN = 10;
 export const PINTEREST_PINS_MAX = 200;
@@ -20,4 +22,9 @@ export function resolvePinterestMaxPinsPerKeyword(collection?: {
     return clampPinterestMaxPins(collection.maxPinsPerKeyword);
   }
   return getPinterestMaxPinsPerKeyword();
+}
+
+/** Pinterest scrape tersedia via VPS (prioritas) atau Apify (fallback). */
+export function isPinterestScrapeConfigured(): boolean {
+  return isVpsPinterestConfigured() || isApifyConfigured();
 }

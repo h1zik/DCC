@@ -1,5 +1,6 @@
 import "server-only";
 
+import { revalidatePath } from "next/cache";
 import { SocialListeningPlatform, SocialListeningStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateResearchJson } from "@/lib/research/gemini-client";
@@ -23,6 +24,7 @@ import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
 import type { ActionPlan } from "@/lib/research/prescriptive/types";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
+import { resolveSearchLimits } from "@/lib/research/social-listening/search-limits";
 
 function parseJsonRecord(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -53,7 +55,14 @@ function buildPlatformWarnings(
     .filter((w): w is string => !!w);
 }
 
-/** Create batch, start Apify runs in parallel, persist platform state. */
+function isScrapePendingStart(
+  platformStatus: PlatformStatusMap,
+  platforms: SocialListeningPlatform[],
+): boolean {
+  return platforms.every((p) => platformStatus[p] == null);
+}
+
+/** Buat batch saja — scrape berat dijalankan di background (finalize). */
 export async function beginBrandSocialListeningSync(
   monitorId: string,
 ): Promise<{ batchId: string }> {
@@ -69,21 +78,40 @@ export async function beginBrandSocialListeningSync(
     },
   });
 
-  const { apifyRunIds, platformStatus, warnings } = await startPlatformScrapes({
+  return { batchId: batch.id };
+}
+
+async function kickoffPlatformScrapesForBatch(
+  batchId: string,
+  monitor: {
+    keywords: string[];
+    platforms: SocialListeningPlatform[];
+    tiktokSearchLimit: number;
+    instagramSearchLimit: number;
+  },
+): Promise<{
+  apifyRunIds: PlatformRunIds;
+  platformStatus: PlatformStatusMap;
+  warnings: string[];
+}> {
+  const searchLimits = resolveSearchLimits(monitor);
+  const started = await startPlatformScrapes({
     keywords: monitor.keywords,
     platforms: monitor.platforms,
+    searchLimits,
   });
 
   await prisma.brandSocialBatch.update({
-    where: { id: batch.id },
+    where: { id: batchId },
     data: {
-      platformStatus,
-      apifyRunIds,
-      errorMessage: warnings.length > 0 ? warnings.join(" | ") : null,
+      platformStatus: started.platformStatus,
+      apifyRunIds: started.apifyRunIds,
+      errorMessage:
+        started.warnings.length > 0 ? started.warnings.join(" | ") : null,
     },
   });
 
-  return { batchId: batch.id };
+  return started;
 }
 
 /** Poll until all platforms finish, then classify and mark READY. */
@@ -97,18 +125,24 @@ export async function finalizeBrandSocialListeningBatch(
   if (!batch?.monitor) throw new Error("Batch social listening tidak ditemukan.");
 
   const monitor = batch.monitor;
-  const apifyRunIds = parseJsonRecord(batch.apifyRunIds) as PlatformRunIds;
-  const initialStatus = parseJsonRecord(
+  let apifyRunIds = parseJsonRecord(batch.apifyRunIds) as PlatformRunIds;
+  let platformStatus = parseJsonRecord(
     batch.platformStatus,
   ) as PlatformStatusMap;
+  let scrapeWarnings: string[] = [];
+
+  if (isScrapePendingStart(platformStatus, monitor.platforms)) {
+    const started = await kickoffPlatformScrapesForBatch(batchId, monitor);
+    apifyRunIds = started.apifyRunIds;
+    platformStatus = started.platformStatus;
+    scrapeWarnings = started.warnings;
+  }
 
   let mentions: RawSocialMention[] = [];
-  let platformStatus = initialStatus;
-  let warnings = buildPlatformWarnings(
-    monitor.platforms,
-    platformStatus,
-    apifyRunIds,
-  );
+  let warnings = [
+    ...scrapeWarnings,
+    ...buildPlatformWarnings(monitor.platforms, platformStatus, apifyRunIds),
+  ];
 
   const hasCollecting = monitor.platforms.some(
     (p) => platformStatus[p] === "COLLECTING",
@@ -265,6 +299,9 @@ export async function finalizeBrandSocialListeningBatch(
       href: `/brand-hub/social-listening/${monitor.id}`,
       plan: actionPlan,
     });
+
+    revalidatePath("/brand-hub/social-listening");
+    revalidatePath(`/brand-hub/social-listening/${monitor.id}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync gagal";
     await prisma.brandSocialBatch.update({

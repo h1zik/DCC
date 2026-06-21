@@ -11,6 +11,9 @@ import {
   type KeywordSignalStats,
   type NormalizedKeywordSignal,
 } from "@/lib/research/keyword-intel/keyword-signal-types";
+import { mergeKeywordTrend } from "@/lib/research/keyword-intel/keyword-trend";
+import { buildKeywordDataProvenance } from "@/lib/research/keyword-intel/build-keyword-provenance";
+import { enrichKeywordVolumeMetrics, countGoogleVolumeKeywords } from "@/lib/research/keyword-intel/keyword-volume-proxy";
 
 function bumpStats(
   stats: KeywordSignalStats,
@@ -47,7 +50,7 @@ function mergeSignals(signals: NormalizedKeywordSignal[]): NormalizedKeywordSign
     ) {
       existing.competition = s.competition;
     }
-    if (s.trend && s.trend !== "stable") existing.trend = s.trend;
+    existing.trend = mergeKeywordTrend(existing.trend, s.trend) ?? undefined;
     if (s.listingSampleCount != null) {
       existing.listingSampleCount = s.listingSampleCount;
     }
@@ -67,6 +70,7 @@ export async function collectAllKeywordSignals(input: {
   signals: NormalizedKeywordSignal[];
   signalStats: KeywordSignalStats;
   volumeKeywordCount: number;
+  googleVolumeCount: number;
   dataNotice: string | null;
 }> {
   const stats = emptyKeywordSignalStats();
@@ -108,22 +112,31 @@ export async function collectAllKeywordSignals(input: {
     );
   }
 
-  const merged = mergeSignals(batches).slice(0, 80);
+  let merged = enrichKeywordVolumeMetrics(
+    mergeSignals(batches).slice(0, 80),
+  );
 
   for (const s of merged) {
     bumpStats(stats, s);
   }
   stats.total = merged.length;
   stats.collectedAt = new Date().toISOString();
+  stats.provenance = buildKeywordDataProvenance({ signals: merged, stats });
 
-  const volumeKeywordCount = merged.filter(
-    (s) => s.source === "dataforseo" && s.volume != null && s.volume > 0,
-  ).length;
+  const volumeKeywordCount = merged.filter((s) => s.volume != null).length;
+  const googleVolumeCount = countGoogleVolumeKeywords(merged);
+
+  if (googleVolumeCount === 0 && volumeKeywordCount > 0 && !dataNotice?.includes("estimasi")) {
+    dataNotice = dataNotice
+      ? `${dataNotice} Volume/kompetisi memakai estimasi marketplace.`
+      : "Volume/kompetisi memakai estimasi marketplace (DataForSEO tidak mengembalikan volume Google).";
+  }
 
   return {
     signals: merged,
     signalStats: stats,
     volumeKeywordCount,
+    googleVolumeCount,
     dataNotice,
   };
 }

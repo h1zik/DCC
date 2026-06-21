@@ -10,6 +10,13 @@ import {
   beginBrandSocialListeningSync,
   finalizeBrandSocialListeningBatch,
 } from "@/lib/brand-research/social-sync";
+import {
+  DEFAULT_INSTAGRAM_SEARCH_LIMIT,
+  DEFAULT_TIKTOK_SEARCH_LIMIT,
+  MAX_INSTAGRAM_SEARCH_LIMIT,
+  MAX_TIKTOK_SEARCH_LIMIT,
+  clampSocialSearchLimit,
+} from "@/lib/research/social-listening/search-limits-public";
 
 const monitorSchema = z.object({
   name: z.string().min(1).max(120),
@@ -18,6 +25,13 @@ const monitorSchema = z.object({
     .array(z.nativeEnum(SocialListeningPlatform))
     .min(1)
     .max(2),
+  tiktokSearchLimit: z.number().int().min(1).max(MAX_TIKTOK_SEARCH_LIMIT).optional(),
+  instagramSearchLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_INSTAGRAM_SEARCH_LIMIT)
+    .optional(),
 });
 
 export async function createBrandSocialListeningMonitor(
@@ -31,6 +45,14 @@ export async function createBrandSocialListeningMonitor(
       name: data.name,
       keywords: data.keywords.map((k) => k.trim()),
       platforms: data.platforms,
+      tiktokSearchLimit: clampSocialSearchLimit(
+        data.tiktokSearchLimit ?? DEFAULT_TIKTOK_SEARCH_LIMIT,
+        MAX_TIKTOK_SEARCH_LIMIT,
+      ),
+      instagramSearchLimit: clampSocialSearchLimit(
+        data.instagramSearchLimit ?? DEFAULT_INSTAGRAM_SEARCH_LIMIT,
+        MAX_INSTAGRAM_SEARCH_LIMIT,
+      ),
       createdById: session.user.id,
     },
   });

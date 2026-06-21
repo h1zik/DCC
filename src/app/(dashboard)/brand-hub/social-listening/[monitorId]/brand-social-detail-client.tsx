@@ -54,6 +54,8 @@ import {
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import type { EngagementInsights } from "@/lib/research/social-listening/social-comment-types";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { cn } from "@/lib/utils";
 
 export type SocialDetailData = {
@@ -63,6 +65,7 @@ export type SocialDetailData = {
   platforms: SocialListeningPlatform[];
   batchStatus: SocialListeningStatus | null;
   batchId: string | null;
+  dataProvenance: DataProvenanceEntry[];
   platformProgress: {
     platform: SocialListeningPlatform;
     status: string | null;
@@ -272,6 +275,8 @@ export function BrandSocialDetailClient({ data }: { data: SocialDetailData }) {
           platformProgress={data.platformProgress}
         />
       ) : null}
+
+      <DataSourceProvenancePanel entries={data.dataProvenance} />
 
       {data.errorMessage ? (
         <p
