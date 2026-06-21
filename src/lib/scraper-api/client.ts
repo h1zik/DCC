@@ -33,6 +33,8 @@ export type VpsRunResponse = {
 export type VpsActorRunOptions = {
   wait?: boolean;
   timeout?: number;
+  /** Jika false, run berstatus failed dikembalikan tanpa throw (untuk retry). */
+  throwOnFailed?: boolean;
 };
 
 /** Panggil actor di VPS scraper (Apify-style). */
@@ -92,7 +94,7 @@ export async function startVpsActorRun(
       );
     }
 
-    if (payload.status === "failed") {
+    if (payload.status === "failed" && opts.throwOnFailed !== false) {
       throw new Error(payload.error ?? "Scrape VPS gagal tanpa pesan error.");
     }
 
@@ -170,4 +172,17 @@ export async function fetchVpsRunDataset(
 
   const payload = JSON.parse(text) as { items?: Record<string, unknown>[] };
   return payload.items ?? [];
+}
+
+/** Ambil semua item run — inline response VPS sering terpotong vs `count`. */
+export async function loadAllVpsRunItems(
+  run: Pick<VpsRunResponse, "run_id" | "count" | "items">,
+): Promise<Record<string, unknown>[]> {
+  const inline = run.items ?? [];
+  const expected = run.count ?? inline.length;
+  if (!run.run_id) return inline;
+  if (expected > inline.length) {
+    return fetchVpsRunDataset(run.run_id);
+  }
+  return inline;
 }

@@ -5,6 +5,7 @@ import {
   type KeywordDetailData,
 } from "./brand-keyword-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import { keywordIntelProvenance } from "@/lib/research/resolve-scrape-provenance";
 import type {
   KeywordMatrixRow,
   KeywordSignalStats,
@@ -73,6 +74,8 @@ export default async function BrandKeywordDetailPage({ params }: Props) {
 
   if (!query) notFound();
 
+  const signalStats = parseSignalStats(query.signalStats);
+
   const data: KeywordDetailData = {
     id: query.id,
     category: query.category,
@@ -80,11 +83,12 @@ export default async function BrandKeywordDetailPage({ params }: Props) {
     marketplace: query.marketplace,
     status: query.status,
     dataNotice: query.dataNotice,
-    signalStats: parseSignalStats(query.signalStats),
+    signalStats,
+    dataProvenance: keywordIntelProvenance(signalStats),
     volumeSource: query.volumeSource,
     errorMessage: query.errorMessage,
     aiSummary: query.result?.aiSummary ?? null,
-    hasGoogleVolume: query.volumeSource === "dataforseo",
+    hasGoogleVolume: query.volumeSource !== "unavailable",
     matrix: parseMatrix(query.result?.keywordMatrix),
     gaps: parseGaps(query.result?.gapKeywords),
     namingSuggestions: Array.isArray(query.result?.namingSuggestions)

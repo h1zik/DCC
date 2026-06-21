@@ -19,6 +19,7 @@ import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id
 import type { CompetitorInsights } from "@/lib/research/competitor-insights";
 import { formatRp } from "@/lib/research/labels";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { useResearchJobProgress } from "@/app/(dashboard)/research-hub/use-research-job-progress";
 import { CompetitorInsightsPanel } from "@/components/research-hub/competitor-insights-panel";
@@ -46,6 +47,7 @@ import {
   BrandHubStatChip,
   hub,
 } from "@/components/brand-hub/brand-hub-primitives";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -91,6 +93,7 @@ export type CompetitorDetail = {
   aiInsights: unknown;
   aiMeta: ResearchAiMetaView | null;
   isScraping: boolean;
+  dataProvenance: DataProvenanceEntry[];
   currentPriceBar: PriceBarPoint[];
   alerts: Alert[];
   priceChart30: PriceChartBundle;
@@ -240,6 +243,8 @@ export function BrandCompetitorDetailClient({
           />
         </div>
       ) : null}
+
+      <DataSourceProvenancePanel entries={competitor.dataProvenance} />
 
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(hub.stickyToolbar, "pb-0")}>

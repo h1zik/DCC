@@ -6,6 +6,7 @@ import {
   type ReviewDetailData,
 } from "./brand-review-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import { reviewScrapeProvenance } from "@/lib/research/resolve-scrape-provenance";
 
 type Props = { params: Promise<{ sourceId: string }> };
 
@@ -130,6 +131,12 @@ export default async function ReviewDetailPage({ params }: Props) {
 
   if (!source) notFound();
 
+  const dataProvenance = await reviewScrapeProvenance({
+    sourceId: source.id,
+    platformKey: source.platformKey,
+    productName: source.productName,
+  });
+
   const detail: ReviewDetailData = {
     id: source.id,
     productName: source.productName,
@@ -142,6 +149,7 @@ export default async function ReviewDetailPage({ params }: Props) {
     reviewsComplete: source.reviewsComplete,
     lastAnalyzedAt: source.lastAnalyzedAt?.toISOString() ?? null,
     aiMeta: parseResearchAiMetaClient(source.summary?.aiMeta),
+    dataProvenance,
     summary: source.summary
       ? {
           positivePct: source.summary.positivePct,

@@ -23,11 +23,20 @@ export default async function TrendRadarPage() {
   const session = await auth();
   const userId = session?.user?.id;
 
-  const [latestGlobal, digests, watchlists, userSettings] = await Promise.all([
+  const [latestGlobal, globalInProgress, digests, watchlists, userSettings] =
+    await Promise.all([
     prisma.trendRadarDigest.findFirst({
       where: { isGlobal: true, status: "READY" },
       orderBy: { generatedAt: "desc" },
       include: { items: true },
+    }),
+    prisma.trendRadarDigest.findFirst({
+      where: {
+        isGlobal: true,
+        status: { in: ["COLLECTING", "ANALYZING"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true },
     }),
     prisma.trendRadarDigest.findMany({
       orderBy: { createdAt: "desc" },
@@ -59,6 +68,9 @@ export default async function TrendRadarPage() {
   const globalSourceConfig = resolveTrendSourceConfig(storedUserConfig ?? defaults);
 
   const pageData: TrendRadarPageData = {
+    globalInProgress: globalInProgress
+      ? { id: globalInProgress.id, status: globalInProgress.status }
+      : null,
     latestGlobal: latestGlobal
       ? {
           id: latestGlobal.id,

@@ -20,11 +20,19 @@ function parseSignalStats(raw: unknown): TrendSignalStats | null {
 export default async function BrandTrendRadarPage() {
   await ensureBrandHubPage();
 
-  const [latestGlobal, digests] = await Promise.all([
+  const [latestGlobal, globalInProgress, digests] = await Promise.all([
     prisma.brandTrendDigest.findFirst({
       where: { isGlobal: true, status: "READY" },
       orderBy: { generatedAt: "desc" },
       include: { items: true },
+    }),
+    prisma.brandTrendDigest.findFirst({
+      where: {
+        isGlobal: true,
+        status: { in: ["COLLECTING", "ANALYZING"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true },
     }),
     prisma.brandTrendDigest.findMany({
       orderBy: { createdAt: "desc" },
@@ -37,6 +45,9 @@ export default async function BrandTrendRadarPage() {
   ]);
 
   const pageData: BrandTrendRadarPageData = {
+    globalInProgress: globalInProgress
+      ? { id: globalInProgress.id, status: globalInProgress.status }
+      : null,
     latestGlobal: latestGlobal
       ? {
           id: latestGlobal.id,

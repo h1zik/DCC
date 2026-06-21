@@ -25,6 +25,7 @@ import { filterShopProductsByShopUrl } from "@/lib/apify/tiktok-kulqiz";
 import { applyBrandCompetitorSnapshot } from "@/lib/brand-research/competitor-diff";
 import { runBrandApifyJobToCompletion } from "@/lib/brand-research/run-apify-job";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { fetchShopeeShopViaVps } from "@/lib/scraper-api/shopee-products";
 import { fetchTokopediaShopViaVps } from "@/lib/scraper-api/tokopedia-products";
 
 export async function enqueueBrandCompetitorScrape(
@@ -78,6 +79,61 @@ export async function enqueueBrandCompetitorScrape(
       throw err;
     }
     return;
+  }
+
+  if (
+    competitor.marketplace === ResearchMarketplace.SHOPEE &&
+    isScraperApiConfigured()
+  ) {
+    let shopeeProducts: NormalizedShopProduct[] | null = null;
+    try {
+      shopeeProducts = await fetchShopeeShopViaVps(competitor.shopUrl);
+    } catch (err) {
+      console.warn("[brand/competitor/shopee/vps] gagal — fallback Apify", err);
+    }
+
+    if (shopeeProducts != null && shopeeProducts.length === 0) {
+      console.warn(
+        "[brand/competitor/shopee/vps] kosong — fallback Apify",
+        competitor.shopUrl,
+      );
+    }
+
+    if (shopeeProducts != null && shopeeProducts.length > 0) {
+      const job = await prisma.brandResearchScrapeJob.create({
+        data: {
+          type: ResearchScrapeJobType.COMPETITOR_SNAPSHOT,
+          entityId: competitorId,
+          status: ResearchScrapeJobStatus.RUNNING,
+          startedAt: new Date(),
+        },
+      });
+
+      try {
+        await ingestBrandCompetitorProducts(competitorId, shopeeProducts);
+        await prisma.brandResearchScrapeJob.update({
+          where: { id: job.id },
+          data: {
+            status: ResearchScrapeJobStatus.COMPLETED,
+            completedAt: new Date(),
+            error: null,
+          },
+        });
+        return;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Scrape kompetitor gagal.";
+        await prisma.brandResearchScrapeJob.update({
+          where: { id: job.id },
+          data: {
+            status: ResearchScrapeJobStatus.FAILED,
+            error: message,
+            completedAt: new Date(),
+          },
+        });
+        throw err;
+      }
+    }
   }
 
   if (!isApifyConfigured()) {

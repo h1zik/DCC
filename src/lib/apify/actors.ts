@@ -206,7 +206,8 @@ export function isProductSearchConfigured(
   marketplace: ResearchMarketplace,
 ): boolean {
   if (
-    marketplace === ResearchMarketplace.TOKOPEDIA &&
+    (marketplace === ResearchMarketplace.TOKOPEDIA ||
+      marketplace === ResearchMarketplace.SHOPEE) &&
     isScraperApiConfigured()
   ) {
     return true;
@@ -218,7 +219,8 @@ export function isShopScrapeConfigured(
   marketplace: ResearchMarketplace,
 ): boolean {
   if (
-    marketplace === ResearchMarketplace.TOKOPEDIA &&
+    (marketplace === ResearchMarketplace.TOKOPEDIA ||
+      marketplace === ResearchMarketplace.SHOPEE) &&
     isScraperApiConfigured()
   ) {
     return true;
@@ -256,7 +258,9 @@ export function buildSearchActorInput(
 export function searchActorEnvHint(marketplace: ResearchMarketplace): string {
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      return "Set APIFY_ACTOR_SHOPEE_SHOP (gio21~shopee-scraper mendukung keyword search).";
+      return isScraperApiConfigured()
+        ? "Shopee search via VPS (SCRAPER_API_URL), fallback Apify."
+        : "Set APIFY_ACTOR_SHOPEE_SHOP (gio21~shopee-scraper mendukung keyword search).";
     case ResearchMarketplace.TOKOPEDIA:
       return isScraperApiConfigured()
         ? "Tokopedia search via VPS (SCRAPER_API_URL)."
@@ -274,6 +278,12 @@ export function actorEnvHint(
     if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
       return "Set APIFY_ACTOR_TIKTOK_REVIEWS (kulqiz~tiktok-shop-scraper).";
     }
+    if (
+      marketplace === ResearchMarketplace.SHOPEE &&
+      isScraperApiConfigured()
+    ) {
+      return "Shopee reviews via VPS (SCRAPER_API_URL), fallback Apify.";
+    }
     return `Set env APIFY_ACTOR_*_REVIEWS untuk ${marketplace} (Shopee: gio21~shopee-product-detail).`;
   }
   if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
@@ -284,6 +294,12 @@ export function actorEnvHint(
     isScraperApiConfigured()
   ) {
     return "Tokopedia shop scrape via VPS (SCRAPER_API_URL).";
+  }
+  if (
+    marketplace === ResearchMarketplace.SHOPEE &&
+    isScraperApiConfigured()
+  ) {
+    return "Shopee shop scrape via VPS (SCRAPER_API_URL), fallback Apify.";
   }
   return `Set env APIFY_ACTOR_*_SHOP untuk ${marketplace} (Shopee: gio21~shopee-scraper).`;
 }
@@ -316,5 +332,5 @@ export function buildPinterestActorInput(
 }
 
 export function pinterestActorEnvHint(): string {
-  return "Set APIFY_ACTOR_PINTEREST (default: silentflow~pinterest-scraper-ppr).";
+  return "Set SCRAPER_API_URL (VPS) atau APIFY_ACTOR_PINTEREST untuk scrape Pinterest.";
 }

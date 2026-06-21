@@ -18,6 +18,8 @@ import {
 } from "@/lib/research/keyword-intel/compute-keyword-diff";
 import { preliminaryKeywordScore } from "@/lib/research/keyword-intel/compute-koi";
 import { fetchHistoricalSeasonality } from "@/lib/research/keyword-intel/fetch-historical-seasonality";
+import { trendFromSeasonalCurve } from "@/lib/research/keyword-intel/keyword-trend";
+import { buildKeywordDataProvenance } from "@/lib/research/keyword-intel/build-keyword-provenance";
 import { buildKeywordAnalysisPrompt } from "@/lib/research/keyword-intel/prompts/keyword-analysis";
 import {
   enforceKeywordSourcePolicy,
@@ -125,6 +127,7 @@ export async function runKeywordIntelPipeline(input: {
   const quality = resolveKeywordQuality({
     signalCount: signalStats.total,
     volumeKeywordCount: collected.volumeKeywordCount,
+    googleVolumeCount: collected.googleVolumeCount,
   });
 
   if (sourceConfig.enabled.shopeeSearch && signals.length > 0) {
@@ -198,6 +201,18 @@ export async function runKeywordIntelPipeline(input: {
     .map((m) => m.keyword);
   const seasonalCurves = await fetchHistoricalSeasonality(topForSeason);
 
+  if (seasonalCurves.length > 0) {
+    const curveByKeyword = new Map(
+      seasonalCurves.map((c) => [c.keyword.toLowerCase(), c]),
+    );
+    matrix = matrix.map((row) => {
+      if (row.trend) return row;
+      const curve = curveByKeyword.get(row.keyword.toLowerCase());
+      if (!curve) return row;
+      return { ...row, trend: trendFromSeasonalCurve(curve) };
+    });
+  }
+
   const copyKeywords = sanitizeCopyKeywords(
     result.copyKeywords ?? {
       listingTitle: [],
@@ -227,6 +242,11 @@ export async function runKeywordIntelPipeline(input: {
   }));
 
   const mergedNotice = [quality.dataNotice, dataNotice].filter(Boolean).join(" ") || null;
+
+  signalStats = {
+    ...signalStats,
+    provenance: buildKeywordDataProvenance({ signals, stats: signalStats }),
+  };
 
   return {
     quality: { ...quality, dataNotice: mergedNotice },

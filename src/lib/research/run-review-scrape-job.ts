@@ -21,6 +21,8 @@ import {
   scrapeReviewsNative,
   usesNativeReviewScrape,
 } from "@/lib/review-scrape/native-scrape";
+import { fetchShopeeReviewsViaVps } from "@/lib/scraper-api/community-reviews";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 
 /** Job yang sedang jalan di proses Node ini — cegah scrape ganda dari polling. */
 const activeReviewScrapeJobIds = new Set<string>();
@@ -145,6 +147,24 @@ export async function executeReviewScrapeJob(jobId: string): Promise<void> {
     if (platformKey === "csv") {
       await markJobFailed(jobId, "Sumber CSV tidak memerlukan scrape Apify.");
       return;
+    }
+
+    if (platformKey === "shopee" && isScraperApiConfigured()) {
+      try {
+        const result = await fetchShopeeReviewsViaVps(source.productUrl);
+        if (result.reviews.length > 0) {
+          await completeReviewScrapeFromNormalized(
+            source.id,
+            result.reviews,
+            result.meta,
+          );
+          await markJobCompleted(jobId);
+          return;
+        }
+        console.warn("[review-scrape/shopee/vps] kosong — fallback Apify");
+      } catch (err) {
+        console.warn("[review-scrape/shopee/vps] gagal — fallback Apify", err);
+      }
     }
 
     if (usesNativeReviewScrape(platformKey)) {

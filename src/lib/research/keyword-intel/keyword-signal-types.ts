@@ -27,6 +27,8 @@ export type NormalizedKeywordSignal = {
   meta?: Record<string, unknown>;
 };
 
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
+
 export type KeywordSignalStats = {
   external: {
     shopee: number;
@@ -42,6 +44,8 @@ export type KeywordSignalStats = {
   };
   total: number;
   collectedAt: string;
+  /** Sumber data per sinyal eksternal / internal. */
+  provenance?: DataProvenanceEntry[];
 };
 
 export type KeywordEvidenceRow = {
@@ -132,8 +136,10 @@ export function emptyKeywordSignalStats(): KeywordSignalStats {
 export function resolveKeywordQuality(input: {
   signalCount: number;
   volumeKeywordCount: number;
+  googleVolumeCount?: number;
 }): KeywordDataQuality {
   const { signalCount, volumeKeywordCount } = input;
+  const googleVolumeCount = input.googleVolumeCount ?? volumeKeywordCount;
   const notices: string[] = [];
 
   if (signalCount < KEYWORD_QUALITY_THRESHOLDS.lowSignalNoticeBelow) {
@@ -151,7 +157,11 @@ export function resolveKeywordQuality(input: {
   return {
     dataNotice: notices.length > 0 ? notices.join(" ") : null,
     volumeSource:
-      volumeKeywordCount > 0 ? "dataforseo" : "unavailable",
+      googleVolumeCount > 0
+        ? "dataforseo"
+        : volumeKeywordCount > 0
+          ? "marketplace_proxy"
+          : "unavailable",
   };
 }
 

@@ -3,7 +3,12 @@ import "server-only";
 import {
   fetchInterestOverTimePayload,
   fetchRelatedQueriesPayload,
+  isGoogleTrendsCircuitOpen,
+  trendsSleep,
 } from "@/lib/research/google-trends-client";
+import { inferTrendFromTimelinePoints } from "@/lib/research/keyword-intel/keyword-trend";
+
+const REQUEST_GAP_MS = 2800;
 
 export type TrendsRelatedKeyword = {
   keyword: string;
@@ -43,27 +48,35 @@ export async function fetchRelatedKeywords(
 
 export async function fetchInterestTrend(
   keyword: string,
-): Promise<"up" | "down" | "stable"> {
+): Promise<"up" | "down" | "stable" | null> {
+  if (isGoogleTrendsCircuitOpen()) return null;
+
   try {
     const startTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const parsed = await fetchInterestOverTimePayload(keyword, startTime);
-    if (!parsed) return "stable";
-
-    const values =
-      parsed.default?.timelineData?.[0]?.value?.filter((v) => v > 0) ?? [];
-    if (values.length < 4) return "stable";
-
-    const mid = Math.floor(values.length / 2);
-    const firstHalf =
-      values.slice(0, mid).reduce((a, b) => a + b, 0) / Math.max(mid, 1);
-    const secondHalf =
-      values.slice(mid).reduce((a, b) => a + b, 0) /
-      Math.max(values.length - mid, 1);
-
-    if (secondHalf > firstHalf * 1.15) return "up";
-    if (secondHalf < firstHalf * 0.85) return "down";
-    return "stable";
+    if (!parsed) return null;
+    return inferTrendFromTimelinePoints(parsed.default?.timelineData);
   } catch {
-    return "stable";
+    return null;
   }
+}
+
+export async function fetchInterestTrendsForKeywords(
+  keywords: string[],
+): Promise<Map<string, "up" | "down" | "stable">> {
+  if (isGoogleTrendsCircuitOpen()) return new Map();
+
+  const unique = [
+    ...new Set(keywords.map((k) => k.trim()).filter(Boolean)),
+  ].slice(0, 12);
+
+  const map = new Map<string, "up" | "down" | "stable">();
+  for (let i = 0; i < unique.length; i++) {
+    if (isGoogleTrendsCircuitOpen()) break;
+    if (i > 0) await trendsSleep(REQUEST_GAP_MS);
+    const keyword = unique[i]!;
+    const trend = await fetchInterestTrend(keyword);
+    if (trend) map.set(keyword.toLowerCase(), trend);
+  }
+  return map;
 }

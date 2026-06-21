@@ -272,7 +272,7 @@ export function ProductDiscoveryClient({
                       href={`/research-hub/product-discovery/${q.id}`}
                       className="hover:text-primary text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
                     >
-                      &quot;{q.keyword}&quot;
+                      {q.keyword}
                     </Link>
                     <p className="text-muted-foreground mt-1 text-xs">
                       {q.marketplaces
@@ -299,12 +299,6 @@ export function ProductDiscoveryClient({
                     value={formatRelativeTime(new Date(q.createdAt))}
                   />
                 </div>
-
-                {q.errorMessage ? (
-                  <p className="text-amber-700 dark:text-amber-300 mt-2 text-xs">
-                    {q.errorMessage}
-                  </p>
-                ) : null}
 
                 <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
                   <Button

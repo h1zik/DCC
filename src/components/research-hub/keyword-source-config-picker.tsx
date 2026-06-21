@@ -13,7 +13,7 @@ const SOURCE_LABELS: Record<
 > = {
   marketplaceAutocomplete: "Shopee Autocomplete",
   googleTrends: "Google Trends",
-  dataforseo: "DataForSEO (volume Google)",
+  dataforseo: "DataForSEO (volume & trend Google)",
 };
 
 export function KeywordSourceConfigPicker({

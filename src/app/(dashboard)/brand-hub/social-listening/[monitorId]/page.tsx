@@ -9,6 +9,10 @@ import {
 } from "./brand-social-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 import {
+  parsePlatformScrapeProviders,
+  socialListeningProvenance,
+} from "@/lib/research/resolve-scrape-provenance";
+import {
   parseCategoryBreakdown,
   parseEngagementInsights,
   parseThemeRows,
@@ -100,6 +104,9 @@ export default async function SocialListeningDetailPage({
     ? (latest.summary.sentimentTimeline as SocialDetailData["sentimentTimeline"])
     : [];
 
+  const scrapeProviders = parsePlatformScrapeProviders(latestAny?.platformStatus);
+  const dataProvenance = socialListeningProvenance(monitor.platforms, scrapeProviders);
+
   const data: SocialDetailData = {
     id: monitor.id,
     name: monitor.name,
@@ -107,6 +114,7 @@ export default async function SocialListeningDetailPage({
     platforms: monitor.platforms,
     batchStatus: latestAny?.status ?? null,
     batchId: latestAny?.id ?? null,
+    dataProvenance,
     platformProgress,
     errorMessage: latestAny?.errorMessage ?? null,
     aiSummary: latest?.summary?.aiSummary ?? null,

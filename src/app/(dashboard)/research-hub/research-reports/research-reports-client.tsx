@@ -484,12 +484,6 @@ export function ResearchReportsClient({
                   />
                 </div>
 
-                {r.errorMessage ? (
-                  <p className="text-rose-700 dark:text-rose-300 mt-2 text-xs">
-                    {r.errorMessage}
-                  </p>
-                ) : null}
-
                 <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
                   <Button
                     size="sm"

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isApifyConfigured } from "@/lib/apify/client";
+import { isPinterestScrapeConfigured } from "@/lib/brand-research/pinterest-limits";
 import { prisma } from "@/lib/prisma";
 import { listBrandVisualAssets } from "@/lib/brand-research/visual";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
@@ -31,11 +31,12 @@ async function detectDemoFlags(
 ): Promise<DemoFlag[]> {
   const flags: DemoFlag[] = [];
 
-  if (!isApifyConfigured()) {
+  if (!isPinterestScrapeConfigured()) {
     flags.push({
       module: "visual-library",
       label: "Visual Library (Pinterest)",
-      detail: "APIFY_API_TOKEN tidak diset — scrape Pinterest memakai data demo.",
+      detail:
+        "SCRAPER_API_URL / APIFY belum diset — scrape Pinterest memakai data demo.",
     });
   } else {
     const demoAssets = await prisma.brandVisualAsset.count({

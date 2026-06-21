@@ -72,6 +72,8 @@ export default async function KeywordDetailPage({ params }: Props) {
 
   if (!query) notFound();
 
+  const signalStats = parseSignalStats(query.signalStats);
+
   const data: KeywordDetailData = {
     id: query.id,
     category: query.category,
@@ -79,11 +81,10 @@ export default async function KeywordDetailPage({ params }: Props) {
     marketplace: query.marketplace,
     status: query.status,
     dataNotice: query.dataNotice,
-    signalStats: parseSignalStats(query.signalStats),
+    signalStats,
     volumeSource: query.volumeSource,
-    errorMessage: query.errorMessage,
     aiSummary: query.result?.aiSummary ?? null,
-    hasGoogleVolume: query.volumeSource === "dataforseo",
+    hasGoogleVolume: query.volumeSource !== "unavailable",
     matrix: parseMatrix(query.result?.keywordMatrix),
     gaps: parseGaps(query.result?.gapKeywords),
     namingSuggestions: Array.isArray(query.result?.namingSuggestions)

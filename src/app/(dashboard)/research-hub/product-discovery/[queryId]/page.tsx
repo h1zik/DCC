@@ -34,7 +34,6 @@ export default async function ProductDiscoveryDetailPage({
     productLimit: query.productLimit,
     status: query.status,
     productCount: query.productCount,
-    errorMessage: query.errorMessage,
     shopCount,
     insights: query.aiInsights ?? null,
     actionPlan: query.aiActionPlan ?? null,

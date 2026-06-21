@@ -7,6 +7,7 @@ import {
   startApifyActor,
   waitForApifyRun,
 } from "@/lib/apify/client";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
 import type { RawSocialComment } from "@/lib/research/social-listening/social-comment-types";
 import { sanitizePrismaText } from "@/lib/prisma-safe-string";
@@ -25,6 +26,7 @@ export function getTikTokCommentsActorId(): string {
 }
 
 export function isTikTokCommentsConfigured(): boolean {
+  if (isScraperApiConfigured()) return true;
   return isApifyConfigured() && !!getTikTokCommentsActorId();
 }
 

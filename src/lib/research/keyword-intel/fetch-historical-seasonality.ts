@@ -1,6 +1,9 @@
 import "server-only";
 
-import { fetchInterestOverTimePayload } from "@/lib/research/google-trends-client";
+import {
+  fetchInterestOverTimePayload,
+  isGoogleTrendsCircuitOpen,
+} from "@/lib/research/google-trends-client";
 import type { SeasonalCurve } from "@/lib/research/keyword-intel/keyword-signal-types";
 
 const MONTH_LABELS = [
@@ -27,10 +30,13 @@ function monthLabelFromDate(iso: string): string {
 export async function fetchSeasonalCurvesFromGoogleTrends(
   keywords: string[],
 ): Promise<SeasonalCurve[]> {
+  if (isGoogleTrendsCircuitOpen()) return [];
+
   const curves: SeasonalCurve[] = [];
   const top = keywords.slice(0, 8);
 
   for (const keyword of top) {
+    if (isGoogleTrendsCircuitOpen()) break;
     try {
       const startTime = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
       const parsed = await fetchInterestOverTimePayload(keyword, startTime);

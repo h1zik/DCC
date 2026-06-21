@@ -78,7 +78,6 @@ export type KeywordDetailData = {
   dataNotice: string | null;
   signalStats: KeywordSignalStats | null;
   volumeSource: string | null;
-  errorMessage: string | null;
   aiSummary: string | null;
   hasGoogleVolume: boolean;
   matrix: KeywordMatrixRow[];
@@ -320,18 +319,6 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
       />
 
       <KeywordQualityBanner dataNotice={data.dataNotice} />
-
-      {data.errorMessage ? (
-        <p
-          className={cn(
-            hub.nestedPanel,
-            "text-rose-800 dark:text-rose-200 text-sm",
-          )}
-          role="alert"
-        >
-          {data.errorMessage}
-        </p>
-      ) : null}
 
       {isProcessing ? (
         <div className={hub.entrance}>

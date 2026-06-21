@@ -22,12 +22,21 @@ import {
   waitForApifyRun,
 } from "@/lib/apify/client";
 import {
+  parsePinterestCollectionSourceConfig,
+} from "@/lib/brand-research/pinterest-source-config";
+import {
   generateDemoPinterestPins,
   normalizePinterestPins,
 } from "@/lib/brand-research/normalize-pinterest";
-import { resolvePinterestMaxPinsPerKeyword } from "@/lib/brand-research/pinterest-limits";
-import { runBrandPinterestJobToCompletion } from "@/lib/brand-research/run-pinterest-job";
+import {
+  isPinterestScrapeConfigured,
+  resolvePinterestMaxPinsPerKeyword,
+} from "@/lib/brand-research/pinterest-limits";
+import { executeBrandPinterestScrapeJob } from "@/lib/brand-research/run-pinterest-job";
 import type { NormalizedPinterestPin } from "@/lib/brand-research/normalize-pinterest";
+import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { fetchPinterestSearchViaVps } from "@/lib/scraper-api/pinterest-pins";
 
 export type PinterestScrapeMode = {
   /** Hapus semua pin sebelum scrape. Default: false (tambah/upsert). */
@@ -38,18 +47,20 @@ export type PinterestScrapeMode = {
 
 type CollectionSourceConfig = {
   pendingScrapeKeywords?: string[];
+  keywordProviders?: Partial<Record<string, ScrapeDataProvider>>;
+  scrapedAt?: string;
 };
 
 function parseCollectionSourceConfig(raw: unknown): CollectionSourceConfig {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const pending = (raw as CollectionSourceConfig).pendingScrapeKeywords;
+  return parsePinterestCollectionSourceConfig(raw);
+}
+
+function persistPinterestProvenance(
+  keywordProviders: Partial<Record<string, ScrapeDataProvider>>,
+): object {
   return {
-    pendingScrapeKeywords: Array.isArray(pending)
-      ? pending
-          .filter((k): k is string => typeof k === "string")
-          .map((k) => k.trim())
-          .filter(Boolean)
-      : undefined,
+    keywordProviders,
+    scrapedAt: new Date().toISOString(),
   };
 }
 
@@ -113,6 +124,7 @@ async function finalizePinterestCollection(
   collectionId: string,
   importedCount: number,
   partialErrors?: string[],
+  keywordProviders?: Partial<Record<string, ScrapeDataProvider>>,
 ): Promise<void> {
   const existingAssetCount = await prisma.brandVisualAsset.count({
     where: { collectionId },
@@ -129,7 +141,9 @@ async function finalizePinterestCollection(
       data: {
         status: BrandVisualCollectionStatus.FAILED,
         errorMessage: `Pinterest scrape selesai tetapi tidak ada pin valid.${partial}`,
-        sourceConfig: Prisma.DbNull,
+        sourceConfig: keywordProviders
+          ? persistPinterestProvenance(keywordProviders)
+          : Prisma.DbNull,
       },
     });
     return;
@@ -143,7 +157,9 @@ async function finalizePinterestCollection(
         importedCount === 0 && warning
           ? `Scrape selesai tanpa pin baru. ${warning}`
           : warning,
-      sourceConfig: Prisma.DbNull,
+      sourceConfig: keywordProviders
+        ? persistPinterestProvenance(keywordProviders)
+        : Prisma.DbNull,
     },
   });
 }
@@ -222,8 +238,10 @@ async function runDemoPinterestScrape(
   if (!collection) return;
 
   const maxPerKeyword = resolvePinterestMaxPinsPerKeyword(collection);
+  const keywordProviders: Partial<Record<string, ScrapeDataProvider>> = {};
   let count = 0;
   for (const keyword of keywordsToScrape) {
+    keywordProviders[keyword] = "demo";
     const pins = generateDemoPinterestPins(keyword, maxPerKeyword);
     for (const pin of pins) {
       const existing = await prisma.brandVisualAsset.findFirst({
@@ -239,7 +257,12 @@ async function runDemoPinterestScrape(
     }
   }
 
-  await finalizePinterestCollection(collectionId, count);
+  await finalizePinterestCollection(
+    collectionId,
+    count,
+    undefined,
+    keywordProviders,
+  );
 }
 
 function resolveKeywordsToScrape(
@@ -251,7 +274,7 @@ function resolveKeywordsToScrape(
   return list.map((k) => k.trim()).filter(Boolean);
 }
 
-/** Scrape each keyword via Apify (actor expects one `search` per run). */
+/** Scrape each keyword — VPS first, Apify fallback per keyword. */
 export async function executeBrandPinterestScrape(
   collectionId: string,
 ): Promise<number> {
@@ -265,14 +288,61 @@ export async function executeBrandPinterestScrape(
     throw new Error("Tambahkan minimal satu keyword Pinterest.");
   }
 
-  const actorId = getPinterestActorId();
-  if (!actorId) throw new Error(pinterestActorEnvHint());
+  if (!isPinterestScrapeConfigured()) {
+    throw new Error(
+      "Pinterest scraper belum dikonfigurasi (SCRAPER_API_URL atau APIFY_API_TOKEN).",
+    );
+  }
 
   const partialErrors: string[] = [];
+  const keywordProviders: Partial<Record<string, ScrapeDataProvider>> = {};
   const maxPerKeyword = resolvePinterestMaxPinsPerKeyword(collection);
   let totalImported = 0;
 
   for (const keyword of keywords) {
+    let keywordImported = false;
+
+    if (isScraperApiConfigured()) {
+      try {
+        const vpsItems = await fetchPinterestSearchViaVps(keyword, maxPerKeyword);
+        if (vpsItems.length > 0) {
+          const batch = vpsItems.slice(0, maxPerKeyword);
+          totalImported += await ingestPinterestPins(collectionId, batch, {
+            sourceKeyword: keyword,
+            finalize: false,
+          });
+          keywordProviders[keyword] = "vps";
+          keywordImported = true;
+          continue;
+        }
+        console.warn(
+          `[pinterest/vps] kosong — fallback Apify`,
+          keyword,
+        );
+      } catch (err) {
+        console.warn(
+          `[pinterest/vps] gagal — fallback Apify`,
+          keyword,
+          err,
+        );
+      }
+    }
+
+    if (keywordImported) continue;
+
+    if (!isApifyConfigured()) {
+      partialErrors.push(
+        `"${keyword}": VPS kosong/gagal dan Apify tidak dikonfigurasi`,
+      );
+      continue;
+    }
+
+    const actorId = getPinterestActorId();
+    if (!actorId) {
+      partialErrors.push(`"${keyword}": ${pinterestActorEnvHint()}`);
+      continue;
+    }
+
     try {
       const { runId } = await startApifyActor(
         actorId,
@@ -280,7 +350,7 @@ export async function executeBrandPinterestScrape(
       );
       const { status, datasetId } = await waitForApifyRun(runId);
       if (status !== "SUCCEEDED") {
-        partialErrors.push(`"${keyword}": run ${status}`);
+        partialErrors.push(`"${keyword}": Apify run ${status}`);
         continue;
       }
       const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
@@ -293,6 +363,7 @@ export async function executeBrandPinterestScrape(
         sourceKeyword: keyword,
         finalize: false,
       });
+      keywordProviders[keyword] = "apify";
     } catch (err) {
       partialErrors.push(
         `"${keyword}": ${err instanceof Error ? err.message : "scrape gagal"}`,
@@ -304,6 +375,7 @@ export async function executeBrandPinterestScrape(
     collectionId,
     totalImported,
     partialErrors.length > 0 ? partialErrors : undefined,
+    keywordProviders,
   );
 
   const assetCount = await prisma.brandVisualAsset.count({ where: { collectionId } });
@@ -347,7 +419,7 @@ export async function enqueueBrandPinterestScrape(
     },
   });
 
-  if (!isApifyConfigured()) {
+  if (!isPinterestScrapeConfigured()) {
     after(async () => {
       try {
         await runDemoPinterestScrape(collectionId, keywordsToScrape);
@@ -358,55 +430,36 @@ export async function enqueueBrandPinterestScrape(
     return;
   }
 
-  const job = await prisma.brandResearchScrapeJob.create({
-    data: {
-      type: ResearchScrapeJobType.PINTEREST_SCRAPE,
+  const existingActiveJob = await prisma.brandResearchScrapeJob.findFirst({
+    where: {
       entityId: collectionId,
-      status: ResearchScrapeJobStatus.PENDING,
-      startedAt: new Date(),
-      totalSteps: keywordsToScrape.length,
-      currentStep: 0,
-      stepLabel: keywordsToScrape[0] ?? null,
+      type: ResearchScrapeJobType.PINTEREST_SCRAPE,
+      status: {
+        in: [ResearchScrapeJobStatus.PENDING, ResearchScrapeJobStatus.RUNNING],
+      },
     },
+    orderBy: { createdAt: "desc" },
   });
+
+  const job =
+    existingActiveJob ??
+    (await prisma.brandResearchScrapeJob.create({
+      data: {
+        type: ResearchScrapeJobType.PINTEREST_SCRAPE,
+        entityId: collectionId,
+        status: ResearchScrapeJobStatus.PENDING,
+        startedAt: new Date(),
+        totalSteps: keywordsToScrape.length,
+        currentStep: 0,
+        stepLabel: keywordsToScrape[0] ?? null,
+      },
+    }));
 
   after(async () => {
     try {
-      await prisma.brandResearchScrapeJob.update({
-        where: { id: job.id },
-        data: { status: ResearchScrapeJobStatus.RUNNING },
-      });
-      await runBrandPinterestJobToCompletion(job.id);
+      await executeBrandPinterestScrapeJob(job.id);
     } catch (err) {
       console.error("[enqueueBrandPinterestScrape]", job.id, err);
     }
   });
-}
-
-export async function pollBrandPinterestScrapeJob(jobId: string): Promise<void> {
-  const job = await prisma.brandResearchScrapeJob.findUnique({ where: { id: jobId } });
-  if (!job || job.type !== ResearchScrapeJobType.PINTEREST_SCRAPE) return;
-  if (job.status !== ResearchScrapeJobStatus.RUNNING) return;
-
-  try {
-    await executeBrandPinterestScrape(job.entityId);
-    await prisma.brandResearchScrapeJob.update({
-      where: { id: jobId },
-      data: {
-        status: ResearchScrapeJobStatus.COMPLETED,
-        completedAt: new Date(),
-        error: null,
-      },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Pinterest scrape gagal.";
-    await prisma.brandResearchScrapeJob.update({
-      where: { id: jobId },
-      data: {
-        status: ResearchScrapeJobStatus.FAILED,
-        error: message,
-        completedAt: new Date(),
-      },
-    });
-  }
 }

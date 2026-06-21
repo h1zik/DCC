@@ -36,6 +36,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandJobProgress } from "../use-brand-job-progress";
 import type { VisualLibraryGroups } from "@/lib/brand-research/visual-library-types";
@@ -560,6 +561,8 @@ export function BrandVisualLibraryClient({
               </Button>
             </div>
           </div>
+
+          <DataSourceProvenancePanel entries={collection.dataProvenance} />
 
           {assets.length > 0 ? (
             <MoodboardGrid

@@ -304,18 +304,6 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
         coveragePct={contextQuality.coveragePct}
       />
 
-      {data.errorMessage ? (
-        <p
-          className={cn(
-            hub.nestedPanel,
-            "text-rose-800 dark:text-rose-200 text-sm",
-          )}
-          role="alert"
-        >
-          {data.errorMessage}
-        </p>
-      ) : null}
-
       {data.categoryDecision ? (
         <div
           className={cn(

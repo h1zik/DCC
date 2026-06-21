@@ -7,6 +7,7 @@ import type {
   VisualLibraryGroups,
 } from "@/lib/brand-research/visual-library-types";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
+import { parsePinterestCollectionProvenance } from "@/lib/brand-research/pinterest-source-config";
 
 export type { VisualLibraryAssetView, VisualLibraryGroups } from "@/lib/brand-research/visual-library-types";
 
@@ -440,18 +441,35 @@ export async function buildVisualLibraryGroups(
   const competitorNameById = new Map(competitorRows.map((c) => [c.id, c.name]));
   const monitorNameById = new Map(monitorRows.map((m) => [m.id, m.name]));
 
-  const pinterest = collections.map((c) => ({
-    collection: {
-      id: c.id,
-      name: c.name,
-      keywords: c.keywords,
-      status: c.status,
-      assetCount: c._count.assets,
-      errorMessage: c.errorMessage,
-      maxPinsPerKeyword: c.maxPinsPerKeyword,
-    },
-    assets: pinterestByCollection.get(c.id) ?? [],
-  }));
+  const pinterest = collections.map((c) => {
+    let dataProvenance = parsePinterestCollectionProvenance(c.sourceConfig);
+    if (
+      dataProvenance.length === 1 &&
+      dataProvenance[0]?.provider === "demo" &&
+      c._count.assets > 0
+    ) {
+      dataProvenance = [
+        {
+          label: "Pinterest",
+          provider: "apify",
+          isFallback: true,
+        },
+      ];
+    }
+    return {
+      collection: {
+        id: c.id,
+        name: c.name,
+        keywords: c.keywords,
+        status: c.status,
+        assetCount: c._count.assets,
+        errorMessage: c.errorMessage,
+        maxPinsPerKeyword: c.maxPinsPerKeyword,
+        dataProvenance,
+      },
+      assets: pinterestByCollection.get(c.id) ?? [],
+    };
+  });
 
   const competitors = [...competitorBuckets.entries()]
     .filter(([id]) => id !== "_unknown")

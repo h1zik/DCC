@@ -10,13 +10,26 @@ import {
 } from "@/lib/apify/client";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
 import { extractEmbeddedComments } from "@/lib/research/social-listening/parse-embedded-comments";
+import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import {
+  expandInstagramHashtagCandidates,
+  runVpsInstagramHashtag,
+} from "@/lib/scraper-api/social-mentions";
+import { resolveVpsCachedRun } from "@/lib/scraper-api/vps-run-resolver";
+import { cacheVpsRun, getCachedVpsRun } from "@/lib/scraper-api/vps-run-cache";
+import { DEFAULT_INSTAGRAM_SEARCH_LIMIT } from "@/lib/research/social-listening/search-limits-public";
 
 function getInstagramActorId(): string | null {
   return process.env.APIFY_ACTOR_INSTAGRAM?.trim() || null;
 }
 
 export function isInstagramMentionsConfigured(): boolean {
+  if (isScraperApiConfigured()) return true;
   return isApifyConfigured() && !!getInstagramActorId();
+}
+
+function useVpsInstagram(): boolean {
+  return isScraperApiConfigured();
 }
 
 function itemId(item: Record<string, unknown>): string {
@@ -173,25 +186,60 @@ export function parseInstagramItems(
 }
 
 function instagramTags(keywords: string[]): string[] {
-  return keywords
-    .slice(0, 5)
-    .map((k) => k.replace(/^#/, "").replace(/\s+/g, "").toLowerCase())
-    .filter(Boolean);
+  const tags = new Set<string>();
+  for (const keyword of keywords.slice(0, 5)) {
+    for (const tag of expandInstagramHashtagCandidates(keyword)) {
+      tags.add(tag);
+    }
+  }
+  return [...tags];
 }
 
 export async function startInstagramScrapes(
   keywords: string[],
-): Promise<string[]> {
-  const actorId = getInstagramActorId();
+  opts?: { searchLimit?: number },
+): Promise<{ runIds: string[]; warnings: string[] }> {
   const tags = instagramTags(keywords);
-  if (!actorId || tags.length === 0) return [];
+  if (tags.length === 0) return { runIds: [], warnings: [] };
+
+  const searchLimit = opts?.searchLimit ?? DEFAULT_INSTAGRAM_SEARCH_LIMIT;
+  const warnings: string[] = [];
+
+  if (useVpsInstagram()) {
+    const runIds: string[] = [];
+
+    for (const keyword of keywords.slice(0, 5)) {
+      const result = await runVpsInstagramHashtag(keyword, searchLimit);
+      if (result.warning) warnings.push(result.warning);
+      if (result.mentions.length < searchLimit) {
+        warnings.push(
+          `Instagram "${keyword}": ${result.mentions.length} post dari limit ${searchLimit}.`,
+        );
+      }
+
+      cacheVpsRun(result.runId, {
+        done: true,
+        succeeded: result.mentions.length > 0,
+        mentions: result.mentions,
+        status: result.status,
+      });
+      if (result.mentions.length > 0 && result.runId) {
+        runIds.push(result.runId);
+      }
+    }
+
+    return { runIds, warnings };
+  }
+
+  const actorId = getInstagramActorId();
+  if (!actorId) return { runIds: [], warnings: [] };
 
   const runIds = await Promise.all(
     tags.map(async (tag) => {
       const input = {
         directUrls: [`https://www.instagram.com/explore/tags/${tag}/`],
         resultsType: "posts",
-        resultsLimit: 15,
+        resultsLimit: searchLimit,
         addParentData: false,
       };
       const { runId } = await startApifyActor(actorId, input);
@@ -199,7 +247,7 @@ export async function startInstagramScrapes(
     }),
   );
 
-  return runIds;
+  return { runIds, warnings: [] };
 }
 
 const TERMINAL = new Set(["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"]);
@@ -212,6 +260,35 @@ export async function pollInstagramScrapes(runIds: string[]): Promise<{
 }> {
   if (runIds.length === 0) {
     return { done: true, succeeded: false, mentions: [], apifyStatuses: [] };
+  }
+
+  if (useVpsInstagram()) {
+    const mentions: RawSocialMention[] = [];
+    const apifyStatuses: string[] = [];
+    let succeeded = false;
+    const seen = new Set<string>();
+
+    for (const runId of runIds) {
+      const loaded = await resolveVpsCachedRun(
+        runId,
+        SocialListeningPlatform.INSTAGRAM,
+      );
+      apifyStatuses.push(loaded.status);
+      if (loaded.succeeded) succeeded = true;
+      for (const m of loaded.mentions) {
+        const key = `${m.platform}:${m.externalId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        mentions.push(m);
+      }
+    }
+
+    return {
+      done: true,
+      succeeded: succeeded || mentions.length > 0,
+      mentions,
+      apifyStatuses: apifyStatuses.length > 0 ? apifyStatuses : ["completed"],
+    };
   }
 
   const statuses = await Promise.all(runIds.map((id) => getApifyRunStatus(id)));
@@ -243,9 +320,16 @@ export async function pollInstagramScrapes(runIds: string[]): Promise<{
 /** Blocking scrape — kept for backwards compatibility. */
 export async function scrapeInstagramMentions(
   keywords: string[],
+  opts?: { searchLimit?: number },
 ): Promise<RawSocialMention[]> {
-  const runIds = await startInstagramScrapes(keywords);
+  const started = await startInstagramScrapes(keywords, opts);
+  const runIds = started.runIds;
   if (runIds.length === 0) return [];
+
+  if (useVpsInstagram()) {
+    const result = await pollInstagramScrapes(runIds);
+    return result.mentions;
+  }
 
   const allMentions: RawSocialMention[] = [];
 

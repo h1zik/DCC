@@ -19,6 +19,7 @@ import { createProductBriefFromSocialInsight } from "@/actions/research-brief";
 import {
   analyzeSocialListeningCommentsAction,
   refreshSocialListeningMonitor,
+  updateSocialListeningMonitorSearchLimits,
 } from "@/actions/research-social-listening";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
@@ -71,6 +72,11 @@ import {
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import type { EngagementInsights } from "@/lib/research/social-listening/social-comment-types";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import {
+  MAX_INSTAGRAM_SEARCH_LIMIT,
+  MAX_TIKTOK_SEARCH_LIMIT,
+  parseSearchLimitInput,
+} from "@/lib/research/social-listening/search-limits-public";
 import { cn } from "@/lib/utils";
 
 export type SocialDetailData = {
@@ -78,6 +84,8 @@ export type SocialDetailData = {
   name: string;
   keywords: string[];
   platforms: SocialListeningPlatform[];
+  tiktokSearchLimit: number;
+  instagramSearchLimit: number;
   batchStatus: SocialListeningStatus | null;
   batchId: string | null;
   platformProgress: {
@@ -85,7 +93,6 @@ export type SocialDetailData = {
     status: string | null;
     message: string | null;
   }[];
-  errorMessage: string | null;
   aiSummary: string | null;
   topPainPoints: { theme: string; count: number }[];
   topWishlist: { theme: string; count: number }[];
@@ -157,6 +164,11 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
   );
   const [roomId, setRoomId] = useState(data.rooms[0]?.id ?? "");
   const [projectName, setProjectName] = useState(`Social: ${data.name}`);
+  const [tiktokLimit, setTiktokLimit] = useState(String(data.tiktokSearchLimit));
+  const [instagramLimit, setInstagramLimit] = useState(
+    String(data.instagramSearchLimit),
+  );
+  const [limitsDirty, setLimitsDirty] = useState(false);
 
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
   const inProgress =
@@ -199,6 +211,12 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
     return () => window.clearInterval(id);
   }, [inProgress, commentAnalysisInProgress, router]);
 
+  useEffect(() => {
+    setTiktokLimit(String(data.tiktokSearchLimit));
+    setInstagramLimit(String(data.instagramSearchLimit));
+    setLimitsDirty(false);
+  }, [data.tiktokSearchLimit, data.instagramSearchLimit]);
+
   function handleRefresh() {
     startTransition(async () => {
       try {
@@ -207,6 +225,31 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
         router.refresh();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal refresh."));
+      }
+    });
+  }
+
+  function handleSaveLimits() {
+    startTransition(async () => {
+      try {
+        await updateSocialListeningMonitorSearchLimits({
+          monitorId: data.id,
+          tiktokSearchLimit: parseSearchLimitInput(
+            tiktokLimit,
+            data.tiktokSearchLimit,
+            MAX_TIKTOK_SEARCH_LIMIT,
+          ),
+          instagramSearchLimit: parseSearchLimitInput(
+            instagramLimit,
+            data.instagramSearchLimit,
+            MAX_INSTAGRAM_SEARCH_LIMIT,
+          ),
+        });
+        setLimitsDirty(false);
+        toast.success("Limit scrape disimpan. Refresh untuk pakai nilai baru.");
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menyimpan limit."));
       }
     });
   }
@@ -351,6 +394,60 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
         }
       />
 
+      <ResearchHubSection
+        title="Limit scrape"
+        description="Atur berapa banyak video TikTok dan post Instagram yang diambil per keyword. Berlaku saat Refresh berikutnya."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          {data.platforms.includes(SocialListeningPlatform.TIKTOK) ? (
+            <div className="space-y-2">
+              <Label htmlFor="detail-tiktok-limit">Video TikTok per keyword</Label>
+              <Input
+                id="detail-tiktok-limit"
+                type="number"
+                min={1}
+                max={MAX_TIKTOK_SEARCH_LIMIT}
+                value={tiktokLimit}
+                onChange={(e) => {
+                  setTiktokLimit(e.target.value);
+                  setLimitsDirty(true);
+                }}
+              />
+            </div>
+          ) : null}
+          {data.platforms.includes(SocialListeningPlatform.INSTAGRAM) ? (
+            <div className="space-y-2">
+              <Label htmlFor="detail-ig-limit">Post Instagram per hashtag</Label>
+              <Input
+                id="detail-ig-limit"
+                type="number"
+                min={1}
+                max={MAX_INSTAGRAM_SEARCH_LIMIT}
+                value={instagramLimit}
+                onChange={(e) => {
+                  setInstagramLimit(e.target.value);
+                  setLimitsDirty(true);
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending || !limitsDirty}
+            onClick={handleSaveLimits}
+          >
+            Simpan limit
+          </Button>
+          <p className="text-muted-foreground text-xs">
+            Maks {MAX_TIKTOK_SEARCH_LIMIT} TikTok · {MAX_INSTAGRAM_SEARCH_LIMIT}{" "}
+            Instagram per keyword.
+          </p>
+        </div>
+      </ResearchHubSection>
+
       {showSyncStrip ? (
         <SocialSyncStatusStrip
           showProgress={inProgress || commentAnalysisInProgress}
@@ -370,18 +467,6 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
           }
           platformProgress={data.platformProgress}
         />
-      ) : null}
-
-      {data.errorMessage ? (
-        <p
-          className={cn(
-            hub.nestedPanel,
-            "text-amber-800 dark:text-amber-200 text-sm",
-          )}
-          role="alert"
-        >
-          {data.errorMessage}
-        </p>
       ) : null}
 
       <Tabs defaultValue="ringkasan" className="gap-0">

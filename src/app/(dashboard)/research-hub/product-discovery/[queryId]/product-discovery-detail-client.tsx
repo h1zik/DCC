@@ -84,7 +84,6 @@ export type ProductDiscoveryDetailData = {
   productLimit: number;
   status: ProductDiscoveryStatus;
   productCount: number;
-  errorMessage: string | null;
   shopCount: number;
   insights: unknown;
   actionPlan: unknown;
@@ -226,7 +225,7 @@ export function ProductDiscoveryDetailClient({
         variant="detail"
         icon={PackageSearch}
         eyebrow="Product Discovery"
-        title={`"${data.keyword}"`}
+        title={data.keyword}
         description={`${data.marketplaces.map((mp) => MARKETPLACE_LABELS[mp]).join(", ")} · target ${data.productLimit} produk`}
         right={
           <>
@@ -276,18 +275,6 @@ export function ProductDiscoveryDetailClient({
             stepLabel="Menarik produk dari marketplace lalu menganalisis price band & velocity — refresh otomatis."
           />
         </div>
-      ) : null}
-
-      {data.errorMessage ? (
-        <p
-          className={cn(
-            hub.nestedPanel,
-            "text-amber-800 dark:text-amber-200 text-sm",
-          )}
-          role="alert"
-        >
-          {data.errorMessage}
-        </p>
       ) : null}
 
       <Tabs defaultValue="ringkasan" className="gap-0">

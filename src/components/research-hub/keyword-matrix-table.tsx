@@ -32,10 +32,9 @@ function TrendIcon({ trend }: { trend: KeywordMatrixRow["trend"] }) {
   return <span className="text-muted-foreground text-xs">—</span>;
 }
 
-function rowHasVolume(row: KeywordMatrixRow, hasGoogleVolume: boolean): boolean {
+function rowHasVolume(row: KeywordMatrixRow, _hasGoogleVolume: boolean): boolean {
   if (row.hasVolumeData != null) return row.hasVolumeData;
-  if (!hasGoogleVolume) return false;
-  return row.source.includes("dataforseo");
+  return row.volume > 0 || row.competition > 0;
 }
 
 function exportCsv(rows: KeywordMatrixRow[]) {
