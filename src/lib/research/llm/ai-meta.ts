@@ -5,7 +5,10 @@ import {
   resolveResearchProvider,
   resolveOllamaModel,
 } from "./config";
-import { resolveAgentModel } from "@/lib/agent/provider";
+
+function resolveGeminiModelName(): string {
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
+}
 
 export type ResearchAiModelStep = {
   /** Langkah analisis, mis. "Klasifikasi review". */
@@ -26,7 +29,7 @@ function resolveModelName(tier: ResearchModelTier): string {
   if (provider === "ollama-cloud") {
     return resolveOllamaModel(tier);
   }
-  return resolveAgentModel();
+  return resolveGeminiModelName();
 }
 
 export function buildResearchAiStep(

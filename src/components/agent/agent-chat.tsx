@@ -282,7 +282,7 @@ export function AgentChat({
         </div>
         <p className="text-muted-foreground/70 mt-2 flex items-center justify-center gap-1 text-[10px]">
           <Sparkles className="size-3" aria-hidden />
-          Gemini · Enter kirim · Shift+Enter baris baru
+          Groq · Enter kirim · Shift+Enter baris baru
         </p>
       </form>
     </div>

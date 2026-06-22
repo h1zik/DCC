@@ -1,9 +1,3 @@
-import {
-  GoogleGenerativeAI,
-  type Content,
-  type Part,
-} from "@google/generative-ai";
-import { AGENT_TOOLS } from "./tools";
 import { buildAgentSystemInstruction } from "./user-context";
 import type { AgentUser } from "./types";
 
@@ -14,88 +8,31 @@ export type AgentProviderConfig = {
   accessContext?: string;
 };
 
-/** Model utama — Flash-Lite biasanya lebih stabil di tier gratis saat Flash penuh. */
-const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+/** Model utama agent — tool calling stabil di Groq. */
+const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
-/** Cadangan otomatis jika model utama sibuk (503/429). */
-const FALLBACK_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-flash-latest",
-] as const;
+/** Cadangan jika model utama sibuk / rate limit. */
+const FALLBACK_MODELS = ["llama-3.1-8b-instant", "openai/gpt-oss-20b"] as const;
 
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
 
-export function getAgentModel(config: AgentProviderConfig) {
-  const genAI = new GoogleGenerativeAI(config.apiKey);
-  return genAI.getGenerativeModel({
-    model: config.model ?? DEFAULT_MODEL,
-    systemInstruction: config.user
-      ? buildAgentSystemInstruction(config.user, config.accessContext)
-      : buildAgentSystemInstruction(
-          {
-            id: "unknown",
-            name: null,
-            email: null,
-            role: "STUDIO",
-          },
-          config.accessContext,
-        ),
-    tools: AGENT_TOOLS,
-  });
-}
-
-export function historyToContents(
-  messages: { role: "user" | "assistant"; content: string }[],
-): Content[] {
-  // Gemini mensyaratkan history dimulai dari 'user' dan bergantian user/model.
-  const sanitized: Content[] = [];
-
-  for (const message of messages) {
-    const role = message.role === "assistant" ? "model" : "user";
-    const part = { text: message.content };
-
-    if (sanitized.length === 0) {
-      if (role === "model") continue;
-      sanitized.push({ role, parts: [part] });
-      continue;
-    }
-
-    const last = sanitized[sanitized.length - 1]!;
-    if (last.role === role) {
-      const lastPart = last.parts[last.parts.length - 1];
-      if ("text" in lastPart && typeof lastPart.text === "string") {
-        lastPart.text = `${lastPart.text}\n\n${message.content}`;
-      } else {
-        last.parts.push(part);
-      }
-      continue;
-    }
-
-    sanitized.push({ role, parts: [part] });
-  }
-
-  return sanitized;
-}
-
-export function functionResponsePart(name: string, result: unknown): Part {
-  return {
-    functionResponse: {
-      name,
-      response: { result },
-    },
-  };
+export function buildAgentSystemPrompt(
+  user: AgentUser,
+  accessContext?: string,
+): string {
+  return buildAgentSystemInstruction(user, accessContext);
 }
 
 export function resolveAgentApiKey(): string | null {
-  const key =
-    process.env.GEMINI_API_KEY?.trim() ||
-    process.env.GOOGLE_AI_API_KEY?.trim() ||
-    null;
-  return key;
+  return process.env.GROQ_API_KEY?.trim() || null;
 }
 
 export function resolveAgentModel(): string {
-  return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  return (
+    process.env.AGENT_LLM_MODEL?.trim() ||
+    process.env.GROQ_MODEL?.trim() ||
+    DEFAULT_MODEL
+  );
 }
 
 export function resolveAgentModelCandidates(): string[] {
@@ -112,14 +49,14 @@ export function resolveAgentModelCandidates(): string[] {
   return candidates;
 }
 
-function geminiErrorStatus(err: unknown): number | null {
+function llmErrorStatus(err: unknown): number | null {
   if (typeof err !== "object" || err === null) return null;
   const status = (err as { status?: unknown }).status;
   return typeof status === "number" ? status : null;
 }
 
-export function isTransientGeminiError(err: unknown): boolean {
-  const status = geminiErrorStatus(err);
+export function isTransientLlmError(err: unknown): boolean {
+  const status = llmErrorStatus(err);
   if (status != null && TRANSIENT_STATUS.has(status)) return true;
 
   const message =
@@ -142,11 +79,14 @@ export function isTransientGeminiError(err: unknown): boolean {
   );
 }
 
+/** @deprecated Gunakan isTransientLlmError */
+export const isTransientGeminiError = isTransientLlmError;
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function withGeminiRetry<T>(
+export async function withLlmRetry<T>(
   fn: () => Promise<T>,
   opts?: { maxRetries?: number; baseDelayMs?: number },
 ): Promise<T> {
@@ -159,10 +99,10 @@ export async function withGeminiRetry<T>(
       return await fn();
     } catch (err) {
       lastError = err;
-      if (!isTransientGeminiError(err) || attempt >= maxRetries) break;
+      if (!isTransientLlmError(err) || attempt >= maxRetries) break;
       const delay = baseDelayMs * 2 ** attempt;
       console.warn(
-        `[agent] Gemini sibuk, retry ${attempt + 1}/${maxRetries} dalam ${delay}ms…`,
+        `[agent] Groq sibuk, retry ${attempt + 1}/${maxRetries} dalam ${delay}ms…`,
       );
       await sleep(delay);
     }
@@ -170,3 +110,6 @@ export async function withGeminiRetry<T>(
 
   throw lastError;
 }
+
+/** @deprecated Gunakan withLlmRetry */
+export const withGeminiRetry = withLlmRetry;
