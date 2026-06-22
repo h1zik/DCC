@@ -6,6 +6,7 @@ import {
   type KeywordDetailData,
 } from "./keyword-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import { keywordIntelProvenance } from "@/lib/research/resolve-scrape-provenance";
 import type {
   KeywordMatrixRow,
   KeywordSignalStats,
@@ -82,6 +83,7 @@ export default async function KeywordDetailPage({ params }: Props) {
     status: query.status,
     dataNotice: query.dataNotice,
     signalStats,
+    dataProvenance: keywordIntelProvenance(signalStats),
     volumeSource: query.volumeSource,
     aiSummary: query.result?.aiSummary ?? null,
     hasGoogleVolume: query.volumeSource !== "unavailable",

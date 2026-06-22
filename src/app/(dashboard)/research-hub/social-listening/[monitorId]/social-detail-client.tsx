@@ -77,6 +77,8 @@ import {
   MAX_TIKTOK_SEARCH_LIMIT,
   parseSearchLimitInput,
 } from "@/lib/research/social-listening/search-limits-public";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 import { cn } from "@/lib/utils";
 
 export type SocialDetailData = {
@@ -88,6 +90,7 @@ export type SocialDetailData = {
   instagramSearchLimit: number;
   batchStatus: SocialListeningStatus | null;
   batchId: string | null;
+  dataProvenance: DataProvenanceEntry[];
   platformProgress: {
     platform: SocialListeningPlatform;
     status: string | null;
@@ -468,6 +471,8 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
           platformProgress={data.platformProgress}
         />
       ) : null}
+
+      <DataSourceProvenancePanel entries={data.dataProvenance} />
 
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(hub.stickyToolbar, "pb-0")}>

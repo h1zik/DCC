@@ -23,6 +23,7 @@ import {
 } from "@/actions/research-review-intelligence";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { CrossCompareChart } from "@/components/research-hub/cross-compare-chart";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import {
@@ -69,6 +70,7 @@ import { cn } from "@/lib/utils";
 import { useReviewIntelPolling } from "../use-review-intel-polling";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 
 type Theme = { theme: string; count: number };
 type Keyword = { word: string; count: number };
@@ -107,6 +109,7 @@ export type ReviewDetailData = {
   reviewsComplete: boolean | null;
   lastAnalyzedAt: string | null;
   aiMeta: ResearchAiMetaView | null;
+  dataProvenance: DataProvenanceEntry[];
   summary: {
     positivePct: number;
     neutralPct: number;
@@ -418,6 +421,8 @@ export function ReviewDetailClient({
           </p>
         </div>
       ) : null}
+
+      <DataSourceProvenancePanel entries={source.dataProvenance} />
 
       {!source.summary ? (
         <div className={cn(hub.panel, "text-center")}>

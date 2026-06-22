@@ -25,6 +25,7 @@ import { KeywordGapList } from "@/components/research-hub/keyword-gap-list";
 import { KeywordMatrixTable } from "@/components/research-hub/keyword-matrix-table";
 import { KeywordOpportunityChart } from "@/components/research-hub/keyword-opportunity-chart";
 import { KeywordQualityBanner } from "@/components/research-hub/keyword-quality-banner";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { KeywordSignalStatsChips } from "@/components/research-hub/keyword-signal-stats-line";
 import { NamingSuggestionsCard } from "@/components/research-hub/naming-suggestions-card";
 import {
@@ -68,6 +69,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 
 export type KeywordDetailData = {
   id: string;
@@ -77,6 +79,7 @@ export type KeywordDetailData = {
   status: KeywordIntelStatus;
   dataNotice: string | null;
   signalStats: KeywordSignalStats | null;
+  dataProvenance: DataProvenanceEntry[];
   volumeSource: string | null;
   aiSummary: string | null;
   hasGoogleVolume: boolean;
@@ -319,6 +322,8 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
       />
 
       <KeywordQualityBanner dataNotice={data.dataNotice} />
+
+      <DataSourceProvenancePanel entries={data.dataProvenance} />
 
       {isProcessing ? (
         <div className={hub.entrance}>

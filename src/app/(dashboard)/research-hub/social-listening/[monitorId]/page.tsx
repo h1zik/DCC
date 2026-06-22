@@ -10,6 +10,10 @@ import {
 import { resolveSearchLimits } from "@/lib/research/social-listening/search-limits";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 import {
+  parsePlatformScrapeProviders,
+  socialListeningProvenance,
+} from "@/lib/research/resolve-scrape-provenance";
+import {
   parseCategoryBreakdown,
   parseEngagementInsights,
   parseThemeRows,
@@ -120,6 +124,9 @@ export default async function SocialListeningDetailPage({
 
   const scrapeLimits = resolveSearchLimits(monitor);
 
+  const scrapeProviders = parsePlatformScrapeProviders(latestAny?.platformStatus);
+  const dataProvenance = socialListeningProvenance(monitor.platforms, scrapeProviders);
+
   const data: SocialDetailData = {
     id: monitor.id,
     name: monitor.name,
@@ -129,6 +136,7 @@ export default async function SocialListeningDetailPage({
     instagramSearchLimit: scrapeLimits.instagram,
     batchStatus: latestAny?.status ?? null,
     batchId: latestAny?.id ?? null,
+    dataProvenance,
     platformProgress,
     aiSummary: displayBatch?.summary?.aiSummary ?? null,
     topPainPoints: painPoints,
