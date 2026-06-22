@@ -213,6 +213,14 @@ export async function finalizeProductDiscoveryJob(
   const notice =
     state.warnings.length > 0 ? state.warnings.join(" | ") : null;
 
+  const persistedScrapeState =
+    state.sources && Object.keys(state.sources).length > 0
+      ? {
+          sources: state.sources,
+          ...(state.warnings.length > 0 ? { warnings: state.warnings } : {}),
+        }
+      : null;
+
   if (count === 0) {
     await markProductDiscoveryFailed(
       queryId,
@@ -228,7 +236,7 @@ export async function finalizeProductDiscoveryJob(
       status: ProductDiscoveryStatus.READY,
       productCount: count,
       errorMessage: notice,
-      scrapeState: Prisma.JsonNull,
+      scrapeState: persistedScrapeState ?? Prisma.JsonNull,
     },
   });
 
@@ -325,16 +333,16 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
 
           if (products.length === 0) {
             state.warnings.push(
-              `${mp}: tidak ada produk ditemukan untuk keyword ini.`,
+              `${mp}: VPS tidak menemukan produk — fallback Apify.`,
             );
           } else {
             await ingestDiscoveryProductsBatch(query.id, products);
+            recordDiscoverySource(state, mp, "vps");
+            vpsHandled = true;
           }
-          recordDiscoverySource(state, mp, "vps");
-          vpsHandled = true;
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
-          state.warnings.push(`${mp}: ${msg}`);
+          state.warnings.push(`${mp}: VPS gagal (${msg}) — fallback Apify.`);
         }
       }
 
