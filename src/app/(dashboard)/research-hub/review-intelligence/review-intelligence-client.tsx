@@ -39,7 +39,8 @@ import {
   REVIEW_PLATFORMS,
   reviewPlatformsByCategory,
 } from "@/lib/review-platforms/platforms";
-import { SOURCE_STATUS_LABELS, formatRelativeTime } from "@/lib/research/labels";
+import { SOURCE_STATUS_LABELS } from "@/lib/research/labels";
+import { RelativeTime } from "@/components/research-hub/relative-time";
 import {
   hub,
   ResearchHubEmptyState,
@@ -464,9 +465,13 @@ export function ReviewIntelligenceClient({
                   ) : null}
                   <ResearchHubStatChip
                     label="Update"
-                    value={formatRelativeTime(
-                      s.lastAnalyzedAt ? new Date(s.lastAnalyzedAt) : null,
-                    )}
+                    value={
+                      <RelativeTime
+                        date={
+                          s.lastAnalyzedAt ? new Date(s.lastAnalyzedAt) : null
+                        }
+                      />
+                    }
                   />
                 </div>
 

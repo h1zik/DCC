@@ -17,6 +17,7 @@ import {
   listResearchSocialMonitorsForBrandHub,
   listResearchTrendDigestsForBrandHub,
   listResearchUspAnalysesForBrandHub,
+  listResearchProductDiscoveryForBrandHub,
 } from "@/lib/brand-research/research-hub-readers";
 
 export async function getStrategySourceCatalog(
@@ -30,6 +31,7 @@ export async function getStrategySourceCatalog(
     keywordQueries,
     trendDigests,
     uspAnalyses,
+    discoveryQueries,
   ] = await Promise.all([
     listResearchReviewSourcesForBrandHub(),
     listResearchSocialMonitorsForBrandHub(),
@@ -37,6 +39,7 @@ export async function getStrategySourceCatalog(
     listResearchKeywordQueriesForBrandHub(),
     listResearchTrendDigestsForBrandHub(),
     listResearchUspAnalysesForBrandHub(),
+    listResearchProductDiscoveryForBrandHub(),
   ]);
 
   const groups = await buildVisualLibraryGroups(userId, ownerBrandId);
@@ -81,7 +84,11 @@ export async function getStrategySourceCatalog(
       })),
     keyword: keywordQueries.map((q) => ({
       id: q.id,
-      label: q.seedKeyword ?? q.category,
+      label:
+        q.hub === "research"
+          ? `[Research] ${q.seedKeyword ?? q.category}`
+          : (q.seedKeyword ?? q.category),
+      detail: q.category,
     })),
     trend: trendDigests.map((d) => ({
       id: d.id,
@@ -91,6 +98,11 @@ export async function getStrategySourceCatalog(
     usp: uspAnalyses.map((u) => ({
       id: u.id,
       label: u.category,
+    })),
+    productDiscovery: discoveryQueries.map((q) => ({
+      id: q.id,
+      label: q.keyword,
+      detail: `${q.productCount} produk · ${q.marketplaces.join(", ")}`,
     })),
     visual,
   };
@@ -115,6 +127,10 @@ export function defaultStrategyGenerationConfig(
     keyword: { enabled: catalog.keyword.length > 0, ids: catalog.keyword.map((k) => k.id) },
     trend: { enabled: catalog.trend.length > 0, ids: catalog.trend.map((t) => t.id) },
     usp: { enabled: catalog.usp.length > 0, ids: catalog.usp.map((u) => u.id) },
+    productDiscovery: {
+      enabled: catalog.productDiscovery.length > 0,
+      ids: catalog.productDiscovery.map((q) => q.id),
+    },
   };
 }
 
@@ -122,7 +138,10 @@ export function parseStrategyGenerationConfig(raw: unknown): StrategyGenerationC
   if (!raw || typeof raw !== "object") return null;
   const o = raw as StrategyGenerationConfig;
   if (!o.review || !o.visual) return null;
-  return o;
+  return {
+    ...o,
+    productDiscovery: o.productDiscovery ?? { enabled: false, ids: [] },
+  };
 }
 
 export function validateStrategyGenerationConfig(

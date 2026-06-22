@@ -6,6 +6,7 @@ import {
   type ProductDiscoveryDetailData,
 } from "./product-discovery-detail-client";
 import { productDiscoveryProvenance } from "@/lib/research/resolve-scrape-provenance";
+import { mapDiscoveryProductToRow } from "@/lib/research/shop-product-mappers";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 export default async function ProductDiscoveryDetailPage({
@@ -18,7 +19,7 @@ export default async function ProductDiscoveryDetailPage({
   const query = await prisma.productDiscoveryQuery.findUnique({
     where: { id: queryId },
     include: {
-      products: { orderBy: [{ soldCount: "desc" }, { rating: "desc" }] },
+      products: { orderBy: [{ historicalSold: "desc" }, { soldCount: "desc" }, { rating: "desc" }] },
     },
   });
 
@@ -44,21 +45,7 @@ export default async function ProductDiscoveryDetailPage({
       scrapeState: query.scrapeState,
       errorMessage: query.errorMessage,
     }),
-    products: query.products.map((p) => ({
-      id: p.id,
-      name: p.name,
-      shopName: p.shopName,
-      marketplace: p.marketplace,
-      price: p.price,
-      rating: p.rating,
-      reviewCount: p.reviewCount,
-      soldCount: p.soldCount,
-      hasPromo: p.hasPromo,
-      promoText: p.promoText,
-      productUrl: p.productUrl,
-      categoryRank: p.categoryRank,
-      imageUrl: p.imageUrl ?? null,
-    })),
+    products: query.products.map((p) => mapDiscoveryProductToRow(p)),
   };
 
   return (

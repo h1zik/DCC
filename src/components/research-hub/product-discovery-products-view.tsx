@@ -1,15 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink, LayoutGrid, List, MessageSquareText } from "lucide-react";
+import { ExternalLink, LayoutGrid, List, MessageSquareText, LineChart } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import {
   ProductDiscoveryTable,
   type ProductDiscoveryRow,
 } from "@/components/research-hub/product-discovery-table";
+import {
+  ShopProductDetailLink,
+  ShopProductMetricsStrip,
+} from "@/components/research-hub/shop-product-metrics";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
+import { formatRp } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 
 export type ProductViewMode = "card" | "list";
@@ -18,16 +24,21 @@ const VIEW_STORAGE_KEY = "research-hub:product-discovery-view";
 
 function ProductDiscoveryCard({
   row,
+  queryId,
   onAnalyze,
   analyzingId,
 }: {
   row: ProductDiscoveryRow;
+  queryId?: string;
   onAnalyze?: (productId: string) => void;
   analyzingId?: string | null;
 }) {
   const marketplaceLabel =
     MARKETPLACE_LABELS[row.marketplace as keyof typeof MARKETPLACE_LABELS] ??
     row.marketplace;
+  const detailHref = queryId
+    ? `/research-hub/product-discovery/${queryId}/products/${row.id}`
+    : null;
 
   return (
     <article
@@ -37,7 +48,11 @@ function ProductDiscoveryCard({
         "flex flex-col overflow-hidden p-0",
       )}
     >
-      <div className="relative aspect-[4/3] w-full overflow-hidden border-b border-border/40">
+      <Link
+        href={detailHref ?? row.productUrl}
+        className="relative block aspect-[4/3] w-full overflow-hidden border-b border-border/40"
+        {...(detailHref ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+      >
         <ProductDiscoveryProductThumb
           imageUrl={row.imageUrl ?? null}
           name={row.name}
@@ -53,25 +68,26 @@ function ProductDiscoveryCard({
             #{row.categoryRank}
           </span>
         ) : null}
-      </div>
+      </Link>
 
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="min-w-0 flex-1 space-y-1">
-          <h3 className="line-clamp-2 text-sm leading-snug font-medium">
-            {row.name}
-          </h3>
+          {detailHref ? (
+            <ShopProductDetailLink href={detailHref}>{row.name}</ShopProductDetailLink>
+          ) : (
+            <h3 className="line-clamp-2 text-sm leading-snug font-medium">{row.name}</h3>
+          )}
           <p className="text-muted-foreground line-clamp-1 text-xs">
             {row.shopName ?? "—"} · {marketplaceLabel}
+            {row.shopLocation ? ` · ${row.shopLocation}` : ""}
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-2 gap-2 text-center">
           <div className={hub.nestedPanel}>
             <p className="text-muted-foreground text-[10px]">Harga</p>
             <p className="mt-0.5 text-xs font-semibold tabular-nums">
-              {row.price != null
-                ? `Rp ${row.price.toLocaleString("id-ID")}`
-                : "—"}
+              {row.price != null ? formatRp(row.price) : "—"}
             </p>
           </div>
           <div className={hub.nestedPanel}>
@@ -80,17 +96,22 @@ function ProductDiscoveryCard({
               {row.rating != null ? row.rating.toFixed(1) : "—"}
             </p>
           </div>
-          <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px]">Terjual</p>
-            <p className="mt-0.5 text-xs font-semibold tabular-nums">
-              {row.soldCount != null
-                ? row.soldCount.toLocaleString("id-ID")
-                : "—"}
-            </p>
-          </div>
         </div>
 
+        <ShopProductMetricsStrip metrics={row} compact />
+
         <div className="flex gap-2 border-t border-border/40 pt-3">
+          {detailHref ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 text-xs"
+              render={<Link href={detailHref} />}
+            >
+              <LineChart className="size-3.5" aria-hidden />
+              Detail
+            </Button>
+          ) : null}
           {onAnalyze ? (
             <Button
               size="sm"
@@ -126,11 +147,13 @@ function ProductDiscoveryCard({
 
 export function ProductDiscoveryProductsView({
   rows,
+  queryId,
   onAnalyze,
   analyzingId,
   defaultView = "card",
 }: {
   rows: ProductDiscoveryRow[];
+  queryId?: string;
   onAnalyze?: (productId: string) => void;
   analyzingId?: string | null;
   defaultView?: ProductViewMode;
@@ -205,6 +228,7 @@ export function ProductDiscoveryProductsView({
             >
               <ProductDiscoveryCard
                 row={row}
+                queryId={queryId}
                 onAnalyze={onAnalyze}
                 analyzingId={analyzingId}
               />
@@ -217,6 +241,7 @@ export function ProductDiscoveryProductsView({
         >
           <ProductDiscoveryTable
             rows={rows}
+            queryId={queryId}
             onAnalyze={onAnalyze}
             analyzingId={analyzingId}
             showImages

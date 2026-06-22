@@ -86,10 +86,19 @@ export function ResearchHubPageHeader({
         className={cn(
           "relative flex flex-col gap-4",
           isCompact ? "p-4 sm:p-5" : "p-5 sm:p-7",
-          right ? "sm:flex-row sm:items-end sm:justify-between" : "",
+          isDetail
+            ? ""
+            : right
+              ? "sm:flex-row sm:items-end sm:justify-between"
+              : "",
         )}
       >
-        <div className="flex min-w-0 items-start gap-4">
+        <div
+          className={cn(
+            "flex min-w-0 items-start gap-4",
+            isDetail ? "w-full" : "",
+          )}
+        >
           {Icon ? (
             <span
               className={cn(
@@ -101,25 +110,39 @@ export function ResearchHubPageHeader({
               <Icon className={isCompact ? "size-5" : "size-6"} />
             </span>
           ) : null}
-          <div className="min-w-0 space-y-2">
+          <div className={cn("min-w-0 space-y-2", isDetail ? "flex-1" : "")}>
             {eyebrow ? <p className={hub.label}>{eyebrow}</p> : null}
             <h1
               className={cn(
-                "text-foreground font-semibold tracking-tight text-balance",
-                isCompact ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl",
+                "text-foreground font-semibold tracking-tight",
+                isCompact
+                  ? "text-xl sm:text-2xl"
+                  : isDetail
+                    ? "text-pretty text-xl leading-snug sm:text-2xl lg:text-3xl"
+                    : "text-balance text-2xl sm:text-3xl",
               )}
             >
               {title}
             </h1>
             {description ? (
-              <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed sm:text-[15px]">
+              <p
+                className={cn(
+                  "text-muted-foreground text-sm leading-relaxed sm:text-[15px]",
+                  isDetail ? "max-w-4xl" : "max-w-2xl",
+                )}
+              >
                 {description}
               </p>
             ) : null}
           </div>
         </div>
         {right ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div
+            className={cn(
+              "flex shrink-0 flex-wrap items-center gap-2",
+              isDetail ? "w-full justify-end border-t border-border/40 pt-3" : "",
+            )}
+          >
             {right}
           </div>
         ) : null}

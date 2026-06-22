@@ -91,20 +91,51 @@ export async function getResearchSocialMonitorById(id: string) {
 }
 
 export async function listResearchKeywordQueriesForBrandHub() {
-  return prisma.brandKeywordQuery.findMany({
-    where: { status: "READY" },
-    orderBy: { updatedAt: "desc" },
-    take: 20,
-    select: { id: true, seedKeyword: true, category: true },
-  });
+  const [researchQueries, brandQueries] = await Promise.all([
+    prisma.keywordIntelQuery.findMany({
+      where: { status: "READY" },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+      select: { id: true, seedKeyword: true, category: true },
+    }),
+    prisma.brandKeywordQuery.findMany({
+      where: { status: "READY" },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+      select: { id: true, seedKeyword: true, category: true },
+    }),
+  ]);
+
+  return [
+    ...researchQueries.map((q) => ({
+      id: q.id,
+      seedKeyword: q.seedKeyword,
+      category: q.category,
+      hub: "research" as const,
+    })),
+    ...brandQueries.map((q) => ({
+      id: q.id,
+      seedKeyword: q.seedKeyword,
+      category: q.category,
+      hub: "brand" as const,
+    })),
+  ];
 }
 
 export async function countResearchKeywordQueriesReady(): Promise<number> {
-  return prisma.brandKeywordQuery.count({ where: { status: "READY" } });
+  const [research, brand] = await Promise.all([
+    prisma.keywordIntelQuery.count({ where: { status: "READY" } }),
+    prisma.brandKeywordQuery.count({ where: { status: "READY" } }),
+  ]);
+  return research + brand;
 }
 
 export async function countResearchKeywordQueriesTotal(): Promise<number> {
-  return prisma.brandKeywordQuery.count();
+  const [research, brand] = await Promise.all([
+    prisma.keywordIntelQuery.count(),
+    prisma.brandKeywordQuery.count(),
+  ]);
+  return research + brand;
 }
 
 export async function listResearchTrendDigestsForBrandHub() {
@@ -149,6 +180,20 @@ export async function countResearchUspAnalysesTotal(): Promise<number> {
 
 export async function countResearchCompetitorAlertsUnread(): Promise<number> {
   return prisma.competitorAlert.count({ where: { isRead: false } });
+}
+
+export async function listResearchProductDiscoveryForBrandHub() {
+  return prisma.productDiscoveryQuery.findMany({
+    where: { status: "READY" },
+    orderBy: { updatedAt: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      keyword: true,
+      productCount: true,
+      marketplaces: true,
+    },
+  });
 }
 
 export async function countResearchPendingJobs(): Promise<number> {

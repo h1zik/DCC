@@ -386,6 +386,7 @@ export function ProductDiscoveryDetailClient({
           >
             <ProductDiscoveryProductsView
               rows={data.products}
+              queryId={data.id}
               onAnalyze={handleAnalyze}
               analyzingId={analyzingId}
             />

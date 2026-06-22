@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { Compass, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -9,6 +10,7 @@ import {
   deleteBrandStrategyDocument,
   exportBrandStrategyPdfHtml,
   regenerateBrandStrategyDocument,
+  regenerateBrandStrategySectionAction,
   updateBrandStrategyDocument,
 } from "@/actions/brand-strategy";
 import { actionErrorMessage } from "@/lib/action-error-message";
@@ -23,8 +25,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandStudioGenerationPoll } from "../use-brand-studio-generation-poll";
-import type { EvidenceReadiness } from "@/lib/brand-research/strategy/evidence-types";
+import type { ProductLineStrategy } from "@/lib/brand-research/portfolio/types";
 import type {
+  EvidenceReadiness,
+  StrategicTension,
+  StrategySectionField,
   StrategyGenerationConfig,
   StrategySourceCatalog,
 } from "@/lib/brand-research/strategy/evidence-types";
@@ -35,6 +40,7 @@ import {
   hub,
 } from "@/components/brand-hub/brand-hub-primitives";
 import { normalizeStrategyGenerationConfig } from "@/lib/brand-research/strategy/strategy-visual-config";
+import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { cn } from "@/lib/utils";
 
 type Stp = {
@@ -58,7 +64,10 @@ type Tone = {
 export type StrategyDocumentView = {
   id: string;
   status: string;
+  version: number;
   ownerBrandId: string | null;
+  category: string | null;
+  pmBrief: string | null;
   brandPurpose: string | null;
   brandEssence: string | null;
   coreMessage: string | null;
@@ -66,6 +75,16 @@ export type StrategyDocumentView = {
   stp: Stp | null;
   brandPersonality: Personality | null;
   toneOfVoice: Tone | null;
+  strategicTensions?: StrategicTension[] | null;
+  productLineStrategy?: ProductLineStrategy[] | null;
+  insightMemo?: unknown;
+  actionPlan?: unknown;
+  citationQuality?: {
+    score?: number;
+    passed?: boolean;
+    validRefs?: number;
+    totalRefs?: number;
+  } | null;
   evidenceRefs: unknown;
   strategyRationales?: unknown;
   generationConfig?: unknown;
@@ -124,6 +143,9 @@ export function BrandStrategyClient({
   const [tonePrinciples, setTonePrinciples] = useState("");
   const [toneDo, setToneDo] = useState("");
   const [toneDont, setToneDont] = useState("");
+  const [category, setCategory] = useState("");
+  const [pmBrief, setPmBrief] = useState("");
+  const [sectionPending, setSectionPending] = useState<StrategySectionField | null>(null);
 
   useEffect(() => {
     setGenerationConfig(defaultGenerationConfig);
@@ -170,6 +192,8 @@ export function BrandStrategyClient({
   function startCompose() {
     setSelectedId(null);
     setComposeMode(true);
+    setCategory("");
+    setPmBrief("");
     setGenerationConfig(
       normalizeStrategyGenerationConfig(defaultGenerationConfig, sourceCatalog),
     );
@@ -185,6 +209,8 @@ export function BrandStrategyClient({
       try {
         const result = await createBrandStrategyDocument({
           ownerBrandId: brandId,
+          category: category.trim() || null,
+          pmBrief: pmBrief.trim() || null,
           generationConfig,
         });
         toast.success("Dokumen strategi dibuat — AI sedang generate di background.");
@@ -227,6 +253,22 @@ export function BrandStrategyClient({
         router.refresh();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal menyimpan."));
+      }
+    });
+  }
+
+  function handleRegenerateSection(field: StrategySectionField) {
+    if (!selected) return;
+    setSectionPending(field);
+    startTransition(async () => {
+      try {
+        await regenerateBrandStrategySectionAction(selected.id, field);
+        toast.success(`Regenerate ${field} dimulai.`);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal regenerate section."));
+      } finally {
+        setSectionPending(null);
       }
     });
   }
@@ -324,6 +366,42 @@ export function BrandStrategyClient({
           />
         ) : composeMode && !selected ? (
           <div className={cn("flex flex-col gap-5", hub.entrance)}>
+            <BrandHubSection
+              title="Konteks generate"
+              description="Portfolio brand menjadi fondasi utama. Kategori dan brief PM melengkapi interpretasi evidence."
+            >
+              {brandId ? (
+                <p className="text-muted-foreground mb-3 text-xs">
+                  Pastikan{" "}
+                  <Link
+                    href={`/brand-hub/portfolio?brandId=${encodeURIComponent(brandId)}`}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    Brand Portfolio
+                  </Link>{" "}
+                  sudah berisi semua lini produk sebelum generate.
+                </p>
+              ) : null}
+              <div className={cn(hub.panel, "grid gap-4 md:grid-cols-2")}>
+                <div className="grid gap-1.5">
+                  <Label className="text-xs">Kategori produk</Label>
+                  <Input
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    placeholder="mis. body lotion, serum wajah"
+                  />
+                </div>
+                <div className="grid gap-1.5 md:col-span-2">
+                  <Label className="text-xs">Brief PM (opsional)</Label>
+                  <Textarea
+                    value={pmBrief}
+                    onChange={(e) => setPmBrief(e.target.value)}
+                    rows={3}
+                    placeholder="Target audiens, constraint brand, arahan kreatif…"
+                  />
+                </div>
+              </div>
+            </BrandHubSection>
             <BrandStrategySourcePicker
               catalog={sourceCatalog}
               config={generationConfig}
@@ -375,6 +453,18 @@ export function BrandStrategyClient({
                   Generating…
                 </span>
               ) : null}
+              {selected.citationQuality?.totalRefs ? (
+                <Badge
+                  variant={selected.citationQuality.passed ? "secondary" : "outline"}
+                  className="text-[10px]"
+                >
+                  Kutipan: {Math.round((selected.citationQuality.score ?? 0) * 100)}%
+                  {selected.citationQuality.passed ? " ✓" : " — perlu review"}
+                </Badge>
+              ) : null}
+              <Badge variant="outline" className="text-[10px]">
+                v{selected.version}
+              </Badge>
               <Button
                 size="sm"
                 variant="outline"
@@ -421,16 +511,135 @@ export function BrandStrategyClient({
               brandId={brandId}
             />
 
+            {Array.isArray(selected.strategicTensions) &&
+            selected.strategicTensions.length > 0 ? (
+              <BrandHubSection
+                title="Strategic Tensions"
+                description="Tensi pasar yang brand harus navigasi."
+              >
+                <div className={cn(hub.panel, "grid gap-3")}>
+                  {selected.strategicTensions.map((t, i) => (
+                    <div
+                      key={`${t.tension}-${i}`}
+                      className="rounded-lg border border-border/50 bg-muted/10 p-3 text-sm"
+                    >
+                      <p className="font-medium">{t.tension}</p>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        {t.poleA} ↔ {t.poleB}
+                      </p>
+                      <p className="mt-2 text-xs">{t.recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              </BrandHubSection>
+            ) : null}
+
+            <ActionPlanPanel
+              plan={selected.actionPlan}
+              title="Rencana Aksi"
+              subtitle="Rekomendasi lintas fungsi berdasarkan evidence strategi."
+            />
+
             <BrandHubSection title="Brand Foundation" description="Purpose, essence, message, dan USP branding.">
               <div className={cn(hub.panel, "grid gap-4 md:grid-cols-2")}>
-                <Field label="Brand Purpose" value={brandPurpose} onChange={setBrandPurpose} />
-                <Field label="Brand Essence" value={brandEssence} onChange={setBrandEssence} />
-                <Field label="Core Message" value={coreMessage} onChange={setCoreMessage} className="md:col-span-2" />
-                <Field label="Brand USP (branding)" value={brandUsp} onChange={setBrandUsp} className="md:col-span-2" />
+                <Field
+                  label="Brand Purpose"
+                  value={brandPurpose}
+                  onChange={setBrandPurpose}
+                  sectionField="brandPurpose"
+                  onRegenSection={handleRegenerateSection}
+                  sectionPending={sectionPending}
+                  regenDisabled={pending || isGenerating}
+                />
+                <Field
+                  label="Brand Essence"
+                  value={brandEssence}
+                  onChange={setBrandEssence}
+                  sectionField="brandEssence"
+                  onRegenSection={handleRegenerateSection}
+                  sectionPending={sectionPending}
+                  regenDisabled={pending || isGenerating}
+                />
+                <Field
+                  label="Core Message"
+                  value={coreMessage}
+                  onChange={setCoreMessage}
+                  className="md:col-span-2"
+                  sectionField="coreMessage"
+                  onRegenSection={handleRegenerateSection}
+                  sectionPending={sectionPending}
+                  regenDisabled={pending || isGenerating}
+                />
+                <Field
+                  label="Brand USP (branding)"
+                  value={brandUsp}
+                  onChange={setBrandUsp}
+                  className="md:col-span-2"
+                  sectionField="brandUsp"
+                  onRegenSection={handleRegenerateSection}
+                  sectionPending={sectionPending}
+                  regenDisabled={pending || isGenerating}
+                />
               </div>
             </BrandHubSection>
 
+            {Array.isArray(selected.productLineStrategy) &&
+            selected.productLineStrategy.length > 0 ? (
+              <BrandHubSection
+                title="Product Line Strategy"
+                description="Arah positioning per lini produk dalam portfolio brand."
+                delayMs={25}
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  {selected.productLineStrategy.map((line, i) => (
+                    <article
+                      key={`${line.lineName}-${i}`}
+                      className={cn(
+                        hub.panel,
+                        "flex flex-col gap-2 p-4 text-sm",
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">{line.lineName}</p>
+                        {line.role ? (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {line.role}
+                          </Badge>
+                        ) : null}
+                        {line.category ? (
+                          <span className="text-muted-foreground text-[10px]">
+                            {line.category}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p>
+                        <span className="text-muted-foreground text-xs">Positioning · </span>
+                        {line.positioning}
+                      </p>
+                      <p>
+                        <span className="text-muted-foreground text-xs">Key message · </span>
+                        {line.keyMessage}
+                      </p>
+                      <p>
+                        <span className="text-muted-foreground text-xs">Differentiator · </span>
+                        {line.differentiator}
+                      </p>
+                      {line.portfolioFit ? (
+                        <p className="text-muted-foreground text-xs">{line.portfolioFit}</p>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </BrandHubSection>
+            ) : null}
+
             <BrandHubSection title="STP" delayMs={50}>
+              <SectionRegen
+                field="stp"
+                pending={sectionPending}
+                disabled={pending || isGenerating}
+                onRegen={handleRegenerateSection}
+              />
               <div className={hub.panel}>
                 <div className="grid gap-3 md:grid-cols-2">
                 <div>
@@ -450,6 +659,12 @@ export function BrandStrategyClient({
             </BrandHubSection>
 
             <BrandHubSection title="Brand Personality" delayMs={100}>
+              <SectionRegen
+                field="brandPersonality"
+                pending={sectionPending}
+                disabled={pending || isGenerating}
+                onRegen={handleRegenerateSection}
+              />
               <div className={hub.panel}>
                 <div className="grid gap-3">
                 <div>
@@ -469,6 +684,12 @@ export function BrandStrategyClient({
             </BrandHubSection>
 
             <BrandHubSection title="Tone of Voice" delayMs={150}>
+              <SectionRegen
+                field="toneOfVoice"
+                pending={sectionPending}
+                disabled={pending || isGenerating}
+                onRegen={handleRegenerateSection}
+              />
               <div className={hub.panel}>
                 <div className="grid gap-3 md:grid-cols-3">
                 <div>
@@ -493,20 +714,78 @@ export function BrandStrategyClient({
   );
 }
 
+function SectionRegen({
+  field,
+  pending,
+  disabled,
+  onRegen,
+}: {
+  field: StrategySectionField;
+  pending: StrategySectionField | null;
+  disabled: boolean;
+  onRegen: (field: StrategySectionField) => void;
+}) {
+  return (
+    <div className="mb-2 flex justify-end">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-7 text-xs"
+        disabled={disabled || pending === field}
+        onClick={() => onRegen(field)}
+      >
+        {pending === field ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : (
+          <RefreshCw className="size-3" />
+        )}
+        Regenerate section
+      </Button>
+    </div>
+  );
+}
+
 function Field({
   label,
   value,
   onChange,
   className,
+  sectionField,
+  onRegenSection,
+  sectionPending,
+  regenDisabled,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   className?: string;
+  sectionField?: StrategySectionField;
+  onRegenSection?: (field: StrategySectionField) => void;
+  sectionPending?: StrategySectionField | null;
+  regenDisabled?: boolean;
 }) {
   return (
     <div className={cn("grid gap-1.5", className)}>
-      <Label className="text-xs">{label}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs">{label}</Label>
+        {sectionField && onRegenSection ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px]"
+            disabled={regenDisabled || sectionPending === sectionField}
+            onClick={() => onRegenSection(sectionField)}
+          >
+            {sectionPending === sectionField ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3" />
+            )}
+          </Button>
+        ) : null}
+      </div>
       <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} />
     </div>
   );

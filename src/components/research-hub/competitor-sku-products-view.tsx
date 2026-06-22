@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ReviewIntelSourceStatus } from "@prisma/client";
 import {
   ExternalLink,
   LayoutGrid,
+  LineChart,
   List,
   Loader2,
   MessageSquareText,
@@ -14,6 +16,10 @@ import {
   CompetitorSkuTable,
   type CompetitorSkuRow,
 } from "@/components/research-hub/competitor-sku-table";
+import {
+  ShopProductDetailLink,
+  ShopProductMetricsStrip,
+} from "@/components/research-hub/shop-product-metrics";
 import { formatRp, SOURCE_STATUS_LABELS } from "@/lib/research/labels";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
@@ -25,15 +31,21 @@ const VIEW_STORAGE_KEY = "research-hub:competitor-sku-view";
 
 function CompetitorSkuCard({
   sku,
+  competitorId,
   onReviewIntel,
   reviewSkuId,
   pending,
 }: {
   sku: CompetitorSkuRow;
+  competitorId?: string;
   onReviewIntel?: (sku: CompetitorSkuRow) => void;
   reviewSkuId?: string | null;
   pending?: boolean;
 }) {
+  const detailHref = competitorId
+    ? `/research-hub/competitor-tracker/${competitorId}/skus/${sku.id}`
+    : null;
+
   return (
     <article
       className={cn(
@@ -42,29 +54,44 @@ function CompetitorSkuCard({
         "flex flex-col overflow-hidden p-0",
       )}
     >
-      <div className="relative aspect-[4/3] w-full overflow-hidden border-b border-border/40">
-        <ProductDiscoveryProductThumb
-          imageUrl={sku.imageUrl ?? null}
-          name={sku.name}
-          className="size-full"
-        />
-        {sku.isNew ? (
-          <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase">
-            Baru
-          </span>
-        ) : null}
-        {sku.hasPromo && sku.promoText ? (
-          <span className="bg-amber-500 text-amber-950 absolute top-2 right-2 rounded-md px-2 py-0.5 text-[10px] font-semibold">
-            {sku.promoText}
-          </span>
-        ) : null}
-      </div>
+      {detailHref ? (
+        <Link
+          href={detailHref}
+          className="relative block aspect-[4/3] w-full overflow-hidden border-b border-border/40"
+        >
+          <ProductDiscoveryProductThumb
+            imageUrl={sku.imageUrl ?? null}
+            name={sku.name}
+            className="size-full"
+          />
+          {sku.isNew ? (
+            <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase">
+              Baru
+            </span>
+          ) : null}
+          {sku.hasPromo && sku.promoText ? (
+            <span className="bg-amber-500 text-amber-950 absolute top-2 right-2 rounded-md px-2 py-0.5 text-[10px] font-semibold">
+              {sku.promoText}
+            </span>
+          ) : null}
+        </Link>
+      ) : (
+        <div className="relative aspect-[4/3] w-full overflow-hidden border-b border-border/40">
+          <ProductDiscoveryProductThumb
+            imageUrl={sku.imageUrl ?? null}
+            name={sku.name}
+            className="size-full"
+          />
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="min-w-0 flex-1 space-y-1">
-          <h3 className="line-clamp-2 text-sm leading-snug font-medium">
-            {sku.name}
-          </h3>
+          {detailHref ? (
+            <ShopProductDetailLink href={detailHref}>{sku.name}</ShopProductDetailLink>
+          ) : (
+            <h3 className="line-clamp-2 text-sm leading-snug font-medium">{sku.name}</h3>
+          )}
           {sku.priceDeltaPct != null && sku.priceDirection ? (
             <p
               className={cn(
@@ -79,7 +106,7 @@ function CompetitorSkuCard({
           ) : null}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-2 gap-2 text-center">
           <div className={hub.nestedPanel}>
             <p className="text-muted-foreground text-[10px]">Harga</p>
             <p className="mt-0.5 text-xs font-semibold tabular-nums">
@@ -92,15 +119,23 @@ function CompetitorSkuCard({
               {sku.rating != null ? sku.rating.toFixed(1) : "—"}
             </p>
           </div>
-          <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px]">Review</p>
-            <p className="mt-0.5 text-xs font-semibold tabular-nums">
-              {sku.reviewCount.toLocaleString("id-ID")}
-            </p>
-          </div>
         </div>
 
+        <ShopProductMetricsStrip metrics={sku} compact />
+
         <div className="flex gap-2 border-t border-border/40 pt-3">
+          {detailHref ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="flex-1 text-xs"
+              render={<Link href={detailHref} />}
+            >
+              <LineChart className="size-3.5" aria-hidden />
+              Detail
+            </Button>
+          ) : null}
           {onReviewIntel ? (
             <Button
               type="button"
@@ -147,12 +182,14 @@ function CompetitorSkuCard({
 
 export function CompetitorSkuProductsView({
   rows,
+  competitorId,
   onReviewIntel,
   reviewSkuId,
   pending,
   defaultView = "card",
 }: {
   rows: CompetitorSkuRow[];
+  competitorId?: string;
   onReviewIntel?: (sku: CompetitorSkuRow) => void;
   reviewSkuId?: string | null;
   pending?: boolean;
@@ -232,6 +269,7 @@ export function CompetitorSkuProductsView({
             >
               <CompetitorSkuCard
                 sku={sku}
+                competitorId={competitorId}
                 onReviewIntel={onReviewIntel}
                 reviewSkuId={reviewSkuId}
                 pending={pending}
@@ -243,6 +281,7 @@ export function CompetitorSkuProductsView({
         <div className={cn(hub.panel, "p-0 sm:p-1", hub.entrance)}>
           <CompetitorSkuTable
             rows={rows}
+            competitorId={competitorId}
             onReviewIntel={onReviewIntel}
             reviewSkuId={reviewSkuId}
             pending={pending}

@@ -24,6 +24,7 @@ import {
 } from "@/lib/apify/normalize";
 import { filterShopProductsByShopUrl } from "@/lib/apify/tiktok-kulqiz";
 import { applyCompetitorSnapshot } from "@/lib/research/competitor-diff";
+import { snapshotMetricsFromProduct } from "@/lib/research/shop-product-ingest";
 import { runApifyJobToCompletion } from "@/lib/research/run-apify-job";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import { fetchShopeeShopViaVps } from "@/lib/scraper-api/shopee-products";
@@ -205,6 +206,13 @@ export async function ingestCompetitorProducts(
         currentPrice: product.price,
         rating: product.rating,
         reviewCount: product.reviewCount,
+        exactSold: product.exactSold,
+        historicalSold: product.historicalSold,
+        monthlySold: product.monthlySold,
+        estimatedRevenue: product.estimatedRevenue,
+        stock: product.stock,
+        shopLocation: product.shopLocation,
+        isOfficialShop: product.isOfficialShop,
       },
       update: {
         name: product.name,
@@ -213,6 +221,13 @@ export async function ingestCompetitorProducts(
         currentPrice: product.price,
         rating: product.rating,
         reviewCount: product.reviewCount,
+        exactSold: product.exactSold,
+        historicalSold: product.historicalSold,
+        monthlySold: product.monthlySold,
+        estimatedRevenue: product.estimatedRevenue,
+        stock: product.stock,
+        shopLocation: product.shopLocation,
+        isOfficialShop: product.isOfficialShop,
         lastSeenAt: new Date(),
       },
     });
@@ -227,6 +242,7 @@ export async function ingestCompetitorProducts(
         hasPromo: product.hasPromo,
         promoText: product.promoText,
         categoryRank: product.categoryRank,
+        ...snapshotMetricsFromProduct(product),
       },
       { suppressNewSkuAlert: isInitialImport },
     );

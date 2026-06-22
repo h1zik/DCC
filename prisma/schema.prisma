@@ -360,6 +360,7 @@ model User {
   brandUspAnalysesCreated   BrandUspAnalysis[]   @relation("BrandUspAnalysisCreator")
   brandVisualCollectionsCreated BrandVisualCollection[] @relation("BrandVisualCollectionCreator")
   brandStrategyDocumentsCreated BrandStrategyDocument[] @relation("BrandStrategyDocumentCreator")
+  brandPortfoliosCreated BrandPortfolio[] @relation("BrandPortfolioCreator")
   brandCreativeGuidelinesCreated BrandCreativeGuideline[] @relation("BrandCreativeGuidelineCreator")
   stockLogsCreated          StockLog[]           @relation("StockLogCreator")
 
@@ -443,6 +444,7 @@ model Brand {
   brandVisualCollections BrandVisualCollection[]
   brandVisualAssets    BrandVisualAsset[]
   brandStrategyDocuments BrandStrategyDocument[]
+  brandPortfolio         BrandPortfolio?
   brandCreativeGuidelines BrandCreativeGuideline[]
 }
 
@@ -2016,29 +2018,41 @@ model ProductDiscoveryQuery {
   createdBy    User                     @relation("ProductDiscoveryCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt
-  products     ProductDiscoveryItem[]
+  products            ProductDiscoveryItem[]
+  portfolioLines      BrandPortfolioLine[]
 
   @@index([createdById])
   @@index([status])
 }
 
 model ProductDiscoveryItem {
-  id          String                @id @default(cuid())
-  queryId     String
-  query       ProductDiscoveryQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
-  marketplace ResearchMarketplace
-  externalId  String
-  name        String
-  productUrl  String
-  imageUrl    String?
-  shopName    String?
-  price       Float?
-  rating      Float?
-  reviewCount Int                   @default(0)
-  soldCount   Int?
-  hasPromo    Boolean               @default(false)
-  promoText   String?
-  categoryRank Int?
+  id               String                @id @default(cuid())
+  queryId          String
+  query            ProductDiscoveryQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  marketplace      ResearchMarketplace
+  externalId       String
+  name             String
+  productUrl       String
+  imageUrl         String?
+  shopName         String?
+  shopLocation     String?
+  isOfficialShop   Boolean               @default(false)
+  price            Float?
+  rating           Float?
+  reviewCount      Int                   @default(0)
+  /** Legacy aggregate — prefer historicalSold; kept for sort/analytics compat. */
+  soldCount        Int?
+  /** Marketplace "sold" / exact sold shown on listing. */
+  exactSold        Int?
+  /** Lifetime / historical sold from marketplace API. */
+  historicalSold   Int?
+  /** Shopee monthly sold (null on Tokopedia). */
+  monthlySold      Int?
+  estimatedRevenue Float?
+  stock            Int?
+  hasPromo         Boolean               @default(false)
+  promoText        String?
+  categoryRank     Int?
 
   @@unique([queryId, marketplace, externalId])
   @@index([queryId])
@@ -2180,37 +2194,49 @@ model ResearchCompetitor {
 }
 
 model CompetitorSku {
-  id           String             @id @default(cuid())
-  competitorId String
-  competitor   ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
-  name         String
-  productUrl   String
-  imageUrl     String?
-  externalId   String?
-  currentPrice Float?
-  rating       Float?
-  reviewCount  Int                @default(0)
-  firstSeenAt  DateTime           @default(now())
-  lastSeenAt   DateTime           @default(now())
-  snapshots    CompetitorSnapshot[]
+  id               String             @id @default(cuid())
+  competitorId     String
+  competitor       ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  name             String
+  productUrl       String
+  imageUrl         String?
+  externalId       String?
+  currentPrice     Float?
+  rating           Float?
+  reviewCount      Int                @default(0)
+  exactSold        Int?
+  historicalSold   Int?
+  monthlySold      Int?
+  estimatedRevenue Float?
+  stock            Int?
+  shopLocation     String?
+  isOfficialShop   Boolean            @default(false)
+  firstSeenAt      DateTime           @default(now())
+  lastSeenAt       DateTime           @default(now())
+  snapshots        CompetitorSnapshot[]
 
   @@unique([competitorId, externalId])
   @@index([competitorId])
 }
 
 model CompetitorSnapshot {
-  id           String             @id @default(cuid())
-  competitorId String
-  competitor   ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
-  skuId        String?
-  sku          CompetitorSku?     @relation(fields: [skuId], references: [id], onDelete: SetNull)
-  price        Float?
-  rating       Float?
-  reviewCount  Int?
-  hasPromo     Boolean            @default(false)
-  promoText    String?
-  categoryRank Int?
-  capturedAt   DateTime           @default(now())
+  id               String             @id @default(cuid())
+  competitorId     String
+  competitor       ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  skuId            String?
+  sku              CompetitorSku?     @relation(fields: [skuId], references: [id], onDelete: SetNull)
+  price            Float?
+  rating           Float?
+  reviewCount      Int?
+  exactSold        Int?
+  historicalSold   Int?
+  monthlySold      Int?
+  estimatedRevenue Float?
+  stock            Int?
+  hasPromo         Boolean            @default(false)
+  promoText        String?
+  categoryRank     Int?
+  capturedAt       DateTime           @default(now())
 
   @@index([competitorId, capturedAt])
   @@index([skuId])
@@ -2785,37 +2811,49 @@ model BrandCompetitor {
 }
 
 model BrandCompetitorSku {
-  id           String               @id @default(cuid())
-  competitorId String
-  competitor   BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
-  name         String
-  productUrl   String
-  imageUrl     String?
-  externalId   String?
-  currentPrice Float?
-  rating       Float?
-  reviewCount  Int                  @default(0)
-  firstSeenAt  DateTime             @default(now())
-  lastSeenAt   DateTime             @default(now())
-  snapshots    BrandCompetitorSnapshot[]
+  id               String               @id @default(cuid())
+  competitorId     String
+  competitor       BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  name             String
+  productUrl       String
+  imageUrl         String?
+  externalId       String?
+  currentPrice     Float?
+  rating           Float?
+  reviewCount      Int                  @default(0)
+  exactSold        Int?
+  historicalSold   Int?
+  monthlySold      Int?
+  estimatedRevenue Float?
+  stock            Int?
+  shopLocation     String?
+  isOfficialShop   Boolean              @default(false)
+  firstSeenAt      DateTime             @default(now())
+  lastSeenAt       DateTime             @default(now())
+  snapshots        BrandCompetitorSnapshot[]
 
   @@unique([competitorId, externalId])
   @@index([competitorId])
 }
 
 model BrandCompetitorSnapshot {
-  id           String               @id @default(cuid())
-  competitorId String
-  competitor   BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
-  skuId        String?
-  sku          BrandCompetitorSku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
-  price        Float?
-  rating       Float?
-  reviewCount  Int?
-  hasPromo     Boolean              @default(false)
-  promoText    String?
-  categoryRank Int?
-  capturedAt   DateTime             @default(now())
+  id               String               @id @default(cuid())
+  competitorId     String
+  competitor       BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  skuId            String?
+  sku              BrandCompetitorSku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
+  price            Float?
+  rating           Float?
+  reviewCount      Int?
+  exactSold        Int?
+  historicalSold   Int?
+  monthlySold      Int?
+  estimatedRevenue Float?
+  stock            Int?
+  hasPromo         Boolean              @default(false)
+  promoText        String?
+  categoryRank     Int?
+  capturedAt       DateTime             @default(now())
 
   @@index([competitorId, capturedAt])
   @@index([skuId])
@@ -3220,12 +3258,59 @@ model BrandVisualAsset {
   @@index([source])
 }
 
+enum BrandPortfolioLineRole {
+  HERO
+  CORE
+  FLANKER
+  EXPERIMENTAL
+}
+
+/** Planned product lines for a brand — input utama sebelum Brand Strategy. */
+model BrandPortfolio {
+  id          String               @id @default(cuid())
+  brandId     String               @unique
+  brand       Brand                @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  summary     String?              @db.Text
+  createdById String
+  createdBy   User                 @relation("BrandPortfolioCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  lines       BrandPortfolioLine[]
+
+  @@index([createdById])
+}
+
+model BrandPortfolioLine {
+  id                      String                  @id @default(cuid())
+  portfolioId             String
+  portfolio               BrandPortfolio          @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  sortOrder               Int                     @default(0)
+  name                    String
+  category                String?
+  description             String?                 @db.Text
+  targetAudience          String?
+  role                    BrandPortfolioLineRole?
+  productDiscoveryQueryId String?
+  productDiscoveryQuery   ProductDiscoveryQuery?  @relation(fields: [productDiscoveryQueryId], references: [id], onDelete: SetNull)
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  @@index([portfolioId])
+  @@index([productDiscoveryQueryId])
+}
+
 model BrandStrategyDocument {
   id               String              @id @default(cuid())
   ownerBrandId     String?
   ownerBrand       Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
   version          Int                 @default(1)
   status           BrandStrategyStatus @default(DRAFT)
+  /** Per-line messaging & role from portfolio synthesis. */
+  productLineStrategy Json             @default("[]")
+  /** Product/category context for strategy (e.g. skincare, body care). */
+  category         String?
+  /** PM creative brief / constraints fed to AI at generation. */
+  pmBrief          String?             @db.Text
   brandPurpose     String?             @db.Text
   brandEssence     String?             @db.Text
   coreMessage      String?             @db.Text
@@ -3233,6 +3318,14 @@ model BrandStrategyDocument {
   stp              Json?
   brandPersonality Json?
   toneOfVoice      Json?
+  /** Tension pairs the brand must navigate (from insight step). */
+  strategicTensions Json               @default("[]")
+  /** Step-1 insight memo (audit + input to strategy synthesis). */
+  insightMemo      Json?
+  /** Prescriptive action plan for cross-functional teams. */
+  actionPlan       Json?
+  /** Citation validation score + invalid ref details. */
+  citationQuality  Json?
   evidenceRefs     Json                @default("[]")
   /** User-selected modules/entities fed to AI at generation time. */
   generationConfig Json                @default("{}")
