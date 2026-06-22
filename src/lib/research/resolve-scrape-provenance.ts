@@ -80,37 +80,61 @@ export function productDiscoveryProvenance(input: {
     input.marketplaces,
   );
 
-  if (state.sources && Object.keys(state.sources).length > 0) {
-    return input.marketplaces
-      .filter((mp) => state.sources![mp])
-      .map((mp) => {
-        const provider = state.sources![mp]!;
-        return {
-          label: MARKETPLACE_LABELS[mp],
-          provider,
-          isFallback: provider === "apify",
-        };
-      });
+  return input.marketplaces.map((mp) =>
+    resolveProductDiscoveryMarketplaceProvenance(
+      mp,
+      state.sources?.[mp],
+      state.warnings,
+      input.errorMessage,
+    ),
+  );
+}
+
+function resolveProductDiscoveryMarketplaceProvenance(
+  marketplace: ResearchMarketplace,
+  recordedProvider: ScrapeDataProvider | undefined,
+  warnings: string[],
+  errorMessage: string | null,
+): DataProvenanceEntry {
+  const label = MARKETPLACE_LABELS[marketplace];
+
+  if (recordedProvider) {
+    return {
+      label,
+      provider: recordedProvider,
+      isFallback: recordedProvider === "apify",
+    };
   }
 
-  return input.marketplaces.map((mp) => {
-    const usedApifyFallback = state.warnings.some(
-      (w) =>
-        w.startsWith(`${mp}:`) &&
-        w.toLowerCase().includes("apify"),
-    );
-    const defaultProvider: ScrapeDataProvider =
-      mp === ResearchMarketplace.TIKTOK_SHOP
-        ? "apify"
-        : isScraperApiConfigured() && !usedApifyFallback
-          ? "vps"
-          : "apify";
-    return {
-      label: MARKETPLACE_LABELS[mp],
-      provider: usedApifyFallback ? "apify" : defaultProvider,
-      isFallback: usedApifyFallback,
-    };
-  });
+  const haystack = [...warnings, errorMessage ?? ""]
+    .join(" | ")
+    .toLowerCase();
+  const mpKey = marketplace.toLowerCase().replace(/_/g, " ");
+
+  if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
+    return { label, provider: "apify", isFallback: true };
+  }
+
+  const mentionsMarketplace = (chunk: string) =>
+    chunk.includes(marketplace.toLowerCase()) ||
+    chunk.includes(mpKey) ||
+    chunk.startsWith(`${marketplace.toLowerCase()}:`);
+
+  const mpChunks = haystack.split("|").map((chunk) => chunk.trim());
+  const relevant = mpChunks.filter(mentionsMarketplace);
+
+  const usedApifyFallback = relevant.some((chunk) => chunk.includes("apify"));
+  if (usedApifyFallback) {
+    return { label, provider: "apify", isFallback: true };
+  }
+
+  const usedVps = relevant.some((chunk) => chunk.includes("vps"));
+  if (usedVps) {
+    return { label, provider: "vps" };
+  }
+
+  // Legacy query tanpa sources tersimpan — jangan asumsikan VPS hanya karena SCRAPER_API_URL ada.
+  return { label, provider: "apify", isFallback: true };
 }
 
 async function latestCompletedJobProvider(
