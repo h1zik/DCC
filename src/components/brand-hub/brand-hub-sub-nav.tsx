@@ -7,6 +7,7 @@ import {
   Compass,
   ImageIcon,
   LayoutDashboard,
+  Layers,
   MessageSquare,
   Palette,
   Sparkles,
@@ -35,6 +36,7 @@ type PillGeom = { left: number; width: number; visible: boolean };
 
 const STUDIO_NAV: SubNavItem[] = [
   { href: "/brand-hub", label: "Overview", icon: LayoutDashboard },
+  { href: "/brand-hub/portfolio", label: "Portfolio", icon: Layers },
   { href: "/brand-hub/strategy", label: "Strategy", icon: Compass },
   { href: "/brand-hub/creative-guideline", label: "Guideline", icon: Sparkles },
   { href: "/brand-hub/visual-library", label: "Visual", icon: ImageIcon },

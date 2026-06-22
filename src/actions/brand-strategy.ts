@@ -14,7 +14,9 @@ import {
   generateBrandStrategyDocument,
   getBrandStrategyDocument,
   listBrandStrategyDocuments,
+  regenerateBrandStrategySection,
 } from "@/lib/brand-research/strategy/strategy-generator";
+import type { StrategySectionField } from "@/lib/brand-research/strategy/evidence-types";
 import {
   defaultStrategyGenerationConfig,
   getStrategySourceCatalog,
@@ -36,10 +38,13 @@ const generationConfigSchema = z.object({
   keyword: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
   trend: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
   usp: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+  productDiscovery: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
 });
 
 const createSchema = z.object({
   ownerBrandId: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  pmBrief: z.string().optional().nullable(),
   generationConfig: generationConfigSchema.optional(),
 });
 
@@ -100,6 +105,8 @@ export async function createBrandStrategyDocument(
   const doc = await prisma.brandStrategyDocument.create({
     data: {
       ownerBrandId: data.ownerBrandId ?? null,
+      category: data.category?.trim() || null,
+      pmBrief: data.pmBrief?.trim() || null,
       status: BrandStrategyStatus.DRAFT,
       createdById: session.user.id,
       generationConfig: genConfig as object,
@@ -194,6 +201,30 @@ export async function deleteBrandStrategyDocument(documentId: string) {
   revalidatePath("/brand-hub/strategy");
 }
 
+export async function regenerateBrandStrategySectionAction(
+  documentId: string,
+  field: StrategySectionField,
+) {
+  const session = await requireBrandManager();
+  z.string().min(1).parse(documentId);
+
+  const doc = await prisma.brandStrategyDocument.findFirst({
+    where: { id: documentId },
+    select: { ownerBrandId: true },
+  });
+  if (!doc) throw new Error("Dokumen strategi tidak ditemukan.");
+
+  after(async () => {
+    try {
+      await regenerateBrandStrategySection(documentId, session.user.id, field);
+    } catch (err) {
+      console.error("[regenerateBrandStrategySection]", err);
+    }
+  });
+
+  revalidatePath("/brand-hub/strategy");
+}
+
 export async function getBrandStrategyPageData(ownerBrandId?: string | null) {
   const session = await requireBrandManager();
   const [documents, evidenceReadiness, sourceCatalog] = await Promise.all([
@@ -208,7 +239,10 @@ export async function getBrandStrategyPageData(ownerBrandId?: string | null) {
     documents: documents.map((d) => ({
       id: d.id,
       status: d.status,
+      version: d.version,
       ownerBrandId: d.ownerBrandId,
+      category: d.category,
+      pmBrief: d.pmBrief,
       brandPurpose: d.brandPurpose,
       brandEssence: d.brandEssence,
       coreMessage: d.coreMessage,
@@ -216,6 +250,11 @@ export async function getBrandStrategyPageData(ownerBrandId?: string | null) {
       stp: d.stp,
       brandPersonality: d.brandPersonality,
       toneOfVoice: d.toneOfVoice,
+      strategicTensions: d.strategicTensions,
+      productLineStrategy: d.productLineStrategy,
+      insightMemo: d.insightMemo,
+      actionPlan: d.actionPlan,
+      citationQuality: d.citationQuality,
       evidenceRefs: d.evidenceRefs,
       strategyRationales: d.strategyRationales,
       generationConfig: d.generationConfig,

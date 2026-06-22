@@ -4,6 +4,7 @@ import { isPinterestScrapeConfigured } from "@/lib/brand-research/pinterest-limi
 import { prisma } from "@/lib/prisma";
 import { listBrandVisualAssets } from "@/lib/brand-research/visual";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
+import { countPortfolioLines } from "@/lib/brand-research/portfolio/portfolio-service";
 import {
   countResearchCompetitorsActive,
   countResearchKeywordQueriesReady,
@@ -105,6 +106,7 @@ export async function assessBrandEvidenceReadiness(
     trendReady,
     uspReady,
     keywordReady,
+    portfolioLines,
     demoFlags,
   ] = await Promise.all([
     countResearchReviewSourcesReady(),
@@ -114,6 +116,7 @@ export async function assessBrandEvidenceReadiness(
     countResearchTrendDigestsReady(),
     countResearchUspAnalysesReady(),
     countResearchKeywordQueriesReady(),
+    ownerBrandId ? countPortfolioLines(ownerBrandId) : Promise.resolve(0),
     detectDemoFlags(userId, ownerBrandId),
   ]);
 
@@ -124,7 +127,21 @@ export async function assessBrandEvidenceReadiness(
 
   const brandQs = ownerBrandId ? `?brandId=${encodeURIComponent(ownerBrandId)}` : "";
 
+  const hasPortfolio = !ownerBrandId || portfolioLines >= 1;
+
   const checks: EvidenceCheck[] = [
+    {
+      key: "brand-portfolio",
+      label: "Brand Portfolio (≥1 lini produk)",
+      met: hasPortfolio,
+      count: portfolioLines,
+      required: !!ownerBrandId,
+      href: `/brand-hub/portfolio${brandQs}`,
+      detail:
+        portfolioLines > 0
+          ? `${portfolioLines} lini produk terdefinisi`
+          : "Definisikan produk yang akan dijual sebelum generate strategi",
+    },
     {
       key: "voice-of-customer",
       label: "Review Intel atau Social Listening siap",

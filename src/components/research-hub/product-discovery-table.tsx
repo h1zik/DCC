@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import {
@@ -12,12 +13,17 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
+import { formatCompactCount, formatRevenueIdr, resolveShopProductMetrics } from "@/lib/research/shop-product-metrics";
 import { cn } from "@/lib/utils";
+
+import type { ShopProductMetrics } from "@/lib/research/shop-product-metrics";
 
 export type ProductDiscoveryRow = {
   id: string;
   name: string;
   shopName: string | null;
+  shopLocation?: string | null;
+  isOfficialShop?: boolean;
   marketplace: string;
   price: number | null;
   rating: number | null;
@@ -28,15 +34,17 @@ export type ProductDiscoveryRow = {
   productUrl: string;
   categoryRank?: number | null;
   imageUrl?: string | null;
-};
+} & ShopProductMetrics;
 
 export function ProductDiscoveryTable({
   rows,
+  queryId,
   onAnalyze,
   analyzingId,
   showImages = false,
 }: {
   rows: ProductDiscoveryRow[];
+  queryId?: string;
   onAnalyze?: (productId: string) => void;
   analyzingId?: string | null;
   showImages?: boolean;
@@ -57,13 +65,17 @@ export function ProductDiscoveryTable({
           <TableHead>Marketplace</TableHead>
           <TableHead className="text-right">Harga</TableHead>
           <TableHead className="text-right">Rating</TableHead>
-          <TableHead className="text-right">Terjual</TableHead>
+          <TableHead className="text-right">Total terjual</TableHead>
+          <TableHead className="text-right">Bulan ini</TableHead>
+          <TableHead className="text-right">Revenue</TableHead>
           <TableHead className="text-right">Rank</TableHead>
           <TableHead className="w-[120px]" />
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const m = resolveShopProductMetrics(row);
+          return (
           <TableRow
             key={row.id}
             className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
@@ -108,15 +120,33 @@ export function ProductDiscoveryTable({
               ) : null}
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {row.soldCount != null
-                ? row.soldCount.toLocaleString("id-ID")
-                : "—"}
+              {formatCompactCount(m.historicalSold)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {formatCompactCount(m.monthlySold)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-xs">
+              {formatRevenueIdr(m.estimatedRevenue)}
             </TableCell>
             <TableCell className="text-right tabular-nums">
               {row.categoryRank != null ? `#${row.categoryRank}` : "—"}
             </TableCell>
             <TableCell>
               <div className="flex justify-end gap-1">
+                {queryId ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 text-xs"
+                    render={
+                      <Link
+                        href={`/research-hub/product-discovery/${queryId}/products/${row.id}`}
+                      />
+                    }
+                  >
+                    Detail
+                  </Button>
+                ) : null}
                 {onAnalyze ? (
                   <Button
                     size="sm"
@@ -143,7 +173,8 @@ export function ProductDiscoveryTable({
               </div>
             </TableCell>
           </TableRow>
-        ))}
+          );
+        })}
       </TableBody>
     </Table>
   );

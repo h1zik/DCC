@@ -19,6 +19,11 @@ type SnapshotInput = {
   price: number | null;
   rating: number | null;
   reviewCount: number | null;
+  exactSold?: number | null;
+  historicalSold?: number | null;
+  monthlySold?: number | null;
+  estimatedRevenue?: number | null;
+  stock?: number | null;
   hasPromo: boolean;
   promoText: string | null;
   categoryRank: number | null;
@@ -50,6 +55,11 @@ export async function applyCompetitorSnapshot(
       price: input.price,
       rating: input.rating,
       reviewCount: input.reviewCount,
+      exactSold: input.exactSold ?? null,
+      historicalSold: input.historicalSold ?? null,
+      monthlySold: input.monthlySold ?? null,
+      estimatedRevenue: input.estimatedRevenue ?? null,
+      stock: input.stock ?? null,
       hasPromo: input.hasPromo,
       promoText: input.promoText,
       categoryRank: input.categoryRank,

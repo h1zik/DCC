@@ -1,8 +1,9 @@
 import "server-only";
 
 import type { NormalizedShopProduct } from "@/lib/apify/normalize";
+import { extractVpsProductMetrics, pickMarketplaceReviewCount } from "@/lib/scraper-api/product-metrics";
 import {
-  fetchVpsRunDataset,
+  loadAllVpsRunItems,
   startVpsActorRun,
 } from "@/lib/scraper-api/client";
 
@@ -55,6 +56,8 @@ export function normalizeVpsTokopediaProducts(
     const promoText =
       discount != null && discount > 0 ? `Diskon ${Math.round(discount)}%` : null;
 
+    const metrics = extractVpsProductMetrics(item);
+
     out.push({
       externalId: pickExternalId(item, i),
       name,
@@ -64,15 +67,21 @@ export function normalizeVpsTokopediaProducts(
         null,
       price: pickNumber(item, ["price", "price_before_discount"]),
       rating: pickNumber(item, ["rating_star", "rating", "stars", "score"]),
-      reviewCount:
-        pickNumber(item, ["rating_count", "reviewCount", "review_count"]) ?? 0,
+      reviewCount: pickMarketplaceReviewCount(item),
       hasPromo: discount != null && discount > 0,
       promoText,
       categoryRank: pickNumber(item, ["rank", "categoryRank", "page"]),
       shopName:
         pickString(item, ["shop_name", "shopName", "seller_name", "seller"]) ??
         null,
-      soldCount: pickNumber(item, ["sold", "soldCount", "sold_count"]),
+      soldCount: metrics.soldCount,
+      exactSold: metrics.exactSold,
+      historicalSold: metrics.historicalSold,
+      monthlySold: metrics.monthlySold,
+      estimatedRevenue: metrics.estimatedRevenue,
+      stock: metrics.stock,
+      shopLocation: metrics.shopLocation,
+      isOfficialShop: metrics.isOfficialShop,
     });
   }
 
@@ -82,17 +91,14 @@ export function normalizeVpsTokopediaProducts(
 async function readVpsRunItems(
   run: Awaited<ReturnType<typeof startVpsActorRun>>,
 ): Promise<Record<string, unknown>[]> {
-  if (run.items && run.items.length > 0) return run.items;
-  if ((run.count ?? 0) > 0 && run.run_id) {
-    return fetchVpsRunDataset(run.run_id);
-  }
-  return [];
+  return loadAllVpsRunItems(run);
 }
 
 async function fetchTokopediaProductsViaVps(
   actorId: "tokopedia-search" | "tokopedia-shop",
   baseInput: Record<string, unknown>,
   maxItems: number,
+  opts?: { includeExactSold?: boolean },
 ): Promise<Record<string, unknown>[]> {
   const target = Math.min(Math.max(maxItems, 1), 500);
   const collected: Record<string, unknown>[] = [];
@@ -108,6 +114,7 @@ async function fetchTokopediaProductsViaVps(
         limit,
         download_images: false,
         include_all_images: false,
+        ...(opts?.includeExactSold ? { include_exact_sold: true } : {}),
       },
       { wait: true, timeout: 900 },
     );
@@ -158,6 +165,7 @@ export async function fetchTokopediaSearchViaVps(
     "tokopedia-search",
     { keyword: keyword.trim() },
     maxItems,
+    { includeExactSold: true },
   );
   return normalizeVpsTokopediaProducts(items);
 }

@@ -1,7 +1,8 @@
 import "server-only";
 
 import type { NormalizedReview, ReviewScrapeMeta } from "@/lib/apify/normalize";
-import { startVpsActorRun } from "@/lib/scraper-api/client";
+import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
+import { loadAllVpsRunItems, startVpsActorRun } from "@/lib/scraper-api/client";
 
 export type VpsProductReviewsResult = {
   reviews: NormalizedReview[];
@@ -67,18 +68,23 @@ async function fetchReviewsViaVpsActor(
   actorId: string,
   productUrl: string,
 ): Promise<VpsProductReviewsResult> {
+  const normalizedUrl =
+    actorId === "shopee-reviews"
+      ? cleanShopeeUrl(productUrl.trim())
+      : productUrl.trim();
+
   const run = await startVpsActorRun(
     actorId,
     {
-      product_url: productUrl.trim(),
+      product_url: normalizedUrl,
       limit: 500,
       max_pages: 50,
       download_images: false,
     },
-    { wait: true, timeout: 900 },
+    { wait: true, timeout: 900, throwOnFailed: false },
   );
 
-  const rawItems = run.items ?? [];
+  const rawItems = await loadAllVpsRunItems(run);
   const reviews = rawItems
     .map((item, index) => normalizeVpsReviewItem(item, index))
     .filter((review): review is NormalizedReview => review != null);
@@ -90,7 +96,9 @@ async function fetchReviewsViaVpsActor(
     meta: {
       totalReviewsReported: count,
       reviewsAccessible: reviews.length,
-      reviewsComplete: run.status === "completed",
+      reviewsComplete:
+        run.status !== "failed" && reviews.length > 0 && reviews.length >= count,
+      vpsError: run.status === "failed" ? run.error ?? "Scrape VPS gagal" : null,
     },
   };
 }

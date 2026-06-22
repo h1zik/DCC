@@ -1,5 +1,8 @@
 import "server-only";
 
+import { extractVpsProductMetrics, pickMarketplaceReviewCount } from "@/lib/scraper-api/product-metrics";
+import { parseCompactCount } from "@/lib/research/shop-product-metrics";
+
 export type NormalizedReview = {
   externalId: string;
   author: string | null;
@@ -20,7 +23,15 @@ export type NormalizedShopProduct = {
   promoText: string | null;
   categoryRank: number | null;
   shopName: string | null;
+  /** Primary sold for sort/analytics — historicalSold ?? exactSold. */
   soldCount: number | null;
+  exactSold: number | null;
+  historicalSold: number | null;
+  monthlySold: number | null;
+  estimatedRevenue: number | null;
+  stock: number | null;
+  shopLocation: string | null;
+  isOfficialShop: boolean;
 };
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | null {
@@ -75,31 +86,6 @@ function pickImageUrl(obj: Record<string, unknown>): string | null {
   }
 
   return null;
-}
-
-/** Parse compact sold counts: "10k+", "1.2k", "10rb+", "1jt", "500+" → integer. */
-export function parseCompactCount(raw: string): number | null {
-  const s = raw.trim().toLowerCase().replace(/\s+/g, "");
-  if (!s) return null;
-
-  const plus = s.endsWith("+") ? s.slice(0, -1) : s;
-  const numMatch = plus.match(/^([\d.,]+)(rb|ribu|k|jt|juta|m)?$/i);
-  if (!numMatch) {
-    const plain = Number(plus.replace(/[^\d.-]/g, ""));
-    return Number.isFinite(plain) ? Math.round(plain) : null;
-  }
-
-  const base = parseFloat(numMatch[1].replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(base)) return null;
-
-  const suffix = (numMatch[2] ?? "").toLowerCase();
-  let mult = 1;
-  if (suffix === "k") mult = 1_000;
-  else if (suffix === "rb" || suffix === "ribu") mult = 1_000;
-  else if (suffix === "jt" || suffix === "juta") mult = 1_000_000;
-  else if (suffix === "m") mult = 1_000_000;
-
-  return Math.round(base * mult);
 }
 
 function pickCompactCount(obj: Record<string, unknown>, keys: string[]): number | null {
@@ -245,6 +231,8 @@ export type ReviewScrapeMeta = {
   reviewsAccessible: number | null;
   /** True bila scraper berhasil mengambil seluruh review produk. */
   reviewsComplete: boolean | null;
+  /** Pesan error VPS saat scrape gagal sebelum fallback Apify. */
+  vpsError?: string | null;
 };
 
 /**
@@ -463,7 +451,8 @@ export function normalizeShopProducts(
     const promoText =
       pickString(item, ["promoText", "promotion", "discountLabel", "badge", "discountFormat"]) ??
       (isOnSale && discountPct != null ? `Diskon ${discountPct}%` : null);
-    const sold = pickCompactCount(item, [
+    const metrics = extractVpsProductMetrics(item);
+    const sold = metrics.soldCount ?? pickCompactCount(item, [
       "sold",
       "historicalSold",
       "historicalSoldEstimated",
@@ -477,18 +466,8 @@ export function normalizeShopProducts(
       productUrl: productUrl.trim(),
       imageUrl: pickImageUrl(item),
       price: pickShopeePrice(item) ?? pickNumber(item, ["min_price", "avg_price", "max_price"]),
-      rating: pickNumber(item, ["rating", "stars", "score", "product_rating"]),
-      reviewCount:
-        pickNumber(item, [
-          "reviewCount",
-          "ratingCount",
-          "review_count",
-          "reviews",
-          "totalReviews",
-          "cmt_count",
-        ]) ??
-        sold ??
-        0,
+      rating: pickNumber(item, ["rating", "stars", "score", "product_rating", "rating_star"]),
+      reviewCount: pickMarketplaceReviewCount(item),
       hasPromo: !!promoText || isOnSale || discountPct != null,
       promoText,
       categoryRank: pickNumber(item, [
@@ -507,7 +486,14 @@ export function normalizeShopProducts(
         "brandName",
         "storeName",
       ]),
-      soldCount: sold,
+      soldCount: metrics.soldCount ?? sold,
+      exactSold: metrics.exactSold ?? sold,
+      historicalSold: metrics.historicalSold ?? sold,
+      monthlySold: metrics.monthlySold,
+      estimatedRevenue: metrics.estimatedRevenue,
+      stock: metrics.stock,
+      shopLocation: metrics.shopLocation,
+      isOfficialShop: metrics.isOfficialShop,
     });
   }
   return out;
@@ -553,8 +539,24 @@ export function generateDemoReviews(count = 48): NormalizedReview[] {
 }
 
 export function generateDemoShopProducts(): NormalizedShopProduct[] {
+  const demo = (
+    partial: Omit<NormalizedShopProduct, "exactSold" | "historicalSold" | "monthlySold" | "estimatedRevenue" | "stock" | "shopLocation" | "isOfficialShop">,
+  ): NormalizedShopProduct => ({
+    ...partial,
+    exactSold: partial.soldCount,
+    historicalSold: partial.soldCount,
+    monthlySold: partial.soldCount != null ? Math.round(partial.soldCount * 0.15) : null,
+    estimatedRevenue:
+      partial.soldCount != null && partial.price != null
+        ? partial.soldCount * partial.price
+        : null,
+    stock: 500,
+    shopLocation: "Jakarta",
+    isOfficialShop: true,
+  });
+
   return [
-    {
+    demo({
       externalId: "demo-sku-1",
       name: "Body Lotion Brightening 200ml",
       productUrl: "https://example.com/product/1",
@@ -567,8 +569,8 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       categoryRank: 3,
       shopName: "GlowLab Official",
       soldCount: 5200,
-    },
-    {
+    }),
+    demo({
       externalId: "demo-sku-2",
       name: "Body Serum Glow 150ml",
       productUrl: "https://example.com/product/2",
@@ -581,8 +583,8 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       categoryRank: 7,
       shopName: "PureSkin Store",
       soldCount: 3100,
-    },
-    {
+    }),
+    demo({
       externalId: "demo-sku-3",
       name: "Hand Cream Repair 50g",
       productUrl: "https://example.com/product/3",
@@ -595,7 +597,7 @@ export function generateDemoShopProducts(): NormalizedShopProduct[] {
       categoryRank: 12,
       shopName: "CarePlus Beauty",
       soldCount: 890,
-    },
+    }),
   ];
 }
 
@@ -619,6 +621,7 @@ export function generateDemoDiscoveryProducts(
 
   for (let i = 0; i < count; i += 1) {
     const shop = shops[i % shops.length]!;
+    const sold = 500 + i * 120;
     products.push({
       externalId: `demo-discovery-${i}`,
       name: `${seed} ${i % 3 === 0 ? "Premium" : i % 3 === 1 ? "Original" : "Bundle"} ${100 + i * 10}ml`,
@@ -630,7 +633,14 @@ export function generateDemoDiscoveryProducts(
       promoText: i % 4 === 0 ? "Flash Sale" : null,
       categoryRank: i + 1,
       shopName: shop,
-      soldCount: 500 + i * 120,
+      soldCount: sold,
+      exactSold: sold,
+      historicalSold: sold,
+      monthlySold: Math.round(sold * 0.12),
+      estimatedRevenue: sold * (35000 + i * 2500),
+      stock: 200 + i * 10,
+      shopLocation: "Jakarta",
+      isOfficialShop: i % 2 === 0,
       imageUrl: null,
     });
   }

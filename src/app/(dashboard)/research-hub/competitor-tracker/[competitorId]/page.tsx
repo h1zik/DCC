@@ -22,7 +22,10 @@ import {
   skuProductUrlCandidates,
 } from "@/lib/research/competitor-review-link";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import { mapCompetitorSkuFields } from "@/lib/research/shop-product-mappers";
+import { buildCompetitorShopMetrics } from "@/lib/research/competitor-shop-metrics";
 import { competitorScrapeProvenance } from "@/lib/research/resolve-scrape-provenance";
+import { backfillCompetitorSkuMetricsFromSnapshots } from "@/lib/research/backfill-sku-metrics";
 
 type Props = { params: Promise<{ competitorId: string }> };
 
@@ -30,6 +33,14 @@ export default async function CompetitorDetailPage({ params }: Props) {
   const { competitorId } = await params;
 
   await resumeStuckResearchJobs();
+
+  const competitorExists = await prisma.researchCompetitor.findUnique({
+    where: { id: competitorId },
+    select: { id: true },
+  });
+  if (!competitorExists) notFound();
+
+  await backfillCompetitorSkuMetricsFromSnapshots(competitorId);
 
   const competitor = await prisma.researchCompetitor.findUnique({
     where: { id: competitorId },
@@ -73,12 +84,20 @@ export default async function CompetitorDetailPage({ params }: Props) {
   });
 
   const latestPromoBySku = new Map<string, { hasPromo: boolean; promoText: string | null }>();
+  const latestMetricsBySku = new Map<
+    string,
+    (typeof competitor.snapshots)[number]
+  >();
   for (const snap of [...competitor.snapshots].reverse()) {
-    if (snap.skuId && !latestPromoBySku.has(snap.skuId)) {
+    if (!snap.skuId) continue;
+    if (!latestPromoBySku.has(snap.skuId)) {
       latestPromoBySku.set(snap.skuId, {
         hasPromo: snap.hasPromo,
         promoText: snap.promoText,
       });
+    }
+    if (!latestMetricsBySku.has(snap.skuId)) {
+      latestMetricsBySku.set(snap.skuId, snap);
     }
   }
 
@@ -102,6 +121,7 @@ export default async function CompetitorDetailPage({ params }: Props) {
       promoText: promo?.promoText ?? null,
       reviewIntelSourceId: reviewLink?.sourceId ?? null,
       reviewIntelStatus: reviewLink?.status ?? null,
+      ...mapCompetitorSkuFields(s, latestMetricsBySku.get(s.id)),
     };
   });
 
@@ -149,6 +169,8 @@ export default async function CompetitorDetailPage({ params }: Props) {
     hasProducts: competitor.skus.length > 0,
   });
 
+  const shopMetrics = buildCompetitorShopMetrics(skusWithDelta);
+
   const detail: CompetitorDetail = {
     id: competitor.id,
     name: competitor.name,
@@ -156,6 +178,7 @@ export default async function CompetitorDetailPage({ params }: Props) {
     category: competitor.category,
     marketplace: competitor.marketplace,
     shopUrl: competitor.shopUrl,
+    shopMetrics,
     skus: skusWithDelta,
     insights,
     aiInsights: competitor.aiInsights ?? null,

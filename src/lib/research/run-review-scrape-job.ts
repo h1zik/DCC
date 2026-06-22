@@ -161,9 +161,18 @@ export async function executeReviewScrapeJob(jobId: string): Promise<void> {
           await markJobCompleted(jobId);
           return;
         }
-        console.warn("[review-scrape/shopee/vps] kosong — fallback Apify");
+        const vpsHint = result.meta.vpsError
+          ? ` (${result.meta.vpsError})`
+          : "";
+        console.warn(
+          `[review-scrape/shopee/vps] kosong${vpsHint} — fallback Apify`,
+        );
       } catch (err) {
-        console.warn("[review-scrape/shopee/vps] gagal — fallback Apify", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[review-scrape/shopee/vps] gagal — fallback Apify:`,
+          msg,
+        );
       }
     }
 

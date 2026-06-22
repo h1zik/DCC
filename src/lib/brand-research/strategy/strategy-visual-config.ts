@@ -89,6 +89,10 @@ export function normalizeStrategyGenerationConfig(
 ): StrategyGenerationConfig {
   return {
     ...config,
+    productDiscovery: config.productDiscovery ?? {
+      enabled: catalog.productDiscovery.length > 0,
+      ids: catalog.productDiscovery.map((q) => q.id),
+    },
     visual: normalizeVisualSelection(config.visual, catalog.visual),
   };
 }

@@ -37,6 +37,12 @@ import { useResearchJobProgress } from "../../use-research-job-progress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
+import { CompetitorShopMetricsPanel } from "@/components/research-hub/competitor-shop-metrics-panel";
+import type { CompetitorShopMetrics } from "@/lib/research/competitor-shop-metrics";
+import {
+  formatCompactCount,
+  formatRevenueIdr,
+} from "@/lib/research/shop-product-metrics";
 import {
   hub,
   ResearchHubPageHeader,
@@ -70,6 +76,7 @@ export type CompetitorDetail = {
   category: string;
   marketplace: keyof typeof MARKETPLACE_LABELS;
   shopUrl: string;
+  shopMetrics: CompetitorShopMetrics;
   skus: CompetitorSkuRow[];
   insights: CompetitorInsights;
   aiInsights: unknown;
@@ -237,6 +244,31 @@ export function CompetitorDetailClient({
               value={competitor.skus.length.toLocaleString("id-ID")}
               tone="primary"
             />
+            {competitor.shopMetrics.totalHistoricalSold != null ? (
+              <ResearchHubStatChip
+                label="Total terjual"
+                value={formatCompactCount(competitor.shopMetrics.totalHistoricalSold)}
+                tone="primary"
+              />
+            ) : null}
+            {competitor.shopMetrics.totalMonthlySold != null ? (
+              <ResearchHubStatChip
+                label="Bulan ini"
+                value={formatCompactCount(competitor.shopMetrics.totalMonthlySold)}
+              />
+            ) : null}
+            {competitor.shopMetrics.totalEstimatedRevenue != null ? (
+              <ResearchHubStatChip
+                label="Est. revenue"
+                value={formatRevenueIdr(competitor.shopMetrics.totalEstimatedRevenue)}
+              />
+            ) : null}
+            {competitor.shopMetrics.totalStock != null ? (
+              <ResearchHubStatChip
+                label="Total stok"
+                value={formatCompactCount(competitor.shopMetrics.totalStock)}
+              />
+            ) : null}
             <ResearchHubStatChip
               label="Alert"
               value={unreadAlerts.toLocaleString("id-ID")}
@@ -324,6 +356,19 @@ export function CompetitorDetailClient({
           ) : null}
 
           <ResearchHubSection
+            title="Performa Penjualan Toko"
+            description="Agregat historis terjual, volume bulanan, estimasi revenue, dan stok dari seluruh SKU kompetitor."
+            delayMs={25}
+          >
+            <div className={hub.panel}>
+              <CompetitorShopMetricsPanel
+                metrics={competitor.shopMetrics}
+                skuCount={competitor.skus.length}
+              />
+            </div>
+          </ResearchHubSection>
+
+          <ResearchHubSection
             title="Ringkasan & Kesimpulan"
             delayMs={50}
           >
@@ -348,6 +393,7 @@ export function CompetitorDetailClient({
           >
             <CompetitorSkuProductsView
               rows={competitor.skus}
+              competitorId={competitor.id}
               onReviewIntel={handleSkuReviewIntel}
               reviewSkuId={reviewSkuId}
               pending={pending}

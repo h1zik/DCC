@@ -47,7 +47,8 @@ export type StrategySourceKey =
   | "competitor"
   | "keyword"
   | "trend"
-  | "usp";
+  | "usp"
+  | "productDiscovery";
 
 export type StrategySourceSelection = {
   enabled: boolean;
@@ -65,6 +66,7 @@ export type StrategyGenerationConfig = {
   keyword: StrategySourceSelection;
   trend: StrategySourceSelection;
   usp: StrategySourceSelection;
+  productDiscovery: StrategySourceSelection;
 };
 
 export type StrategyFieldRationale = {
@@ -74,6 +76,68 @@ export type StrategyFieldRationale = {
   evidenceRefs: EvidenceRef[];
   confidence?: "high" | "medium" | "low";
 };
+
+export type StrategicTension = {
+  tension: string;
+  poleA: string;
+  poleB: string;
+  recommendation: string;
+};
+
+export type RepresentativeQuote = {
+  source: "review" | "social";
+  sourceId: string;
+  text: string;
+  sentiment: "positive" | "negative" | "neutral";
+};
+
+export type InsightMemo = {
+  executiveSummary: string;
+  voiceOfCustomer: {
+    pains: string[];
+    desires: string[];
+    representativeQuotes: RepresentativeQuote[];
+  };
+  visualDirection: {
+    palette: {
+      primary: string;
+      secondary: string;
+      accent: string;
+      neutrals: string[];
+    } | null;
+    topTags: string[];
+    aestheticNotes: string;
+  };
+  marketContext: {
+    keywordThemes: string[];
+    trendSignals: string[];
+    competitiveWhitespace: string[];
+  };
+  strategicTensions: StrategicTension[];
+  demoDataWarnings: string[];
+};
+
+export type CitationQualityReport = {
+  score: number;
+  totalRefs: number;
+  validRefs: number;
+  passed: boolean;
+  invalidRefs: {
+    field: string;
+    source: string;
+    sourceId?: string;
+    reason: string;
+  }[];
+};
+
+export type StrategySectionField =
+  | "brandPurpose"
+  | "brandEssence"
+  | "coreMessage"
+  | "brandUsp"
+  | "stp"
+  | "brandPersonality"
+  | "toneOfVoice";
 
 export type StrategySourceCatalogItem = {
   id: string;
@@ -88,7 +152,19 @@ export type StrategySourceCatalog = {
   keyword: StrategySourceCatalogItem[];
   trend: StrategySourceCatalogItem[];
   usp: StrategySourceCatalogItem[];
+  productDiscovery: StrategySourceCatalogItem[];
   visual: StrategyVisualCatalog;
+};
+
+export type PortfolioLineEvidence = {
+  lineId: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  targetAudience: string | null;
+  role: string | null;
+  productDiscoveryQueryId: string | null;
+  linkedDiscoveryKeyword: string | null;
 };
 
 export type EvidenceReadiness = {

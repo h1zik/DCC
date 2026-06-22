@@ -1,9 +1,10 @@
 import "server-only";
 
 import type { NormalizedShopProduct } from "@/lib/apify/normalize";
+import { extractVpsProductMetrics, pickMarketplaceReviewCount } from "@/lib/scraper-api/product-metrics";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
 import {
-  fetchVpsRunDataset,
+  loadAllVpsRunItems,
   startVpsActorRun,
 } from "@/lib/scraper-api/client";
 
@@ -27,6 +28,12 @@ function pickNumber(item: Record<string, unknown>, keys: string[]): number | nul
     }
   }
   return null;
+}
+
+function parseDiscountPercent(raw: string | null): number | null {
+  if (!raw) return null;
+  const match = raw.match(/(\d+)/);
+  return match ? Number(match[1]) : null;
 }
 
 function pickExternalId(item: Record<string, unknown>, index: number): string {
@@ -57,9 +64,13 @@ export function normalizeVpsShopeeProducts(
       pickString(item, ["product_url", "productUrl", "url", "link"]) ?? "";
     if (!name || !productUrl) continue;
 
-    const discount = pickNumber(item, ["discount", "discountPercent"]);
+    const discount =
+      pickNumber(item, ["discount", "discountPercent"]) ??
+      parseDiscountPercent(pickString(item, ["discount", "discountPercent"]));
     const promoText =
       discount != null && discount > 0 ? `Diskon ${Math.round(discount)}%` : null;
+
+    const metrics = extractVpsProductMetrics(item);
 
     out.push({
       externalId: pickExternalId(item, i),
@@ -70,15 +81,21 @@ export function normalizeVpsShopeeProducts(
         null,
       price: pickNumber(item, ["price", "price_before_discount"]),
       rating: pickNumber(item, ["rating_star", "rating", "stars", "score"]),
-      reviewCount:
-        pickNumber(item, ["rating_count", "reviewCount", "review_count"]) ?? 0,
+      reviewCount: pickMarketplaceReviewCount(item),
       hasPromo: discount != null && discount > 0,
       promoText,
       categoryRank: pickNumber(item, ["rank", "categoryRank", "page"]),
       shopName:
         pickString(item, ["shop_name", "shopName", "shop_username", "seller"]) ??
         null,
-      soldCount: pickNumber(item, ["sold", "soldCount", "sold_count"]),
+      soldCount: metrics.soldCount,
+      exactSold: metrics.exactSold,
+      historicalSold: metrics.historicalSold,
+      monthlySold: metrics.monthlySold,
+      estimatedRevenue: metrics.estimatedRevenue,
+      stock: metrics.stock,
+      shopLocation: metrics.shopLocation,
+      isOfficialShop: metrics.isOfficialShop,
     });
   }
 
@@ -88,17 +105,14 @@ export function normalizeVpsShopeeProducts(
 async function readVpsRunItems(
   run: Awaited<ReturnType<typeof startVpsActorRun>>,
 ): Promise<Record<string, unknown>[]> {
-  if (run.items && run.items.length > 0) return run.items;
-  if ((run.count ?? 0) > 0 && run.run_id) {
-    return fetchVpsRunDataset(run.run_id);
-  }
-  return [];
+  return loadAllVpsRunItems(run);
 }
 
 async function fetchShopeeProductsViaVps(
   actorId: "shopee-search" | "shopee-shop",
   baseInput: Record<string, unknown>,
   maxItems: number,
+  opts?: { includeExactSold?: boolean },
 ): Promise<Record<string, unknown>[]> {
   const target = Math.min(Math.max(maxItems, 1), 500);
   const collected: Record<string, unknown>[] = [];
@@ -113,6 +127,7 @@ async function fetchShopeeProductsViaVps(
         page,
         limit,
         download_images: false,
+        ...(opts?.includeExactSold ? { include_exact_sold: true } : {}),
       },
       { wait: true, timeout: 900, throwOnFailed: false },
     );
@@ -144,6 +159,7 @@ export async function fetchShopeeSearchViaVps(
     "shopee-search",
     { keyword: keyword.trim() },
     maxItems,
+    { includeExactSold: true },
   );
   return normalizeVpsShopeeProducts(items);
 }

@@ -5,6 +5,7 @@ import {
   BarChart3,
   ImageIcon,
   MessageSquare,
+  PackageSearch,
   Radar,
   Search,
   Sparkles,
@@ -62,6 +63,11 @@ const SOURCE_META: Record<
     description: "Gap positioning & klaim over/under-used.",
     icon: BarChart3,
   },
+  productDiscovery: {
+    title: "Product Discovery",
+    description: "Sinyal pasar dari pencarian produk kompetitor.",
+    icon: PackageSearch,
+  },
 };
 
 type TabKey = "market" | "creative" | "intelligence";
@@ -69,7 +75,7 @@ type TabKey = "market" | "creative" | "intelligence";
 const TAB_SOURCES: Record<TabKey, StrategySourceKey[]> = {
   market: ["review", "social"],
   creative: ["visual"],
-  intelligence: ["competitor", "keyword", "trend", "usp"],
+  intelligence: ["competitor", "keyword", "trend", "usp", "productDiscovery"],
 };
 
 const TAB_META: Record<
