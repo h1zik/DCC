@@ -48,6 +48,8 @@ import { cn } from "@/lib/utils";
 import { useProductDiscoveryPolling } from "../use-product-discovery-polling";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 import type { ProductDiscoveryRow } from "@/components/research-hub/product-discovery-table";
 
 type DiscoveryInsights = {
@@ -88,6 +90,7 @@ export type ProductDiscoveryDetailData = {
   insights: unknown;
   actionPlan: unknown;
   aiMeta: ResearchAiMetaView | null;
+  dataProvenance: DataProvenanceEntry[];
   products: ProductDiscoveryRow[];
 };
 
@@ -276,6 +279,8 @@ export function ProductDiscoveryDetailClient({
           />
         </div>
       ) : null}
+
+      <DataSourceProvenancePanel entries={data.dataProvenance} />
 
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(hub.stickyToolbar, "pb-0")}>

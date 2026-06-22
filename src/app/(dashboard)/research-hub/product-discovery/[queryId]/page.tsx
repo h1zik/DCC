@@ -5,6 +5,7 @@ import {
   ProductDiscoveryDetailClient,
   type ProductDiscoveryDetailData,
 } from "./product-discovery-detail-client";
+import { productDiscoveryProvenance } from "@/lib/research/resolve-scrape-provenance";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
 
 export default async function ProductDiscoveryDetailPage({
@@ -38,6 +39,11 @@ export default async function ProductDiscoveryDetailPage({
     insights: query.aiInsights ?? null,
     actionPlan: query.aiActionPlan ?? null,
     aiMeta: parseResearchAiMetaClient(query.aiMeta),
+    dataProvenance: productDiscoveryProvenance({
+      marketplaces: query.marketplaces,
+      scrapeState: query.scrapeState,
+      errorMessage: query.errorMessage,
+    }),
     products: query.products.map((p) => ({
       id: p.id,
       name: p.name,

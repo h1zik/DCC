@@ -22,6 +22,7 @@ import { createReviewIntelFromCompetitorSku } from "@/actions/research-review-in
 import { actionErrorMessage } from "@/lib/action-error-message";
 import type { CompetitorInsights } from "@/lib/research/competitor-insights";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { CompetitorInsightsPanel } from "@/components/research-hub/competitor-insights-panel";
 import {
   CompetitorPriceBarChart,
@@ -44,6 +45,7 @@ import {
 } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 
 type PriceChartBundle = {
@@ -73,6 +75,7 @@ export type CompetitorDetail = {
   aiInsights: unknown;
   aiMeta: ResearchAiMetaView | null;
   isScraping: boolean;
+  dataProvenance: DataProvenanceEntry[];
   currentPriceBar: PriceBarPoint[];
   alerts: Alert[];
   priceChart30: PriceChartBundle;
@@ -270,6 +273,8 @@ export function CompetitorDetailClient({
           />
         </div>
       ) : null}
+
+      <DataSourceProvenancePanel entries={competitor.dataProvenance} />
 
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(hub.stickyToolbar, "pb-0")}>

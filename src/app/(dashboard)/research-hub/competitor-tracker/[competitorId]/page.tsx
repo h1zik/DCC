@@ -22,6 +22,7 @@ import {
   skuProductUrlCandidates,
 } from "@/lib/research/competitor-review-link";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
+import { competitorScrapeProvenance } from "@/lib/research/resolve-scrape-provenance";
 
 type Props = { params: Promise<{ competitorId: string }> };
 
@@ -142,6 +143,12 @@ export default async function CompetitorDetailPage({ params }: Props) {
 
   const priceChart30 = buildPriceChartData(snapshotRows, competitor.skus, 30);
 
+  const dataProvenance = await competitorScrapeProvenance({
+    competitorId: competitor.id,
+    marketplace: competitor.marketplace,
+    hasProducts: competitor.skus.length > 0,
+  });
+
   const detail: CompetitorDetail = {
     id: competitor.id,
     name: competitor.name,
@@ -154,6 +161,7 @@ export default async function CompetitorDetailPage({ params }: Props) {
     aiInsights: competitor.aiInsights ?? null,
     aiMeta: parseResearchAiMetaClient(competitor.aiMeta),
     isScraping: Boolean(activeJob),
+    dataProvenance,
     currentPriceBar: buildCurrentPriceBarData(
       competitor.skus.map((s) => ({
         ...s,
