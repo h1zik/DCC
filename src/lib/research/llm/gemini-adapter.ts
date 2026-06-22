@@ -1,19 +1,37 @@
 import "server-only";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import {
-  resolveAgentApiKey,
-  resolveAgentModelCandidates,
-} from "@/lib/agent/provider";
 import { parseExtractedJson } from "./extract-json";
 import { withLlmRetry } from "./retry";
 import type { GenerateResearchJsonOpts, GenerateResearchTextOpts } from "./types";
+
+function resolveGeminiApiKey(): string | null {
+  return (
+    process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GOOGLE_AI_API_KEY?.trim() ||
+    null
+  );
+}
+
+function resolveGeminiModelCandidates(): string[] {
+  const primary =
+    process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
+  const fallbacks = ["gemini-2.5-flash", "gemini-flash-latest"];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of [primary, ...fallbacks]) {
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
 
 export async function geminiGenerateJson<T>(
   prompt: string,
   opts?: GenerateResearchJsonOpts<T>,
 ): Promise<T> {
-  const apiKey = resolveAgentApiKey();
+  const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
     throw new Error(
       "GEMINI_API_KEY belum diset. Dapatkan gratis di https://aistudio.google.com/apikey",
@@ -21,7 +39,7 @@ export async function geminiGenerateJson<T>(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const models = resolveAgentModelCandidates();
+  const models = resolveGeminiModelCandidates();
   let lastError: unknown;
 
   for (const modelName of models) {
@@ -67,14 +85,14 @@ export async function geminiGenerateText(
   prompt: string,
   opts?: GenerateResearchTextOpts,
 ): Promise<string> {
-  const apiKey = resolveAgentApiKey();
+  const apiKey = resolveGeminiApiKey();
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY belum diset.");
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: resolveAgentModelCandidates()[0]!,
+    model: resolveGeminiModelCandidates()[0]!,
     generationConfig: { temperature: 0.3 },
   });
 

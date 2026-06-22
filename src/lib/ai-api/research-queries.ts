@@ -789,12 +789,64 @@ export async function aiListProductDiscoveryQueries(role: ResearchReaderRole, li
   };
 }
 
+/** Terima CUID atau label seperti "Body Lotion - SHOPEE" dari model LLM. */
+export async function resolveProductDiscoveryQueryId(
+  role: ResearchReaderRole,
+  raw: string,
+): Promise<string> {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("queryId wajib diisi.");
+  }
+
+  if (/^c[a-z0-9]{20,}$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (!canViewResearchHub(role)) {
+    throw new Error("Akses Research Hub ditolak untuk peran ini.");
+  }
+
+  const rows = await prisma.productDiscoveryQuery.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 80,
+    select: { id: true, keyword: true, marketplaces: true },
+  });
+
+  const lower = trimmed.toLowerCase();
+  const dashParts = trimmed.split(/\s*-\s*/).map((p) => p.trim().toLowerCase());
+  const keywordHint = dashParts[0] ?? lower;
+  const marketplaceHint = dashParts[1];
+
+  const exactKeyword = rows.find(
+    (r) => r.keyword.toLowerCase() === keywordHint,
+  );
+  if (exactKeyword) {
+    if (!marketplaceHint) return exactKeyword.id;
+    const mpMatch = exactKeyword.marketplaces.some(
+      (m) => m.toLowerCase() === marketplaceHint,
+    );
+    if (mpMatch) return exactKeyword.id;
+  }
+
+  const partial = rows.find((r) => {
+    const kw = r.keyword.toLowerCase();
+    return lower.includes(kw) || kw.includes(keywordHint);
+  });
+  if (partial) return partial.id;
+
+  throw new Error(
+    `Query Product Discovery tidak ditemukan untuk "${raw}". Panggil list_product_discovery_queries dan gunakan field id.`,
+  );
+}
+
 export async function aiGetProductDiscoveryQuery(role: ResearchReaderRole, queryId: string) {
   if (!canViewResearchHub(role)) {
     return denied("Akses Research Hub ditolak untuk peran ini.");
   }
+  const resolvedId = await resolveProductDiscoveryQueryId(role, queryId);
   const query = await prisma.productDiscoveryQuery.findUnique({
-    where: { id: queryId },
+    where: { id: resolvedId },
     include: {
       products: {
         orderBy: [{ reviewCount: "desc" }, { soldCount: "desc" }],

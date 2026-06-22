@@ -300,7 +300,8 @@ export const RESEARCH_AGENT_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: "list_product_discovery_queries",
-    description: "Daftar query Product Discovery marketplace.",
+    description:
+      "Daftar query Product Discovery marketplace. WAJIB panggil ini dulu sebelum get_product_discovery_query — ambil field `id` dari items.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -310,13 +311,15 @@ export const RESEARCH_AGENT_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: "get_product_discovery_query",
-    description: "Detail product discovery: produk teratas, AI insights.",
+    description:
+      "Detail product discovery: produk teratas, AI insights. queryId = field `id` dari list_product_discovery_queries (bukan nama keyword).",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         queryId: {
           type: SchemaType.STRING,
-          description: "ID query keyword intel / product discovery",
+          description:
+            "ID query (CUID) dari list_product_discovery_queries.items[].id",
         },
       },
       required: ["queryId"],
