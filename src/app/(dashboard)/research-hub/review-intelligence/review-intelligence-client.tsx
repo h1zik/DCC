@@ -470,16 +470,6 @@ export function ReviewIntelligenceClient({
                   />
                 </div>
 
-                {isPartial(s) ? (
-                  <p className="text-amber-700 dark:text-amber-300 mt-2 text-xs">
-                    Data parsial — scraper mengambil{" "}
-                    {Math.round(
-                      (s.reviewCount / s.totalReviewsReported!) * 100,
-                    )}
-                    % dari total yang dilaporkan marketplace.
-                  </p>
-                ) : null}
-
                 <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
                   {s.platformKey !== "csv" ? (
                     <Button

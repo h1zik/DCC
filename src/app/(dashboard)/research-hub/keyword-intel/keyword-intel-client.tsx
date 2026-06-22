@@ -337,12 +337,6 @@ export function KeywordIntelClient({
                   />
                 </div>
 
-                {q.dataNotice ? (
-                  <p className="text-sky-800 dark:text-sky-200 mt-2 text-xs">
-                    {q.dataNotice}
-                  </p>
-                ) : null}
-
                 <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
                   <Button
                     size="sm"
