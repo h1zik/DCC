@@ -41,6 +41,7 @@ import {
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import { taskStatusLabel } from "@/lib/task-status-ui";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { downloadTaskAttachment } from "@/lib/task-attachment-download-client";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -84,6 +85,7 @@ import { listRoomDocumentFoldersForPicker } from "@/actions/room-documents";
 import type { RoomFolderNode } from "@/lib/room-document-folders";
 import { formatFolderPath } from "@/lib/room-document-folders";
 import {
+  Download,
   Link2,
   ListChecks,
   MessageSquare,
@@ -202,6 +204,21 @@ export function TaskDetailSheet({
   const [previewAttachment, setPreviewAttachment] =
     useState<TaskAttachmentRow | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloadPendingId, setDownloadPendingId] = useState<string | null>(
+    null,
+  );
+
+  async function onDownloadAttachment(a: TaskAttachmentRow) {
+    if (!a.publicPath) return;
+    setDownloadPendingId(a.id);
+    try {
+      await downloadTaskAttachment(a.id, a.fileName);
+    } catch (err) {
+      toast.error(actionErrorMessage(err, "Gagal mengunduh."));
+    } finally {
+      setDownloadPendingId(null);
+    }
+  }
 
   useEffect(() => {
     setAvailableTags(roomTaskTags);
@@ -1107,6 +1124,36 @@ export function TaskDetailSheet({
                         </div>
                         </button>
                         <div className="flex items-center justify-end gap-2">
+                          {a.publicPath ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="shrink-0"
+                              aria-label="Unduh lampiran"
+                              disabled={downloadPendingId === a.id}
+                              onClick={() => void onDownloadAttachment(a)}
+                            >
+                              <Download className="size-3.5" />
+                            </Button>
+                          ) : a.linkUrl ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="shrink-0"
+                              aria-label="Buka tautan"
+                              onClick={() =>
+                                window.open(
+                                  a.linkUrl!,
+                                  "_blank",
+                                  "noopener,noreferrer",
+                                )
+                              }
+                            >
+                              <Link2 className="size-3.5" />
+                            </Button>
+                          ) : null}
                           {(a.uploadedBy.id === currentUserId || isRoomManager) && (
                             <Button
                               type="button"

@@ -8,7 +8,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { Loader2, MessageSquare } from "lucide-react";
+import { Loader2, Download, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@prisma/client";
 import {
@@ -18,6 +18,7 @@ import {
   resolveTaskAttachmentComment,
 } from "@/actions/task-attachment-comments";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { downloadTaskAttachment } from "@/lib/task-attachment-download-client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +68,7 @@ export function TaskAttachmentPreviewDialog({
   const [selectionAssigneeId, setSelectionAssigneeId] = useState("");
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [downloadPending, setDownloadPending] = useState(false);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const pendingSelectionRef = useRef(pendingSelection);
   pendingSelectionRef.current = pendingSelection;
@@ -225,6 +227,20 @@ export function TaskAttachmentPreviewDialog({
     });
   }
 
+  function onDownload() {
+    if (!attachment?.publicPath) return;
+    setDownloadPending(true);
+    startTransition(async () => {
+      try {
+        await downloadTaskAttachment(attachment.id, attachment.fileName);
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal mengunduh."));
+      } finally {
+        setDownloadPending(false);
+      }
+    });
+  }
+
   if (!attachment) return null;
 
   return (
@@ -239,6 +255,23 @@ export function TaskAttachmentPreviewDialog({
               </span>
             ) : null}
           </DialogTitle>
+          {attachment.publicPath ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              disabled={downloadPending}
+              onClick={onDownload}
+            >
+              {downloadPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
+              Unduh
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="sm"
