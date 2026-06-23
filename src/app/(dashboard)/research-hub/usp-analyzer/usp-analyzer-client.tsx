@@ -91,6 +91,8 @@ function countActiveModules(modules: StoredContextModules): number {
     modules.trendRadar,
     modules.keywordIntel,
     modules.socialListening,
+    modules.productDiscovery,
+    modules.competitorProducts,
   ].filter(Boolean).length;
 }
 
@@ -101,6 +103,8 @@ function defaultModules(available: AvailableModules): ContextModuleToggles {
     trendRadar: available.trendRadar,
     keywordIntel: available.keywordIntel,
     socialListening: available.socialListening,
+    productDiscovery: available.productDiscovery,
+    competitorProducts: available.competitorProducts,
   };
 }
 
@@ -168,6 +172,8 @@ export function UspAnalyzerClient({
           trendDigestId: suggested.trendDigestId ?? undefined,
           keywordQueryId: suggested.keywordQueryId ?? undefined,
           socialMonitorId: suggested.socialMonitorId ?? undefined,
+          productDiscoveryQueryIds: suggested.productDiscoveryQueryIds,
+          competitorProductCategoryIds: suggested.competitorProductCategoryIds,
         });
         toast.success("Saran sumber diterapkan.");
       } catch (err) {

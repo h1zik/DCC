@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink, LayoutGrid, List, MessageSquareText, LineChart } from "lucide-react";
+import { ExternalLink, LayoutGrid, List, LineChart, MessageSquareText } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import {
   ProductDiscoveryTable,
@@ -12,6 +12,7 @@ import {
   ShopProductDetailLink,
   ShopProductMetricsStrip,
 } from "@/components/research-hub/shop-product-metrics";
+import { DiscoveryCompetitorTrackerDialog } from "@/components/research-hub/discovery-competitor-tracker-dialog";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
@@ -22,16 +23,26 @@ export type ProductViewMode = "card" | "list";
 
 const VIEW_STORAGE_KEY = "research-hub:product-discovery-view";
 
+const COMMUNITY_MARKETPLACES = new Set(["FEMALEDAILY", "SOCIOLLA"]);
+
+function isCommunityMarketplace(marketplace: string): boolean {
+  return COMMUNITY_MARKETPLACES.has(marketplace);
+}
+
 function ProductDiscoveryCard({
   row,
   queryId,
-  onAnalyze,
-  analyzingId,
+  defaultCategoryName,
+  onReview,
+  reviewLoadingId,
+  actionsDisabled,
 }: {
   row: ProductDiscoveryRow;
   queryId?: string;
-  onAnalyze?: (productId: string) => void;
-  analyzingId?: string | null;
+  defaultCategoryName: string;
+  onReview?: (productId: string) => void;
+  reviewLoadingId?: string | null;
+  actionsDisabled?: boolean;
 }) {
   const marketplaceLabel =
     MARKETPLACE_LABELS[row.marketplace as keyof typeof MARKETPLACE_LABELS] ??
@@ -39,6 +50,7 @@ function ProductDiscoveryCard({
   const detailHref = queryId
     ? `/research-hub/product-discovery/${queryId}/products/${row.id}`
     : null;
+  const hideMetrics = isCommunityMarketplace(row.marketplace);
 
   return (
     <article
@@ -98,47 +110,58 @@ function ProductDiscoveryCard({
           </div>
         </div>
 
-        <ShopProductMetricsStrip metrics={row} compact />
+        <ShopProductMetricsStrip metrics={row} compact hidden={hideMetrics} />
 
-        <div className="flex gap-2 border-t border-border/40 pt-3">
-          {detailHref ? (
+        <div className="flex flex-col gap-2 border-t border-border/40 pt-3">
+          <div className="flex gap-2">
+            {detailHref ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="min-w-0 flex-1 text-xs"
+                render={<Link href={detailHref} />}
+              >
+                <LineChart className="size-3.5" aria-hidden />
+                Detail
+              </Button>
+            ) : null}
             <Button
               size="sm"
-              variant="secondary"
-              className="flex-1 text-xs"
-              render={<Link href={detailHref} />}
+              variant="ghost"
+              className="shrink-0"
+              render={
+                <a
+                  href={row.productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Buka ${row.name}`}
+                />
+              }
             >
-              <LineChart className="size-3.5" aria-hidden />
-              Detail
+              <ExternalLink className="size-3.5" aria-hidden />
             </Button>
-          ) : null}
-          {onAnalyze ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="flex-1 text-xs"
-              disabled={analyzingId === row.id}
-              onClick={() => onAnalyze(row.id)}
-            >
-              <MessageSquareText className="size-3.5" aria-hidden />
-              {analyzingId === row.id ? "..." : "Review"}
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="shrink-0"
-            render={
-              <a
-                href={row.productUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Buka ${row.name}`}
-              />
-            }
-          >
-            <ExternalLink className="size-3.5" aria-hidden />
-          </Button>
+          </div>
+          <div className="flex gap-2">
+            {onReview ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-w-0 flex-1 text-xs"
+                disabled={reviewLoadingId === row.id || actionsDisabled}
+                onClick={() => onReview(row.id)}
+              >
+                <MessageSquareText className="size-3.5" aria-hidden />
+                {reviewLoadingId === row.id ? "..." : "Review"}
+              </Button>
+            ) : null}
+            <DiscoveryCompetitorTrackerDialog
+              productId={row.id}
+              productName={row.name}
+              defaultCategoryName={defaultCategoryName}
+              disabled={actionsDisabled}
+              className="min-w-0 flex-1 text-xs"
+            />
+          </div>
         </div>
       </div>
     </article>
@@ -148,14 +171,18 @@ function ProductDiscoveryCard({
 export function ProductDiscoveryProductsView({
   rows,
   queryId,
-  onAnalyze,
-  analyzingId,
+  defaultCategoryName,
+  onReview,
+  reviewLoadingId,
+  actionsDisabled,
   defaultView = "card",
 }: {
   rows: ProductDiscoveryRow[];
   queryId?: string;
-  onAnalyze?: (productId: string) => void;
-  analyzingId?: string | null;
+  defaultCategoryName: string;
+  onReview?: (productId: string) => void;
+  reviewLoadingId?: string | null;
+  actionsDisabled?: boolean;
   defaultView?: ProductViewMode;
 }) {
   const [view, setView] = useState<ProductViewMode>(defaultView);
@@ -229,8 +256,10 @@ export function ProductDiscoveryProductsView({
               <ProductDiscoveryCard
                 row={row}
                 queryId={queryId}
-                onAnalyze={onAnalyze}
-                analyzingId={analyzingId}
+                defaultCategoryName={defaultCategoryName}
+                onReview={onReview}
+                reviewLoadingId={reviewLoadingId}
+                actionsDisabled={actionsDisabled}
               />
             </div>
           ))}
@@ -242,8 +271,10 @@ export function ProductDiscoveryProductsView({
           <ProductDiscoveryTable
             rows={rows}
             queryId={queryId}
-            onAnalyze={onAnalyze}
-            analyzingId={analyzingId}
+            defaultCategoryName={defaultCategoryName}
+            onReview={onReview}
+            reviewLoadingId={reviewLoadingId}
+            actionsDisabled={actionsDisabled}
             showImages
           />
         </div>

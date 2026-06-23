@@ -6,6 +6,8 @@ export type ContextModuleToggles = {
   trendRadar?: boolean;
   keywordIntel?: boolean;
   socialListening?: boolean;
+  productDiscovery?: boolean;
+  competitorProducts?: boolean;
 };
 
 export type ContextSourceIds = {
@@ -14,6 +16,8 @@ export type ContextSourceIds = {
   trendDigestId?: string;
   keywordQueryId?: string;
   socialMonitorId?: string;
+  productDiscoveryQueryIds?: string[];
+  competitorProductCategoryIds?: string[];
 };
 
 export type ContextModules = ContextModuleToggles & ContextSourceIds;
@@ -31,6 +35,8 @@ export type ResolvedContextSources = {
   trendRadar?: ResolvedSourceRef;
   keywordIntel?: ResolvedSourceRef;
   socialListening?: ResolvedSourceRef;
+  productDiscovery?: ResolvedSourceRef[];
+  competitorProducts?: ResolvedSourceRef[];
 };
 
 /** Persisted on UspGapAnalysis.contextModules after each run. */
@@ -50,6 +56,8 @@ export type UspContextSourceOptions = {
   trendDigests: ContextSourceOption[];
   keywordQueries: ContextSourceOption[];
   socialMonitors: ContextSourceOption[];
+  productDiscoveryQueries: ContextSourceOption[];
+  competitorProductCategories: ContextSourceOption[];
 };
 
 export type SuggestedContextSourceIds = {
@@ -58,4 +66,6 @@ export type SuggestedContextSourceIds = {
   trendDigestId: string | null;
   keywordQueryId: string | null;
   socialMonitorId: string | null;
+  productDiscoveryQueryIds: string[];
+  competitorProductCategoryIds: string[];
 };

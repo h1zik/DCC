@@ -346,6 +346,7 @@ model User {
   reviewIntelSourcesCreated ReviewIntelSource[]  @relation("ReviewIntelSourceCreator")
   productDiscoveryQueriesCreated ProductDiscoveryQuery[] @relation("ProductDiscoveryCreator")
   researchCompetitorsCreated ResearchCompetitor[] @relation("ResearchCompetitorCreator")
+  competitorProductCategoriesCreated CompetitorProductCategory[] @relation("CompetitorProductCategoryCreator")
   trendWatchlistsCreated    TrendWatchlist[]     @relation("TrendWatchlistCreator")
   trendRadarUserSettings    TrendRadarUserSettings?
   keywordIntelQueriesCreated KeywordIntelQuery[] @relation("KeywordIntelQueryCreator")
@@ -1952,6 +1953,8 @@ enum ResearchMarketplace {
   SHOPEE
   TOKOPEDIA
   TIKTOK_SHOP
+  FEMALEDAILY
+  SOCIOLLA
 }
 
 enum ReviewIntelSourceStatus {
@@ -1965,6 +1968,7 @@ enum ReviewIntelSourceStatus {
 enum ResearchScrapeJobType {
   REVIEW_SCRAPE
   COMPETITOR_SNAPSHOT
+  COMPETITOR_PRODUCT_SNAPSHOT
   PRODUCT_DISCOVERY
   PINTEREST_SCRAPE
   VISUAL_HARVEST
@@ -2255,6 +2259,99 @@ model CompetitorAlert {
 
   @@index([competitorId, isRead])
   @@index([createdAt])
+}
+
+model CompetitorProductCategory {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("CompetitorProductCategoryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tracks      CompetitorProductTrack[]
+  snapshots   CompetitorProductSnapshot[]
+  alerts      CompetitorProductAlert[]
+
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model CompetitorProductTrack {
+  id               String                    @id @default(cuid())
+  categoryId       String
+  category         CompetitorProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  label            String?
+  brand            String?
+  productUrl       String
+  marketplace      ResearchMarketplace
+  externalId       String?
+  name             String                    @default("Produk")
+  imageUrl         String?
+  shopName         String?
+  currentPrice     Float?
+  rating           Float?
+  reviewCount      Int                       @default(0)
+  exactSold        Int?
+  historicalSold   Int?
+  monthlySold      Int?
+  estimatedRevenue Float?
+  stock            Int?
+  hasPromo         Boolean                   @default(false)
+  promoText        String?
+  isActive         Boolean                   @default(true)
+  lastScrapedAt    DateTime?
+  scrapeError      String?
+  firstSeenAt      DateTime                  @default(now())
+  lastSeenAt       DateTime                  @default(now())
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  snapshots        CompetitorProductSnapshot[]
+  alerts           CompetitorProductAlert[]
+
+  @@unique([categoryId, productUrl])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model CompetitorProductSnapshot {
+  id               String                    @id @default(cuid())
+  categoryId       String
+  category         CompetitorProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  trackId          String
+  track            CompetitorProductTrack    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  price            Float?
+  rating           Float?
+  reviewCount      Int?
+  exactSold        Int?
+  historicalSold   Int?
+  monthlySold      Int?
+  estimatedRevenue Float?
+  stock            Int?
+  hasPromo         Boolean                   @default(false)
+  promoText        String?
+  capturedAt       DateTime                  @default(now())
+
+  @@index([trackId, capturedAt])
+  @@index([categoryId, capturedAt])
+}
+
+model CompetitorProductAlert {
+  id         String                    @id @default(cuid())
+  categoryId String
+  category   CompetitorProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  trackId    String?
+  track      CompetitorProductTrack?   @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  type       CompetitorAlertType
+  message    String
+  severity   String                    @default("info")
+  metadata   Json?
+  isRead     Boolean                   @default(false)
+  createdAt  DateTime                  @default(now())
+
+  @@index([categoryId, isRead])
+  @@index([trackId])
 }
 
 enum TrendRadarStatus {

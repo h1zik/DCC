@@ -2,7 +2,9 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   BarChart3,
+  Compass,
   MessageSquare,
+  Package,
   Radar,
   Search,
   Star,
@@ -47,6 +49,16 @@ const SECTION_META: Record<
     label: "Social Listening",
     icon: MessageSquare,
     accent: "border-l-emerald-500/70",
+  },
+  productDiscovery: {
+    label: "Product Discovery",
+    icon: Compass,
+    accent: "border-l-orange-500/70",
+  },
+  competitorProducts: {
+    label: "Competitor Products",
+    icon: Package,
+    accent: "border-l-pink-500/70",
   },
 };
 

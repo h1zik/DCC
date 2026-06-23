@@ -15,6 +15,7 @@ import {
   createManualBrandVisualAsset,
   deleteBrandVisualAssetForUser,
   harvestBrandCompetitorVisuals,
+  harvestBrandCompetitorProductVisuals,
   harvestBrandSocialVisuals,
   listBrandVisualAssets,
 } from "@/lib/brand-research/visual";
@@ -209,6 +210,22 @@ export async function harvestCompetitorVisualsAction(
   );
   revalidatePath("/brand-hub/visual-library");
   revalidatePath("/brand-hub/competitor-tracker");
+  return result;
+}
+
+export async function harvestCompetitorProductVisualsAction(
+  categoryId: string,
+  ownerBrandId?: string | null,
+) {
+  const session = await requireBrandManager();
+  const result = await harvestBrandCompetitorProductVisuals(
+    categoryId,
+    session.user.id,
+    ownerBrandId,
+  );
+  revalidatePath("/brand-hub/visual-library");
+  revalidatePath("/brand-hub/competitor-tracker/products");
+  revalidatePath(`/brand-hub/competitor-tracker/products/${categoryId}`);
   return result;
 }
 

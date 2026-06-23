@@ -36,6 +36,7 @@ import {
   ResearchHubSection,
   ResearchHubStatChip,
 } from "@/components/research-hub/research-hub-primitives";
+import { CompetitorTrackerModeNav } from "@/components/research-hub/competitor-tracker-mode-nav";
 import { cn } from "@/lib/utils";
 
 export type CompetitorCard = {
@@ -96,6 +97,7 @@ export function CompetitorTrackerClient({
 
   return (
     <div className="flex flex-col gap-6">
+      <CompetitorTrackerModeNav />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <ResearchHubStatChip

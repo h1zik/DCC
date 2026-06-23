@@ -1,4 +1,5 @@
 import { syncActiveCompetitors } from "@/lib/research/competitor-sync";
+import { syncActiveCompetitorProducts } from "@/lib/research/competitor-product-sync";
 import { syncWeeklyReports } from "@/lib/research/reports/weekly-report-sync";
 import { syncActiveMonitors } from "@/lib/research/social-listening/social-sync";
 import { pollRunningResearchJobs } from "@/lib/research/sync-jobs";
@@ -32,8 +33,11 @@ export async function GET(request: Request) {
   const mode = url.searchParams.get("mode") ?? "poll";
 
   if (mode === "competitors") {
-    const result = await syncActiveCompetitors();
-    return Response.json({ ok: true, mode, ...result });
+    const [shops, products] = await Promise.all([
+      syncActiveCompetitors(),
+      syncActiveCompetitorProducts(),
+    ]);
+    return Response.json({ ok: true, mode, shops, products });
   }
 
   if (mode === "trends") {
@@ -54,8 +58,10 @@ export async function GET(request: Request) {
   await pollRunningResearchJobs();
 
   if (mode === "full") {
-    const [competitors, trends, social, reports] = await Promise.all([
+    const [competitors, competitorProducts, trends, social, reports] =
+      await Promise.all([
       syncActiveCompetitors(),
+      syncActiveCompetitorProducts(),
       syncWeeklyTrends(),
       syncActiveMonitors(),
       syncWeeklyReports(),
@@ -64,6 +70,7 @@ export async function GET(request: Request) {
       ok: true,
       mode: "full",
       competitors,
+      competitorProducts,
       trends,
       social,
       reports,

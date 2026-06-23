@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, MessageSquareText } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
+import { DiscoveryCompetitorTrackerDialog } from "@/components/research-hub/discovery-competitor-tracker-dialog";
 import {
   Table,
   TableBody,
@@ -36,17 +37,24 @@ export type ProductDiscoveryRow = {
   imageUrl?: string | null;
 } & ShopProductMetrics;
 
+const COMMUNITY_MARKETPLACES = new Set(["FEMALEDAILY", "SOCIOLLA"]);
+const isCommunity = (marketplace: string) => COMMUNITY_MARKETPLACES.has(marketplace);
+
 export function ProductDiscoveryTable({
   rows,
   queryId,
-  onAnalyze,
-  analyzingId,
+  defaultCategoryName,
+  onReview,
+  reviewLoadingId,
+  actionsDisabled,
   showImages = false,
 }: {
   rows: ProductDiscoveryRow[];
   queryId?: string;
-  onAnalyze?: (productId: string) => void;
-  analyzingId?: string | null;
+  defaultCategoryName: string;
+  onReview?: (productId: string) => void;
+  reviewLoadingId?: string | null;
+  actionsDisabled?: boolean;
   showImages?: boolean;
 }) {
   if (rows.length === 0) {
@@ -54,6 +62,8 @@ export function ProductDiscoveryTable({
       <p className="text-muted-foreground text-sm">Belum ada produk ditemukan.</p>
     );
   }
+
+  const allCommunity = rows.every((r) => isCommunity(r.marketplace));
 
   return (
     <Table>
@@ -65,16 +75,17 @@ export function ProductDiscoveryTable({
           <TableHead>Marketplace</TableHead>
           <TableHead className="text-right">Harga</TableHead>
           <TableHead className="text-right">Rating</TableHead>
-          <TableHead className="text-right">Total terjual</TableHead>
-          <TableHead className="text-right">Bulan ini</TableHead>
-          <TableHead className="text-right">Revenue</TableHead>
+          {allCommunity ? null : <TableHead className="text-right">Total terjual</TableHead>}
+          {allCommunity ? null : <TableHead className="text-right">Bulan ini</TableHead>}
+          {allCommunity ? null : <TableHead className="text-right">Revenue</TableHead>}
           <TableHead className="text-right">Rank</TableHead>
-          <TableHead className="w-[120px]" />
+          <TableHead className="w-[200px]" />
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((row) => {
           const m = resolveShopProductMetrics(row);
+          const hideMetrics = isCommunity(row.marketplace);
           return (
           <TableRow
             key={row.id}
@@ -119,20 +130,26 @@ export function ProductDiscoveryTable({
                 </span>
               ) : null}
             </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatCompactCount(m.historicalSold)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatCompactCount(m.monthlySold)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums text-xs">
-              {formatRevenueIdr(m.estimatedRevenue)}
-            </TableCell>
+            {hideMetrics ? null : (
+              <TableCell className="text-right tabular-nums">
+                {formatCompactCount(m.historicalSold)}
+              </TableCell>
+            )}
+            {hideMetrics ? null : (
+              <TableCell className="text-right tabular-nums">
+                {formatCompactCount(m.monthlySold)}
+              </TableCell>
+            )}
+            {hideMetrics ? null : (
+              <TableCell className="text-right tabular-nums text-xs">
+                {formatRevenueIdr(m.estimatedRevenue)}
+              </TableCell>
+            )}
             <TableCell className="text-right tabular-nums">
               {row.categoryRank != null ? `#${row.categoryRank}` : "—"}
             </TableCell>
             <TableCell>
-              <div className="flex justify-end gap-1">
+              <div className="flex flex-wrap justify-end gap-1">
                 {queryId ? (
                   <Button
                     size="sm"
@@ -147,17 +164,25 @@ export function ProductDiscoveryTable({
                     Detail
                   </Button>
                 ) : null}
-                {onAnalyze ? (
+                {onReview ? (
                   <Button
                     size="sm"
                     variant="outline"
                     className="h-7 text-xs"
-                    disabled={analyzingId === row.id}
-                    onClick={() => onAnalyze(row.id)}
+                    disabled={reviewLoadingId === row.id || actionsDisabled}
+                    onClick={() => onReview(row.id)}
                   >
-                    {analyzingId === row.id ? "..." : "Review"}
+                    <MessageSquareText className="size-3.5" aria-hidden />
+                    {reviewLoadingId === row.id ? "..." : "Review"}
                   </Button>
                 ) : null}
+                <DiscoveryCompetitorTrackerDialog
+                  productId={row.id}
+                  productName={row.name}
+                  defaultCategoryName={defaultCategoryName}
+                  disabled={actionsDisabled}
+                  className="h-7 text-xs"
+                />
                 <a
                   href={row.productUrl}
                   target="_blank"

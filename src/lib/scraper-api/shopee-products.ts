@@ -127,7 +127,7 @@ async function fetchShopeeProductsViaVps(
         page,
         limit,
         download_images: false,
-        ...(opts?.includeExactSold ? { include_exact_sold: true } : {}),
+        include_exact_sold: opts?.includeExactSold === true,
       },
       { wait: true, timeout: 900, throwOnFailed: false },
     );
@@ -159,7 +159,6 @@ export async function fetchShopeeSearchViaVps(
     "shopee-search",
     { keyword: keyword.trim() },
     maxItems,
-    { includeExactSold: true },
   );
   return normalizeVpsShopeeProducts(items);
 }
@@ -176,4 +175,38 @@ export async function fetchShopeeShopViaVps(
     maxItems,
   );
   return normalizeVpsShopeeProducts(items);
+}
+
+/** Actor `shopee-product` di VPS — detail produk by URL (pasangan `shopee-search` + keyword). */
+export async function fetchShopeeProductViaVps(
+  productUrl: string,
+): Promise<NormalizedShopProduct> {
+  const normalizedUrl = cleanShopeeUrl(productUrl.trim());
+  const run = await startVpsActorRun(
+    "shopee-product",
+    {
+      product_url: normalizedUrl,
+      download_images: false,
+    },
+    { wait: true, timeout: 900, throwOnFailed: false },
+  );
+
+  if (run.status === "failed") {
+    throw new Error(run.error ?? "Scrape produk Shopee VPS gagal.");
+  }
+
+  const items = await readVpsRunItems(run);
+  const products = normalizeVpsShopeeProducts(
+    items.map((item) =>
+      pickString(item, ["product_url", "productUrl", "url", "link"])
+        ? item
+        : { ...item, product_url: normalizedUrl },
+    ),
+  );
+
+  if (products.length === 0) {
+    throw new Error("Tidak ada data produk dari VPS Shopee.");
+  }
+
+  return products[0]!;
 }

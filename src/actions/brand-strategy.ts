@@ -39,6 +39,7 @@ const generationConfigSchema = z.object({
   trend: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
   usp: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
   productDiscovery: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
+  competitorProduct: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
 });
 
 const createSchema = z.object({

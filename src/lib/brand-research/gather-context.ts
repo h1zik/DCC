@@ -2,6 +2,12 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { categoryMatch } from "@/lib/research/usp-gap/category-match";
+import { fetchCompetitorProductEvidence } from "@/lib/research/evidence/competitor-product-evidence";
+import {
+  fetchProductDiscoveryEvidence,
+  type ProductDiscoveryEvidence,
+} from "@/lib/research/evidence/product-discovery-evidence";
+import type { CompetitorProductEvidence } from "@/lib/research/evidence/competitor-product-evidence";
 import type {
   ContextModules,
   ResolvedContextSources,
@@ -42,6 +48,8 @@ export type UspGatheredContext = {
     topWishlist: { theme: string; count: number }[];
     aiSummary: string | null;
   } | null;
+  productDiscovery: ProductDiscoveryEvidence[] | null;
+  competitorProducts: CompetitorProductEvidence[] | null;
 };
 
 export type GatherUspContextResult = {
@@ -55,6 +63,8 @@ export type AvailableContextModules = {
   trendRadar: boolean;
   keywordIntel: boolean;
   socialListening: boolean;
+  productDiscovery: boolean;
+  competitorProducts: boolean;
 };
 
 function mergeThemes(
@@ -96,6 +106,8 @@ export async function gatherBrandUspContext(input: {
     trendRadar: null,
     keywordIntel: null,
     socialListening: null,
+    productDiscovery: null,
+    competitorProducts: null,
   };
   const resolvedSources: ResolvedContextSources = {};
 
@@ -362,16 +374,87 @@ export async function gatherBrandUspContext(input: {
     }
   }
 
+  if (contextModules.productDiscovery) {
+    const explicitIds =
+      contextModules.productDiscoveryQueryIds?.filter(Boolean) ?? [];
+
+    let queryIds = explicitIds;
+
+    if (queryIds.length === 0) {
+      const all = await prisma.productDiscoveryQuery.findMany({
+        where: { status: "READY" },
+        orderBy: { updatedAt: "desc" },
+        take: 20,
+        select: { id: true, keyword: true },
+      });
+      const matched = all.filter((q) => categoryMatch(q.keyword, category));
+      queryIds = (matched.length > 0 ? matched : all).slice(0, 3).map((q) => q.id);
+    }
+
+    if (queryIds.length > 0) {
+      const insights = await fetchProductDiscoveryEvidence(queryIds);
+      if (insights.length > 0) {
+        resolvedSources.productDiscovery = insights.map(
+          (q): ResolvedSourceRef => ({
+            id: q.sourceId,
+            label: q.keyword,
+            meta: `${q.productCount} produk`,
+            href: `/brand-hub/product-discovery/${q.sourceId}`,
+          }),
+        );
+        ctx.productDiscovery = insights;
+      }
+    }
+  }
+
+  if (contextModules.competitorProducts) {
+    const explicitIds =
+      contextModules.competitorProductCategoryIds?.filter(Boolean) ?? [];
+
+    let categoryIds = explicitIds;
+
+    if (categoryIds.length === 0) {
+      const all = await prisma.competitorProductCategory.findMany({
+        where: { isActive: true },
+        orderBy: { updatedAt: "desc" },
+        take: 20,
+        select: { id: true, name: true },
+      });
+      const matched = all.filter((c) => categoryMatch(c.name, category));
+      categoryIds = (matched.length > 0 ? matched : all)
+        .slice(0, 3)
+        .map((c) => c.id);
+    }
+
+    if (categoryIds.length > 0) {
+      const insights = await fetchCompetitorProductEvidence(categoryIds);
+      if (insights.length > 0) {
+        resolvedSources.competitorProducts = insights.map(
+          (c): ResolvedSourceRef => ({
+            id: c.sourceId,
+            label: c.categoryName,
+            meta: `${c.trackCount} produk`,
+            href: `/brand-hub/competitor-tracker/products/${c.sourceId}`,
+          }),
+        );
+        ctx.competitorProducts = insights;
+      }
+    }
+  }
+
   return { context: ctx, resolvedSources };
 }
 
 export async function getAvailableContextModules(): Promise<AvailableContextModules> {
-  const [reviews, competitors, trends, keywords, social] = await Promise.all([
+  const [reviews, competitors, trends, keywords, social, discovery, productCats] =
+    await Promise.all([
     prisma.brandReviewSource.count({ where: { status: "READY" } }),
     prisma.brandCompetitor.count({ where: { isActive: true } }),
     prisma.brandTrendDigest.count({ where: { status: "READY" } }),
     prisma.brandKeywordQuery.count({ where: { status: "READY" } }),
     prisma.brandSocialMonitor.count({ where: { isActive: true } }),
+    prisma.productDiscoveryQuery.count({ where: { status: "READY" } }),
+    prisma.competitorProductCategory.count({ where: { isActive: true } }),
   ]);
 
   return {
@@ -380,5 +463,7 @@ export async function getAvailableContextModules(): Promise<AvailableContextModu
     trendRadar: trends > 0,
     keywordIntel: keywords > 0,
     socialListening: social > 0,
+    productDiscovery: discovery > 0,
+    competitorProducts: productCats > 0,
   };
 }

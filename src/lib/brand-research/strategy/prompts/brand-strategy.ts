@@ -6,6 +6,7 @@ import type { DemoFlag, InsightMemo, StructuredSourceRef } from "@/lib/brand-res
 import type { ComputedPalette } from "@/lib/brand-research/visual";
 import type { PortfolioLineEvidence } from "@/lib/brand-research/strategy/evidence-types";
 import type { ProductDiscoveryEvidence } from "@/lib/brand-research/strategy/product-discovery-evidence";
+import type { CompetitorProductEvidence } from "@/lib/research/evidence/competitor-product-evidence";
 
 export type BrandStrategyEvidenceInput = {
   category?: string;
@@ -73,6 +74,7 @@ export type BrandStrategyEvidenceInput = {
     aiSummary: string | null;
   }[];
   productDiscoveryInsights: ProductDiscoveryEvidence[];
+  competitorProductInsights: CompetitorProductEvidence[];
 };
 
 const RATIONALE_FIELDS = [
@@ -133,6 +135,7 @@ ${JSON.stringify(ctx.portfolioLines, null, 2)}
 - Brand strategy harus menyatukan SEMUA lini di atas dalam satu arah branding.
 - Hasilkan productLineStrategy untuk SETIAP lini di portfolio.
 - Jika lini punya Product Discovery terhubung, gunakan productDiscoveryInsights yang relevan.
+- Gunakan competitorProductInsights untuk benchmark harga, rating, promo, dan top produk rival individual (bukan hanya shop-level).
 `
       : "";
 
@@ -166,6 +169,7 @@ ${JSON.stringify(
     trendSignals: ctx.trendSignals,
     uspInsights: ctx.uspInsights,
     productDiscoveryInsights: ctx.productDiscoveryInsights,
+    competitorProductInsights: ctx.competitorProductInsights,
     portfolioLines: ctx.portfolioLines,
   },
   null,
@@ -181,7 +185,7 @@ ATURAN KETAT:
 - strategicTensions: salin dari insight memo, sesuaikan jika perlu dengan bukti tambahan.
 - Setiap blok strategi WAJIB punya entri di strategyRationales dengan reasoning detail (min. 3 kalimat).
 - strategyRationales.reasoning harus menjelaskan: data apa yang dipakai, pola apa yang terlihat, mengapa keputusan ini logis untuk brand ini.
-- evidenceRefs.source harus salah satu: review, social, visual, competitor, keyword, trend, usp, product-discovery, portfolio
+- evidenceRefs.source harus salah satu: review, social, visual, competitor, keyword, trend, usp, product-discovery, competitor-product, portfolio
 - Sertakan sourceId dari sourceRefs bila ada.
 - Setiap strategyRationales wajib punya minimal 2 evidenceRefs yang spesifik (bukan generik).
 
@@ -234,12 +238,12 @@ Balas HANYA JSON valid:
       "reasoning": "string — 3-6 kalimat detail: data → pola → keputusan",
       "confidence": "high|medium|low",
       "evidenceRefs": [
-        { "field": "brandPurpose", "source": "review|social|visual|competitor|keyword|trend|usp|product-discovery|portfolio", "sourceId": "optional", "snippet": "kutipan data spesifik min 12 karakter" }
+        { "field": "brandPurpose", "source": "review|social|visual|competitor|keyword|trend|usp|product-discovery|competitor-product|portfolio", "sourceId": "optional", "snippet": "kutipan data spesifik min 12 karakter" }
       ]
     }
   ],
   "evidenceRefs": [
-    { "field": "brandPurpose|...", "source": "review|social|visual|competitor|keyword|trend|usp|product-discovery|portfolio", "sourceId": "string optional", "snippet": "string" }
+    { "field": "brandPurpose|...", "source": "review|social|visual|competitor|keyword|trend|usp|product-discovery|competitor-product|portfolio", "sourceId": "string optional", "snippet": "string" }
   ],
   "actionPlan": {
     "headline": "string",
@@ -307,6 +311,7 @@ ${JSON.stringify(
     trendSignals: ctx.trendSignals,
     uspInsights: ctx.uspInsights,
     productDiscoveryInsights: ctx.productDiscoveryInsights,
+    competitorProductInsights: ctx.competitorProductInsights,
     portfolioLines: ctx.portfolioLines,
   },
   null,
@@ -330,7 +335,7 @@ Balas HANYA JSON:
     "label": "${label}",
     "reasoning": "string",
     "confidence": "high|medium|low",
-    "evidenceRefs": [{ "field": "${field}", "source": "review|social|visual|competitor|keyword|trend|usp|product-discovery|portfolio", "sourceId": "optional", "snippet": "string" }]
+    "evidenceRefs": [{ "field": "${field}", "source": "review|social|visual|competitor|keyword|trend|usp|product-discovery|competitor-product|portfolio", "sourceId": "optional", "snippet": "string" }]
   }
 }`;
 }

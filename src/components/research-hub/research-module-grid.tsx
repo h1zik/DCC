@@ -36,7 +36,7 @@ const MODULES = [
   {
     href: "/research-hub/competitor-tracker",
     title: "3. Competitor Tracker",
-    desc: "Pantau harga, SKU, rating, dan promo kompetitor secara otomatis.",
+    desc: "Pantau toko (by shop) atau produk spesifik per kategori (by products).",
     icon: Target,
     active: true,
   },

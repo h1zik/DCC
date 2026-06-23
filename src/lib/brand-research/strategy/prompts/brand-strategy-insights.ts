@@ -58,6 +58,7 @@ ${JSON.stringify(
     trendSignals: ctx.trendSignals,
     uspInsights: ctx.uspInsights,
     productDiscoveryInsights: ctx.productDiscoveryInsights,
+    competitorProductInsights: ctx.competitorProductInsights,
     portfolioLines: ctx.portfolioLines,
   },
   null,

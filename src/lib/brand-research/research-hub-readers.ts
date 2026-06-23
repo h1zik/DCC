@@ -196,6 +196,30 @@ export async function listResearchProductDiscoveryForBrandHub() {
   });
 }
 
+export async function listCompetitorProductCategoriesForBrandHub() {
+  return prisma.competitorProductCategory.findMany({
+    orderBy: { updatedAt: "desc" },
+    include: {
+      _count: {
+        select: {
+          tracks: { where: { isActive: true } },
+          alerts: { where: { isRead: false } },
+        },
+      },
+    },
+  });
+}
+
+export async function getCompetitorProductCategoryForBrandHub(categoryId: string) {
+  return prisma.competitorProductCategory.findUnique({
+    where: { id: categoryId },
+    include: {
+      tracks: { where: { isActive: true }, orderBy: { updatedAt: "desc" } },
+      alerts: { orderBy: { createdAt: "desc" }, take: 30 },
+    },
+  });
+}
+
 export async function countResearchPendingJobs(): Promise<number> {
   return prisma.researchScrapeJob.count({
     where: { status: { in: ["PENDING", "RUNNING"] } },

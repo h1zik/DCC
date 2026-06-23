@@ -48,7 +48,8 @@ export type StrategySourceKey =
   | "keyword"
   | "trend"
   | "usp"
-  | "productDiscovery";
+  | "productDiscovery"
+  | "competitorProduct";
 
 export type StrategySourceSelection = {
   enabled: boolean;
@@ -67,6 +68,7 @@ export type StrategyGenerationConfig = {
   trend: StrategySourceSelection;
   usp: StrategySourceSelection;
   productDiscovery: StrategySourceSelection;
+  competitorProduct: StrategySourceSelection;
 };
 
 export type StrategyFieldRationale = {
@@ -153,6 +155,7 @@ export type StrategySourceCatalog = {
   trend: StrategySourceCatalogItem[];
   usp: StrategySourceCatalogItem[];
   productDiscovery: StrategySourceCatalogItem[];
+  competitorProduct: StrategySourceCatalogItem[];
   visual: StrategyVisualCatalog;
 };
 

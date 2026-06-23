@@ -3,7 +3,9 @@
 import { useMemo } from "react";
 import {
   Check,
+  Compass,
   MessageSquare,
+  Package,
   Radar,
   Search,
   Sparkles,
@@ -63,6 +65,18 @@ const MODULE_CONFIG: Record<
     icon: MessageSquare,
     hint: "Pain point & wishlist dari sosial",
   },
+  productDiscovery: {
+    label: "Product Discovery",
+    short: "Discovery",
+    icon: Compass,
+    hint: "Landscape marketplace & top seller",
+  },
+  competitorProducts: {
+    label: "Competitor Products",
+    short: "Produk",
+    icon: Package,
+    hint: "Benchmark produk rival individual",
+  },
 };
 
 type Props = {
@@ -96,6 +110,10 @@ function selectionCount(
       return selections.keywordQueryId ? 1 : 0;
     case "socialListening":
       return selections.socialMonitorId ? 1 : 0;
+    case "productDiscovery":
+      return selections.productDiscoveryQueryIds?.length ?? 0;
+    case "competitorProducts":
+      return selections.competitorProductCategoryIds?.length ?? 0;
     default:
       return 0;
   }
@@ -237,6 +255,64 @@ export function UspContextSourcePicker({
                     onSelectionsChange({
                       ...selections,
                       socialMonitorId: id || undefined,
+                    })
+                  }
+                />
+              ) : null}
+
+              {key === "productDiscovery" ? (
+                <SourceTileList
+                  items={options.productDiscoveryQueries}
+                  selected={selections.productDiscoveryQueryIds ?? []}
+                  emptyHint="Belum ada query discovery siap."
+                  onToggle={(id) =>
+                    onSelectionsChange({
+                      ...selections,
+                      productDiscoveryQueryIds: toggleId(
+                        selections.productDiscoveryQueryIds,
+                        id,
+                      ),
+                    })
+                  }
+                  onSelectAll={(ids) =>
+                    onSelectionsChange({
+                      ...selections,
+                      productDiscoveryQueryIds: ids,
+                    })
+                  }
+                  onClear={() =>
+                    onSelectionsChange({
+                      ...selections,
+                      productDiscoveryQueryIds: [],
+                    })
+                  }
+                />
+              ) : null}
+
+              {key === "competitorProducts" ? (
+                <SourceTileList
+                  items={options.competitorProductCategories}
+                  selected={selections.competitorProductCategoryIds ?? []}
+                  emptyHint="Belum ada kategori produk kompetitor."
+                  onToggle={(id) =>
+                    onSelectionsChange({
+                      ...selections,
+                      competitorProductCategoryIds: toggleId(
+                        selections.competitorProductCategoryIds,
+                        id,
+                      ),
+                    })
+                  }
+                  onSelectAll={(ids) =>
+                    onSelectionsChange({
+                      ...selections,
+                      competitorProductCategoryIds: ids,
+                    })
+                  }
+                  onClear={() =>
+                    onSelectionsChange({
+                      ...selections,
+                      competitorProductCategoryIds: [],
                     })
                   }
                 />

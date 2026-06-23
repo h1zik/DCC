@@ -91,7 +91,7 @@ export function isReviewPlatformKey(key: string): boolean {
 
 export function marketplaceFromPlatformKey(
   key: string,
-): "SHOPEE" | "TOKOPEDIA" | "TIKTOK_SHOP" | null {
+): "SHOPEE" | "TOKOPEDIA" | "TIKTOK_SHOP" | "FEMALEDAILY" | "SOCIOLLA" | null {
   switch (key) {
     case "shopee":
       return "SHOPEE";
@@ -99,13 +99,22 @@ export function marketplaceFromPlatformKey(
       return "TOKOPEDIA";
     case "tiktok_shop":
       return "TIKTOK_SHOP";
+    case "femaledaily":
+      return "FEMALEDAILY";
+    case "sociolla":
+      return "SOCIOLLA";
     default:
       return null;
   }
 }
 
 export function platformKeyFromMarketplace(
-  marketplace: "SHOPEE" | "TOKOPEDIA" | "TIKTOK_SHOP",
+  marketplace:
+    | "SHOPEE"
+    | "TOKOPEDIA"
+    | "TIKTOK_SHOP"
+    | "FEMALEDAILY"
+    | "SOCIOLLA",
 ): string {
   switch (marketplace) {
     case "SHOPEE":
@@ -114,5 +123,9 @@ export function platformKeyFromMarketplace(
       return "tokopedia";
     case "TIKTOK_SHOP":
       return "tiktok_shop";
+    case "FEMALEDAILY":
+      return "femaledaily";
+    case "SOCIOLLA":
+      return "sociolla";
   }
 }

@@ -20,6 +20,7 @@ import {
 } from "@/lib/brand-research/strategy/strategy-visual-config";
 import { getBrandPortfolio } from "@/lib/brand-research/portfolio/portfolio-service";
 import { fetchProductDiscoveryEvidence } from "@/lib/brand-research/strategy/product-discovery-evidence";
+import { fetchCompetitorProductEvidence } from "@/lib/research/evidence/competitor-product-evidence";
 import type { PortfolioLineEvidence } from "@/lib/brand-research/strategy/evidence-types";
 
 function idFilter(ids: string[]) {
@@ -490,6 +491,22 @@ export async function gatherStrategyEvidence(
     });
   }
 
+  const competitorProductIds = config.competitorProduct.enabled
+    ? config.competitorProduct.ids
+    : [];
+  const competitorProductInsights = await fetchCompetitorProductEvidence(
+    competitorProductIds,
+  );
+
+  for (const insight of competitorProductInsights) {
+    sourceRefs.push({
+      module: "competitor-product",
+      sourceId: insight.sourceId,
+      label: `Produk: ${insight.categoryName}`,
+      href: `/brand-hub/competitor-tracker/products/${insight.sourceId}${brandQs}`,
+    });
+  }
+
   const [reviewQuotes, socialQuotes] = await Promise.all([
     fetchReviewQuotes(reviewSources.map((s) => s.id)),
     fetchSocialQuotes(socialMonitors.map((m) => m.id)),
@@ -538,5 +555,6 @@ export async function gatherStrategyEvidence(
     trendSignals,
     uspInsights,
     productDiscoveryInsights,
+    competitorProductInsights,
   };
 }

@@ -20,6 +20,8 @@ export const MARKETPLACE_LABELS: Record<ResearchMarketplace, string> = {
   SHOPEE: "Shopee",
   TOKOPEDIA: "Tokopedia",
   TIKTOK_SHOP: "TikTok Shop",
+  FEMALEDAILY: "Female Daily",
+  SOCIOLLA: "Sociolla",
 };
 
 export const SOURCE_STATUS_LABELS: Record<ReviewIntelSourceStatus, string> = {

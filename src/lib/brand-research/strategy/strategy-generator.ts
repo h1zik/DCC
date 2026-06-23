@@ -245,6 +245,7 @@ export async function generateBrandStrategyDocument(
         portfolioSummary: evidence.portfolioSummary,
         portfolioLines: evidence.portfolioLines,
         productDiscoveryInsights: evidence.productDiscoveryInsights,
+        competitorProductInsights: evidence.competitorProductInsights,
       },
     };
 
