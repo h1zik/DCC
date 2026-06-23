@@ -19,7 +19,8 @@ export type ResearchJobSummary = {
 
 const TYPE_LABEL: Record<string, string> = {
   REVIEW_SCRAPE: "Review Intelligence",
-  COMPETITOR_SNAPSHOT: "Competitor Tracker",
+  COMPETITOR_SNAPSHOT: "Competitor Tracker (Shop)",
+  COMPETITOR_PRODUCT_SNAPSHOT: "Competitor Tracker (Product)",
   PRODUCT_DISCOVERY: "Product Discovery",
   PINTEREST_SCRAPE: "Pinterest Scrape",
   VISUAL_HARVEST: "Visual Harvest",
@@ -41,7 +42,8 @@ export async function listActiveResearchJobs(): Promise<ResearchJobSummary[]> {
   if (jobs.length === 0) return [];
 
   const entityIds = Array.from(new Set(jobs.map((j) => j.entityId)));
-  const [reviewSources, competitors, discoveryQueries] = await Promise.all([
+  const [reviewSources, competitors, productTracks, discoveryQueries] =
+    await Promise.all([
     prisma.reviewIntelSource.findMany({
       where: { id: { in: entityIds } },
       select: { id: true, productName: true },
@@ -49,6 +51,10 @@ export async function listActiveResearchJobs(): Promise<ResearchJobSummary[]> {
     prisma.researchCompetitor.findMany({
       where: { id: { in: entityIds } },
       select: { id: true, name: true },
+    }),
+    prisma.competitorProductTrack.findMany({
+      where: { id: { in: entityIds } },
+      select: { id: true, name: true, categoryId: true },
     }),
     prisma.productDiscoveryQuery.findMany({
       where: { id: { in: entityIds } },
@@ -58,6 +64,12 @@ export async function listActiveResearchJobs(): Promise<ResearchJobSummary[]> {
 
   const reviewName = new Map(reviewSources.map((r) => [r.id, r.productName]));
   const competitorName = new Map(competitors.map((c) => [c.id, c.name]));
+  const productTrackName = new Map(
+    productTracks.map((t) => [t.id, t.name]),
+  );
+  const productTrackCategory = new Map(
+    productTracks.map((t) => [t.id, t.categoryId]),
+  );
   const discoveryQuery = new Map(
     (discoveryQueries as { id: string; keyword: string }[]).map((d) => [
       d.id,
@@ -76,6 +88,12 @@ export async function listActiveResearchJobs(): Promise<ResearchJobSummary[]> {
       case "COMPETITOR_SNAPSHOT":
         label = competitorName.get(job.entityId) ?? "Competitor";
         href = `/research-hub/competitor-tracker/${job.entityId}`;
+        break;
+      case "COMPETITOR_PRODUCT_SNAPSHOT":
+        label = productTrackName.get(job.entityId) ?? "Produk kompetitor";
+        href = productTrackCategory.has(job.entityId)
+          ? `/research-hub/competitor-tracker/products/${productTrackCategory.get(job.entityId)}/tracks/${job.entityId}`
+          : "/research-hub/competitor-tracker/products";
         break;
       case "PRODUCT_DISCOVERY":
         label = discoveryQuery.get(job.entityId) ?? "Product Discovery";

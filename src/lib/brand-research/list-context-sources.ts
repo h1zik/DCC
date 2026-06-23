@@ -21,12 +21,22 @@ export function parseContextModules(raw: unknown): ContextModules {
     ? o.competitorIds.filter((x): x is string => typeof x === "string")
     : undefined;
 
+  const productDiscoveryQueryIds = Array.isArray(o.productDiscoveryQueryIds)
+    ? o.productDiscoveryQueryIds.filter((x): x is string => typeof x === "string")
+    : undefined;
+
+  const competitorProductCategoryIds = Array.isArray(o.competitorProductCategoryIds)
+    ? o.competitorProductCategoryIds.filter((x): x is string => typeof x === "string")
+    : undefined;
+
   return {
     reviewIntel: !!o.reviewIntel,
     competitor: !!o.competitor,
     trendRadar: !!o.trendRadar,
     keywordIntel: !!o.keywordIntel,
     socialListening: !!o.socialListening,
+    productDiscovery: !!o.productDiscovery,
+    competitorProducts: !!o.competitorProducts,
     reviewSourceIds,
     competitorIds,
     trendDigestId:
@@ -35,6 +45,8 @@ export function parseContextModules(raw: unknown): ContextModules {
       typeof o.keywordQueryId === "string" ? o.keywordQueryId : undefined,
     socialMonitorId:
       typeof o.socialMonitorId === "string" ? o.socialMonitorId : undefined,
+    productDiscoveryQueryIds,
+    competitorProductCategoryIds,
   };
 }
 
@@ -48,8 +60,15 @@ export function parseStoredContextModules(raw: unknown): StoredContextModules {
 }
 
 export async function listBrandUspContextSourceOptions(): Promise<UspContextSourceOptions> {
-  const [reviewSources, competitors, trendDigests, keywordQueries, socialMonitors] =
-    await Promise.all([
+  const [
+    reviewSources,
+    competitors,
+    trendDigests,
+    keywordQueries,
+    socialMonitors,
+    productDiscoveryQueries,
+    competitorProductCategories,
+  ] = await Promise.all([
       prisma.brandReviewSource.findMany({
         where: { status: "READY" },
         orderBy: { updatedAt: "desc" },
@@ -95,6 +114,27 @@ export async function listBrandUspContextSourceOptions(): Promise<UspContextSour
         take: 20,
         select: { id: true, name: true, keywords: true },
       }),
+      prisma.productDiscoveryQuery.findMany({
+        where: { status: "READY" },
+        orderBy: { updatedAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          keyword: true,
+          productCount: true,
+          marketplaces: true,
+        },
+      }),
+      prisma.competitorProductCategory.findMany({
+        where: { isActive: true },
+        orderBy: { updatedAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          name: true,
+          _count: { select: { tracks: { where: { isActive: true } } } },
+        },
+      }),
     ]);
 
   return {
@@ -127,6 +167,16 @@ export async function listBrandUspContextSourceOptions(): Promise<UspContextSour
       label: m.name,
       meta: m.keywords.slice(0, 3).join(", ") || "—",
     })),
+    productDiscoveryQueries: productDiscoveryQueries.map((q) => ({
+      id: q.id,
+      label: q.keyword,
+      meta: `${q.productCount} produk · ${q.marketplaces.length} marketplace`,
+    })),
+    competitorProductCategories: competitorProductCategories.map((c) => ({
+      id: c.id,
+      label: c.name,
+      meta: `${c._count.tracks} produk dilacak`,
+    })),
   };
 }
 
@@ -142,6 +192,8 @@ export async function suggestBrandContextSourceIds(
       trendDigestId: null,
       keywordQueryId: null,
       socialMonitorId: null,
+      productDiscoveryQueryIds: [],
+      competitorProductCategoryIds: [],
     };
   }
 
@@ -170,11 +222,29 @@ export async function suggestBrandContextSourceIds(
       categoryMatch(m.label, trimmed) || categoryMatch(m.meta, trimmed),
   );
 
+  const productDiscoveryQueryIds = options.productDiscoveryQueries
+    .filter((q) => categoryMatch(q.label, trimmed) || categoryMatch(q.meta, trimmed))
+    .slice(0, 3)
+    .map((q) => q.id);
+
+  const competitorProductCategoryIds = options.competitorProductCategories
+    .filter((c) => categoryMatch(c.label, trimmed) || categoryMatch(c.meta, trimmed))
+    .slice(0, 3)
+    .map((c) => c.id);
+
   return {
     reviewSourceIds,
     competitorIds,
     trendDigestId: options.trendDigests[0]?.id ?? null,
     keywordQueryId: keywordMatch?.id ?? options.keywordQueries[0]?.id ?? null,
     socialMonitorId: socialMatch?.id ?? options.socialMonitors[0]?.id ?? null,
+    productDiscoveryQueryIds:
+      productDiscoveryQueryIds.length > 0
+        ? productDiscoveryQueryIds
+        : options.productDiscoveryQueries.slice(0, 2).map((q) => q.id),
+    competitorProductCategoryIds:
+      competitorProductCategoryIds.length > 0
+        ? competitorProductCategoryIds
+        : options.competitorProductCategories.slice(0, 2).map((c) => c.id),
   };
 }

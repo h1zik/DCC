@@ -1283,7 +1283,7 @@ export async function aiEvaluateProductProposal(
 
   const searchTerms = buildSearchTerms(productQuery, opts.claims);
 
-  const [pricing, reviewSources, trendDigest, keywordQueries, uspAnalyses, recommendations, socialMonitors, discoveryQueries] =
+  const [pricing, reviewSources, trendDigest, keywordQueries, uspAnalyses, recommendations, socialMonitors, discoveryQueries, competitorProductCategories] =
     await Promise.all([
       aiAnalyzeCompetitorPricing(role, {
         productQuery,
@@ -1438,6 +1438,35 @@ export async function aiEvaluateProductProposal(
               promoText: true,
               categoryRank: true,
             },
+          },
+        },
+      }),
+      prisma.competitorProductCategory.findMany({
+        where: {
+          isActive: true,
+          OR: searchTerms.flatMap((term) => [
+            { name: { contains: term, mode: "insensitive" as const } },
+            {
+              tracks: {
+                some: {
+                  isActive: true,
+                  OR: [
+                    { name: { contains: term, mode: "insensitive" as const } },
+                    { brand: { contains: term, mode: "insensitive" as const } },
+                    { label: { contains: term, mode: "insensitive" as const } },
+                  ],
+                },
+              },
+            },
+          ]),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        include: {
+          tracks: {
+            where: { isActive: true },
+            orderBy: [{ reviewCount: "desc" }, { lastScrapedAt: "desc" }],
+            take: 20,
           },
         },
       }),
@@ -1606,6 +1635,62 @@ export async function aiEvaluateProductProposal(
     0,
   );
 
+  const competitorProducts = competitorProductCategories.map((cat) => {
+    const tracks = cat.tracks;
+    const prices = tracks
+      .map((t) => t.currentPrice)
+      .filter((p): p is number => typeof p === "number" && p > 0);
+    const priceStats =
+      prices.length > 0
+        ? {
+            min: Math.min(...prices),
+            max: Math.max(...prices),
+            avg: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
+          }
+        : null;
+
+    return {
+      categoryId: cat.id,
+      categoryName: cat.name,
+      trackCount: tracks.length,
+      priceStats,
+      sampleTracks: tracks.slice(0, 10).map((t) => ({
+        id: t.id,
+        name: t.name,
+        brand: t.brand,
+        marketplace: t.marketplace,
+        price: t.currentPrice,
+        rating: t.rating,
+        reviewCount: t.reviewCount,
+        sold:
+          t.exactSold ?? t.monthlySold ?? t.historicalSold ?? null,
+        hasPromo: t.hasPromo,
+        promoText: t.promoText,
+      })),
+    };
+  });
+
+  const competitorProductTrackCount = competitorProducts.reduce(
+    (sum, c) => sum + c.trackCount,
+    0,
+  );
+  const competitorProductPrices = competitorProducts.flatMap((c) =>
+    c.sampleTracks
+      .map((t) => t.price)
+      .filter((p): p is number => typeof p === "number" && p > 0),
+  );
+  const competitorProductPriceBand =
+    competitorProductPrices.length > 0
+      ? {
+          min: Math.min(...competitorProductPrices),
+          max: Math.max(...competitorProductPrices),
+          avg: Math.round(
+            competitorProductPrices.reduce((a, b) => a + b, 0) /
+              competitorProductPrices.length,
+          ),
+        }
+      : null;
+
   const dataSourcesChecked = [
     {
       module: "competitor-tracker",
@@ -1665,13 +1750,23 @@ export async function aiEvaluateProductProposal(
           ? `${productDiscovery.length} query discovery · ${discoveryPricedCount} produk berharga di sample`
           : "Tidak ada query Product Discovery READY yang cocok dengan kata kunci",
     },
+    {
+      module: "competitor-products",
+      status: competitorProducts.length > 0 ? "found" : "empty",
+      recordCount: competitorProductTrackCount,
+      detail:
+        competitorProducts.length > 0
+          ? `${competitorProducts.length} kategori · ${competitorProductTrackCount} produk individual terlacak`
+          : "Tidak ada kategori Competitor Products yang cocok dengan kata kunci",
+    },
   ];
 
   const hasEnoughData =
     (pricingData?.summary?.skuWithPriceCount ?? 0) > 0 ||
     reviewIntel.length > 0 ||
     trends.length > 0 ||
-    discoveryPricedCount > 0;
+    discoveryPricedCount > 0 ||
+    competitorProductTrackCount > 0;
 
   return {
     accessible: true as const,
@@ -1704,6 +1799,10 @@ export async function aiEvaluateProductProposal(
     uspAnalyzer: uspGaps,
     socialListening: socialInsights,
     productDiscovery,
+    competitorProducts: {
+      categories: competitorProducts,
+      aggregatePriceBand: competitorProductPriceBand,
+    },
     openRecommendations: recommendations.map((r) => ({
       module: r.module,
       priority: r.priority,
@@ -1713,8 +1812,9 @@ export async function aiEvaluateProductProposal(
     evaluationGuidance: {
       hasEnoughData,
       mustAddress: [
-        "Posisi harga proposal vs min/max/avg kompetitor (Competitor Tracker)",
+        "Posisi harga proposal vs min/max/avg kompetitor (Competitor Tracker shops + Competitor Products individual)",
         "Landscape marketplace dari Product Discovery (price band, top seller, promo) jika tersedia",
+        "Benchmark produk spesifik dari Competitor Products (harga, rating, sold, promo per SKU rival)",
         "Apakah claim (mis. instant whitening) didukung atau contradicted oleh keluhan/praise di Review Intel",
         "Celah pasar dari gapOpportunity review & USP analyzer",
         "Tren naik/turun di kategori terkait",
@@ -1732,6 +1832,9 @@ export async function aiEvaluateProductProposal(
           : null,
         productDiscovery.some((d) => d.priceStats != null)
           ? "Ada benchmark harga dari scrape marketplace (Product Discovery) — bandingkan dengan proposal"
+          : null,
+        competitorProductTrackCount > 0
+          ? "Ada data produk kompetitor individual terlacak — gunakan untuk benchmark harga & positioning spesifik"
           : null,
       ].filter(Boolean),
     },

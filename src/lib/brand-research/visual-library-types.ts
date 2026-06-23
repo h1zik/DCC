@@ -27,6 +27,11 @@ export type VisualLibraryGroups = {
     name: string;
     assets: VisualLibraryAssetView[];
   }[];
+  competitorProducts: {
+    categoryId: string;
+    name: string;
+    assets: VisualLibraryAssetView[];
+  }[];
   socialMonitors: {
     monitorId: string;
     name: string;

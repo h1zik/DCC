@@ -120,7 +120,7 @@ export function ProductDiscoveryDetailClient({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
   const inProgress = data.status === "SCRAPING";
 
   useProductDiscoveryPolling(inProgress);
@@ -200,16 +200,20 @@ export function ProductDiscoveryDetailClient({
     });
   }
 
-  function handleAnalyze(productId: string) {
-    setAnalyzingId(productId);
+  function handleReview(productId: string) {
+    setReviewLoadingId(productId);
     startTransition(async () => {
       try {
         const result = await sendDiscoveryProductToReviewIntel({ productId });
-        toast.success("Dikirim ke Review Intelligence.");
+        toast.success(
+          result.existing
+            ? "Review Intelligence sudah ada — membuka sumber."
+            : "Dikirim ke Review Intelligence.",
+        );
         router.push(`/research-hub/review-intelligence/${result.id}`);
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal kirim ke Review Intel."));
-        setAnalyzingId(null);
+        setReviewLoadingId(null);
       }
     });
   }
@@ -382,13 +386,15 @@ export function ProductDiscoveryDetailClient({
         <TabsContent value="produk" className={tabContentClass}>
           <ResearchHubSection
             title="Daftar Produk"
-            description="Tampilkan sebagai kartu atau daftar. Klik Review untuk kirim ke Review Intelligence."
+            description="Kartu atau daftar. Klik Review untuk kirim ke Review Intelligence sesuai platform asal produk."
           >
             <ProductDiscoveryProductsView
               rows={data.products}
               queryId={data.id}
-              onAnalyze={handleAnalyze}
-              analyzingId={analyzingId}
+              defaultCategoryName={data.keyword}
+              onReview={handleReview}
+              reviewLoadingId={reviewLoadingId}
+              actionsDisabled={pending}
             />
           </ResearchHubSection>
         </TabsContent>

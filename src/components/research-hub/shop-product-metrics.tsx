@@ -21,17 +21,21 @@ export function ShopProductMetricsStrip({
   metrics,
   compact = false,
   showStock = true,
+  hidden = false,
   className,
 }: {
   metrics: ShopProductCardMetrics;
   compact?: boolean;
   showStock?: boolean;
+  hidden?: boolean;
   className?: string;
 }) {
   const m = resolveShopProductMetrics({
     ...metrics,
     price: metrics.price ?? metrics.currentPrice ?? null,
   });
+
+  if (hidden) return null;
 
   const cells = [
     {

@@ -18,6 +18,7 @@ import {
   listResearchTrendDigestsForBrandHub,
   listResearchUspAnalysesForBrandHub,
   listResearchProductDiscoveryForBrandHub,
+  listCompetitorProductCategoriesForBrandHub,
 } from "@/lib/brand-research/research-hub-readers";
 
 export async function getStrategySourceCatalog(
@@ -32,6 +33,7 @@ export async function getStrategySourceCatalog(
     trendDigests,
     uspAnalyses,
     discoveryQueries,
+    productCategories,
   ] = await Promise.all([
     listResearchReviewSourcesForBrandHub(),
     listResearchSocialMonitorsForBrandHub(),
@@ -40,6 +42,7 @@ export async function getStrategySourceCatalog(
     listResearchTrendDigestsForBrandHub(),
     listResearchUspAnalysesForBrandHub(),
     listResearchProductDiscoveryForBrandHub(),
+    listCompetitorProductCategoriesForBrandHub(),
   ]);
 
   const groups = await buildVisualLibraryGroups(userId, ownerBrandId);
@@ -104,6 +107,13 @@ export async function getStrategySourceCatalog(
       label: q.keyword,
       detail: `${q.productCount} produk · ${q.marketplaces.join(", ")}`,
     })),
+    competitorProduct: productCategories
+      .filter((c) => c.isActive && c._count.tracks > 0)
+      .map((c) => ({
+        id: c.id,
+        label: c.name,
+        detail: `${c._count.tracks} produk dilacak`,
+      })),
     visual,
   };
 }
@@ -131,6 +141,10 @@ export function defaultStrategyGenerationConfig(
       enabled: catalog.productDiscovery.length > 0,
       ids: catalog.productDiscovery.map((q) => q.id),
     },
+    competitorProduct: {
+      enabled: catalog.competitorProduct.length > 0,
+      ids: catalog.competitorProduct.map((c) => c.id),
+    },
   };
 }
 
@@ -141,6 +155,7 @@ export function parseStrategyGenerationConfig(raw: unknown): StrategyGenerationC
   return {
     ...o,
     productDiscovery: o.productDiscovery ?? { enabled: false, ids: [] },
+    competitorProduct: o.competitorProduct ?? { enabled: false, ids: [] },
   };
 }
 

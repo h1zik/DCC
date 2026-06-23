@@ -44,8 +44,8 @@ export default async function CompetitorTrackerPage() {
   return (
     <ResearchHubModulePage
       icon={Target}
-      title="Competitor Tracker"
-      description="Pantau harga, SKU baru, rating, dan promo kompetitor — update otomatis harian."
+      title="Competitor Tracker — Shops"
+      description="Pantau seluruh katalog toko kompetitor: harga, SKU baru, rating, dan promo — update otomatis harian."
     >
       <CompetitorTrackerClient competitors={cards} />
     </ResearchHubModulePage>

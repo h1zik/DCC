@@ -66,6 +66,10 @@ function countCompetitorAssets(groups: VisualLibraryGroups) {
   return groups.competitors.reduce((n, c) => n + c.assets.length, 0);
 }
 
+function countCompetitorProductAssets(groups: VisualLibraryGroups) {
+  return groups.competitorProducts.reduce((n, c) => n + c.assets.length, 0);
+}
+
 function countSocialAssets(groups: VisualLibraryGroups) {
   return groups.socialMonitors.reduce((n, m) => n + m.assets.length, 0);
 }
@@ -86,6 +90,12 @@ function entitiesForSource(
     case "competitor":
       return groups.competitors.map((c) => ({
         id: c.competitorId,
+        name: c.name,
+        count: c.assets.length,
+      }));
+    case "competitorProduct":
+      return groups.competitorProducts.map((c) => ({
+        id: c.categoryId,
         name: c.name,
         count: c.assets.length,
       }));
@@ -170,8 +180,13 @@ export function BrandVisualLibraryClient({
       },
       {
         key: "competitor" as const,
-        label: "Competitor",
+        label: "Competitor Shop",
         count: countCompetitorAssets(groups),
+      },
+      {
+        key: "competitorProduct" as const,
+        label: "Competitor Product",
+        count: countCompetitorProductAssets(groups),
       },
       {
         key: "social" as const,
@@ -214,6 +229,7 @@ export function BrandVisualLibraryClient({
     () =>
       countPinterestAssets(groups) +
       countCompetitorAssets(groups) +
+      countCompetitorProductAssets(groups) +
       countSocialAssets(groups) +
       groups.manual.length,
     [groups],
@@ -603,6 +619,49 @@ export function BrandVisualLibraryClient({
             <Link
               href={brandHubHref(
                 `/brand-hub/competitor-tracker/${selected.competitorId}`,
+                brandId,
+              )}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium"
+            >
+              <ExternalLink className="size-3.5" />
+              Detail
+            </Link>
+          </div>
+          <MoodboardGrid
+            assets={selected.assets.map((a) => ({
+              id: a.id,
+              imageUrl: a.imageUrl,
+              title: a.title,
+              deletable: true,
+            }))}
+            onDelete={handleDeleteAsset}
+          />
+        </div>
+      );
+    }
+
+    if (source === "competitorProduct") {
+      if (groups.competitorProducts.length === 0) {
+        return (
+          <VisualLibraryEmptyPanel
+            hint="Buka Competitor Products, lalu klik Harvest Visual di detail kategori."
+            href={brandHubHref("/brand-hub/competitor-tracker/products", brandId)}
+          />
+        );
+      }
+
+      const selected = groups.competitorProducts.find(
+        (c) => c.categoryId === entityId,
+      );
+      if (!selected) return null;
+
+      return (
+        <div className="flex flex-col gap-4">
+          <div className={cn(hub.panel, "flex items-center justify-between gap-2 px-3 py-2")}>
+            <span className="text-sm font-medium">{selected.name}</span>
+            <Link
+              href={brandHubHref(
+                `/brand-hub/competitor-tracker/products/${selected.categoryId}`,
                 brandId,
               )}
               className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium"

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { ResearchMarketplace } from "@prisma/client";
-import { Bell, Target } from "lucide-react";
+import { Bell, Package, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BrandCompetitorTrackerModeNav } from "@/components/brand-hub/brand-competitor-tracker-mode-nav";
 import {
   hub,
   BrandHubEmptyState,
@@ -42,6 +43,8 @@ export function BrandCompetitorTrackerClient({
 
   return (
     <div className="flex flex-col gap-6">
+      <BrandCompetitorTrackerModeNav />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <BrandHubStatChip

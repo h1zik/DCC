@@ -13,6 +13,8 @@ const MODULE_DEFS = [
   { toggle: "trendRadar" as const, label: "Trend Radar", resolved: "trendRadar" as const },
   { toggle: "keywordIntel" as const, label: "Keyword Intel", resolved: "keywordIntel" as const },
   { toggle: "socialListening" as const, label: "Social Listening", resolved: "socialListening" as const },
+  { toggle: "productDiscovery" as const, label: "Product Discovery", resolved: "productDiscovery" as const },
+  { toggle: "competitorProducts" as const, label: "Competitor Products", resolved: "competitorProducts" as const },
 ];
 
 function hasResolvedData(
@@ -91,6 +93,8 @@ export function assessGatheredContextQuality(
     trendRadar: !!context.trendRadar,
     keywordIntel: !!context.keywordIntel,
     socialListening: !!context.socialListening,
+    productDiscovery: !!context.productDiscovery?.length,
+    competitorProducts: !!context.competitorProducts?.length,
   };
 
   const enabled = MODULE_DEFS.filter((m) => contextModules[m.toggle]);

@@ -4,11 +4,12 @@ import {
   FlaskConical,
   LayoutDashboard,
   MessageSquare,
+  Package,
   PackageSearch,
   Radar,
   Search,
   Star,
-  Target,
+  Store,
   type LucideIcon,
 } from "lucide-react";
 
@@ -62,10 +63,16 @@ export const RESEARCH_HUB_ZONES: ResearchHubNavZone[] = [
         icon: Star,
       },
       {
-        key: "competitor-tracker",
+        key: "competitor-tracker-shops",
         href: "/research-hub/competitor-tracker",
-        label: "Competitor Tracker",
-        icon: Target,
+        label: "Competitor — Shops",
+        icon: Store,
+      },
+      {
+        key: "competitor-tracker-products",
+        href: "/research-hub/competitor-tracker/products",
+        label: "Competitor — Products",
+        icon: Package,
       },
       {
         key: "social-listening",
@@ -117,5 +124,12 @@ export function isResearchHubNavActive(
   pathname: string,
 ): boolean {
   if (itemHref === "/research-hub") return pathname === "/research-hub";
+  // Competitor Tracker: Shops vs Products saling eksklusif agar tidak highlight bareng.
+  if (
+    itemHref === "/research-hub/competitor-tracker" &&
+    pathname.startsWith("/research-hub/competitor-tracker/products")
+  ) {
+    return false;
+  }
   return pathname.startsWith(itemHref);
 }

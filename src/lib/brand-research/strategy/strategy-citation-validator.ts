@@ -14,6 +14,7 @@ const VALID_SOURCES = new Set([
   "trend",
   "usp",
   "product-discovery",
+  "competitor-product",
   "portfolio",
 ]);
 

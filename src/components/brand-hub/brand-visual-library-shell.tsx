@@ -14,6 +14,7 @@ import {
 export type VisualLibrarySourceKey =
   | "pinterest"
   | "competitor"
+  | "competitorProduct"
   | "social"
   | "manual";
 

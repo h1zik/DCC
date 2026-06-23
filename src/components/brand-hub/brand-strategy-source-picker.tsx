@@ -6,6 +6,7 @@ import {
   ImageIcon,
   MessageSquare,
   PackageSearch,
+  Package,
   Radar,
   Search,
   Sparkles,
@@ -68,6 +69,11 @@ const SOURCE_META: Record<
     description: "Sinyal pasar dari pencarian produk kompetitor.",
     icon: PackageSearch,
   },
+  competitorProduct: {
+    title: "Competitor Products",
+    description: "Benchmark produk rival individual yang dilacak.",
+    icon: Package,
+  },
 };
 
 type TabKey = "market" | "creative" | "intelligence";
@@ -75,7 +81,7 @@ type TabKey = "market" | "creative" | "intelligence";
 const TAB_SOURCES: Record<TabKey, StrategySourceKey[]> = {
   market: ["review", "social"],
   creative: ["visual"],
-  intelligence: ["competitor", "keyword", "trend", "usp", "productDiscovery"],
+  intelligence: ["competitor", "competitorProduct", "keyword", "trend", "usp", "productDiscovery"],
 };
 
 const TAB_META: Record<

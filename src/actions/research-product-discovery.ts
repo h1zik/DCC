@@ -18,6 +18,10 @@ import {
   MAX_PRODUCT_LIMIT,
   MIN_PRODUCT_LIMIT,
 } from "@/lib/research/product-discovery/constants";
+import {
+  addCompetitorProductTrack,
+  createCompetitorProductCategory,
+} from "@/actions/research-competitor-product";
 
 const createQuerySchema = z.object({
   keyword: z.string().min(1).max(120),
@@ -87,6 +91,51 @@ export async function pollProductDiscoveryJobs(): Promise<{ polled: number }> {
   return { polled };
 }
 
+const addToCompetitorSchema = z
+  .object({
+    productId: z.string().min(1),
+    categoryId: z.string().min(1).optional(),
+    newCategoryName: z.string().min(1).max(120).optional(),
+  })
+  .refine((data) => data.categoryId || data.newCategoryName?.trim(), {
+    message: "Pilih kategori atau buat kategori baru.",
+  });
+
+export async function addDiscoveryProductToCompetitorTracker(
+  input: z.infer<typeof addToCompetitorSchema>,
+) {
+  await requireMarketAnalyst();
+  const data = addToCompetitorSchema.parse(input);
+
+  const product = await prisma.productDiscoveryItem.findUnique({
+    where: { id: data.productId },
+  });
+  if (!product) throw new Error("Produk tidak ditemukan.");
+
+  let categoryId = data.categoryId;
+  if (!categoryId) {
+    const created = await createCompetitorProductCategory({
+      name: data.newCategoryName!.trim(),
+    });
+    categoryId = created.id;
+  }
+
+  const result = await addCompetitorProductTrack({
+    categoryId,
+    productUrl: product.productUrl,
+    marketplace: product.marketplace,
+  });
+
+  return { trackId: result.id, categoryId };
+}
+
+async function findExistingReviewSource(productUrl: string, platformKey: string) {
+  return prisma.reviewIntelSource.findFirst({
+    where: { productUrl, platformKey },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 export async function sendDiscoveryProductToReviewIntel(input: {
   productId: string;
   competitorBrand?: string;
@@ -110,6 +159,16 @@ export async function sendDiscoveryProductToReviewIntel(input: {
 
   const urlError = validateReviewPlatformUrl(platformKey, product.productUrl);
   if (urlError) throw new Error(urlError);
+
+  const existing = await findExistingReviewSource(
+    product.productUrl,
+    platformKey,
+  );
+  if (existing) {
+    revalidatePath("/research-hub/review-intelligence");
+    revalidatePath(`/research-hub/review-intelligence/${existing.id}`);
+    return { id: existing.id, existing: true as const };
+  }
 
   const source = await prisma.reviewIntelSource.create({
     data: {

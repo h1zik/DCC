@@ -3,8 +3,10 @@
 import { useMemo } from "react";
 import {
   BarChart3,
+  Compass,
   Lightbulb,
   MessageSquare,
+  Package,
   Radar,
   Search,
   Sparkles,
@@ -74,6 +76,18 @@ const BASE_MODULE_CONFIG: Record<
     short: "Sosial",
     icon: MessageSquare,
     hint: "Pain point & wishlist dari sosial",
+  },
+  productDiscovery: {
+    label: "Product Discovery",
+    short: "Discovery",
+    icon: Compass,
+    hint: "Landscape marketplace & top seller",
+  },
+  competitorProducts: {
+    label: "Competitor Products",
+    short: "Produk",
+    icon: Package,
+    hint: "Benchmark produk rival individual",
   },
 };
 

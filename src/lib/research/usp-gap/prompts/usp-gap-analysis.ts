@@ -11,6 +11,11 @@ Analisis kategori: "${ctx.category}"
 Data agregat dari modul riset:
 ${JSON.stringify(ctx, null, 2)}
 
+Panduan modul:
+- productDiscovery: landscape marketplace (price band, top seller, promo share, brand breakdown)
+- competitorProducts: benchmark produk individual yang dilacak user (harga, rating, sold, promo per SKU rival)
+- competitor: data shop-level dari Competitor Tracker (SKU agregat per toko)
+
 Tugas:
 1. Buat gap matrix: klaim/benefit vs kekosongan pasar. Per baris WAJIB isi:
    - gapScore 0-100, opportunity ringkas
