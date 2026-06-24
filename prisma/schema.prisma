@@ -2302,6 +2302,13 @@ model CompetitorProductTrack {
   stock            Int?
   hasPromo         Boolean                   @default(false)
   promoText        String?
+  description      String?                   @db.Text
+  categoryName     String?
+  categoryPath     String[]                  @default([])
+  currency         String?
+  attributes       Json?
+  variations       Json?
+  models           Json?
   isActive         Boolean                   @default(true)
   lastScrapedAt    DateTime?
   scrapeError      String?

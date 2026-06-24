@@ -37,6 +37,16 @@ export type VpsActorRunOptions = {
   throwOnFailed?: boolean;
 };
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isVpsShopeeBusyResponse(status: number, body: string): boolean {
+  if (status !== 409) return false;
+  const lower = body.toLowerCase();
+  return lower.includes("already running") || lower.includes("shopee scrape job");
+}
+
 /** Panggil actor di VPS scraper (Apify-style). */
 export async function startVpsActorRun(
   actorId: string,
@@ -56,58 +66,77 @@ export async function startVpsActorRun(
   const requestTimeoutMs = wait
     ? Math.min(Math.max(timeoutSec * 1000 + 15_000, 30_000), DEFAULT_TIMEOUT_MS)
     : 60_000;
+  const maxShopeeBusyWaits = actorId.startsWith("shopee-") ? 36 : 0;
 
   const url = `${baseUrl}/api/v1/actors/${encodeURIComponent(actorId)}/runs`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        input,
-        wait,
-        timeout: timeoutSec,
-      }),
-      signal: controller.signal,
-      cache: "no-store",
-    });
+  let busyWaits = 0;
+  while (true) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
 
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(
-        `VPS scraper gagal (${res.status}): ${text.slice(0, 400) || res.statusText}`,
-      );
-    }
-
-    let payload: VpsRunResponse;
     try {
-      payload = JSON.parse(text) as VpsRunResponse;
-    } catch {
-      throw new Error(
-        `VPS scraper mengembalikan JSON tidak valid: ${text.slice(0, 200)}`,
-      );
-    }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          input,
+          wait,
+          timeout: timeoutSec,
+        }),
+        signal: controller.signal,
+        cache: "no-store",
+      });
 
-    if (payload.status === "failed" && opts.throwOnFailed !== false) {
-      throw new Error(payload.error ?? "Scrape VPS gagal tanpa pesan error.");
-    }
+      const text = await res.text();
+      if (isVpsShopeeBusyResponse(res.status, text)) {
+        if (busyWaits < maxShopeeBusyWaits) {
+          busyWaits += 1;
+          console.info(
+            `[scraper-api/shopee] VPS sibuk (${busyWaits}/${maxShopeeBusyWaits}) — tunggu 5s…`,
+          );
+          await sleep(5000);
+          continue;
+        }
+        throw new Error(
+          `VPS Shopee masih sibuk setelah ${maxShopeeBusyWaits * 5}s: ${text.slice(0, 200)}`,
+        );
+      }
 
-    return payload;
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(
-        `VPS scraper timeout setelah ${Math.round(requestTimeoutMs / 1000)} detik.`,
-      );
+      if (!res.ok) {
+        throw new Error(
+          `VPS scraper gagal (${res.status}): ${text.slice(0, 400) || res.statusText}`,
+        );
+      }
+
+      let payload: VpsRunResponse;
+      try {
+        payload = JSON.parse(text) as VpsRunResponse;
+      } catch {
+        throw new Error(
+          `VPS scraper mengembalikan JSON tidak valid: ${text.slice(0, 200)}`,
+        );
+      }
+
+      if (payload.status === "failed" && opts.throwOnFailed !== false) {
+        throw new Error(payload.error ?? "Scrape VPS gagal tanpa pesan error.");
+      }
+
+      return payload;
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(
+          `VPS scraper timeout setelah ${Math.round(requestTimeoutMs / 1000)} detik.`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

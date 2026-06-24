@@ -1,6 +1,7 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import { ShopProductMetricsStrip } from "@/components/research-hub/shop-product-metrics";
 import { hub } from "@/components/research-hub/research-hub-primitives";
@@ -10,6 +11,17 @@ import { MARKETPLACE_LABELS, formatRp } from "@/lib/research/labels";
 import type { ShopProductMetrics } from "@/lib/research/shop-product-metrics";
 import { formatCompactCount } from "@/lib/research/shop-product-metrics";
 import { cn } from "@/lib/utils";
+
+export type ShopProductAttribute = { name: string; value: string };
+export type ShopProductVariation = { name: string; options: string[] };
+export type ShopProductModel = {
+  modelId: string | null;
+  name: string | null;
+  price: number | null;
+  priceBeforeDiscount: number | null;
+  stock: number | null;
+  sold: number | null;
+};
 
 export type ShopProductDetailData = {
   id: string;
@@ -27,6 +39,14 @@ export type ShopProductDetailData = {
   promoText: string | null;
   categoryRank: number | null;
   soldCount: number | null;
+  // Detail kaya (opsional) — terisi dari scraper VPS shopee-product.
+  brand?: string | null;
+  categoryName?: string | null;
+  categoryPath?: string[] | null;
+  description?: string | null;
+  attributes?: ShopProductAttribute[] | null;
+  variations?: ShopProductVariation[] | null;
+  models?: ShopProductModel[] | null;
 } & ShopProductMetrics;
 
 export function ShopProductDetailPanel({
@@ -41,6 +61,8 @@ export function ShopProductDetailPanel({
   const marketplaceLabel =
     MARKETPLACE_LABELS[product.marketplace as keyof typeof MARKETPLACE_LABELS] ??
     product.marketplace;
+
+  const [descExpanded, setDescExpanded] = useState(false);
 
   return (
     <div className={cn("flex flex-col gap-6", hub.entrance)}>
@@ -74,12 +96,24 @@ export function ShopProductDetailPanel({
                   Rank #{product.categoryRank}
                 </Badge>
               ) : null}
+              {product.brand ? (
+                <Badge variant="outline" className="text-[10px]">
+                  {product.brand}
+                </Badge>
+              ) : null}
             </div>
             <h1 className="text-xl font-semibold leading-snug">{product.name}</h1>
             <p className="text-muted-foreground text-sm">
               {product.shopName ?? "—"}
               {product.shopLocation ? ` · ${product.shopLocation}` : ""}
             </p>
+            {product.categoryPath && product.categoryPath.length > 0 ? (
+              <p className="text-muted-foreground text-xs">
+                {product.categoryPath.join(" › ")}
+              </p>
+            ) : product.categoryName ? (
+              <p className="text-muted-foreground text-xs">{product.categoryName}</p>
+            ) : null}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
@@ -129,6 +163,107 @@ export function ShopProductDetailPanel({
           </div>
         </div>
       </div>
+
+      {product.attributes && product.attributes.length > 0 ? (
+        <div className={cn(hub.panel, "flex flex-col gap-3")}>
+          <h2 className="text-sm font-semibold">Spesifikasi</h2>
+          <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+            {product.attributes.map((attr) => (
+              <div
+                key={attr.name}
+                className="flex flex-col gap-0.5 border-b border-border/40 pb-2"
+              >
+                <dt className="text-muted-foreground text-xs">{attr.name}</dt>
+                <dd className="text-sm">{attr.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
+      {(product.variations && product.variations.length > 0) ||
+      (product.models && product.models.length > 0) ? (
+        <div className={cn(hub.panel, "flex flex-col gap-4")}>
+          <h2 className="text-sm font-semibold">Varian</h2>
+          {product.variations?.map((variation) => (
+            <div key={variation.name} className="flex flex-col gap-1.5">
+              <p className="text-muted-foreground text-xs">{variation.name}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {variation.options.map((option) => (
+                  <Badge key={option} variant="secondary" className="text-[11px]">
+                    {option}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ))}
+          {product.models && product.models.length > 0 ? (
+            <div className="overflow-hidden rounded-lg border border-border/50">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-muted-foreground text-xs">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Varian</th>
+                    <th className="px-3 py-2 text-right font-medium">Harga</th>
+                    <th className="px-3 py-2 text-right font-medium">Stok</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {product.models.map((model, i) => (
+                    <tr
+                      key={model.modelId ?? `${model.name ?? "model"}-${i}`}
+                      className="border-t border-border/40"
+                    >
+                      <td className="px-3 py-2">{model.name ?? "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {model.price != null ? formatRp(model.price) : "—"}
+                        {model.priceBeforeDiscount != null &&
+                        model.price != null &&
+                        model.priceBeforeDiscount > model.price ? (
+                          <span className="text-muted-foreground ml-1 text-xs line-through">
+                            {formatRp(model.priceBeforeDiscount)}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatCompactCount(model.stock)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {product.description ? (
+        <div className={cn(hub.panel, "flex flex-col gap-2")}>
+          <h2 className="text-sm font-semibold">Deskripsi</h2>
+          <p
+            className={cn(
+              "text-muted-foreground text-sm leading-relaxed whitespace-pre-line",
+              !descExpanded && "line-clamp-6",
+            )}
+          >
+            {product.description}
+          </p>
+          {product.description.length > 280 ? (
+            <button
+              type="button"
+              onClick={() => setDescExpanded((s) => !s)}
+              className="text-primary inline-flex w-fit items-center gap-1 text-xs font-medium hover:underline"
+            >
+              {descExpanded ? "Tutup" : "Selengkapnya"}
+              <ChevronDown
+                className={cn(
+                  "size-3.5 transition-transform",
+                  descExpanded && "rotate-180",
+                )}
+              />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

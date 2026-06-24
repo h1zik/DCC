@@ -11,6 +11,20 @@ export type NormalizedReview = {
   reviewDate: Date | null;
 };
 
+/** Spesifikasi produk (mis. {name: "Volume", value: "200ml"}). */
+export type ProductAttribute = { name: string; value: string };
+/** Pilihan varian (mis. {name: "Ukuran", options: ["Single", "Twinpack"]}). */
+export type ProductVariation = { name: string; options: string[] };
+/** Varian/SKU konkret dengan harga & stok masing-masing. */
+export type ProductModel = {
+  modelId: string | null;
+  name: string | null;
+  price: number | null;
+  priceBeforeDiscount: number | null;
+  stock: number | null;
+  sold: number | null;
+};
+
 export type NormalizedShopProduct = {
   externalId: string;
   name: string;
@@ -32,6 +46,15 @@ export type NormalizedShopProduct = {
   stock: number | null;
   shopLocation: string | null;
   isOfficialShop: boolean;
+  // Detail kaya (terutama dari VPS shopee-product); opsional agar normalizer lain tetap valid.
+  description?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  categoryPath?: string[];
+  currency?: string | null;
+  attributes?: ProductAttribute[];
+  variations?: ProductVariation[];
+  models?: ProductModel[];
 };
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | null {
