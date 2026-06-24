@@ -2,6 +2,7 @@ import "server-only";
 
 import { revalidatePath } from "next/cache";
 import {
+  Prisma,
   ResearchMarketplace,
   ResearchScrapeJobStatus,
   ResearchScrapeJobType,
@@ -166,6 +167,27 @@ export async function scrapeCompetitorProductTrack(
 
     const metrics = snapshotMetricsFromProduct(product);
 
+    // Detail kaya dari scraper (VPS shopee-product). `undefined` = jangan ubah
+    // field lama bila marketplace ini tidak menyediakannya.
+    const richData: Prisma.CompetitorProductTrackUpdateInput = {
+      brand: product.brand ?? undefined,
+      description: product.description ?? undefined,
+      categoryName: product.category ?? undefined,
+      currency: product.currency ?? undefined,
+    };
+    if (product.categoryPath && product.categoryPath.length > 0) {
+      richData.categoryPath = product.categoryPath;
+    }
+    if (product.attributes && product.attributes.length > 0) {
+      richData.attributes = product.attributes as unknown as Prisma.InputJsonValue;
+    }
+    if (product.variations && product.variations.length > 0) {
+      richData.variations = product.variations as unknown as Prisma.InputJsonValue;
+    }
+    if (product.models && product.models.length > 0) {
+      richData.models = product.models as unknown as Prisma.InputJsonValue;
+    }
+
     await prisma.competitorProductTrack.update({
       where: { id: trackId },
       data: {
@@ -186,6 +208,7 @@ export async function scrapeCompetitorProductTrack(
         lastScrapedAt: new Date(),
         lastSeenAt: new Date(),
         scrapeError: null,
+        ...richData,
       },
     });
 

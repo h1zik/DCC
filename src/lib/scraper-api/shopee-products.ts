@@ -1,6 +1,11 @@
 import "server-only";
 
-import type { NormalizedShopProduct } from "@/lib/apify/normalize";
+import type {
+  NormalizedShopProduct,
+  ProductAttribute,
+  ProductModel,
+  ProductVariation,
+} from "@/lib/apify/normalize";
 import { extractVpsProductMetrics, pickMarketplaceReviewCount } from "@/lib/scraper-api/product-metrics";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
 import {
@@ -34,6 +39,65 @@ function parseDiscountPercent(raw: string | null): number | null {
   if (!raw) return null;
   const match = raw.match(/(\d+)/);
   return match ? Number(match[1]) : null;
+}
+
+function pickStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter(Boolean);
+}
+
+/** {name, value}[] — spesifikasi produk Shopee (Volume, Negara Asal, dll.). */
+function parseAttributes(value: unknown): ProductAttribute[] {
+  if (!Array.isArray(value)) return [];
+  const out: ProductAttribute[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const obj = raw as Record<string, unknown>;
+    const name = pickString(obj, ["name", "label", "key"]);
+    const val =
+      pickString(obj, ["value", "val", "text"]) ??
+      (Array.isArray(obj.values) ? pickStringArray(obj.values).join(", ") : null);
+    if (name && val) out.push({ name, value: val });
+  }
+  return out;
+}
+
+/** {name, options[]}[] — opsi varian (mis. Ukuran: Single/Twinpack). */
+function parseVariations(value: unknown): ProductVariation[] {
+  if (!Array.isArray(value)) return [];
+  const out: ProductVariation[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const obj = raw as Record<string, unknown>;
+    const name = pickString(obj, ["name", "label"]);
+    const options = pickStringArray(obj.options ?? obj.values);
+    if (name && options.length > 0) out.push({ name, options });
+  }
+  return out;
+}
+
+/** SKU konkret dengan harga & stok per varian. */
+function parseModels(value: unknown): ProductModel[] {
+  if (!Array.isArray(value)) return [];
+  const out: ProductModel[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const obj = raw as Record<string, unknown>;
+    out.push({
+      modelId: pickString(obj, ["model_id", "modelId", "id"]),
+      name: pickString(obj, ["name", "model_name", "modelName"]),
+      price: pickNumber(obj, ["price"]),
+      priceBeforeDiscount: pickNumber(obj, [
+        "price_before_discount",
+        "priceBeforeDiscount",
+      ]),
+      stock: pickNumber(obj, ["stock", "stock_count"]),
+      sold: pickNumber(obj, ["sold", "sold_count", "soldCount"]),
+    });
+  }
+  return out;
 }
 
 function pickExternalId(item: Record<string, unknown>, index: number): string {
@@ -96,6 +160,14 @@ export function normalizeVpsShopeeProducts(
       stock: metrics.stock,
       shopLocation: metrics.shopLocation,
       isOfficialShop: metrics.isOfficialShop,
+      description: pickString(item, ["description", "desc", "detail"]),
+      brand: pickString(item, ["brand", "brand_name", "brandName"]),
+      category: pickString(item, ["category", "category_name"]),
+      categoryPath: pickStringArray(item.category_path ?? item.categoryPath),
+      currency: pickString(item, ["currency", "currency_code"]),
+      attributes: parseAttributes(item.attributes),
+      variations: parseVariations(item.variations),
+      models: parseModels(item.models),
     });
   }
 
