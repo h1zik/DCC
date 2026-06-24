@@ -1,14 +1,65 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { ImageIcon, Trash2 } from "lucide-react";
+import {
+  AdPosterImage,
+  VideoFramePoster,
+} from "@/components/brand-hub/ad-creative-media";
+import { isRenderableImageUrl } from "@/lib/brand-research/ad-library-media";
 import { cn } from "@/lib/utils";
+
+function MoodboardThumbnail({
+  imageUrl,
+  videoUrl,
+  title,
+}: {
+  imageUrl: string;
+  videoUrl?: string | null;
+  title: string | null;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const alt = title ?? "Visual reference";
+  const poster = isRenderableImageUrl(imageUrl) && !imgFailed ? imageUrl : null;
+  const fallbackVideo = videoUrl?.trim() || null;
+
+  if (poster) {
+    return (
+      <AdPosterImage
+        src={poster}
+        alt={alt}
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+
+  if (fallbackVideo) {
+    return (
+      <VideoFramePoster
+        videoUrl={fallbackVideo}
+        alt={alt}
+      />
+    );
+  }
+
+  return (
+    <div className="flex aspect-[4/5] w-full items-center justify-center bg-muted text-muted-foreground">
+      <ImageIcon className="size-8" aria-hidden />
+    </div>
+  );
+}
 
 export function MoodboardGrid({
   assets,
   onDelete,
 }: {
-  assets: { id: string; imageUrl: string; title: string | null; deletable?: boolean }[];
+  assets: {
+    id: string;
+    imageUrl: string;
+    title: string | null;
+    videoUrl?: string | null;
+    deletable?: boolean;
+  }[];
   onDelete?: (id: string) => void;
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -26,15 +77,13 @@ export function MoodboardGrid({
             onMouseEnter={() => setHoveredId(a.id)}
             onMouseLeave={() => setHoveredId(null)}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={a.imageUrl}
-              alt={a.title ?? "Visual reference"}
-              className={cn(
-                "aspect-[4/5] w-full object-cover transition-transform duration-300",
-                isHovered && "scale-105",
-              )}
-            />
+            <div className="relative aspect-[4/5] w-full overflow-hidden">
+              <MoodboardThumbnail
+                imageUrl={a.imageUrl}
+                videoUrl={a.videoUrl}
+                title={a.title}
+              />
+            </div>
             {a.title ? (
               <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-t from-black/70 to-transparent p-2 text-[10px] text-white line-clamp-2">
                 {a.title}

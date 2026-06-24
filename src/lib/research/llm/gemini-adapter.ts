@@ -1,9 +1,28 @@
 import "server-only";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GeminiResponseBlockedError, isGeminiResponseBlockedError } from "./gemini-blocked-error";
 import { parseExtractedJson } from "./extract-json";
 import { withLlmRetry } from "./retry";
 import type { GenerateResearchJsonOpts, GenerateResearchTextOpts } from "./types";
+
+export { GeminiResponseBlockedError, isGeminiResponseBlockedError } from "./gemini-blocked-error";
+
+function readGeminiBlockReason(
+  response: Awaited<
+    ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>
+  >["response"],
+): string | null {
+  const feedbackReason = response.promptFeedback?.blockReason;
+  if (feedbackReason) return String(feedbackReason);
+
+  for (const candidate of response.candidates ?? []) {
+    const reason = candidate.finishReason;
+    if (reason === "SAFETY" || reason === "BLOCKLIST") return reason;
+  }
+
+  return null;
+}
 
 function resolveGeminiApiKey(): string | null {
   return (
@@ -39,7 +58,9 @@ export async function geminiGenerateJson<T>(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const models = resolveGeminiModelCandidates();
+  const models = opts?.singleModel
+    ? resolveGeminiModelCandidates().slice(0, 1)
+    : resolveGeminiModelCandidates();
   let lastError: unknown;
 
   for (const modelName of models) {
@@ -63,7 +84,23 @@ export async function geminiGenerateJson<T>(
         { maxRetries: opts?.maxRetries ?? 2 },
       );
 
-      const text = result.response.text();
+      const blockReason = readGeminiBlockReason(result.response);
+      if (blockReason) {
+        throw new GeminiResponseBlockedError(blockReason);
+      }
+
+      let text: string;
+      try {
+        text = result.response.text();
+      } catch (err) {
+        if (isGeminiResponseBlockedError(err)) throw err;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.toLowerCase().includes("blocked")) {
+          throw new GeminiResponseBlockedError(msg);
+        }
+        throw err;
+      }
+
       const parsed = parseExtractedJson<T>(text);
 
       if (opts?.validate && !opts.validate(parsed)) {
@@ -72,7 +109,12 @@ export async function geminiGenerateJson<T>(
       return parsed;
     } catch (err) {
       lastError = err;
-      console.warn(`[research/llm/gemini] model ${modelName} gagal`, err);
+      if (err instanceof GeminiResponseBlockedError) {
+        throw err;
+      }
+      if (!opts?.quiet) {
+        console.warn(`[research/llm/gemini] model ${modelName} gagal`, err);
+      }
     }
   }
 

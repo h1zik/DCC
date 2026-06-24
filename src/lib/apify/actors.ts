@@ -334,3 +334,58 @@ export function buildPinterestActorInput(
 export function pinterestActorEnvHint(): string {
   return "Set SCRAPER_API_URL (VPS) atau APIFY_ACTOR_PINTEREST untuk scrape Pinterest.";
 }
+
+export function getMetaAdLibraryActorId(): string | null {
+  return (
+    process.env.APIFY_ACTOR_META_AD_LIBRARY?.trim() ||
+    "automly~facebook-ad-library-scraper"
+  );
+}
+
+export function buildMetaAdLibraryActorInput(monitor: {
+  searchTerms: string[];
+  adLibraryUrls: string[];
+  country: string;
+  activeStatus: string;
+  adType: string;
+  mediaType: string;
+  searchType: string;
+  maxAds: number;
+}): Record<string, unknown> {
+  const searchTerms = monitor.searchTerms.map((t) => t.trim()).filter(Boolean);
+  const urls = monitor.adLibraryUrls.map((u) => u.trim()).filter(Boolean);
+  if (searchTerms.length === 0 && urls.length === 0) {
+    throw new Error("Isi minimal satu keyword atau URL Ad Library.");
+  }
+
+  // PENTING: actor ini memakai `maxAds` PER search term / URL, BUKAN total.
+  // Jadi total iklan yang di-scrape = maxAds × (jumlah keyword + jumlah URL).
+  // Agar menghormati target jumlah HASIL AKHIR milik user, kita bagi target ke
+  // tiap unit pencarian. Hard cap actor = 200 per unit.
+  const target = Math.min(Math.max(monitor.maxAds || 50, 10), 200);
+  const unitCount = Math.max(searchTerms.length + urls.length, 1);
+  const perUnit = Math.min(Math.max(Math.ceil(target / unitCount), 1), 200);
+
+  const input: Record<string, unknown> = {
+    country: monitor.country || "ID",
+    activeStatus: monitor.activeStatus || "active",
+    adType: monitor.adType || "all",
+    mediaType: monitor.mediaType || "all",
+    searchType: monitor.searchType || "keyword_exact_phrase",
+    maxAds: perUnit,
+    includePageTransparency: false,
+    proxyConfiguration: {
+      useApifyProxy: true,
+      apifyProxyGroups: ["RESIDENTIAL"],
+    },
+  };
+
+  if (searchTerms.length > 0) input.searchTerms = searchTerms;
+  if (urls.length > 0) input.urls = urls;
+
+  return input;
+}
+
+export function metaAdLibraryActorEnvHint(): string {
+  return "Set APIFY_ACTOR_META_AD_LIBRARY atau gunakan default automly~facebook-ad-library-scraper.";
+}

@@ -6,6 +6,8 @@ export type VisualLibraryAssetView = {
   sourceUrl: string | null;
   tags: string[];
   createdAt: string;
+  /** Fallback preview bila imageUrl bukan gambar (mis. kreatif video Meta Ad). */
+  videoUrl?: string | null;
 };
 
 export type VisualLibraryGroups = {
@@ -33,6 +35,11 @@ export type VisualLibraryGroups = {
     assets: VisualLibraryAssetView[];
   }[];
   socialMonitors: {
+    monitorId: string;
+    name: string;
+    assets: VisualLibraryAssetView[];
+  }[];
+  adLibraryMonitors: {
     monitorId: string;
     name: string;
     assets: VisualLibraryAssetView[];

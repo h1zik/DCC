@@ -13,6 +13,7 @@ import {
   Sparkles,
   Target,
   TrendingUp,
+  Megaphone,
 } from "lucide-react";
 import { hub } from "@/components/brand-hub/brand-hub-primitives";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ const STUDIO_NAV: SubNavItem[] = [
 
 const INTELLIGENCE_NAV: SubNavItem[] = [
   { href: "/brand-hub/competitor-tracker", label: "Competitor", icon: Target },
+  { href: "/brand-hub/ad-library", label: "Ad Library", icon: Megaphone },
   { href: "/brand-hub/social-listening", label: "Social", icon: MessageSquare },
   { href: "/brand-hub/visual-trend", label: "Visual Trend", icon: TrendingUp },
 ];

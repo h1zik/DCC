@@ -1,0 +1,407 @@
+import "server-only";
+
+import { after } from "next/server";
+import { Prisma, SocialListeningStatus } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import {
+  buildMetaAdLibraryActorInput,
+  getMetaAdLibraryActorId,
+  metaAdLibraryActorEnvHint,
+} from "@/lib/apify/actors";
+import {
+  fetchApifyDataset,
+  isApifyConfigured,
+  startApifyActor,
+  waitForApifyRun,
+} from "@/lib/apify/client";
+import {
+  generateDemoMetaAds,
+  normalizeMetaAds,
+  type NormalizedMetaAd,
+} from "@/lib/apify/normalize-meta-ads";
+import {
+  filterAdsByScrapeMediaType,
+  type ScrapeMediaType,
+} from "@/lib/brand-research/ad-library-media";
+import { generateResearchJson } from "@/lib/research/gemini-client";
+import { filterAdsForMonitorView } from "@/lib/brand-research/ad-library-safety";
+import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
+
+const activeBatchIds = new Set<string>();
+
+async function patchBatch(
+  batchId: string,
+  data: Prisma.BrandAdLibraryBatchUpdateManyMutationInput,
+): Promise<boolean> {
+  const result = await prisma.brandAdLibraryBatch.updateMany({
+    where: { id: batchId },
+    data,
+  });
+  return result.count > 0;
+}
+
+async function upsertAdsForMonitor(
+  monitorId: string,
+  batchId: string,
+  ads: NormalizedMetaAd[],
+): Promise<number> {
+  let count = 0;
+  for (const ad of ads) {
+    await prisma.brandAdLibraryAd.upsert({
+      where: {
+        monitorId_externalId: {
+          monitorId,
+          externalId: ad.externalId,
+        },
+      },
+      create: {
+        monitorId,
+        batchId,
+        externalId: ad.externalId,
+        pageId: ad.pageId,
+        pageName: ad.pageName,
+        pageProfileUrl: ad.pageProfileUrl,
+        bodyText: ad.bodyText,
+        linkTitle: ad.linkTitle,
+        linkUrl: ad.linkUrl,
+        ctaType: ad.ctaType,
+        ctaText: ad.ctaText,
+        mediaType: ad.mediaType,
+        imageUrl: ad.imageUrl,
+        videoUrl: ad.videoUrl,
+        snapshotUrl: ad.snapshotUrl,
+        platforms: ad.platforms,
+        isActive: ad.isActive,
+        deliveryStart: ad.deliveryStart,
+        deliveryStop: ad.deliveryStop,
+        rawData: ad.rawData as Prisma.InputJsonValue,
+        scrapedAt: ad.scrapedAt ?? new Date(),
+      },
+      update: {
+        batchId,
+        pageId: ad.pageId,
+        pageName: ad.pageName,
+        pageProfileUrl: ad.pageProfileUrl,
+        bodyText: ad.bodyText,
+        linkTitle: ad.linkTitle,
+        linkUrl: ad.linkUrl,
+        ctaType: ad.ctaType,
+        ctaText: ad.ctaText,
+        mediaType: ad.mediaType,
+        imageUrl: ad.imageUrl,
+        videoUrl: ad.videoUrl,
+        snapshotUrl: ad.snapshotUrl,
+        platforms: ad.platforms,
+        isActive: ad.isActive,
+        deliveryStart: ad.deliveryStart,
+        deliveryStop: ad.deliveryStop,
+        rawData: ad.rawData as Prisma.InputJsonValue,
+        scrapedAt: ad.scrapedAt ?? new Date(),
+      },
+    });
+    count += 1;
+  }
+  return count;
+}
+
+async function syncAdsForMonitor(
+  monitorId: string,
+  batchId: string,
+  ads: NormalizedMetaAd[],
+): Promise<number> {
+  const count = await upsertAdsForMonitor(monitorId, batchId, ads);
+  const externalIds = ads.map((a) => a.externalId);
+
+  if (externalIds.length > 0) {
+    await prisma.brandAdLibraryAd.deleteMany({
+      where: {
+        monitorId,
+        externalId: { notIn: externalIds },
+      },
+    });
+  } else {
+    await prisma.brandAdLibraryAd.deleteMany({ where: { monitorId } });
+  }
+
+  return count;
+}
+
+function applyAdLibraryGuards(
+  ads: NormalizedMetaAd[],
+  monitor: {
+    searchTerms: string[];
+    adLibraryUrls: string[];
+    searchType: string | null;
+  },
+): NormalizedMetaAd[] {
+  return filterAdsForMonitorView(ads, monitor);
+}
+
+export async function generateAdLibraryAiSummary(monitorId: string): Promise<void> {
+  const monitor = await prisma.brandAdLibraryMonitor.findUnique({
+    where: { id: monitorId },
+    include: {
+      ads: {
+        orderBy: { updatedAt: "desc" },
+        take: 40,
+      },
+    },
+  });
+  if (!monitor || monitor.ads.length === 0) return;
+
+  const sample = monitor.ads.map((ad) => ({
+    pageName: ad.pageName,
+    bodyText: ad.bodyText?.slice(0, 200) ?? null,
+    ctaType: ad.ctaType,
+    ctaText: ad.ctaText,
+    mediaType: ad.mediaType,
+    platforms: ad.platforms,
+    isActive: ad.isActive,
+  }));
+
+  try {
+    const result = await generateResearchJson<{
+      summary: string;
+      dominantFormats: string[];
+      dominantCtas: string[];
+      hookPatterns: string[];
+      creativeRecommendations: string[];
+    }>(
+      `Kamu adalah strategist iklan performance & branding Indonesia.
+
+Analisis sample iklan Meta Ad Library untuk monitor "${monitor.name}" (keyword: ${monitor.searchTerms.join(", ") || "URL"}).
+
+Data iklan:
+${JSON.stringify(sample, null, 2)}
+
+Berikan insight untuk tim branding yang akan membuat konten iklan.
+
+Balas JSON:
+{
+  "summary": "3-4 kalimat ringkasan pola kreatif dominan",
+  "dominantFormats": ["IMAGE|VIDEO|CAROUSEL", ...],
+  "dominantCtas": ["SHOP_NOW", ...],
+  "hookPatterns": ["pola hook yang sering dipakai"],
+  "creativeRecommendations": ["rekomendasi konkret untuk tim kreatif"]
+}`,
+      { tier: "flash" },
+    );
+
+    await prisma.brandAdLibraryMonitor.update({
+      where: { id: monitorId },
+      data: {
+        aiSummary: result.summary,
+        aiInsights: {
+          dominantFormats: result.dominantFormats,
+          dominantCtas: result.dominantCtas,
+          hookPatterns: result.hookPatterns,
+          creativeRecommendations: result.creativeRecommendations,
+        },
+      },
+    });
+  } catch (err) {
+    console.error("[brand/ad-library/ai-summary]", err);
+  }
+}
+
+export async function executeBrandAdLibraryBatch(batchId: string): Promise<void> {
+  if (activeBatchIds.has(batchId)) return;
+
+  const claimed = await prisma.brandAdLibraryBatch.updateMany({
+    where: {
+      id: batchId,
+      status: SocialListeningStatus.PENDING,
+    },
+    data: {
+      status: SocialListeningStatus.COLLECTING,
+      errorMessage: null,
+    },
+  });
+  if (claimed.count === 0) return;
+
+  activeBatchIds.add(batchId);
+
+  try {
+    const batch = await prisma.brandAdLibraryBatch.findUnique({
+      where: { id: batchId },
+      include: { monitor: true },
+    });
+    if (!batch?.monitor) return;
+
+    const monitor = batch.monitor;
+    const scrapeMedia = (monitor.mediaType ?? "all") as ScrapeMediaType;
+    let ads: NormalizedMetaAd[] = [];
+
+    if (!isApifyConfigured()) {
+      ads = generateDemoMetaAds(monitor.searchTerms);
+    } else {
+      const actorId = getMetaAdLibraryActorId();
+      if (!actorId) {
+        throw new Error(metaAdLibraryActorEnvHint());
+      }
+
+      const input = buildMetaAdLibraryActorInput(monitor);
+      const { runId } = await startApifyActor(actorId, input);
+      await patchBatch(batchId, { apifyRunId: runId });
+
+      const { status, datasetId } = await waitForApifyRun(runId);
+      if (status !== "SUCCEEDED") {
+        throw new Error(`Apify run status: ${status}`);
+      }
+
+      const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+      ads = normalizeMetaAds(items);
+    }
+
+    if (scrapeMedia !== "all") {
+      ads = filterAdsByScrapeMediaType(ads, scrapeMedia);
+    }
+
+    const beforeGuardCount = ads.length;
+    ads = applyAdLibraryGuards(ads, monitor);
+
+    // Hormati target jumlah (maxAds) sebagai TOTAL hasil akhir. Actor scrape per
+    // keyword/URL, jadi total mentah bisa sedikit di atas target — pangkas di sini.
+    const targetCount = Math.min(Math.max(monitor.maxAds || 50, 10), 200);
+    if (ads.length > targetCount) {
+      ads = ads.slice(0, targetCount);
+    }
+
+    if (ads.length === 0 && beforeGuardCount > 0) {
+      throw new Error(
+        `Meta mengembalikan ${beforeGuardCount} iklan, tetapi tidak ada yang lolos filter keamanan/relevansi untuk keyword "${monitor.searchTerms.join(", ")}". Coba keyword lebih spesifik atau gunakan URL Ad Library halaman kompetitor.`,
+      );
+    }
+
+    if (ads.length === 0) {
+      const mediaHint =
+        monitor.mediaType && monitor.mediaType !== "all"
+          ? ` Tidak ada iklan format "${monitor.mediaType}" — coba Image + Video atau ubah keyword.`
+          : "";
+      throw new Error(
+        `Tidak ada iklan ditemukan.${mediaHint} Coba keyword lain, perluas negara, atau ubah filter media.`,
+      );
+    }
+
+    const monitorStillThere = await prisma.brandAdLibraryMonitor.findUnique({
+      where: { id: monitor.id },
+      select: { id: true },
+    });
+    if (!monitorStillThere) {
+      console.info(
+        `[brand/ad-library/scrape] monitor ${monitor.id} dihapus saat scrape — hasil dibuang.`,
+      );
+      return;
+    }
+
+    const adCount = await syncAdsForMonitor(monitor.id, batchId, ads);
+
+    await patchBatch(batchId, {
+      status: SocialListeningStatus.READY,
+      adCount,
+      collectedAt: new Date(),
+      errorMessage: null,
+    });
+
+    await generateAdLibraryAiSummary(monitor.id);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Scrape Ad Library gagal.";
+    await patchBatch(batchId, {
+      status: SocialListeningStatus.FAILED,
+      errorMessage: message,
+    });
+    throw err;
+  } finally {
+    activeBatchIds.delete(batchId);
+  }
+}
+
+export async function enqueueBrandAdLibraryScrape(
+  monitorId: string,
+): Promise<{ batchId: string }> {
+  const monitor = await prisma.brandAdLibraryMonitor.findUnique({
+    where: { id: monitorId },
+  });
+  if (!monitor) throw new Error("Monitor Ad Library tidak ditemukan.");
+
+  const inFlight = await prisma.brandAdLibraryBatch.findFirst({
+    where: {
+      monitorId,
+      status: { in: [SocialListeningStatus.PENDING, SocialListeningStatus.COLLECTING] },
+    },
+  });
+  if (inFlight) {
+    throw new Error("Scrape masih berjalan — tunggu batch sebelumnya selesai.");
+  }
+
+  const batch = await prisma.brandAdLibraryBatch.create({
+    data: {
+      monitorId,
+      status: SocialListeningStatus.PENDING,
+    },
+  });
+
+  after(async () => {
+    try {
+      await executeBrandAdLibraryBatch(batch.id);
+    } catch (err) {
+      console.error("[brand/ad-library/scrape]", err);
+    }
+  });
+
+  return { batchId: batch.id };
+}
+
+export async function pollBrandAdLibraryBatchesLight(): Promise<void> {
+  const batches = await prisma.brandAdLibraryBatch.findMany({
+    where: {
+      status: SocialListeningStatus.PENDING,
+    },
+    take: 3,
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const batch of batches) {
+    try {
+      await executeBrandAdLibraryBatch(batch.id);
+    } catch {
+      /* errors persisted on batch */
+    }
+  }
+}
+
+export async function listBrandAdLibraryMonitors(ownerBrandId?: string | null) {
+  return prisma.brandAdLibraryMonitor.findMany({
+    where: brandStudioBrandFilter(ownerBrandId),
+    orderBy: { updatedAt: "desc" },
+    include: {
+      batches: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+      _count: { select: { ads: true } },
+    },
+  });
+}
+
+export async function getBrandAdLibraryMonitorDetail(
+  monitorId: string,
+  ownerBrandId?: string | null,
+) {
+  return prisma.brandAdLibraryMonitor.findFirst({
+    where: {
+      id: monitorId,
+      ...brandStudioBrandFilter(ownerBrandId),
+    },
+    include: {
+      batches: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      },
+      ads: {
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+      },
+    },
+  });
+}

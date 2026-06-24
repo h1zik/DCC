@@ -16,6 +16,7 @@ export type VisualLibrarySourceKey =
   | "competitor"
   | "competitorProduct"
   | "social"
+  | "adLibrary"
   | "manual";
 
 export type VisualLibraryEntityItem = {

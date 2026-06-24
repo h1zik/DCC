@@ -1,3 +1,7 @@
+import "server-only";
+
+import { isGeminiResponseBlockedError } from "./gemini-blocked-error";
+
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
 
 function errorStatus(err: unknown): number | null {
@@ -7,6 +11,8 @@ function errorStatus(err: unknown): number | null {
 }
 
 export function isTransientLlmError(err: unknown): boolean {
+  if (isGeminiResponseBlockedError(err)) return false;
+
   const status = errorStatus(err);
   if (status != null && TRANSIENT_STATUS.has(status)) return true;
 

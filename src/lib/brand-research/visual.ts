@@ -2,6 +2,11 @@ import "server-only";
 
 import { BrandVisualAssetSource, SocialListeningStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { enrichAdMediaFromRaw } from "@/lib/apify/normalize-meta-ads";
+import {
+  adPosterUrl,
+  isRenderableImageUrl,
+} from "@/lib/brand-research/ad-library-media";
 import type {
   VisualLibraryAssetView,
   VisualLibraryGroups,
@@ -243,6 +248,111 @@ export async function harvestBrandSocialVisuals(
   return { harvested };
 }
 
+export async function harvestBrandAdLibraryVisuals(
+  monitorId: string,
+  userId: string,
+  ownerBrandId?: string | null,
+): Promise<{ harvested: number }> {
+  const monitor = await prisma.brandAdLibraryMonitor.findFirst({
+    where: {
+      id: monitorId,
+      ...brandStudioBrandFilter(ownerBrandId),
+    },
+    include: {
+      ads: {
+        orderBy: { updatedAt: "desc" },
+        take: HARVEST_LIMIT,
+      },
+    },
+  });
+  if (!monitor) throw new Error("Monitor Ad Library tidak ditemukan.");
+
+  if (monitor.ads.length === 0) {
+    throw new Error("Tidak ada iklan — refresh monitor terlebih dahulu.");
+  }
+
+  let harvested = 0;
+  for (const ad of monitor.ads) {
+    const enriched = enrichAdMediaFromRaw({
+      imageUrl: ad.imageUrl,
+      videoUrl: ad.videoUrl,
+      rawData: ad.rawData,
+    });
+    const poster = adPosterUrl({
+      ...enriched,
+      snapshotUrl: ad.snapshotUrl,
+      mediaType: ad.mediaType,
+    });
+    const videoUrl = enriched.videoUrl?.trim() || null;
+    if (!poster && !videoUrl) continue;
+
+    const externalId = `meta-ad:${ad.externalId}`;
+    const title =
+      ad.pageName?.trim() ||
+      ad.bodyText?.trim().slice(0, 80) ||
+      "Meta Ad";
+
+    const existing = await prisma.brandVisualAsset.findFirst({
+      where: {
+        ownerBrandId: ownerBrandId ?? null,
+        source: BrandVisualAssetSource.META_AD,
+        externalId,
+      },
+    });
+
+    const storedImageUrl = poster ?? videoUrl!;
+    const assetData = {
+      imageUrl: storedImageUrl,
+      thumbnailUrl: poster ?? null,
+      title,
+      description: ad.bodyText?.slice(0, 500) ?? null,
+      sourceUrl: ad.linkUrl ?? ad.pageProfileUrl,
+      tags: [ad.mediaType, ad.ctaType, ad.pageName].filter(
+        (t): t is string => Boolean(t),
+      ),
+      metadata: {
+        sourceHub: "brand",
+        sourceType: "adLibrary",
+        monitorId: monitor.id,
+        monitorName: monitor.name,
+        adId: ad.id,
+        externalId: ad.externalId,
+        pageName: ad.pageName,
+        ctaType: ad.ctaType,
+        ctaText: ad.ctaText,
+        mediaType: ad.mediaType,
+        platforms: ad.platforms,
+        videoUrl,
+      },
+    };
+
+    if (existing) {
+      await prisma.brandVisualAsset.update({
+        where: { id: existing.id },
+        data: assetData,
+      });
+    } else {
+      await prisma.brandVisualAsset.create({
+        data: {
+          ownerBrandId: ownerBrandId ?? null,
+          source: BrandVisualAssetSource.META_AD,
+          externalId,
+          ...assetData,
+        },
+      });
+    }
+    harvested += 1;
+  }
+
+  if (harvested === 0) {
+    throw new Error(
+      "Tidak ada kreatif dengan gambar/video yang bisa ditampilkan — refresh monitor atau ubah filter media.",
+    );
+  }
+
+  return { harvested };
+}
+
 export async function createManualBrandVisualAsset(input: {
   userId: string;
   ownerBrandId?: string | null;
@@ -280,14 +390,20 @@ export async function listBrandVisualAssets(
 ) {
   const brandFilter = brandStudioBrandFilter(ownerBrandId);
 
-  const [researchCompetitors, researchMonitors, productCategories] = await Promise.all([
+  const [researchCompetitors, researchMonitors, productCategories, adLibraryMonitors] =
+    await Promise.all([
     prisma.researchCompetitor.findMany({ select: { id: true } }),
     prisma.socialListeningMonitor.findMany({ select: { id: true } }),
     prisma.competitorProductCategory.findMany({ select: { id: true } }),
+    prisma.brandAdLibraryMonitor.findMany({
+      where: brandStudioBrandFilter(ownerBrandId),
+      select: { id: true },
+    }),
   ]);
   const competitorIds = new Set(researchCompetitors.map((c) => c.id));
   const monitorIds = new Set(researchMonitors.map((m) => m.id));
   const productCategoryIds = new Set(productCategories.map((c) => c.id));
+  const adLibraryMonitorIds = new Set(adLibraryMonitors.map((m) => m.id));
 
   const fromCollections = await prisma.brandVisualAsset.findMany({
     where: {
@@ -337,6 +453,19 @@ export async function listBrandVisualAssets(
         })
       : [];
 
+  const metaAdAssets =
+    !source || source === BrandVisualAssetSource.META_AD
+      ? await prisma.brandVisualAsset.findMany({
+          where: {
+            collectionId: null,
+            source: BrandVisualAssetSource.META_AD,
+            ...brandFilter,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        })
+      : [];
+
   const filteredCompetitor = competitorAssets.filter((a) => {
     const meta = a.metadata as {
       competitorId?: string;
@@ -354,12 +483,18 @@ export async function listBrandVisualAssets(
     return meta?.monitorId && monitorIds.has(meta.monitorId);
   });
 
+  const filteredMetaAd = metaAdAssets.filter((a) => {
+    const meta = a.metadata as { monitorId?: string } | null;
+    return meta?.monitorId && adLibraryMonitorIds.has(meta.monitorId);
+  });
+
   const filteredManual = manualAssets;
 
   const merged = [
     ...fromCollections,
     ...filteredCompetitor,
     ...filteredSocial,
+    ...filteredMetaAd,
     ...filteredManual,
   ];
   const seen = new Set<string>();
@@ -438,14 +573,30 @@ export async function listBrandVisualCollections(
 function toAssetView(
   a: Awaited<ReturnType<typeof listBrandVisualAssets>>[number],
 ): VisualLibraryAssetView {
+  let imageUrl = a.imageUrl;
+  let videoUrl: string | null | undefined;
+
+  if (a.source === BrandVisualAssetSource.META_AD) {
+    const meta = a.metadata as { videoUrl?: string } | null;
+    videoUrl = meta?.videoUrl?.trim() || null;
+    if (isRenderableImageUrl(a.thumbnailUrl)) {
+      imageUrl = a.thumbnailUrl!;
+    } else if (!isRenderableImageUrl(imageUrl)) {
+      imageUrl = "";
+    }
+  } else if (!isRenderableImageUrl(imageUrl) && isRenderableImageUrl(a.thumbnailUrl)) {
+    imageUrl = a.thumbnailUrl!;
+  }
+
   return {
     id: a.id,
-    imageUrl: a.imageUrl,
+    imageUrl,
     thumbnailUrl: a.thumbnailUrl,
     title: a.title,
     sourceUrl: a.sourceUrl,
     tags: a.tags,
     createdAt: a.createdAt.toISOString(),
+    videoUrl,
   };
 }
 
@@ -462,11 +613,14 @@ export async function buildVisualLibraryGroups(
   const competitorBuckets = new Map<string, VisualLibraryAssetView[]>();
   const competitorProductBuckets = new Map<string, VisualLibraryAssetView[]>();
   const socialBuckets = new Map<string, VisualLibraryAssetView[]>();
+  const adLibraryBuckets = new Map<string, VisualLibraryAssetView[]>();
   const manual: VisualLibraryAssetView[] = [];
 
   const competitorNameFromMeta = new Map<string, string>();
   const categoryNameFromMeta = new Map<string, string>();
   const monitorIds = new Set<string>();
+  const adLibraryMonitorIds = new Set<string>();
+  const adLibraryNameFromMeta = new Map<string, string>();
 
   for (const a of assets) {
     const view = toAssetView(a);
@@ -508,6 +662,19 @@ export async function buildVisualLibraryGroups(
       socialBuckets.set(mid, list);
       continue;
     }
+    if (a.source === BrandVisualAssetSource.META_AD) {
+      const meta = a.metadata as {
+        monitorId?: string;
+        monitorName?: string;
+      } | null;
+      const mid = meta?.monitorId ?? "_unknown";
+      adLibraryMonitorIds.add(mid);
+      if (meta?.monitorName) adLibraryNameFromMeta.set(mid, meta.monitorName);
+      const list = adLibraryBuckets.get(mid) ?? [];
+      list.push(view);
+      adLibraryBuckets.set(mid, list);
+      continue;
+    }
     if (a.source === BrandVisualAssetSource.MANUAL) {
       manual.push(view);
     }
@@ -517,7 +684,8 @@ export async function buildVisualLibraryGroups(
   const productCategoryIds = [...competitorProductBuckets.keys()].filter(
     (id) => id !== "_unknown",
   );
-  const [competitorRows, monitorRows, categoryRows] = await Promise.all([
+  const adLibraryIds = [...adLibraryBuckets.keys()].filter((id) => id !== "_unknown");
+  const [competitorRows, monitorRows, categoryRows, adLibraryRows] = await Promise.all([
     competitorIds.length > 0
       ? prisma.researchCompetitor.findMany({
           where: { id: { in: competitorIds } },
@@ -536,11 +704,18 @@ export async function buildVisualLibraryGroups(
           select: { id: true, name: true },
         })
       : Promise.resolve([]),
+    adLibraryIds.length > 0
+      ? prisma.brandAdLibraryMonitor.findMany({
+          where: { id: { in: adLibraryIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const competitorNameById = new Map(competitorRows.map((c) => [c.id, c.name]));
   const monitorNameById = new Map(monitorRows.map((m) => [m.id, m.name]));
   const categoryNameById = new Map(categoryRows.map((c) => [c.id, c.name]));
+  const adLibraryNameById = new Map(adLibraryRows.map((m) => [m.id, m.name]));
 
   const pinterest = collections.map((c) => {
     let dataProvenance = parsePinterestCollectionProvenance(c.sourceConfig);
@@ -605,7 +780,26 @@ export async function buildVisualLibraryGroups(
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  return { pinterest, competitors, competitorProducts, socialMonitors, manual };
+  const adLibraryMonitors = [...adLibraryBuckets.entries()]
+    .filter(([id]) => id !== "_unknown")
+    .map(([monitorId, groupAssets]) => ({
+      monitorId,
+      name:
+        adLibraryNameById.get(monitorId) ??
+        adLibraryNameFromMeta.get(monitorId) ??
+        "Ad Library",
+      assets: groupAssets,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    pinterest,
+    competitors,
+    competitorProducts,
+    socialMonitors,
+    adLibraryMonitors,
+    manual,
+  };
 }
 
 export async function deleteBrandVisualAssetForUser(
@@ -645,6 +839,13 @@ export async function deleteBrandVisualAssetForUser(
     const meta = asset.metadata as { monitorId?: string } | null;
     if (!meta?.monitorId) throw new Error("Asset tidak ditemukan.");
     const monitor = await prisma.socialListeningMonitor.findUnique({
+      where: { id: meta.monitorId },
+    });
+    if (!monitor) throw new Error("Asset tidak ditemukan.");
+  } else if (asset.source === BrandVisualAssetSource.META_AD) {
+    const meta = asset.metadata as { monitorId?: string } | null;
+    if (!meta?.monitorId) throw new Error("Asset tidak ditemukan.");
+    const monitor = await prisma.brandAdLibraryMonitor.findUnique({
       where: { id: meta.monitorId },
     });
     if (!monitor) throw new Error("Asset tidak ditemukan.");

@@ -16,6 +16,7 @@ import {
   deleteBrandVisualAssetForUser,
   harvestBrandCompetitorVisuals,
   harvestBrandCompetitorProductVisuals,
+  harvestBrandAdLibraryVisuals,
   harvestBrandSocialVisuals,
   listBrandVisualAssets,
 } from "@/lib/brand-research/visual";
@@ -244,6 +245,21 @@ export async function harvestSocialVisualsAction(
   return result;
 }
 
+export async function harvestAdLibraryVisualsAction(
+  monitorId: string,
+  ownerBrandId?: string | null,
+) {
+  const session = await requireBrandManager();
+  const result = await harvestBrandAdLibraryVisuals(
+    monitorId,
+    session.user.id,
+    ownerBrandId,
+  );
+  revalidatePath("/brand-hub/visual-library");
+  revalidatePath(`/brand-hub/ad-library/${monitorId}`);
+  return result;
+}
+
 export async function createBrandVisualAssetFromUrl(
   input: z.infer<typeof createFromUrlSchema>,
 ) {
@@ -323,7 +339,9 @@ export async function getBrandVisualLibraryData(ownerBrandId?: string | null) {
   const totalAssetCount =
     groups.pinterest.reduce((n, p) => n + p.assets.length, 0) +
     groups.competitors.reduce((n, c) => n + c.assets.length, 0) +
+    groups.competitorProducts.reduce((n, c) => n + c.assets.length, 0) +
     groups.socialMonitors.reduce((n, s) => n + s.assets.length, 0) +
+    groups.adLibraryMonitors.reduce((n, m) => n + m.assets.length, 0) +
     groups.manual.length;
 
   return {
