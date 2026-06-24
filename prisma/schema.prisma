@@ -353,6 +353,7 @@ model User {
   socialListeningMonitorsCreated SocialListeningMonitor[] @relation("SocialListeningMonitorCreator")
   uspGapAnalysesCreated     UspGapAnalysis[]     @relation("UspGapAnalysisCreator")
   productConceptsCreated    ProductConcept[]     @relation("ProductConceptCreator")
+  productInnovationsCreated ProductInnovation[]  @relation("ProductInnovationCreator")
   researchReportsCreated    ResearchReport[]     @relation("ResearchReportCreator")
   brandCompetitorsCreated   BrandCompetitor[]    @relation("BrandCompetitorCreator")
   brandReviewSourcesCreated BrandReviewSource[]  @relation("BrandReviewSourceCreator")
@@ -361,6 +362,7 @@ model User {
   brandUspAnalysesCreated   BrandUspAnalysis[]   @relation("BrandUspAnalysisCreator")
   brandVisualCollectionsCreated BrandVisualCollection[] @relation("BrandVisualCollectionCreator")
   brandStrategyDocumentsCreated BrandStrategyDocument[] @relation("BrandStrategyDocumentCreator")
+  brandAudienceProfilesCreated BrandAudienceProfile[] @relation("BrandAudienceProfileCreator")
   brandPortfoliosCreated BrandPortfolio[] @relation("BrandPortfolioCreator")
   brandCreativeGuidelinesCreated BrandCreativeGuideline[] @relation("BrandCreativeGuidelineCreator")
   brandAdLibraryMonitorsCreated BrandAdLibraryMonitor[] @relation("BrandAdLibraryMonitorCreator")
@@ -446,6 +448,8 @@ model Brand {
   brandVisualCollections BrandVisualCollection[]
   brandVisualAssets    BrandVisualAsset[]
   brandStrategyDocuments BrandStrategyDocument[]
+  brandAudienceProfiles  BrandAudienceProfile[]
+  productInnovations     ProductInnovation[]
   brandPortfolio         BrandPortfolio?
   brandCreativeGuidelines BrandCreativeGuideline[]
   brandAdLibraryMonitors BrandAdLibraryMonitor[]
@@ -2789,11 +2793,62 @@ model ProductConcept {
   createdBy        User                 @relation("ProductConceptCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
+  innovationsSeeded ProductInnovation[] @relation("InnovationBaseConcept")
 
   @@index([createdById])
   @@index([status])
   @@index([brandId])
   @@index([uspGapAnalysisId])
+}
+
+/**
+ * Product Innovation (SCAMPER) — sesi ideasi yang menerapkan 6 lensa SCAMPER
+ * (Substitute, Combine, Adapt, Put to other use, Eliminate, Reverse/Rearrange)
+ * pada produk basis, di-grounding evidence riset. Tiap ide bisa dipromosikan
+ * menjadi ProductConcept di Concept Lab.
+ */
+model ProductInnovation {
+  id               String                  @id @default(cuid())
+  title            String
+  category         String
+  /** Produk basis yang ditransformasi (teks bebas). */
+  baseProduct      String
+  targetMarket     String?
+  priceTargetMin   Float?
+  priceTargetMax   Float?
+  /** Opsional: konsep Concept Lab sumber prefill. */
+  baseConceptId    String?
+  baseConcept      ProductConcept?         @relation("InnovationBaseConcept", fields: [baseConceptId], references: [id], onDelete: SetNull)
+  brandId          String?
+  brand            Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  status           ProductInnovationStatus @default(DRAFT)
+  /** Toggle modul evidence (reuse bentuk sourceModules Concept Lab). */
+  sourceModules    Json                    @default("{}")
+  /**
+   * Array ide SCAMPER: tiap item { id, technique, title, description,
+   * rationale, change, benefit, feasibilityNote, promotedConceptId? }.
+   */
+  ideas            Json                    @default("[]")
+  /** Faktor risiko deterministik dari evidence (deriveRiskFactors). */
+  riskFactors      Json                    @default("[]")
+  evidenceSnapshot Json                    @default("{}")
+  aiMeta           Json?
+  errorMessage     String?
+  createdById      String
+  createdBy        User                    @relation("ProductInnovationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+  @@index([brandId])
+}
+
+enum ProductInnovationStatus {
+  DRAFT
+  GENERATING
+  READY
+  FAILED
 }
 
 enum ResearchReportType {
@@ -3527,6 +3582,56 @@ model BrandStrategyDocument {
   @@index([createdById])
   @@index([ownerBrandId])
   @@index([status])
+}
+
+/**
+ * Audience Persona & Motivation — sintesis AI atas voice-of-customer brand
+ * (review intel, social listening, ad library, keyword intel) menjadi 2-4
+ * persona target market dengan pain point, harapan, motivasi, dan kebiasaan beli.
+ */
+model BrandAudienceProfile {
+  id               String              @id @default(cuid())
+  ownerBrandId     String?
+  ownerBrand       Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  version          Int                 @default(1)
+  status           BrandAudienceStatus @default(DRAFT)
+  /** Konteks kategori produk (mis. parfum, skincare). */
+  category         String?
+  /** Brief/constraint PM yang diumpankan ke AI saat generate. */
+  pmBrief          String?             @db.Text
+  /**
+   * Array persona: tiap item { name, archetype, demographics, painPoints[],
+   * hopes[], motivations{functional[],emotional[],social[]},
+   * habits{channels[],triggers[],buyingBehavior,decisionFactors[]},
+   * representativeQuotes[], shareOfAudience? }.
+   */
+  personas         Json                @default("[]")
+  /** Ringkasan lintas-persona untuk brand. */
+  aiSummary        String?             @db.Text
+  /** Implikasi messaging/produk yang actionable. */
+  actionPlan       Json?
+  /** Modul/entitas yang dipilih saat generate. */
+  generationConfig Json                @default("{}")
+  /** Input deterministik yang diumpankan ke AI (audit trail). */
+  evidenceSnapshot Json                @default("{}")
+  evidenceRefs     Json                @default("[]")
+  aiMeta           Json?
+  errorMessage     String?
+  createdById      String
+  createdBy        User                @relation("BrandAudienceProfileCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([createdById])
+  @@index([ownerBrandId])
+  @@index([status])
+}
+
+enum BrandAudienceStatus {
+  DRAFT
+  GENERATING
+  READY
+  FAILED
 }
 
 model BrandCreativeGuideline {

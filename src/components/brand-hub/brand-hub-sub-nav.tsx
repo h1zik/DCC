@@ -14,6 +14,7 @@ import {
   Target,
   TrendingUp,
   Megaphone,
+  Users,
 } from "lucide-react";
 import { hub } from "@/components/brand-hub/brand-hub-primitives";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,7 @@ const STUDIO_NAV: SubNavItem[] = [
   { href: "/brand-hub", label: "Overview", icon: LayoutDashboard },
   { href: "/brand-hub/portfolio", label: "Portfolio", icon: Layers },
   { href: "/brand-hub/strategy", label: "Strategy", icon: Compass },
+  { href: "/brand-hub/audience", label: "Audience", icon: Users },
   { href: "/brand-hub/creative-guideline", label: "Guideline", icon: Sparkles },
   { href: "/brand-hub/visual-library", label: "Visual", icon: ImageIcon },
 ];

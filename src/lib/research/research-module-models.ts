@@ -106,6 +106,11 @@ export const RESEARCH_MODULE_AI_PROFILES: ResearchModuleAiProfile[] = [
     ],
   },
   {
+    moduleKey: "product-innovation",
+    label: "Product Innovation",
+    steps: [{ label: "SCAMPER ideation", tier: "pro" }],
+  },
+  {
     moduleKey: "research-reports",
     label: "Research Reports",
     steps: [{ label: "Laporan riset", tier: "pro" }],

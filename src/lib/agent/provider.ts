@@ -8,11 +8,11 @@ export type AgentProviderConfig = {
   accessContext?: string;
 };
 
-/** Model utama agent — tool calling stabil di Groq. */
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+/** Model utama agent — Gemini murah dengan dukungan function calling. */
+const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 
 /** Cadangan jika model utama sibuk / rate limit. */
-const FALLBACK_MODELS = ["llama-3.1-8b-instant", "openai/gpt-oss-20b"] as const;
+const FALLBACK_MODELS = ["gemini-2.0-flash-lite", "gemini-2.5-flash"] as const;
 
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -24,13 +24,17 @@ export function buildAgentSystemPrompt(
 }
 
 export function resolveAgentApiKey(): string | null {
-  return process.env.GROQ_API_KEY?.trim() || null;
+  return (
+    process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GOOGLE_AI_API_KEY?.trim() ||
+    null
+  );
 }
 
 export function resolveAgentModel(): string {
   return (
     process.env.AGENT_LLM_MODEL?.trim() ||
-    process.env.GROQ_MODEL?.trim() ||
+    process.env.GEMINI_MODEL?.trim() ||
     DEFAULT_MODEL
   );
 }
@@ -102,7 +106,7 @@ export async function withLlmRetry<T>(
       if (!isTransientLlmError(err) || attempt >= maxRetries) break;
       const delay = baseDelayMs * 2 ** attempt;
       console.warn(
-        `[agent] Groq sibuk, retry ${attempt + 1}/${maxRetries} dalam ${delay}ms…`,
+        `[agent] LLM sibuk, retry ${attempt + 1}/${maxRetries} dalam ${delay}ms…`,
       );
       await sleep(delay);
     }

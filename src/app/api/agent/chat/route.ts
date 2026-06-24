@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          "GROQ_API_KEY belum diset. Dapatkan di https://console.groq.com/keys",
+          "GEMINI_API_KEY belum diset. Dapatkan di https://aistudio.google.com/apikey",
       },
       { status: 503 },
     );

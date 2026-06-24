@@ -1,11 +1,8 @@
-import Groq from "groq-sdk";
-import type {
-  ChatCompletionAssistantMessageParam,
-  ChatCompletionMessageParam,
-  ChatCompletionToolMessageParam,
-} from "groq-sdk/resources/chat/completions";
-import { createGroqChatCompletion } from "./groq-recovery";
-import { GROQ_AGENT_TOOLS } from "./groq-tools";
+import {
+  GoogleGenerativeAI,
+  type Content,
+  type Part,
+} from "@google/generative-ai";
 import {
   buildAgentSystemPrompt,
   isTransientLlmError,
@@ -13,7 +10,7 @@ import {
   resolveAgentModelCandidates,
   withLlmRetry,
 } from "./provider";
-import { isGroqToolUseFailed } from "./groq-recovery";
+import { AGENT_TOOLS } from "./tools";
 import { getAgentUserAccessSummary } from "./queries";
 import { synthesizeAgentReply } from "./synthesize-reply";
 import { executeAgentTool } from "./tools";
@@ -28,6 +25,7 @@ type ToolRun = {
 };
 
 const MAX_TOOL_ROUNDS = 12;
+const TEMPERATURE = 0.35;
 
 export type AgentChatResult = {
   reply: string;
@@ -35,13 +33,37 @@ export type AgentChatResult = {
   modelUsed?: string;
 };
 
-function toGroqMessages(
-  messages: AgentMessage[],
-): ChatCompletionMessageParam[] {
+function toGeminiContents(messages: AgentMessage[]): Content[] {
   return messages.map((message) => ({
-    role: message.role === "assistant" ? "assistant" : "user",
-    content: message.content,
+    role: message.role === "assistant" ? "model" : "user",
+    parts: [{ text: message.content }],
   }));
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** functionResponse.response harus berupa objek JSON. */
+function toFunctionResponsePayload(run: {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+}): Record<string, unknown> {
+  if (!run.ok) return { error: run.error ?? "Tool gagal." };
+  if (isPlainObject(run.data)) return run.data;
+  return { result: run.data ?? null };
+}
+
+/** Ambil teks dari response Gemini tanpa melempar saat hanya ada function call. */
+function safeResponseText(response: {
+  text: () => string;
+}): string {
+  try {
+    return response.text()?.trim() ?? "";
+  } catch {
+    return "";
+  }
 }
 
 async function runAgentChatWithModel(
@@ -51,102 +73,81 @@ async function runAgentChatWithModel(
   modelName: string,
   accessContext: string,
 ): Promise<AgentChatResult> {
-  const groq = new Groq({ apiKey });
-  const systemPrompt = buildAgentSystemPrompt(user, accessContext);
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: buildAgentSystemPrompt(user, accessContext),
+    tools: AGENT_TOOLS,
+  });
 
-  const chatMessages: ChatCompletionMessageParam[] = [
-    { role: "system", content: systemPrompt },
-    ...toGroqMessages(messages),
-  ];
+  const contents: Content[] = toGeminiContents(messages);
+  const generationConfig = { temperature: TEMPERATURE };
 
   const toolCalls: { name: string; ok: boolean }[] = [];
   const toolRuns: ToolRun[] = [];
 
-  let response = await createGroqChatCompletion(groq, {
-    model: modelName,
-    messages: chatMessages,
-    tools: GROQ_AGENT_TOOLS,
-    tool_choice: "auto",
-    temperature: 0.35,
-  });
-
+  let result = await model.generateContent({ contents, generationConfig });
   let round = 0;
 
   while (round < MAX_TOOL_ROUNDS) {
-    const choice = response.choices[0];
-    if (!choice) break;
+    const calls = result.response.functionCalls() ?? [];
+    if (calls.length === 0) break;
 
-    const assistantMessage = choice.message;
-    const pendingToolCalls = assistantMessage.tool_calls;
-    if (!pendingToolCalls?.length) break;
-
-    chatMessages.push(
-      assistantMessage as ChatCompletionAssistantMessageParam,
-    );
-
-    for (const call of pendingToolCalls) {
-      if (call.type !== "function") continue;
-
-      const name = call.function.name;
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(call.function.arguments || "{}") as Record<
-          string,
-          unknown
-        >;
-      } catch {
-        args = {};
-      }
-
-      const result = await executeAgentTool(user, name, args);
-      toolCalls.push({ name, ok: result.ok });
-      toolRuns.push({
-        name,
-        ok: result.ok,
-        data: result.ok ? result.data : undefined,
-        error: result.ok ? undefined : result.error,
-      });
-
-      const toolMessage: ChatCompletionToolMessageParam = {
-        role: "tool",
-        tool_call_id: call.id,
-        content: JSON.stringify(
-          result.ok ? result.data : { error: result.error },
-        ),
-      };
-      chatMessages.push(toolMessage);
+    // Echo balik giliran model (berisi function call) ke histori.
+    const modelContent = result.response.candidates?.[0]?.content;
+    if (modelContent) {
+      contents.push(modelContent);
     }
 
-    response = await withLlmRetry(() =>
-      createGroqChatCompletion(groq, {
-        model: modelName,
-        messages: chatMessages,
-        tools: GROQ_AGENT_TOOLS,
-        tool_choice: "auto",
-        temperature: 0.35,
-      }),
+    const responseParts: Part[] = [];
+    for (const call of calls) {
+      const args = isPlainObject(call.args) ? call.args : {};
+      const toolResult = await executeAgentTool(user, call.name, args);
+
+      toolCalls.push({ name: call.name, ok: toolResult.ok });
+      const run: ToolRun = {
+        name: call.name,
+        ok: toolResult.ok,
+        data: toolResult.ok ? toolResult.data : undefined,
+        error: toolResult.ok ? undefined : toolResult.error,
+      };
+      toolRuns.push(run);
+
+      responseParts.push({
+        functionResponse: {
+          name: call.name,
+          response: toFunctionResponsePayload(run),
+        },
+      });
+    }
+
+    contents.push({ role: "user", parts: responseParts });
+
+    result = await withLlmRetry(() =>
+      model.generateContent({ contents, generationConfig }),
     );
     round += 1;
   }
 
-  let text = response.choices[0]?.message?.content?.trim() ?? "";
+  let text = safeResponseText(result.response);
 
   if (!text && toolRuns.some((t) => t.ok)) {
-    chatMessages.push({
+    const modelContent = result.response.candidates?.[0]?.content;
+    if (modelContent) contents.push(modelContent);
+    contents.push({
       role: "user",
-      content:
-        "Rangkum hasil tool di atas untuk user dalam Bahasa Indonesia: sertakan angka konkret, perbandingan, insight bisnis, dan rekomendasi jika relevan. Untuk data harga: sebutkan angka IDR per produk/kompetitor. Jangan bilang tidak ada data jika tool sudah mengembalikan harga. Jangan hanya bilang 'selesai'.",
+      parts: [
+        {
+          text: "Rangkum hasil tool di atas untuk user dalam Bahasa Indonesia: sertakan angka konkret, perbandingan, insight bisnis, dan rekomendasi jika relevan. Untuk data harga: sebutkan angka IDR per produk/kompetitor. Jangan bilang tidak ada data jika tool sudah mengembalikan harga. Jangan hanya bilang 'selesai'.",
+        },
+      ],
     });
 
     try {
       const nudge = await withLlmRetry(() =>
-        groq.chat.completions.create({
-          model: modelName,
-          messages: chatMessages,
-          temperature: 0.35,
-        }),
+        model.generateContent({ contents, generationConfig }),
       );
-      text = nudge.choices[0]?.message?.content?.trim() ?? "";
+      text = safeResponseText(nudge.response);
     } catch {
       // fallback ke synthesize di bawah
     }
@@ -172,7 +173,7 @@ export async function runAgentChat(
   const apiKey = resolveAgentApiKey();
   if (!apiKey) {
     throw new Error(
-      "GROQ_API_KEY belum diset. Dapatkan di https://console.groq.com/keys",
+      "GEMINI_API_KEY belum diset. Dapatkan di https://aistudio.google.com/apikey",
     );
   }
 
@@ -197,14 +198,14 @@ export async function runAgentChat(
       );
     } catch (err) {
       lastError = err;
-      if (!isTransientLlmError(err) && !isGroqToolUseFailed(err)) throw err;
+      if (!isTransientLlmError(err)) throw err;
       console.warn(`[agent] Model ${modelName} sibuk, coba model berikutnya…`);
     }
   }
 
   const detail =
-    lastError instanceof Error ? lastError.message : "layanan Groq sibuk";
+    lastError instanceof Error ? lastError.message : "layanan Gemini sibuk";
   throw new Error(
-    `Semua model Groq sedang sibuk. Coba lagi dalam 1–2 menit. (${detail})`,
+    `Semua model Gemini sedang sibuk. Coba lagi dalam 1–2 menit. (${detail})`,
   );
 }
