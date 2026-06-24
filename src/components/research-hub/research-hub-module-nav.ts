@@ -3,6 +3,7 @@ import {
   FileText,
   FlaskConical,
   LayoutDashboard,
+  Lightbulb,
   MessageSquare,
   Package,
   PackageSearch,
@@ -103,6 +104,12 @@ export const RESEARCH_HUB_ZONES: ResearchHubNavZone[] = [
         href: "/research-hub/concept-lab",
         label: "Concept Lab",
         icon: FlaskConical,
+      },
+      {
+        key: "product-innovation",
+        href: "/research-hub/product-innovation",
+        label: "Product Innovation",
+        icon: Lightbulb,
       },
       {
         key: "research-reports",
