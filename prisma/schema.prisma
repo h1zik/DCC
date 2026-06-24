@@ -363,6 +363,7 @@ model User {
   brandStrategyDocumentsCreated BrandStrategyDocument[] @relation("BrandStrategyDocumentCreator")
   brandPortfoliosCreated BrandPortfolio[] @relation("BrandPortfolioCreator")
   brandCreativeGuidelinesCreated BrandCreativeGuideline[] @relation("BrandCreativeGuidelineCreator")
+  brandAdLibraryMonitorsCreated BrandAdLibraryMonitor[] @relation("BrandAdLibraryMonitorCreator")
   stockLogsCreated          StockLog[]           @relation("StockLogCreator")
 
   @@index([customRoleId])
@@ -447,6 +448,7 @@ model Brand {
   brandStrategyDocuments BrandStrategyDocument[]
   brandPortfolio         BrandPortfolio?
   brandCreativeGuidelines BrandCreativeGuideline[]
+  brandAdLibraryMonitors BrandAdLibraryMonitor[]
 }
 
 /**
@@ -3226,6 +3228,82 @@ model BrandSocialSummary {
   updatedAt         DateTime           @updatedAt
 }
 
+model BrandAdLibraryMonitor {
+  id             String                 @id @default(cuid())
+  name           String
+  searchTerms    String[]               @default([])
+  adLibraryUrls  String[]               @default([])
+  country        String                 @default("ID")
+  activeStatus   String                 @default("active")
+  adType         String                 @default("all")
+  mediaType      String                 @default("all")
+  searchType     String                 @default("keyword_unordered")
+  maxAds         Int                    @default(50)
+  isActive       Boolean                @default(true)
+  aiSummary      String?                @db.Text
+  aiInsights     Json?
+  ownerBrandId   String?
+  ownerBrand     Brand?                 @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdById    String
+  createdBy      User                   @relation("BrandAdLibraryMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  batches        BrandAdLibraryBatch[]
+  ads            BrandAdLibraryAd[]
+
+  @@index([createdById])
+  @@index([ownerBrandId])
+  @@index([isActive])
+}
+
+model BrandAdLibraryBatch {
+  id           String                @id @default(cuid())
+  monitorId    String
+  monitor      BrandAdLibraryMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status       SocialListeningStatus @default(PENDING)
+  errorMessage String?
+  apifyRunId   String?
+  collectedAt  DateTime?
+  adCount      Int                   @default(0)
+  createdAt    DateTime              @default(now())
+
+  @@index([monitorId])
+  @@index([status])
+}
+
+model BrandAdLibraryAd {
+  id             String                @id @default(cuid())
+  monitorId      String
+  monitor        BrandAdLibraryMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  batchId        String?
+  externalId     String
+  pageId         String?
+  pageName       String?
+  pageProfileUrl String?
+  bodyText       String?               @db.Text
+  linkTitle      String?
+  linkUrl        String?
+  ctaType        String?
+  ctaText        String?
+  mediaType      String?
+  imageUrl       String?
+  videoUrl       String?
+  snapshotUrl    String?
+  platforms      String[]              @default([])
+  isActive       Boolean               @default(true)
+  deliveryStart  DateTime?
+  deliveryStop   DateTime?
+  rawData        Json?
+  scrapedAt      DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([monitorId, externalId])
+  @@index([monitorId])
+  @@index([batchId])
+  @@index([mediaType])
+}
+
 model BrandUspAnalysis {
   id             String        @id @default(cuid())
   category       String
@@ -3285,6 +3363,7 @@ enum BrandVisualAssetSource {
   PINTEREST
   COMPETITOR_LISTING
   SOCIAL
+  META_AD
   MANUAL
 }
 

@@ -24,6 +24,10 @@ export type GenerateResearchJsonOpts<T> = {
   tier?: ResearchModelTier;
   /** Inline image parts for multimodal Gemini (vision) analysis. */
   imageParts?: LlmImagePart[];
+  /** Hanya coba model pertama — hindari spam fallback saat safety block. */
+  singleModel?: boolean;
+  /** Jangan log per-model warning (mis. moderasi gambar massal). */
+  quiet?: boolean;
 };
 
 export type GenerateResearchTextOpts = {

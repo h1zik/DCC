@@ -13,6 +13,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireBrandManager } from "@/lib/brand-research/auth";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
+import { pollBrandAdLibraryBatchesLight } from "@/lib/brand-research/scrape-meta-ads";
 import { pollBrandCompetitorScrapeJob } from "@/lib/brand-research/scrape-competitor";
 import { pollBrandReviewScrapeJobsLight } from "@/lib/brand-research/run-review-scrape-job";
 
@@ -323,6 +324,13 @@ export async function pollBrandHubBackgroundJobs(): Promise<{ polled: number }> 
     } catch (err) {
       console.error("[pollBrandHubBackgroundJobs] competitor", job.id, err);
     }
+  }
+
+  try {
+    await pollBrandAdLibraryBatchesLight();
+    polled += 1;
+  } catch (err) {
+    console.error("[pollBrandHubBackgroundJobs] ad-library", err);
   }
 
   return { polled };
