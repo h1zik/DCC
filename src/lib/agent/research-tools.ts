@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import {
   aiAnalyzeCompetitorPricing,
   aiEvaluateProductProposal,
+  aiGetCompetitorProductCategory,
   aiGetKeywordQuery,
   aiGetProductConcept,
   aiGetProductDiscoveryQuery,
@@ -15,6 +16,7 @@ import {
   aiGetUspAnalysis,
   aiListKeywordQueries,
   aiListProductConcepts,
+  aiListCompetitorProductCategories,
   aiListProductDiscoveryQueries,
   aiListResearchCompetitors,
   aiListResearchRecommendations,
@@ -23,6 +25,7 @@ import {
   aiListSocialMonitors,
   aiListTrendDigests,
   aiListUspAnalyses,
+  aiSearchCompetitorProducts,
 } from "@/lib/ai-api/research-queries";
 import { canViewResearchHub } from "@/lib/ai-api/auth";
 import type { AgentToolResult, AgentUser } from "./types";
@@ -34,6 +37,9 @@ export const RESEARCH_AGENT_TOOL_NAMES = new Set([
   "list_research_recommendations",
   "list_research_competitors",
   "get_research_competitor",
+  "list_competitor_product_categories",
+  "get_competitor_product_category",
+  "search_competitor_products",
   "list_review_intel_sources",
   "get_review_intel_source",
   "list_trend_digests",
@@ -150,6 +156,49 @@ export const RESEARCH_AGENT_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ["competitorId"],
+    },
+  },
+  {
+    name: "list_competitor_product_categories",
+    description:
+      "Daftar kategori Competitor Products — tracker produk kompetitor level-PRODUK (per item, bukan per toko). Tiap kategori berisi ringkasan jumlah produk terlacak, ringkasan harga (min/max/avg), dan jumlah alert. WAJIB panggil ini dulu untuk dapat `id` kategori sebelum get_competitor_product_category. Catatan: ini BERBEDA dari list_research_competitors (yang level-toko).",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        limit: { type: SchemaType.NUMBER, description: "Maks baris (opsional)" },
+      },
+    },
+  },
+  {
+    name: "get_competitor_product_category",
+    description:
+      "Detail satu kategori Competitor Products: semua produk terlacak (nama, brand, marketplace, harga IDR, rating, jumlah review, terjual, estimasi revenue, stok, promo), ringkasan harga, dan alert harga/stok. categoryId = field `id` dari list_competitor_product_categories.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        categoryId: {
+          type: SchemaType.STRING,
+          description:
+            "ID kategori (CUID) dari list_competitor_product_categories.items[].id",
+        },
+      },
+      required: ["categoryId"],
+    },
+  },
+  {
+    name: "search_competitor_products",
+    description:
+      "Cari produk kompetitor terlacak by nama/brand lintas semua kategori Competitor Products. Mengembalikan harga IDR, rating, review, terjual, promo + ringkasan harga (min/max/avg) hasil pencarian. Pakai untuk pertanyaan seperti 'produk kompetitor X yang saya track', 'harga produk kompetitor brand Y'. Kosongkan query untuk produk terlacak terbaru.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: {
+          type: SchemaType.STRING,
+          description:
+            "Kata kunci nama/brand produk, mis. 'serum', 'Wardah'. Kosongkan untuk semua produk aktif.",
+        },
+        limit: { type: SchemaType.NUMBER, description: "Maks produk (default 30)" },
+      },
     },
   },
   {
@@ -461,6 +510,28 @@ export async function executeAgentResearchTool(
       case "get_research_competitor":
         data = unwrapResearchResult(
           await aiGetResearchCompetitor(role, String(args.competitorId)),
+        );
+        break;
+      case "list_competitor_product_categories":
+        data = unwrapResearchResult(
+          await aiListCompetitorProductCategories(role, limit(40)),
+        );
+        break;
+      case "get_competitor_product_category":
+        data = unwrapResearchResult(
+          await aiGetCompetitorProductCategory(
+            role,
+            String(args.categoryId),
+          ),
+        );
+        break;
+      case "search_competitor_products":
+        data = unwrapResearchResult(
+          await aiSearchCompetitorProducts(
+            role,
+            args.query ? String(args.query) : "",
+            limit(30, 50),
+          ),
         );
         break;
       case "list_review_intel_sources":

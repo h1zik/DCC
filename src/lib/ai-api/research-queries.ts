@@ -204,6 +204,185 @@ export async function aiGetResearchCompetitor(role: ResearchReaderRole, competit
 }
 
 /* -------------------------------------------------------------------------- */
+/* Competitor Products (tracker produk per-produk)                            */
+/* -------------------------------------------------------------------------- */
+
+function priceStatsFromValues(values: (number | null | undefined)[]) {
+  const prices = values.filter(
+    (p): p is number => typeof p === "number" && p > 0,
+  );
+  if (prices.length === 0) return null;
+  return {
+    count: prices.length,
+    min: Math.min(...prices),
+    max: Math.max(...prices),
+    avg: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
+  };
+}
+
+/** Daftar kategori Competitor Products + ringkasan harga/jumlah produk. */
+export async function aiListCompetitorProductCategories(
+  role: ResearchReaderRole,
+  limit = 40,
+) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
+  }
+  const rows = await prisma.competitorProductCategory.findMany({
+    where: { isActive: true },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+    include: {
+      tracks: {
+        where: { isActive: true },
+        select: { currentPrice: true },
+      },
+      _count: { select: { tracks: true, alerts: true } },
+    },
+  });
+  return {
+    accessible: true as const,
+    count: rows.length,
+    note: "Kategori Competitor Products (tracker level-produk). Untuk detail isi kategori pakai get_competitor_product_category; untuk cari produk spesifik lintas kategori pakai search_competitor_products. Ini BERBEDA dari Competitor Tracker level-toko (list_research_competitors).",
+    items: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      activeTrackCount: r.tracks.length,
+      totalTrackCount: r._count.tracks,
+      alertCount: r._count.alerts,
+      priceStats: priceStatsFromValues(r.tracks.map((t) => t.currentPrice)),
+      updatedAt: iso(r.updatedAt),
+    })),
+  };
+}
+
+/** Detail satu kategori Competitor Products: produk terlacak, harga, alert. */
+export async function aiGetCompetitorProductCategory(
+  role: ResearchReaderRole,
+  categoryId: string,
+) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
+  }
+  const category = await prisma.competitorProductCategory.findUnique({
+    where: { id: categoryId },
+    include: {
+      tracks: {
+        where: { isActive: true },
+        orderBy: [{ reviewCount: "desc" }, { lastScrapedAt: "desc" }],
+        take: 50,
+      },
+      alerts: { orderBy: { createdAt: "desc" }, take: 20 },
+    },
+  });
+  if (!category) {
+    return { accessible: true as const, found: false as const, data: null };
+  }
+  const tracks = category.tracks;
+  return {
+    accessible: true as const,
+    found: true as const,
+    data: {
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      trackCount: tracks.length,
+      priceStats: priceStatsFromValues(tracks.map((t) => t.currentPrice)),
+      updatedAt: iso(category.updatedAt),
+      tracks: tracks.map((t) => ({
+        id: t.id,
+        name: t.name,
+        brand: t.brand,
+        label: t.label,
+        marketplace: t.marketplace,
+        shopName: t.shopName,
+        productUrl: t.productUrl,
+        price: t.currentPrice,
+        currency: t.currency,
+        rating: t.rating,
+        reviewCount: t.reviewCount,
+        exactSold: t.exactSold,
+        monthlySold: t.monthlySold,
+        historicalSold: t.historicalSold,
+        sold: t.exactSold ?? t.monthlySold ?? t.historicalSold ?? null,
+        estimatedRevenue: t.estimatedRevenue,
+        stock: t.stock,
+        hasPromo: t.hasPromo,
+        promoText: t.promoText,
+        categoryName: t.categoryName,
+        lastScrapedAt: iso(t.lastScrapedAt),
+        scrapeError: t.scrapeError,
+      })),
+      alerts: category.alerts.map((a) => ({
+        id: a.id,
+        type: a.type,
+        message: a.message,
+        severity: a.severity,
+        isRead: a.isRead,
+        trackId: a.trackId,
+        createdAt: iso(a.createdAt),
+      })),
+    },
+  };
+}
+
+/** Cari produk kompetitor terlacak by nama/brand/label lintas kategori. */
+export async function aiSearchCompetitorProducts(
+  role: ResearchReaderRole,
+  query: string,
+  limit = 30,
+) {
+  if (!canViewResearchHub(role)) {
+    return denied("Akses Research Hub ditolak untuk peran ini.");
+  }
+  const term = query.trim();
+  const tracks = await prisma.competitorProductTrack.findMany({
+    where: {
+      isActive: true,
+      ...(term
+        ? {
+            OR: [
+              { name: { contains: term, mode: "insensitive" as const } },
+              { brand: { contains: term, mode: "insensitive" as const } },
+              { label: { contains: term, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ reviewCount: "desc" }, { lastScrapedAt: "desc" }],
+    take: limit,
+    include: { category: { select: { id: true, name: true } } },
+  });
+  return {
+    accessible: true as const,
+    data: {
+      count: tracks.length,
+      query: term || null,
+      priceStats: priceStatsFromValues(tracks.map((t) => t.currentPrice)),
+      items: tracks.map((t) => ({
+        id: t.id,
+        categoryId: t.categoryId,
+        categoryName: t.category?.name ?? null,
+        name: t.name,
+        brand: t.brand,
+        marketplace: t.marketplace,
+        shopName: t.shopName,
+        productUrl: t.productUrl,
+        price: t.currentPrice,
+        rating: t.rating,
+        reviewCount: t.reviewCount,
+        sold: t.exactSold ?? t.monthlySold ?? t.historicalSold ?? null,
+        estimatedRevenue: t.estimatedRevenue,
+        hasPromo: t.hasPromo,
+        promoText: t.promoText,
+        lastScrapedAt: iso(t.lastScrapedAt),
+      })),
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Review intelligence                                                        */
 /* -------------------------------------------------------------------------- */
 
