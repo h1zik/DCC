@@ -2314,6 +2314,7 @@ model CompetitorProductTrack {
   attributes       Json?
   variations       Json?
   models           Json?
+  ratingDistribution Json?
   isActive         Boolean                   @default(true)
   lastScrapedAt    DateTime?
   scrapeError      String?

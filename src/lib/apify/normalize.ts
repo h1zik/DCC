@@ -55,6 +55,8 @@ export type NormalizedShopProduct = {
   attributes?: ProductAttribute[];
   variations?: ProductVariation[];
   models?: ProductModel[];
+  /** Histogram bintang, mis. { "5": 8, "4": 0, ... } — dari enrichment Lazada. */
+  ratingDistribution?: Record<string, number> | null;
 };
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | null {

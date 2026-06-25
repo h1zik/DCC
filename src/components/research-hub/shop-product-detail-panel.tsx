@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink, Star } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import { ShopProductMetricsStrip } from "@/components/research-hub/shop-product-metrics";
 import { hub } from "@/components/research-hub/research-hub-primitives";
@@ -47,6 +47,7 @@ export type ShopProductDetailData = {
   attributes?: ShopProductAttribute[] | null;
   variations?: ShopProductVariation[] | null;
   models?: ShopProductModel[] | null;
+  ratingDistribution?: Record<string, number> | null;
 } & ShopProductMetrics;
 
 export function ShopProductDetailPanel({
@@ -163,6 +164,42 @@ export function ShopProductDetailPanel({
           </div>
         </div>
       </div>
+
+      {product.ratingDistribution &&
+      Object.values(product.ratingDistribution).some((n) => n > 0) ? (
+        <div className={cn(hub.panel, "flex flex-col gap-3")}>
+          <h2 className="text-sm font-semibold">Distribusi Rating</h2>
+          {(() => {
+            const dist = product.ratingDistribution!;
+            const total = Object.values(dist).reduce((s, n) => s + n, 0);
+            return (
+              <div className="flex flex-col gap-1.5">
+                {["5", "4", "3", "2", "1"].map((star) => {
+                  const count = dist[star] ?? 0;
+                  const pct = total > 0 ? (count / total) * 100 : 0;
+                  return (
+                    <div key={star} className="flex items-center gap-3">
+                      <span className="text-muted-foreground flex w-8 items-center gap-0.5 text-xs tabular-nums">
+                        {star}
+                        <Star className="size-3 fill-amber-400 text-amber-400" />
+                      </span>
+                      <div className="bg-muted/40 h-2 flex-1 overflow-hidden rounded-full">
+                        <div
+                          className="h-full rounded-full bg-amber-400"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="text-muted-foreground w-12 text-right text-xs tabular-nums">
+                        {count.toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      ) : null}
 
       {product.attributes && product.attributes.length > 0 ? (
         <div className={cn(hub.panel, "flex flex-col gap-3")}>
