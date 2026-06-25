@@ -27,17 +27,62 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 /**
+ * Ambang job dianggap "hantu" (orphaned). Di Railway proses bisa mati di
+ * tengah scrape (redeploy/scale-down/request timeout) sehingga job tidak
+ * pernah jadi COMPLETED/FAILED dan indikator nyangkut selamanya.
+ *
+ * - Job in-process (tanpa apifyRunId) harusnya selesai dalam hitungan detik
+ *   sampai 1–2 menit → reap setelah 10 menit.
+ * - Job yang sudah diserahkan ke Apify (punya apifyRunId) bisa jalan lama →
+ *   beri 30 menit; bila ternyata Apify sukses, `recoverMisclassifiedReviewScrapeJobs`
+ *   masih bisa memulihkannya karena pesan errornya mengandung "batas waktu".
+ */
+const STALE_INPROCESS_MS = 10 * 60_000;
+const STALE_APIFY_MS = 30 * 60_000;
+
+/**
  * Returns active (PENDING/RUNNING) research scrape jobs for the background
  * indicator. Lightweight: only joins the entity name for the label.
+ *
+ * Sebelum mengembalikan data, job yang sudah melewati batas waktu ditandai
+ * FAILED supaya indikator tidak menampilkan proses yang sebenarnya sudah mati.
  */
 export async function listActiveResearchJobs(): Promise<ResearchJobSummary[]> {
   await requireMarketAnalyst();
 
-  const jobs = await prisma.researchScrapeJob.findMany({
+  const candidateJobs = await prisma.researchScrapeJob.findMany({
     where: { status: { in: ["PENDING", "RUNNING"] } },
     orderBy: { startedAt: "asc" },
-    take: 10,
+    take: 20,
   });
+
+  if (candidateJobs.length === 0) return [];
+
+  // Pisahkan job yang masih hidup dari job hantu (orphaned) berdasarkan umur.
+  const now = Date.now();
+  const staleIds: string[] = [];
+  const jobs = candidateJobs.filter((job) => {
+    const startedMs = (job.startedAt ?? job.createdAt).getTime();
+    const limit = job.apifyRunId ? STALE_APIFY_MS : STALE_INPROCESS_MS;
+    if (now - startedMs > limit) {
+      staleIds.push(job.id);
+      return false;
+    }
+    return true;
+  });
+
+  // Reap job hantu — self-healing tiap kali indikator polling.
+  if (staleIds.length > 0) {
+    await prisma.researchScrapeJob.updateMany({
+      where: { id: { in: staleIds }, status: { in: ["PENDING", "RUNNING"] } },
+      data: {
+        status: "FAILED",
+        error:
+          "Proses melewati batas waktu (timeout) — ditandai gagal otomatis. Silakan refresh atau jalankan ulang.",
+        completedAt: new Date(),
+      },
+    });
+  }
 
   if (jobs.length === 0) return [];
 

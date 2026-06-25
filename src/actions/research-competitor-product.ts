@@ -56,6 +56,7 @@ export async function createCompetitorProductCategory(
 
 export async function addCompetitorProductTrack(
   input: z.infer<typeof addProductSchema>,
+  options?: { background?: boolean },
 ) {
   await requireMarketAnalyst();
   const data = addProductSchema.parse(input);
@@ -97,11 +98,26 @@ export async function addCompetitorProductTrack(
     },
   });
 
-  try {
-    await enqueueCompetitorProductTrackScrape(track.id);
-  } catch (err) {
-    console.error("[addCompetitorProductTrack] scrape gagal", err);
-    throw err;
+  if (options?.background) {
+    // Jalankan scrape di latar belakang supaya response cepat dan user
+    // bisa langsung navigasi bebas (dipakai oleh flow Product Discovery).
+    after(async () => {
+      try {
+        await enqueueCompetitorProductTrackScrape(track.id);
+      } catch (err) {
+        console.error(
+          "[addCompetitorProductTrack] background scrape gagal",
+          err,
+        );
+      }
+    });
+  } else {
+    try {
+      await enqueueCompetitorProductTrackScrape(track.id);
+    } catch (err) {
+      console.error("[addCompetitorProductTrack] scrape gagal", err);
+      throw err;
+    }
   }
 
   revalidateProductPaths(data.categoryId, track.id);

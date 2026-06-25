@@ -36,6 +36,17 @@ const SCRAPE_TYPE_LABEL: Record<string, string> = {
   VISUAL_HARVEST: "Visual Harvest",
 };
 
+/**
+ * Ambang job scrape dianggap "hantu" (orphaned). Di Railway proses bisa mati
+ * di tengah scrape (redeploy/scale-down/request timeout) sehingga job tidak
+ * pernah jadi COMPLETED/FAILED dan indikator nyangkut selamanya.
+ *
+ * - Job in-process (tanpa apifyRunId) → reap setelah 10 menit.
+ * - Job yang sudah diserahkan ke Apify (punya apifyRunId) → 30 menit.
+ */
+const STALE_INPROCESS_MS = 10 * 60_000;
+const STALE_APIFY_MS = 30 * 60_000;
+
 const KEYWORD_IN_PROGRESS: KeywordIntelStatus[] = [
   KeywordIntelStatus.PENDING,
   KeywordIntelStatus.COLLECTING,
@@ -78,7 +89,7 @@ export async function listActiveBrandJobs(): Promise<BrandJobSummary[]> {
     prisma.brandResearchScrapeJob.findMany({
       where: { status: { in: ["PENDING", "RUNNING"] } },
       orderBy: { startedAt: "asc" },
-      take: 10,
+      take: 20,
     }),
     prisma.brandStrategyDocument.findMany({
       where: { status: BrandStrategyStatus.GENERATING },
@@ -124,7 +135,36 @@ export async function listActiveBrandJobs(): Promise<BrandJobSummary[]> {
     }),
   ]);
 
-  const entityIds = Array.from(new Set(scrapeJobs.map((j) => j.entityId)));
+  // Pisahkan job scrape yang masih hidup dari job hantu (orphaned) lalu reap
+  // yang sudah lewat batas waktu — self-healing tiap kali indikator polling.
+  const now = Date.now();
+  const staleScrapeIds: string[] = [];
+  const liveScrapeJobs = scrapeJobs.filter((job) => {
+    const startedMs = (job.startedAt ?? job.createdAt).getTime();
+    const limit = job.apifyRunId ? STALE_APIFY_MS : STALE_INPROCESS_MS;
+    if (now - startedMs > limit) {
+      staleScrapeIds.push(job.id);
+      return false;
+    }
+    return true;
+  });
+
+  if (staleScrapeIds.length > 0) {
+    await prisma.brandResearchScrapeJob.updateMany({
+      where: {
+        id: { in: staleScrapeIds },
+        status: { in: ["PENDING", "RUNNING"] },
+      },
+      data: {
+        status: "FAILED",
+        error:
+          "Proses melewati batas waktu (timeout) — ditandai gagal otomatis. Silakan refresh atau jalankan ulang.",
+        completedAt: new Date(),
+      },
+    });
+  }
+
+  const entityIds = Array.from(new Set(liveScrapeJobs.map((j) => j.entityId)));
   const [reviewSources, competitors, collections] = await Promise.all([
     prisma.brandReviewSource.findMany({
       where: { id: { in: entityIds } },
@@ -147,7 +187,7 @@ export async function listActiveBrandJobs(): Promise<BrandJobSummary[]> {
   const collectionName = new Map(collections.map((c) => [c.id, c.name]));
   const collectionBrand = new Map(collections.map((c) => [c.id, c.ownerBrandId]));
 
-  const scrapeSummaries: BrandJobSummary[] = scrapeJobs.map((job) => {
+  const scrapeSummaries: BrandJobSummary[] = liveScrapeJobs.map((job) => {
     let label: string;
     let href: string;
     const brandId =
