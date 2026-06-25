@@ -2,7 +2,7 @@ import { z } from "zod";
 const idSchema = z.string().min(1).describe("ID record dari DCC Research Hub");
 export function registerResearchTools(server, deps) {
     const { dccFetch, buildQuery, asText, limitSchema } = deps;
-    server.tool("evaluate_product_with_research", "Validasi produk/harga/launch — WAJIB untuk 'apakah make sense', 'layak tidak', 'worth it', 'gimana kalau jual di harga X'. Otomatis scan Competitor Tracker (harga), Product Discovery (landscape marketplace scrape), Review Intel (keluhan/pujian), Trend Radar, Keyword Intel, USP Analyzer, Social Listening, rekomendasi. Satu tool composite — jangan hanya list_research_competitors.", {
+    server.tool("evaluate_product_with_research", "Validasi produk/harga/launch — WAJIB untuk 'apakah make sense', 'layak tidak', 'worth it', 'gimana kalau jual di harga X'. Otomatis scan Competitor Tracker shops (harga SKU per toko), Competitor Products (produk individual terlacak), Product Discovery (landscape marketplace scrape), Review Intel (keluhan/pujian), Trend Radar, Keyword Intel, USP Analyzer, Social Listening, rekomendasi. Satu tool composite — jangan hanya list_research_competitors.", {
         productQuery: z.string().min(1).describe("Kategori/produk, mis. body lotion"),
         proposedPrice: z
             .number()
@@ -31,6 +31,15 @@ export function registerResearchTools(server, deps) {
     server.tool("list_research_recommendations", "Rekomendasi aksi preskriptif lintas modul Research Hub (prioritas, owner, confidence).", { limit: limitSchema.describe("Default 30, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/research/recommendations${buildQuery({ limit })}`)));
     server.tool("list_research_competitors", "Daftar kompetitor aktif di Competitor Tracker beserta ringkasan harga (min/max/avg). Untuk perbandingan detail pakai analyze_competitor_pricing.", { limit: limitSchema.describe("Default 40, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/research/competitors${buildQuery({ limit })}`)));
     server.tool("get_research_competitor", "Detail kompetitor: SKU, harga, rating, alert, snapshot harga terbaru, AI insights.", { competitorId: idSchema }, async ({ competitorId }) => asText(await dccFetch(`/api/ai/research/competitors/${encodeURIComponent(competitorId)}`)));
+    server.tool("list_competitor_product_categories", "Daftar kategori Competitor Products — tracker produk kompetitor level-PRODUK (per item, bukan per toko). Tiap kategori berisi ringkasan jumlah produk terlacak, harga (min/max/avg), jumlah alert. Panggil dulu untuk dapat categoryId sebelum get_competitor_product_category. BEDA dari list_research_competitors (level-toko).", { limit: limitSchema.describe("Default 40, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/research/competitor-products${buildQuery({ limit })}`)));
+    server.tool("get_competitor_product_category", "Detail satu kategori Competitor Products: semua produk terlacak (nama, brand, marketplace, harga IDR, rating, jumlah review, terjual, estimasi revenue, stok, promo) + ringkasan harga + alert harga/stok. categoryId dari list_competitor_product_categories.", { categoryId: idSchema }, async ({ categoryId }) => asText(await dccFetch(`/api/ai/research/competitor-products/${encodeURIComponent(categoryId)}`)));
+    server.tool("search_competitor_products", "Cari produk kompetitor terlacak by nama/brand lintas semua kategori Competitor Products. Mengembalikan harga IDR, rating, review, terjual, promo + ringkasan harga (min/max/avg). Pakai untuk 'produk kompetitor X yang saya track', 'harga produk kompetitor brand Y'. Kosongkan query untuk produk terbaru.", {
+        query: z
+            .string()
+            .optional()
+            .describe("Kata kunci nama/brand produk, mis. serum, Wardah"),
+        limit: limitSchema.describe("Default 30, maks 50"),
+    }, async ({ query, limit }) => asText(await dccFetch(`/api/ai/research/competitor-products/search${buildQuery({ query, limit })}`)));
     server.tool("list_review_intel_sources", "Daftar sumber Review Intelligence (produk kompetitor yang di-scrape).", { limit: limitSchema.describe("Default 40, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/research/review-sources${buildQuery({ limit })}`)));
     server.tool("get_review_intel_source", "Detail review intelligence: ringkasan sentimen, keluhan/pujian, gap opportunity, sample review.", { sourceId: idSchema }, async ({ sourceId }) => asText(await dccFetch(`/api/ai/research/review-sources/${encodeURIComponent(sourceId)}`)));
     server.tool("list_trend_digests", "Daftar digest Trend Radar mingguan (global & watchlist).", { limit: limitSchema.describe("Default 20, maks 30") }, async ({ limit }) => asText(await dccFetch(`/api/ai/research/trend-digests${buildQuery({ limit })}`)));
