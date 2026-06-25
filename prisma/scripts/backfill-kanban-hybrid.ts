@@ -17,7 +17,8 @@ async function main() {
   const baselineTasks = await prisma.task.count();
   console.log(`Baseline tasks: ${baselineTasks}`);
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(
+    async (tx) => {
     // Mark CORE: satu kolom per linkedStatus utama per fase (bukan semua yang bucket-nya sama).
     for (const coreRole of CORE_STATUSES) {
       const groups = await tx.roomKanbanColumn.groupBy({
@@ -201,7 +202,12 @@ async function main() {
         data: { kanbanColumnId: column.id },
       });
     }
-  });
+    },
+    // Backfill menyentuh banyak room/phase/task secara berurutan; timeout
+    // interaktif default 5s terlalu pendek dan memicu P2028 saat deploy.
+    // maxWait = waktu tunggu ambil koneksi pool, timeout = batas durasi transaksi.
+    { maxWait: 20_000, timeout: 300_000 },
+  );
 
   const afterTasks = await prisma.task.count();
   const nullCols = await prisma.task.count({
