@@ -75,6 +75,7 @@ export function isReviewPlatformConfigured(platformKey: string): boolean {
     (platformKey === "femaledaily" ||
       platformKey === "sociolla" ||
       platformKey === "tokopedia" ||
+      platformKey === "lazada" ||
       platformKey === "shopee") &&
     isScraperApiConfigured()
   ) {
@@ -95,6 +96,7 @@ export function reviewPlatformEnvHint(platformKey: string): string {
     (platformKey === "femaledaily" ||
       platformKey === "sociolla" ||
       platformKey === "tokopedia" ||
+      platformKey === "lazada" ||
       platformKey === "shopee") &&
     isScraperApiConfigured()
   ) {
@@ -105,7 +107,9 @@ export function reviewPlatformEnvHint(platformKey: string): string {
           ? "Sociolla"
           : platformKey === "tokopedia"
             ? "Tokopedia"
-            : "Shopee";
+            : platformKey === "lazada"
+              ? "Lazada"
+              : "Shopee";
     const suffix =
       platformKey === "shopee" ? ", fallback Apify jika VPS gagal" : "";
     return `Scrape ${label} via VPS (SCRAPER_API_URL + SCRAPER_API_KEY)${suffix}.`;
@@ -150,6 +154,7 @@ export function buildReviewActorInputForPlatform(
       }
       return { productUrls: [url], maxReviews: 500 };
     case "tokopedia":
+    case "lazada":
       return {
         product_url: url,
         results_wanted: 500,

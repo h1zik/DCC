@@ -31,6 +31,7 @@ import { filterShopProductsByKeyword } from "@/lib/apify/tiktok-kulqiz";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import { fetchShopeeSearchViaVps } from "@/lib/scraper-api/shopee-products";
 import { fetchTokopediaSearchViaVps } from "@/lib/scraper-api/tokopedia-products";
+import { fetchLazadaSearchViaVps } from "@/lib/scraper-api/lazada-products";
 import { fetchFemaleDailySearchViaVps } from "@/lib/scraper-api/community-products";
 import { fetchSociollaSearchViaVps } from "@/lib/scraper-api/community-products";
 import {
@@ -352,6 +353,30 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
           state.warnings.push(`${mp}: VPS gagal (${msg}) — fallback Apify.`);
+        }
+      }
+
+      if (mp === ResearchMarketplace.LAZADA) {
+        try {
+          const normalized = await fetchLazadaSearchViaVps(
+            query.keyword,
+            remaining,
+          );
+          const products = normalized
+            .slice(0, remaining)
+            .map((p) => ({ ...p, marketplace: mp }));
+
+          if (products.length === 0) {
+            state.warnings.push(`${mp}: VPS tidak menemukan produk.`);
+          } else {
+            await ingestDiscoveryProductsBatch(query.id, products);
+            recordDiscoverySource(state, mp, "vps");
+            vpsHandled = true;
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
+          state.warnings.push(`${mp}: VPS gagal (${msg}).`);
+          vpsHandled = true;
         }
       }
 

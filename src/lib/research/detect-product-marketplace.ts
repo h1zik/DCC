@@ -9,6 +9,7 @@ export function detectMarketplaceFromProductUrl(
   const lower = url.toLowerCase();
   if (lower.includes("shopee.")) return ResearchMarketplace.SHOPEE;
   if (lower.includes("tokopedia.com")) return ResearchMarketplace.TOKOPEDIA;
+  if (lower.includes("lazada.")) return ResearchMarketplace.LAZADA;
   if (lower.includes("tiktok.com")) return ResearchMarketplace.TIKTOK_SHOP;
   return null;
 }
@@ -32,6 +33,10 @@ export function validateCompetitorProductUrl(
     !/tokopedia\.com/i.test(url)
   ) {
     return "URL harus dari tokopedia.com.";
+  }
+
+  if (marketplace === ResearchMarketplace.LAZADA && !/lazada\./i.test(url)) {
+    return "URL harus dari lazada.* (contoh: https://www.lazada.co.id/products/...).";
   }
 
   if (

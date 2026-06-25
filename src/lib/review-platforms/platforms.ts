@@ -34,6 +34,15 @@ export const REVIEW_PLATFORMS: ReviewPlatformMeta[] = [
     actorEnvHint: "Set APIFY_ACTOR_TOKOPEDIA_REVIEWS.",
   },
   {
+    key: "lazada",
+    label: "Lazada",
+    category: "marketplace",
+    urlPlaceholder: "https://www.lazada.co.id/products/...",
+    urlPatternSources: ["lazada\\."],
+    actorEnvKey: "APIFY_ACTOR_LAZADA_REVIEWS",
+    actorEnvHint: "Scrape Lazada via VPS (SCRAPER_API_URL).",
+  },
+  {
     key: "tiktok_shop",
     label: "TikTok Shop",
     category: "marketplace",
@@ -91,12 +100,14 @@ export function isReviewPlatformKey(key: string): boolean {
 
 export function marketplaceFromPlatformKey(
   key: string,
-): "SHOPEE" | "TOKOPEDIA" | "TIKTOK_SHOP" | "FEMALEDAILY" | "SOCIOLLA" | null {
+): "SHOPEE" | "TOKOPEDIA" | "LAZADA" | "TIKTOK_SHOP" | "FEMALEDAILY" | "SOCIOLLA" | null {
   switch (key) {
     case "shopee":
       return "SHOPEE";
     case "tokopedia":
       return "TOKOPEDIA";
+    case "lazada":
+      return "LAZADA";
     case "tiktok_shop":
       return "TIKTOK_SHOP";
     case "femaledaily":
@@ -112,6 +123,7 @@ export function platformKeyFromMarketplace(
   marketplace:
     | "SHOPEE"
     | "TOKOPEDIA"
+    | "LAZADA"
     | "TIKTOK_SHOP"
     | "FEMALEDAILY"
     | "SOCIOLLA",
@@ -121,6 +133,8 @@ export function platformKeyFromMarketplace(
       return "shopee";
     case "TOKOPEDIA":
       return "tokopedia";
+    case "LAZADA":
+      return "lazada";
     case "TIKTOK_SHOP":
       return "tiktok_shop";
     case "FEMALEDAILY":

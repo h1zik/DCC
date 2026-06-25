@@ -163,11 +163,13 @@ export function CompetitorTrackerClient({
                     {MARKETPLACE_LABELS[marketplace]}
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(MARKETPLACE_LABELS).map(([k, label]) => (
-                      <SelectItem key={k} value={k}>
-                        {label}
-                      </SelectItem>
-                    ))}
+                    {Object.entries(MARKETPLACE_LABELS)
+                      .filter(([k]) => k !== ResearchMarketplace.LAZADA)
+                      .map(([k, label]) => (
+                        <SelectItem key={k} value={k}>
+                          {label}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

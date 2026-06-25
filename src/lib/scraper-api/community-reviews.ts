@@ -120,3 +120,9 @@ export function fetchShopeeReviewsViaVps(
 ): Promise<VpsProductReviewsResult> {
   return fetchReviewsViaVpsActor("shopee-reviews", productUrl);
 }
+
+export function fetchLazadaReviewsViaVps(
+  productUrl: string,
+): Promise<VpsProductReviewsResult> {
+  return fetchReviewsViaVpsActor("lazada-reviews", productUrl);
+}
