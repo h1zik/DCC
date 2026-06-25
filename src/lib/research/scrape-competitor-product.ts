@@ -187,6 +187,13 @@ export async function scrapeCompetitorProductTrack(
     if (product.models && product.models.length > 0) {
       richData.models = product.models as unknown as Prisma.InputJsonValue;
     }
+    if (
+      product.ratingDistribution &&
+      Object.keys(product.ratingDistribution).length > 0
+    ) {
+      richData.ratingDistribution =
+        product.ratingDistribution as unknown as Prisma.InputJsonValue;
+    }
 
     await prisma.competitorProductTrack.update({
       where: { id: trackId },

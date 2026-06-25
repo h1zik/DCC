@@ -40,6 +40,20 @@ function parseVariations(value: unknown): ShopProductVariation[] {
     .filter((v) => v.name && v.options.length > 0);
 }
 
+function parseRatingDistribution(
+  value: unknown,
+): Record<string, number> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: Record<string, number> = {};
+  for (const star of ["5", "4", "3", "2", "1"]) {
+    const raw = (value as Record<string, unknown>)[star];
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
+      out[star] = Math.round(raw);
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 function parseModels(value: unknown): ShopProductModel[] {
   const num = (v: unknown): number | null =>
     typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -97,6 +111,7 @@ export default async function CompetitorProductTrackDetailPage({
     attributes: parseAttributes(track.attributes),
     variations: parseVariations(track.variations),
     models: parseModels(track.models),
+    ratingDistribution: parseRatingDistribution(track.ratingDistribution),
   };
 
   const soldHistory = buildSkuSoldHistory(
