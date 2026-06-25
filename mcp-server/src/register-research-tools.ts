@@ -102,6 +102,48 @@ export function registerResearchTools(server: McpServer, deps: Deps) {
   );
 
   server.tool(
+    "list_competitor_product_categories",
+    "Daftar kategori Competitor Products — tracker produk kompetitor level-PRODUK (per item, bukan per toko). Tiap kategori berisi ringkasan jumlah produk terlacak, harga (min/max/avg), jumlah alert. Panggil dulu untuk dapat categoryId sebelum get_competitor_product_category. BEDA dari list_research_competitors (level-toko).",
+    { limit: limitSchema.describe("Default 40, maks 50") },
+    async ({ limit }) =>
+      asText(
+        await dccFetch(
+          `/api/ai/research/competitor-products${buildQuery({ limit })}`,
+        ),
+      ),
+  );
+
+  server.tool(
+    "get_competitor_product_category",
+    "Detail satu kategori Competitor Products: semua produk terlacak (nama, brand, marketplace, harga IDR, rating, jumlah review, terjual, estimasi revenue, stok, promo) + ringkasan harga + alert harga/stok. categoryId dari list_competitor_product_categories.",
+    { categoryId: idSchema },
+    async ({ categoryId }) =>
+      asText(
+        await dccFetch(
+          `/api/ai/research/competitor-products/${encodeURIComponent(categoryId)}`,
+        ),
+      ),
+  );
+
+  server.tool(
+    "search_competitor_products",
+    "Cari produk kompetitor terlacak by nama/brand lintas semua kategori Competitor Products. Mengembalikan harga IDR, rating, review, terjual, promo + ringkasan harga (min/max/avg). Pakai untuk 'produk kompetitor X yang saya track', 'harga produk kompetitor brand Y'. Kosongkan query untuk produk terbaru.",
+    {
+      query: z
+        .string()
+        .optional()
+        .describe("Kata kunci nama/brand produk, mis. serum, Wardah"),
+      limit: limitSchema.describe("Default 30, maks 50"),
+    },
+    async ({ query, limit }) =>
+      asText(
+        await dccFetch(
+          `/api/ai/research/competitor-products/search${buildQuery({ query, limit })}`,
+        ),
+      ),
+  );
+
+  server.tool(
     "list_review_intel_sources",
     "Daftar sumber Review Intelligence (produk kompetitor yang di-scrape).",
     { limit: limitSchema.describe("Default 40, maks 50") },
