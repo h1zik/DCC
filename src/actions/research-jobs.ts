@@ -31,13 +31,14 @@ const TYPE_LABEL: Record<string, string> = {
  * tengah scrape (redeploy/scale-down/request timeout) sehingga job tidak
  * pernah jadi COMPLETED/FAILED dan indikator nyangkut selamanya.
  *
- * - Job in-process (tanpa apifyRunId) harusnya selesai dalam hitungan detik
- *   sampai 1–2 menit → reap setelah 10 menit.
+ * - Job in-process (tanpa apifyRunId) bisa berjalan lama: satu run VPS dapat
+ *   memakan hingga ~15 menit (timeout 900s) dan run Shopee mengantre cooldown
+ *   ~1 menit → reap setelah 20 menit agar tidak mematikan job yang masih sah.
  * - Job yang sudah diserahkan ke Apify (punya apifyRunId) bisa jalan lama →
  *   beri 30 menit; bila ternyata Apify sukses, `recoverMisclassifiedReviewScrapeJobs`
  *   masih bisa memulihkannya karena pesan errornya mengandung "batas waktu".
  */
-const STALE_INPROCESS_MS = 10 * 60_000;
+const STALE_INPROCESS_MS = 20 * 60_000;
 const STALE_APIFY_MS = 30 * 60_000;
 
 /**

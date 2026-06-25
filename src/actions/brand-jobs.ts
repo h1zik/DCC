@@ -41,10 +41,11 @@ const SCRAPE_TYPE_LABEL: Record<string, string> = {
  * di tengah scrape (redeploy/scale-down/request timeout) sehingga job tidak
  * pernah jadi COMPLETED/FAILED dan indikator nyangkut selamanya.
  *
- * - Job in-process (tanpa apifyRunId) → reap setelah 10 menit.
+ * - Job in-process (tanpa apifyRunId) → reap setelah 20 menit (satu run VPS
+ *   bisa ~15 menit + antre cooldown Shopee).
  * - Job yang sudah diserahkan ke Apify (punya apifyRunId) → 30 menit.
  */
-const STALE_INPROCESS_MS = 10 * 60_000;
+const STALE_INPROCESS_MS = 20 * 60_000;
 const STALE_APIFY_MS = 30 * 60_000;
 
 const KEYWORD_IN_PROGRESS: KeywordIntelStatus[] = [
