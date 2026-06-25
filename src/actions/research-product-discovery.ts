@@ -120,11 +120,14 @@ export async function addDiscoveryProductToCompetitorTracker(
     categoryId = created.id;
   }
 
-  const result = await addCompetitorProductTrack({
-    categoryId,
-    productUrl: product.productUrl,
-    marketplace: product.marketplace,
-  });
+  const result = await addCompetitorProductTrack(
+    {
+      categoryId,
+      productUrl: product.productUrl,
+      marketplace: product.marketplace,
+    },
+    { background: true },
+  );
 
   return { trackId: result.id, categoryId };
 }

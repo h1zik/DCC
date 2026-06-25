@@ -81,11 +81,21 @@ export function DiscoveryCompetitorTrackerDialog({
           categoryId: useNewCategory ? undefined : categoryId,
           newCategoryName: useNewCategory ? newCategoryName.trim() : undefined,
         });
-        toast.success("Produk ditambahkan ke Competitor Tracker.");
-        setOpen(false);
-        router.push(
-          `/research-hub/competitor-tracker/products/${result.categoryId}/tracks/${result.trackId}`,
+        // Scraping berjalan di latar belakang — user tetap di halaman ini dan
+        // bebas navigasi. Beri opsi "Lihat" untuk membuka tracker bila perlu.
+        toast.success(
+          "Produk ditambahkan ke Competitor Tracker. Scraping berjalan di latar belakang.",
+          {
+            action: {
+              label: "Lihat",
+              onClick: () =>
+                router.push(
+                  `/research-hub/competitor-tracker/products/${result.categoryId}/tracks/${result.trackId}`,
+                ),
+            },
+          },
         );
+        setOpen(false);
       } catch (err) {
         toast.error(
           actionErrorMessage(err, "Gagal menambah ke Competitor Tracker."),
