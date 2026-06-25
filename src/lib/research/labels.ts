@@ -19,6 +19,7 @@ import {
 export const MARKETPLACE_LABELS: Record<ResearchMarketplace, string> = {
   SHOPEE: "Shopee",
   TOKOPEDIA: "Tokopedia",
+  LAZADA: "Lazada",
   TIKTOK_SHOP: "TikTok Shop",
   FEMALEDAILY: "Female Daily",
   SOCIOLLA: "Sociolla",

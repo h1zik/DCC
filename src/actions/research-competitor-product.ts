@@ -70,7 +70,7 @@ export async function addCompetitorProductTrack(
     data.marketplace ?? detectMarketplaceFromProductUrl(data.productUrl);
   if (!marketplace) {
     throw new Error(
-      "Marketplace tidak dikenali dari URL. Pilih Shopee, Tokopedia, atau TikTok Shop.",
+      "Marketplace tidak dikenali dari URL. Pilih Shopee, Tokopedia, Lazada, atau TikTok Shop.",
     );
   }
 

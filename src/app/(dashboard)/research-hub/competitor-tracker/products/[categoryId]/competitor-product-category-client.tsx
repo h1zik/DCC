@@ -243,7 +243,7 @@ export function CompetitorProductCategoryClient({
       {category.tracks.length === 0 ? (
         <ResearchHubEmptyState
           title="Belum ada produk"
-          description="Tambahkan URL produk kompetitor (Shopee, Tokopedia, TikTok Shop) ke kategori ini."
+          description="Tambahkan URL produk kompetitor (Shopee, Tokopedia, Lazada, TikTok Shop) ke kategori ini."
         />
       ) : (
         <ResearchHubSection

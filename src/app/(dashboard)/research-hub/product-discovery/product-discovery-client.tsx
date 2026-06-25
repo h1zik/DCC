@@ -60,6 +60,7 @@ export type ProductDiscoveryQueryRow = {
 const ALL_MARKETPLACES: ResearchMarketplace[] = [
   ResearchMarketplace.SHOPEE,
   ResearchMarketplace.TOKOPEDIA,
+  ResearchMarketplace.LAZADA,
   ResearchMarketplace.TIKTOK_SHOP,
   ResearchMarketplace.FEMALEDAILY,
   ResearchMarketplace.SOCIOLLA,

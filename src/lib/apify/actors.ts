@@ -207,7 +207,8 @@ export function isProductSearchConfigured(
 ): boolean {
   if (
     (marketplace === ResearchMarketplace.TOKOPEDIA ||
-      marketplace === ResearchMarketplace.SHOPEE) &&
+      marketplace === ResearchMarketplace.SHOPEE ||
+      marketplace === ResearchMarketplace.LAZADA) &&
     isScraperApiConfigured()
   ) {
     return true;
