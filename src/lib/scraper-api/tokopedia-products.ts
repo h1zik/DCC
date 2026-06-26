@@ -2,6 +2,7 @@ import "server-only";
 
 import type { NormalizedShopProduct } from "@/lib/apify/normalize";
 import { extractVpsProductMetrics, pickMarketplaceReviewCount } from "@/lib/scraper-api/product-metrics";
+import { stableUrlKey } from "@/lib/scraper-api/stable-id";
 import {
   loadAllVpsRunItems,
   startVpsActorRun,
@@ -35,6 +36,10 @@ function pickExternalId(item: Record<string, unknown>, index: number): string {
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
+  // Stable fallback from the product URL so the same product keeps its id across scrapes.
+  const url = pickString(item, ["product_url", "productUrl", "url", "link"]);
+  const urlKey = url ? stableUrlKey(url) : null;
+  if (urlKey) return urlKey;
   return `tkp-${index}`;
 }
 

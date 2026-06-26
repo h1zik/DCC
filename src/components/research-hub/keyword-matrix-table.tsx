@@ -32,15 +32,30 @@ function TrendIcon({ trend }: { trend: KeywordMatrixRow["trend"] }) {
   return <span className="text-muted-foreground text-xs">—</span>;
 }
 
-function rowHasVolume(row: KeywordMatrixRow, _hasGoogleVolume: boolean): boolean {
+function rowHasVolume(row: KeywordMatrixRow): boolean {
   if (row.hasVolumeData != null) return row.hasVolumeData;
   return row.volume > 0 || row.competition > 0;
+}
+
+/**
+ * A row's volume is a measured search-demand number only when it carries a real
+ * search source (Google Ads / DataForSEO). Otherwise it is a heuristic proxy derived
+ * from marketplace rank/listings and must be disclosed as an estimate, not real volume.
+ */
+function rowVolumeIsEstimated(row: KeywordMatrixRow): boolean {
+  if (!rowHasVolume(row)) return false;
+  const src = row.source.map((s) => s.toLowerCase());
+  const hasRealSearchVolume = src.some(
+    (s) => s.includes("google") || s.includes("dataforseo"),
+  );
+  return !hasRealSearchVolume;
 }
 
 function exportCsv(rows: KeywordMatrixRow[]) {
   const header = [
     "keyword",
     "volume",
+    "volume_is_estimated",
     "competition",
     "trend",
     "intent",
@@ -53,6 +68,7 @@ function exportCsv(rows: KeywordMatrixRow[]) {
     [
       r.keyword,
       r.volume,
+      rowVolumeIsEstimated(r) ? "yes" : "no",
       r.competition,
       r.trend ?? "",
       r.intent,
@@ -107,6 +123,13 @@ export function KeywordMatrixTable({
 
   return (
     <div className="flex flex-col gap-2">
+      {!hasGoogleVolume ? (
+        <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          DataForSEO tidak aktif — semua angka volume adalah estimasi proxy dari
+          rank/listing marketplace (ditandai <span className="font-medium">est.</span>),
+          bukan volume pencarian Google terukur.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="Filter keyword…"
@@ -154,7 +177,8 @@ export function KeywordMatrixTable({
           </TableHeader>
           <TableBody>
             {sorted.map((row) => {
-              const hasVol = rowHasVolume(row, hasGoogleVolume);
+              const hasVol = rowHasVolume(row);
+              const volEstimated = rowVolumeIsEstimated(row);
               return (
                 <TableRow
                   key={row.keyword}
@@ -167,7 +191,21 @@ export function KeywordMatrixTable({
                     </span>
                   </TableCell>
                   <TableCell>
-                    {!hasVol ? "—" : row.volume.toLocaleString("id-ID")}
+                    {!hasVol ? (
+                      "—"
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        {row.volume.toLocaleString("id-ID")}
+                        {volEstimated ? (
+                          <span
+                            className="rounded bg-amber-100 px-1 text-[9px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                            title="Estimasi proxy dari rank/listing marketplace — bukan volume pencarian Google terukur."
+                          >
+                            est.
+                          </span>
+                        ) : null}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {!hasVol ? "—" : `${(row.competition * 100).toFixed(0)}%`}

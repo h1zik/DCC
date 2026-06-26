@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink, LayoutGrid, List, LineChart, MessageSquareText } from "lucide-react";
+import { ExternalLink, LayoutGrid, List, LineChart, MessageSquareText, Star } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import {
   ProductDiscoveryTable,
@@ -104,8 +104,20 @@ function ProductDiscoveryCard({
           </div>
           <div className={hub.nestedPanel}>
             <p className="text-muted-foreground text-[10px]">Rating</p>
-            <p className="mt-0.5 text-xs font-semibold tabular-nums">
-              {row.rating != null ? row.rating.toFixed(1) : "—"}
+            <p className="mt-0.5 flex items-center justify-center gap-1 text-xs font-semibold tabular-nums">
+              {row.rating != null ? (
+                <>
+                  <Star className="size-3 fill-amber-400 text-amber-400" aria-hidden />
+                  {row.rating.toFixed(1)}
+                  {row.reviewCount > 0 ? (
+                    <span className="text-muted-foreground font-normal">
+                      ({row.reviewCount.toLocaleString("id-ID")})
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                "—"
+              )}
             </p>
           </div>
         </div>

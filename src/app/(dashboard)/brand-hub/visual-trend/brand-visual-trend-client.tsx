@@ -135,7 +135,7 @@ export function BrandVisualTrendClient({
       <div className="flex flex-col gap-4">
         <BrandHubSection
           title="Koleksi Pinterest"
-          description={`${collections.length} koleksi — generate brief estetika per koleksi atau semua sekaligus.`}
+          description={`${collections.length} koleksi — brief estetika dirangkum AI dari tag & palet warna pin (bukan analisis gambar).`}
           action={
             <Button
               size="sm"
@@ -155,7 +155,7 @@ export function BrandVisualTrendClient({
           {generatingAll ? (
             <div className={cn(hub.nestedPanel, "text-muted-foreground flex items-center gap-2 text-sm")}>
               <Loader2 className="size-4 animate-spin" />
-              AI menulis brief estetika untuk semua koleksi…
+              AI merangkum brief dari tag &amp; palet (bukan analisis gambar)…
             </div>
           ) : null}
 
@@ -268,7 +268,7 @@ export function BrandVisualTrendClient({
 
                 {generating ? (
                   <p className="text-muted-foreground text-xs">
-                    AI menulis ringkasan arah estetika (±30 detik)…
+                    AI merangkum dari tag &amp; palet, bukan analisis gambar (±30 detik)…
                   </p>
                 ) : null}
 

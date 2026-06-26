@@ -182,7 +182,7 @@ export async function harvestBrandSocialVisuals(
     .sort(
       (a, b) =>
         engagementScore(b.likes, b.comments, b.views) -
-        engagementScore(a.likes, a.comments, b.views),
+        engagementScore(a.likes, a.comments, a.views),
     )
     .slice(0, HARVEST_LIMIT);
 
@@ -718,20 +718,10 @@ export async function buildVisualLibraryGroups(
   const adLibraryNameById = new Map(adLibraryRows.map((m) => [m.id, m.name]));
 
   const pinterest = collections.map((c) => {
-    let dataProvenance = parsePinterestCollectionProvenance(c.sourceConfig);
-    if (
-      dataProvenance.length === 1 &&
-      dataProvenance[0]?.provider === "demo" &&
-      c._count.assets > 0
-    ) {
-      dataProvenance = [
-        {
-          label: "Pinterest",
-          provider: "apify",
-          isFallback: true,
-        },
-      ];
-    }
+    // Provenance is reported honestly: demo stays demo. (Previously demo collections
+    // with assets were relabelled as "Pinterest / apify", disguising fabricated pins
+    // as real scraped data — removed.)
+    const dataProvenance = parsePinterestCollectionProvenance(c.sourceConfig);
     return {
       collection: {
         id: c.id,

@@ -105,39 +105,54 @@ export async function saveBrandPortfolio(
     throw new Error("Tambahkan minimal satu lini produk di portfolio.");
   }
 
-  const portfolio = await prisma.brandPortfolio.upsert({
+  const lineData = (line: (typeof lines)[number]) => ({
+    name: line.name,
+    category: line.category?.trim() || null,
+    description: line.description?.trim() || null,
+    targetAudience: line.targetAudience?.trim() || null,
+    role: line.role ?? null,
+    productDiscoveryQueryId: line.productDiscoveryQueryId || null,
+    sortOrder: line.sortOrder ?? 0,
+  });
+
+  // Ensure the portfolio header exists without touching lines yet.
+  const header = await prisma.brandPortfolio.upsert({
     where: { brandId },
-    create: {
-      brandId,
-      summary: input.summary?.trim() || null,
-      createdById: userId,
-      lines: {
-        create: lines.map((line) => ({
-          name: line.name,
-          category: line.category?.trim() || null,
-          description: line.description?.trim() || null,
-          targetAudience: line.targetAudience?.trim() || null,
-          role: line.role ?? null,
-          productDiscoveryQueryId: line.productDiscoveryQueryId || null,
-          sortOrder: line.sortOrder ?? 0,
-        })),
-      },
-    },
-    update: {
-      summary: input.summary?.trim() || null,
-      lines: {
-        deleteMany: {},
-        create: lines.map((line) => ({
-          name: line.name,
-          category: line.category?.trim() || null,
-          description: line.description?.trim() || null,
-          targetAudience: line.targetAudience?.trim() || null,
-          role: line.role ?? null,
-          productDiscoveryQueryId: line.productDiscoveryQueryId || null,
-          sortOrder: line.sortOrder ?? 0,
-        })),
-      },
-    },
+    create: { brandId, summary: input.summary?.trim() || null, createdById: userId },
+    update: { summary: input.summary?.trim() || null },
+    select: { id: true },
+  });
+
+  // Reconcile lines by id so existing rows keep their id/createdAt across saves
+  // (instead of deleting and recreating everything on every edit).
+  const existing = await prisma.brandPortfolioLine.findMany({
+    where: { portfolioId: header.id },
+    select: { id: true },
+  });
+  const existingIds = new Set(existing.map((l) => l.id));
+  const keptIds = new Set(
+    lines.map((l) => l.id).filter((id): id is string => !!id && existingIds.has(id)),
+  );
+  const toDelete = [...existingIds].filter((id) => !keptIds.has(id));
+
+  await prisma.$transaction([
+    ...(toDelete.length > 0
+      ? [prisma.brandPortfolioLine.deleteMany({ where: { id: { in: toDelete } } })]
+      : []),
+    ...lines.map((line) =>
+      line.id && existingIds.has(line.id)
+        ? prisma.brandPortfolioLine.update({
+            where: { id: line.id },
+            data: lineData(line),
+          })
+        : prisma.brandPortfolioLine.create({
+            data: { ...lineData(line), portfolioId: header.id },
+          }),
+    ),
+  ]);
+
+  const portfolio = await prisma.brandPortfolio.findUniqueOrThrow({
+    where: { id: header.id },
     include: {
       brand: { select: { name: true } },
       lines: {

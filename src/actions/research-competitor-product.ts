@@ -27,12 +27,17 @@ const addProductSchema = z.object({
 });
 
 function revalidateProductPaths(categoryId: string, trackId?: string) {
-  revalidatePath("/research-hub/competitor-tracker/products");
-  revalidatePath(`/research-hub/competitor-tracker/products/${categoryId}`);
-  if (trackId) {
-    revalidatePath(
-      `/research-hub/competitor-tracker/products/${categoryId}/tracks/${trackId}`,
-    );
+  // The same product data model is surfaced under BOTH research-hub and brand-hub,
+  // so invalidate both prefixes — otherwise the brand-hub product pages stay stale.
+  for (const base of [
+    "/research-hub/competitor-tracker/products",
+    "/brand-hub/competitor-tracker/products",
+  ]) {
+    revalidatePath(base);
+    revalidatePath(`${base}/${categoryId}`);
+    if (trackId) {
+      revalidatePath(`${base}/${categoryId}/tracks/${trackId}`);
+    }
   }
 }
 

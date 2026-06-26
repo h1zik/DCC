@@ -23,6 +23,7 @@ import {
   filterAdsByScrapeMediaType,
   type ScrapeMediaType,
 } from "@/lib/brand-research/ad-library-media";
+import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import { filterAdsForMonitorView } from "@/lib/brand-research/ad-library-safety";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
@@ -233,6 +234,7 @@ export async function executeBrandAdLibraryBatch(batchId: string): Promise<void>
     let ads: NormalizedMetaAd[] = [];
 
     if (!isApifyConfigured()) {
+      assertDemoDataAllowed("Scraper Meta Ad Library (Apify)");
       ads = generateDemoMetaAds(monitor.searchTerms);
     } else {
       const actorId = getMetaAdLibraryActorId();

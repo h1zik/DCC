@@ -68,6 +68,29 @@ function pickNestedMetrics(
   return null;
 }
 
+/**
+ * Parse Shopee sold-display strings into a count.
+ *
+ * The Brightdata Browser Scraper returns sold counts only as a localized display
+ * string (`sold_display: "1RB+ terjual"`) — the numeric `sold`/`historical_sold`
+ * fields are now null. parseCompactCount alone mis-reads "1RB+ terjual" as 1 because
+ * of the trailing word, so strip the unit words first ("terjual", "sold", "per bulan").
+ */
+export function parseSoldDisplay(item: Record<string, unknown>): number | null {
+  const raw = pickString(item, [
+    "sold_display",
+    "soldDisplay",
+    "historical_sold_display",
+    "sold_count_display",
+  ]);
+  if (!raw) return null;
+  const token = raw
+    .toLowerCase()
+    .replace(/terjual|sold|per\s*bulan|\/?\s*bln|\/?\s*bulan/g, "")
+    .trim();
+  return parseCompactCount(token);
+}
+
 /** Shopee returns rating_count as star histogram array; first element = total reviews. */
 export function pickMarketplaceReviewCount(item: Record<string, unknown>): number {
   const raw = item.rating_count ?? item.ratingCount ?? item.review_count ?? item.reviewCount;
@@ -107,10 +130,13 @@ export function extractVpsProductMetrics(
     "exactSold",
   ]);
   const monthlySold = pickNestedMetrics(item, ["monthly_sold", "monthlySold"]);
+  // Browser Scraper only exposes sold as a display string ("1RB+ terjual"); use it as
+  // a (lower-bound) lifetime fallback when the numeric fields are absent.
+  const displaySold = parseSoldDisplay(item);
 
   // VPS sample: historical_sold = total lifetime; monthly_sold = bulan ini; sold = listing badge.
   const exactSold = listingSold;
-  const lifetimeSold = historicalSold;
+  const lifetimeSold = historicalSold ?? displaySold;
 
   const price = pickNumber(item, ["price", "price_before_discount"]);
   let estimatedRevenue = pickNumber(item, [

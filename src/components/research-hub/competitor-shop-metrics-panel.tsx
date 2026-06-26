@@ -3,6 +3,7 @@
 import {
   formatCompactCount,
   formatRevenueIdr,
+  formatSoldThreshold,
 } from "@/lib/research/shop-product-metrics";
 import type { CompetitorShopMetrics } from "@/lib/research/competitor-shop-metrics";
 import { hub } from "@/components/research-hub/research-hub-primitives";
@@ -57,7 +58,7 @@ export function CompetitorShopMetricsPanel({
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       <KpiCard
         label="Total terjual"
-        value={formatCompactCount(metrics.totalHistoricalSold)}
+        value={formatSoldThreshold(metrics.totalHistoricalSold)}
         sub={
           metrics.skusWithSold > 0
             ? `dari ${metrics.skusWithSold} SKU`
@@ -66,7 +67,7 @@ export function CompetitorShopMetricsPanel({
       />
       <KpiCard
         label="Terjual bulan ini"
-        value={formatCompactCount(metrics.totalMonthlySold)}
+        value={formatSoldThreshold(metrics.totalMonthlySold)}
         sub={
           metrics.skusWithMonthlySold > 0
             ? `${metrics.skusWithMonthlySold} SKU melaporkan`

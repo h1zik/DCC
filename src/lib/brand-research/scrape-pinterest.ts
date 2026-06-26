@@ -37,6 +37,7 @@ import type { NormalizedPinterestPin } from "@/lib/brand-research/normalize-pint
 import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import { fetchPinterestSearchViaVps } from "@/lib/scraper-api/pinterest-pins";
+import { isDemoDataAllowed } from "@/lib/demo-data-policy";
 
 export type PinterestScrapeMode = {
   /** Hapus semua pin sebelum scrape. Default: false (tambah/upsert). */
@@ -420,6 +421,18 @@ export async function enqueueBrandPinterestScrape(
   });
 
   if (!isPinterestScrapeConfigured()) {
+    if (!isDemoDataAllowed()) {
+      await prisma.brandVisualCollection.update({
+        where: { id: collectionId },
+        data: {
+          status: BrandVisualCollectionStatus.FAILED,
+          errorMessage:
+            "Pinterest scraper (VPS atau Apify) belum dikonfigurasi. " +
+            "Data demo dinonaktifkan di produksi (set ALLOW_DEMO_DATA=true untuk mengaktifkan).",
+        },
+      });
+      return;
+    }
     after(async () => {
       try {
         await runDemoPinterestScrape(collectionId, keywordsToScrape);

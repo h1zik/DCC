@@ -76,11 +76,19 @@ export default async function BrandAdLibraryDetailPage({
     };
   });
 
-  const ads = filterAdsForMonitorView(rawAds, {
+  const filteredAds = filterAdsForMonitorView(rawAds, {
     searchTerms: monitor.searchTerms,
     adLibraryUrls: monitor.adLibraryUrls,
     searchType: monitor.searchType,
-  }).map(({ rawData: _raw, ...ad }) => ad);
+  });
+
+  // Demo ads carry `_demo: true` in rawData. Detect before stripping rawData so the
+  // UI can disclose fabricated data instead of presenting it as real scraped ads.
+  const isDemo = filteredAds.some(
+    (ad) => ad.rawData && (ad.rawData as Record<string, unknown>)._demo === true,
+  );
+
+  const ads = filteredAds.map(({ rawData: _raw, ...ad }) => ad);
 
   const harvestableImageCount = ads.filter(
     (ad) => ad.imageUrl || ad.snapshotUrl,
@@ -100,6 +108,7 @@ export default async function BrandAdLibraryDetailPage({
     aiInsights: parseAiInsights(monitor.aiInsights),
     harvestableImageCount,
     ads,
+    isDemo,
   };
 
   return <BrandAdLibraryDetailClient data={data} />;

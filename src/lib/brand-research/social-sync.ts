@@ -11,6 +11,7 @@ import {
 } from "@/lib/research/llm";
 import { aggregateSocialSummary } from "@/lib/research/social-listening/aggregate-summary";
 import { generateDemoMentions } from "@/lib/research/social-listening/demo-mentions";
+import { isDemoDataAllowed } from "@/lib/demo-data-policy";
 import { classifyMentions } from "@/lib/research/social-listening/mention-analyzer";
 import {
   platformStatusMessage,
@@ -178,11 +179,15 @@ export async function finalizeBrandSocialListeningBatch(
   }
 
   let usedDemo = false;
-  if (mentions.length === 0) {
+  if (mentions.length === 0 && isDemoDataAllowed()) {
     mentions = generateDemoMentions(monitor.keywords, monitor.platforms);
     usedDemo = true;
     warnings.push(
       "Menggunakan data demo karena scrape kosong atau API tidak tersedia.",
+    );
+  } else if (mentions.length === 0) {
+    warnings.push(
+      "Tidak ada mention ditemukan (scraper kosong atau belum dikonfigurasi). Data demo dinonaktifkan.",
     );
   }
 

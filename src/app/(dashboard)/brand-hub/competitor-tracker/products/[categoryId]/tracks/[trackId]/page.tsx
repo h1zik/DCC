@@ -10,6 +10,12 @@ import {
 import { SkuSoldHistoryChart } from "@/components/research-hub/sku-sold-history-chart";
 import { CompetitorPriceChart } from "@/components/research-hub/competitor-price-chart";
 import { buildSkuSoldHistory } from "@/lib/research/shop-product-mappers";
+import {
+  parseShopProductAttributes,
+  parseShopProductModels,
+  parseShopProductRatingDistribution,
+  parseShopProductVariations,
+} from "@/lib/research/shop-product-detail-parse";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ensureBrandHubPage } from "../../../../../layout";
@@ -43,6 +49,7 @@ export default async function BrandCompetitorProductTrackDetailPage({
     name: track.name,
     productUrl: track.productUrl,
     imageUrl: track.imageUrl,
+    imageUrls: track.imageUrls,
     marketplace: track.marketplace,
     shopName: track.shopName,
     shopLocation: null,
@@ -59,6 +66,15 @@ export default async function BrandCompetitorProductTrackDetailPage({
     monthlySold: track.monthlySold,
     estimatedRevenue: track.estimatedRevenue,
     stock: track.stock,
+    // Detail kaya dari scraper VPS shopee-product (disimpan tapi sebelumnya tidak ditampilkan).
+    brand: track.brand,
+    categoryName: track.categoryName,
+    categoryPath: track.categoryPath,
+    description: track.description,
+    attributes: parseShopProductAttributes(track.attributes),
+    variations: parseShopProductVariations(track.variations),
+    models: parseShopProductModels(track.models),
+    ratingDistribution: parseShopProductRatingDistribution(track.ratingDistribution),
   };
 
   const soldHistory = buildSkuSoldHistory(

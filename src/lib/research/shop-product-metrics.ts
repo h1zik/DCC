@@ -108,6 +108,23 @@ export function formatCompactCount(n: number | null | undefined): string {
   return n.toLocaleString("id-ID");
 }
 
+/**
+ * Format a sold count as Shopee's compact threshold badge ("1RB+", "10RB+", "2,3JT+").
+ *
+ * Guest-mode scrapes only expose sold as a lower-bound display string ("1RB+ terjual"),
+ * so showing a precise number ("1.000") implies false precision. This renders the
+ * threshold badge instead. Use for sold counts only — not stock (which is exact).
+ */
+export function formatSoldThreshold(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  if (n <= 0) return "0";
+  const compact = (value: number, suffix: string) =>
+    `${(value).toLocaleString("id-ID", { maximumFractionDigits: 1 })}${suffix}`;
+  if (n >= 1_000_000) return compact(n / 1_000_000, "JT+");
+  if (n >= 1_000) return compact(n / 1_000, "RB+");
+  return `${Math.round(n)}+`;
+}
+
 export function formatRevenueIdr(amount: number | null | undefined): string {
   if (amount == null || !Number.isFinite(amount)) return "—";
   if (amount >= 1_000_000_000) {

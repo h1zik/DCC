@@ -5,7 +5,7 @@ import type { ReviewIntelSourceStatus } from "@prisma/client";
 import { ExternalLink, Loader2, MessageSquareText } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import { formatRp, SOURCE_STATUS_LABELS } from "@/lib/research/labels";
-import { formatCompactCount, formatRevenueIdr } from "@/lib/research/shop-product-metrics";
+import { formatRevenueIdr, formatSoldThreshold } from "@/lib/research/shop-product-metrics";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
 import {
@@ -136,7 +136,7 @@ export function CompetitorSkuTable({
               {sku.reviewCount.toLocaleString("id-ID")}
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {formatCompactCount(sku.historicalSold)}
+              {formatSoldThreshold(sku.historicalSold)}
             </TableCell>
             <TableCell className="text-right tabular-nums text-xs">
               {formatRevenueIdr(sku.estimatedRevenue)}

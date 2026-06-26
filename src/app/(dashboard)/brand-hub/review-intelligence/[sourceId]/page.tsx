@@ -6,7 +6,7 @@ import {
   type ReviewDetailData,
 } from "./brand-review-detail-client";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
-import { reviewScrapeProvenance } from "@/lib/research/resolve-scrape-provenance";
+import { brandReviewScrapeProvenance } from "@/lib/research/resolve-scrape-provenance";
 
 type Props = { params: Promise<{ sourceId: string }> };
 
@@ -131,7 +131,7 @@ export default async function ReviewDetailPage({ params }: Props) {
 
   if (!source) notFound();
 
-  const dataProvenance = await reviewScrapeProvenance({
+  const dataProvenance = await brandReviewScrapeProvenance({
     sourceId: source.id,
     platformKey: source.platformKey,
     productName: source.productName,

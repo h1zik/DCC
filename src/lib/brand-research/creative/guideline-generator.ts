@@ -12,6 +12,11 @@ import {
   listBrandVisualAssets,
 } from "@/lib/brand-research/visual";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
+import {
+  sampleVisualAssetsForVision,
+  loadVisualImageParts,
+} from "@/lib/brand-research/strategy/visual-vision";
+import { resolveResearchProvider } from "@/lib/research/llm/config";
 
 type GuidelineResult = {
   moodboardAssetIds: string[];
@@ -88,6 +93,30 @@ export async function generateBrandCreativeGuideline(
       dominantColors: a.dominantColors,
     }));
 
+    // Feed a real visual sample to the model so moodboard selection and palette are
+    // grounded in the actual images — not just filenames/tags. The multimodal adapter
+    // (Gemini) supports image parts; each part is labelled with its asset id so the
+    // model can reference images when choosing moodboardAssetIds.
+    let imageParts: { mimeType: string; data: string; label?: string }[] = [];
+    if (resolveResearchProvider() === "gemini") {
+      const sampled = sampleVisualAssetsForVision(
+        assets.map((a) => ({
+          id: a.id,
+          imageUrl: a.imageUrl,
+          thumbnailUrl: a.thumbnailUrl,
+          title: a.title,
+          tags: a.tags,
+          collectionId: a.collectionId,
+        })),
+        16,
+      );
+      imageParts = (await loadVisualImageParts(sampled)).parts;
+    }
+    const visionSection =
+      imageParts.length > 0
+        ? `\n\nGambar visual (terlampir ${imageParts.length} sampel, dilabeli "<assetId>: <judul>"). LIHAT gambar saat memilih moodboardAssetIds, menulis rationale palette, dan menyusun designReferences — jangan hanya mengandalkan tag/teks.`
+        : "";
+
     const baselineSection = baselinePalette
       ? `
 PALETTE BASELINE (WAJIB — hex dari agregasi ${baselinePalette.sampleCount} sampel warna visual library, JANGAN ubah hex):
@@ -124,7 +153,7 @@ ${JSON.stringify(
 )}
 
 Visual asset pool (pilih moodboardAssetIds HANYA dari id yang ada di daftar):
-${JSON.stringify(assetPool, null, 2)}
+${JSON.stringify(assetPool, null, 2)}${visionSection}
 ${baselineSection}
 
 Tugas:
@@ -143,7 +172,10 @@ Balas HANYA JSON:
   "aiSummary": "string"
 }`;
 
-    const result = await generateResearchJson<GuidelineResult>(prompt, { tier: "pro" });
+    const result = await generateResearchJson<GuidelineResult>(prompt, {
+      tier: "pro",
+      imageParts: imageParts.length > 0 ? imageParts : undefined,
+    });
     const aiMeta = researchAiMetaFromSteps([
       buildResearchAiStep("Creative guideline synthesis", "pro"),
     ]);
