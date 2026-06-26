@@ -2,6 +2,7 @@ import "server-only";
 
 import { SocialListeningPlatform } from "@prisma/client";
 import { generateDemoMentions } from "@/lib/research/social-listening/demo-mentions";
+import { isDemoDataAllowed } from "@/lib/demo-data-policy";
 import { scrapeInstagramMentions } from "@/lib/research/social-listening/scrape-instagram-mentions";
 import {
   isTikTokMentionsConfigured,
@@ -98,10 +99,14 @@ export async function collectMentions(input: {
   const platformCounts = countByPlatform(mentions);
   let usedDemo = false;
 
-  if (mentions.length === 0) {
+  if (mentions.length === 0 && isDemoDataAllowed()) {
     mentions = generateDemoMentions(input.keywords, input.platforms);
     usedDemo = true;
     warnings.push("Menggunakan data demo karena scrape kosong atau API tidak tersedia.");
+  } else if (mentions.length === 0) {
+    warnings.push(
+      "Tidak ada mention ditemukan (scraper kosong atau belum dikonfigurasi). Data demo dinonaktifkan.",
+    );
   }
 
   return { mentions, usedDemo, warnings, platformCounts };

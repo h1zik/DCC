@@ -258,8 +258,9 @@ export function BrandAdLibraryClient({
                 <Info className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   Mengumpulkan <strong className="text-foreground">Image &amp; Video</strong>{" "}
-                  dengan pencocokan keyword luas. Konten dewasa &amp; judi disaring
-                  otomatis lewat kata kunci.
+                  dengan pencocokan keyword luas. Konten dewasa &amp; judi difilter
+                  berdasarkan teks/URL/kategori halaman saja — gambar &amp; video tidak
+                  dipindai, jadi materi sensitif bisa lolos.
                 </span>
               </div>
             </div>

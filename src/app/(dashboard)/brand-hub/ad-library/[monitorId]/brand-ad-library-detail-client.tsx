@@ -37,6 +37,7 @@ import {
   hub,
 } from "@/components/brand-hub/brand-hub-primitives";
 import { AdCreativeMedia } from "@/components/brand-hub/ad-creative-media";
+import { DemoDataBanner } from "@/components/brand-hub/demo-data-banner";
 import { isAdVideo, scrapeMediaTypeLabel } from "@/lib/brand-research/ad-library-media";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +81,7 @@ export type AdLibraryDetailData = {
   aiInsights: AdLibraryAiInsights | null;
   ads: AdLibraryAdRow[];
   harvestableImageCount: number;
+  isDemo: boolean;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -214,6 +216,8 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
         }
       />
 
+      {data.isDemo ? <DemoDataBanner context="Meta Ad Library." /> : null}
+
       <div className="flex flex-wrap gap-2">
         <BrandHubStatChip label="Iklan" value={data.ads.length} tone="primary" />
         <BrandHubStatChip label="Image" value={imageCount} />
@@ -264,7 +268,8 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
           <span className="text-foreground font-medium">
             {data.searchTerms.join(", ")}
           </span>{" "}
-          di teks/hook iklan yang ditampilkan. Konten dewasa/NSFW diblokir otomatis.
+          di teks/hook iklan yang ditampilkan. Konten dewasa/NSFW difilter berdasarkan
+          teks &amp; URL saja (gambar/video tidak dipindai — materi sensitif bisa lolos).
           Klik <span className="text-foreground font-medium">Refresh</span> untuk
           mengganti data lama dengan hasil scrape yang sudah difilter.
         </div>

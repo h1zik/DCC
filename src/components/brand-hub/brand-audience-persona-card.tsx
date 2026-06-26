@@ -97,15 +97,23 @@ export function BrandAudiencePersonaCard({
           </div>
         </div>
         {persona.shareOfAudience ? (
-          <Badge variant="secondary" className="text-xs">
-            {persona.shareOfAudience}
+          <Badge
+            variant="outline"
+            className="text-xs"
+            title="Estimasi AI — tidak ada data ukuran audiens yang diukur. Indikatif saja."
+          >
+            ~{persona.shareOfAudience} <span className="ml-1 opacity-60">est. AI</span>
           </Badge>
         ) : null}
       </header>
 
       {persona.demographics ? (
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          {persona.demographics}
+        <p
+          className="text-muted-foreground text-sm leading-relaxed"
+          title="Demografi diperkirakan AI dari sinyal kualitatif (review/sosial) — bukan data demografi terukur."
+        >
+          {persona.demographics}{" "}
+          <span className="text-[11px] opacity-70">(perkiraan AI)</span>
         </p>
       ) : null}
 

@@ -28,6 +28,7 @@ import { runBrandApifyJobToCompletion } from "@/lib/brand-research/run-apify-job
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import { fetchShopeeShopViaVps } from "@/lib/scraper-api/shopee-products";
 import { fetchTokopediaShopViaVps } from "@/lib/scraper-api/tokopedia-products";
+import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
 
 export async function enqueueBrandCompetitorScrape(
   competitorId: string,
@@ -138,6 +139,7 @@ export async function enqueueBrandCompetitorScrape(
   }
 
   if (!isApifyConfigured()) {
+    assertDemoDataAllowed(`Scraper toko ${competitor.marketplace}`);
     await runDemoBrandCompetitorScrape(competitorId);
     return;
   }

@@ -30,6 +30,8 @@ export type NormalizedShopProduct = {
   name: string;
   productUrl: string;
   imageUrl: string | null;
+  /** Galeri gambar produk (image_urls dari scraper VPS); kosong jika tak tersedia. */
+  imageUrls?: string[];
   price: number | null;
   rating: number | null;
   reviewCount: number;

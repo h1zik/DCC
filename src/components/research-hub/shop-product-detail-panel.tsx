@@ -28,6 +28,7 @@ export type ShopProductDetailData = {
   name: string;
   productUrl: string;
   imageUrl: string | null;
+  imageUrls?: string[] | null;
   marketplace: string;
   shopName: string | null;
   shopLocation: string | null;
@@ -65,21 +66,58 @@ export function ShopProductDetailPanel({
 
   const [descExpanded, setDescExpanded] = useState(false);
 
+  // Galeri gambar: gabungkan imageUrl utama + image_urls, dedupe, urutan stabil.
+  const gallery = Array.from(
+    new Set(
+      [product.imageUrl, ...(product.imageUrls ?? [])].filter(
+        (u): u is string => !!u,
+      ),
+    ),
+  );
+  const [activeImage, setActiveImage] = useState(0);
+  const mainImage = gallery[activeImage] ?? product.imageUrl;
+
   return (
     <div className={cn("flex flex-col gap-6", hub.entrance)}>
       {breadcrumbs}
 
       <div className={cn(hub.panel, "grid gap-6 lg:grid-cols-[280px_1fr]")}>
-        <div className="relative aspect-square overflow-hidden rounded-xl border border-border/50 bg-muted/20">
-          <ProductDiscoveryProductThumb
-            imageUrl={product.imageUrl}
-            name={product.name}
-            className="size-full"
-          />
-          {product.hasPromo && product.promoText ? (
-            <span className="bg-primary text-primary-foreground absolute top-3 left-3 rounded-md px-2 py-0.5 text-xs font-semibold">
-              {product.promoText}
-            </span>
+        <div className="flex flex-col gap-2">
+          <div className="relative aspect-square overflow-hidden rounded-xl border border-border/50 bg-muted/20">
+            <ProductDiscoveryProductThumb
+              imageUrl={mainImage}
+              name={product.name}
+              className="size-full"
+            />
+            {product.hasPromo && product.promoText ? (
+              <span className="bg-primary text-primary-foreground absolute top-3 left-3 rounded-md px-2 py-0.5 text-xs font-semibold">
+                {product.promoText}
+              </span>
+            ) : null}
+          </div>
+          {gallery.length > 1 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {gallery.slice(0, 8).map((url, i) => (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setActiveImage(i)}
+                  className={cn(
+                    "relative size-12 overflow-hidden rounded-md border bg-muted/20 transition",
+                    i === activeImage
+                      ? "border-primary ring-1 ring-primary"
+                      : "border-border/50 hover:border-primary/50",
+                  )}
+                  aria-label={`Gambar ${i + 1}`}
+                >
+                  <ProductDiscoveryProductThumb
+                    imageUrl={url}
+                    name={product.name}
+                    className="size-full"
+                  />
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
 
@@ -117,7 +155,13 @@ export function ShopProductDetailPanel({
             ) : null}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          {/* Stok disembunyikan saat null — scraper guest Shopee tidak menyediakan stok. */}
+          <div
+            className={cn(
+              "grid gap-3",
+              product.stock != null ? "sm:grid-cols-3" : "sm:grid-cols-2",
+            )}
+          >
             <div className={hub.nestedPanel}>
               <p className="text-muted-foreground text-xs">Harga</p>
               <p className="text-lg font-semibold tabular-nums">
@@ -135,12 +179,14 @@ export function ShopProductDetailPanel({
                 ) : null}
               </p>
             </div>
-            <div className={hub.nestedPanel}>
-              <p className="text-muted-foreground text-xs">Stok</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {formatCompactCount(product.stock)}
-              </p>
-            </div>
+            {product.stock != null ? (
+              <div className={hub.nestedPanel}>
+                <p className="text-muted-foreground text-xs">Stok</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {formatCompactCount(product.stock)}
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <ShopProductMetricsStrip metrics={product} showStock={false} />
@@ -234,42 +280,53 @@ export function ShopProductDetailPanel({
               </div>
             </div>
           ))}
-          {product.models && product.models.length > 0 ? (
-            <div className="overflow-hidden rounded-lg border border-border/50">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-muted-foreground text-xs">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">Varian</th>
-                    <th className="px-3 py-2 text-right font-medium">Harga</th>
-                    <th className="px-3 py-2 text-right font-medium">Stok</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {product.models.map((model, i) => (
-                    <tr
-                      key={model.modelId ?? `${model.name ?? "model"}-${i}`}
-                      className="border-t border-border/40"
-                    >
-                      <td className="px-3 py-2">{model.name ?? "—"}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {model.price != null ? formatRp(model.price) : "—"}
-                        {model.priceBeforeDiscount != null &&
-                        model.price != null &&
-                        model.priceBeforeDiscount > model.price ? (
-                          <span className="text-muted-foreground ml-1 text-xs line-through">
-                            {formatRp(model.priceBeforeDiscount)}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {formatCompactCount(model.stock)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
+          {product.models && product.models.length > 0
+            ? (() => {
+                const showModelStock = product.models.some(
+                  (m) => m.stock != null,
+                );
+                return (
+                  <div className="overflow-hidden rounded-lg border border-border/50">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/40 text-muted-foreground text-xs">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">Varian</th>
+                          <th className="px-3 py-2 text-right font-medium">Harga</th>
+                          {showModelStock ? (
+                            <th className="px-3 py-2 text-right font-medium">Stok</th>
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {product.models.map((model, i) => (
+                          <tr
+                            key={model.modelId ?? `${model.name ?? "model"}-${i}`}
+                            className="border-t border-border/40"
+                          >
+                            <td className="px-3 py-2">{model.name ?? "—"}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {model.price != null ? formatRp(model.price) : "—"}
+                              {model.priceBeforeDiscount != null &&
+                              model.price != null &&
+                              model.priceBeforeDiscount > model.price ? (
+                                <span className="text-muted-foreground ml-1 text-xs line-through">
+                                  {formatRp(model.priceBeforeDiscount)}
+                                </span>
+                              ) : null}
+                            </td>
+                            {showModelStock ? (
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {formatCompactCount(model.stock)}
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
+            : null}
         </div>
       ) : null}
 

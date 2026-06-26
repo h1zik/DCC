@@ -23,6 +23,8 @@ import type {
 } from "@/lib/research/keyword-intel/keyword-signal-types";
 import { usesNativeReviewScrape } from "@/lib/review-scrape/native-scrape";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { isReviewPlatformConfigured } from "@/lib/review-platforms/registry";
+import { isDemoDataAllowed } from "@/lib/demo-data-policy";
 
 export type PlatformScrapeProviders = Partial<
   Record<SocialListeningPlatform, ScrapeDataProvider>
@@ -249,6 +251,62 @@ export async function reviewScrapeProvenance(input: {
       provider: "demo",
     },
   ];
+}
+
+/**
+ * Provenance for Brand Hub review sources. Unlike `reviewScrapeProvenance` (which reads
+ * the research-hub `researchScrapeJob` table), brand review jobs are persisted in
+ * `brandResearchScrapeJob`. Querying the wrong table previously made this panel always
+ * return [] for brand sources, so demo data was never disclosed.
+ */
+export async function brandReviewScrapeProvenance(input: {
+  sourceId: string;
+  platformKey: string | null;
+  productName: string;
+}): Promise<DataProvenanceEntry[]> {
+  const platformKey = input.platformKey ?? "shopee";
+
+  if (platformKey === "csv") {
+    return [{ label: input.productName, provider: "csv" }];
+  }
+
+  const job = await prisma.brandResearchScrapeJob.findFirst({
+    where: {
+      entityId: input.sourceId,
+      type: ResearchScrapeJobType.REVIEW_SCRAPE,
+      status: "COMPLETED",
+    },
+    orderBy: { completedAt: "desc" },
+    select: { apifyRunId: true },
+  });
+
+  if (!job) return [];
+
+  if (job.apifyRunId) {
+    return [{ label: input.productName, provider: "apify", isFallback: true }];
+  }
+
+  // No apifyRunId on a completed brand job means VPS, native, or demo. The real
+  // scrapers only run when configured; if the platform isn't configured, a completed
+  // job can only be demo data.
+  if (!isReviewPlatformConfigured(platformKey)) {
+    return [
+      {
+        label: input.productName,
+        provider: isDemoDataAllowed() ? "demo" : "apify",
+      },
+    ];
+  }
+
+  if (platformKey === "shopee" && isScraperApiConfigured()) {
+    return [{ label: input.productName, provider: "vps" }];
+  }
+
+  if (usesNativeReviewScrape(platformKey)) {
+    return [{ label: input.productName, provider: "native" }];
+  }
+
+  return [{ label: input.productName, provider: "demo" }];
 }
 
 export function keywordIntelProvenance(

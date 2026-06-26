@@ -173,9 +173,18 @@ export async function updateBrandStrategyDocument(
   input: z.infer<typeof updateSchema>,
 ) {
   const session = await requireBrandManager();
+  void session;
   const data = updateSchema.parse(input);
 
-  await prisma.brandStrategyDocument.updateMany({
+  // Use update (not updateMany) so an invalid/stale id fails loudly instead of
+  // silently affecting zero rows.
+  const existing = await prisma.brandStrategyDocument.findUnique({
+    where: { id: data.documentId },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Dokumen strategi tidak ditemukan.");
+
+  await prisma.brandStrategyDocument.update({
     where: { id: data.documentId },
     data: {
       ...(data.brandPurpose !== undefined ? { brandPurpose: data.brandPurpose } : {}),
@@ -196,9 +205,16 @@ export async function updateBrandStrategyDocument(
 
 export async function deleteBrandStrategyDocument(documentId: string) {
   const session = await requireBrandManager();
-  await prisma.brandStrategyDocument.deleteMany({
+  void session;
+  z.string().min(1).parse(documentId);
+
+  const existing = await prisma.brandStrategyDocument.findUnique({
     where: { id: documentId },
+    select: { id: true },
   });
+  if (!existing) throw new Error("Dokumen strategi tidak ditemukan.");
+
+  await prisma.brandStrategyDocument.delete({ where: { id: documentId } });
   revalidatePath("/brand-hub/strategy");
 }
 

@@ -30,6 +30,7 @@ import {
   type GapMatrixRow,
 } from "@/components/research-hub/gap-matrix-table";
 import { PositioningScatterChart } from "@/components/research-hub/positioning-scatter-chart";
+import { AiEstimateNote } from "@/components/brand-hub/ai-estimate-note";
 import {
   UspCandidateCards,
   type UspCandidate,
@@ -307,8 +308,11 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
           <span className="text-sm font-bold uppercase tracking-wide">
             {VERDICT_STYLE[data.categoryDecision.verdict].label}
           </span>
-          <span className="text-xs font-medium opacity-80">
-            Keyakinan {Math.round(data.categoryDecision.confidence * 100)}%
+          <span
+            className="text-xs font-medium opacity-80"
+            title="Tingkat keyakinan ini adalah estimasi AI, bukan probabilitas terukur."
+          >
+            Keyakinan AI {Math.round(data.categoryDecision.confidence * 100)}%
           </span>
           {data.categoryDecision.reason ? (
             <span className="text-foreground/80 w-full text-xs leading-snug sm:w-auto sm:flex-1">
@@ -404,6 +408,10 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
                 axisY={data.positioningMap.axisY}
                 points={data.positioningMap.points}
               />
+              <AiEstimateNote className="mt-2">
+                Koordinat ditempatkan oleh AI sebagai ilustrasi posisi relatif — bukan
+                hasil pengukuran pasar. Gunakan untuk diskusi arah, bukan angka pasti.
+              </AiEstimateNote>
             </div>
           </BrandHubSection>
         </TabsContent>

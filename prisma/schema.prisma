@@ -2296,6 +2296,7 @@ model CompetitorProductTrack {
   externalId       String?
   name             String                    @default("Produk")
   imageUrl         String?
+  imageUrls        String[]                  @default([])
   shopName         String?
   currentPrice     Float?
   rating           Float?

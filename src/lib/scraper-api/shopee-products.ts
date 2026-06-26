@@ -7,7 +7,8 @@ import type {
   ProductVariation,
 } from "@/lib/apify/normalize";
 import { extractVpsProductMetrics, pickMarketplaceReviewCount } from "@/lib/scraper-api/product-metrics";
-import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
+import { stableUrlKey } from "@/lib/scraper-api/stable-id";
+import { cleanShopeeUrl, toShopeeDetailUrl } from "@/lib/apify/shopee-url";
 import {
   loadAllVpsRunItems,
   startVpsActorRun,
@@ -111,6 +112,10 @@ function pickExternalId(item: Record<string, unknown>, index: number): string {
     if (typeof value === "string" && value.trim()) return value.trim();
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
+  // Stable fallback from the product URL so the same product keeps its id across scrapes.
+  const url = pickString(item, ["product_url", "productUrl", "url", "link"]);
+  const urlKey = url ? stableUrlKey(url) : null;
+  if (urlKey) return urlKey;
   return `shp-${index}`;
 }
 
@@ -128,9 +133,13 @@ export function normalizeVpsShopeeProducts(
       pickString(item, ["product_url", "productUrl", "url", "link"]) ?? "";
     if (!name || !productUrl) continue;
 
-    const discount =
+    // Brightdata Browser Scraper returns discount as a signed percent string, e.g.
+    // "-44%". pickNumber keeps the leading "-" (→ -44), which would make hasPromo
+    // (discount > 0) false for a real discount — so take the magnitude.
+    const rawDiscount =
       pickNumber(item, ["discount", "discountPercent"]) ??
       parseDiscountPercent(pickString(item, ["discount", "discountPercent"]));
+    const discount = rawDiscount != null ? Math.abs(rawDiscount) : null;
     const promoText =
       discount != null && discount > 0 ? `Diskon ${Math.round(discount)}%` : null;
 
@@ -143,6 +152,9 @@ export function normalizeVpsShopeeProducts(
       imageUrl:
         pickString(item, ["image_url", "imageUrl", "image", "thumbnail"]) ??
         null,
+      imageUrls: pickStringArray(
+        item.image_urls ?? item.imageUrls ?? item.images,
+      ),
       price: pickNumber(item, ["price", "price_before_discount"]),
       rating: pickNumber(item, ["rating_star", "rating", "stars", "score"]),
       reviewCount: pickMarketplaceReviewCount(item),
@@ -253,7 +265,9 @@ export async function fetchShopeeShopViaVps(
 export async function fetchShopeeProductViaVps(
   productUrl: string,
 ): Promise<NormalizedShopProduct> {
-  const normalizedUrl = cleanShopeeUrl(productUrl.trim());
+  // Search/shop results return `/product/{shop}/{item}` URLs the detail actor can't
+  // parse — convert to the canonical `…-i.{shop}.{item}` form first.
+  const normalizedUrl = toShopeeDetailUrl(cleanShopeeUrl(productUrl.trim()));
   const run = await startVpsActorRun(
     "shopee-product",
     {

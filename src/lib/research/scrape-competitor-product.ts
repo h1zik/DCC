@@ -194,6 +194,9 @@ export async function scrapeCompetitorProductTrack(
       richData.ratingDistribution =
         product.ratingDistribution as unknown as Prisma.InputJsonValue;
     }
+    if (product.imageUrls && product.imageUrls.length > 0) {
+      richData.imageUrls = product.imageUrls;
+    }
 
     await prisma.competitorProductTrack.update({
       where: { id: trackId },
@@ -241,13 +244,15 @@ export async function scrapeCompetitorProductTrack(
       },
     });
 
-    revalidatePath("/research-hub/competitor-tracker/products");
-    revalidatePath(
-      `/research-hub/competitor-tracker/products/${track.category.id}`,
-    );
-    revalidatePath(
-      `/research-hub/competitor-tracker/products/${track.category.id}/tracks/${trackId}`,
-    );
+    // Surfaced under both hubs — invalidate both prefixes so neither stays stale.
+    for (const base of [
+      "/research-hub/competitor-tracker/products",
+      "/brand-hub/competitor-tracker/products",
+    ]) {
+      revalidatePath(base);
+      revalidatePath(`${base}/${track.category.id}`);
+      revalidatePath(`${base}/${track.category.id}/tracks/${trackId}`);
+    }
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Scrape produk kompetitor gagal.";

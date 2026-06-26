@@ -457,8 +457,9 @@ export function BrandStrategyClient({
                 <Badge
                   variant={selected.citationQuality.passed ? "secondary" : "outline"}
                   className="text-[10px]"
+                  title={`${selected.citationQuality.validRefs}/${selected.citationQuality.totalRefs} kutipan tergrounding di teks evidence nyata (bukan sekadar format). Sisanya kemungkinan parafrase bebas / halusinasi — verifikasi manual sebelum dipresentasikan.`}
                 >
-                  Kutipan: {Math.round((selected.citationQuality.score ?? 0) * 100)}%
+                  Grounding kutipan: {Math.round((selected.citationQuality.score ?? 0) * 100)}%
                   {selected.citationQuality.passed ? " ✓" : " — perlu review"}
                 </Badge>
               ) : null}

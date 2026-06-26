@@ -23,6 +23,7 @@ import {
 } from "@/lib/review-scrape/native-scrape";
 import { fetchShopeeReviewsViaVps } from "@/lib/scraper-api/community-reviews";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
+import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
 
 /** Job yang sedang jalan di proses Node ini — cegah scrape ganda dari polling. */
 const activeReviewScrapeJobIds = new Set<string>();
@@ -187,6 +188,7 @@ export async function executeBrandReviewScrapeJob(jobId: string): Promise<void> 
     }
 
     if (!isApifyConfigured()) {
+      assertDemoDataAllowed(`Scraper review (${platformKey})`);
       await runDemoBrandReviewScrape(source.id);
       await markJobCompleted(jobId);
       return;

@@ -5,6 +5,7 @@ import type { ShopProductMetrics } from "@/lib/research/shop-product-metrics";
 import {
   formatCompactCount,
   formatRevenueIdr,
+  formatSoldThreshold,
   resolveShopProductMetrics,
 } from "@/lib/research/shop-product-metrics";
 import { hub } from "@/components/research-hub/research-hub-primitives";
@@ -40,11 +41,11 @@ export function ShopProductMetricsStrip({
   const cells = [
     {
       label: "Total terjual",
-      value: formatCompactCount(m.historicalSold),
+      value: formatSoldThreshold(m.historicalSold),
       highlight: true,
     },
     ...(m.monthlySold != null
-      ? [{ label: "Bulan ini", value: formatCompactCount(m.monthlySold) }]
+      ? [{ label: "Bulan ini", value: formatSoldThreshold(m.monthlySold) }]
       : []),
     {
       label: "Est. revenue",
@@ -60,12 +61,12 @@ export function ShopProductMetricsStrip({
       <div className={cn("flex flex-wrap gap-1.5", className)}>
         {m.historicalSold != null ? (
           <span className="bg-primary/10 text-primary rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
-            {formatCompactCount(m.historicalSold)} terjual
+            {formatSoldThreshold(m.historicalSold)} terjual
           </span>
         ) : null}
         {m.monthlySold != null ? (
           <span className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
-            {formatCompactCount(m.monthlySold)}/bln
+            {formatSoldThreshold(m.monthlySold)}/bln
           </span>
         ) : null}
         {m.estimatedRevenue != null ? (

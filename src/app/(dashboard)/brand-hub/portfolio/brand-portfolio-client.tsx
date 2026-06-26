@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { GripVertical, Layers, Plus, Save, Trash2 } from "lucide-react";
+import { Layers, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { saveBrandPortfolioAction } from "@/actions/brand-portfolio";
@@ -177,7 +177,7 @@ export function BrandPortfolioClient({
           >
             <div className="md:col-span-2 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <GripVertical className="size-3.5" />
+                <Layers className="size-3.5" />
                 Lini #{index + 1}
               </div>
               <Button

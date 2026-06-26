@@ -114,7 +114,12 @@ export async function regenerateBrandAudienceProfile(profileId: string) {
 
 export async function deleteBrandAudienceProfile(profileId: string) {
   await requireBrandManager();
-  await prisma.brandAudienceProfile.deleteMany({ where: { id: profileId } });
+  const existing = await prisma.brandAudienceProfile.findUnique({
+    where: { id: profileId },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Profil audiens tidak ditemukan.");
+  await prisma.brandAudienceProfile.delete({ where: { id: profileId } });
   revalidatePath("/brand-hub/audience");
 }
 
