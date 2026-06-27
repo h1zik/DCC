@@ -1027,6 +1027,14 @@ async function main() {
     limitSchema,
   });
 
+  const { registerSeoTools } = await import("./register-seo-tools.js");
+  registerSeoTools(server, {
+    dccFetch,
+    buildQuery,
+    asText,
+    limitSchema,
+  });
+
 
 
   const transport = new StdioServerTransport();

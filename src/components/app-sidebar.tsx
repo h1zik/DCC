@@ -34,6 +34,7 @@ import {
   Bot,
   Microscope,
   Palette,
+  Gauge,
 } from "lucide-react";
 import { effectiveRoleLabel } from "@/lib/role-labels";
 import {
@@ -120,6 +121,7 @@ const navStudio = [
 
 const navMarketAnalyst = [
   { href: "/research-hub", label: "Research Hub", icon: Microscope },
+  { href: "/seo", label: "SEO Toolkit", icon: Gauge },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -131,6 +133,7 @@ const navBrandManager = [
   { href: "/home", label: "Home", icon: Home },
   { href: "/brand-hub", label: "Brand & Creative Hub", icon: Palette },
   { href: "/research-hub", label: "Research Hub", icon: Microscope },
+  { href: "/seo", label: "SEO Toolkit", icon: Gauge },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },

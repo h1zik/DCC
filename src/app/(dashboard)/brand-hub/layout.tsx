@@ -2,6 +2,7 @@ import { UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { BrandHubModuleSidebar } from "@/components/brand-hub/brand-hub-sidebar";
 import { BrandHubSubNav } from "@/components/brand-hub/brand-hub-sub-nav";
 import { BrandBackgroundJobIndicator } from "@/components/brand-hub/brand-background-job-indicator";
 
@@ -26,10 +27,15 @@ export default async function BrandHubLayout({
   });
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-4">
-      <BrandHubSubNav brands={brands} />
-      {children}
-      <BrandBackgroundJobIndicator />
+    <div className="flex w-full min-w-0 gap-6 lg:gap-8">
+      <BrandHubModuleSidebar brands={brands} className="lg:flex" />
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <BrandHubSubNav brands={brands} className="lg:hidden" />
+        <div className="animate-in fade-in duration-300 motion-reduce:animate-none">
+          {children}
+        </div>
+        <BrandBackgroundJobIndicator />
+      </div>
     </div>
   );
 }
