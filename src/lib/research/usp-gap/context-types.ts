@@ -39,9 +39,22 @@ export type ResolvedContextSources = {
   competitorProducts?: ResolvedSourceRef[];
 };
 
+export type ContextMatchKind = "matched" | "fallback";
+
+/**
+ * Per-module relevance of the data that was actually attached:
+ * - "matched": data confirmed to match the analysis category (or user-picked).
+ * - "fallback": no category match found, so the most-recent records were used
+ *   regardless of category — relevance is NOT guaranteed.
+ */
+export type ContextMatchQuality = Partial<
+  Record<keyof ResolvedContextSources, ContextMatchKind>
+>;
+
 /** Persisted on UspGapAnalysis.contextModules after each run. */
 export type StoredContextModules = ContextModules & {
   resolvedSources?: ResolvedContextSources;
+  matchQuality?: ContextMatchQuality;
 };
 
 export type ContextSourceOption = {

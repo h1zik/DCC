@@ -65,16 +65,7 @@ export function ActionPlanPanel({
   renderFooter?: (rec: Recommendation) => ReactNode;
   className?: string;
 }) {
-  const parsed: ActionPlan | null = useMemo(() => {
-    if (
-      plan &&
-      typeof plan === "object" &&
-      "recommendations" in (plan as Record<string, unknown>)
-    ) {
-      return asActionPlan(plan);
-    }
-    return asActionPlan(plan);
-  }, [plan]);
+  const parsed: ActionPlan | null = useMemo(() => asActionPlan(plan), [plan]);
 
   const sorted = useMemo(
     () =>

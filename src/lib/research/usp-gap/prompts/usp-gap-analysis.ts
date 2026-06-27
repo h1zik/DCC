@@ -15,6 +15,7 @@ Panduan modul:
 - productDiscovery: landscape marketplace (price band, top seller, promo share, brand breakdown)
 - competitorProducts: benchmark produk individual yang dilacak user (harga, rating, sold, promo per SKU rival)
 - competitor: data shop-level dari Competitor Tracker (SKU agregat per toko)
+- competitor.claims: token TENTATIF hasil pemecahan judul SKU, BUKAN klaim terverifikasi — perlakukan sebagai sinyal lemah, jangan jadikan bukti utama.
 
 Tugas:
 1. Buat gap matrix: klaim/benefit vs kekosongan pasar. Per baris WAJIB isi:

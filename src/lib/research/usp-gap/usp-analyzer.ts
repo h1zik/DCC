@@ -15,6 +15,11 @@ import { normalizePositioningMap } from "@/lib/research/usp-gap/positioning-char
 import { buildUspGapAnalysisPrompt } from "@/lib/research/usp-gap/prompts/usp-gap-analysis";
 import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
+import {
+  buildEvidenceCorpus,
+  groundActionPlan,
+  groundEvidenceRefs,
+} from "@/lib/research/usp-gap/evidence-grounding";
 import type { ActionPlan } from "@/lib/research/prescriptive/types";
 
 type CategoryDecision = {
@@ -89,7 +94,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
   });
 
   try {
-    const { context, resolvedSources } = await gatherUspContext({
+    const { context, resolvedSources, matchQuality } = await gatherUspContext({
       category: analysis.category,
       contextModules,
     });
@@ -101,6 +106,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
         contextModules: {
           ...contextModules,
           resolvedSources,
+          matchQuality,
         },
       },
     });
@@ -111,9 +117,17 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
     });
     const positioningMap = normalizePositioningMap(result.positioningMap);
     const categoryDecision = normalizeCategoryDecision(result.categoryDecision);
-    const actionPlan: ActionPlan | null = coerceActionPlan(
-      result.actionPlan,
-      `usp-${analysisId}`,
+
+    // Evidence grounding: drop any AI-emitted evidence that does not trace back
+    // to the gathered context, so R&D never sees fabricated citations.
+    const corpus = buildEvidenceCorpus(context);
+    const gapMatrix = (result.gapMatrix ?? []).map((row) => ({
+      ...row,
+      evidenceRefs: groundEvidenceRefs(row.evidenceRefs, corpus),
+    }));
+    const actionPlan: ActionPlan | null = groundActionPlan(
+      coerceActionPlan(result.actionPlan, `usp-${analysisId}`),
+      corpus,
     );
 
     const aiMeta = researchAiMetaFromSteps([
@@ -125,7 +139,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
         where: { analysisId },
         create: {
           analysisId,
-          gapMatrix: result.gapMatrix ?? [],
+          gapMatrix,
           claimAnalysis: result.claimAnalysis ?? {},
           positioningMap,
           uspCandidates: result.uspCandidates ?? [],
@@ -136,7 +150,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
           aiMeta: aiMeta as object,
         },
         update: {
-          gapMatrix: result.gapMatrix ?? [],
+          gapMatrix,
           claimAnalysis: result.claimAnalysis ?? {},
           positioningMap,
           uspCandidates: result.uspCandidates ?? [],
@@ -154,6 +168,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
           contextModules: {
             ...contextModules,
             resolvedSources,
+            matchQuality,
           },
         },
       }),

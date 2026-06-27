@@ -438,7 +438,10 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
             title="Sumber Data Digunakan"
             description="Provenance dari modul riset yang mengisi analisis ini."
           >
-            <UspSourcesUsedPanel sources={data.resolvedSources} />
+            <UspSourcesUsedPanel
+              sources={data.resolvedSources}
+              matchQuality={data.contextModules.matchQuality}
+            />
           </ResearchHubSection>
         </TabsContent>
       </Tabs>

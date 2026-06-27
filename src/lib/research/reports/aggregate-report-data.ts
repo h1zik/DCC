@@ -426,8 +426,8 @@ export async function aggregateReportData(input: {
     ].filter((k) => isEnabled(k)),
   );
   const moduleToFlag: Record<string, string> = {
-    "review-intel": "reviewIntel",
-    competitor: "competitor",
+    "review-intelligence": "reviewIntel",
+    "competitor-tracker": "competitor",
     "trend-radar": "trendRadar",
     "keyword-intel": "keywordIntel",
     "social-listening": "socialListening",

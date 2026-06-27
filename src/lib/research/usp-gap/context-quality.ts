@@ -48,12 +48,29 @@ export function assessStoredContextQuality(
     (m) => !hasResolvedData(modules.resolvedSources, m.resolved),
   );
 
-  const coveragePct = Math.round((withData.length / enabled.length) * 100);
+  // A module whose data was attached via cross-category fallback is NOT
+  // trustworthy coverage — it does not count toward the coverage score.
+  const fallback = withData.filter(
+    (m) => modules.matchQuality?.[m.resolved] === "fallback",
+  );
+  const matched = withData.filter(
+    (m) => modules.matchQuality?.[m.resolved] !== "fallback",
+  );
+
+  const coveragePct = Math.round((matched.length / enabled.length) * 100);
   const warnings: string[] = [];
 
   if (missing.length > 0) {
     warnings.push(
       `Modul aktif tanpa data: ${missing.map((m) => m.label).join(", ")}.`,
+    );
+  }
+
+  if (fallback.length > 0) {
+    warnings.push(
+      `Data lintas-kategori (relevansi tidak terjamin): ${fallback
+        .map((m) => m.label)
+        .join(", ")}. Pilih sumber spesifik agar analisis benar-benar sesuai kategori.`,
     );
   }
 
