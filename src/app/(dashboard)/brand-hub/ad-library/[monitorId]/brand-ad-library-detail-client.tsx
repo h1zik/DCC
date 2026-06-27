@@ -3,13 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import {
-  ExternalLink,
-  ImageIcon,
-  Megaphone,
-  RefreshCw,
-  Sparkles,
-} from "lucide-react";
+import { ImageIcon, Megaphone, RefreshCw, Sparkles } from "lucide-react";
 import { SocialListeningStatus } from "@prisma/client";
 import { toast } from "sonner";
 import {
@@ -39,7 +33,28 @@ import {
 import { AdCreativeMedia } from "@/components/brand-hub/ad-creative-media";
 import { DemoDataBanner } from "@/components/brand-hub/demo-data-banner";
 import { isAdVideo, scrapeMediaTypeLabel } from "@/lib/brand-research/ad-library-media";
+import {
+  AD_WINNING_TIER_LABEL,
+  computeDaysRunning,
+  winningTierFromScore,
+  type AdWinningTier,
+} from "@/lib/brand-research/ad-winning-score";
 import { cn } from "@/lib/utils";
+
+const TIER_BADGE_CLASS: Record<AdWinningTier, string> = {
+  hot: "bg-red-500/15 text-red-600 dark:text-red-400",
+  strong: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  testing: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  new: "bg-muted text-muted-foreground",
+};
+
+function adDaysRunning(deliveryStart: string | null, deliveryStop: string | null): number | null {
+  return computeDaysRunning(
+    deliveryStart ? new Date(deliveryStart) : null,
+    deliveryStop ? new Date(deliveryStop) : null,
+    new Date(),
+  );
+}
 
 export type AdLibraryAdRow = {
   id: string;
@@ -58,6 +73,8 @@ export type AdLibraryAdRow = {
   isActive: boolean;
   deliveryStart: string | null;
   deliveryStop: string | null;
+  winningScore: number | null;
+  collationCount: number | null;
 };
 
 export type AdLibraryAiInsights = {
@@ -105,6 +122,7 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
   const brandId = useBrandHubBrandId();
   const [pending, startTransition] = useTransition();
   const [ctaFilter, setCtaFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"winning" | "newest" | "longest">("winning");
 
   const hasKeywordSearch = data.searchTerms.length > 0;
 
@@ -127,11 +145,23 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
   }, [data.ads]);
 
   const filteredAds = useMemo(() => {
-    return data.ads.filter((ad) => {
+    const filtered = data.ads.filter((ad) => {
       if (ctaFilter !== "all" && ad.ctaType !== ctaFilter) return false;
       return true;
     });
-  }, [data.ads, ctaFilter]);
+    const days = (ad: AdLibraryAdRow) =>
+      adDaysRunning(ad.deliveryStart, ad.deliveryStop) ?? -1;
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "newest") {
+        return (
+          new Date(b.deliveryStart ?? 0).getTime() -
+          new Date(a.deliveryStart ?? 0).getTime()
+        );
+      }
+      if (sortBy === "longest") return days(b) - days(a);
+      return (b.winningScore ?? -1) - (a.winningScore ?? -1); // winning
+    });
+  }, [data.ads, ctaFilter, sortBy]);
 
   const activeCount = data.ads.filter((a) => a.isActive).length;
   const videoCount = data.ads.filter((a) => isAdVideo(a)).length;
@@ -362,6 +392,21 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
         action={
           <div className="flex flex-wrap gap-2">
             <Select
+              value={sortBy}
+              onValueChange={(v) =>
+                setSortBy((v as "winning" | "newest" | "longest") ?? "winning")
+              }
+            >
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="winning">Winning score</SelectItem>
+                <SelectItem value="newest">Terbaru</SelectItem>
+                <SelectItem value="longest">Tayang terlama</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
               value={ctaFilter}
               onValueChange={(v) => setCtaFilter(v ?? "all")}
             >
@@ -388,37 +433,54 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredAds.map((ad) => (
-              <article
-                key={ad.id}
-                className={cn(
-                  hub.panel,
-                  "flex flex-col overflow-hidden transition-colors hover:border-primary/30",
-                )}
-              >
-                <div className="bg-muted relative aspect-[4/5] w-full overflow-hidden">
-                  <AdCreativeMedia
-                    ad={ad}
-                    alt={ad.pageName ?? "Ad creative"}
-                    className="absolute inset-0"
-                  />
-                  {ad.mediaType ? (
-                    <Badge
-                      className="absolute top-2 left-2 z-10 text-[10px]"
-                      variant="secondary"
-                    >
-                      {ad.mediaType}
-                    </Badge>
-                  ) : null}
-                  {isAdVideo(ad) ? (
-                    <Badge
-                      className="absolute top-2 right-2 z-10 bg-black/60 text-[10px] text-white"
-                      variant="secondary"
-                    >
-                      Video
-                    </Badge>
-                  ) : null}
-                </div>
+            {filteredAds.map((ad) => {
+              const tier =
+                ad.winningScore != null ? winningTierFromScore(ad.winningScore) : null;
+              const days = adDaysRunning(ad.deliveryStart, ad.deliveryStop);
+              return (
+                <Link
+                  key={ad.id}
+                  href={brandHubHref(
+                    `/brand-hub/ad-library/${data.id}/ad/${ad.id}`,
+                    brandId,
+                  )}
+                  className={cn(
+                    hub.panel,
+                    "flex flex-col overflow-hidden p-0 transition-colors hover:border-primary/40",
+                  )}
+                >
+                  <div className="bg-muted relative aspect-[4/5] w-full overflow-hidden">
+                    <AdCreativeMedia
+                      ad={ad}
+                      alt={ad.pageName ?? "Ad creative"}
+                      className="absolute inset-0"
+                    />
+                    {tier ? (
+                      <Badge
+                        className={cn(
+                          "absolute top-2 left-2 z-10 text-[10px]",
+                          TIER_BADGE_CLASS[tier],
+                        )}
+                      >
+                        {AD_WINNING_TIER_LABEL[tier]} · {ad.winningScore}
+                      </Badge>
+                    ) : ad.mediaType ? (
+                      <Badge
+                        className="absolute top-2 left-2 z-10 text-[10px]"
+                        variant="secondary"
+                      >
+                        {ad.mediaType}
+                      </Badge>
+                    ) : null}
+                    {isAdVideo(ad) ? (
+                      <Badge
+                        className="absolute top-2 right-2 z-10 bg-black/60 text-[10px] text-white"
+                        variant="secondary"
+                      >
+                        Video
+                      </Badge>
+                    ) : null}
+                  </div>
                   <div className="flex flex-1 flex-col gap-2 p-3">
                     <p className="text-xs font-medium">{ad.pageName ?? "—"}</p>
                     {ad.bodyText ? (
@@ -438,24 +500,20 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
                         </Badge>
                       ) : null}
                     </div>
+                    <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-[10px]">
+                      {days != null ? <span>Tayang {days} hari</span> : null}
+                      {ad.collationCount != null && ad.collationCount > 1 ? (
+                        <span>· {ad.collationCount} varian</span>
+                      ) : null}
+                    </div>
                     <p className="text-muted-foreground text-[10px]">
                       {formatDate(ad.deliveryStart)}
                       {ad.deliveryStop ? ` – ${formatDate(ad.deliveryStop)}` : ""}
                     </p>
-                    {ad.linkUrl ? (
-                      <a
-                        href={ad.linkUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[10px]"
-                      >
-                        <ExternalLink className="size-3" />
-                        Lihat iklan
-                      </a>
-                    ) : null}
                   </div>
-                </article>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </BrandHubSection>

@@ -23,6 +23,10 @@ import {
   filterAdsByScrapeMediaType,
   type ScrapeMediaType,
 } from "@/lib/brand-research/ad-library-media";
+import {
+  computeDaysRunning,
+  scoreAdWinning,
+} from "@/lib/brand-research/ad-winning-score";
 import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import { filterAdsForMonitorView } from "@/lib/brand-research/ad-library-safety";
@@ -46,59 +50,59 @@ async function upsertAdsForMonitor(
   batchId: string,
   ads: NormalizedMetaAd[],
 ): Promise<number> {
+  const now = new Date();
   let count = 0;
   for (const ad of ads) {
+    const daysRunning = computeDaysRunning(ad.deliveryStart, ad.deliveryStop, now);
+    const winning = scoreAdWinning({
+      daysRunning,
+      isActive: ad.isActive,
+      collationCount: ad.collationCount,
+      audienceUpper: ad.audienceUpper,
+      platformCount: ad.platforms.length,
+    });
+
+    // Field yang identik untuk create & update (selain monitorId/externalId).
+    const data = {
+      batchId,
+      pageId: ad.pageId,
+      pageName: ad.pageName,
+      pageProfileUrl: ad.pageProfileUrl,
+      bodyText: ad.bodyText,
+      linkTitle: ad.linkTitle,
+      linkUrl: ad.linkUrl,
+      linkDescription: ad.linkDescription,
+      linkCaption: ad.linkCaption,
+      ctaType: ad.ctaType,
+      ctaText: ad.ctaText,
+      mediaType: ad.mediaType,
+      imageUrl: ad.imageUrl,
+      videoUrl: ad.videoUrl,
+      snapshotUrl: ad.snapshotUrl,
+      platforms: ad.platforms,
+      isActive: ad.isActive,
+      deliveryStart: ad.deliveryStart,
+      deliveryStop: ad.deliveryStop,
+      collationCount: ad.collationCount,
+      pageLikeCount: ad.pageLikeCount,
+      pageCategories: ad.pageCategories,
+      pageCreationDate: ad.pageCreationDate,
+      totalActiveAds: ad.totalActiveAds,
+      audienceLower: ad.audienceLower,
+      audienceUpper: ad.audienceUpper,
+      spendLower: ad.spendLower,
+      spendUpper: ad.spendUpper,
+      currency: ad.currency,
+      cards: ad.cards as unknown as Prisma.InputJsonValue,
+      winningScore: winning.score,
+      rawData: ad.rawData as Prisma.InputJsonValue,
+      scrapedAt: ad.scrapedAt ?? now,
+    };
+
     await prisma.brandAdLibraryAd.upsert({
-      where: {
-        monitorId_externalId: {
-          monitorId,
-          externalId: ad.externalId,
-        },
-      },
-      create: {
-        monitorId,
-        batchId,
-        externalId: ad.externalId,
-        pageId: ad.pageId,
-        pageName: ad.pageName,
-        pageProfileUrl: ad.pageProfileUrl,
-        bodyText: ad.bodyText,
-        linkTitle: ad.linkTitle,
-        linkUrl: ad.linkUrl,
-        ctaType: ad.ctaType,
-        ctaText: ad.ctaText,
-        mediaType: ad.mediaType,
-        imageUrl: ad.imageUrl,
-        videoUrl: ad.videoUrl,
-        snapshotUrl: ad.snapshotUrl,
-        platforms: ad.platforms,
-        isActive: ad.isActive,
-        deliveryStart: ad.deliveryStart,
-        deliveryStop: ad.deliveryStop,
-        rawData: ad.rawData as Prisma.InputJsonValue,
-        scrapedAt: ad.scrapedAt ?? new Date(),
-      },
-      update: {
-        batchId,
-        pageId: ad.pageId,
-        pageName: ad.pageName,
-        pageProfileUrl: ad.pageProfileUrl,
-        bodyText: ad.bodyText,
-        linkTitle: ad.linkTitle,
-        linkUrl: ad.linkUrl,
-        ctaType: ad.ctaType,
-        ctaText: ad.ctaText,
-        mediaType: ad.mediaType,
-        imageUrl: ad.imageUrl,
-        videoUrl: ad.videoUrl,
-        snapshotUrl: ad.snapshotUrl,
-        platforms: ad.platforms,
-        isActive: ad.isActive,
-        deliveryStart: ad.deliveryStart,
-        deliveryStop: ad.deliveryStop,
-        rawData: ad.rawData as Prisma.InputJsonValue,
-        scrapedAt: ad.scrapedAt ?? new Date(),
-      },
+      where: { monitorId_externalId: { monitorId, externalId: ad.externalId } },
+      create: { monitorId, externalId: ad.externalId, ...data },
+      update: data,
     });
     count += 1;
   }

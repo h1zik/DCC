@@ -69,6 +69,8 @@ export default async function BrandAdLibraryDetailPage({
       isActive: ad.isActive,
       deliveryStart: ad.deliveryStart?.toISOString() ?? null,
       deliveryStop: ad.deliveryStop?.toISOString() ?? null,
+      winningScore: ad.winningScore,
+      collationCount: ad.collationCount,
       rawData:
         ad.rawData && typeof ad.rawData === "object"
           ? (ad.rawData as Record<string, unknown>)
