@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
+  ContextMatchQuality,
   ResolvedContextSources,
   ResolvedSourceRef,
 } from "@/lib/research/usp-gap/context-types";
@@ -64,8 +65,10 @@ const SECTION_META: Record<
 
 export function UspSourcesUsedPanel({
   sources,
+  matchQuality,
 }: {
   sources: ResolvedContextSources | null | undefined;
+  matchQuality?: ContextMatchQuality | null;
 }) {
   if (!sources) return null;
 
@@ -124,6 +127,15 @@ export function UspSourcesUsedPanel({
                 <span className="text-foreground min-w-0 flex-1 truncate text-xs font-semibold">
                   {meta.label}
                 </span>
+                {matchQuality?.[key] === "fallback" ? (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 border-amber-500/40 text-[10px] text-amber-600 dark:text-amber-400"
+                    title="Tidak ada sumber yang cocok kategori — dipakai data terbaru lintas-kategori."
+                  >
+                    lintas-kategori
+                  </Badge>
+                ) : null}
                 <Badge variant="outline" className="shrink-0 text-[10px]">
                   {refs.length}
                 </Badge>

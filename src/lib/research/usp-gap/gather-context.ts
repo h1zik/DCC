@@ -11,6 +11,7 @@ import type {
   CompetitorProductEvidence,
 } from "@/lib/research/evidence/competitor-product-evidence";
 import type {
+  ContextMatchQuality,
   ContextModules,
   ResolvedContextSources,
   ResolvedSourceRef,
@@ -57,6 +58,9 @@ export type UspGatheredContext = {
 export type GatherUspContextResult = {
   context: UspGatheredContext;
   resolvedSources: ResolvedContextSources;
+  /** Per-module: did the attached data match the category, or was it a
+   * cross-category fallback (most-recent records used when no match found). */
+  matchQuality: ContextMatchQuality;
 };
 
 export type AvailableContextModules = {
@@ -96,6 +100,46 @@ function parseThemes(raw: unknown): { theme: string; count: number }[] {
   );
 }
 
+/** Commerce/regulatory filler and size tokens that are NOT product claims. */
+const CLAIM_NOISE = new Set([
+  "free", "gift", "ori", "original", "promo", "ready", "stock", "termurah",
+  "murah", "diskon", "new", "best", "seller", "terlaris", "bonus", "gratis",
+  "isi", "value", "paket", "official", "store", "bpom", "cod", "pcs", "pack",
+  "sachet", "resmi", "asli", "terbaru", "grosir", "reseller", "preorder",
+  "bundle", "limited", "edition", "varian", "size", "pcs", "buy",
+]);
+
+/**
+ * Extract tentative claim tokens from competitor SKU titles. Marketplace
+ * titles are noisy ("Serum 30ml BPOM Ready Stock Promo"), so we drop size /
+ * quantity / commerce-filler fragments and keep only meaningful phrases. These
+ * are still only *signals* from titles, not verified claims.
+ */
+function extractClaimTokens(skuNames: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of skuNames) {
+    for (const rawPart of name.split(/[|\-–—/,()[\]]+/)) {
+      const part = rawPart.trim();
+      if (part.length <= 3) continue;
+      const lower = part.toLowerCase();
+      // Skip size/quantity fragments (start with a digit, or "30ml"/"100 gr").
+      if (/^\d/.test(lower)) continue;
+      if (/\b\d+\s?(ml|gr|gram|g|kg|pcs|pack|sachet)\b/.test(lower)) continue;
+      const words = lower.split(/\s+/).filter(Boolean);
+      const meaningful = words.filter(
+        (w) => w.length > 2 && !CLAIM_NOISE.has(w),
+      );
+      if (meaningful.length === 0) continue;
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      out.push(part);
+      if (out.length >= 30) return out;
+    }
+  }
+  return out;
+}
+
 export async function gatherUspContext(input: {
   category: string;
   contextModules: ContextModules;
@@ -112,10 +156,12 @@ export async function gatherUspContext(input: {
     competitorProducts: null,
   };
   const resolvedSources: ResolvedContextSources = {};
+  const matchQuality: ContextMatchQuality = {};
 
   if (contextModules.reviewIntel) {
     const explicitIds = contextModules.reviewSourceIds?.filter(Boolean) ?? [];
 
+    let usedFallback = false;
     let sources = explicitIds.length
       ? await prisma.reviewIntelSource.findMany({
           where: { id: { in: explicitIds }, status: "READY" },
@@ -135,11 +181,13 @@ export async function gatherUspContext(input: {
           categoryMatch(s.productName, category) ||
           categoryMatch(s.competitorBrand, category),
       );
+      usedFallback = matched.length === 0;
       sources = (matched.length > 0 ? matched : all).slice(0, 5);
     }
 
     const withSummary = sources.filter((s) => s.summary);
     if (withSummary.length > 0) {
+      matchQuality.reviewIntel = usedFallback ? "fallback" : "matched";
       resolvedSources.reviewIntel = withSummary.map(
         (s): ResolvedSourceRef => ({
           id: s.id,
@@ -169,6 +217,7 @@ export async function gatherUspContext(input: {
   if (contextModules.competitor) {
     const explicitIds = contextModules.competitorIds?.filter(Boolean) ?? [];
 
+    let usedFallback = false;
     let picks = explicitIds.length
       ? await prisma.researchCompetitor.findMany({
           where: { id: { in: explicitIds }, isActive: true },
@@ -194,10 +243,12 @@ export async function gatherUspContext(input: {
           categoryMatch(c.category, category) ||
           c.skus.some((s) => categoryMatch(s.name, category)),
       );
+      usedFallback = matched.length === 0;
       picks = (matched.length > 0 ? matched : all).slice(0, 5);
     }
 
     if (picks.length > 0) {
+      matchQuality.competitor = usedFallback ? "fallback" : "matched";
       resolvedSources.competitor = picks.map(
         (c): ResolvedSourceRef => ({
           id: c.id,
@@ -212,11 +263,7 @@ export async function gatherUspContext(input: {
         .flatMap((c) => c.skus.map((s) => s.currentPrice))
         .filter((p): p is number => typeof p === "number" && p > 0);
 
-      const claims = skuNames
-        .flatMap((name) => name.split(/[|\-–]/))
-        .map((s) => s.trim())
-        .filter((s) => s.length > 3)
-        .slice(0, 30);
+      const claims = extractClaimTokens(skuNames);
 
       ctx.competitor = {
         brands: [...new Set(picks.map((c) => c.brand))],
@@ -272,6 +319,9 @@ export async function gatherUspContext(input: {
         )
         .slice(0, 10);
 
+      // No category-matching trend items → we fall back to arbitrary top items.
+      matchQuality.trendRadar = items.length === 0 ? "fallback" : "matched";
+
       ctx.trendRadar = {
         items: (items.length > 0 ? items : digest.items.slice(0, 8)).map(
           (i) => ({
@@ -286,27 +336,27 @@ export async function gatherUspContext(input: {
   }
 
   if (contextModules.keywordIntel) {
-    const query = contextModules.keywordQueryId
-      ? await prisma.keywordIntelQuery.findFirst({
-          where: {
-            id: contextModules.keywordQueryId,
-            status: "READY",
-          },
-          include: { result: true },
-        })
-      : await prisma.keywordIntelQuery.findMany({
-          where: { status: "READY" },
-          include: { result: true },
-          orderBy: { updatedAt: "desc" },
-          take: 15,
-        }).then(
-          (queries) =>
-            queries.find((q) => categoryMatch(q.category, category)) ??
-            queries[0] ??
-            null,
-        );
+    let usedFallback = false;
+    let query;
+    if (contextModules.keywordQueryId) {
+      query = await prisma.keywordIntelQuery.findFirst({
+        where: { id: contextModules.keywordQueryId, status: "READY" },
+        include: { result: true },
+      });
+    } else {
+      const queries = await prisma.keywordIntelQuery.findMany({
+        where: { status: "READY" },
+        include: { result: true },
+        orderBy: { updatedAt: "desc" },
+        take: 15,
+      });
+      const matched = queries.find((q) => categoryMatch(q.category, category));
+      query = matched ?? queries[0] ?? null;
+      usedFallback = !matched && !!query;
+    }
 
     if (query?.result) {
+      matchQuality.keywordIntel = usedFallback ? "fallback" : "matched";
       resolvedSources.keywordIntel = {
         id: query.id,
         label: query.category,
@@ -355,6 +405,9 @@ export async function gatherUspContext(input: {
         categoryMatch(category, batch.monitor.name);
 
       if (useBatch) {
+        // Without an explicit monitor we took the latest batch regardless of
+        // category — relevance to this category is not guaranteed.
+        matchQuality.socialListening = monitorId ? "matched" : "fallback";
         resolvedSources.socialListening = {
           id: batch.monitorId,
           label: batch.monitor.name,
@@ -382,6 +435,7 @@ export async function gatherUspContext(input: {
     const explicitIds =
       contextModules.productDiscoveryQueryIds?.filter(Boolean) ?? [];
 
+    let usedFallback = false;
     let queryIds = explicitIds;
 
     if (queryIds.length === 0) {
@@ -392,12 +446,14 @@ export async function gatherUspContext(input: {
         select: { id: true, keyword: true },
       });
       const matched = all.filter((q) => categoryMatch(q.keyword, category));
+      usedFallback = matched.length === 0;
       queryIds = (matched.length > 0 ? matched : all).slice(0, 3).map((q) => q.id);
     }
 
     if (queryIds.length > 0) {
       const insights = await fetchProductDiscoveryEvidence(queryIds);
       if (insights.length > 0) {
+        matchQuality.productDiscovery = usedFallback ? "fallback" : "matched";
         resolvedSources.productDiscovery = insights.map(
           (q): ResolvedSourceRef => ({
             id: q.sourceId,
@@ -415,6 +471,7 @@ export async function gatherUspContext(input: {
     const explicitIds =
       contextModules.competitorProductCategoryIds?.filter(Boolean) ?? [];
 
+    let usedFallback = false;
     let categoryIds = explicitIds;
 
     if (categoryIds.length === 0) {
@@ -425,6 +482,7 @@ export async function gatherUspContext(input: {
         select: { id: true, name: true },
       });
       const matched = all.filter((c) => categoryMatch(c.name, category));
+      usedFallback = matched.length === 0;
       categoryIds = (matched.length > 0 ? matched : all)
         .slice(0, 3)
         .map((c) => c.id);
@@ -433,6 +491,7 @@ export async function gatherUspContext(input: {
     if (categoryIds.length > 0) {
       const insights = await fetchCompetitorProductEvidence(categoryIds);
       if (insights.length > 0) {
+        matchQuality.competitorProducts = usedFallback ? "fallback" : "matched";
         resolvedSources.competitorProducts = insights.map(
           (c): ResolvedSourceRef => ({
             id: c.sourceId,
@@ -446,7 +505,7 @@ export async function gatherUspContext(input: {
     }
   }
 
-  return { context: ctx, resolvedSources };
+  return { context: ctx, resolvedSources, matchQuality };
 }
 
 export async function getAvailableContextModules(): Promise<AvailableContextModules> {

@@ -54,9 +54,20 @@ export function parseStoredContextModules(raw: unknown): StoredContextModules {
   const base = parseContextModules(raw);
   if (!raw || typeof raw !== "object") return base;
   const o = raw as Record<string, unknown>;
+
+  const stored: StoredContextModules = { ...base };
+
   const resolved = o.resolvedSources;
-  if (!resolved || typeof resolved !== "object") return base;
-  return { ...base, resolvedSources: resolved as StoredContextModules["resolvedSources"] };
+  if (resolved && typeof resolved === "object") {
+    stored.resolvedSources = resolved as StoredContextModules["resolvedSources"];
+  }
+
+  const matchQuality = o.matchQuality;
+  if (matchQuality && typeof matchQuality === "object") {
+    stored.matchQuality = matchQuality as StoredContextModules["matchQuality"];
+  }
+
+  return stored;
 }
 
 export async function listUspContextSourceOptions(): Promise<UspContextSourceOptions> {
