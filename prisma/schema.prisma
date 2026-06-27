@@ -247,126 +247,136 @@ enum RoomListColumnType {
 }
 
 model User {
-  id                        String                         @id @default(cuid())
-  name                      String?
-  email                     String                         @unique
-  emailVerified             DateTime?
-  image                     String?
+  id                                 String                         @id @default(cuid())
+  name                               String?
+  email                              String                         @unique
+  emailVerified                      DateTime?
+  image                              String?
   /**
    * Aktivitas terakhir user di aplikasi (untuk indikator online).
    */
-  lastSeenAt                DateTime?
+  lastSeenAt                         DateTime?
   /**
    * Deskripsi singkat / bio (opsional, untuk profil).
    */
-  bio                       String?
+  bio                                String?
   /**
    * Nomor WhatsApp format E.164 (mis. +6281234567890) untuk notifikasi Twilio.
    */
-  whatsappPhone             String?
+  whatsappPhone                      String?
   /**
    * Tema banner profil publik (slug preset gradien).
    * @see `PROFILE_BANNER_PRESETS` di kode.
    */
-  profileBannerPreset       String                         @default("twilight")
+  profileBannerPreset                String                         @default("twilight")
   /**
    * Slogan singkat di bawah nama (dipublikasikan ke profil publik).
    */
-  profileTagline            String?                        @db.VarChar(160)
+  profileTagline                     String?                        @db.VarChar(160)
   /**
    * Warna aksen hex `#RRGGBB` untuk ring avatar & aksen; null = pakai default tema.
    */
-  profileAccentHex          String?                        @db.VarChar(7)
+  profileAccentHex                   String?                        @db.VarChar(7)
   /**
    * Pola dekoratif di banner (slug). Lihat `PROFILE_BANNER_PATTERNS`.
    */
-  profileBannerPattern      String                         @default("noise")
+  profileBannerPattern               String                         @default("noise")
   /**
    * Slug stiker / lambang kecil di samping nama (mahkota, bintang, dll). Null = tanpa stiker.
    * Lihat `PROFILE_STICKERS`.
    */
-  profileSticker            String?                        @db.VarChar(24)
+  profileSticker                     String?                        @db.VarChar(24)
   /**
    * Bentuk frame avatar (slug). Lihat `PROFILE_AVATAR_FRAMES`.
    */
-  profileAvatarFrame        String                         @default("ring")
+  profileAvatarFrame                 String                         @default("ring")
   /**
    * Preset tema UI aplikasi (slug). Lihat `APP_THEME_PRESETS` di kode.
    */
-  appThemePreset            String                         @default("original")
+  appThemePreset                     String                         @default("original")
   /**
    * Tampilan default modul Tasks saat membuka ruangan.
    */
-  taskDefaultWorkspaceView  TaskWorkspaceView              @default(KANBAN)
-  passwordHash              String
+  taskDefaultWorkspaceView           TaskWorkspaceView              @default(KANBAN)
+  passwordHash                       String
   /**
    * Tier permission sistem (CEO/Administrator/Finance/Logistik/...) — tetap menjadi
    * sumber kebenaran untuk middleware, sidebar, dan akses modul. Custom role
    * (label peran) disimpan terpisah di `customRoleId` dan hanya untuk display.
    */
-  role                      UserRole                       @default(LOGISTICS)
+  role                               UserRole                       @default(LOGISTICS)
   /**
    * Label peran kustom yang dipilih CEO/Admin (mis. "Creative Director",
    * "DevOps Engineer"). Bila null, label peran berasal dari enum `role`.
    * Permission tier sebenarnya tetap mengikuti `role`.
    */
-  customRoleId              String?
-  customRole                CustomRole?                    @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
-  createdAt                 DateTime                       @default(now())
-  updatedAt                 DateTime                       @updatedAt
-  taskAssignments           TaskAssignee[]
-  notifications             Notification[]
-  pushSubscriptions         PushSubscription[]
-  taskComments              TaskComment[]
-  taskAttachments           TaskAttachment[]
-  taskAttachmentCommentsAuthored TaskAttachmentComment[] @relation("TaskAttachmentCommentAuthor")
-  taskAttachmentCommentsAssigned TaskAttachmentComment[] @relation("TaskAttachmentCommentAssignee")
-  roomDocumentCommentsAuthored   RoomDocumentComment[]   @relation("RoomDocumentCommentAuthor")
-  roomDocumentCommentsAssigned   RoomDocumentComment[]   @relation("RoomDocumentCommentAssignee")
-  roomMessages              RoomMessage[]
-  roomChannelReads          RoomChannelRead[]
-  directConversationMembers DirectConversationMember[]
-  directMessages            DirectMessage[]
-  roomDocuments             RoomDocument[]
-  roomMembers               RoomMember[]
-  contentPlanItemsCreated   RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
-  contentPlanItemsAsPic     RoomContentPlanItem[]          @relation("ContentPlanItemPic")
-  scheduleEventsCreated     ScheduleEvent[]                @relation("ScheduleEventCreator")
-  scheduleParticipations    ScheduleEventParticipant[]
-  scheduleReminderLogs      ScheduleReminderSent[]
-  financeJournalEntries     FinanceJournalEntry[]
-  financeApPaymentsRecorded FinanceApPayment[]             @relation("FinanceApPaymentRecorder")
-  financeArPaymentsRecorded FinanceArPayment[]             @relation("FinanceArPaymentRecorder")
-  financeSpendRequests      FinanceSpendRequest[]          @relation("FinanceSpendRequester")
-  financeSpendApprovals     FinanceSpendRequest[]          @relation("FinanceSpendApprover")
-  financePeriodLocks        FinancePeriodLock[]
-  financeJournalAttachments FinanceJournalLineAttachment[] @relation("FinanceJournalLineAttachmentUploader")
-  faceData                  FaceData[]
-  attendances               Attendance[]
-  reviewIntelSourcesCreated ReviewIntelSource[]  @relation("ReviewIntelSourceCreator")
-  productDiscoveryQueriesCreated ProductDiscoveryQuery[] @relation("ProductDiscoveryCreator")
-  researchCompetitorsCreated ResearchCompetitor[] @relation("ResearchCompetitorCreator")
-  competitorProductCategoriesCreated CompetitorProductCategory[] @relation("CompetitorProductCategoryCreator")
-  trendWatchlistsCreated    TrendWatchlist[]     @relation("TrendWatchlistCreator")
-  trendRadarUserSettings    TrendRadarUserSettings?
-  keywordIntelQueriesCreated KeywordIntelQuery[] @relation("KeywordIntelQueryCreator")
-  socialListeningMonitorsCreated SocialListeningMonitor[] @relation("SocialListeningMonitorCreator")
-  uspGapAnalysesCreated     UspGapAnalysis[]     @relation("UspGapAnalysisCreator")
-  productConceptsCreated    ProductConcept[]     @relation("ProductConceptCreator")
-  productInnovationsCreated ProductInnovation[]  @relation("ProductInnovationCreator")
-  researchReportsCreated    ResearchReport[]     @relation("ResearchReportCreator")
-  brandCompetitorsCreated   BrandCompetitor[]    @relation("BrandCompetitorCreator")
-  brandReviewSourcesCreated BrandReviewSource[]  @relation("BrandReviewSourceCreator")
-  brandKeywordQueriesCreated BrandKeywordQuery[] @relation("BrandKeywordQueryCreator")
-  brandSocialMonitorsCreated BrandSocialMonitor[] @relation("BrandSocialMonitorCreator")
-  brandUspAnalysesCreated   BrandUspAnalysis[]   @relation("BrandUspAnalysisCreator")
-  brandVisualCollectionsCreated BrandVisualCollection[] @relation("BrandVisualCollectionCreator")
-  brandStrategyDocumentsCreated BrandStrategyDocument[] @relation("BrandStrategyDocumentCreator")
-  brandAudienceProfilesCreated BrandAudienceProfile[] @relation("BrandAudienceProfileCreator")
-  brandPortfoliosCreated BrandPortfolio[] @relation("BrandPortfolioCreator")
-  brandCreativeGuidelinesCreated BrandCreativeGuideline[] @relation("BrandCreativeGuidelineCreator")
-  brandAdLibraryMonitorsCreated BrandAdLibraryMonitor[] @relation("BrandAdLibraryMonitorCreator")
-  stockLogsCreated          StockLog[]           @relation("StockLogCreator")
+  customRoleId                       String?
+  customRole                         CustomRole?                    @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  createdAt                          DateTime                       @default(now())
+  updatedAt                          DateTime                       @updatedAt
+  taskAssignments                    TaskAssignee[]
+  notifications                      Notification[]
+  pushSubscriptions                  PushSubscription[]
+  taskComments                       TaskComment[]
+  taskAttachments                    TaskAttachment[]
+  taskAttachmentCommentsAuthored     TaskAttachmentComment[]        @relation("TaskAttachmentCommentAuthor")
+  taskAttachmentCommentsAssigned     TaskAttachmentComment[]        @relation("TaskAttachmentCommentAssignee")
+  roomDocumentCommentsAuthored       RoomDocumentComment[]          @relation("RoomDocumentCommentAuthor")
+  roomDocumentCommentsAssigned       RoomDocumentComment[]          @relation("RoomDocumentCommentAssignee")
+  roomMessages                       RoomMessage[]
+  roomChannelReads                   RoomChannelRead[]
+  directConversationMembers          DirectConversationMember[]
+  directMessages                     DirectMessage[]
+  roomDocuments                      RoomDocument[]
+  roomMembers                        RoomMember[]
+  contentPlanItemsCreated            RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
+  contentPlanItemsAsPic              RoomContentPlanItem[]          @relation("ContentPlanItemPic")
+  scheduleEventsCreated              ScheduleEvent[]                @relation("ScheduleEventCreator")
+  scheduleParticipations             ScheduleEventParticipant[]
+  scheduleReminderLogs               ScheduleReminderSent[]
+  financeJournalEntries              FinanceJournalEntry[]
+  financeApPaymentsRecorded          FinanceApPayment[]             @relation("FinanceApPaymentRecorder")
+  financeArPaymentsRecorded          FinanceArPayment[]             @relation("FinanceArPaymentRecorder")
+  financeSpendRequests               FinanceSpendRequest[]          @relation("FinanceSpendRequester")
+  financeSpendApprovals              FinanceSpendRequest[]          @relation("FinanceSpendApprover")
+  financePeriodLocks                 FinancePeriodLock[]
+  financeJournalAttachments          FinanceJournalLineAttachment[] @relation("FinanceJournalLineAttachmentUploader")
+  faceData                           FaceData[]
+  attendances                        Attendance[]
+  reviewIntelSourcesCreated          ReviewIntelSource[]            @relation("ReviewIntelSourceCreator")
+  productDiscoveryQueriesCreated     ProductDiscoveryQuery[]        @relation("ProductDiscoveryCreator")
+  researchCompetitorsCreated         ResearchCompetitor[]           @relation("ResearchCompetitorCreator")
+  competitorProductCategoriesCreated CompetitorProductCategory[]    @relation("CompetitorProductCategoryCreator")
+  trendWatchlistsCreated             TrendWatchlist[]               @relation("TrendWatchlistCreator")
+  trendRadarUserSettings             TrendRadarUserSettings?
+  keywordIntelQueriesCreated         KeywordIntelQuery[]            @relation("KeywordIntelQueryCreator")
+  socialListeningMonitorsCreated     SocialListeningMonitor[]       @relation("SocialListeningMonitorCreator")
+  uspGapAnalysesCreated              UspGapAnalysis[]               @relation("UspGapAnalysisCreator")
+  productConceptsCreated             ProductConcept[]               @relation("ProductConceptCreator")
+  productInnovationsCreated          ProductInnovation[]            @relation("ProductInnovationCreator")
+  researchReportsCreated             ResearchReport[]               @relation("ResearchReportCreator")
+  brandCompetitorsCreated            BrandCompetitor[]              @relation("BrandCompetitorCreator")
+  brandReviewSourcesCreated          BrandReviewSource[]            @relation("BrandReviewSourceCreator")
+  brandKeywordQueriesCreated         BrandKeywordQuery[]            @relation("BrandKeywordQueryCreator")
+  brandSocialMonitorsCreated         BrandSocialMonitor[]           @relation("BrandSocialMonitorCreator")
+  brandUspAnalysesCreated            BrandUspAnalysis[]             @relation("BrandUspAnalysisCreator")
+  brandVisualCollectionsCreated      BrandVisualCollection[]        @relation("BrandVisualCollectionCreator")
+  brandStrategyDocumentsCreated      BrandStrategyDocument[]        @relation("BrandStrategyDocumentCreator")
+  brandAudienceProfilesCreated       BrandAudienceProfile[]         @relation("BrandAudienceProfileCreator")
+  brandPortfoliosCreated             BrandPortfolio[]               @relation("BrandPortfolioCreator")
+  brandCreativeGuidelinesCreated     BrandCreativeGuideline[]       @relation("BrandCreativeGuidelineCreator")
+  brandAdLibraryMonitorsCreated      BrandAdLibraryMonitor[]        @relation("BrandAdLibraryMonitorCreator")
+  stockLogsCreated                   StockLog[]                     @relation("StockLogCreator")
+  seoKeywordProjectsCreated          SeoKeywordProject[]            @relation("SeoKeywordProjectCreator")
+  seoRankProjectsCreated             SeoRankProject[]               @relation("SeoRankProjectCreator")
+  seoOnPageAuditsCreated             SeoOnPageAudit[]               @relation("SeoOnPageAuditCreator")
+  seoSiteCrawlsCreated               SeoSiteCrawl[]                 @relation("SeoSiteCrawlCreator")
+  seoBacklinkProfilesCreated         SeoBacklinkProfile[]          @relation("SeoBacklinkProfileCreator")
+  seoContentBriefsCreated            SeoContentBrief[]             @relation("SeoContentBriefCreator")
+  seoContentDraftsCreated            SeoContentDraft[]             @relation("SeoContentDraftCreator")
+  seoMarketplaceAnalysesCreated      SeoMarketplaceAnalysis[]      @relation("SeoMarketplaceAnalysisCreator")
+  seoReportsCreated                  SeoReport[]                   @relation("SeoReportCreator")
+  seoContentTopicRunsCreated         SeoContentTopicRun[]          @relation("SeoContentTopicRunCreator")
 
   @@index([customRoleId])
 }
@@ -422,37 +432,37 @@ model PushSubscription {
 }
 
 model Brand {
-  id                   String                @id @default(cuid())
-  name                 String
-  logo                 String?
-  colorCode            String?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  products             Product[]
-  projects             Project[]
-  rooms                Room[]
-  financeJournalLines  FinanceJournalLine[]
-  financeApBills       FinanceApBill[]
-  financeArInvoices    FinanceArInvoice[]
-  financeBudgetLines   FinanceBudgetLine[]
-  financeSpendRequests FinanceSpendRequest[]
-  reviewIntelSources   ReviewIntelSource[]
-  uspGapAnalyses       UspGapAnalysis[]
-  productConcepts      ProductConcept[]
-  brandCompetitors     BrandCompetitor[]
-  brandReviewSources   BrandReviewSource[]
-  brandTrendDigests    BrandTrendDigest[]
-  brandKeywordQueries  BrandKeywordQuery[]
-  brandSocialMonitors  BrandSocialMonitor[]
-  brandUspAnalyses     BrandUspAnalysis[]
-  brandVisualCollections BrandVisualCollection[]
-  brandVisualAssets    BrandVisualAsset[]
-  brandStrategyDocuments BrandStrategyDocument[]
-  brandAudienceProfiles  BrandAudienceProfile[]
-  productInnovations     ProductInnovation[]
-  brandPortfolio         BrandPortfolio?
+  id                      String                   @id @default(cuid())
+  name                    String
+  logo                    String?
+  colorCode               String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  products                Product[]
+  projects                Project[]
+  rooms                   Room[]
+  financeJournalLines     FinanceJournalLine[]
+  financeApBills          FinanceApBill[]
+  financeArInvoices       FinanceArInvoice[]
+  financeBudgetLines      FinanceBudgetLine[]
+  financeSpendRequests    FinanceSpendRequest[]
+  reviewIntelSources      ReviewIntelSource[]
+  uspGapAnalyses          UspGapAnalysis[]
+  productConcepts         ProductConcept[]
+  brandCompetitors        BrandCompetitor[]
+  brandReviewSources      BrandReviewSource[]
+  brandTrendDigests       BrandTrendDigest[]
+  brandKeywordQueries     BrandKeywordQuery[]
+  brandSocialMonitors     BrandSocialMonitor[]
+  brandUspAnalyses        BrandUspAnalysis[]
+  brandVisualCollections  BrandVisualCollection[]
+  brandVisualAssets       BrandVisualAsset[]
+  brandStrategyDocuments  BrandStrategyDocument[]
+  brandAudienceProfiles   BrandAudienceProfile[]
+  productInnovations      ProductInnovation[]
+  brandPortfolio          BrandPortfolio?
   brandCreativeGuidelines BrandCreativeGuideline[]
-  brandAdLibraryMonitors BrandAdLibraryMonitor[]
+  brandAdLibraryMonitors  BrandAdLibraryMonitor[]
 }
 
 /**
@@ -721,7 +731,9 @@ model RoomKanbanColumn {
    */
   linkedStatus         TaskStatus
   title                String
-  /** Warna aksen kolom (hex). Null = warna default menurut status. */
+  /**
+   * Warna aksen kolom (hex). Null = warna default menurut status.
+   */
   colorHex             String?
   sortOrder            Int                     @default(0)
   createdAt            DateTime                @default(now())
@@ -839,7 +851,9 @@ model RoomChannel {
   topic     String?           @db.VarChar(200)
   sortOrder Int               @default(0)
   isDefault Boolean           @default(false)
-  /** Channel terkunci tidak dapat dihapus (selain channel default yang selalu terkunci). */
+  /**
+   * Channel terkunci tidak dapat dihapus (selain channel default yang selalu terkunci).
+   */
   isLocked  Boolean           @default(false)
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
@@ -963,13 +977,13 @@ model RoomDocumentFolder {
 }
 
 model RoomDocument {
-  id           String              @id @default(cuid())
+  id           String                @id @default(cuid())
   roomId       String
-  room         Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room         Room                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   folderId     String?
-  folder       RoomDocumentFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folder       RoomDocumentFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
   uploadedById String
-  uploadedBy   User                @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedBy   User                  @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   title        String?
   fileName     String
   mimeType     String
@@ -987,8 +1001,8 @@ model RoomDocument {
   /**
    * Tag bebas (mis. footage, draft, approved) — dinormalisasi di aplikasi.
    */
-  tags         String[]            @default([])
-  createdAt    DateTime            @default(now())
+  tags         String[]              @default([])
+  createdAt    DateTime              @default(now())
   comments     RoomDocumentComment[]
 
   @@index([roomId, folderId])
@@ -1178,11 +1192,11 @@ model TaskComment {
 }
 
 model TaskAttachment {
-  id           String   @id @default(cuid())
+  id           String                  @id @default(cuid())
   taskId       String
-  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task         Task                    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   uploadedById String
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedBy   User                    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   fileName     String
   mimeType     String
   size         Int
@@ -1194,7 +1208,7 @@ model TaskAttachment {
    * Tautan eksternal (Drive, Figma, dll.); jika terisi, tidak ada berkas di disk.
    */
   linkUrl      String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime                @default(now())
   comments     TaskAttachmentComment[]
 
   @@index([taskId, createdAt])
@@ -1310,17 +1324,17 @@ model Vendor {
 }
 
 model Product {
-  id                String        @id @default(cuid())
-  brandId           String
-  brand             Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  name              String
-  sku               String        @unique
-  currentStock      Int           @default(0)
-  minStock          Int           @default(0)
-  category          String?
-  pipelineStage     PipelineStage @default(MARKET_RESEARCH)
+  id                      String          @id @default(cuid())
+  brandId                 String
+  brand                   Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name                    String
+  sku                     String          @unique
+  currentStock            Int             @default(0)
+  minStock                Int             @default(0)
+  category                String?
+  pipelineStage           PipelineStage   @default(MARKET_RESEARCH)
   preferredVendorId       String?
-  preferredVendor         Vendor?       @relation("ProductPreferredVendor", fields: [preferredVendorId], references: [id], onDelete: SetNull)
+  preferredVendor         Vendor?         @relation("ProductPreferredVendor", fields: [preferredVendorId], references: [id], onDelete: SetNull)
   /**
    * Override lead time per SKU (hari). Jika null, pakai vendor.leadTimeDays.
    */
@@ -1329,10 +1343,10 @@ model Product {
    * Override safety stock buffer per SKU (hari demand). Jika null, pakai vendor.safetyStockDays.
    */
   safetyStockDaysOverride Int?
-  createdAt               DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  stockLogs         StockLog[]
-  productVendors    ProductVendor[]
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  stockLogs               StockLog[]
+  productVendors          ProductVendor[]
 
   @@index([brandId])
   @@index([preferredVendorId])
@@ -2010,27 +2024,35 @@ enum ProductDiscoveryStatus {
 }
 
 model ProductDiscoveryQuery {
-  id           String                   @id @default(cuid())
-  keyword      String
-  marketplaces ResearchMarketplace[]
-  productLimit Int                      @default(50)
-  status       ProductDiscoveryStatus   @default(PENDING)
-  productCount Int                      @default(0)
-  errorMessage String?
-  /** Progress scrape multi-marketplace + peringatan per platform. */
-  scrapeState  Json?
-  /** Rencana aksi preskriptif hasil analisis (ActionPlan). */
-  aiActionPlan Json?
-  /** Ringkasan & metrik analisis pasar (price band, velocity, whitespace). */
-  aiInsights   Json?
-  /** Metadata model AI yang dipakai saat analisis terakhir. */
-  aiMeta       Json?
-  createdById  String
-  createdBy    User                     @relation("ProductDiscoveryCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt    DateTime                 @default(now())
-  updatedAt    DateTime                 @updatedAt
-  products            ProductDiscoveryItem[]
-  portfolioLines      BrandPortfolioLine[]
+  id             String                 @id @default(cuid())
+  keyword        String
+  marketplaces   ResearchMarketplace[]
+  productLimit   Int                    @default(50)
+  status         ProductDiscoveryStatus @default(PENDING)
+  productCount   Int                    @default(0)
+  errorMessage   String?
+  /**
+   * Progress scrape multi-marketplace + peringatan per platform.
+   */
+  scrapeState    Json?
+  /**
+   * Rencana aksi preskriptif hasil analisis (ActionPlan).
+   */
+  aiActionPlan   Json?
+  /**
+   * Ringkasan & metrik analisis pasar (price band, velocity, whitespace).
+   */
+  aiInsights     Json?
+  /**
+   * Metadata model AI yang dipakai saat analisis terakhir.
+   */
+  aiMeta         Json?
+  createdById    String
+  createdBy      User                   @relation("ProductDiscoveryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  products       ProductDiscoveryItem[]
+  portfolioLines BrandPortfolioLine[]
 
   @@index([createdById])
   @@index([status])
@@ -2051,13 +2073,21 @@ model ProductDiscoveryItem {
   price            Float?
   rating           Float?
   reviewCount      Int                   @default(0)
-  /** Legacy aggregate — prefer historicalSold; kept for sort/analytics compat. */
+  /**
+   * Legacy aggregate — prefer historicalSold; kept for sort/analytics compat.
+   */
   soldCount        Int?
-  /** Marketplace "sold" / exact sold shown on listing. */
+  /**
+   * Marketplace "sold" / exact sold shown on listing.
+   */
   exactSold        Int?
-  /** Lifetime / historical sold from marketplace API. */
+  /**
+   * Lifetime / historical sold from marketplace API.
+   */
   historicalSold   Int?
-  /** Shopee monthly sold (null on Tokopedia). */
+  /**
+   * Shopee monthly sold (null on Tokopedia).
+   */
   monthlySold      Int?
   estimatedRevenue Float?
   stock            Int?
@@ -2070,28 +2100,30 @@ model ProductDiscoveryItem {
 }
 
 model ReviewIntelSource {
-  id              String                  @id @default(cuid())
-  productName     String
-  competitorBrand String
-  /** Registry key: shopee, tokopedia, femaledaily, sociolla, csv, … */
-  platformKey     String                  @default("shopee")
-  marketplace     ResearchMarketplace?
-  productUrl      String
-  status          ReviewIntelSourceStatus @default(PENDING)
-  reviewCount     Int                     @default(0)
+  id                   String                  @id @default(cuid())
+  productName          String
+  competitorBrand      String
+  /**
+   * Registry key: shopee, tokopedia, femaledaily, sociolla, csv, …
+   */
+  platformKey          String                  @default("shopee")
+  marketplace          ResearchMarketplace?
+  productUrl           String
+  status               ReviewIntelSourceStatus @default(PENDING)
+  reviewCount          Int                     @default(0)
   totalReviewsReported Int?
   reviewsAccessible    Int?
   reviewsComplete      Boolean?
-  lastAnalyzedAt  DateTime?
-  errorMessage    String?
-  createdById     String
-  createdBy       User                    @relation("ReviewIntelSourceCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  brandId         String?
-  brand           Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  reviews         ReviewRaw[]
-  summary         ReviewIntelSummary?
+  lastAnalyzedAt       DateTime?
+  errorMessage         String?
+  createdById          String
+  createdBy            User                    @relation("ReviewIntelSourceCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  brandId              String?
+  brand                Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  reviews              ReviewRaw[]
+  summary              ReviewIntelSummary?
 
   @@index([createdById])
   @@index([status])
@@ -2100,15 +2132,15 @@ model ReviewIntelSource {
 }
 
 model ReviewRaw {
-  id         String           @id @default(cuid())
+  id         String            @id @default(cuid())
   sourceId   String
   source     ReviewIntelSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   externalId String?
   author     String?
   rating     Float?
-  text       String           @db.Text
+  text       String            @db.Text
   reviewDate DateTime?
-  createdAt  DateTime         @default(now())
+  createdAt  DateTime          @default(now())
   analysis   ReviewAnalysis?
 
   @@unique([sourceId, externalId])
@@ -2116,22 +2148,30 @@ model ReviewRaw {
 }
 
 model ReviewAnalysis {
-  id              String          @id @default(cuid())
-  reviewId        String          @unique
-  review          ReviewRaw       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  sentiment       ReviewSentiment
-  complaintThemes String[]        @default([])
-  praiseThemes    String[]        @default([])
-  keywords        String[]        @default([])
-  /** Tingkat keparahan keluhan 1-5 (null bila bukan keluhan). */
-  complaintSeverity Int?
-  /** Sinyal demografi terinferensi: { ageBand, skinType, gender } + confidence. */
-  demographicHints Json?
-  /** Persepsi nilai: "overpriced" | "worth_it" | "cheap" | null. */
-  pricePerception String?
-  /** Sinyal pembelian ulang terinferensi dari teks. */
+  id                   String          @id @default(cuid())
+  reviewId             String          @unique
+  review               ReviewRaw       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  sentiment            ReviewSentiment
+  complaintThemes      String[]        @default([])
+  praiseThemes         String[]        @default([])
+  keywords             String[]        @default([])
+  /**
+   * Tingkat keparahan keluhan 1-5 (null bila bukan keluhan).
+   */
+  complaintSeverity    Int?
+  /**
+   * Sinyal demografi terinferensi: { ageBand, skinType, gender } + confidence.
+   */
+  demographicHints     Json?
+  /**
+   * Persepsi nilai: "overpriced" | "worth_it" | "cheap" | null.
+   */
+  pricePerception      String?
+  /**
+   * Sinyal pembelian ulang terinferensi dari teks.
+   */
   repeatPurchaseSignal Boolean?
-  createdAt       DateTime        @default(now())
+  createdAt            DateTime        @default(now())
 
   @@index([sentiment])
 }
@@ -2148,13 +2188,21 @@ model ReviewIntelSummary {
   keywordCloud    Json              @default("[]")
   timelineBuckets Json              @default("[]")
   gapOpportunity  String?           @db.Text
-  /** Rencana aksi preskriptif (ActionPlan) hasil analisis review. */
+  /**
+   * Rencana aksi preskriptif (ActionPlan) hasil analisis review.
+   */
   aiActionPlan    Json?
-  /** Keparahan keluhan per tema: [{ theme, avgSeverity, count }]. */
+  /**
+   * Keparahan keluhan per tema: [{ theme, avgSeverity, count }].
+   */
   severityByTheme Json              @default("[]")
-  /** Agregat demografi terinferensi: { ageBands[], skinTypes[], genders[] }. */
+  /**
+   * Agregat demografi terinferensi: { ageBands[], skinTypes[], genders[] }.
+   */
   demographics    Json              @default("{}")
-  /** Metadata model AI per langkah analisis. */
+  /**
+   * Metadata model AI per langkah analisis.
+   */
   aiMeta          Json?
   updatedAt       DateTime          @updatedAt
 }
@@ -2169,7 +2217,9 @@ model ResearchScrapeJob {
   startedAt   DateTime?
   completedAt DateTime?
   createdAt   DateTime                @default(now())
-  /** Granular progress untuk progress bar UI. */
+  /**
+   * Granular progress untuk progress bar UI.
+   */
   stepLabel   String?
   percent     Int                     @default(0)
   currentStep Int?
@@ -2181,21 +2231,25 @@ model ResearchScrapeJob {
 }
 
 model ResearchCompetitor {
-  id          String              @id @default(cuid())
+  id          String               @id @default(cuid())
   name        String
   brand       String
   category    String
   marketplace ResearchMarketplace
   shopUrl     String
-  isActive    Boolean             @default(true)
-  /** Rencana aksi preskriptif + insight AI (response playbook). */
+  isActive    Boolean              @default(true)
+  /**
+   * Rencana aksi preskriptif + insight AI (response playbook).
+   */
   aiInsights  Json?
-  /** Metadata model AI yang dipakai saat analisis terakhir. */
+  /**
+   * Metadata model AI yang dipakai saat analisis terakhir.
+   */
   aiMeta      Json?
   createdById String
-  createdBy   User                @relation("ResearchCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  createdBy   User                 @relation("ResearchCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
   skus        CompetitorSku[]
   snapshots   CompetitorSnapshot[]
   alerts      CompetitorAlert[]
@@ -2205,25 +2259,25 @@ model ResearchCompetitor {
 }
 
 model CompetitorSku {
-  id               String             @id @default(cuid())
+  id               String               @id @default(cuid())
   competitorId     String
-  competitor       ResearchCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  competitor       ResearchCompetitor   @relation(fields: [competitorId], references: [id], onDelete: Cascade)
   name             String
   productUrl       String
   imageUrl         String?
   externalId       String?
   currentPrice     Float?
   rating           Float?
-  reviewCount      Int                @default(0)
+  reviewCount      Int                  @default(0)
   exactSold        Int?
   historicalSold   Int?
   monthlySold      Int?
   estimatedRevenue Float?
   stock            Int?
   shopLocation     String?
-  isOfficialShop   Boolean            @default(false)
-  firstSeenAt      DateTime           @default(now())
-  lastSeenAt       DateTime           @default(now())
+  isOfficialShop   Boolean              @default(false)
+  firstSeenAt      DateTime             @default(now())
+  lastSeenAt       DateTime             @default(now())
   snapshots        CompetitorSnapshot[]
 
   @@unique([competitorId, externalId])
@@ -2269,14 +2323,14 @@ model CompetitorAlert {
 }
 
 model CompetitorProductCategory {
-  id          String   @id @default(cuid())
+  id          String                      @id @default(cuid())
   name        String
   description String?
-  isActive    Boolean  @default(true)
+  isActive    Boolean                     @default(true)
   createdById String
-  createdBy   User     @relation("CompetitorProductCategoryCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User                        @relation("CompetitorProductCategoryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
   tracks      CompetitorProductTrack[]
   snapshots   CompetitorProductSnapshot[]
   alerts      CompetitorProductAlert[]
@@ -2286,45 +2340,45 @@ model CompetitorProductCategory {
 }
 
 model CompetitorProductTrack {
-  id               String                    @id @default(cuid())
-  categoryId       String
-  category         CompetitorProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  label            String?
-  brand            String?
-  productUrl       String
-  marketplace      ResearchMarketplace
-  externalId       String?
-  name             String                    @default("Produk")
-  imageUrl         String?
-  imageUrls        String[]                  @default([])
-  shopName         String?
-  currentPrice     Float?
-  rating           Float?
-  reviewCount      Int                       @default(0)
-  exactSold        Int?
-  historicalSold   Int?
-  monthlySold      Int?
-  estimatedRevenue Float?
-  stock            Int?
-  hasPromo         Boolean                   @default(false)
-  promoText        String?
-  description      String?                   @db.Text
-  categoryName     String?
-  categoryPath     String[]                  @default([])
-  currency         String?
-  attributes       Json?
-  variations       Json?
-  models           Json?
+  id                 String                      @id @default(cuid())
+  categoryId         String
+  category           CompetitorProductCategory   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  label              String?
+  brand              String?
+  productUrl         String
+  marketplace        ResearchMarketplace
+  externalId         String?
+  name               String                      @default("Produk")
+  imageUrl           String?
+  imageUrls          String[]                    @default([])
+  shopName           String?
+  currentPrice       Float?
+  rating             Float?
+  reviewCount        Int                         @default(0)
+  exactSold          Int?
+  historicalSold     Int?
+  monthlySold        Int?
+  estimatedRevenue   Float?
+  stock              Int?
+  hasPromo           Boolean                     @default(false)
+  promoText          String?
+  description        String?                     @db.Text
+  categoryName       String?
+  categoryPath       String[]                    @default([])
+  currency           String?
+  attributes         Json?
+  variations         Json?
+  models             Json?
   ratingDistribution Json?
-  isActive         Boolean                   @default(true)
-  lastScrapedAt    DateTime?
-  scrapeError      String?
-  firstSeenAt      DateTime                  @default(now())
-  lastSeenAt       DateTime                  @default(now())
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
-  snapshots        CompetitorProductSnapshot[]
-  alerts           CompetitorProductAlert[]
+  isActive           Boolean                     @default(true)
+  lastScrapedAt      DateTime?
+  scrapeError        String?
+  firstSeenAt        DateTime                    @default(now())
+  lastSeenAt         DateTime                    @default(now())
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  snapshots          CompetitorProductSnapshot[]
+  alerts             CompetitorProductAlert[]
 
   @@unique([categoryId, productUrl])
   @@index([categoryId])
@@ -2413,7 +2467,9 @@ model TrendWatchlist {
   keywords     String[]           @default([])
   dimensions   TrendDimension[]   @default([])
   isActive     Boolean            @default(true)
-  /** Konfigurasi sumber Trend Radar (RSS, TikTok, BPOM, Google Trends). */
+  /**
+   * Konfigurasi sumber Trend Radar (RSS, TikTok, BPOM, Google Trends).
+   */
   sourceConfig Json?
   createdById  String
   createdBy    User               @relation("TrendWatchlistCreator", fields: [createdById], references: [id], onDelete: Cascade)
@@ -2459,33 +2515,47 @@ enum TrendPhaseSource {
 }
 
 model TrendRadarDigest {
-  id           String           @id @default(cuid())
-  weekStart    DateTime
-  weekEnd      DateTime
-  status       TrendRadarStatus @default(PENDING)
-  /** LIVE | PARTIAL | FAILED — kualitas data digest (bukan demo). */
-  digestMode   TrendDigestMode  @default(LIVE)
-  /** Ringkasan jumlah sinyal per sumber saat koleksi. */
-  signalStats  Json?
-  /** Pesan kualitas data untuk UI (mirip Keyword Intel dataNotice). */
-  dataNotice   String?          @db.Text
-  /** Digest minggu sebelumnya untuk perbandingan WoW. */
+  id            String           @id @default(cuid())
+  weekStart     DateTime
+  weekEnd       DateTime
+  status        TrendRadarStatus @default(PENDING)
+  /**
+   * LIVE | PARTIAL | FAILED — kualitas data digest (bukan demo).
+   */
+  digestMode    TrendDigestMode  @default(LIVE)
+  /**
+   * Ringkasan jumlah sinyal per sumber saat koleksi.
+   */
+  signalStats   Json?
+  /**
+   * Pesan kualitas data untuk UI (mirip Keyword Intel dataNotice).
+   */
+  dataNotice    String?          @db.Text
+  /**
+   * Digest minggu sebelumnya untuk perbandingan WoW.
+   */
   priorDigestId String?
-  narrative    String?          @db.Text
-  /** Rencana aksi preskriptif (ActionPlan) untuk tren minggu ini. */
-  aiActionPlan Json?
-  /** Metadata model AI per langkah analisis. */
-  aiMeta       Json?
-  isGlobal     Boolean          @default(false)
-  watchlistId  String?
-  watchlist    TrendWatchlist?  @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
-  /** Snapshot konfigurasi sumber yang dipakai saat generate digest. */
-  sourceConfig Json?
-  errorMessage String?
-  generatedAt  DateTime?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  items        TrendRadarItem[]
+  narrative     String?          @db.Text
+  /**
+   * Rencana aksi preskriptif (ActionPlan) untuk tren minggu ini.
+   */
+  aiActionPlan  Json?
+  /**
+   * Metadata model AI per langkah analisis.
+   */
+  aiMeta        Json?
+  isGlobal      Boolean          @default(false)
+  watchlistId   String?
+  watchlist     TrendWatchlist?  @relation(fields: [watchlistId], references: [id], onDelete: SetNull)
+  /**
+   * Snapshot konfigurasi sumber yang dipakai saat generate digest.
+   */
+  sourceConfig  Json?
+  errorMessage  String?
+  generatedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  items         TrendRadarItem[]
 
   @@index([status])
   @@index([isGlobal, weekStart])
@@ -2494,58 +2564,66 @@ model TrendRadarDigest {
 }
 
 model TrendRadarItem {
-  id               String            @id @default(cuid())
+  id               String           @id @default(cuid())
   digestId         String
-  digest           TrendRadarDigest  @relation(fields: [digestId], references: [id], onDelete: Cascade)
+  digest           TrendRadarDigest @relation(fields: [digestId], references: [id], onDelete: Cascade)
   name             String
   dimension        TrendDimension
   phase            TrendPhase
-  /** Trend Momentum Index 0–1 (metrik utama). */
+  /**
+   * Trend Momentum Index 0–1 (metrik utama).
+   */
   tmiScore         Float?
-  /** Alias backward-compat — diset sama dengan tmiScore. */
+  /**
+   * Alias backward-compat — diset sama dengan tmiScore.
+   */
   score            Float?
-  confidence       TrendConfidence   @default(MED)
-  phaseSource      TrendPhaseSource  @default(computed)
+  confidence       TrendConfidence  @default(MED)
+  phaseSource      TrendPhaseSource @default(computed)
   wowStatus        TrendWowStatus?
-  narrative        String?           @db.Text
-  isGlobalPipeline Boolean           @default(false)
-  /** Bukti terstruktur per sinyal. */
-  evidence         Json              @default("[]")
-  sources          Json              @default("[]")
-  relatedProducts  Json              @default("[]")
-  createdAt        DateTime          @default(now())
+  narrative        String?          @db.Text
+  isGlobalPipeline Boolean          @default(false)
+  /**
+   * Bukti terstruktur per sinyal.
+   */
+  evidence         Json             @default("[]")
+  sources          Json             @default("[]")
+  relatedProducts  Json             @default("[]")
+  createdAt        DateTime         @default(now())
 
   @@index([digestId])
   @@index([phase])
 }
 
-/** Cache hitungan BPOM per seed keyword untuk delta mingguan. */
+/**
+ * Cache hitungan BPOM per seed keyword untuk delta mingguan.
+ */
 model TrendBpomSnapshot {
-  id        String   @id @default(cuid())
-  seed      String
-  count     Int
+  id         String   @id @default(cuid())
+  seed       String
+  count      Int
   capturedAt DateTime @default(now())
 
   @@index([seed, capturedAt])
 }
 
 model KeywordIntelQuery {
-  id           String              @id @default(cuid())
+  id           String               @id @default(cuid())
   category     String
   seedKeyword  String?
   marketplace  ResearchMarketplace?
-  status       KeywordIntelStatus  @default(PENDING)
-  digestMode   KeywordDigestMode   @default(LIVE)
+  status       KeywordIntelStatus   @default(PENDING)
+  digestMode   KeywordDigestMode    @default(LIVE)
   signalStats  Json?
-  dataNotice   String?             @db.Text
+  dataNotice   String?              @db.Text
   volumeSource String?
   priorQueryId String?
   sourceConfig Json?
   errorMessage String?
   createdById  String
-  createdBy    User                @relation("KeywordIntelQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdBy    User                 @relation("KeywordIntelQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
   result       KeywordIntelResult?
 
   @@index([createdById])
@@ -2565,9 +2643,13 @@ model KeywordIntelResult {
   seasonalCurves    Json?
   clusters          Json              @default("[]")
   aiSummary         String?           @db.Text
-  /** Rencana aksi preskriptif (ActionPlan) berbasis keyword & intent. */
+  /**
+   * Rencana aksi preskriptif (ActionPlan) berbasis keyword & intent.
+   */
   aiActionPlan      Json?
-  /** Metadata model AI yang dipakai saat analisis terakhir. */
+  /**
+   * Metadata model AI yang dipakai saat analisis terakhir.
+   */
   aiMeta            Json?
   updatedAt         DateTime          @updatedAt
 }
@@ -2595,64 +2677,72 @@ enum SocialMentionClass {
 }
 
 model SocialListeningMonitor {
-  id          String                    @id @default(cuid())
-  name        String
-  keywords    String[]                  @default([])
-  platforms   SocialListeningPlatform[] @default([])
-  isActive    Boolean                   @default(true)
-  /** Video TikTok per keyword saat sync. */
-  tiktokSearchLimit     Int @default(20)
-  /** Post Instagram per hashtag saat sync. */
-  instagramSearchLimit  Int @default(20)
-  createdById String
-  createdBy   User                      @relation("SocialListeningMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime                  @default(now())
-  updatedAt   DateTime                  @updatedAt
-  batches     SocialListeningBatch[]
+  id                   String                    @id @default(cuid())
+  name                 String
+  keywords             String[]                  @default([])
+  platforms            SocialListeningPlatform[] @default([])
+  isActive             Boolean                   @default(true)
+  /**
+   * Video TikTok per keyword saat sync.
+   */
+  tiktokSearchLimit    Int                       @default(20)
+  /**
+   * Post Instagram per hashtag saat sync.
+   */
+  instagramSearchLimit Int                       @default(20)
+  createdById          String
+  createdBy            User                      @relation("SocialListeningMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  batches              SocialListeningBatch[]
 
   @@index([createdById])
   @@index([isActive])
 }
 
 model SocialListeningBatch {
-  id           String                 @id @default(cuid())
-  monitorId    String
-  monitor      SocialListeningMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
-  status       SocialListeningStatus  @default(PENDING)
-  errorMessage String?
-  collectedAt  DateTime?
-  /** Per-platform sync state: COLLECTING | READY | FAILED | SKIPPED */
-  platformStatus Json                 @default("{}")
-  /** Apify run ID(s) per platform — string or string[] for multi-keyword IG */
-  apifyRunIds    Json                 @default("{}")
-  createdAt    DateTime               @default(now())
-  mentions     SocialMention[]
-  comments     SocialComment[]
-  summary      SocialListeningSummary?
+  id             String                  @id @default(cuid())
+  monitorId      String
+  monitor        SocialListeningMonitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status         SocialListeningStatus   @default(PENDING)
+  errorMessage   String?
+  collectedAt    DateTime?
+  /**
+   * Per-platform sync state: COLLECTING | READY | FAILED | SKIPPED
+   */
+  platformStatus Json                    @default("{}")
+  /**
+   * Apify run ID(s) per platform — string or string[] for multi-keyword IG
+   */
+  apifyRunIds    Json                    @default("{}")
+  createdAt      DateTime                @default(now())
+  mentions       SocialMention[]
+  comments       SocialComment[]
+  summary        SocialListeningSummary?
 
   @@index([monitorId])
   @@index([status])
 }
 
 model SocialMention {
-  id           String                 @id @default(cuid())
-  batchId      String
-  batch        SocialListeningBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  platform     SocialListeningPlatform
-  externalId   String?
-  text         String                 @db.Text
-  author       String?
-  url          String?
-  likes        Int                    @default(0)
-  comments     Int                    @default(0)
-  views        Int                    @default(0)
-  classification SocialMentionClass   @default(NEUTRAL)
-  painPoint    String?
-  isViral      Boolean                @default(false)
-  postedAt     DateTime?
-  thumbnailUrl String?
-  mediaType    String?
-  createdAt    DateTime               @default(now())
+  id             String                  @id @default(cuid())
+  batchId        String
+  batch          SocialListeningBatch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  platform       SocialListeningPlatform
+  externalId     String?
+  text           String                  @db.Text
+  author         String?
+  url            String?
+  likes          Int                     @default(0)
+  comments       Int                     @default(0)
+  views          Int                     @default(0)
+  classification SocialMentionClass      @default(NEUTRAL)
+  painPoint      String?
+  isViral        Boolean                 @default(false)
+  postedAt       DateTime?
+  thumbnailUrl   String?
+  mediaType      String?
+  createdAt      DateTime                @default(now())
 
   socialComments SocialComment[]
 
@@ -2662,20 +2752,20 @@ model SocialMention {
 }
 
 model SocialComment {
-  id             String                 @id @default(cuid())
+  id             String                  @id @default(cuid())
   batchId        String
-  batch          SocialListeningBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batch          SocialListeningBatch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
   mentionId      String?
-  mention        SocialMention?         @relation(fields: [mentionId], references: [id], onDelete: SetNull)
+  mention        SocialMention?          @relation(fields: [mentionId], references: [id], onDelete: SetNull)
   platform       SocialListeningPlatform
   externalId     String?
-  text           String                 @db.Text
+  text           String                  @db.Text
   author         String?
-  likes          Int                    @default(0)
-  classification SocialMentionClass     @default(NEUTRAL)
+  likes          Int                     @default(0)
+  classification SocialMentionClass      @default(NEUTRAL)
   painPoint      String?
   postedAt       DateTime?
-  createdAt      DateTime               @default(now())
+  createdAt      DateTime                @default(now())
 
   @@unique([batchId, platform, externalId])
   @@index([batchId])
@@ -2684,32 +2774,48 @@ model SocialComment {
 }
 
 model SocialListeningSummary {
-  id                String               @id @default(cuid())
-  batchId           String               @unique
-  batch             SocialListeningBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  topPainPoints     Json                 @default("[]")
-  topWishlist       Json                 @default("[]")
-  influencers       Json                 @default("[]")
-  viralContent      Json                 @default("[]")
-  categoryBreakdown Json                 @default("[]")
-  aiSummary         String?              @db.Text
-  /** Rencana aksi preskriptif (ActionPlan) dari pain point & wishlist sosial. */
-  aiActionPlan      Json?
-  /** Metadata model AI per langkah analisis. */
-  aiMeta            Json?
-  /** Tren sentimen harian: [{ date, positive, negative, neutral }]. */
-  sentimentTimeline Json                 @default("[]")
-  /** Pain points dari komentar (bukan caption). */
-  topCommentPainPoints Json             @default("[]")
-  /** Wishlist dari komentar. */
-  topCommentWishlist Json                @default("[]")
-  /** Distribusi klasifikasi komentar. */
-  commentCategoryBreakdown Json          @default("[]")
-  /** Ringkasan AI khusus komentar. */
-  commentAiSummary String?              @db.Text
-  /** Metrik engagement: avg likes, comment ratio, dll. */
-  engagementInsights Json                @default("{}")
-  updatedAt         DateTime             @updatedAt
+  id                       String               @id @default(cuid())
+  batchId                  String               @unique
+  batch                    SocialListeningBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  topPainPoints            Json                 @default("[]")
+  topWishlist              Json                 @default("[]")
+  influencers              Json                 @default("[]")
+  viralContent             Json                 @default("[]")
+  categoryBreakdown        Json                 @default("[]")
+  aiSummary                String?              @db.Text
+  /**
+   * Rencana aksi preskriptif (ActionPlan) dari pain point & wishlist sosial.
+   */
+  aiActionPlan             Json?
+  /**
+   * Metadata model AI per langkah analisis.
+   */
+  aiMeta                   Json?
+  /**
+   * Tren sentimen harian: [{ date, positive, negative, neutral }].
+   */
+  sentimentTimeline        Json                 @default("[]")
+  /**
+   * Pain points dari komentar (bukan caption).
+   */
+  topCommentPainPoints     Json                 @default("[]")
+  /**
+   * Wishlist dari komentar.
+   */
+  topCommentWishlist       Json                 @default("[]")
+  /**
+   * Distribusi klasifikasi komentar.
+   */
+  commentCategoryBreakdown Json                 @default("[]")
+  /**
+   * Ringkasan AI khusus komentar.
+   */
+  commentAiSummary         String?              @db.Text
+  /**
+   * Metrik engagement: avg likes, comment ratio, dll.
+   */
+  engagementInsights       Json                 @default("{}")
+  updatedAt                DateTime             @updatedAt
 }
 
 enum UspGapStatus {
@@ -2721,18 +2827,18 @@ enum UspGapStatus {
 }
 
 model UspGapAnalysis {
-  id             String        @id @default(cuid())
-  category       String
-  brandId        String?
-  brand          Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  contextModules Json          @default("{}")
-  status         UspGapStatus  @default(PENDING)
-  errorMessage   String?
-  createdById    String
-  createdBy      User          @relation("UspGapAnalysisCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  result         UspGapResult?
+  id              String           @id @default(cuid())
+  category        String
+  brandId         String?
+  brand           Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  contextModules  Json             @default("{}")
+  status          UspGapStatus     @default(PENDING)
+  errorMessage    String?
+  createdById     String
+  createdBy       User             @relation("UspGapAnalysisCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  result          UspGapResult?
   productConcepts ProductConcept[]
 
   @@index([createdById])
@@ -2750,11 +2856,17 @@ model UspGapResult {
   uspCandidates        Json           @default("[]")
   differentiationScore Float?
   aiSummary            String?        @db.Text
-  /** Rencana aksi preskriptif (ActionPlan) untuk eksekusi gap. */
+  /**
+   * Rencana aksi preskriptif (ActionPlan) untuk eksekusi gap.
+   */
   aiActionPlan         Json?
-  /** Keputusan kategori: "GO" | "WATCH" | "AVOID" + alasan. */
+  /**
+   * Keputusan kategori: "GO" | "WATCH" | "AVOID" + alasan.
+   */
   categoryDecision     Json?
-  /** Metadata model AI yang dipakai saat analisis terakhir. */
+  /**
+   * Metadata model AI yang dipakai saat analisis terakhir.
+   */
   aiMeta               Json?
   updatedAt            DateTime       @updatedAt
 }
@@ -2772,31 +2884,35 @@ enum ProductConceptStatus {
 }
 
 model ProductConcept {
-  id               String               @id @default(cuid())
-  title            String
-  category         String
-  targetMarket     String?
-  priceTargetMin   Float?
-  priceTargetMax   Float?
-  mode             ProductConceptMode   @default(MANUAL)
-  status           ProductConceptStatus @default(DRAFT)
-  brandId          String?
-  brand            Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  uspGapAnalysisId String?
-  uspGapAnalysis   UspGapAnalysis?      @relation(fields: [uspGapAnalysisId], references: [id], onDelete: SetNull)
-  uspIndex         Int?
-  sourceModules    Json                 @default("{}")
-  conceptData      Json                 @default("{}")
-  validationScores Json                 @default("{}")
-  /** Faktor risiko deterministik (mis. keluhan review) dengan evidence ref. */
-  riskFactors      Json                 @default("[]")
-  /** Metadata model AI per langkah (generate, validate, compare). */
-  aiMeta           Json?
-  createdById      String
-  createdBy        User                 @relation("ProductConceptCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  innovationsSeeded ProductInnovation[] @relation("InnovationBaseConcept")
+  id                String               @id @default(cuid())
+  title             String
+  category          String
+  targetMarket      String?
+  priceTargetMin    Float?
+  priceTargetMax    Float?
+  mode              ProductConceptMode   @default(MANUAL)
+  status            ProductConceptStatus @default(DRAFT)
+  brandId           String?
+  brand             Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  uspGapAnalysisId  String?
+  uspGapAnalysis    UspGapAnalysis?      @relation(fields: [uspGapAnalysisId], references: [id], onDelete: SetNull)
+  uspIndex          Int?
+  sourceModules     Json                 @default("{}")
+  conceptData       Json                 @default("{}")
+  validationScores  Json                 @default("{}")
+  /**
+   * Faktor risiko deterministik (mis. keluhan review) dengan evidence ref.
+   */
+  riskFactors       Json                 @default("[]")
+  /**
+   * Metadata model AI per langkah (generate, validate, compare).
+   */
+  aiMeta            Json?
+  createdById       String
+  createdBy         User                 @relation("ProductConceptCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  innovationsSeeded ProductInnovation[]  @relation("InnovationBaseConcept")
 
   @@index([createdById])
   @@index([status])
@@ -2814,25 +2930,33 @@ model ProductInnovation {
   id               String                  @id @default(cuid())
   title            String
   category         String
-  /** Produk basis yang ditransformasi (teks bebas). */
+  /**
+   * Produk basis yang ditransformasi (teks bebas).
+   */
   baseProduct      String
   targetMarket     String?
   priceTargetMin   Float?
   priceTargetMax   Float?
-  /** Opsional: konsep Concept Lab sumber prefill. */
+  /**
+   * Opsional: konsep Concept Lab sumber prefill.
+   */
   baseConceptId    String?
   baseConcept      ProductConcept?         @relation("InnovationBaseConcept", fields: [baseConceptId], references: [id], onDelete: SetNull)
   brandId          String?
   brand            Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
   status           ProductInnovationStatus @default(DRAFT)
-  /** Toggle modul evidence (reuse bentuk sourceModules Concept Lab). */
+  /**
+   * Toggle modul evidence (reuse bentuk sourceModules Concept Lab).
+   */
   sourceModules    Json                    @default("{}")
   /**
    * Array ide SCAMPER: tiap item { id, technique, title, description,
    * rationale, change, benefit, feasibilityNote, promotedConceptId? }.
    */
   ideas            Json                    @default("[]")
-  /** Faktor risiko deterministik dari evidence (deriveRiskFactors). */
+  /**
+   * Faktor risiko deterministik dari evidence (deriveRiskFactors).
+   */
   riskFactors      Json                    @default("[]")
   evidenceSnapshot Json                    @default("{}")
   aiMeta           Json?
@@ -2877,13 +3001,21 @@ model ResearchReport {
   config       Json                 @default("{}")
   sections     Json                 @default("[]")
   aiSummary    String?              @db.Text
-  /** Cross-module action items (deterministic, dari ResearchRecommendation). */
+  /**
+   * Cross-module action items (deterministic, dari ResearchRecommendation).
+   */
   actionItems  Json                 @default("[]")
-  /** Feedback-loop Sankey data: signal -> insight -> concept. */
+  /**
+   * Feedback-loop Sankey data: signal -> insight -> concept.
+   */
   feedbackLoop Json?
-  /** Aktivitas modul untuk chart ringkasan. */
+  /**
+   * Aktivitas modul untuk chart ringkasan.
+   */
   metrics      Json?
-  /** Metadata model AI yang dipakai saat generate laporan. */
+  /**
+   * Metadata model AI yang dipakai saat generate laporan.
+   */
   aiMeta       Json?
   periodStart  DateTime?
   periodEnd    DateTime?
@@ -2917,13 +3049,21 @@ enum RecOwner {
 /// Rekomendasi preskriptif lintas-modul yang menyalakan Action Center di dashboard.
 model ResearchRecommendation {
   id             String    @id @default(cuid())
-  /** Modul asal: "review-intelligence", "competitor-tracker", dst. */
+  /**
+   * Modul asal: "review-intelligence", "competitor-tracker", dst.
+   */
   module         String
-  /** Id record sumber (sourceId/digestId/queryId/analysisId/conceptId). */
+  /**
+   * Id record sumber (sourceId/digestId/queryId/analysisId/conceptId).
+   */
   sourceId       String?
-  /** Label sumber agar bisa di-deep-link dari UI. */
+  /**
+   * Label sumber agar bisa di-deep-link dari UI.
+   */
   sourceLabel    String?
-  /** Path deep-link ke detail sumber. */
+  /**
+   * Path deep-link ke detail sumber.
+   */
   href           String?
   owner          RecOwner
   priority       String    @default("P1")
@@ -2950,24 +3090,24 @@ model ResearchRecommendation {
 // `Brand` dan terikat ke `Brand` via `brandId`.
 
 model BrandCompetitor {
-  id          String              @id @default(cuid())
-  name        String
-  brand       String
-  category    String
-  marketplace ResearchMarketplace
-  shopUrl     String
-  isActive    Boolean             @default(true)
-  aiInsights  Json?
-  aiMeta      Json?
-  createdById String
-  createdBy   User                @relation("BrandCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  id           String                    @id @default(cuid())
+  name         String
+  brand        String
+  category     String
+  marketplace  ResearchMarketplace
+  shopUrl      String
+  isActive     Boolean                   @default(true)
+  aiInsights   Json?
+  aiMeta       Json?
+  createdById  String
+  createdBy    User                      @relation("BrandCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
   ownerBrandId String?
-  ownerBrand   Brand?             @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  skus        BrandCompetitorSku[]
-  snapshots   BrandCompetitorSnapshot[]
-  alerts      BrandCompetitorAlert[]
+  ownerBrand   Brand?                    @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  skus         BrandCompetitorSku[]
+  snapshots    BrandCompetitorSnapshot[]
+  alerts       BrandCompetitorAlert[]
 
   @@index([createdById])
   @@index([isActive])
@@ -2975,25 +3115,25 @@ model BrandCompetitor {
 }
 
 model BrandCompetitorSku {
-  id               String               @id @default(cuid())
+  id               String                    @id @default(cuid())
   competitorId     String
-  competitor       BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  competitor       BrandCompetitor           @relation(fields: [competitorId], references: [id], onDelete: Cascade)
   name             String
   productUrl       String
   imageUrl         String?
   externalId       String?
   currentPrice     Float?
   rating           Float?
-  reviewCount      Int                  @default(0)
+  reviewCount      Int                       @default(0)
   exactSold        Int?
   historicalSold   Int?
   monthlySold      Int?
   estimatedRevenue Float?
   stock            Int?
   shopLocation     String?
-  isOfficialShop   Boolean              @default(false)
-  firstSeenAt      DateTime             @default(now())
-  lastSeenAt       DateTime             @default(now())
+  isOfficialShop   Boolean                   @default(false)
+  firstSeenAt      DateTime                  @default(now())
+  lastSeenAt       DateTime                  @default(now())
   snapshots        BrandCompetitorSnapshot[]
 
   @@unique([competitorId, externalId])
@@ -3001,11 +3141,11 @@ model BrandCompetitorSku {
 }
 
 model BrandCompetitorSnapshot {
-  id               String               @id @default(cuid())
+  id               String              @id @default(cuid())
   competitorId     String
-  competitor       BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  competitor       BrandCompetitor     @relation(fields: [competitorId], references: [id], onDelete: Cascade)
   skuId            String?
-  sku              BrandCompetitorSku?  @relation(fields: [skuId], references: [id], onDelete: SetNull)
+  sku              BrandCompetitorSku? @relation(fields: [skuId], references: [id], onDelete: SetNull)
   price            Float?
   rating           Float?
   reviewCount      Int?
@@ -3014,25 +3154,25 @@ model BrandCompetitorSnapshot {
   monthlySold      Int?
   estimatedRevenue Float?
   stock            Int?
-  hasPromo         Boolean              @default(false)
+  hasPromo         Boolean             @default(false)
   promoText        String?
   categoryRank     Int?
-  capturedAt       DateTime             @default(now())
+  capturedAt       DateTime            @default(now())
 
   @@index([competitorId, capturedAt])
   @@index([skuId])
 }
 
 model BrandCompetitorAlert {
-  id           String               @id @default(cuid())
+  id           String              @id @default(cuid())
   competitorId String
-  competitor   BrandCompetitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  competitor   BrandCompetitor     @relation(fields: [competitorId], references: [id], onDelete: Cascade)
   type         CompetitorAlertType
   message      String
-  severity     String               @default("info")
+  severity     String              @default("info")
   metadata     Json?
-  isRead       Boolean              @default(false)
-  createdAt    DateTime             @default(now())
+  isRead       Boolean             @default(false)
+  createdAt    DateTime            @default(now())
 
   @@index([competitorId, isRead])
   @@index([createdAt])
@@ -3068,15 +3208,15 @@ model BrandReviewSource {
 }
 
 model BrandReviewItem {
-  id         String             @id @default(cuid())
+  id         String               @id @default(cuid())
   sourceId   String
-  source     BrandReviewSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source     BrandReviewSource    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   externalId String?
   author     String?
   rating     Float?
-  text       String             @db.Text
+  text       String               @db.Text
   reviewDate DateTime?
-  createdAt  DateTime           @default(now())
+  createdAt  DateTime             @default(now())
   analysis   BrandReviewAnalysis?
 
   @@unique([sourceId, externalId])
@@ -3084,62 +3224,62 @@ model BrandReviewItem {
 }
 
 model BrandReviewAnalysis {
-  id                    String             @id @default(cuid())
-  reviewId              String             @unique
-  review                BrandReviewItem    @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  sentiment             ReviewSentiment
-  complaintThemes       String[]           @default([])
-  praiseThemes          String[]           @default([])
-  keywords              String[]           @default([])
-  complaintSeverity     Int?
-  demographicHints      Json?
-  pricePerception       String?
-  repeatPurchaseSignal  Boolean?
-  createdAt             DateTime           @default(now())
+  id                   String          @id @default(cuid())
+  reviewId             String          @unique
+  review               BrandReviewItem @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  sentiment            ReviewSentiment
+  complaintThemes      String[]        @default([])
+  praiseThemes         String[]        @default([])
+  keywords             String[]        @default([])
+  complaintSeverity    Int?
+  demographicHints     Json?
+  pricePerception      String?
+  repeatPurchaseSignal Boolean?
+  createdAt            DateTime        @default(now())
 
   @@index([sentiment])
 }
 
 model BrandReviewSummary {
-  id              String             @id @default(cuid())
-  sourceId        String             @unique
-  source          BrandReviewSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  positivePct     Float              @default(0)
-  neutralPct      Float              @default(0)
-  negativePct     Float              @default(0)
-  topComplaints   Json               @default("[]")
-  topPraises      Json               @default("[]")
-  keywordCloud    Json               @default("[]")
-  timelineBuckets Json               @default("[]")
-  gapOpportunity  String?            @db.Text
+  id              String            @id @default(cuid())
+  sourceId        String            @unique
+  source          BrandReviewSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  positivePct     Float             @default(0)
+  neutralPct      Float             @default(0)
+  negativePct     Float             @default(0)
+  topComplaints   Json              @default("[]")
+  topPraises      Json              @default("[]")
+  keywordCloud    Json              @default("[]")
+  timelineBuckets Json              @default("[]")
+  gapOpportunity  String?           @db.Text
   aiActionPlan    Json?
-  severityByTheme Json               @default("[]")
-  demographics    Json               @default("{}")
+  severityByTheme Json              @default("[]")
+  demographics    Json              @default("{}")
   aiMeta          Json?
-  updatedAt       DateTime           @updatedAt
+  updatedAt       DateTime          @updatedAt
 }
 
 model BrandTrendDigest {
-  id           String           @id @default(cuid())
-  weekStart    DateTime
-  weekEnd      DateTime
-  status       TrendRadarStatus @default(PENDING)
-  digestMode   TrendDigestMode  @default(LIVE)
-  signalStats  Json?
-  dataNotice   String?          @db.Text
+  id            String             @id @default(cuid())
+  weekStart     DateTime
+  weekEnd       DateTime
+  status        TrendRadarStatus   @default(PENDING)
+  digestMode    TrendDigestMode    @default(LIVE)
+  signalStats   Json?
+  dataNotice    String?            @db.Text
   priorDigestId String?
-  narrative    String?          @db.Text
-  aiActionPlan Json?
-  aiMeta       Json?
-  isGlobal     Boolean          @default(false)
-  ownerBrandId String?
-  ownerBrand   Brand?           @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  sourceConfig Json?
-  errorMessage String?
-  generatedAt  DateTime?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  items        BrandTrendSignal[]
+  narrative     String?            @db.Text
+  aiActionPlan  Json?
+  aiMeta        Json?
+  isGlobal      Boolean            @default(false)
+  ownerBrandId  String?
+  ownerBrand    Brand?             @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  sourceConfig  Json?
+  errorMessage  String?
+  generatedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  items         BrandTrendSignal[]
 
   @@index([status])
   @@index([isGlobal, weekStart])
@@ -3156,8 +3296,8 @@ model BrandTrendSignal {
   phase            TrendPhase
   tmiScore         Float?
   score            Float?
-  confidence       TrendConfidence   @default(MED)
-  phaseSource      TrendPhaseSource  @default(computed)
+  confidence       TrendConfidence  @default(MED)
+  phaseSource      TrendPhaseSource @default(computed)
   wowStatus        TrendWowStatus?
   narrative        String?          @db.Text
   isGlobalPipeline Boolean          @default(false)
@@ -3171,24 +3311,24 @@ model BrandTrendSignal {
 }
 
 model BrandKeywordQuery {
-  id           String              @id @default(cuid())
+  id           String               @id @default(cuid())
   category     String
   seedKeyword  String?
   marketplace  ResearchMarketplace?
-  status       KeywordIntelStatus  @default(PENDING)
-  digestMode   KeywordDigestMode   @default(LIVE)
+  status       KeywordIntelStatus   @default(PENDING)
+  digestMode   KeywordDigestMode    @default(LIVE)
   signalStats  Json?
-  dataNotice   String?             @db.Text
+  dataNotice   String?              @db.Text
   volumeSource String?
   priorQueryId String?
   sourceConfig Json?
   errorMessage String?
   createdById  String
-  createdBy    User                @relation("BrandKeywordQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy    User                 @relation("BrandKeywordQueryCreator", fields: [createdById], references: [id], onDelete: Cascade)
   ownerBrandId String?
-  ownerBrand   Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  ownerBrand   Brand?               @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
   result       BrandKeywordResult?
 
   @@index([createdById])
@@ -3198,37 +3338,37 @@ model BrandKeywordQuery {
 }
 
 model BrandKeywordResult {
-  id                String             @id @default(cuid())
-  queryId           String             @unique
-  query             BrandKeywordQuery  @relation(fields: [queryId], references: [id], onDelete: Cascade)
-  keywordMatrix     Json               @default("[]")
-  gapKeywords       Json               @default("[]")
-  namingSuggestions Json               @default("[]")
-  copyKeywords      Json               @default("{}")
-  seasonalCalendar  Json               @default("[]")
+  id                String            @id @default(cuid())
+  queryId           String            @unique
+  query             BrandKeywordQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  keywordMatrix     Json              @default("[]")
+  gapKeywords       Json              @default("[]")
+  namingSuggestions Json              @default("[]")
+  copyKeywords      Json              @default("{}")
+  seasonalCalendar  Json              @default("[]")
   seasonalCurves    Json?
-  clusters          Json               @default("[]")
-  aiSummary         String?            @db.Text
+  clusters          Json              @default("[]")
+  aiSummary         String?           @db.Text
   aiActionPlan      Json?
   aiMeta            Json?
-  updatedAt         DateTime           @updatedAt
+  updatedAt         DateTime          @updatedAt
 }
 
 model BrandSocialMonitor {
-  id           String                    @id @default(cuid())
-  name         String
-  keywords     String[]                  @default([])
-  platforms    SocialListeningPlatform[] @default([])
-  isActive     Boolean                   @default(true)
-  tiktokSearchLimit     Int @default(20)
-  instagramSearchLimit  Int @default(20)
-  createdById  String
-  createdBy    User                      @relation("BrandSocialMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  ownerBrandId String?
-  ownerBrand   Brand?                    @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  createdAt    DateTime                  @default(now())
-  updatedAt    DateTime                  @updatedAt
-  batches      BrandSocialBatch[]
+  id                   String                    @id @default(cuid())
+  name                 String
+  keywords             String[]                  @default([])
+  platforms            SocialListeningPlatform[] @default([])
+  isActive             Boolean                   @default(true)
+  tiktokSearchLimit    Int                       @default(20)
+  instagramSearchLimit Int                       @default(20)
+  createdById          String
+  createdBy            User                      @relation("BrandSocialMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  ownerBrandId         String?
+  ownerBrand           Brand?                    @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  batches              BrandSocialBatch[]
 
   @@index([createdById])
   @@index([isActive])
@@ -3236,15 +3376,15 @@ model BrandSocialMonitor {
 }
 
 model BrandSocialBatch {
-  id             String                 @id @default(cuid())
+  id             String                @id @default(cuid())
   monitorId      String
-  monitor        BrandSocialMonitor     @relation(fields: [monitorId], references: [id], onDelete: Cascade)
-  status         SocialListeningStatus  @default(PENDING)
+  monitor        BrandSocialMonitor    @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status         SocialListeningStatus @default(PENDING)
   errorMessage   String?
   collectedAt    DateTime?
-  platformStatus Json                   @default("{}")
-  apifyRunIds    Json                   @default("{}")
-  createdAt      DateTime               @default(now())
+  platformStatus Json                  @default("{}")
+  apifyRunIds    Json                  @default("{}")
+  createdAt      DateTime              @default(now())
   mentions       BrandSocialMention[]
   summary        BrandSocialSummary?
 
@@ -3253,24 +3393,24 @@ model BrandSocialBatch {
 }
 
 model BrandSocialMention {
-  id             String                 @id @default(cuid())
+  id             String                  @id @default(cuid())
   batchId        String
-  batch          BrandSocialBatch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batch          BrandSocialBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
   platform       SocialListeningPlatform
   externalId     String?
-  text           String                 @db.Text
+  text           String                  @db.Text
   author         String?
   url            String?
-  likes          Int                    @default(0)
-  comments       Int                    @default(0)
-  views          Int                    @default(0)
-  classification SocialMentionClass     @default(NEUTRAL)
+  likes          Int                     @default(0)
+  comments       Int                     @default(0)
+  views          Int                     @default(0)
+  classification SocialMentionClass      @default(NEUTRAL)
   painPoint      String?
-  isViral        Boolean                @default(false)
+  isViral        Boolean                 @default(false)
   postedAt       DateTime?
   thumbnailUrl   String?
   mediaType      String?
-  createdAt      DateTime               @default(now())
+  createdAt      DateTime                @default(now())
 
   @@unique([batchId, platform, externalId])
   @@index([batchId])
@@ -3278,43 +3418,43 @@ model BrandSocialMention {
 }
 
 model BrandSocialSummary {
-  id                String             @id @default(cuid())
-  batchId           String             @unique
-  batch             BrandSocialBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  topPainPoints     Json               @default("[]")
-  topWishlist       Json               @default("[]")
-  influencers       Json               @default("[]")
-  viralContent      Json               @default("[]")
-  categoryBreakdown Json               @default("[]")
-  aiSummary         String?            @db.Text
+  id                String           @id @default(cuid())
+  batchId           String           @unique
+  batch             BrandSocialBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  topPainPoints     Json             @default("[]")
+  topWishlist       Json             @default("[]")
+  influencers       Json             @default("[]")
+  viralContent      Json             @default("[]")
+  categoryBreakdown Json             @default("[]")
+  aiSummary         String?          @db.Text
   aiActionPlan      Json?
   aiMeta            Json?
-  sentimentTimeline Json               @default("[]")
-  updatedAt         DateTime           @updatedAt
+  sentimentTimeline Json             @default("[]")
+  updatedAt         DateTime         @updatedAt
 }
 
 model BrandAdLibraryMonitor {
-  id             String                 @id @default(cuid())
-  name           String
-  searchTerms    String[]               @default([])
-  adLibraryUrls  String[]               @default([])
-  country        String                 @default("ID")
-  activeStatus   String                 @default("active")
-  adType         String                 @default("all")
-  mediaType      String                 @default("all")
-  searchType     String                 @default("keyword_unordered")
-  maxAds         Int                    @default(50)
-  isActive       Boolean                @default(true)
-  aiSummary      String?                @db.Text
-  aiInsights     Json?
-  ownerBrandId   String?
-  ownerBrand     Brand?                 @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  createdById    String
-  createdBy      User                   @relation("BrandAdLibraryMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  batches        BrandAdLibraryBatch[]
-  ads            BrandAdLibraryAd[]
+  id            String                @id @default(cuid())
+  name          String
+  searchTerms   String[]              @default([])
+  adLibraryUrls String[]              @default([])
+  country       String                @default("ID")
+  activeStatus  String                @default("active")
+  adType        String                @default("all")
+  mediaType     String                @default("all")
+  searchType    String                @default("keyword_unordered")
+  maxAds        Int                   @default(50)
+  isActive      Boolean               @default(true)
+  aiSummary     String?               @db.Text
+  aiInsights    Json?
+  ownerBrandId  String?
+  ownerBrand    Brand?                @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdById   String
+  createdBy     User                  @relation("BrandAdLibraryMonitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  batches       BrandAdLibraryBatch[]
+  ads           BrandAdLibraryAd[]
 
   @@index([createdById])
   @@index([ownerBrandId])
@@ -3370,17 +3510,17 @@ model BrandAdLibraryAd {
 }
 
 model BrandUspAnalysis {
-  id             String        @id @default(cuid())
+  id             String          @id @default(cuid())
   category       String
   ownerBrandId   String?
-  ownerBrand     Brand?        @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  contextModules Json          @default("{}")
-  status         UspGapStatus  @default(PENDING)
+  ownerBrand     Brand?          @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  contextModules Json            @default("{}")
+  status         UspGapStatus    @default(PENDING)
   errorMessage   String?
   createdById    String
-  createdBy      User          @relation("BrandUspAnalysisCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdBy      User            @relation("BrandUspAnalysisCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   result         BrandUspResult?
 
   @@index([createdById])
@@ -3389,19 +3529,19 @@ model BrandUspAnalysis {
 }
 
 model BrandUspResult {
-  id                   String             @id @default(cuid())
-  analysisId           String             @unique
-  analysis             BrandUspAnalysis   @relation(fields: [analysisId], references: [id], onDelete: Cascade)
-  gapMatrix            Json               @default("[]")
-  claimAnalysis        Json               @default("{}")
-  positioningMap       Json               @default("{}")
-  uspCandidates        Json               @default("[]")
+  id                   String           @id @default(cuid())
+  analysisId           String           @unique
+  analysis             BrandUspAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  gapMatrix            Json             @default("[]")
+  claimAnalysis        Json             @default("{}")
+  positioningMap       Json             @default("{}")
+  uspCandidates        Json             @default("[]")
   differentiationScore Float?
-  aiSummary            String?            @db.Text
+  aiSummary            String?          @db.Text
   aiActionPlan         Json?
   categoryDecision     Json?
   aiMeta               Json?
-  updatedAt            DateTime           @updatedAt
+  updatedAt            DateTime         @updatedAt
 }
 
 model BrandResearchScrapeJob {
@@ -3454,20 +3594,20 @@ enum BrandCreativeGuidelineStatus {
 }
 
 model BrandVisualCollection {
-  id                 String                      @id @default(cuid())
-  name               String
-  keywords           String[]                    @default([])
-  maxPinsPerKeyword  Int?
-  status             BrandVisualCollectionStatus @default(PENDING)
-  sourceConfig Json?
-  errorMessage String?
-  ownerBrandId String?
-  ownerBrand   Brand?                      @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  createdById  String
-  createdBy    User                        @relation("BrandVisualCollectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt    DateTime                    @default(now())
-  updatedAt    DateTime                    @updatedAt
-  assets       BrandVisualAsset[]
+  id                String                      @id @default(cuid())
+  name              String
+  keywords          String[]                    @default([])
+  maxPinsPerKeyword Int?
+  status            BrandVisualCollectionStatus @default(PENDING)
+  sourceConfig      Json?
+  errorMessage      String?
+  ownerBrandId      String?
+  ownerBrand        Brand?                      @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdById       String
+  createdBy         User                        @relation("BrandVisualCollectionCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+  assets            BrandVisualAsset[]
 
   @@index([createdById])
   @@index([ownerBrandId])
@@ -3506,7 +3646,9 @@ enum BrandPortfolioLineRole {
   EXPERIMENTAL
 }
 
-/** Planned product lines for a brand — input utama sebelum Brand Strategy. */
+/**
+ * Planned product lines for a brand — input utama sebelum Brand Strategy.
+ */
 model BrandPortfolio {
   id          String               @id @default(cuid())
   brandId     String               @unique
@@ -3541,46 +3683,66 @@ model BrandPortfolioLine {
 }
 
 model BrandStrategyDocument {
-  id               String              @id @default(cuid())
-  ownerBrandId     String?
-  ownerBrand       Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  version          Int                 @default(1)
-  status           BrandStrategyStatus @default(DRAFT)
-  /** Per-line messaging & role from portfolio synthesis. */
-  productLineStrategy Json             @default("[]")
-  /** Product/category context for strategy (e.g. skincare, body care). */
-  category         String?
-  /** PM creative brief / constraints fed to AI at generation. */
-  pmBrief          String?             @db.Text
-  brandPurpose     String?             @db.Text
-  brandEssence     String?             @db.Text
-  coreMessage      String?             @db.Text
-  brandUsp         String?             @db.Text
-  stp              Json?
-  brandPersonality Json?
-  toneOfVoice      Json?
-  /** Tension pairs the brand must navigate (from insight step). */
-  strategicTensions Json               @default("[]")
-  /** Step-1 insight memo (audit + input to strategy synthesis). */
-  insightMemo      Json?
-  /** Prescriptive action plan for cross-functional teams. */
-  actionPlan       Json?
-  /** Citation validation score + invalid ref details. */
-  citationQuality  Json?
-  evidenceRefs     Json                @default("[]")
-  /** User-selected modules/entities fed to AI at generation time. */
-  generationConfig Json                @default("{}")
-  /** Per-field detailed reasoning from AI generation. */
-  strategyRationales Json              @default("[]")
-  /** Deterministic input fed to AI at generation time (audit trail). */
-  evidenceSnapshot Json                @default("{}")
-  aiMeta           Json?
-  errorMessage     String?
-  createdById      String
-  createdBy        User                @relation("BrandStrategyDocumentCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  creativeGuidelines BrandCreativeGuideline[]
+  id                  String                   @id @default(cuid())
+  ownerBrandId        String?
+  ownerBrand          Brand?                   @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  version             Int                      @default(1)
+  status              BrandStrategyStatus      @default(DRAFT)
+  /**
+   * Per-line messaging & role from portfolio synthesis.
+   */
+  productLineStrategy Json                     @default("[]")
+  /**
+   * Product/category context for strategy (e.g. skincare, body care).
+   */
+  category            String?
+  /**
+   * PM creative brief / constraints fed to AI at generation.
+   */
+  pmBrief             String?                  @db.Text
+  brandPurpose        String?                  @db.Text
+  brandEssence        String?                  @db.Text
+  coreMessage         String?                  @db.Text
+  brandUsp            String?                  @db.Text
+  stp                 Json?
+  brandPersonality    Json?
+  toneOfVoice         Json?
+  /**
+   * Tension pairs the brand must navigate (from insight step).
+   */
+  strategicTensions   Json                     @default("[]")
+  /**
+   * Step-1 insight memo (audit + input to strategy synthesis).
+   */
+  insightMemo         Json?
+  /**
+   * Prescriptive action plan for cross-functional teams.
+   */
+  actionPlan          Json?
+  /**
+   * Citation validation score + invalid ref details.
+   */
+  citationQuality     Json?
+  evidenceRefs        Json                     @default("[]")
+  /**
+   * User-selected modules/entities fed to AI at generation time.
+   */
+  generationConfig    Json                     @default("{}")
+  /**
+   * Per-field detailed reasoning from AI generation.
+   */
+  strategyRationales  Json                     @default("[]")
+  /**
+   * Deterministic input fed to AI at generation time (audit trail).
+   */
+  evidenceSnapshot    Json                     @default("{}")
+  aiMeta              Json?
+  errorMessage        String?
+  createdById         String
+  createdBy           User                     @relation("BrandStrategyDocumentCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  creativeGuidelines  BrandCreativeGuideline[]
 
   @@index([createdById])
   @@index([ownerBrandId])
@@ -3598,9 +3760,13 @@ model BrandAudienceProfile {
   ownerBrand       Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
   version          Int                 @default(1)
   status           BrandAudienceStatus @default(DRAFT)
-  /** Konteks kategori produk (mis. parfum, skincare). */
+  /**
+   * Konteks kategori produk (mis. parfum, skincare).
+   */
   category         String?
-  /** Brief/constraint PM yang diumpankan ke AI saat generate. */
+  /**
+   * Brief/constraint PM yang diumpankan ke AI saat generate.
+   */
   pmBrief          String?             @db.Text
   /**
    * Array persona: tiap item { name, archetype, demographics, painPoints[],
@@ -3609,13 +3775,21 @@ model BrandAudienceProfile {
    * representativeQuotes[], shareOfAudience? }.
    */
   personas         Json                @default("[]")
-  /** Ringkasan lintas-persona untuk brand. */
+  /**
+   * Ringkasan lintas-persona untuk brand.
+   */
   aiSummary        String?             @db.Text
-  /** Implikasi messaging/produk yang actionable. */
+  /**
+   * Implikasi messaging/produk yang actionable.
+   */
   actionPlan       Json?
-  /** Modul/entitas yang dipilih saat generate. */
+  /**
+   * Modul/entitas yang dipilih saat generate.
+   */
   generationConfig Json                @default("{}")
-  /** Input deterministik yang diumpankan ke AI (audit trail). */
+  /**
+   * Input deterministik yang diumpankan ke AI (audit trail).
+   */
   evidenceSnapshot Json                @default("{}")
   evidenceRefs     Json                @default("[]")
   aiMeta           Json?
@@ -3659,5 +3833,537 @@ model BrandCreativeGuideline {
   @@index([createdById])
   @@index([ownerBrandId])
   @@index([strategyDocumentId])
+  @@index([status])
+}
+
+// ============================================================
+// SEO Toolkit
+// Modul SEO untuk tim marketing (kosmetik/skincare, pasar Indonesia).
+// Melengkapi Research Hub — tidak menggantinya. Default lokasi Indonesia
+// (location_code 2360, language_code "id"). Fase 1: Keyword Research &
+// Clustering + SERP Rank Tracker. Fase berikutnya menambah audit, crawler,
+// backlink, content optimizer, marketplace SEO, dan reports.
+// ============================================================
+
+enum SeoJobType {
+  KEYWORD_RESEARCH
+  RANK_CHECK
+  ONPAGE_AUDIT
+  SITE_CRAWL
+  BACKLINK_FETCH
+  MARKETPLACE_SEO
+}
+
+enum SeoJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+/**
+ * Status siklus analisis SEO (mengikuti pola KeywordIntelStatus).
+ */
+enum SeoAnalysisStatus {
+  PENDING
+  COLLECTING
+  ANALYZING
+  READY
+  FAILED
+}
+
+/**
+ * Intent pencarian keyword (untuk clustering).
+ */
+enum SeoKeywordIntent {
+  INFORMATIONAL
+  COMMERCIAL
+  TRANSACTIONAL
+  NAVIGATIONAL
+  UNKNOWN
+}
+
+enum SeoRankDevice {
+  DESKTOP
+  MOBILE
+}
+
+/**
+ * Cache respons DataForSEO untuk menghemat biaya (mis. 24 jam untuk keyword/SERP).
+ * `cacheKey` = hash stabil dari endpoint + payload permintaan.
+ */
+model DataForSeoCache {
+  id        String   @id @default(cuid())
+  cacheKey  String   @unique
+  endpoint  String
+  payload   Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+/**
+ * Job async generik untuk modul SEO (crawler, audit, backlink, rank check).
+ * Mengikuti pola `ResearchScrapeJob` — entityId menunjuk ke entitas terkait.
+ */
+model SeoJob {
+  id               String       @id @default(cuid())
+  type             SeoJobType
+  entityId         String
+  status           SeoJobStatus @default(PENDING)
+  /**
+   * ID task DataForSEO untuk metode standard/queue (bila dipakai).
+   */
+  dataforseoTaskId String?
+  error            String?      @db.Text
+  stepLabel        String?
+  percent          Int          @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+
+  @@index([status])
+  @@index([entityId, type])
+  @@index([dataforseoTaskId])
+}
+
+/**
+ * Proyek/daftar keyword yang bisa dipakai ulang. Hasil riset (volume, difficulty,
+ * intent, cluster) disimpan per-keyword di `SeoKeyword`.
+ */
+model SeoKeywordProject {
+  id           String               @id @default(cuid())
+  name         String
+  description  String?
+  seedKeyword  String
+  marketplace  ResearchMarketplace?
+  locationCode Int                  @default(2360)
+  languageCode String               @default("id")
+  status       SeoAnalysisStatus    @default(PENDING)
+  /**
+   * Catatan kualitas data (mis. DataForSEO tidak tersedia, dsb.).
+   */
+  dataNotice   String?              @db.Text
+  aiSummary    String?              @db.Text
+  /**
+   * Metadata model AI yang dipakai saat analisis terakhir.
+   */
+  aiMeta       Json?
+  errorMessage String?
+  createdById  String
+  createdBy    User                 @relation("SeoKeywordProjectCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  keywords     SeoKeyword[]
+
+  @@index([createdById])
+  @@index([status])
+}
+
+model SeoKeyword {
+  id           String            @id @default(cuid())
+  projectId    String
+  project      SeoKeywordProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword      String
+  searchVolume Int?
+  cpc          Float?
+  /**
+   * 0–1, dari competition Google Ads.
+   */
+  competition  Float?
+  /**
+   * 0–100, keyword difficulty DataForSEO Labs.
+   */
+  difficulty   Int?
+  intent       SeoKeywordIntent  @default(UNKNOWN)
+  clusterLabel String?
+  /**
+   * SERP features (string[]).
+   */
+  serpFeatures Json?
+  /**
+   * Riwayat volume bulanan / arah tren.
+   */
+  monthlyTrend Json?
+  /**
+   * Asal data: dataforseo_labs | google_ads | seed.
+   */
+  source       String?
+  createdAt    DateTime          @default(now())
+
+  @@unique([projectId, keyword])
+  @@index([projectId, clusterLabel])
+}
+
+/**
+ * Proyek rank tracking — satu domain target + market. Berisi keyword yang dilacak
+ * posisinya di Google ID secara terjadwal (cron harian) → time-series snapshot.
+ */
+model SeoRankProject {
+  id           String              @id @default(cuid())
+  name         String
+  /**
+   * Domain target, mis. "brandanda.com".
+   */
+  domain       String
+  locationCode Int                 @default(2360)
+  languageCode String              @default("id")
+  device       SeoRankDevice       @default(MOBILE)
+  isActive     Boolean             @default(true)
+  createdById  String
+  createdBy    User                @relation("SeoRankProjectCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  keywords     SeoTrackedKeyword[]
+
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model SeoTrackedKeyword {
+  id               String            @id @default(cuid())
+  projectId        String
+  project          SeoRankProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword          String
+  /**
+   * URL/path spesifik yang diharapkan ranking; default cocokkan domain proyek.
+   */
+  targetUrl        String?
+  /**
+   * Posisi terakhir (null = di luar top 100).
+   */
+  lastPosition     Int?
+  previousPosition Int?
+  lastFoundUrl     String?
+  lastCheckedAt    DateTime?
+  createdAt        DateTime          @default(now())
+  snapshots        SeoRankSnapshot[]
+
+  @@unique([projectId, keyword])
+  @@index([projectId])
+}
+
+/**
+ * Time-series posisi SERP untuk satu tracked keyword.
+ */
+model SeoRankSnapshot {
+  id               String            @id @default(cuid())
+  trackedKeywordId String
+  trackedKeyword   SeoTrackedKeyword @relation(fields: [trackedKeywordId], references: [id], onDelete: Cascade)
+  /**
+   * Posisi organik (null = tidak masuk top 100).
+   */
+  position         Int?
+  foundUrl         String?
+  /**
+   * SERP features yang muncul (string[]).
+   */
+  serpFeatures     Json?
+  capturedAt       DateTime          @default(now())
+
+  @@index([trackedKeywordId, capturedAt])
+}
+
+// ============================================================
+// SEO Toolkit — Fase 2: On-Page Audit & Technical Crawler
+// ============================================================
+
+/** Tingkat keparahan isu SEO (untuk prioritisasi). */
+enum SeoIssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+/**
+ * Audit On-Page satu URL: title, meta, heading, alt text, link, word count,
+ * schema, readability → skor + rekomendasi actionable (LLM).
+ * Sumber data: DataForSEO On-Page `instant_pages` (live) + enrich HTML langsung.
+ */
+model SeoOnPageAudit {
+  id                String            @id @default(cuid())
+  url               String
+  targetKeyword     String?
+  status            SeoAnalysisStatus @default(PENDING)
+  /** Skor On-Page 0-100. */
+  score             Int?
+  /** Sinyal terstruktur (title, meta, word count, link, readability, dll). */
+  signals           Json?
+  /** Struktur heading H1-H6. */
+  headings          Json?
+  /** Daftar isu { type, severity, message, recommendation }. */
+  issues            Json?
+  /** Rekomendasi actionable dari LLM (Bahasa Indonesia). */
+  aiRecommendations Json?
+  aiMeta            Json?
+  dataNotice        String?           @db.Text
+  errorMessage      String?
+  createdById       String
+  createdBy         User              @relation("SeoOnPageAuditCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+}
+
+/**
+ * Crawl teknis satu domain (DataForSEO On-Page task-based). Hasil: isu broken
+ * link, redirect, status code, duplicate/missing meta, sitemap/robots, dan
+ * Core Web Vitals (Lighthouse, opsional). Daftar isu di `SeoCrawlIssue`.
+ */
+model SeoSiteCrawl {
+  id                String            @id @default(cuid())
+  name              String
+  domain            String
+  maxPages          Int               @default(100)
+  includeLighthouse Boolean           @default(false)
+  status            SeoAnalysisStatus @default(PENDING)
+  /** ID task DataForSEO On-Page (metode standard/queue). */
+  dataforseoTaskId  String?
+  pagesCrawled      Int               @default(0)
+  /** Ringkasan agregat (page_metrics, domain_info). */
+  summary           Json?
+  /** Core Web Vitals (Lighthouse) bila diaktifkan. */
+  lighthouse        Json?
+  dataNotice        String?           @db.Text
+  errorMessage      String?
+  createdById       String
+  createdBy         User              @relation("SeoSiteCrawlCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  issues            SeoCrawlIssue[]
+
+  @@index([createdById])
+  @@index([status])
+  @@index([dataforseoTaskId])
+}
+
+model SeoCrawlIssue {
+  id        String           @id @default(cuid())
+  crawlId   String
+  crawl     SeoSiteCrawl     @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  /** Kategori isu, mis. "broken_links", "duplicate_title", "is_4xx_code". */
+  type      String
+  severity  SeoIssueSeverity
+  /** Jumlah halaman / kemunculan (untuk isu agregat). */
+  count     Int              @default(1)
+  /** URL spesifik (untuk isu per-halaman); null untuk isu agregat. */
+  url       String?
+  message   String
+  detail    Json?
+  createdAt DateTime         @default(now())
+
+  @@index([crawlId, severity])
+}
+
+// ============================================================
+// SEO Toolkit — Fase 3: Backlink Analysis & Content Optimizer
+// ============================================================
+
+/**
+ * Profil backlink satu domain/URL (DataForSEO Backlinks API): metrik agregat,
+ * top referring domains, anchor text, dan time-series untuk backlink baru/hilang.
+ */
+model SeoBacklinkProfile {
+  id                  String                @id @default(cuid())
+  name                String
+  /** Domain atau URL target. */
+  target              String
+  status              SeoAnalysisStatus     @default(PENDING)
+  /** Metrik agregat { rank, backlinks, referringDomains, dofollow, spamScore, ... }. */
+  summary             Json?
+  /** Top referring domains (array). */
+  topReferringDomains Json?
+  /** Top anchor text (array). */
+  topAnchors          Json?
+  /** Time-series new/lost dari DataForSEO history. */
+  history             Json?
+  dataNotice          String?               @db.Text
+  errorMessage        String?
+  createdById         String
+  createdBy           User                  @relation("SeoBacklinkProfileCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  snapshots           SeoBacklinkSnapshot[]
+  gaps                SeoBacklinkGap[]
+
+  @@index([createdById])
+  @@index([status])
+}
+
+/** Time-series metrik backlink per pengecekan (untuk tren naik/turun). */
+model SeoBacklinkSnapshot {
+  id               String             @id @default(cuid())
+  profileId        String
+  profile          SeoBacklinkProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  referringDomains Int                @default(0)
+  backlinks        Int                @default(0)
+  rank             Int?
+  capturedAt       DateTime           @default(now())
+
+  @@index([profileId, capturedAt])
+}
+
+/** Backlink gap: domain yang menaut ke kompetitor tapi belum ke target. */
+model SeoBacklinkGap {
+  id           String             @id @default(cuid())
+  profileId    String
+  profile      SeoBacklinkProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  competitor   String
+  status       SeoAnalysisStatus  @default(PENDING)
+  /** Daftar domain gap [{ domain, rank, backlinks }]. */
+  gapDomains   Json?
+  gapCount     Int                @default(0)
+  errorMessage String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([profileId])
+}
+
+/**
+ * Brief artikel SEO dari keyword target — outline + related keywords + angle
+ * (LLM, tone kosmetik, Bahasa Indonesia). Menghasilkan satu/lebih draft.
+ */
+model SeoContentBrief {
+  id              String            @id @default(cuid())
+  targetKeyword   String
+  title           String
+  status          SeoAnalysisStatus @default(PENDING)
+  /** Related/long-tail keywords yang disarankan (string[]). */
+  relatedKeywords Json?
+  /** Outline artikel [{ heading, points[] }]. */
+  outline         Json?
+  /** Catatan angle/strategi (Bahasa Indonesia). */
+  aiSummary       String?           @db.Text
+  aiMeta          Json?
+  errorMessage    String?
+  createdById     String
+  createdBy       User              @relation("SeoContentBriefCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  drafts          SeoContentDraft[]
+
+  @@index([createdById])
+  @@index([status])
+}
+
+/** Draft artikel (HTML TipTap) + hasil analisis SEO (skor + saran). */
+model SeoContentDraft {
+  id            String            @id @default(cuid())
+  briefId       String?
+  brief         SeoContentBrief?  @relation(fields: [briefId], references: [id], onDelete: SetNull)
+  title         String
+  targetKeyword String?
+  /** Konten HTML dari editor TipTap. */
+  contentHtml   String            @default("") @db.Text
+  /** Hasil analisis { checks[], density, structure, suggestions[] }. */
+  analysis      Json?
+  score         Int?
+  aiMeta        Json?
+  createdById   String
+  createdBy     User              @relation("SeoContentDraftCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([createdById])
+  @@index([briefId])
+}
+
+// ============================================================
+// SEO Toolkit — Fase 4: Marketplace SEO & Reports
+// ============================================================
+
+/**
+ * Analisis Marketplace SEO: scrape listing teratas untuk satu keyword (via
+ * scraper-api VPS), pelajari pola judul/harga/terjual/rating, dan skor optimasi
+ * judul produk sendiri + rekomendasi.
+ */
+model SeoMarketplaceAnalysis {
+  id                String              @id @default(cuid())
+  keyword           String
+  marketplace       ResearchMarketplace
+  ownTitle          String?
+  status            SeoAnalysisStatus   @default(PENDING)
+  /** Statistik listing { count, avgTitleLength, medianPrice, priceRange, avgRating, totalSold, officialShopRate }. */
+  listingStats      Json?
+  /** Top istilah judul [{ term, count }]. */
+  titlePatterns     Json?
+  /** Sampel listing teratas. */
+  topListings       Json?
+  optimizationScore Int?
+  /** Hasil skor judul sendiri { score, missingTerms[], recommendations[] }. */
+  recommendations   Json?
+  aiMeta            Json?
+  dataNotice        String?             @db.Text
+  errorMessage      String?
+  createdById       String
+  createdBy         User                @relation("SeoMarketplaceAnalysisCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+}
+
+enum SeoReportType {
+  OVERVIEW
+  RANK_TRACKING
+  TECHNICAL
+  FULL
+}
+
+/**
+ * Laporan SEO yang dapat diekspor PDF/DOCX lewat pipeline Research Reports.
+ * Mengaggregasi metrik dari rank tracker, audit, crawler, dan backlink.
+ */
+model SeoReport {
+  id           String            @id @default(cuid())
+  title        String
+  type         SeoReportType     @default(OVERVIEW)
+  status       SeoAnalysisStatus @default(PENDING)
+  config       Json?
+  /** Section laporan [{ id, title, body, moduleRef? }]. */
+  sections     Json?
+  aiSummary    String?           @db.Text
+  /** Metrik ringkas untuk bar chart. */
+  metrics      Json?
+  aiMeta       Json?
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  errorMessage String?
+  createdById  String
+  createdBy    User              @relation("SeoReportCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+}
+
+/**
+ * Topic Discovery untuk Content Optimizer: dari satu seed/kategori, tarik
+ * keyword ideas + skor opportunity (volume × difficulty × intent × tren) dan
+ * usulkan judul/angle ter-grounding SERP (LLM). Mengurangi friksi blank-page.
+ */
+model SeoContentTopicRun {
+  id           String            @id @default(cuid())
+  seed         String
+  status       SeoAnalysisStatus @default(PENDING)
+  /** Saran topik ter-ranking [{ keyword, searchVolume, difficulty, intent, opportunityScore, suggestedTitle, angle, competingTitles[] }]. */
+  suggestions  Json?
+  dataNotice   String?           @db.Text
+  aiMeta       Json?
+  errorMessage String?
+  createdById  String
+  createdBy    User              @relation("SeoContentTopicRunCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([createdById])
   @@index([status])
 }

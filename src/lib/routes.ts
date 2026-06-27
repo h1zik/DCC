@@ -50,14 +50,23 @@ export function isResearchHubRoute(pathname: string): boolean {
   );
 }
 
+/** Modul SEO Toolkit — Market Analyst & Project Manager. */
+export function isSeoRoute(pathname: string): boolean {
+  return pathname === "/seo" || pathname.startsWith("/seo/");
+}
+
 /** Modul Brand & Creative Hub — Brand Manager (Project Manager). */
 export function isBrandHubRoute(pathname: string): boolean {
   return pathname === "/brand-hub" || pathname.startsWith("/brand-hub/");
 }
 
-/** Research Hub + studio workspace — Market Analyst. */
+/** Research Hub, SEO Toolkit + studio workspace — Market Analyst. */
 export function isMarketAnalystAppRoute(pathname: string): boolean {
-  return isResearchHubRoute(pathname) || isStudioWorkspaceRoute(pathname);
+  return (
+    isResearchHubRoute(pathname) ||
+    isSeoRoute(pathname) ||
+    isStudioWorkspaceRoute(pathname)
+  );
 }
 
 /** Pesan pribadi 1:1. */
@@ -84,12 +93,13 @@ export function isWorkspaceDashboardRoute(pathname: string): boolean {
   );
 }
 
-/** Pipeline, tugas, Brand Hub, Research Hub — tim studio / PM. */
+/** Pipeline, tugas, Brand Hub, Research Hub, SEO Toolkit — tim studio / PM. */
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isWorkspaceDashboardRoute(pathname) ||
     isBrandHubRoute(pathname) ||
     isResearchHubRoute(pathname) ||
+    isSeoRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||
