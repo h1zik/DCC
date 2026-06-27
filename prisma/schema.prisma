@@ -3498,6 +3498,28 @@ model BrandAdLibraryAd {
   isActive       Boolean               @default(true)
   deliveryStart  DateTime?
   deliveryStop   DateTime?
+  /** Deskripsi link preview (ad_creative_link_descriptions). */
+  linkDescription  String?             @db.Text
+  /** Caption / display URL link preview (ad_creative_link_captions). */
+  linkCaption      String?
+  /** Jumlah varian kreatif dalam grup (collation_count) — sinyal scaling/winning. */
+  collationCount   Int?
+  pageLikeCount    Int?
+  pageCategories   String[]            @default([])
+  pageCreationDate String?
+  /** Total iklan aktif halaman (pageTransparency.totalActiveAds). */
+  totalActiveAds   Int?
+  /** Estimasi audiens (estimated_audience_size). */
+  audienceLower    Int?
+  audienceUpper    Int?
+  /** Rentang spend (spend.lower/upper) — umumnya hanya iklan politik/EU. */
+  spendLower       Int?
+  spendUpper       Int?
+  currency         String?
+  /** Kartu carousel: [{ imageUrl, videoUrl, title, body, linkUrl }]. */
+  cards            Json?
+  /** Skor "winning" 0-100 (longevity + variasi + aktif + reach). */
+  winningScore     Int?
   rawData        Json?
   scrapedAt      DateTime?
   createdAt      DateTime              @default(now())

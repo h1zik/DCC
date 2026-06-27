@@ -1,5 +1,13 @@
 import { isRenderableImageUrl } from "@/lib/brand-research/ad-library-media";
 
+export type AdCard = {
+  imageUrl: string | null;
+  videoUrl: string | null;
+  title: string | null;
+  body: string | null;
+  linkUrl: string | null;
+};
+
 export type NormalizedMetaAd = {
   externalId: string;
   pageId: string | null;
@@ -8,6 +16,8 @@ export type NormalizedMetaAd = {
   bodyText: string | null;
   linkTitle: string | null;
   linkUrl: string | null;
+  linkDescription: string | null;
+  linkCaption: string | null;
   ctaType: string | null;
   ctaText: string | null;
   mediaType: string | null;
@@ -18,6 +28,18 @@ export type NormalizedMetaAd = {
   isActive: boolean;
   deliveryStart: Date | null;
   deliveryStop: Date | null;
+  /** Jumlah varian kreatif (collation_count) — sinyal scaling/winning. */
+  collationCount: number | null;
+  pageLikeCount: number | null;
+  pageCategories: string[];
+  pageCreationDate: string | null;
+  totalActiveAds: number | null;
+  audienceLower: number | null;
+  audienceUpper: number | null;
+  spendLower: number | null;
+  spendUpper: number | null;
+  currency: string | null;
+  cards: AdCard[];
   scrapedAt: Date | null;
   rawData: Record<string, unknown>;
 };
@@ -41,6 +63,61 @@ function parseDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const v of values) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) {
+      return Number(v);
+    }
+  }
+  return null;
+}
+
+function pickBounds(value: unknown): { lower: number | null; upper: number | null } {
+  if (!value || typeof value !== "object") return { lower: null, upper: null };
+  const o = value as Record<string, unknown>;
+  return {
+    lower: firstNumber(o.lower_bound, o.lowerBound, o.min),
+    upper: firstNumber(o.upper_bound, o.upperBound, o.max),
+  };
+}
+
+function pickStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => String(v).trim()).filter(Boolean);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** Kumpulkan semua kartu carousel (gambar/video per kartu). */
+function pickCards(raw: Record<string, unknown>): AdCard[] {
+  const snapshot = asRecord(raw.snapshot ?? raw.ad_snapshot ?? raw.creative);
+  const cardsRaw = Array.isArray(raw.cards)
+    ? raw.cards
+    : snapshot && Array.isArray(snapshot.cards)
+      ? snapshot.cards
+      : null;
+  if (!Array.isArray(cardsRaw)) return [];
+
+  const cards: AdCard[] = [];
+  for (const c of cardsRaw) {
+    const card = asRecord(c);
+    if (!card) continue;
+    cards.push({
+      imageUrl: pickImageUrl(card),
+      videoUrl: videoUrlFromObject(card),
+      title: firstString(card.title, card.link_title, card.headline),
+      body: firstString(card.body, card.body_text, card.text),
+      linkUrl: firstString(card.link_url, card.linkUrl, card.url),
+    });
+  }
+  return cards;
 }
 
 function sanitizeImageUrl(url: string | null): string | null {
@@ -240,6 +317,24 @@ export function normalizeMetaAdItem(
     firstString(item.media_type, item.mediaType, item.displayFormat) ??
     (videoUrl ? "VIDEO" : imageUrl ? "IMAGE" : null);
 
+  const snapshot = asRecord(item.snapshot ?? item.ad_snapshot ?? item.creative);
+  const transparency = asRecord(item.pageTransparency ?? item.page_transparency);
+
+  const linkDescriptions =
+    item.ad_creative_link_descriptions ?? item.link_description ?? snapshot?.link_description;
+  const linkDescription =
+    firstStringFromArray(linkDescriptions) ??
+    (typeof linkDescriptions === "string" ? linkDescriptions : null);
+
+  const linkCaptions =
+    item.ad_creative_link_captions ?? item.link_caption ?? item.display_url ?? snapshot?.caption;
+  const linkCaption =
+    firstStringFromArray(linkCaptions) ??
+    (typeof linkCaptions === "string" ? linkCaptions : null);
+
+  const audience = pickBounds(item.estimated_audience_size ?? item.estimatedAudienceSize);
+  const spend = pickBounds(item.spend);
+
   return {
     externalId,
     pageId: firstString(item.page_id, item.pageId),
@@ -248,6 +343,8 @@ export function normalizeMetaAdItem(
     bodyText,
     linkTitle,
     linkUrl,
+    linkDescription,
+    linkCaption,
     ctaType: firstString(item.cta_type, item.ctaType),
     ctaText: firstString(item.cta_text, item.ctaText),
     mediaType: mediaType?.toUpperCase() ?? null,
@@ -262,6 +359,21 @@ export function normalizeMetaAdItem(
     deliveryStop: parseDate(
       item.ad_delivery_stop_time ?? item.endDate ?? item.deliveryStop,
     ),
+    collationCount: firstNumber(item.collation_count, item.collationCount),
+    pageLikeCount: firstNumber(item.page_like_count, item.pageLikeCount, snapshot?.page_like_count),
+    pageCategories: pickStringArray(item.page_categories ?? item.pageCategories),
+    pageCreationDate: firstString(
+      transparency?.pageCreationDate,
+      transparency?.page_creation_date,
+      item.page_creation_date,
+    ),
+    totalActiveAds: firstNumber(transparency?.totalActiveAds, transparency?.total_active_ads),
+    audienceLower: audience.lower,
+    audienceUpper: audience.upper,
+    spendLower: spend.lower,
+    spendUpper: spend.upper,
+    currency: firstString(item.currency),
+    cards: pickCards(item),
     scrapedAt: parseDate(item.scrapedAt),
     rawData: item,
   };
@@ -316,48 +428,68 @@ export function enrichAdMediaFromRaw<T extends {
 export function generateDemoMetaAds(searchTerms: string[]): NormalizedMetaAd[] {
   const term = searchTerms[0] ?? "skincare";
   const now = new Date();
+  const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+
+  const base: Omit<
+    NormalizedMetaAd,
+    "externalId" | "pageId" | "pageName" | "bodyText" | "linkTitle" | "mediaType" | "imageUrl" | "videoUrl" | "platforms" | "deliveryStart" | "collationCount" | "pageLikeCount" | "audienceLower" | "audienceUpper"
+  > = {
+    pageProfileUrl: null,
+    linkUrl: "https://example.com",
+    linkDescription: null,
+    linkCaption: "example.com",
+    ctaType: "SHOP_NOW",
+    ctaText: "Belanja sekarang",
+    snapshotUrl: null,
+    isActive: true,
+    deliveryStop: null,
+    pageCategories: ["Beauty, cosmetic & personal care"],
+    pageCreationDate: "2021-03-15",
+    totalActiveAds: 18,
+    spendLower: null,
+    spendUpper: null,
+    currency: null,
+    cards: [],
+    scrapedAt: now,
+    rawData: { _demo: true },
+  };
+
   return [
     {
+      ...base,
       externalId: `demo-ad-${term}-1`,
       pageId: "demo-page-1",
       pageName: `Demo Brand ${term}`,
-      pageProfileUrl: null,
       bodyText: `Temukan ${term} terbaik — formula ringan, hasil cepat terlihat.`,
       linkTitle: `Koleksi ${term} Baru`,
-      linkUrl: "https://example.com",
-      ctaType: "SHOP_NOW",
-      ctaText: "Belanja sekarang",
       mediaType: "IMAGE",
       imageUrl: "https://picsum.photos/seed/meta-ad-demo-1/600/600",
       videoUrl: null,
-      snapshotUrl: null,
-      platforms: ["facebook", "instagram"],
-      isActive: true,
-      deliveryStart: now,
-      deliveryStop: null,
-      scrapedAt: now,
-      rawData: { _demo: true },
+      platforms: ["facebook", "instagram", "messenger"],
+      deliveryStart: daysAgo(62), // winning: tayang lama + banyak varian
+      collationCount: 12,
+      pageLikeCount: 142000,
+      audienceLower: 500000,
+      audienceUpper: 1000000,
     },
     {
+      ...base,
       externalId: `demo-ad-${term}-2`,
       pageId: "demo-page-2",
       pageName: `Rival ${term}`,
-      pageProfileUrl: null,
       bodyText: `Before & after dalam 7 hari. Buktikan sendiri manfaat ${term}.`,
       linkTitle: "Uji Coba Gratis",
-      linkUrl: "https://example.com/trial",
       ctaType: "LEARN_MORE",
       ctaText: "Pelajari lebih lanjut",
       mediaType: "VIDEO",
       imageUrl: "https://picsum.photos/seed/meta-ad-demo-video/600/800",
       videoUrl: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-      snapshotUrl: null,
       platforms: ["facebook"],
-      isActive: true,
-      deliveryStart: now,
-      deliveryStop: null,
-      scrapedAt: now,
-      rawData: { _demo: true },
+      deliveryStart: daysAgo(3), // baru: testing
+      collationCount: 1,
+      pageLikeCount: 8200,
+      audienceLower: null,
+      audienceUpper: null,
     },
   ];
 }

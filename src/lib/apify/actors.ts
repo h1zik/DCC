@@ -374,7 +374,9 @@ export function buildMetaAdLibraryActorInput(monitor: {
     mediaType: monitor.mediaType || "all",
     searchType: monitor.searchType || "keyword_exact_phrase",
     maxAds: perUnit,
-    includePageTransparency: false,
+    // Aktif: ambil transparansi halaman (total iklan aktif, tanggal dibuat) —
+    // berguna untuk menilai seberapa agresif kompetitor beriklan.
+    includePageTransparency: true,
     proxyConfiguration: {
       useApifyProxy: true,
       apifyProxyGroups: ["RESIDENTIAL"],
