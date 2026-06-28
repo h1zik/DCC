@@ -16,11 +16,26 @@ import {
   runVpsInstagramHashtag,
 } from "@/lib/scraper-api/social-mentions";
 import { resolveVpsCachedRun } from "@/lib/scraper-api/vps-run-resolver";
-import { cacheVpsRun, getCachedVpsRun } from "@/lib/scraper-api/vps-run-cache";
+import { cacheVpsRun } from "@/lib/scraper-api/vps-run-cache";
 import { DEFAULT_INSTAGRAM_SEARCH_LIMIT } from "@/lib/research/social-listening/search-limits-public";
 
 function getInstagramActorId(): string | null {
   return process.env.APIFY_ACTOR_INSTAGRAM?.trim() || null;
+}
+
+/**
+ * Run id fallback Apify diberi prefix ini supaya poll/blocking tahu harus
+ * mengambil hasil dari Apify (bukan cache VPS) walau VPS dikonfigurasi.
+ */
+const APIFY_FALLBACK_PREFIX = "apify:";
+
+function apifyInstagramInput(tag: string, limit: number): Record<string, unknown> {
+  return {
+    directUrls: [`https://www.instagram.com/explore/tags/${tag}/`],
+    resultsType: "posts",
+    resultsLimit: limit,
+    addParentData: false,
+  };
 }
 
 export function isInstagramMentionsConfigured(): boolean {
@@ -28,7 +43,7 @@ export function isInstagramMentionsConfigured(): boolean {
   return isApifyConfigured() && !!getInstagramActorId();
 }
 
-function useVpsInstagram(): boolean {
+function vpsInstagramEnabled(): boolean {
   return isScraperApiConfigured();
 }
 
@@ -205,7 +220,7 @@ export async function startInstagramScrapes(
   const searchLimit = opts?.searchLimit ?? DEFAULT_INSTAGRAM_SEARCH_LIMIT;
   const warnings: string[] = [];
 
-  if (useVpsInstagram()) {
+  if (vpsInstagramEnabled()) {
     const runIds: string[] = [];
 
     for (const keyword of keywords.slice(0, 5)) {
@@ -228,6 +243,29 @@ export async function startInstagramScrapes(
       }
     }
 
+    // Fallback: VPS Instagram tidak mengembalikan apa pun (kemungkinan akun/sesi
+    // IG di VPS diblok/checkpoint) → coba Apify yang punya sesi + proxy sendiri.
+    const fallbackActor = getInstagramActorId();
+    if (runIds.length === 0 && isApifyConfigured() && fallbackActor) {
+      try {
+        const apifyRunIds = await Promise.all(
+          tags.map(async (tag) => {
+            const { runId } = await startApifyActor(
+              fallbackActor,
+              apifyInstagramInput(tag, searchLimit),
+            );
+            return `${APIFY_FALLBACK_PREFIX}${runId}`;
+          }),
+        );
+        runIds.push(...apifyRunIds);
+        warnings.push(
+          "VPS Instagram balik 0 (kemungkinan akun/sesi IG di VPS diblok) — fallback ke Apify.",
+        );
+      } catch (err) {
+        console.warn("[social-listening/instagram] fallback Apify gagal", err);
+      }
+    }
+
     return { runIds, warnings };
   }
 
@@ -236,13 +274,10 @@ export async function startInstagramScrapes(
 
   const runIds = await Promise.all(
     tags.map(async (tag) => {
-      const input = {
-        directUrls: [`https://www.instagram.com/explore/tags/${tag}/`],
-        resultsType: "posts",
-        resultsLimit: searchLimit,
-        addParentData: false,
-      };
-      const { runId } = await startApifyActor(actorId, input);
+      const { runId } = await startApifyActor(
+        actorId,
+        apifyInstagramInput(tag, searchLimit),
+      );
       return runId;
     }),
   );
@@ -262,7 +297,13 @@ export async function pollInstagramScrapes(runIds: string[]): Promise<{
     return { done: true, succeeded: false, mentions: [], apifyStatuses: [] };
   }
 
-  if (useVpsInstagram()) {
+  // Run ber-prefix "apify:" adalah fallback Apify — diambil dari Apify walau VPS
+  // dikonfigurasi (lebih robust lintas-proses karena run tersimpan di server Apify).
+  const apifyFallback = runIds.some((id) =>
+    id.startsWith(APIFY_FALLBACK_PREFIX),
+  );
+
+  if (vpsInstagramEnabled() && !apifyFallback) {
     const mentions: RawSocialMention[] = [];
     const apifyStatuses: string[] = [];
     let succeeded = false;
@@ -291,7 +332,12 @@ export async function pollInstagramScrapes(runIds: string[]): Promise<{
     };
   }
 
-  const statuses = await Promise.all(runIds.map((id) => getApifyRunStatus(id)));
+  const apifyIds = runIds.map((id) =>
+    id.startsWith(APIFY_FALLBACK_PREFIX)
+      ? id.slice(APIFY_FALLBACK_PREFIX.length)
+      : id,
+  );
+  const statuses = await Promise.all(apifyIds.map((id) => getApifyRunStatus(id)));
   const apifyStatuses = statuses.map((s) => s.status);
   const allDone = apifyStatuses.every((s) => TERMINAL.has(s));
 
@@ -326,14 +372,25 @@ export async function scrapeInstagramMentions(
   const runIds = started.runIds;
   if (runIds.length === 0) return [];
 
-  if (useVpsInstagram()) {
+  const apifyFallback = runIds.some((id) =>
+    id.startsWith(APIFY_FALLBACK_PREFIX),
+  );
+
+  // VPS murni (tanpa fallback): hasil sudah tersedia di cache, baca langsung.
+  if (vpsInstagramEnabled() && !apifyFallback) {
     const result = await pollInstagramScrapes(runIds);
     return result.mentions;
   }
 
+  // Apify (env tanpa VPS, ATAU fallback Apify) — tunggu run selesai lalu ambil.
+  const apifyIds = runIds.map((id) =>
+    id.startsWith(APIFY_FALLBACK_PREFIX)
+      ? id.slice(APIFY_FALLBACK_PREFIX.length)
+      : id,
+  );
   const allMentions: RawSocialMention[] = [];
 
-  for (const runId of runIds) {
+  for (const runId of apifyIds) {
     try {
       const { status, datasetId } = await waitForApifyRun(runId, {
         maxWaitMs: 300_000,
