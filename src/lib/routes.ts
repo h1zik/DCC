@@ -60,11 +60,19 @@ export function isBrandHubRoute(pathname: string): boolean {
   return pathname === "/brand-hub" || pathname.startsWith("/brand-hub/");
 }
 
+/** Modul Content & Creator Studio — tim studio, PM, & Market Analyst. */
+export function isContentStudioRoute(pathname: string): boolean {
+  return (
+    pathname === "/content-studio" || pathname.startsWith("/content-studio/")
+  );
+}
+
 /** Research Hub, SEO Toolkit + studio workspace — Market Analyst. */
 export function isMarketAnalystAppRoute(pathname: string): boolean {
   return (
     isResearchHubRoute(pathname) ||
     isSeoRoute(pathname) ||
+    isContentStudioRoute(pathname) ||
     isStudioWorkspaceRoute(pathname)
   );
 }
@@ -100,6 +108,7 @@ export function isStudioWorkspaceRoute(pathname: string): boolean {
     isBrandHubRoute(pathname) ||
     isResearchHubRoute(pathname) ||
     isSeoRoute(pathname) ||
+    isContentStudioRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||

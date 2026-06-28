@@ -3,10 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { Compass, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Compass, Loader2, PenLine, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createBrandStrategyDocument,
+  createManualBrandStrategyDocument,
   deleteBrandStrategyDocument,
   exportBrandStrategyPdfHtml,
   regenerateBrandStrategyDocument,
@@ -92,6 +93,16 @@ export type StrategyDocumentView = {
   errorMessage: string | null;
   updatedAt: string;
 };
+
+/** Dokumen yang dibuat lewat "Input manual" — tanpa jejak AI (evidence & config kosong). */
+function isManualStrategyDoc(doc: StrategyDocumentView): boolean {
+  const refs = Array.isArray(doc.evidenceRefs) ? doc.evidenceRefs : [];
+  const cfg =
+    doc.generationConfig && typeof doc.generationConfig === "object"
+      ? (doc.generationConfig as Record<string, unknown>)
+      : {};
+  return refs.length === 0 && Object.keys(cfg).length === 0;
+}
 
 function parseLines(s: string): string[] {
   return s
@@ -219,6 +230,24 @@ export function BrandStrategyClient({
         router.refresh();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal membuat dokumen."));
+      }
+    });
+  }
+
+  function handleCreateManual() {
+    startTransition(async () => {
+      try {
+        const result = await createManualBrandStrategyDocument({
+          ownerBrandId: brandId,
+          category: category.trim() || null,
+          pmBrief: pmBrief.trim() || null,
+        });
+        toast.success("Dokumen manual dibuat — isi field strategi lalu klik Simpan.");
+        setComposeMode(false);
+        setSelectedId(result.id);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal membuat dokumen manual."));
       }
     });
   }
@@ -354,14 +383,20 @@ export function BrandStrategyClient({
             title="Belum ada dokumen dipilih"
             description={
               documents.length > 0
-                ? "Pilih dokumen di daftar kiri, atau klik Baru untuk membuat strategi dengan AI."
-                : "Klik Baru untuk memilih sumber data dan generate dokumen strategi pertama."
+                ? "Pilih dokumen di daftar kiri, klik Baru untuk generate dengan AI, atau Input manual kalau sudah punya strategi sendiri."
+                : "Klik Baru untuk generate dengan AI, atau Input manual kalau sudah punya brand strategy sendiri."
             }
             action={
-              <Button size="sm" onClick={startCompose}>
-                <Sparkles className="size-3.5" />
-                Buat dokumen baru
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button size="sm" onClick={startCompose}>
+                  <Sparkles className="size-3.5" />
+                  Buat dengan AI
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleCreateManual} disabled={pending}>
+                  <PenLine className="size-3.5" />
+                  Input manual
+                </Button>
+              </div>
             }
           />
         ) : composeMode && !selected ? (
@@ -425,6 +460,15 @@ export function BrandStrategyClient({
                 Generate dokumen
               </Button>
               <Button
+                variant="outline"
+                onClick={handleCreateManual}
+                disabled={pending}
+                title="Buat dokumen kosong untuk diisi strategi yang sudah kamu punya — tanpa AI"
+              >
+                <PenLine className="size-3.5" />
+                Input manual
+              </Button>
+              <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setComposeMode(false)}
@@ -436,16 +480,25 @@ export function BrandStrategyClient({
           </div>
         ) : selected ? (
           <div className={cn("flex flex-col gap-5", hub.entrance)}>
-            <BrandStrategySourcePicker
-              catalog={sourceCatalog}
-              config={generationConfig}
-              onChange={setGenerationConfig}
-            />
-            <BrandEvidencePanel
-              readiness={evidenceReadiness}
-              evidenceRefs={selected.evidenceRefs}
-              brandId={brandId}
-            />
+            {isManualStrategyDoc(selected) ? (
+              <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+                <PenLine className="size-3.5 shrink-0" />
+                Dokumen manual — diisi tangan, tanpa AI. Isi field di bawah lalu klik Simpan.
+              </div>
+            ) : (
+              <>
+                <BrandStrategySourcePicker
+                  catalog={sourceCatalog}
+                  config={generationConfig}
+                  onChange={setGenerationConfig}
+                />
+                <BrandEvidencePanel
+                  readiness={evidenceReadiness}
+                  evidenceRefs={selected.evidenceRefs}
+                  brandId={brandId}
+                />
+              </>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               {isGenerating ? (
                 <span className="inline-flex items-center gap-1.5 text-xs text-primary">

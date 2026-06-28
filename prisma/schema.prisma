@@ -377,6 +377,7 @@ model User {
   seoMarketplaceAnalysesCreated      SeoMarketplaceAnalysis[]      @relation("SeoMarketplaceAnalysisCreator")
   seoReportsCreated                  SeoReport[]                   @relation("SeoReportCreator")
   seoContentTopicRunsCreated         SeoContentTopicRun[]          @relation("SeoContentTopicRunCreator")
+  contentStudioIdeaSetsCreated       ContentStudioIdeaSet[]        @relation("ContentStudioIdeaSetCreator")
 
   @@index([customRoleId])
 }
@@ -463,6 +464,7 @@ model Brand {
   brandPortfolio          BrandPortfolio?
   brandCreativeGuidelines BrandCreativeGuideline[]
   brandAdLibraryMonitors  BrandAdLibraryMonitor[]
+  contentStudioIdeaSets   ContentStudioIdeaSet[]
 }
 
 /**
@@ -4388,4 +4390,79 @@ model SeoContentTopicRun {
 
   @@index([createdById])
   @@index([status])
+}
+
+// ============================================================
+// Content & Creator Studio — Fase 1: Ideation (Content Ideas)
+// Tools marketing untuk ide konten/caption/hashtag yang GROUNDED ke data nyata
+// brand (Review Intel, Ad Library, Trend Radar, Brand Strategy) + feedback loop.
+// ============================================================
+
+enum ContentStudioStatus {
+  PENDING
+  COLLECTING
+  ANALYZING
+  READY
+  FAILED
+}
+
+enum ContentIdeaFeedback {
+  UP
+  DOWN
+}
+
+/**
+ * Satu sesi generate ide konten untuk satu topik/kampanye (brand-scoped).
+ * Ide-nya digrounding ke sinyal nyata brand & dinilai self-critique agar tajam.
+ */
+model ContentStudioIdeaSet {
+  id               String              @id @default(cuid())
+  name             String
+  ownerBrandId     String?
+  ownerBrand       Brand?              @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  topic            String
+  goal             String?
+  platforms        String[]            @default([])
+  status           ContentStudioStatus @default(PENDING)
+  /** Sumber grounding yang benar-benar terpakai (transparansi: review/ad/trend/voice). */
+  groundingSources String[]            @default([])
+  dataNotice       String?             @db.Text
+  aiSummary        String?             @db.Text
+  aiMeta           Json?
+  errorMessage     String?
+  createdById      String
+  createdBy        User                @relation("ContentStudioIdeaSetCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  ideas            ContentStudioIdea[]
+
+  @@index([createdById])
+  @@index([ownerBrandId])
+  @@index([status])
+}
+
+model ContentStudioIdea {
+  id           String               @id @default(cuid())
+  setId        String
+  set          ContentStudioIdeaSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  /** Didenormalisasi dari set agar "winner" bisa diquery cepat per brand untuk few-shot. */
+  ownerBrandId String?
+  title        String
+  angle        String               @db.Text
+  format       String?
+  hook         String?              @db.Text
+  platform     String?
+  cta          String?
+  /** Bukti/citation: sinyal nyata yang mendasari ide — [{ source, text }]. */
+  citations    Json?
+  /** Skor "sharpness" 1-100 dari self-critique (anti-generic). */
+  score        Int?
+  /** Feedback adopsi tim → jadi few-shot untuk generasi berikutnya. */
+  feedback     ContentIdeaFeedback?
+  used         Boolean              @default(false)
+  createdAt    DateTime             @default(now())
+
+  @@index([setId])
+  @@index([ownerBrandId, feedback])
+  @@index([ownerBrandId, used])
 }

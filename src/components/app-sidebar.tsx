@@ -112,6 +112,7 @@ const navFinance = [
 
 const navStudio = [
   { href: "/home", label: "Home", icon: Home },
+  { href: "/content-studio", label: "Content Studio", icon: Sparkles },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -122,6 +123,7 @@ const navStudio = [
 const navMarketAnalyst = [
   { href: "/research-hub", label: "Research Hub", icon: Microscope },
   { href: "/seo", label: "SEO Toolkit", icon: Gauge },
+  { href: "/content-studio", label: "Content Studio", icon: Sparkles },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -134,6 +136,7 @@ const navBrandManager = [
   { href: "/brand-hub", label: "Brand & Creative Hub", icon: Palette },
   { href: "/research-hub", label: "Research Hub", icon: Microscope },
   { href: "/seo", label: "SEO Toolkit", icon: Gauge },
+  { href: "/content-studio", label: "Content Studio", icon: Sparkles },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },

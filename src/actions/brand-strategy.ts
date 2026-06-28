@@ -126,6 +126,38 @@ export async function createBrandStrategyDocument(
   return { id: doc.id };
 }
 
+const manualCreateSchema = z.object({
+  ownerBrandId: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  pmBrief: z.string().optional().nullable(),
+});
+
+/**
+ * Buat dokumen strategi KOSONG secara manual — untuk tim yang sudah punya brand
+ * strategy sendiri. Sengaja MELEWATI evidence gate & TIDAK menjalankan AI:
+ * langsung READY agar bisa langsung diisi lewat editor (updateBrandStrategyDocument)
+ * dan dipakai hilir (Audience, Creative Guideline, grounding Content Studio).
+ */
+export async function createManualBrandStrategyDocument(
+  input: z.infer<typeof manualCreateSchema>,
+) {
+  const session = await requireBrandManager();
+  const data = manualCreateSchema.parse(input);
+
+  const doc = await prisma.brandStrategyDocument.create({
+    data: {
+      ownerBrandId: data.ownerBrandId ?? null,
+      category: data.category?.trim() || null,
+      pmBrief: data.pmBrief?.trim() || null,
+      status: BrandStrategyStatus.READY,
+      createdById: session.user.id,
+    },
+  });
+
+  revalidatePath("/brand-hub/strategy");
+  return { id: doc.id };
+}
+
 export async function regenerateBrandStrategyDocument(
   documentId: string,
   generationConfig?: StrategyGenerationConfig,
