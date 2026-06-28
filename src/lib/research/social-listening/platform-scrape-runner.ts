@@ -151,7 +151,7 @@ export async function startPlatformScrapes(input: {
         if (runIds.length === 0) {
           platformStatus[platform] = "FAILED";
           warnings.push(
-            "Instagram: gagal memulai scrape — hashtag tidak mengembalikan post.",
+            "Instagram: VPS balik 0 (kemungkinan akun/sesi IG di VPS diblok/checkpoint) & fallback Apify tidak tersedia — re-login akun IG di VPS, atau set APIFY_API_TOKEN + APIFY_ACTOR_INSTAGRAM.",
           );
           return;
         }
