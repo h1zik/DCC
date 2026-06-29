@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAgentPanel } from "@/components/agent/agent-panel-context";
 import { TasksNav } from "@/components/nav/tasks-nav";
+import { ChangelogNavItem } from "@/components/changelog/changelog-nav-item";
 import { cn } from "@/lib/utils";
 
 const navCeo = [
@@ -368,6 +369,12 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-auto pt-1">
+          <SidebarGroupContent>
+            <ChangelogNavItem className={sidebarMenuItemClass} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

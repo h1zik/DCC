@@ -10,6 +10,11 @@ export function isProfileRoute(pathname: string): boolean {
   return pathname === "/profile" || pathname.startsWith("/profile/");
 }
 
+/** Changelog / Apa yang Baru — boleh diakses semua peran yang sudah login. */
+export function isChangelogRoute(pathname: string): boolean {
+  return pathname === "/changelog" || pathname.startsWith("/changelog/");
+}
+
 /** Jadwal & pengingat meeting (umum, tidak per ruangan). */
 export function isScheduleRoute(pathname: string): boolean {
   return pathname === "/schedule" || pathname.startsWith("/schedule/");

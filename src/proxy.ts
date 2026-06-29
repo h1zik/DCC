@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import {
   isAdministratorAppRoute,
   isCeoAppRoute,
+  isChangelogRoute,
   isFinanceAppRoute,
   isLogisticsRoute,
   isMarketAnalystAppRoute,
@@ -42,7 +43,7 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
-  if (isProfileRoute(pathname)) {
+  if (isProfileRoute(pathname) || isChangelogRoute(pathname)) {
     return NextResponse.next();
   }
 
