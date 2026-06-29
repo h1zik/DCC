@@ -397,6 +397,7 @@ export function CompetitorDetailClient({
               onReviewIntel={handleSkuReviewIntel}
               reviewSkuId={reviewSkuId}
               pending={pending}
+              trackerCategoryName={competitor.category || competitor.name}
             />
           </ResearchHubSection>
         </TabsContent>
