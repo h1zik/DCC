@@ -1,20 +1,20 @@
 "use client";
 
-import { addDiscoveryProductToCompetitorTracker } from "@/actions/research-product-discovery";
+import { addCompetitorSkuToCompetitorTracker } from "@/actions/research-competitor-product";
 import { CompetitorTrackerDialog } from "@/components/research-hub/competitor-tracker-dialog";
 
 /**
- * Tombol "Tracker" untuk produk hasil Product Discovery.
- * Tipis di atas {@link CompetitorTrackerDialog}; sumber produk = discovery item.
+ * Tombol "Tracker" untuk SKU pada halaman detail Competitor Shop.
+ * Tipis di atas {@link CompetitorTrackerDialog}; sumber produk = CompetitorSku.
  */
-export function DiscoveryCompetitorTrackerDialog({
-  productId,
+export function CompetitorSkuTrackerDialog({
+  skuId,
   productName,
   defaultCategoryName,
   disabled,
   className,
 }: {
-  productId: string;
+  skuId: string;
   productName: string;
   defaultCategoryName: string;
   disabled?: boolean;
@@ -26,9 +26,7 @@ export function DiscoveryCompetitorTrackerDialog({
       defaultCategoryName={defaultCategoryName}
       disabled={disabled}
       className={className}
-      onAdd={(args) =>
-        addDiscoveryProductToCompetitorTracker({ productId, ...args })
-      }
+      onAdd={(args) => addCompetitorSkuToCompetitorTracker({ skuId, ...args })}
     />
   );
 }

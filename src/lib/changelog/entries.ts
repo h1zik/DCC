@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-06-29-competitor-shop-tracker-button",
+    date: "2026-06-29",
+    title: "Competitor Shop — tombol Tracker per produk",
+    category: "new",
+    description:
+      "Di halaman detail Competitor Shop (tab SKU), tiap produk kini punya tombol \"Tracker\" untuk langsung menambahkannya ke Competitor — Products tracker, sama seperti di Product Discovery.",
+    highlights: [
+      "Tersedia di tampilan kartu maupun daftar",
+      "Pilih kategori yang ada atau buat kategori baru",
+      "Scraping berjalan di latar belakang",
+    ],
+  },
+  {
     id: "2026-06-29-seo-toolkit",
     date: "2026-06-29",
     title: "SEO Toolkit — modul baru",

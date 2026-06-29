@@ -26,6 +26,16 @@ const addProductSchema = z.object({
   marketplace: z.nativeEnum(ResearchMarketplace).optional(),
 });
 
+const addSkuToTrackerSchema = z
+  .object({
+    skuId: z.string().min(1),
+    categoryId: z.string().min(1).optional(),
+    newCategoryName: z.string().min(1).max(120).optional(),
+  })
+  .refine((data) => data.categoryId || data.newCategoryName?.trim(), {
+    message: "Pilih kategori atau buat kategori baru.",
+  });
+
 function revalidateProductPaths(categoryId: string, trackId?: string) {
   // The same product data model is surfaced under BOTH research-hub and brand-hub,
   // so invalidate both prefixes — otherwise the brand-hub product pages stay stale.
@@ -127,6 +137,46 @@ export async function addCompetitorProductTrack(
 
   revalidateProductPaths(data.categoryId, track.id);
   return { id: track.id };
+}
+
+/**
+ * Tambahkan satu SKU dari Competitor Shop ke Competitor — Products tracker.
+ * Mirror dari `addDiscoveryProductToCompetitorTracker`, tetapi sumber produk
+ * adalah `CompetitorSku` (URL + marketplace dari toko kompetitornya).
+ */
+export async function addCompetitorSkuToCompetitorTracker(
+  input: z.infer<typeof addSkuToTrackerSchema>,
+) {
+  await requireMarketAnalyst();
+  const data = addSkuToTrackerSchema.parse(input);
+
+  const sku = await prisma.competitorSku.findUnique({
+    where: { id: data.skuId },
+    select: {
+      productUrl: true,
+      competitor: { select: { marketplace: true } },
+    },
+  });
+  if (!sku) throw new Error("Produk tidak ditemukan.");
+
+  let categoryId = data.categoryId;
+  if (!categoryId) {
+    const created = await createCompetitorProductCategory({
+      name: data.newCategoryName!.trim(),
+    });
+    categoryId = created.id;
+  }
+
+  const result = await addCompetitorProductTrack(
+    {
+      categoryId,
+      productUrl: sku.productUrl,
+      marketplace: sku.competitor.marketplace,
+    },
+    { background: true },
+  );
+
+  return { trackId: result.id, categoryId };
 }
 
 export async function refreshCompetitorProductTrack(trackId: string) {

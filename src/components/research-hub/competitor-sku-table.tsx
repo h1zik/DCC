@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReviewIntelSourceStatus } from "@prisma/client";
 import { ExternalLink, Loader2, MessageSquareText } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
+import { CompetitorSkuTrackerDialog } from "@/components/research-hub/competitor-sku-tracker-dialog";
 import { formatRp, SOURCE_STATUS_LABELS } from "@/lib/research/labels";
 import { formatRevenueIdr, formatSoldThreshold } from "@/lib/research/shop-product-metrics";
 import { hub } from "@/components/research-hub/research-hub-primitives";
@@ -43,6 +44,7 @@ export function CompetitorSkuTable({
   onReviewIntel,
   reviewSkuId,
   pending,
+  trackerCategoryName,
   showImages = false,
 }: {
   rows: CompetitorSkuRow[];
@@ -50,6 +52,8 @@ export function CompetitorSkuTable({
   onReviewIntel?: (sku: CompetitorSkuRow) => void;
   reviewSkuId?: string | null;
   pending?: boolean;
+  /** Bila diisi, tampilkan tombol "Tracker" pada kolom Aksi tiap SKU. */
+  trackerCategoryName?: string;
   showImages?: boolean;
 }) {
   if (rows.length === 0) {
@@ -190,6 +194,14 @@ export function CompetitorSkuTable({
                       </p>
                     ) : null}
                   </>
+                ) : null}
+                {trackerCategoryName ? (
+                  <CompetitorSkuTrackerDialog
+                    skuId={sku.id}
+                    productName={sku.name}
+                    defaultCategoryName={trackerCategoryName}
+                    className="h-8 w-full text-xs"
+                  />
                 ) : null}
               </div>
             </TableCell>

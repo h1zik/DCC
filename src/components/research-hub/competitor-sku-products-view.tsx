@@ -16,6 +16,7 @@ import {
   CompetitorSkuTable,
   type CompetitorSkuRow,
 } from "@/components/research-hub/competitor-sku-table";
+import { CompetitorSkuTrackerDialog } from "@/components/research-hub/competitor-sku-tracker-dialog";
 import {
   ShopProductDetailLink,
   ShopProductMetricsStrip,
@@ -35,12 +36,15 @@ function CompetitorSkuCard({
   onReviewIntel,
   reviewSkuId,
   pending,
+  trackerCategoryName,
 }: {
   sku: CompetitorSkuRow;
   competitorId?: string;
   onReviewIntel?: (sku: CompetitorSkuRow) => void;
   reviewSkuId?: string | null;
   pending?: boolean;
+  /** Bila diisi, tampilkan tombol "Tracker" untuk menambah SKU ke Competitor — Products. */
+  trackerCategoryName?: string;
 }) {
   const detailHref = competitorId
     ? `/research-hub/competitor-tracker/${competitorId}/skus/${sku.id}`
@@ -123,52 +127,62 @@ function CompetitorSkuCard({
 
         <ShopProductMetricsStrip metrics={sku} compact />
 
-        <div className="flex gap-2 border-t border-border/40 pt-3">
-          {detailHref ? (
+        <div className="flex flex-col gap-2 border-t border-border/40 pt-3">
+          <div className="flex gap-2">
+            {detailHref ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="flex-1 text-xs"
+                render={<Link href={detailHref} />}
+              >
+                <LineChart className="size-3.5" aria-hidden />
+                Detail
+              </Button>
+            ) : null}
+            {onReviewIntel ? (
+              <Button
+                type="button"
+                variant={sku.reviewIntelSourceId ? "secondary" : "outline"}
+                size="sm"
+                className="flex-1 text-xs"
+                disabled={pending && reviewSkuId === sku.id}
+                onClick={() => onReviewIntel(sku)}
+              >
+                {pending && reviewSkuId === sku.id ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <MessageSquareText className="size-3.5" aria-hidden />
+                )}
+                {sku.reviewIntelSourceId ? "Lihat Intel" : "Analisis"}
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"
-              variant="secondary"
-              className="flex-1 text-xs"
-              render={<Link href={detailHref} />}
+              variant="ghost"
+              className="shrink-0"
+              render={
+                <a
+                  href={sku.productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Buka ${sku.name}`}
+                />
+              }
             >
-              <LineChart className="size-3.5" aria-hidden />
-              Detail
+              <ExternalLink className="size-3.5" aria-hidden />
             </Button>
+          </div>
+          {trackerCategoryName ? (
+            <CompetitorSkuTrackerDialog
+              skuId={sku.id}
+              productName={sku.name}
+              defaultCategoryName={trackerCategoryName}
+              className="w-full text-xs"
+            />
           ) : null}
-          {onReviewIntel ? (
-            <Button
-              type="button"
-              variant={sku.reviewIntelSourceId ? "secondary" : "outline"}
-              size="sm"
-              className="flex-1 text-xs"
-              disabled={pending && reviewSkuId === sku.id}
-              onClick={() => onReviewIntel(sku)}
-            >
-              {pending && reviewSkuId === sku.id ? (
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              ) : (
-                <MessageSquareText className="size-3.5" aria-hidden />
-              )}
-              {sku.reviewIntelSourceId ? "Lihat Intel" : "Analisis"}
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="shrink-0"
-            render={
-              <a
-                href={sku.productUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Buka ${sku.name}`}
-              />
-            }
-          >
-            <ExternalLink className="size-3.5" aria-hidden />
-          </Button>
         </div>
         {sku.reviewIntelStatus ? (
           <p className="text-muted-foreground text-center text-[10px]">
@@ -186,6 +200,7 @@ export function CompetitorSkuProductsView({
   onReviewIntel,
   reviewSkuId,
   pending,
+  trackerCategoryName,
   defaultView = "card",
 }: {
   rows: CompetitorSkuRow[];
@@ -193,6 +208,8 @@ export function CompetitorSkuProductsView({
   onReviewIntel?: (sku: CompetitorSkuRow) => void;
   reviewSkuId?: string | null;
   pending?: boolean;
+  /** Bila diisi, tampilkan tombol "Tracker" pada tiap SKU (card & list). */
+  trackerCategoryName?: string;
   defaultView?: SkuViewMode;
 }) {
   const [view, setView] = useState<SkuViewMode>(defaultView);
@@ -273,6 +290,7 @@ export function CompetitorSkuProductsView({
                 onReviewIntel={onReviewIntel}
                 reviewSkuId={reviewSkuId}
                 pending={pending}
+                trackerCategoryName={trackerCategoryName}
               />
             </div>
           ))}
@@ -285,6 +303,7 @@ export function CompetitorSkuProductsView({
             onReviewIntel={onReviewIntel}
             reviewSkuId={reviewSkuId}
             pending={pending}
+            trackerCategoryName={trackerCategoryName}
             showImages
           />
         </div>
