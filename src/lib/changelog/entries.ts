@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-06-30-attendance-checkin-guard",
+    date: "2026-06-30",
+    title: "Absensi — cegah salah input check-in/check-out",
+    category: "fixed",
+    description:
+      "Tombol di menu Absensi kini bergantian: setelah check-in hanya tombol Check Out yang tampil, dan sebaliknya — supaya tidak ada lagi check-in dobel karena kepencet. Aturan urutan masuk/pulang juga divalidasi di server agar tetap aman walau dibuka di beberapa tab.",
+    highlights: [
+      "Tombol Check In otomatis disembunyikan setelah check-in",
+      "Check-in lalu langsung check-out tetap bisa (tidak lagi ke-blok)",
+      "Validasi urutan masuk/pulang di sisi server",
+    ],
+  },
+  {
     id: "2026-06-29-competitor-shop-tracker-button",
     date: "2026-06-29",
     title: "Competitor Shop — tombol Tracker per produk",
