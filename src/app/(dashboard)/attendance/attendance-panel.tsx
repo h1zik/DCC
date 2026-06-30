@@ -190,6 +190,10 @@ function HomeView({
   onAction: (v: View) => void;
   historyRows: AttendanceRow[];
 }) {
+  // Sudah check-in tapi belum check-out → tampilkan tombol Check Out saja.
+  // Selain itu (belum check-in, atau sudah pulang) → tampilkan Check In saja.
+  const showCheckOut = checkedIn && !checkedOut;
+
   return (
     <div className="flex flex-col gap-6">
       {!hasFace ? (
@@ -222,21 +226,27 @@ function HomeView({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <ActionButton
-                icon={LogIn}
-                label="Check In"
-                hint={checkedIn ? "Sudah masuk" : "Mulai kerja"}
-                tone="emerald"
-                onClick={() => onAction("checkin")}
-              />
-              <ActionButton
-                icon={LogOut}
-                label="Check Out"
-                hint={checkedOut ? "Sudah pulang" : "Selesai kerja"}
-                tone="blue"
-                onClick={() => onAction("checkout")}
-              />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {/* Check In hanya muncul saat belum check-in (atau sudah pulang),
+                  Check Out hanya saat sudah check-in tapi belum pulang — supaya
+                  tidak terjadi salah input / kepencet dua kali. */}
+              {showCheckOut ? (
+                <ActionButton
+                  icon={LogOut}
+                  label="Check Out"
+                  hint="Selesai kerja"
+                  tone="blue"
+                  onClick={() => onAction("checkout")}
+                />
+              ) : (
+                <ActionButton
+                  icon={LogIn}
+                  label="Check In"
+                  hint="Mulai kerja"
+                  tone="emerald"
+                  onClick={() => onAction("checkin")}
+                />
+              )}
               <ActionButton
                 icon={Thermometer}
                 label="Sakit"

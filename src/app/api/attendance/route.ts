@@ -105,17 +105,52 @@ export async function POST(request: NextRequest) {
   const userId = session.user.id;
   const today = getTodayDateString();
 
-  // Cegah double-submit dalam 15 detik terakhir.
-  const last = await prisma.attendance.findFirst({
+  // Ambil semua catatan hari ini (terbaru lebih dulu) untuk validasi status.
+  const todayRecords = await prisma.attendance.findMany({
     where: { userId, date: today },
     orderBy: { timestamp: "desc" },
   });
-  if (last) {
-    const diffSeconds = (Date.now() - last.timestamp.getTime()) / 1000;
+
+  // 1) Cegah double-tap pada tombol yang SAMA (kepencet 2x) dalam 15 detik.
+  //    Hanya berlaku per-jenis, jadi check-in lalu langsung check-out tetap bisa.
+  const lastSameType = todayRecords.find((r) => r.type === type);
+  if (lastSameType) {
+    const diffSeconds = (Date.now() - lastSameType.timestamp.getTime()) / 1000;
     if (diffSeconds < 15) {
       return NextResponse.json(
         { error: "Mohon tunggu sebentar sebelum absen lagi." },
         { status: 429 },
+      );
+    }
+  }
+
+  // 2) State-machine masuk/pulang. Status saat ini ditentukan oleh event
+  //    CHECK_IN / CHECK_OUT paling akhir hari ini.
+  const lastInOut = todayRecords.find(
+    (r) => r.type === "CHECK_IN" || r.type === "CHECK_OUT",
+  );
+  const currentlyCheckedIn = lastInOut?.type === "CHECK_IN";
+
+  if (type === "CHECK_IN" && currentlyCheckedIn) {
+    return NextResponse.json(
+      { error: "Anda sudah check-in. Silakan check-out terlebih dahulu." },
+      { status: 409 },
+    );
+  }
+  if (type === "CHECK_OUT") {
+    if (!lastInOut) {
+      return NextResponse.json(
+        { error: "Anda belum check-in hari ini." },
+        { status: 409 },
+      );
+    }
+    if (!currentlyCheckedIn) {
+      return NextResponse.json(
+        {
+          error:
+            "Anda sudah check-out. Silakan check-in dulu untuk mulai kerja lagi.",
+        },
+        { status: 409 },
       );
     }
   }
