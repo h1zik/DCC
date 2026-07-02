@@ -262,20 +262,6 @@ async function buildServer(): Promise<McpServer> {
 
   server.tool(
 
-    "dcc_health_check",
-
-    "Cek koneksi token ke DCC Railway tanpa mengekspos data bisnis.",
-
-    {},
-
-    async () => asText(await dccFetch("/api/ai/health")),
-
-  );
-
-
-
-  server.tool(
-
     "list_rooms",
 
     "Daftar ruangan kerja DCC yang dapat diakses (nama, brand, section).",
@@ -675,30 +661,6 @@ async function buildServer(): Promise<McpServer> {
       asText(
 
         await dccFetch(`/api/ai/approvals/tasks${buildQuery({ limit })}`),
-
-      ),
-
-  );
-
-
-
-  server.tool(
-
-    "list_pending_pipeline_approvals",
-
-    "Approval legacy CEO: proyek yang mengajukan pindah tahap enum pipeline (terpisah dari progress milestone).",
-
-    { limit: limitSchema.describe("Default 20, maks 50") },
-
-    async ({ limit }) =>
-
-      asText(
-
-        await dccFetch(
-
-          `/api/ai/approvals/pipeline${buildQuery({ limit })}`,
-
-        ),
 
       ),
 

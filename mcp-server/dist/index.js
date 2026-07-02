@@ -111,7 +111,6 @@ async function buildServer() {
             .describe("Filter: all (default), critical, low"),
         limit: limitSchema.describe("Default 30, maks 50"),
     }, async ({ severity, limit }) => asText(await dccFetch(`/api/ai/inventory/alerts${buildQuery({ severity, limit })}`)));
-    server.tool("dcc_health_check", "Cek koneksi token ke DCC Railway tanpa mengekspos data bisnis.", {}, async () => asText(await dccFetch("/api/ai/health")));
     server.tool("list_rooms", "Daftar ruangan kerja DCC yang dapat diakses (nama, brand, section).", {}, async () => asText(await dccFetch("/api/ai/rooms")));
     server.tool("summarize_workspaces", "Ringkasan workload semua ruangan: overdue, in progress, tugas aktif per ruang.", {}, async () => asText(await dccFetch("/api/ai/workspaces/summary")));
     server.tool("analyze_room_workload", "Analisis mendalam satu ruangan: distribusi status, overdue, deadline minggu ini, insight.", { roomNameOrId: roomNameSchema }, async ({ roomNameOrId }) => asText(await dccFetch(`/api/ai/rooms/workload${buildQuery({ roomNameOrId })}`)));
@@ -209,7 +208,6 @@ async function buildServer() {
     }, async ({ taskId }) => asText(await dccFetch(`/api/ai/tasks/${encodeURIComponent(taskId)}`)));
     server.tool("list_room_members", "Daftar anggota ruangan beserta peran (PIC potensial).", { roomNameOrId: roomNameSchema }, async ({ roomNameOrId }) => asText(await dccFetch(`/api/ai/rooms/members${buildQuery({ roomNameOrId })}`)));
     server.tool("list_pending_task_approvals", "Tugas yang menunggu persetujuan CEO sebelum ditandai selesai.", { limit: limitSchema.describe("Default 20, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/approvals/tasks${buildQuery({ limit })}`)));
-    server.tool("list_pending_pipeline_approvals", "Approval legacy CEO: proyek yang mengajukan pindah tahap enum pipeline (terpisah dari progress milestone).", { limit: limitSchema.describe("Default 20, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/approvals/pipeline${buildQuery({ limit })}`)));
     server.tool("list_pending_finance_spend", "Pengajuan pengeluaran finance berstatus submitted — menunggu persetujuan.", { limit: limitSchema.describe("Default 20, maks 50") }, async ({ limit }) => asText(await dccFetch(`/api/ai/approvals/finance${buildQuery({ limit })}`)));
     server.tool("get_schedule", "Jadwal umum (meeting/acara) mendatang di DCC.", {
         daysAhead: z
