@@ -140,16 +140,6 @@ export function registerStrategicTools(server: McpServer, deps: Deps) {
   );
 
   server.tool(
-    "get_team_workload_summary",
-    "Ringkasan beban tugas aktif per PIC (overdue, blocked, in progress) + sample 5 judul tugas. Untuk satu orang pakai get_user_tasks.",
-    { limit: limitSchema },
-    async ({ limit }) =>
-      asText(
-        await dccFetch(`/api/ai/team/workload${buildQuery({ limit })}`),
-      ),
-  );
-
-  server.tool(
     "get_attendance_weekly_trend",
     "Trend kehadiran 7 hari: check-in, sakit, izin, estimasi absent.",
     {},

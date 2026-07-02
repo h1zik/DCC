@@ -149,7 +149,7 @@ async function buildServer() {
             .optional()
             .describe("Default 50, maks 100"),
     }, async ({ userNameOrEmailOrId, status, includeDone, limit }) => asText(await dccFetch(`/api/ai/users/tasks${buildQuery({ userNameOrEmailOrId, status, includeDone, limit })}`)));
-    server.tool("get_users_task_overview", "Ringkasan semua user: berapa tugas aktif masing-masing (+ sample judul tugas jika diminta). Ideal untuk 'siapa paling sibuk?' atau 'PIC siapa saja?'.", {
+    server.tool("get_users_task_overview", "Beban tim / workload semua user: jumlah tugas aktif per orang (overdue, blocked, in progress, todo) + sample judul tugas jika includeTaskTitles=true. Tool utama untuk 'siapa paling sibuk?', 'beban tim', 'workload PIC', atau 'PIC siapa saja?'. Untuk daftar lengkap satu orang pakai get_user_tasks.", {
         includeTaskTitles: z
             .boolean()
             .optional()

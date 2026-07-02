@@ -44,7 +44,7 @@ export function registerResearchTools(server: McpServer, deps: Deps) {
 
   server.tool(
     "analyze_competitor_pricing",
-    "Perbandingan harga kompetitor per SKU (currentPrice IDR), min/max/avg, promo, rating. Tool utama untuk 'berapa harga pasar', 'bandingkan harga', 'kompetitor termurah', body lotion/skincare pricing. Jangan stop di list_research_competitors — tool ini punya harga detail per SKU.",
+    "[HARGA per-SKU] Perbandingan harga kompetitor per SKU (currentPrice IDR), min/max/avg, promo, rating. Tool utama untuk 'berapa harga pasar', 'bandingkan harga', 'kompetitor termurah', body lotion/skincare pricing. Jangan stop di list_research_competitors — tool ini punya harga detail per SKU.",
     {
       productQuery: z
         .string()
@@ -81,7 +81,7 @@ export function registerResearchTools(server: McpServer, deps: Deps) {
 
   server.tool(
     "list_research_competitors",
-    "Daftar kompetitor aktif di Competitor Tracker beserta ringkasan harga (min/max/avg). Untuk perbandingan detail pakai analyze_competitor_pricing.",
+    "[Kompetitor level-TOKO] Daftar toko/kompetitor aktif di Competitor Tracker beserta ringkasan harga (min/max/avg). Untuk harga detail per SKU pakai analyze_competitor_pricing; untuk produk individual terlacak pakai list_competitor_product_categories.",
     { limit: limitSchema.describe("Default 40, maks 50") },
     async ({ limit }) =>
       asText(
@@ -103,7 +103,7 @@ export function registerResearchTools(server: McpServer, deps: Deps) {
 
   server.tool(
     "list_competitor_product_categories",
-    "Daftar kategori Competitor Products — tracker produk kompetitor level-PRODUK (per item, bukan per toko). Tiap kategori berisi ringkasan jumlah produk terlacak, harga (min/max/avg), jumlah alert. Panggil dulu untuk dapat categoryId sebelum get_competitor_product_category. BEDA dari list_research_competitors (level-toko).",
+    "[Kompetitor level-PRODUK] Daftar kategori Competitor Products — tracker produk kompetitor per item (bukan per toko). Tiap kategori berisi ringkasan jumlah produk terlacak, harga (min/max/avg), jumlah alert. Panggil dulu untuk dapat categoryId sebelum get_competitor_product_category. BEDA dari list_research_competitors (level-toko).",
     { limit: limitSchema.describe("Default 40, maks 50") },
     async ({ limit }) =>
       asText(
