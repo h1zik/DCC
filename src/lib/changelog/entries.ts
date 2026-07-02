@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-02-security-hardening",
+    date: "2026-07-02",
+    title: "Keamanan aplikasi diperkuat",
+    category: "improved",
+    description:
+      "Serangkaian penguatan keamanan menyeluruh untuk melindungi data perusahaan: akun & login lebih aman, akses data oleh AI Assistant dibatasi sesuai peran, dan berbagai celah teknis ditutup. Tidak ada perubahan pada cara kamu memakai aplikasi.",
+    highlights: [
+      "Perlindungan login dari percobaan tebak-password berulang",
+      "Akses data AI Assistant dikunci sesuai peran (tidak bisa dinaikkan sembarangan)",
+      "Header keamanan & batas unggahan diperketat",
+    ],
+  },
+  {
     id: "2026-07-02-mcp-streamable-http",
     date: "2026-07-02",
     title: "AI Assistant — koneksi lewat HTTP (Streamable HTTP)",
