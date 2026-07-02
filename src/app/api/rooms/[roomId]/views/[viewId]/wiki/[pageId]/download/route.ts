@@ -13,6 +13,7 @@ import {
   WIKI_EXPORT_MIME,
 } from "@/lib/wiki-export";
 import { buildWikiDocxBuffer } from "@/lib/wiki-docx-export";
+import { sanitizeRichHtml } from "@/lib/security/sanitize-html";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -75,7 +76,7 @@ export async function GET(req: Request, { params }: Ctx) {
     let body: string;
     switch (format) {
       case "html":
-        body = buildWikiHtmlDocument(page.title, page.content);
+        body = buildWikiHtmlDocument(page.title, sanitizeRichHtml(page.content));
         break;
       case "md":
         body = `# ${page.title}\n\n${htmlToMarkdown(page.content)}`;

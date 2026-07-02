@@ -41,6 +41,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# scratch / debug artifacts (jangan commit — bisa memuat data/kunci pihak ketiga)
+tmp-*
+/tmp-vps-samples/
+
 # Unggahan lokal di server (tasks, rooms, avatar, branding, content plan, dll.)
 # File tetap di disk; hanya tidak ikut commit/push ke GitHub.
 /public/uploads/*
