@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-02-documents-redesign",
+    date: "2026-07-02",
+    title: "Documents ruangan — tampilan baru yang lebih rapi",
+    category: "improved",
+    description:
+      "Halaman Documents di tiap ruangan didesain ulang agar lebih bersih dan mudah dipakai. Semua kontrol kini jadi satu bar, unggah bisa langsung tarik-lepas file ke mana saja, dan folder dipisah rapi dari file. Semua fitur lama tetap ada.",
+    highlights: [
+      "Atur ukuran kartu (Besar/Sedang/Kecil) hingga 8 kolom — pilihan tersimpan",
+      "Folder tampil terpisah di atas, dengan tombol 'Lihat semua' bila banyak",
+      "Kartu file lebih ringkas; tombol unduh/pindah/hapus muncul saat diarahkan",
+      "Tarik & lepas file ke mana saja di area untuk mengunggah",
+    ],
+  },
+  {
     id: "2026-07-02-security-hardening",
     date: "2026-07-02",
     title: "Keamanan aplikasi diperkuat",
