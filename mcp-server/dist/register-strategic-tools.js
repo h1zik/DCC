@@ -43,4 +43,27 @@ export function registerStrategicTools(server, deps) {
         roomNameOrId: z.string().optional().describe("Filter satu ruangan"),
     }, async ({ roomNameOrId }) => asText(await dccFetch(`/api/ai/content-plan/status${buildQuery({ roomNameOrId })}`)));
     server.tool("get_mcp_capabilities", "Daftar modul DCC yang bisa diakses dengan role MCP saat ini.", {}, async () => asText(await dccFetch("/api/ai/meta/capabilities")));
+    server.tool("get_company_risks", "Rollup risiko perusahaan TERURUT severity dalam satu daftar — 'apa yang perlu perhatian sekarang'. Gabungan overdue, tugas blocked, proyek macet, stok kritis, AP/AR overdue, dan approval menua. Tool utama untuk 'apa yang genting', 'ada masalah apa', 'kondisi risiko'.", {}, async () => asText(await dccFetch("/api/ai/risks")));
+    server.tool("get_brand_overview", "Dossier 360 satu brand: proyek + progress milestone, kesehatan tugas per status, stok SKU brand (kritis/rendah), outgoing sales 90 hari, dan ringkasan content plan. Tool utama untuk 'gimana kondisi brand X', 'overview brand', 'brand X sehat tidak'.", {
+        brandNameOrId: z
+            .string()
+            .min(1)
+            .describe('Nama atau ID brand, mis. "Dominatus"'),
+    }, async ({ brandNameOrId }) => asText(await dccFetch(`/api/ai/brands/overview${buildQuery({ brandNameOrId })}`)));
+    server.tool("get_recent_activity", "Change feed lintas modul — 'apa yang bergerak' N hari terakhir: tugas dibuat/selesai, milestone selesai/terhambat, dokumen baru, pergerakan stok, jadwal, jurnal finance. Tool utama untuk 'apa yang terjadi belakangan', 'update terbaru', 'aktivitas minggu ini'.", {
+        days: z
+            .number()
+            .int()
+            .min(1)
+            .max(30)
+            .optional()
+            .describe("Jendela hari ke belakang (default 7, maks 30)"),
+        limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(80)
+            .optional()
+            .describe("Maks event dikembalikan (default 40, maks 80)"),
+    }, async ({ days, limit }) => asText(await dccFetch(`/api/ai/activity${buildQuery({ days, limit })}`)));
 }
