@@ -6,15 +6,13 @@
   "description": "MCP read-only bridge: Odysseus -> DCC Railway AI API",
   "scripts": {
     "start": "node dist/index.js",
-    "build": "tsc",
-    "dev": "tsc && node dist/index.js"
+    "build": "node ./node_modules/typescript/bin/tsc",
+    "dev": "npm run build && node dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
     "@types/node": "^20.17.19",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "zod": "^3.24.2"
   }
 }
