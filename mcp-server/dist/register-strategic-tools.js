@@ -35,7 +35,6 @@ export function registerStrategicTools(server, deps) {
         month: z.number().int().min(1).max(12).optional(),
     }, async ({ year, month }) => asText(await dccFetch(`/api/ai/finance/budget-vs-actual${buildQuery({ year, month })}`)));
     server.tool("get_blocked_tasks_summary", "Semua tugas berstatus BLOCKED lintas ruangan.", { limit: limitSchema }, async ({ limit }) => asText(await dccFetch(`/api/ai/tasks/blocked${buildQuery({ limit })}`)));
-    server.tool("get_team_workload_summary", "Ringkasan beban tugas aktif per PIC (overdue, blocked, in progress) + sample 5 judul tugas. Untuk satu orang pakai get_user_tasks.", { limit: limitSchema }, async ({ limit }) => asText(await dccFetch(`/api/ai/team/workload${buildQuery({ limit })}`)));
     server.tool("get_attendance_weekly_trend", "Trend kehadiran 7 hari: check-in, sakit, izin, estimasi absent.", {}, async () => asText(await dccFetch("/api/ai/attendance/weekly-trend")));
     server.tool("list_org_users", "Daftar pengguna organisasi (nama, email, role). Untuk jumlah/judul tugas per user pakai get_users_task_overview atau get_user_tasks.", {
         limit: z.number().int().min(1).max(80).optional(),
