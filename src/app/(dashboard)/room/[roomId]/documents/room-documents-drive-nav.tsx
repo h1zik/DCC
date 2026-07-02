@@ -121,7 +121,7 @@ function DriveFolderTreeNode({
           className={cn(
             "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
             active
-              ? "bg-primary text-primary-foreground"
+              ? "bg-primary/10 text-primary font-medium"
               : "text-foreground hover:bg-muted",
           )}
         >
@@ -135,7 +135,7 @@ function DriveFolderTreeNode({
             className={cn(
               "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
               active
-                ? "bg-primary-foreground/15 text-primary-foreground"
+                ? "bg-primary/15 text-primary"
                 : "bg-muted text-muted-foreground",
             )}
           >
@@ -229,7 +229,7 @@ export function DriveFolderTree({
         className={cn(
           "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
           atRoot
-            ? "bg-primary text-primary-foreground"
+            ? "bg-primary/10 text-primary font-medium"
             : "text-foreground hover:bg-muted",
         )}
       >
@@ -243,7 +243,7 @@ export function DriveFolderTree({
           className={cn(
             "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
             atRoot
-              ? "bg-primary-foreground/15 text-primary-foreground"
+              ? "bg-primary/15 text-primary"
               : "bg-muted text-muted-foreground",
           )}
         >
@@ -268,9 +268,87 @@ export function DriveFolderTree({
   );
 }
 
+/**
+ * Kartu folder ringkas (horizontal) untuk seksi "Folder" di atas grid file.
+ * Memisahkan folder dari kartu file thumbnail agar rapi & mudah dipindai.
+ */
+export function DriveFolderChip({
+  folder,
+  isRoomManager,
+  onOpen,
+  onRename,
+  onDelete,
+  onDownload,
+}: {
+  folder: DriveFolderRow;
+  isRoomManager: boolean;
+  onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <li>
+      <div className="group border-border bg-card hover:border-primary/40 hover:bg-muted/40 relative flex items-center gap-3 rounded-xl border p-2.5 shadow-sm transition-colors">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 flex size-10 shrink-0 items-center justify-center rounded-xl">
+            <Folder className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="text-foreground block truncate text-sm font-medium">
+              {folder.name}
+            </span>
+            <span className="text-muted-foreground block text-[11px] tabular-nums">
+              {folder._count.documents} file
+            </span>
+          </span>
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Aksi folder ${folder.name}`}
+                className="text-muted-foreground shrink-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+              />
+            }
+          >
+            <MoreVertical className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onDownload}>
+              <Download className="size-3.5" />
+              Unduh ZIP
+            </DropdownMenuItem>
+            {isRoomManager ? (
+              <>
+                <DropdownMenuItem onClick={onRename}>
+                  <Pencil className="size-3.5" />
+                  Ganti nama
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                  <Trash2 className="size-3.5" />
+                  Hapus
+                </DropdownMenuItem>
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </li>
+  );
+}
+
 export function DriveFolderGridCard({
   folder,
   view,
+  compact = false,
   isRoomManager,
   onOpen,
   onRename,
@@ -279,6 +357,7 @@ export function DriveFolderGridCard({
 }: {
   folder: DriveFolderRow;
   view: "grid" | "list";
+  compact?: boolean;
   isRoomManager: boolean;
   onOpen: () => void;
   onRename: () => void;
@@ -351,14 +430,31 @@ export function DriveFolderGridCard({
           className="flex w-full flex-col items-stretch text-left"
         >
           <div className="bg-amber-500/10 flex aspect-[4/3] items-center justify-center">
-            <Folder className="text-amber-600 dark:text-amber-400 size-12 opacity-90" />
+            <Folder
+              className={cn(
+                "text-amber-600 dark:text-amber-400 opacity-90",
+                compact ? "size-8" : "size-12",
+              )}
+            />
           </div>
-          <div className="space-y-0.5 p-3">
-            <p className="text-foreground line-clamp-2 text-sm font-medium leading-snug">
+          <div className={cn("space-y-0.5", compact ? "p-2" : "p-3")}>
+            <p
+              className={cn(
+                "text-foreground line-clamp-2 font-medium leading-snug",
+                compact ? "text-xs" : "text-sm",
+              )}
+            >
               {folder.name}
             </p>
-            <p className="text-muted-foreground text-[11px]">
-              Folder · {folder._count.documents} file
+            <p
+              className={cn(
+                "text-muted-foreground",
+                compact ? "text-[10px]" : "text-[11px]",
+              )}
+            >
+              {compact
+                ? `${folder._count.documents} file`
+                : `Folder · ${folder._count.documents} file`}
             </p>
           </div>
         </button>

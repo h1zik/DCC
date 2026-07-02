@@ -35,6 +35,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -50,6 +51,12 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import {
   asyncPool,
@@ -68,6 +75,7 @@ import {
 } from "@/lib/room-document-folders";
 import {
   DriveBreadcrumb,
+  DriveFolderChip,
   DriveFolderGridCard,
   DriveFolderTree,
   type DriveFolderRow,
@@ -99,14 +107,16 @@ import {
   Grid3x3,
   HardDrive,
   Info,
+  LayoutGrid,
   LayoutList,
   Loader2,
   Music,
-  Pencil,
   Play,
   Search,
+  SlidersHorizontal,
   Tag,
   Trash2,
+  Upload,
   User,
   X,
 } from "lucide-react";
@@ -138,6 +148,24 @@ const SORT_LABEL: Record<SortKey, string> = {
   uploader: "Pengunggah",
 };
 
+/** Kepadatan grid — mengatur jumlah kolom & ukuran kartu file/folder. */
+type GridDensity = "besar" | "sedang" | "kecil";
+
+const DENSITY_STORAGE_KEY = "dcc:doc-grid-density";
+
+const DENSITY_LABEL: Record<GridDensity, string> = {
+  besar: "Besar",
+  sedang: "Sedang",
+  kecil: "Kecil",
+};
+
+/** Kelas kolom per kepadatan (angka mengacu ke lebar layar 2xl). */
+const DENSITY_GRID: Record<GridDensity, string> = {
+  besar: "gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
+  sedang: "gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+  kecil: "gap-2 grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8",
+};
+
 function mimeSortCategory(mimeType: string): number {
   if (mimeType.startsWith("video/")) return 0;
   if (mimeType.startsWith("image/")) return 1;
@@ -158,6 +186,13 @@ type UploadJob = {
 
 /** Batasi DOM sekaligus — daftar besar jadi ringan; preview tetap penuh. */
 const DOCS_PAGE_SIZE = 40;
+
+/**
+ * Folder yang tampil sebelum di-ciutkan (± 2 baris di grid lebar). Kalau lebih
+ * dari ini, sisanya disembunyikan di balik tombol "Lihat semua" agar seksi file
+ * tetap mudah dijangkau di lokasi yang folder-heavy.
+ */
+const FOLDER_COLLAPSE_LIMIT = 8;
 
 function formatFileSize(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -187,35 +222,37 @@ function fileTypeMeta(mimeType: string): {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   tone: string;
+  /** Latar lembut senada tipe — untuk placeholder file non-visual. */
+  bg: string;
 } {
   if (mimeType.startsWith("image/"))
-    return { icon: FileImage, label: "Gambar", tone: "text-emerald-600 dark:text-emerald-400" };
+    return { icon: FileImage, label: "Gambar", tone: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" };
   if (mimeType.startsWith("video/"))
-    return { icon: Film, label: "Video", tone: "text-violet-600 dark:text-violet-400" };
+    return { icon: Film, label: "Video", tone: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10" };
   if (mimeType.startsWith("audio/"))
-    return { icon: Music, label: "Audio", tone: "text-pink-600 dark:text-pink-400" };
+    return { icon: Music, label: "Audio", tone: "text-pink-600 dark:text-pink-400", bg: "bg-pink-500/10" };
   if (mimeType === "application/pdf")
-    return { icon: FileText, label: "PDF", tone: "text-rose-600 dark:text-rose-400" };
+    return { icon: FileText, label: "PDF", tone: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10" };
   if (
     mimeType.includes("zip") ||
     mimeType.includes("compressed") ||
     mimeType.includes("rar") ||
     mimeType.includes("tar")
   )
-    return { icon: FileArchive, label: "Arsip", tone: "text-amber-600 dark:text-amber-400" };
+    return { icon: FileArchive, label: "Arsip", tone: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" };
   if (
     mimeType.includes("spreadsheet") ||
     mimeType.includes("excel") ||
     mimeType.includes("csv")
   )
-    return { icon: FileSpreadsheet, label: "Spreadsheet", tone: "text-emerald-700 dark:text-emerald-400" };
+    return { icon: FileSpreadsheet, label: "Spreadsheet", tone: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-500/10" };
   if (
     mimeType.includes("word") ||
     mimeType.includes("document") ||
     mimeType.startsWith("text/")
   )
-    return { icon: FileText, label: "Dokumen", tone: "text-sky-600 dark:text-sky-400" };
-  return { icon: FileIcon, label: "File", tone: "text-muted-foreground" };
+    return { icon: FileText, label: "Dokumen", tone: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10" };
+  return { icon: FileIcon, label: "File", tone: "text-muted-foreground", bg: "bg-muted" };
 }
 
 export function RoomDocumentsWorkspace({
@@ -253,6 +290,8 @@ export function RoomDocumentsWorkspace({
   folderBackStackRef.current = folderBackStack;
   const [title, setTitle] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [uploadOptionsOpen, setUploadOptionsOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
@@ -260,8 +299,9 @@ export function RoomDocumentsWorkspace({
   const [renameBusy, setRenameBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
+  const [density, setDensity] = useState<GridDensity>("besar");
+  const [showAllFolders, setShowAllFolders] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("newest");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<RoomDocumentRow | null>(null);
@@ -355,7 +395,28 @@ export function RoomDocumentsWorkspace({
   useEffect(() => {
     setDocDisplayLimit(DOCS_PAGE_SIZE);
     setSelectedDocIds(new Set());
+    setShowAllFolders(false);
   }, [currentFolderId, tagFilter, sortKey, deferredSearch]);
+
+  // Muat & simpan preferensi kepadatan grid (per-perangkat).
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+      if (saved === "besar" || saved === "sedang" || saved === "kecil") {
+        setDensity(saved);
+      }
+    } catch {
+      /* localStorage tak tersedia — abaikan */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
+    } catch {
+      /* abaikan */
+    }
+  }, [density]);
 
   const totalSize = useMemo(
     () => documents.reduce((acc, d) => acc + (d.size ?? 0), 0),
@@ -577,6 +638,7 @@ export function RoomDocumentsWorkspace({
         parentId: currentFolderId,
       });
       setNewFolderName("");
+      setCreateFolderOpen(false);
       toast.success("Folder dibuat.");
       navigateToFolder(id);
       router.refresh();
@@ -803,46 +865,57 @@ export function RoomDocumentsWorkspace({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Hidden picker — dipicu dari tombol Unggah di header & empty state */}
+      <input
+        id={inputId}
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        disabled={pending || uploadBusy}
+        onChange={(e) => void onFileInput(e)}
+      />
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        {/* Sidebar — pohon folder (Drive) */}
-        <aside className="border-border bg-card sticky top-14 z-10 w-full shrink-0 space-y-3 rounded-xl border p-3 lg:max-w-[260px]">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.08em] uppercase">
-                Drive ruangan
-              </p>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Bantuan dokumen"
-                onClick={() => setShowHelp((v) => !v)}
-              >
-                <Info className="size-4" />
-              </Button>
+        {/* Sidebar — Drive ruangan */}
+        <aside className="border-border bg-card sticky top-14 z-10 w-full shrink-0 space-y-3 rounded-xl border p-3 lg:max-w-[264px]">
+          {/* Ringkasan penyimpanan */}
+          <div className="bg-muted/40 flex items-center gap-3 rounded-lg p-3">
+            <div className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
+              <HardDrive className="size-5" />
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-              <span className="border-border bg-background/70 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium">
-                <FileIcon className="size-3 opacity-70" aria-hidden />
-                {totalDocs} file
-              </span>
-              <span className="border-border bg-background/70 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium">
-                <Folder className="size-3 opacity-70" aria-hidden />
-                {folders.length} folder
-              </span>
-              <span className="text-muted-foreground tabular-nums">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight tabular-nums">
                 {formatFileSize(totalSize)}
-              </span>
-            </div>
-            {showHelp ? (
-              <p className="text-muted-foreground text-[11px] leading-relaxed">
-                Navigasi seperti Google Drive: buka folder di panel kiri atau klik
-                kartu folder. Buat subfolder di dalam folder yang sedang dibuka.
-                File diunggah ke lokasi yang aktif (breadcrumb). Saat mencari,
-                hasil mencakup seluruh ruangan beserta jalur foldernya.
               </p>
-            ) : null}
+              <p className="text-muted-foreground text-xs">
+                {totalDocs} file · {folders.length} folder
+              </p>
+            </div>
           </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              Folder
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Cara pakai"
+              className="text-muted-foreground"
+              onClick={() => setShowHelp((v) => !v)}
+            >
+              <Info className="size-3.5" />
+            </Button>
+          </div>
+          {showHelp ? (
+            <p className="text-muted-foreground bg-muted/40 rounded-lg p-2.5 text-[11px] leading-relaxed">
+              Navigasi seperti Google Drive: buka folder di panel ini atau lewat
+              kartu folder. File diunggah ke folder yang sedang dibuka. Saat
+              mencari, hasil mencakup seluruh ruangan beserta jalur foldernya.
+            </p>
+          ) : null}
 
           <DriveFolderTree
             folders={folders}
@@ -855,174 +928,40 @@ export function RoomDocumentsWorkspace({
             onDownload={(f) => void onDownloadFolder(f)}
           />
 
-          <div className="border-border space-y-1.5 border-t pt-3">
-            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.08em] uppercase">
-              Folder baru di sini
-            </Label>
-            <div className="flex gap-1">
-              <Input
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="Logo, Legal, …"
-                disabled={pending}
-                maxLength={80}
-                className="h-9 text-sm"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void onCreateFolder();
-                }}
-              />
-              <Button
-                type="button"
-                size="icon"
-                variant="secondary"
-                disabled={pending || !newFolderName.trim()}
-                aria-label="Buat folder"
-                onClick={() => void onCreateFolder()}
-              >
-                <FolderPlus className="size-4" />
-              </Button>
-            </div>
-          </div>
         </aside>
 
-        {/* Main */}
-        <div className="min-w-0 flex-1 space-y-4">
-          {/* Dropzone */}
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (!isDragging) setIsDragging(true);
-            }}
-            onDragLeave={(e) => {
-              if (e.currentTarget === e.target) setIsDragging(false);
-            }}
-            onDrop={handleDrop}
-            className={cn(
-              "relative overflow-hidden rounded-xl border-2 border-dashed transition-colors",
-              isDragging
-                ? "border-primary bg-primary/8"
-                : "border-border bg-card hover:border-primary/40 hover:bg-muted/30",
-            )}
-          >
-            <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:gap-5 sm:p-6">
-              <div
-                className={cn(
-                  "flex size-12 shrink-0 items-center justify-center rounded-2xl transition-colors",
-                  isDragging
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-primary/10 text-primary",
-                )}
-              >
-                {pending || uploadBusy ? (
-                  <Loader2 className="size-5 animate-spin" />
-                ) : (
-                  <CloudUpload className="size-5" />
-                )}
+        {/* Main — area konten sekaligus zona tarik-lepas seluruh panel */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!isDragging) setIsDragging(true);
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            if (!isDragging) setIsDragging(true);
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target) setIsDragging(false);
+          }}
+          onDrop={handleDrop}
+          className="relative min-w-0 flex-1 space-y-4"
+        >
+          {/* Overlay tarik-lepas — hanya tampil saat menyeret file */}
+          {isDragging ? (
+            <div className="border-primary bg-primary/10 pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed text-center backdrop-blur-sm">
+              <div className="bg-primary text-primary-foreground flex size-14 items-center justify-center rounded-2xl shadow-lg">
+                <CloudUpload className="size-7" />
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">
-                  {isDragging ? "Lepas untuk mengunggah" : "Tarik & lepas file di sini"}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Atau klik tombol{" "}
-                  <span className="text-foreground font-medium">Pilih file</span>{" "}
-                  · lokasi:{" "}
-                  <span className="text-foreground font-medium">
-                    {uploadTargetLabel}
-                  </span>
-                  {title.trim() ? (
-                    <>
-                      {" "}
-                      · judul: <span className="text-foreground font-medium">{title}</span>
-                    </>
-                  ) : null}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  id={inputId}
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="sr-only"
-                  disabled={pending || uploadBusy}
-                  onChange={(e) => void onFileInput(e)}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={pending || uploadBusy}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <CloudUpload className="size-4" />
-                  Pilih file
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setShowAdvanced((v) => !v)}
-                  aria-expanded={showAdvanced}
-                >
-                  {showAdvanced ? (
-                    <>
-                      <X className="size-4" />
-                      Tutup opsi
-                    </>
-                  ) : (
-                    <>
-                      <Pencil className="size-4" />
-                      Opsi unggah
-                    </>
-                  )}
-                </Button>
-              </div>
+              <p className="text-sm font-semibold">
+                Lepas untuk mengunggah ke{" "}
+                <span className="text-primary">{uploadTargetLabel}</span>
+              </p>
             </div>
-            {showAdvanced ? (
-              <div className="border-border bg-background/40 grid gap-3 border-t px-5 py-4 sm:grid-cols-2 sm:px-6">
-                <div className="space-y-1.5">
-                  <Label htmlFor="doc-title" className="text-xs">
-                    Judul (opsional)
-                  </Label>
-                  <Input
-                    id="doc-title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Contoh: Briefing Q3"
-                    disabled={pending || uploadBusy}
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="doc-upload-tags" className="text-xs">
-                    Tag batch (opsional, dipakai semua file ini)
-                  </Label>
-                  <Input
-                    id="doc-upload-tags"
-                    value={uploadTagsInput}
-                    onChange={(e) => setUploadTagsInput(e.target.value)}
-                    placeholder="footage, raw, approved — pisahkan koma atau spasi"
-                    disabled={pending || uploadBusy}
-                    className="h-9"
-                  />
-                  <p className="text-muted-foreground text-[11px]">
-                    Maks. 20 tag; huruf kecil otomatis. Berguna untuk batch footage.
-                  </p>
-                </div>
-                <p className="text-muted-foreground text-[11px] sm:col-span-2">
-                  File disimpan ke folder yang sedang dibuka (
-                  <span className="text-foreground font-medium">
-                    {uploadTargetLabel}
-                  </span>
-                  ). Pindahkan folder lewat breadcrumb atau panel kiri.
-                </p>
-              </div>
-            ) : null}
-          </div>
+          ) : null}
 
           {/* Toolbar */}
           <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-xl border p-2">
-            <div className="bg-muted/30 border-border flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2 py-1.5">
+            <div className="flex min-w-0 items-center gap-1">
               <Button
                 type="button"
                 size="icon-sm"
@@ -1050,12 +989,13 @@ export function RoomDocumentsWorkspace({
                 onNavigate={navigateToFolder}
               />
             </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
             {isSearchActive ? (
               <span className="text-muted-foreground text-xs tabular-nums">
                 {visibleDocuments.length} hasil · semua folder
               </span>
             ) : (
-              <span className="text-muted-foreground text-xs tabular-nums">
+              <span className="text-muted-foreground hidden text-xs tabular-nums sm:inline">
                 {childFolders.length} folder · {visibleDocuments.length} file
               </span>
             )}
@@ -1111,6 +1051,7 @@ export function RoomDocumentsWorkspace({
                 }
               />
               <DropdownMenuContent align="end" sideOffset={4}>
+                <DropdownMenuGroup>
                 <DropdownMenuLabel>Urutkan berdasarkan</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={sortKey}
@@ -1142,6 +1083,7 @@ export function RoomDocumentsWorkspace({
                     <User className="size-3.5" /> {SORT_LABEL.uploader}
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
             <div className="border-border bg-background flex shrink-0 items-center rounded-lg border p-0.5">
@@ -1176,6 +1118,42 @@ export function RoomDocumentsWorkspace({
                 List
               </button>
             </div>
+            {view === "grid" ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      title="Ukuran kartu (jumlah kolom)"
+                    >
+                      <LayoutGrid className="size-3.5" />
+                      {DENSITY_LABEL[density]}
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end" sideOffset={4}>
+                  <DropdownMenuGroup>
+                  <DropdownMenuLabel>Ukuran kartu</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={density}
+                    onValueChange={(v) => setDensity(v as GridDensity)}
+                  >
+                    <DropdownMenuRadioItem value="besar">
+                      Besar · lega
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="sedang">
+                      Sedang · sampai 6 kolom
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="kecil">
+                      Kecil · sampai 8 kolom
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
             {!selectionActive && selectableDocIds.length > 0 ? (
               <Button
                 type="button"
@@ -1184,9 +1162,95 @@ export function RoomDocumentsWorkspace({
                 className="h-8 shrink-0 text-xs"
                 onClick={selectAllVisibleDocs}
               >
-                Pilih file
+                <Check className="size-3.5" />
+                Pilih
               </Button>
             ) : null}
+            {/* Aksi utama — toolbar ini jadi satu-satunya bar */}
+            <div
+              className="bg-border mx-0.5 hidden h-6 w-px lg:block"
+              aria-hidden
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setCreateFolderOpen(true)}
+              disabled={pending}
+            >
+              <FolderPlus className="size-4" />
+              Folder baru
+            </Button>
+            <Popover open={uploadOptionsOpen} onOpenChange={setUploadOptionsOpen}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    aria-label="Opsi unggah (judul & tag)"
+                    title="Opsi unggah"
+                    className={cn(
+                      (title.trim() || uploadTagsInput.trim()) &&
+                        "border-primary/50 text-primary",
+                    )}
+                  >
+                    <SlidersHorizontal className="size-4" />
+                  </Button>
+                }
+              />
+              <PopoverContent align="end" className="w-80">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">Opsi unggah berikutnya</p>
+                  <p className="text-muted-foreground text-xs">
+                    Berlaku untuk file yang diunggah setelah ini.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="doc-title" className="text-xs">
+                    Judul (opsional)
+                  </Label>
+                  <Input
+                    id="doc-title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Contoh: Briefing Q3"
+                    disabled={pending || uploadBusy}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="doc-upload-tags" className="text-xs">
+                    Tag batch (opsional)
+                  </Label>
+                  <Input
+                    id="doc-upload-tags"
+                    value={uploadTagsInput}
+                    onChange={(e) => setUploadTagsInput(e.target.value)}
+                    placeholder="footage, raw, approved"
+                    disabled={pending || uploadBusy}
+                    className="h-9"
+                  />
+                  <p className="text-muted-foreground text-[11px]">
+                    Maks. 20 tag; huruf kecil otomatis. Pisahkan dengan koma/spasi.
+                  </p>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending || uploadBusy}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {pending || uploadBusy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Upload className="size-4" />
+              )}
+              Unggah
+            </Button>
+            </div>
           </div>
 
           {selectionActive ? (
@@ -1275,57 +1339,123 @@ export function RoomDocumentsWorkspace({
 
           {/* Folder + file */}
           {folderEmpty ? (
-            <div className="border-border bg-card flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-12 text-center">
-              <div className="bg-muted text-muted-foreground flex size-14 items-center justify-center rounded-2xl">
-                <FolderOpen className="size-7" />
-              </div>
-              <p className="text-sm font-medium">
-                {isSearchActive
-                  ? "Tidak ada file yang cocok dengan pencarian."
-                  : "Folder ini masih kosong."}
-              </p>
-              <p className="text-muted-foreground max-w-xs text-xs">
-                Buat subfolder di panel kiri, atau tarik file ke area unggah di
-                atas.
-              </p>
-            </div>
+            <EmptyState
+              icon={isSearchActive ? Search : FolderOpen}
+              title={
+                isSearchActive
+                  ? "Tidak ada file yang cocok."
+                  : "Folder ini masih kosong."
+              }
+              description={
+                isSearchActive
+                  ? "Coba kata kunci lain atau ubah filter tag."
+                  : "Tarik & lepas file ke area ini, atau unggah lewat tombol di atas."
+              }
+              action={
+                !isSearchActive ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={pending || uploadBusy}
+                  >
+                    <Upload className="size-4" />
+                    Unggah file
+                  </Button>
+                ) : undefined
+              }
+              className="p-12"
+            />
           ) : view === "grid" ? (
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {!isSearchActive
-                ? childFolders.map((f) => (
-                    <DriveFolderGridCard
-                      key={f.id}
-                      folder={f}
-                      view="grid"
-                      isRoomManager={isRoomManager}
-                      onOpen={() => navigateToFolder(f.id)}
-                      onRename={() => openRename(f)}
-                      onDelete={() => void onDeleteFolder(f)}
-                      onDownload={() => void onDownloadFolder(f)}
-                    />
-                  ))
-                : null}
-              {pagedVisibleDocuments.map((d, idx) => (
-                <DocCard
-                  key={d.id}
-                  doc={d}
-                  folders={folders}
-                  showFolderHint={isSearchActive}
-                  canManage={d.uploadedBy.id === currentUserId || isRoomManager}
-                  selected={selectedDocIds.has(d.id)}
-                  selectionActive={selectionActive}
-                  onToggleSelect={() => toggleDocSelection(d.id)}
-                  onPreview={onPreviewDoc}
-                  onDelete={onDeleteDoc}
-                  onMove={onMoveDoc}
-                  onDownload={(d) => void onDownloadDocument(d)}
-                  // 4 ubin pertama (1 baris di breakpoint 2xl) berada di atas
-                  // fold — beri `priority` agar Next.js set `loading="eager"`
-                  // + `fetchPriority="high"` dan tidak memunculkan warning LCP.
-                  priority={idx < 4}
-                />
-              ))}
-            </ul>
+            <div className="space-y-5">
+              {/* Seksi folder — kartu ringkas terpisah dari file */}
+              {!isSearchActive && childFolders.length > 0 ? (
+                <section className="space-y-2">
+                  <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                    Folder
+                    <span className="ml-1 font-normal tabular-nums opacity-70">
+                      ({childFolders.length})
+                    </span>
+                  </h2>
+                  <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                    {(showAllFolders
+                      ? childFolders
+                      : childFolders.slice(0, FOLDER_COLLAPSE_LIMIT)
+                    ).map((f) => (
+                      <DriveFolderChip
+                        key={f.id}
+                        folder={f}
+                        isRoomManager={isRoomManager}
+                        onOpen={() => navigateToFolder(f.id)}
+                        onRename={() => openRename(f)}
+                        onDelete={() => void onDeleteFolder(f)}
+                        onDownload={() => void onDownloadFolder(f)}
+                      />
+                    ))}
+                  </ul>
+                  {childFolders.length > FOLDER_COLLAPSE_LIMIT ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowAllFolders((v) => !v)}
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "size-4 transition-transform",
+                          showAllFolders && "rotate-180",
+                        )}
+                      />
+                      {showAllFolders
+                        ? "Ciutkan folder"
+                        : `Lihat semua ${childFolders.length} folder`}
+                    </Button>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {/* Seksi file */}
+              {pagedVisibleDocuments.length > 0 ? (
+                <section className="space-y-2">
+                  {!isSearchActive && childFolders.length > 0 ? (
+                    <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                      File
+                      <span className="ml-1 font-normal tabular-nums opacity-70">
+                        ({visibleDocuments.length})
+                      </span>
+                    </h2>
+                  ) : null}
+                  <ul className={cn("grid", DENSITY_GRID[density])}>
+                    {pagedVisibleDocuments.map((d, idx) => (
+                      <DocCard
+                        key={d.id}
+                        doc={d}
+                        folders={folders}
+                        showFolderHint={isSearchActive}
+                        compact={density !== "besar"}
+                        canManage={d.uploadedBy.id === currentUserId || isRoomManager}
+                        selected={selectedDocIds.has(d.id)}
+                        selectionActive={selectionActive}
+                        onToggleSelect={() => toggleDocSelection(d.id)}
+                        onPreview={onPreviewDoc}
+                        onDelete={onDeleteDoc}
+                        onMove={onMoveDoc}
+                        onDownload={(d) => void onDownloadDocument(d)}
+                        // 4 ubin pertama (1 baris di breakpoint 2xl) berada di
+                        // atas fold — beri `priority` agar Next.js set
+                        // `loading="eager"` + `fetchPriority="high"`.
+                        priority={idx < 4}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ) : !isSearchActive && childFolders.length > 0 ? (
+                <p className="text-muted-foreground py-1 text-xs">
+                  Belum ada file langsung di folder ini.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <DocList
               childFolders={isSearchActive ? [] : childFolders}
@@ -1489,6 +1619,59 @@ export function RoomDocumentsWorkspace({
         currentUserId={currentUserId}
         isRoomManager={isRoomManager}
       />
+
+      {/* Create folder dialog */}
+      <Dialog
+        open={createFolderOpen}
+        onOpenChange={(open) => {
+          setCreateFolderOpen(open);
+          if (!open) setNewFolderName("");
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Folder baru</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Input
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Logo, Legal, Footage…"
+              maxLength={80}
+              disabled={pending}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void onCreateFolder();
+              }}
+            />
+            <p className="text-muted-foreground text-xs">
+              Dibuat di dalam{" "}
+              <span className="text-foreground font-medium">
+                {uploadTargetLabel}
+              </span>
+              .
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateFolderOpen(false)}
+              disabled={pending}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              disabled={pending || !newFolderName.trim()}
+              onClick={() => void onCreateFolder()}
+            >
+              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+              Buat folder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Rename folder dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
@@ -1710,9 +1893,8 @@ function VideoTilePlaceholder({
   );
 }
 
-function DocTagChips({ tags }: { tags: string[] }) {
+function DocTagChips({ tags, max = 5 }: { tags: string[]; max?: number }) {
   if (!tags.length) return null;
-  const max = 5;
   const shown = tags.slice(0, max);
   const more = tags.length - shown.length;
   return (
@@ -1747,6 +1929,7 @@ const DocCard = memo(function DocCard({
   onDelete,
   onMove,
   onDownload,
+  compact = false,
   priority = false,
 }: {
   doc: RoomDocumentRow;
@@ -1760,6 +1943,8 @@ const DocCard = memo(function DocCard({
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
   onDownload: (d: RoomDocumentRow) => void | Promise<void>;
+  /** Kartu padat (kolom banyak): sembunyikan metadata & footer, aksi via hover. */
+  compact?: boolean;
   /** Hint LCP — tile pertama yang berada di atas fold harus eager. */
   priority?: boolean;
 }) {
@@ -1772,8 +1957,9 @@ const DocCard = memo(function DocCard({
   return (
     <li
       className={cn(
-        "doc-grid-card border-border bg-card hover:border-primary/40 hover:bg-muted/30 relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-colors",
+        "doc-grid-card border-border bg-card hover:border-primary/40 hover:shadow-md relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-all",
         "sm:[&:hover_.doc-grid-card-select]:opacity-100 sm:[&:focus-within_.doc-grid-card-select]:opacity-100",
+        "sm:[&:hover_.doc-grid-card-actions]:opacity-100 sm:[&:focus-within_.doc-grid-card-actions]:opacity-100",
         selected && "border-primary ring-primary/30 ring-2",
       )}
     >
@@ -1796,7 +1982,7 @@ const DocCard = memo(function DocCard({
       <button
         type="button"
         onClick={() => onPreview(doc)}
-        className="bg-muted/30 relative block aspect-[16/9] w-full overflow-hidden text-left"
+        className="bg-muted/30 relative block aspect-[4/3] w-full overflow-hidden text-left"
         title={`Pratinjau ${doc.title?.trim() || doc.fileName}`}
       >
         {isImage ? (
@@ -1821,18 +2007,85 @@ const DocCard = memo(function DocCard({
             priority={priority}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <Icon className={cn("size-10", meta.tone)} />
+          <div
+            className={cn(
+              "flex h-full w-full flex-col items-center justify-center gap-1.5",
+              meta.bg,
+            )}
+          >
+            <Icon className={cn(compact ? "size-8" : "size-11", meta.tone)} />
+            {!compact ? (
+              <span
+                className={cn(
+                  "text-[10px] font-semibold tracking-wide uppercase",
+                  meta.tone,
+                )}
+              >
+                {meta.label}
+              </span>
+            ) : null}
           </div>
         )}
-        <span className="bg-background/90 text-foreground absolute top-2 right-2 z-[1] inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm">
-          <Icon className={cn("size-3", meta.tone)} />
-          {meta.label}
-        </span>
       </button>
 
-      <div className="flex flex-1 flex-col gap-2 p-3">
-        {showFolderHint ? (
+      {/* Aksi (unduh / pindah / hapus) — tersembunyi, muncul saat hover;
+          selalu tampil di layar sentuh yang tak punya hover. */}
+      <div
+        className="doc-grid-card-actions absolute top-2 right-2 z-20 flex gap-1 opacity-100 transition-opacity sm:opacity-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="secondary"
+            className="size-7 shadow-sm"
+            aria-label={`Unduh ${doc.fileName}`}
+            title="Unduh"
+            onClick={() => void onDownload(doc)}
+          >
+            <Download className="size-3.5" />
+          </Button>
+          {canManage ? (
+            <>
+              <MoveFolderMenu
+                doc={doc}
+                folders={folders}
+                onMove={onMove}
+                trigger={
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="secondary"
+                    className="size-7 shadow-sm"
+                    aria-label={`Pindahkan ${doc.fileName}`}
+                    title="Pindah folder"
+                  >
+                    <FolderInput className="size-3.5" />
+                  </Button>
+                }
+              />
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="secondary"
+                className="text-destructive hover:text-destructive size-7 shadow-sm"
+                aria-label={`Hapus ${doc.fileName}`}
+                title="Hapus"
+                onClick={() => void onDelete(doc)}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </>
+          ) : null}
+        </div>
+
+      <div
+        className={cn(
+          "flex flex-1 flex-col",
+          compact ? "gap-0.5 p-2" : "gap-2 p-3",
+        )}
+      >
+        {!compact && showFolderHint ? (
           canManage ? (
             <MoveFolderMenu
               doc={doc}
@@ -1858,82 +2111,36 @@ const DocCard = memo(function DocCard({
         <button
           type="button"
           onClick={() => onPreview(doc)}
-          className="text-foreground line-clamp-2 text-left text-sm font-medium hover:underline"
+          className={cn(
+            "text-foreground text-left font-medium hover:underline",
+            compact ? "line-clamp-2 text-xs leading-snug" : "line-clamp-2 text-sm",
+          )}
           title={doc.title?.trim() || doc.fileName}
         >
           {doc.title?.trim() ? doc.title : doc.fileName}
         </button>
-        <p
-          className="text-muted-foreground line-clamp-1 text-[11px]"
-          title={doc.fileName}
-        >
-          {doc.fileName}
-        </p>
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-          <span className="truncate">{doc.uploadedBy.name ?? doc.uploadedBy.email}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">{formatFileSize(doc.size)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatDate(doc.createdAt)}</span>
-        </div>
-        <DocTagChips tags={doc.tags ?? []} />
-
-        <div className="border-border/60 mt-auto flex flex-nowrap items-center justify-center gap-1 border-t pt-2">
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="secondary"
-            className="shrink-0"
-            aria-label={`Pratinjau ${doc.fileName}`}
-            title="Pratinjau"
-            onClick={() => onPreview(doc)}
+        {compact ? (
+          <p className="text-muted-foreground text-[10px] tabular-nums">
+            {formatFileSize(doc.size)}
+          </p>
+        ) : null}
+        {compact ? null : (
+        <>
+        <div className="text-muted-foreground flex items-center justify-between gap-2 text-[11px]">
+          <span className="truncate tabular-nums">
+            {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
+          </span>
+          <span
+            className="bg-muted text-foreground/70 flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold uppercase"
+            title={`Diunggah oleh ${doc.uploadedBy.name ?? doc.uploadedBy.email}`}
+            aria-label={`Diunggah oleh ${doc.uploadedBy.name ?? doc.uploadedBy.email}`}
           >
-            <Eye className="size-3.5" />
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="outline"
-            className="shrink-0"
-            aria-label={`Unduh ${doc.fileName}`}
-            title="Unduh"
-            onClick={() => void onDownload(doc)}
-          >
-            <Download className="size-3.5" />
-          </Button>
-          {canManage ? (
-            <>
-              <MoveFolderMenu
-                doc={doc}
-                folders={folders}
-                onMove={onMove}
-                trigger={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="outline"
-                    aria-label={`Pindahkan ${doc.fileName}`}
-                    title={`Pindah folder · sekarang: ${currentFolderName}`}
-                    className="shrink-0"
-                  >
-                    <FolderInput className="size-3.5" />
-                  </Button>
-                }
-              />
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="outline"
-                aria-label={`Hapus ${doc.fileName}`}
-                title="Hapus dokumen"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
-                onClick={() => void onDelete(doc)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </>
-          ) : null}
+            {(doc.uploadedBy.name ?? doc.uploadedBy.email).charAt(0)}
+          </span>
         </div>
+        <DocTagChips tags={doc.tags ?? []} max={3} />
+        </>
+        )}
       </div>
 
     </li>
