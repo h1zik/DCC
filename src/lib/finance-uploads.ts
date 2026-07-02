@@ -87,8 +87,9 @@ export function resolveFinanceAttachmentPath(storagePath: string): string {
   const normalized = path
     .normalize(storagePath)
     .replace(/^([\\/])+/, "");
-  const full = path.join(FINANCE_UPLOAD_ROOT, normalized);
-  if (!full.startsWith(FINANCE_UPLOAD_ROOT)) {
+  const full = path.resolve(FINANCE_UPLOAD_ROOT, normalized);
+  const rel = path.relative(FINANCE_UPLOAD_ROOT, full);
+  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
     throw new Error("Path lampiran tidak valid.");
   }
   return full;

@@ -1,3 +1,5 @@
+import { assertPublicUrl, safeFetch } from "@/lib/security/ssrf";
+
 const MAX_BYTES = 512_000;
 const TIMEOUT_MS = 12_000;
 
@@ -15,54 +17,26 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-function isPrivateHost(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  if (
-    h === "localhost" ||
-    h.endsWith(".local") ||
-    h === "127.0.0.1" ||
-    h === "0.0.0.0" ||
-    h.startsWith("192.168.") ||
-    h.startsWith("10.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h)
-  ) {
-    return true;
-  }
-  return false;
-}
-
 export async function fetchWebsiteContent(url: string): Promise<{
   url: string;
   title: string | null;
   content: string;
   truncated: boolean;
 }> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error("URL tidak valid.");
-  }
-
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Hanya URL http/https yang didukung.");
-  }
-
-  if (isPrivateHost(parsed.hostname)) {
-    throw new Error("URL internal/private tidak diizinkan.");
-  }
+  // Validasi awal (protokol + host publik via resolusi DNS).
+  const parsed = await assertPublicUrl(url);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(parsed.toString(), {
+    // safeFetch memvalidasi ulang setiap hop redirect (anti bypass redirect).
+    const res = await safeFetch(parsed.toString(), {
       signal: controller.signal,
       headers: {
         "User-Agent": "DCC-Agent/1.0 (+https://dominatuscenter.com)",
         Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
       },
-      redirect: "follow",
     });
 
     if (!res.ok) {

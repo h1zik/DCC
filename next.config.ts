@@ -35,12 +35,36 @@ const nextConfig: NextConfig = {
     "@ffprobe-installer/win32-x64",
   ],
   experimental: {
-    /** Naikkan batas body yang dibaca proxy/middleware (default 10 MB). */
-    proxyClientMaxBodySize: "500mb",
+    /**
+     * Batas body untuk unggahan lampiran/dokumen/video. Diturunkan dari 500 MB
+     * (mitigasi DoS memory/disk). Naikkan lagi hanya bila memang perlu file
+     * lebih besar dari ini.
+     */
+    proxyClientMaxBodySize: "300mb",
     serverActions: {
-      /** Unggah lampiran / dokumen besar (batas di app tidak lagi dipotong di 10–25 MB). */
-      bodySizeLimit: "500mb",
+      bodySizeLimit: "300mb",
     },
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(self), microphone=(), geolocation=()",
+          },
+          { key: "X-DNS-Prefetch-Control", value: "off" },
+        ],
+      },
+    ];
   },
 };
 

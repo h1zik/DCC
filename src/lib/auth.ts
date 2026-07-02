@@ -5,6 +5,12 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_CEO_EMAIL } from "@/lib/default-ceo-credentials";
 import { ensureDefaultCeoUserExists } from "@/lib/ensure-default-ceo-user";
+import {
+  isLoginAllowed,
+  loginKey,
+  registerLoginFailure,
+  resetLogin,
+} from "@/lib/auth-rate-limit";
 import type { UserRole } from "@prisma/client";
 
 const credentialsSchema = z.object({
@@ -24,24 +30,53 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      authorize: async (credentials) => {
+      authorize: async (credentials, request) => {
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) return null;
+
+        const ip =
+          request?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+          request?.headers?.get("x-real-ip") ||
+          "unknown";
+        const key = loginKey(parsed.data.email, ip);
+
+        const gate = isLoginAllowed(key);
+        if (!gate.allowed) {
+          console.warn(
+            `[auth] login diblokir (rate limit) untuk ${parsed.data.email} dari ${ip}`,
+          );
+          return null;
+        }
 
         if (
           parsed.data.email.toLowerCase() === DEFAULT_CEO_EMAIL.toLowerCase()
         ) {
-          await ensureDefaultCeoUserExists();
+          // Bootstrap akun CEO hanya bila DEFAULT_CEO_PASSWORD di-set.
+          // Tanpa env, ensureDefaultCeoUserExists melempar — perlakukan
+          // sebagai "tidak ada auto-create" (login gagal wajar), bukan crash.
+          try {
+            await ensureDefaultCeoUserExists();
+          } catch (err) {
+            console.error("[auth] bootstrap CEO dilewati:", err);
+          }
         }
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
           include: { customRole: { select: { name: true } } },
         });
-        if (!user) return null;
+        if (!user) {
+          registerLoginFailure(key);
+          return null;
+        }
 
         const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
-        if (!ok) return null;
+        if (!ok) {
+          registerLoginFailure(key);
+          return null;
+        }
+
+        resetLogin(key);
 
         return {
           id: user.id,

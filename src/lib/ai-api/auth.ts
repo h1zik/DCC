@@ -1,6 +1,7 @@
+import { timingSafeEqual } from "node:crypto";
 import { UserRole } from "@prisma/client";
 
-/** Role efektif untuk filter data AI — dikirim via header `x-dcc-role`. */
+/** Role efektif untuk filter data AI — ditetapkan server-side (bukan client). */
 export type AiApiRole =
   | "CEO"
   | "ADMINISTRATOR"
@@ -20,12 +21,34 @@ const VALID_ROLES = new Set<AiApiRole>([
   "ALL",
 ]);
 
-export function parseAiApiRole(req: Request): AiApiRole {
-  const raw = req.headers.get(ROLE_HEADER)?.trim().toUpperCase();
-  if (raw && VALID_ROLES.has(raw as AiApiRole)) {
-    return raw as AiApiRole;
+/**
+ * Role efektif ditetapkan server-side lewat `AI_READ_API_ROLE`, TERIKAT pada
+ * token — bukan dipilih client. Header `x-dcc-role` diabaikan untuk otorisasi
+ * kecuali `AI_READ_API_ALLOW_ROLE_HEADER=true` di-set eksplisit (dev/simulasi),
+ * sehingga tidak ada eskalasi hak diam-diam ke CEO/ALL.
+ */
+export function resolveAiApiRole(req: Request): AiApiRole {
+  const configured = process.env.AI_READ_API_ROLE?.trim().toUpperCase();
+  const base: AiApiRole =
+    configured && VALID_ROLES.has(configured as AiApiRole)
+      ? (configured as AiApiRole)
+      : "CEO";
+
+  if (process.env.AI_READ_API_ALLOW_ROLE_HEADER === "true") {
+    const raw = req.headers.get(ROLE_HEADER)?.trim().toUpperCase();
+    if (raw && VALID_ROLES.has(raw as AiApiRole)) {
+      return raw as AiApiRole;
+    }
   }
-  return "CEO";
+  return base;
+}
+
+/** Bandingkan dua string rahasia secara konstan-waktu (anti timing attack). */
+function secretEquals(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
 }
 
 export function isAiApiAuthorized(req: Request): boolean {
@@ -34,7 +57,7 @@ export function isAiApiAuthorized(req: Request): boolean {
 
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  return bearer.length > 0 && bearer === token;
+  return bearer.length > 0 && secretEquals(bearer, token);
 }
 
 export function canViewTasks(role: AiApiRole): boolean {

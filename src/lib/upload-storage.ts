@@ -31,7 +31,13 @@ export function getUploadPublicDir(): string {
 export function absolutePathFromStoredPublicPath(publicPath: string): string | null {
   if (!publicPath.startsWith("/uploads/")) return null;
   const segs = publicPath.split("/").filter(Boolean).slice(1);
-  return path.join(/* turbopackIgnore: true */ getUploadPublicDir(), ...segs);
+  // Tolak traversal — konsisten dengan resolveUploadFileFromUrlSegments.
+  if (!segs.length || segs.some((s) => s === "..")) return null;
+  const base = path.resolve(/* turbopackIgnore: true */ getUploadPublicDir());
+  const resolved = path.resolve(/* turbopackIgnore: true */ base, ...segs);
+  const rel = path.relative(base, resolved);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  return resolved;
 }
 
 /** Resolve a safe absolute path for GET /uploads/... segments (no `..`). */

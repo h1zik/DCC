@@ -1,7 +1,7 @@
 import {
   aiRoleLabel,
   isAiApiAuthorized,
-  parseAiApiRole,
+  resolveAiApiRole,
   type AiApiRole,
 } from "./auth";
 import { checkAiApiRateLimit } from "./rate-limit";
@@ -46,7 +46,7 @@ export function guardAiApiRequest(req: Request):
     };
   }
 
-  const role = parseAiApiRole(req);
+  const role = resolveAiApiRole(req);
   console.info(
     `[ai-api] ${req.method} ${new URL(req.url).pathname} role=${aiRoleLabel(role)}`,
   );

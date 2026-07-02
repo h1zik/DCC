@@ -1,6 +1,7 @@
 import "server-only";
 
 import Parser from "rss-parser";
+import { safeFetch } from "@/lib/security/ssrf";
 
 export type RssTrendSignal = {
   term: string;
@@ -78,7 +79,22 @@ export async function fetchRssTrendSignals(
   await Promise.allSettled(
     feedUrls.map(async (feedUrl) => {
       try {
-        const feed = await parser.parseURL(feedUrl);
+        // SSRF-safe: validasi host + tiap redirect, lalu parse dari string
+        // (bukan parser.parseURL yang follow redirect tanpa cek).
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        let xml: string;
+        try {
+          const res = await safeFetch(feedUrl, {
+            signal: controller.signal,
+            headers: { "User-Agent": "DCC-TrendRadar/1.0" },
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          xml = await res.text();
+        } finally {
+          clearTimeout(timer);
+        }
+        const feed = await parser.parseString(xml);
         for (const item of (feed.items ?? []).slice(0, 15)) {
           const title = item.title?.trim();
           if (!title) continue;
