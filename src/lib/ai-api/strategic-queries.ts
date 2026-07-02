@@ -878,3 +878,653 @@ export function aiGetMcpCapabilities(role: AiApiRole) {
     note: "Semua tool read-only. Gunakan header x-dcc-role untuk simulasi peran.",
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Company risk rollup                                                        */
+/* -------------------------------------------------------------------------- */
+
+type RiskSeverity = "critical" | "high" | "medium";
+
+type RiskItem = {
+  id?: string;
+  label: string;
+  note?: string;
+  context?: string | null;
+  assignees?: string[];
+};
+
+type RiskEntry = {
+  category: "inventory" | "tasks" | "projects" | "finance" | "approvals";
+  severity: RiskSeverity;
+  title: string;
+  count: number;
+  detail?: string;
+  items?: RiskItem[];
+};
+
+/**
+ * Rollup risiko lintas modul dalam satu daftar terprioritas — "apa yang perlu
+ * perhatian sekarang". Menyusun ulang query yang sudah ada (overdue, blocked,
+ * stuck projects, stok kritis, AP/AR overdue, approval menua) tanpa data baru.
+ */
+export async function aiGetCompanyRisks(role: AiApiRole) {
+  if (!canViewExecutive(role)) {
+    return denied("Company risks hanya untuk CEO/Administrator.");
+  }
+
+  const now = Date.now();
+  const APPROVAL_AGING_DAYS = 3;
+  const daysSince = (iso: string | null | undefined) =>
+    iso ? Math.floor((now - new Date(iso).getTime()) / 86_400_000) : null;
+
+  const [
+    kpi,
+    overdue,
+    blocked,
+    stuck,
+    criticalStock,
+    apar,
+    pendingTasks,
+    pendingFinance,
+  ] = await Promise.all([
+    getKpiOverview(role),
+    getOverdueTasks(role, 8),
+    aiGetBlockedTasksSummary(role, 8),
+    aiListStuckProjects(role),
+    computeCriticalStockSkus(8),
+    aiGetApArAging(role),
+    aiListPendingTaskApprovals(role, 15),
+    aiListPendingFinanceSpend(role, 15),
+  ]);
+
+  const risks: RiskEntry[] = [];
+
+  // Stok kritis
+  if (criticalStock.criticalCount > 0) {
+    risks.push({
+      category: "inventory",
+      severity: "critical",
+      title: `${criticalStock.criticalCount} SKU stok kritis`,
+      count: criticalStock.criticalCount,
+      detail:
+        criticalStock.lowCount > 0
+          ? `+${criticalStock.lowCount} SKU stok rendah`
+          : undefined,
+      items: criticalStock.items.slice(0, 5).map((i) => ({
+        id: i.id,
+        label: `${i.name} (${i.sku})`,
+        note: `stok ${i.currentStock}/${i.minStock}`,
+        context: i.brandName,
+      })),
+    });
+  }
+
+  // Tugas overdue
+  const overdueCount = kpi.overdueTasks ?? overdue.length;
+  if (overdueCount > 0) {
+    risks.push({
+      category: "tasks",
+      severity: overdueCount >= 10 ? "critical" : "high",
+      title: `${overdueCount} tugas overdue`,
+      count: overdueCount,
+      items: overdue.slice(0, 5).map((t) => ({
+        id: t.id,
+        label: t.title,
+        note: t.daysOverdue != null ? `${t.daysOverdue} hari lewat` : undefined,
+        context: t.contextLabel,
+        assignees: t.assignees,
+      })),
+    });
+  }
+
+  // Tugas terblokir
+  if (blocked.accessible && blocked.totalBlocked > 0) {
+    risks.push({
+      category: "tasks",
+      severity: "high",
+      title: `${blocked.totalBlocked} tugas terblokir (BLOCKED)`,
+      count: blocked.totalBlocked,
+      items: blocked.tasks.slice(0, 5).map((t) => ({
+        id: t.id,
+        label: t.title,
+        context: t.contextLabel ?? t.roomName,
+        assignees: t.assignees,
+      })),
+    });
+  }
+
+  // Proyek macet
+  if (stuck.accessible && stuck.count > 0) {
+    risks.push({
+      category: "projects",
+      severity: "high",
+      title: `${stuck.count} proyek macet`,
+      count: stuck.count,
+      items: stuck.projects.slice(0, 5).map((p) => ({
+        id: p.id,
+        label: p.name,
+        note: p.reasons.join("; "),
+        context: p.brandName,
+      })),
+    });
+  }
+
+  // AP/AR overdue
+  if (apar.accessible) {
+    if (apar.ap.overdueCount > 0) {
+      risks.push({
+        category: "finance",
+        severity: "high",
+        title: `${apar.ap.overdueCount} tagihan hutang (AP) overdue`,
+        count: apar.ap.overdueCount,
+        detail: `Total ${apar.ap.overdueTotal}`,
+        items: apar.ap.topItems.slice(0, 5).map((r) => ({
+          label: r.vendorName ?? r.billNumber ?? "—",
+          note: `${r.remaining} · jatuh tempo ${r.dueDate?.slice(0, 10) ?? "—"}`,
+        })),
+      });
+    }
+    if (apar.ar.overdueCount > 0) {
+      risks.push({
+        category: "finance",
+        severity: "high",
+        title: `${apar.ar.overdueCount} piutang (AR) overdue`,
+        count: apar.ar.overdueCount,
+        detail: `Total ${apar.ar.overdueTotal}`,
+        items: apar.ar.topItems.slice(0, 5).map((r) => ({
+          label: r.customerName ?? r.invoiceNumber ?? "—",
+          note: `${r.remaining} · jatuh tempo ${r.dueDate?.slice(0, 10) ?? "—"}`,
+        })),
+      });
+    }
+  }
+
+  // Approval menua
+  if (pendingTasks.accessible) {
+    const aging = pendingTasks.tasks.filter(
+      (t) => (daysSince(t.updatedAt) ?? 0) >= APPROVAL_AGING_DAYS,
+    );
+    if (aging.length > 0) {
+      risks.push({
+        category: "approvals",
+        severity: "medium",
+        title: `${aging.length} approval tugas menua (≥${APPROVAL_AGING_DAYS} hari)`,
+        count: aging.length,
+        items: aging.slice(0, 5).map((t) => ({
+          id: t.id,
+          label: t.title,
+          note: `menunggu ${daysSince(t.updatedAt)} hari`,
+          context: t.contextLabel,
+        })),
+      });
+    }
+  }
+  if (pendingFinance.accessible) {
+    const aging = pendingFinance.requests.filter(
+      (r) => (daysSince(r.submittedAt) ?? 0) >= APPROVAL_AGING_DAYS,
+    );
+    if (aging.length > 0) {
+      risks.push({
+        category: "approvals",
+        severity: "medium",
+        title: `${aging.length} pengajuan pengeluaran menua (≥${APPROVAL_AGING_DAYS} hari)`,
+        count: aging.length,
+        items: aging.slice(0, 5).map((r) => ({
+          id: r.id,
+          label: r.title,
+          note: `${r.amount} · menunggu ${daysSince(r.submittedAt)} hari`,
+          context: r.brandName,
+        })),
+      });
+    }
+  }
+
+  const severityRank: Record<RiskSeverity, number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+  };
+  risks.sort(
+    (a, b) =>
+      severityRank[a.severity] - severityRank[b.severity] || b.count - a.count,
+  );
+
+  const bySeverity = {
+    critical: risks.filter((r) => r.severity === "critical").length,
+    high: risks.filter((r) => r.severity === "high").length,
+    medium: risks.filter((r) => r.severity === "medium").length,
+  };
+
+  return {
+    accessible: true as const,
+    generatedAt: new Date().toISOString(),
+    totalRisks: risks.length,
+    bySeverity,
+    headline:
+      risks.length === 0
+        ? "Tidak ada risiko kritis terdeteksi saat ini."
+        : `${risks.length} area risiko — ${bySeverity.critical} kritis, ${bySeverity.high} tinggi, ${bySeverity.medium} sedang.`,
+    risks,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Brand 360 overview                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Dossier 360 satu brand: proyek + progress milestone, kesehatan tugas,
+ * stok SKU brand, outgoing sales, dan ringkasan content plan. Composite
+ * berbasis brand — unit natural bisnis.
+ */
+export async function aiGetBrandOverview(role: AiApiRole, brandNameOrId: string) {
+  if (!canViewBrandPipeline(role)) {
+    return denied("Akses overview brand tidak tersedia untuk peran ini.");
+  }
+
+  const query = brandNameOrId.trim();
+  if (!query) return denied("brandNameOrId wajib diisi.");
+
+  const brand = await prisma.brand.findFirst({
+    where: {
+      OR: [
+        { id: query },
+        { name: { equals: query, mode: "insensitive" } },
+        { name: { contains: query, mode: "insensitive" } },
+      ],
+    },
+    select: { id: true, name: true },
+  });
+  if (!brand) return denied(`Brand "${query}" tidak ditemukan.`);
+
+  const showInventory = canViewInventory(role);
+
+  const [projectRows, taskGroups, products, contentItems, outgoing] =
+    await Promise.all([
+      prisma.project.findMany({
+        where: { brandId: brand.id },
+        select: {
+          id: true,
+          name: true,
+          room: { select: { name: true } },
+          milestones: {
+            select: PROJECT_MILESTONE_SELECT,
+            orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }],
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.task.groupBy({
+        by: ["status"],
+        where: { archivedAt: null, project: { brandId: brand.id } },
+        _count: { _all: true },
+      }),
+      showInventory
+        ? prisma.product.findMany({
+            where: { brandId: brand.id },
+            select: {
+              id: true,
+              sku: true,
+              name: true,
+              currentStock: true,
+              minStock: true,
+            },
+            orderBy: { currentStock: "asc" },
+          })
+        : Promise.resolve(null),
+      prisma.roomContentPlanItem.findMany({
+        where: { room: { brandId: brand.id } },
+        select: { statusCopywriting: true, statusDesign: true, tanggalPosting: true },
+      }),
+      computeOutgoingByBrand(90),
+    ]);
+
+  const projects = projectRows.map((p) => {
+    const summary = summarizeProjectMilestones(p.milestones);
+    return {
+      id: p.id,
+      name: p.name,
+      roomName: p.room.name,
+      progressPct: summary.progressPct,
+      currentMilestone: summary.currentMilestone,
+      blockedCount: summary.blockedCount,
+    };
+  });
+  const avgProgressPct =
+    projects.length > 0
+      ? Math.round(
+          projects.reduce((s, p) => s + p.progressPct, 0) / projects.length,
+        )
+      : 0;
+
+  const taskByStatus: Record<string, number> = {};
+  let totalTasks = 0;
+  for (const g of taskGroups) {
+    taskByStatus[g.status] = g._count._all;
+    totalTasks += g._count._all;
+  }
+
+  const inventory = products
+    ? {
+        skuCount: products.length,
+        criticalCount: products.filter(
+          (p) => getStockHealth(p.currentStock, p.minStock) === "CRITICAL",
+        ).length,
+        lowCount: products.filter(
+          (p) => getStockHealth(p.currentStock, p.minStock) === "LOW",
+        ).length,
+        lowestStock: products.slice(0, 5).map((p) => ({
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          currentStock: p.currentStock,
+          minStock: p.minStock,
+          health: getStockHealth(p.currentStock, p.minStock),
+        })),
+      }
+    : null;
+
+  const now = new Date();
+  const contentPlan = {
+    totalItems: contentItems.length,
+    copywritingDone: contentItems.filter(
+      (i) => i.statusCopywriting === "DIPUBLIKASIKAN",
+    ).length,
+    designDone: contentItems.filter((i) => i.statusDesign === "DIPUBLIKASIKAN")
+      .length,
+    overduePostingCount: contentItems.filter(
+      (i) =>
+        i.tanggalPosting &&
+        i.tanggalPosting < now &&
+        i.statusDesign !== "DIPUBLIKASIKAN",
+    ).length,
+  };
+
+  const outgoingRow = outgoing.brands.find(
+    (b) => b.brandName.trim().toLowerCase() === brand.name.trim().toLowerCase(),
+  );
+
+  return {
+    accessible: true as const,
+    generatedAt: new Date().toISOString(),
+    brand: { id: brand.id, name: brand.name },
+    projects: {
+      count: projects.length,
+      avgProgressPct,
+      withBlockedMilestones: projects.filter((p) => p.blockedCount > 0).length,
+      items: projects.slice(0, 10),
+    },
+    tasks: { total: totalTasks, byStatus: taskByStatus },
+    inventory,
+    contentPlan,
+    sales: {
+      windowDays: outgoing.windowDays,
+      totalPcs: outgoingRow?.totalPcs ?? 0,
+      salesPcs: outgoingRow?.salesPcs ?? 0,
+      samplingPcs: outgoingRow?.samplingPcs ?? 0,
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Recent activity feed                                                       */
+/* -------------------------------------------------------------------------- */
+
+type ActivityEvent = {
+  type:
+    | "task_created"
+    | "task_completed"
+    | "milestone_done"
+    | "milestone_blocked"
+    | "document_added"
+    | "stock_movement"
+    | "schedule_created"
+    | "finance_entry";
+  at: string;
+  title: string;
+  context?: string | null;
+  actor?: string;
+};
+
+const ROOM_TIMELINE_LABEL: Partial<Record<RoomTimelineStatus, string>> = {
+  [RoomTimelineStatus.DONE]: "selesai",
+  [RoomTimelineStatus.BLOCKED]: "terhambat",
+};
+
+/**
+ * Change feed lintas modul — "apa yang bergerak" dalam N hari terakhir.
+ * Dirakit dari beberapa tabel (tidak ada audit log tunggal): tugas dibuat/
+ * selesai, milestone, dokumen, pergerakan stok, jadwal, jurnal finance.
+ * Setiap bagian di-gate sesuai izin peran.
+ */
+export async function aiGetRecentActivity(
+  role: AiApiRole,
+  params?: { days?: number; limit?: number },
+) {
+  if (!canViewExecutive(role)) {
+    return denied("Recent activity hanya untuk CEO/Administrator.");
+  }
+
+  const days = Math.min(Math.max(params?.days ?? 7, 1), 30);
+  const limit = Math.min(Math.max(params?.limit ?? 40, 1), 80);
+  const since = new Date(Date.now() - days * 86_400_000);
+
+  const showTasks = canViewTasks(role);
+  const showPipeline = canViewBrandPipeline(role);
+  const showInventory = canViewInventory(role);
+  const showFinance = canViewFinanceSummary(role);
+
+  const [
+    tasksCreated,
+    tasksDone,
+    milestones,
+    documents,
+    stockLogs,
+    scheduleEvents,
+    financeEntries,
+  ] = await Promise.all([
+    showTasks
+      ? prisma.task.findMany({
+          where: { createdAt: { gte: since }, archivedAt: null },
+          select: {
+            id: true,
+            title: true,
+            createdAt: true,
+            project: {
+              select: {
+                name: true,
+                brand: { select: { name: true } },
+                room: { select: { name: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        })
+      : Promise.resolve([]),
+    showTasks
+      ? prisma.task.findMany({
+          where: { status: TaskStatus.DONE, updatedAt: { gte: since } },
+          select: {
+            id: true,
+            title: true,
+            updatedAt: true,
+            project: {
+              select: {
+                name: true,
+                brand: { select: { name: true } },
+                room: { select: { name: true } },
+              },
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: limit,
+        })
+      : Promise.resolve([]),
+    showPipeline
+      ? prisma.projectMilestone.findMany({
+          where: {
+            updatedAt: { gte: since },
+            parentId: null,
+            status: {
+              in: [RoomTimelineStatus.DONE, RoomTimelineStatus.BLOCKED],
+            },
+          },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            updatedAt: true,
+            project: {
+              select: {
+                name: true,
+                brand: { select: { name: true } },
+              },
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: limit,
+        })
+      : Promise.resolve([]),
+    showTasks || showPipeline
+      ? prisma.roomDocument.findMany({
+          where: { createdAt: { gte: since } },
+          select: {
+            id: true,
+            title: true,
+            fileName: true,
+            createdAt: true,
+            room: { select: { name: true } },
+            uploadedBy: { select: { name: true, email: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        })
+      : Promise.resolve([]),
+    showInventory
+      ? prisma.stockLog.findMany({
+          where: { createdAt: { gte: since } },
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            note: true,
+            createdAt: true,
+            product: { select: { name: true, sku: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        })
+      : Promise.resolve([]),
+    prisma.scheduleEvent.findMany({
+      where: { createdAt: { gte: since } },
+      select: {
+        id: true,
+        title: true,
+        startsAt: true,
+        createdAt: true,
+        createdBy: { select: { name: true, email: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    }),
+    showFinance
+      ? prisma.financeJournalEntry.findMany({
+          where: { createdAt: { gte: since } },
+          select: {
+            id: true,
+            entryNumber: true,
+            memo: true,
+            status: true,
+            createdAt: true,
+            createdBy: { select: { name: true, email: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const actorOf = (u: { name: string | null; email: string } | null) =>
+    u ? u.name?.trim() || u.email : undefined;
+
+  const events: ActivityEvent[] = [];
+
+  for (const t of tasksCreated) {
+    events.push({
+      type: "task_created",
+      at: t.createdAt.toISOString(),
+      title: `Tugas baru: ${t.title}`,
+      context: taskProjectContextLabel(t.project),
+    });
+  }
+  for (const t of tasksDone) {
+    events.push({
+      type: "task_completed",
+      at: t.updatedAt.toISOString(),
+      title: `Tugas selesai: ${t.title}`,
+      context: taskProjectContextLabel(t.project),
+    });
+  }
+  for (const m of milestones) {
+    const isDone = m.status === RoomTimelineStatus.DONE;
+    events.push({
+      type: isDone ? "milestone_done" : "milestone_blocked",
+      at: m.updatedAt.toISOString(),
+      title: `Milestone ${ROOM_TIMELINE_LABEL[m.status] ?? "diperbarui"}: ${m.title}`,
+      context: [m.project.brand?.name, m.project.name]
+        .filter(Boolean)
+        .join(" · "),
+    });
+  }
+  for (const d of documents) {
+    events.push({
+      type: "document_added",
+      at: d.createdAt.toISOString(),
+      title: `Dokumen baru: ${d.title?.trim() || d.fileName}`,
+      context: d.room.name,
+      actor: actorOf(d.uploadedBy),
+    });
+  }
+  for (const s of stockLogs) {
+    if ((s.note ?? "").startsWith("[SYS]")) continue;
+    events.push({
+      type: "stock_movement",
+      at: s.createdAt.toISOString(),
+      title: `Stok ${s.type} ${s.amount}: ${s.product.name}`,
+      context: s.product.sku,
+    });
+  }
+  for (const e of scheduleEvents) {
+    events.push({
+      type: "schedule_created",
+      at: e.createdAt.toISOString(),
+      title: `Jadwal: ${e.title}`,
+      context: `mulai ${e.startsAt.toISOString().slice(0, 16).replace("T", " ")}`,
+      actor: actorOf(e.createdBy),
+    });
+  }
+  for (const f of financeEntries) {
+    events.push({
+      type: "finance_entry",
+      at: f.createdAt.toISOString(),
+      title: `Jurnal ${f.status}: ${f.entryNumber || f.memo?.slice(0, 60) || "—"}`,
+      actor: actorOf(f.createdBy),
+    });
+  }
+
+  events.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  const trimmed = events.slice(0, limit);
+
+  const byType: Record<string, number> = {};
+  for (const e of trimmed) byType[e.type] = (byType[e.type] ?? 0) + 1;
+
+  return {
+    accessible: true as const,
+    generatedAt: new Date().toISOString(),
+    windowDays: days,
+    totalEvents: trimmed.length,
+    byType,
+    events: trimmed,
+  };
+}
