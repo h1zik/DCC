@@ -2,6 +2,8 @@
 
  * MCP server read-only untuk Odysseus -> DCC Railway.
 
+ * Transport: Streamable HTTP (dengan manajemen sesi).
+
  *
 
  * Setup VPS:
@@ -16,21 +18,37 @@
 
  *        DCC_AI_ROLE=CEO
 
- *   3. Di Odysseus Settings -> MCP Servers, tambahkan:
+ *        # opsional (HTTP transport):
 
- *        command: node
+ *        MCP_HTTP_PORT=3000            # default 3000
 
- *        args: ["/path/ke/DCC/mcp-server/dist/index.js"]
+ *        MCP_HTTP_HOST=0.0.0.0         # default 0.0.0.0
 
- *        env: { DCC_AI_API_URL, DCC_AI_READ_API_TOKEN, DCC_AI_ROLE }
+ *        MCP_HTTP_PATH=/mcp            # default /mcp
+
+ *        MCP_HTTP_AUTH_TOKEN=<rahasia> # jika diset, klien wajib kirim "Authorization: Bearer <rahasia>"
+
+ *   3. Jalankan: npm start (server listen di http://<host>:<port><path>)
+
+ *   4. Di klien MCP (Odysseus / lainnya), daftarkan sebagai server tipe
+
+ *      "streamable-http" / "http" dengan URL: http://<host>:<port>/mcp
+
+ *      dan header Authorization jika MCP_HTTP_AUTH_TOKEN diset.
 
  */
 
 
 
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+
+import { randomUUID } from "node:crypto";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { z } from "zod";
 
@@ -156,11 +174,7 @@ const roomNameSchema = z
 
 
 
-async function main() {
-
-  requireConfig();
-
-
+async function buildServer(): Promise<McpServer> {
 
   const server = new McpServer({
 
@@ -1037,20 +1051,300 @@ async function main() {
 
 
 
-  const transport = new StdioServerTransport();
-
-  await server.connect(transport);
+  return server;
 
 }
 
 
 
-main().catch((err) => {
+// ---------------------------------------------------------------------------
 
-  console.error("[dcc-mcp] fatal:", err);
+// Streamable HTTP transport + manajemen sesi
 
-  process.exit(1);
+// ---------------------------------------------------------------------------
 
-});
+
+
+const HTTP_PORT = Number(process.env.MCP_HTTP_PORT ?? process.env.PORT ?? 3000);
+
+const HTTP_HOST = process.env.MCP_HTTP_HOST ?? "0.0.0.0";
+
+const HTTP_PATH = process.env.MCP_HTTP_PATH ?? "/mcp";
+
+const HTTP_AUTH_TOKEN = process.env.MCP_HTTP_AUTH_TOKEN ?? "";
+
+
+
+// Satu transport per sesi (session id -> transport).
+
+const transports: Record<string, StreamableHTTPServerTransport> = {};
+
+
+
+function sendJson(res: ServerResponse, status: number, body: unknown) {
+
+  const payload = JSON.stringify(body);
+
+  res.writeHead(status, { "Content-Type": "application/json" });
+
+  res.end(payload);
+
+}
+
+
+
+function jsonRpcError(res: ServerResponse, status: number, message: string) {
+
+  sendJson(res, status, {
+
+    jsonrpc: "2.0",
+
+    error: { code: -32000, message },
+
+    id: null,
+
+  });
+
+}
+
+
+
+function readBody(req: IncomingMessage): Promise<unknown> {
+
+  return new Promise((resolve, reject) => {
+
+    const chunks: Buffer[] = [];
+
+    req.on("data", (chunk) => chunks.push(chunk as Buffer));
+
+    req.on("end", () => {
+
+      const raw = Buffer.concat(chunks).toString("utf8");
+
+      if (!raw) return resolve(undefined);
+
+      try {
+
+        resolve(JSON.parse(raw));
+
+      } catch (err) {
+
+        reject(err);
+
+      }
+
+    });
+
+    req.on("error", reject);
+
+  });
+
+}
+
+
+
+function isAuthorized(req: IncomingMessage): boolean {
+
+  if (!HTTP_AUTH_TOKEN) return true;
+
+  const header = req.headers.authorization ?? "";
+
+  const expected = `Bearer ${HTTP_AUTH_TOKEN}`;
+
+  return header === expected;
+
+}
+
+
+
+async function handlePost(req: IncomingMessage, res: ServerResponse) {
+
+  let body: unknown;
+
+  try {
+
+    body = await readBody(req);
+
+  } catch {
+
+    return jsonRpcError(res, 400, "Bad Request: body JSON tidak valid.");
+
+  }
+
+
+
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+  let transport: StreamableHTTPServerTransport | undefined;
+
+
+
+  if (sessionId && transports[sessionId]) {
+
+    // Sesi yang sudah ada.
+
+    transport = transports[sessionId];
+
+  } else if (!sessionId && isInitializeRequest(body)) {
+
+    // Sesi baru: buat transport + server instance sendiri.
+
+    transport = new StreamableHTTPServerTransport({
+
+      sessionIdGenerator: () => randomUUID(),
+
+      onsessioninitialized: (sid) => {
+
+        transports[sid] = transport!;
+
+      },
+
+    });
+
+
+
+    transport.onclose = () => {
+
+      const sid = transport!.sessionId;
+
+      if (sid && transports[sid]) delete transports[sid];
+
+    };
+
+
+
+    const server = await buildServer();
+
+    await server.connect(transport);
+
+  } else {
+
+    return jsonRpcError(
+
+      res,
+
+      400,
+
+      "Bad Request: session id tidak valid atau request bukan initialize.",
+
+    );
+
+  }
+
+
+
+  await transport.handleRequest(req, res, body);
+
+}
+
+
+
+async function handleSessionRequest(req: IncomingMessage, res: ServerResponse) {
+
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+  if (!sessionId || !transports[sessionId]) {
+
+    return jsonRpcError(res, 400, "Bad Request: session id tidak dikenal.");
+
+  }
+
+  await transports[sessionId].handleRequest(req, res);
+
+}
+
+
+
+function main() {
+
+  requireConfig();
+
+
+
+  const httpServer = createServer(async (req, res) => {
+
+    try {
+
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? HTTP_HOST}`);
+
+
+
+      // Health check — tidak butuh auth.
+
+      if (req.method === "GET" && url.pathname === "/health") {
+
+        return sendJson(res, 200, { status: "ok", transport: "streamable-http" });
+
+      }
+
+
+
+      if (url.pathname !== HTTP_PATH) {
+
+        return jsonRpcError(res, 404, "Not Found.");
+
+      }
+
+
+
+      if (!isAuthorized(req)) {
+
+        res.setHeader("WWW-Authenticate", "Bearer");
+
+        return jsonRpcError(res, 401, "Unauthorized: token bearer wajib.");
+
+      }
+
+
+
+      switch (req.method) {
+
+        case "POST":
+
+          return await handlePost(req, res);
+
+        case "GET":
+
+        case "DELETE":
+
+          return await handleSessionRequest(req, res);
+
+        default:
+
+          res.setHeader("Allow", "GET, POST, DELETE");
+
+          return jsonRpcError(res, 405, "Method Not Allowed.");
+
+      }
+
+    } catch (err) {
+
+      console.error("[dcc-mcp] request error:", err);
+
+      if (!res.headersSent) jsonRpcError(res, 500, "Internal Server Error.");
+
+    }
+
+  });
+
+
+
+  httpServer.listen(HTTP_PORT, HTTP_HOST, () => {
+
+    console.error(
+
+      `[dcc-mcp] Streamable HTTP transport listening di http://${HTTP_HOST}:${HTTP_PORT}${HTTP_PATH}` +
+
+        (HTTP_AUTH_TOKEN ? " (bearer auth aktif)" : " (tanpa auth)"),
+
+    );
+
+  });
+
+}
+
+
+
+main();
 
 

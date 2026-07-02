@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-02-mcp-streamable-http",
+    date: "2026-07-02",
+    title: "AI Assistant — koneksi lewat HTTP (Streamable HTTP)",
+    category: "improved",
+    description:
+      "Jembatan MCP yang menghubungkan AI Assistant ke data DCC kini disajikan lewat Streamable HTTP, bukan lagi proses lokal. Artinya bisa di-host jarak jauh (mis. Railway) dan diakses banyak klien AI sekaligus, dengan pengaman token.",
+    highlights: [
+      "Transport HTTP dengan manajemen sesi (endpoint /mcp)",
+      "Proteksi bearer token opsional (MCP_HTTP_AUTH_TOKEN)",
+      "Semua 69 tool read-only DCC tetap tersedia",
+    ],
+  },
+  {
     id: "2026-06-30-attendance-checkin-guard",
     date: "2026-06-30",
     title: "Absensi — cegah salah input check-in/check-out",
