@@ -308,6 +308,12 @@ export function CompetitorDetailClient({
 
       <DataSourceProvenancePanel entries={competitor.dataProvenance} />
 
+      <p className="text-muted-foreground text-[11px]">
+        Cakupan scrape: maksimal ±100 SKU teratas per toko sesuai urutan
+        listing marketplace — metrik share/harga adalah estimasi dari sampel
+        ini, bukan seluruh katalog toko.
+      </p>
+
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(hub.stickyToolbar, "pb-0")}>
           <TabsList variant="line" className="h-9 w-full justify-start gap-4">

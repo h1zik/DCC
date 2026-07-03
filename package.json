@@ -20,7 +20,8 @@
     "db:verify-kanban": "prisma db execute --file prisma/scripts/verify-kanban-migration.sql --schema prisma/schema.prisma",
     "db:clear-projects": "prisma db execute --file prisma/clear-projects.sql --schema prisma/schema.prisma",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "eval:research": "tsx scripts/eval-review-analysis.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

@@ -129,3 +129,16 @@ export function groundActionPlan(
     })),
   };
 }
+
+/**
+ * Corpus generik dari data input prompt apa pun (JSON-stringified, lowercase).
+ * Dipakai modul non-USP (competitor/discovery/social/trend) agar action plan
+ * mereka juga melewati filter evidence grounding — sebelumnya hanya USP.
+ */
+export function corpusFromData(data: unknown): string {
+  try {
+    return JSON.stringify(data ?? "").toLowerCase();
+  } catch {
+    return "";
+  }
+}

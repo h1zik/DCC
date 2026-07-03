@@ -2,13 +2,10 @@ import "server-only";
 
 import type { ResearchLlmProvider, ResearchModelTier } from "./types";
 import {
-  resolveResearchProvider,
+  resolveResearchProviderForTier,
+  resolveGeminiModel,
   resolveOllamaModel,
 } from "./config";
-
-function resolveGeminiModelName(): string {
-  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
-}
 
 export type ResearchAiModelStep = {
   /** Langkah analisis, mis. "Klasifikasi review". */
@@ -18,6 +15,10 @@ export type ResearchAiModelStep = {
   /** Nama model API, mis. deepseek-v4-flash:cloud */
   model: string;
   generatedAt: string;
+  /** Versi/hash prompt yang dipakai — untuk reproduksibilitas output. */
+  promptVersion?: string;
+  /** Pesan error bila langkah AI gagal — UI wajib menampilkan, bukan konten kosong. */
+  error?: string;
 };
 
 export type ResearchAiMeta = {
@@ -25,23 +26,32 @@ export type ResearchAiMeta = {
 };
 
 function resolveModelName(tier: ResearchModelTier): string {
-  const provider = resolveResearchProvider();
+  const provider = resolveResearchProviderForTier(tier);
   if (provider === "ollama-cloud") {
     return resolveOllamaModel(tier);
   }
-  return resolveGeminiModelName();
+  return resolveGeminiModel(tier);
 }
 
 export function buildResearchAiStep(
   label: string,
   tier: ResearchModelTier,
+  opts?: {
+    /** Model yang benar-benar menjawab (dari onModelUsed) — bukan sekadar model terkonfigurasi. */
+    actualModel?: string;
+    promptVersion?: string;
+    /** Diisi bila langkah gagal; badge model akan menandai output tidak tersedia. */
+    error?: string;
+  },
 ): ResearchAiModelStep {
   return {
     label,
     tier,
-    provider: resolveResearchProvider(),
-    model: resolveModelName(tier),
+    provider: resolveResearchProviderForTier(tier),
+    model: opts?.actualModel || resolveModelName(tier),
     generatedAt: new Date().toISOString(),
+    ...(opts?.promptVersion ? { promptVersion: opts.promptVersion } : {}),
+    ...(opts?.error ? { error: opts.error } : {}),
   };
 }
 

@@ -64,6 +64,8 @@ function statusChipTone(
   switch (status) {
     case "READY":
       return "success";
+    case "SENT_TO_RND":
+      return "primary";
     case "VALIDATING":
       return "warning";
     case "ARCHIVED":

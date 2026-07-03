@@ -56,11 +56,23 @@ export type DashboardRecommendation = {
   href: string | null;
 };
 
+export type CronHealthEntry = {
+  mode: string;
+  label: string;
+  /** Jadwal yang diharapkan (dokumentasi Railway). */
+  schedule: string;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  /** True bila cron tidak pernah jalan atau terakhir jalan melewati ambang basi. */
+  isStale: boolean;
+};
+
 export type DashboardData = {
   kpis: DashboardKpis;
   alerts: DashboardAlert[];
   health: ModuleHealth[];
   recommendations: DashboardRecommendation[];
+  cronHealth: CronHealthEntry[];
   latestReport: {
     id: string;
     title: string;
@@ -71,6 +83,43 @@ export type DashboardData = {
 };
 
 const PRIORITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2 };
+
+/** Mode cron + ambang basi (jam). Melewati ambang = data mungkin sudah basi. */
+const CRON_MODES: { mode: string; label: string; schedule: string; staleAfterHours: number }[] = [
+  { mode: "poll", label: "Poll job scrape", schedule: "tiap 5 menit", staleAfterHours: 1 },
+  { mode: "competitors", label: "Sync kompetitor", schedule: "harian 06:00", staleAfterHours: 36 },
+  { mode: "social", label: "Sync social listening", schedule: "harian 06:00", staleAfterHours: 36 },
+  { mode: "trends", label: "Digest Trend Radar", schedule: "Senin 06:00", staleAfterHours: 8 * 24 },
+  { mode: "reports", label: "Laporan mingguan", schedule: "Senin 06:00", staleAfterHours: 8 * 24 },
+];
+
+async function getCronHealth(): Promise<CronHealthEntry[]> {
+  const lastRuns = await Promise.all(
+    CRON_MODES.map((c) =>
+      prisma.researchCronRun.findFirst({
+        where: { mode: c.mode },
+        orderBy: { startedAt: "desc" },
+        select: { startedAt: true, status: true },
+      }),
+    ),
+  );
+
+  return CRON_MODES.map((c, i) => {
+    const run = lastRuns[i];
+    // Cron "full" juga mencakup semua mode — hitung sebagai pengganti bila lebih baru.
+    const isStale =
+      !run ||
+      Date.now() - run.startedAt.getTime() > c.staleAfterHours * 3_600_000;
+    return {
+      mode: c.mode,
+      label: c.label,
+      schedule: c.schedule,
+      lastRunAt: run?.startedAt.toISOString() ?? null,
+      lastStatus: run?.status ?? null,
+      isStale,
+    };
+  });
+}
 
 function reviewHealthLevel(opts: {
   configured: boolean;
@@ -304,6 +353,8 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     },
   ];
 
+  const cronHealth = await getCronHealth();
+
   return {
     kpis: {
       reviewReady,
@@ -321,6 +372,7 @@ export async function getResearchDashboardData(): Promise<DashboardData> {
     alerts: alerts.slice(0, 8),
     health,
     recommendations,
+    cronHealth,
     latestReport: latestReport
       ? {
           id: latestReport.id,

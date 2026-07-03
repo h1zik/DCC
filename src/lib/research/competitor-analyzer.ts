@@ -7,6 +7,10 @@ import {
   researchAiMetaFromSteps,
 } from "@/lib/research/llm";
 import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import {
+  corpusFromData,
+  groundActionPlan,
+} from "@/lib/research/usp-gap/evidence-grounding";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
 import { buildActionPlanInstruction } from "@/lib/research/prescriptive/prompt";
 import { buildCompetitorInsights } from "@/lib/research/competitor-insights";
@@ -130,6 +134,8 @@ export async function analyzeCompetitor(competitorId: string): Promise<void> {
 
   let summary: string | null = null;
   let actionPlan: ActionPlan | null = null;
+  let actualModel: string | undefined;
+  let aiError: string | undefined;
   try {
     const result = await generateResearchJson<{
       summary?: string;
@@ -156,11 +162,16 @@ Balas HANYA JSON valid:
   "summary": "string",
   "actionPlan": { "headline": "string", "recommendations": [ /* skema di atas */ ] }
 }`,
+      { onModelUsed: (m) => (actualModel = m) },
     );
     summary = result.summary?.trim() || null;
-    actionPlan = coerceActionPlan(result.actionPlan, `competitor-${competitorId}`);
+    actionPlan = groundActionPlan(
+      coerceActionPlan(result.actionPlan, `competitor-${competitorId}`),
+      corpusFromData(promptInput),
+    );
   } catch (err) {
     console.error("[competitor-analyzer] gagal", err);
+    aiError = err instanceof Error ? err.message : String(err);
   }
 
   await prisma.researchCompetitor.update({
@@ -173,9 +184,13 @@ Balas HANYA JSON valid:
         promoSkuCount: extra.promoSkuCount,
         actionPlan: actionPlan ?? null,
         generatedAt: new Date().toISOString(),
+        aiError: aiError ?? null,
       } as object,
       aiMeta: researchAiMetaFromSteps([
-        buildResearchAiStep("Insight kompetitor", "flash"),
+        buildResearchAiStep("Insight kompetitor", "flash", {
+          actualModel,
+          error: aiError,
+        }),
       ]) as object,
     },
   });

@@ -45,7 +45,7 @@ export async function runApifyJobToCompletion(
                 "Tidak ada produk dari scraper. Pastikan URL toko Shopee valid.",
           );
         }
-        await ingestCompetitorProducts(job.entityId, products);
+        await ingestCompetitorProducts(job.entityId, products, "apify");
       }
 
       await prisma.researchScrapeJob.update({

@@ -28,9 +28,16 @@ export type GenerateResearchJsonOpts<T> = {
   singleModel?: boolean;
   /** Jangan log per-model warning (mis. moderasi gambar massal). */
   quiet?: boolean;
+  /**
+   * Dipanggil dengan nama model yang BENAR-BENAR menjawab (setelah fallback).
+   * Pakai ini saat membangun aiMeta agar badge model tidak salah atribusi.
+   */
+  onModelUsed?: (model: string) => void;
 };
 
 export type GenerateResearchTextOpts = {
   tier?: ResearchModelTier;
   maxRetries?: number;
+  /** Dipanggil dengan nama model yang benar-benar menjawab. */
+  onModelUsed?: (model: string) => void;
 };

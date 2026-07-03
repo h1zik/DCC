@@ -68,6 +68,10 @@ export type ReportDetailData = {
     rationale: string;
     sourceLabel: string | null;
     href: string | null;
+    /** Ada di laporan generasi baru; laporan lama tidak punya field ini. */
+    evidence?: { label: string; refId?: string }[];
+    confidence?: number;
+    recommendationId?: string;
   }[];
   feedbackLoop: FeedbackLoopData | null;
   metrics: ReportActivityMetrics | null;
@@ -76,6 +80,9 @@ export type ReportDetailData = {
   errorMessage: string | null;
   aiMeta: ResearchAiMetaView | null;
   sharePath: string;
+  version: number;
+  /** Jumlah versi lama yang diarsip (regenerate tidak menimpa riwayat). */
+  revisionCount: number;
 };
 
 const PRIORITY_TONE: Record<string, string> = {
@@ -167,6 +174,10 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
               label="Status"
               value={RESEARCH_REPORT_STATUS_LABELS[data.status]}
               tone={statusChipTone(data.status)}
+            />
+            <ResearchHubStatChip
+              label="Versi"
+              value={`v${data.version}${data.revisionCount > 0 ? ` (${data.revisionCount} arsip)` : ""}`}
             />
             <ResearchHubStatChip
               label="Section"
@@ -312,9 +323,24 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
                         <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
                           {item.rationale}
                         </p>
+                        {item.evidence && item.evidence.length > 0 ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {item.evidence.map((e, j) => (
+                              <span
+                                key={j}
+                                className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-[10px]"
+                              >
+                                {e.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                         <p className="text-muted-foreground mt-1 text-[10px] uppercase tracking-wide">
                           {item.owner}
                           {item.sourceLabel ? ` · ${item.sourceLabel}` : ""}
+                          {typeof item.confidence === "number"
+                            ? ` · estimasi AI ${Math.round(item.confidence * 100)}%`
+                            : ""}
                         </p>
                       </div>
                     </div>
@@ -339,8 +365,8 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
         <TabsContent value="alur" className={tabContentClass}>
           {data.feedbackLoop ? (
             <ResearchHubSection
-              title="Feedback Loop Riset"
-              description="Alur sinyal → insight → konsep dalam periode laporan."
+              title="Volume Aktivitas Riset"
+              description="Jumlah record nyata per modul dalam periode laporan (bukan lineage per-item). Hanya link USP → Konsep yang merupakan relasi langsung."
             >
               <div className={hub.panel}>
                 <ReportFeedbackSankey data={data.feedbackLoop} />

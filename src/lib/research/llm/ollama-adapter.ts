@@ -131,6 +131,7 @@ export async function ollamaGenerateJson<T>(
         throw new Error("Validasi struktur JSON gagal.");
       }
 
+      opts?.onModelUsed?.(model);
       return parsed;
     } catch (err) {
       lastError = err;
@@ -162,9 +163,11 @@ export async function ollamaGenerateText(
   opts?: GenerateResearchTextOpts,
 ): Promise<string> {
   const tier = opts?.tier ?? "flash";
-  return ollamaChat(prompt, tier, {
+  const text = await ollamaChat(prompt, tier, {
     json: false,
     temperature: 0.3,
     maxRetries: opts?.maxRetries,
   });
+  opts?.onModelUsed?.(resolveOllamaModel(tier));
+  return text;
 }

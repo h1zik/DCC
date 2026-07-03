@@ -2,9 +2,14 @@ import "server-only";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GeminiResponseBlockedError, isGeminiResponseBlockedError } from "./gemini-blocked-error";
-import { parseExtractedJson } from "./extract-json";
+import { resolveGeminiModelCandidates } from "./config";
+import { isJsonParseError, parseExtractedJson } from "./extract-json";
 import { withLlmRetry } from "./retry";
 import type { GenerateResearchJsonOpts, GenerateResearchTextOpts } from "./types";
+
+const JSON_REPAIR_SUFFIX =
+  "\n\nPERINGATAN: Respons sebelumnya bukan JSON valid. " +
+  "Output HARUS satu objek JSON parsable saja — tanpa kalimat penjelasan dalam bahasa Indonesia atau Inggris.";
 
 export { GeminiResponseBlockedError, isGeminiResponseBlockedError } from "./gemini-blocked-error";
 
@@ -32,20 +37,6 @@ function resolveGeminiApiKey(): string | null {
   );
 }
 
-function resolveGeminiModelCandidates(): string[] {
-  const primary =
-    process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
-  const fallbacks = ["gemini-2.5-flash", "gemini-flash-latest"];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const name of [primary, ...fallbacks]) {
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    out.push(name);
-  }
-  return out;
-}
-
 export async function geminiGenerateJson<T>(
   prompt: string,
   opts?: GenerateResearchJsonOpts<T>,
@@ -58,62 +49,86 @@ export async function geminiGenerateJson<T>(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
+  const tier = opts?.tier ?? "flash";
   const models = opts?.singleModel
-    ? resolveGeminiModelCandidates().slice(0, 1)
-    : resolveGeminiModelCandidates();
+    ? resolveGeminiModelCandidates(tier).slice(0, 1)
+    : resolveGeminiModelCandidates(tier);
+  const parseAttempts = Math.max(1, (opts?.maxRetries ?? 2) + 1);
   let lastError: unknown;
 
   for (const modelName of models) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.2,
-        },
-      });
-
-      const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
-        [{ text: prompt }];
-      for (const img of opts?.imageParts ?? []) {
-        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
-      }
-
-      const result = await withLlmRetry(
-        () => model.generateContent(parts),
-        { maxRetries: opts?.maxRetries ?? 2 },
-      );
-
-      const blockReason = readGeminiBlockReason(result.response);
-      if (blockReason) {
-        throw new GeminiResponseBlockedError(blockReason);
-      }
-
-      let text: string;
+    // Repair loop: respons non-JSON di-retry dengan suffix peringatan +
+    // temperature lebih rendah, bukan langsung pindah model (paritas Ollama).
+    for (let attempt = 0; attempt < parseAttempts; attempt += 1) {
       try {
-        text = result.response.text();
-      } catch (err) {
-        if (isGeminiResponseBlockedError(err)) throw err;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.toLowerCase().includes("blocked")) {
-          throw new GeminiResponseBlockedError(msg);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: attempt === 0 ? 0.2 : 0.1,
+          },
+        });
+
+        const attemptPrompt =
+          attempt === 0 ? prompt : `${prompt}${JSON_REPAIR_SUFFIX}`;
+        const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
+          [{ text: attemptPrompt }];
+        for (const img of opts?.imageParts ?? []) {
+          parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
         }
-        throw err;
-      }
 
-      const parsed = parseExtractedJson<T>(text);
+        const result = await withLlmRetry(
+          () => model.generateContent(parts),
+          { maxRetries: opts?.maxRetries ?? 2 },
+        );
 
-      if (opts?.validate && !opts.validate(parsed)) {
-        throw new Error("Validasi struktur JSON gagal.");
-      }
-      return parsed;
-    } catch (err) {
-      lastError = err;
-      if (err instanceof GeminiResponseBlockedError) {
-        throw err;
-      }
-      if (!opts?.quiet) {
-        console.warn(`[research/llm/gemini] model ${modelName} gagal`, err);
+        const blockReason = readGeminiBlockReason(result.response);
+        if (blockReason) {
+          throw new GeminiResponseBlockedError(blockReason);
+        }
+
+        let text: string;
+        try {
+          text = result.response.text();
+        } catch (err) {
+          if (isGeminiResponseBlockedError(err)) throw err;
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.toLowerCase().includes("blocked")) {
+            throw new GeminiResponseBlockedError(msg);
+          }
+          throw err;
+        }
+
+        const parsed = parseExtractedJson<T>(text);
+
+        if (opts?.validate && !opts.validate(parsed)) {
+          throw new Error("Validasi struktur JSON gagal.");
+        }
+        opts?.onModelUsed?.(modelName);
+        return parsed;
+      } catch (err) {
+        lastError = err;
+        if (err instanceof GeminiResponseBlockedError) {
+          throw err;
+        }
+
+        const validationFailed =
+          err instanceof Error &&
+          err.message === "Validasi struktur JSON gagal.";
+        const repairable = isJsonParseError(err) || validationFailed;
+        if (repairable && attempt < parseAttempts - 1) {
+          if (!opts?.quiet) {
+            console.warn(
+              `[research/llm/gemini] model ${modelName} JSON tidak valid (attempt ${attempt + 1}/${parseAttempts}), retry…`,
+            );
+          }
+          continue;
+        }
+
+        if (!opts?.quiet) {
+          console.warn(`[research/llm/gemini] model ${modelName} gagal`, err);
+        }
+        break;
       }
     }
   }
@@ -133,13 +148,15 @@ export async function geminiGenerateText(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
+  const modelName = resolveGeminiModelCandidates(opts?.tier ?? "flash")[0]!;
   const model = genAI.getGenerativeModel({
-    model: resolveGeminiModelCandidates()[0]!,
+    model: modelName,
     generationConfig: { temperature: 0.3 },
   });
 
   const result = await withLlmRetry(() => model.generateContent(prompt), {
     maxRetries: opts?.maxRetries ?? 2,
   });
+  opts?.onModelUsed?.(modelName);
   return result.response.text().trim();
 }

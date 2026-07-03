@@ -11,6 +11,12 @@ export type ReportActionItem = {
   rationale: string;
   sourceLabel: string | null;
   href: string | null;
+  /** Evidence chips dari rekomendasi asal — jangan dibuang saat disalin ke laporan. */
+  evidence: { label: string; refId?: string }[];
+  /** Confidence rekomendasi (AI-estimate, sudah di-clamp 0..1). */
+  confidence: number;
+  /** Id rekomendasi asal — untuk telusur balik & feedback. */
+  recommendationId: string;
 };
 
 export type ReportUspDetail = {
@@ -91,8 +97,11 @@ function makeModuleGate(modules?: ModuleFlags): (key: string) => boolean {
 }
 
 /**
- * Deterministic 3-tier flow: raw signals -> insight engine -> concepts.
- * Powers the feedback-loop Sankey in the report.
+ * Volume aktivitas modul per periode (BUKAN lineage sinyal→konsep per item).
+ * Nilai link = jumlah record nyata; link bernilai 0 TIDAK dirender — jangan
+ * pernah memalsukan alur dengan nilai minimum agar chart "terlihat hidup".
+ * Satu-satunya link ber-lineage nyata: USP & Gap → Konsep Produk (FK
+ * uspGapAnalysisId pada ProductConcept).
  */
 function buildFeedbackLoop(counts: {
   reviewSourcesReady: number;
@@ -100,15 +109,9 @@ function buildFeedbackLoop(counts: {
   trendDigests: number;
   keywordQueries: number;
   uspAnalyses: number;
-  productConcepts: number;
+  /** Konsep dengan FK uspGapAnalysisId — lineage nyata, bukan total konsep. */
+  conceptsFromUsp: number;
 }): ReportFeedbackLoop {
-  const signalTotal =
-    counts.reviewSourcesReady +
-    counts.socialBatches +
-    counts.trendDigests +
-    counts.keywordQueries;
-  const insightTotal = Math.max(counts.uspAnalyses, 1);
-
   const nodes = [
     { name: "Review Intel" },
     { name: "Social Listening" },
@@ -128,15 +131,18 @@ function buildFeedbackLoop(counts: {
     {
       source: "USP & Gap",
       target: "Konsep Produk",
-      value: counts.productConcepts,
+      value: counts.conceptsFromUsp,
     },
-  ]
-    // Sankey breaks on zero-value links; keep a minimum weight so the flow renders.
-    .map((l) => ({ ...l, value: Math.max(l.value, 0) }))
-    .filter((l) => l.value > 0 || signalTotal > 0 || insightTotal > 0)
-    .map((l) => ({ ...l, value: l.value > 0 ? l.value : 1 }));
+  ].filter((l) => l.value > 0);
 
-  return { nodes, links };
+  const linkedNodeNames = new Set(
+    links.flatMap((l) => [l.source, l.target]),
+  );
+
+  return {
+    nodes: nodes.filter((n) => linkedNodeNames.has(n.name)),
+    links,
+  };
 }
 
 export async function aggregateReportData(input: {
@@ -171,6 +177,7 @@ export async function aggregateReportData(input: {
     socialBatches,
     uspAnalyses,
     productConcepts,
+    conceptsFromUsp,
     latestReview,
     latestDigest,
     latestSocial,
@@ -194,6 +201,12 @@ export async function aggregateReportData(input: {
     }),
     prisma.productConcept.count({
       where: { createdAt: { gte: periodStart, lte: periodEnd } },
+    }),
+    prisma.productConcept.count({
+      where: {
+        createdAt: { gte: periodStart, lte: periodEnd },
+        uspGapAnalysisId: { not: null },
+      },
     }),
     prisma.reviewIntelSource.findFirst({
       where: sources?.reviewSourceId
@@ -447,6 +460,13 @@ export async function aggregateReportData(input: {
       rationale: r.rationale,
       sourceLabel: r.sourceLabel,
       href: r.href,
+      evidence: Array.isArray(r.evidence)
+        ? (r.evidence as { label: string; refId?: string }[]).filter(
+            (e) => e && typeof e.label === "string",
+          )
+        : [],
+      confidence: r.confidence,
+      recommendationId: r.id,
     }));
 
   const feedbackLoop = buildFeedbackLoop({
@@ -455,7 +475,7 @@ export async function aggregateReportData(input: {
     trendDigests,
     keywordQueries,
     uspAnalyses,
-    productConcepts,
+    conceptsFromUsp,
   });
 
   return {

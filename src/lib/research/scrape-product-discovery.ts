@@ -7,9 +7,11 @@ import {
   ResearchMarketplace,
   ResearchScrapeJobStatus,
   ResearchScrapeJobType,
+  ScrapeDataProvenance,
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
 import {
   buildSearchActorInput,
   buildTikTokSearchActorInput,
@@ -144,6 +146,9 @@ export async function ingestDiscoveryProductsBatch(
 }
 
 export async function runDemoProductDiscovery(queryId: string): Promise<void> {
+  // Fail-loud di produksi: jangan menulis produk fabrikasi tanpa izin eksplisit.
+  assertDemoDataAllowed("Scraper product discovery (VPS/Apify)");
+
   const query = await prisma.productDiscoveryQuery.findUnique({
     where: { id: queryId },
   });
@@ -178,6 +183,8 @@ export async function runDemoProductDiscovery(queryId: string): Promise<void> {
     data: {
       status: ProductDiscoveryStatus.READY,
       scrapeState: Prisma.JsonNull,
+      dataProvenance: ScrapeDataProvenance.DEMO,
+      collectedAt: new Date(),
       errorMessage: "Data demo — Apify belum dikonfigurasi.",
     },
   });
@@ -246,6 +253,7 @@ export async function finalizeProductDiscoveryJob(
       status: ProductDiscoveryStatus.READY,
       productCount: count,
       errorMessage: notice,
+      collectedAt: new Date(),
       scrapeState: persistedScrapeState ?? Prisma.JsonNull,
     },
   });

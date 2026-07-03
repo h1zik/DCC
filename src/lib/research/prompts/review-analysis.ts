@@ -1,3 +1,6 @@
+/** Versi prompt — naikkan setiap kali instruksi berubah (dicatat di aiMeta). */
+export const REVIEW_ANALYSIS_PROMPT_VERSION = "1";
+
 export function buildReviewBatchPrompt(
   productName: string,
   reviews: { idx: number; text: string; rating: number | null }[],

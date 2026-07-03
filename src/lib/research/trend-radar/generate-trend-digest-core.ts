@@ -20,6 +20,10 @@ import {
 } from "@/lib/research/trend-radar/prompts/trend-analysis";
 import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
 import {
+  corpusFromData,
+  groundActionPlan,
+} from "@/lib/research/usp-gap/evidence-grounding";
+import {
   dedupeBrandNames,
   extractForbiddenBrandsFromStrings,
   gatherMarketBrandNames,
@@ -131,6 +135,7 @@ export async function runTrendDigestPipeline(input: {
   const marketBrands = await gatherMarketBrandNames();
 
   try {
+    let narrativeModel: string | undefined;
     const llmNarrative = await generateResearchJson<{
       narrative?: string;
       items?: { name: string; narrative?: string; relatedProducts?: string[] }[];
@@ -142,9 +147,11 @@ export async function runTrendDigestPipeline(input: {
         forbiddenBrands: marketBrands,
         digestMode: quality.digestMode,
       }),
-      { tier: "pro" },
+      { tier: "pro", onModelUsed: (m) => (narrativeModel = m) },
     );
-    aiMetaSteps.push(buildResearchAiStep("Narasi tren", "pro"));
+    aiMetaSteps.push(
+      buildResearchAiStep("Narasi tren", "pro", { actualModel: narrativeModel }),
+    );
 
     if (llmNarrative.narrative?.trim()) {
       narrative = llmNarrative.narrative.trim();
@@ -175,11 +182,17 @@ export async function runTrendDigestPipeline(input: {
     }
   } catch (err) {
     console.error("[trend-digest-core] narrative LLM gagal", err);
+    aiMetaSteps.push(
+      buildResearchAiStep("Narasi tren", "pro", {
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }
 
   let actionPlan: ActionPlan | null = null;
   if (quality.digestMode === "LIVE") {
     try {
+      let planModel: string | undefined;
       const trendForbiddenBrands = dedupeBrandNames([
         ...marketBrands,
         ...extractForbiddenBrandsFromStrings(items.map((i) => i.name)),
@@ -195,16 +208,34 @@ export async function runTrendDigestPipeline(input: {
           })),
           forbiddenBrands: trendForbiddenBrands,
         }),
-        { tier: "pro" },
+        { tier: "pro", onModelUsed: (m) => (planModel = m) },
       );
-      actionPlan = coerceActionPlan(
-        planResult.actionPlan,
-        "trend-digest",
-        trendForbiddenBrands,
+      actionPlan = groundActionPlan(
+        coerceActionPlan(
+          planResult.actionPlan,
+          "trend-digest",
+          trendForbiddenBrands,
+        ),
+        corpusFromData({
+          narrative,
+          items: items.map((i) => ({
+            name: i.name,
+            dimension: String(i.dimension),
+            phase: String(i.phase),
+            score: i.tmiScore,
+          })),
+        }),
       );
-      aiMetaSteps.push(buildResearchAiStep("Rencana aksi", "pro"));
+      aiMetaSteps.push(
+        buildResearchAiStep("Rencana aksi", "pro", { actualModel: planModel }),
+      );
     } catch (err) {
       console.error("[trend-digest-core] action plan gagal", err);
+      aiMetaSteps.push(
+        buildResearchAiStep("Rencana aksi", "pro", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
     }
   }
 

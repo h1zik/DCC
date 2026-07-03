@@ -8,7 +8,10 @@ import {
   mergeResearchAiMeta,
 } from "@/lib/research/llm";
 import { gatherConceptContext } from "@/lib/research/concept-lab/gather-concept-context";
-import { buildConceptGenerationPrompt } from "@/lib/research/concept-lab/prompts/concept-generation";
+import {
+  buildConceptGenerationPrompt,
+  CONCEPT_GENERATION_PROMPT_VERSION,
+} from "@/lib/research/concept-lab/prompts/concept-generation";
 import type { ConceptData } from "@/lib/research/concept-lab/types";
 import { validateProductConceptById } from "@/lib/research/concept-lab/concept-validator";
 import type { ContextModules } from "@/lib/research/usp-gap/gather-context";
@@ -45,9 +48,20 @@ export async function generateProductConcept(conceptId: string): Promise<void> {
       context,
     });
 
-    const result = await generateResearchJson<ConceptData>(prompt, {
+    let actualModel: string | undefined;
+    const generated = await generateResearchJson<
+      Omit<ConceptData, "estimatedCogsRange">
+    >(prompt, {
       tier: "pro",
+      onModelUsed: (m) => (actualModel = m),
     });
+
+    // COGS bukan output AI — model tidak punya data biaya/BOM/supplier apa pun.
+    // Nilai 0/0 = "perlu quote manufaktur"; user bisa isi manual di step form.
+    const result: ConceptData = {
+      ...generated,
+      estimatedCogsRange: { min: 0, max: 0 },
+    };
 
     if (context.uspCandidate && !result.positioningStatement) {
       result.positioningStatement = context.uspCandidate.usp;
@@ -64,7 +78,10 @@ export async function generateProductConcept(conceptId: string): Promise<void> {
         mode: ProductConceptMode.AI_GENERATED,
         aiMeta: mergeResearchAiMeta(
           concept.aiMeta,
-          buildResearchAiStep("Generate konsep", "pro"),
+          buildResearchAiStep("Generate konsep", "pro", {
+            actualModel,
+            promptVersion: CONCEPT_GENERATION_PROMPT_VERSION,
+          }),
         ) as object,
       },
     });

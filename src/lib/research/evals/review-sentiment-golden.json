@@ -1,0 +1,93 @@
+{
+  "description": "Golden set klasifikasi review — label manual untuk regression test prompt review-analysis. Tambah kasus baru setiap kali menemukan misklasifikasi di produksi.",
+  "promptVersion": "1",
+  "cases": [
+    {
+      "idx": 0,
+      "text": "Sumpah ini serum terbaik yang pernah aku pakai, glowing banget dalam 2 minggu. Packing aman, pengiriman cepat.",
+      "rating": 5,
+      "expectedSentiment": "POSITIVE",
+      "expectedThemeKeywords": ["glowing"]
+    },
+    {
+      "idx": 1,
+      "text": "Teksturnya lengket banget di kulit, jadi males pakai lagi. Wanginya juga terlalu menyengat.",
+      "rating": 2,
+      "expectedSentiment": "NEGATIVE",
+      "expectedThemeKeywords": ["lengket", "wangi"]
+    },
+    {
+      "idx": 2,
+      "text": "Baru pakai 3 hari, belum kelihatan hasilnya. Semoga cocok.",
+      "rating": 4,
+      "expectedSentiment": "NEUTRAL",
+      "expectedThemeKeywords": []
+    },
+    {
+      "idx": 3,
+      "text": "BREAKOUT PARAH!!! Muka aku jadi jerawatan semua setelah pakai ini seminggu. Ga recommended buat kulit sensitif.",
+      "rating": 1,
+      "expectedSentiment": "NEGATIVE",
+      "expectedThemeKeywords": ["breakout", "jerawat"]
+    },
+    {
+      "idx": 4,
+      "text": "Harganya murah tapi kualitas ga murahan. Kulit kering aku jadi lembap seharian. Repurchase pasti!",
+      "rating": 5,
+      "expectedSentiment": "POSITIVE",
+      "expectedThemeKeywords": ["lembap", "murah"]
+    },
+    {
+      "idx": 5,
+      "text": "Produk oke sih, tapi pengirimannya lama banget, hampir 2 minggu baru sampai. Kemasan penyok.",
+      "rating": 3,
+      "expectedSentiment": "NEGATIVE",
+      "expectedThemeKeywords": ["pengiriman", "kemasan"]
+    },
+    {
+      "idx": 6,
+      "text": "Aku umur 35 kulit kombinasi, pakai ini pagi malam. Pori-pori keliatan mengecil, bekas jerawat memudar pelan-pelan.",
+      "rating": 5,
+      "expectedSentiment": "POSITIVE",
+      "expectedThemeKeywords": ["pori", "bekas jerawat"],
+      "expectedDemographics": { "ageBand": "30an", "skinType": "kombinasi" }
+    },
+    {
+      "idx": 7,
+      "text": "Isinya cuma setengah botol padahal segel masih utuh. Kecewa sama seller.",
+      "rating": 1,
+      "expectedSentiment": "NEGATIVE",
+      "expectedThemeKeywords": ["isi", "seller"]
+    },
+    {
+      "idx": 8,
+      "text": "Standar aja sih, ga ada yang spesial tapi ga jelek juga.",
+      "rating": 3,
+      "expectedSentiment": "NEUTRAL",
+      "expectedThemeKeywords": []
+    },
+    {
+      "idx": 9,
+      "text": "Suka banget sama toner ini! Kulit berminyak aku jadi lebih kalem, jerawat kecil-kecil pada kering. Botolnya juga cantik.",
+      "rating": 5,
+      "expectedSentiment": "POSITIVE",
+      "expectedThemeKeywords": ["berminyak", "jerawat"],
+      "expectedDemographics": { "skinType": "berminyak" }
+    },
+    {
+      "idx": 10,
+      "text": "Perih dan panas di muka pas dipakai, langsung aku bilas. Mungkin ga cocok aja di aku.",
+      "rating": 2,
+      "expectedSentiment": "NEGATIVE",
+      "expectedThemeKeywords": ["perih"]
+    },
+    {
+      "idx": 11,
+      "text": "Repeat order ke-3. Suami aku juga ikut pakai buat kulit keringnya dan cocok.",
+      "rating": 5,
+      "expectedSentiment": "POSITIVE",
+      "expectedThemeKeywords": ["kering"],
+      "expectedDemographics": { "gender": "wanita" }
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import { refreshUspGapAnalysis } from "@/actions/research-usp-gap";
 import { ProductConceptMode } from "@prisma/client";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
+import { AiFeedbackButtons } from "@/components/research-hub/ai-feedback-buttons";
 import { ClaimAnalysisPanel } from "@/components/research-hub/claim-analysis-panel";
 import { ContextQualityBanner } from "@/components/research-hub/context-quality-banner";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
@@ -315,14 +316,25 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
           <span className="text-sm font-bold uppercase tracking-wide">
             {VERDICT_STYLE[data.categoryDecision.verdict].label}
           </span>
-          <span className="text-xs font-medium opacity-80">
+          <span
+            className="text-xs font-medium opacity-80"
+            title="Estimasi AI, dibatasi cakupan data: verdict dengan konteks modul minim otomatis diturunkan keyakinannya."
+          >
             Keyakinan {Math.round(data.categoryDecision.confidence * 100)}%
+            (estimasi AI)
           </span>
           {data.categoryDecision.reason ? (
             <span className="text-foreground/80 w-full text-xs leading-snug sm:w-auto sm:flex-1">
               {data.categoryDecision.reason}
             </span>
           ) : null}
+          <AiFeedbackButtons
+            module="usp-analyzer"
+            artifactType="usp-verdict"
+            artifactId={data.id}
+            label="Verdict akurat?"
+            className="w-full sm:w-auto"
+          />
         </div>
       ) : null}
 

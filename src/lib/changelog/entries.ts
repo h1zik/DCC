@@ -37,6 +37,25 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-04-research-hub-trust-overhaul",
+    date: "2026-07-04",
+    title: "Research Hub — data lebih jujur & bisa ditelusuri",
+    category: "improved",
+    description:
+      "Perombakan besar keandalan Research Hub: setiap angka kini bisa ditelusuri ke sumbernya, data demo tidak pernah lagi menyamar sebagai data asli, dan output AI yang gagal ditampilkan apa adanya. Hasil riset kini lebih aman dipakai untuk keputusan pengembangan produk.",
+    highlights: [
+      "Sumber data (VPS/Apify/CSV/Demo) tercatat saat scrape — data demo diberi banner merah dan diblokir di produksi",
+      "Concept Lab tidak lagi mengarang estimasi biaya produksi (COGS) — kini input manual/quote manufaktur",
+      "Rekomendasi bisa ditolak/ditandai selesai; riwayatnya tidak lagi terhapus saat analisis ulang",
+      "Konsep yang dikirim ke R&D membawa faktor risiko + sumber datanya, dan tertaut ke project-nya",
+      "Laporan riset diberi versi — regenerate mengarsip versi lama, tidak menimpa",
+      "Verdict GO/WATCH/AVOID dibatasi kecukupan data, bukan sekadar keyakinan AI",
+      "Peringatan di dashboard bila refresh terjadwal (cron) tidak berjalan",
+      "Thumbs up/down pada output AI + eval kualitas prompt (npm run eval:research)",
+      "Model AI bisa diatur per tier — flash & pro kini DeepSeek V4 via Ollama Cloud",
+    ],
+  },
+  {
     id: "2026-07-03-self-service-password-change",
     date: "2026-07-03",
     title: "Ganti kata sandi sendiri dari halaman profil",

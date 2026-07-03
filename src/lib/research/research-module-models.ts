@@ -139,6 +139,9 @@ export type ResearchAiMetaView = {
     provider: ResearchLlmProvider;
     model: string;
     generatedAt: string;
+    promptVersion?: string;
+    /** Terisi bila langkah AI gagal — output langkah ini tidak tersedia. */
+    error?: string;
   }[];
 };
 

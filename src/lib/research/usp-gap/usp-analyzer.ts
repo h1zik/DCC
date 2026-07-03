@@ -20,6 +20,7 @@ import {
   groundActionPlan,
   groundEvidenceRefs,
 } from "@/lib/research/usp-gap/evidence-grounding";
+import { applyDataConfidenceCap } from "@/lib/research/usp-gap/context-confidence";
 import type { ActionPlan } from "@/lib/research/prescriptive/types";
 
 type CategoryDecision = {
@@ -112,11 +113,28 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
     });
 
     const prompt = buildUspGapAnalysisPrompt(context);
+    let actualModel: string | undefined;
     const result = await generateResearchJson<AnalysisResult>(prompt, {
       tier: "pro",
+      onModelUsed: (m) => (actualModel = m),
     });
     const positioningMap = normalizePositioningMap(result.positioningMap);
-    const categoryDecision = normalizeCategoryDecision(result.categoryDecision);
+    let categoryDecision = normalizeCategoryDecision(result.categoryDecision);
+
+    // Confidence LLM tidak terkalibrasi — batasi dengan kecukupan data nyata.
+    if (categoryDecision) {
+      const capResult = applyDataConfidenceCap(
+        categoryDecision.confidence,
+        context,
+      );
+      categoryDecision = {
+        ...categoryDecision,
+        confidence: capResult.confidence,
+        reason: capResult.capped
+          ? `${categoryDecision.reason}${categoryDecision.reason ? " " : ""}(Keyakinan dibatasi ${Math.round(capResult.confidence * 100)}% karena hanya ${capResult.moduleCount} modul riset berisi data.)`
+          : categoryDecision.reason,
+      };
+    }
 
     // Evidence grounding: drop any AI-emitted evidence that does not trace back
     // to the gathered context, so R&D never sees fabricated citations.
@@ -131,7 +149,7 @@ export async function analyzeUspGap(analysisId: string): Promise<void> {
     );
 
     const aiMeta = researchAiMetaFromSteps([
-      buildResearchAiStep("Gap matrix & positioning", "pro"),
+      buildResearchAiStep("Gap matrix & positioning", "pro", { actualModel }),
     ]);
 
     await prisma.$transaction([

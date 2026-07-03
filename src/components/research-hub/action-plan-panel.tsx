@@ -1,15 +1,24 @@
 "use client";
 
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   ArrowUpRight,
+  Check,
   Clock,
   Gauge,
   Lightbulb,
   Target,
   TrendingUp,
+  X,
 } from "lucide-react";
+import {
+  convertResearchRecommendation,
+  dismissResearchRecommendation,
+} from "@/actions/research-recommendations";
+import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   REC_OWNER_LABELS,
   recommendationScore,
@@ -193,6 +202,9 @@ export function ActionCenterList({
 }: {
   recommendations: ActionCenterItem[];
 }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
   if (recommendations.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -201,6 +213,32 @@ export function ActionCenterList({
       </p>
     );
   }
+
+  const handleDismiss = (recommendationId: string) => {
+    startTransition(async () => {
+      try {
+        await dismissResearchRecommendation({ recommendationId });
+        toast.success("Rekomendasi ditolak — tercatat di riwayat.");
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menolak rekomendasi."));
+      }
+    });
+  };
+
+  const handleConvert = (recommendationId: string) => {
+    startTransition(async () => {
+      try {
+        await convertResearchRecommendation({ recommendationId });
+        toast.success("Rekomendasi ditandai sudah ditindaklanjuti.");
+        router.refresh();
+      } catch (err) {
+        toast.error(
+          actionErrorMessage(err, "Gagal menandai rekomendasi."),
+        );
+      }
+    });
+  };
 
   return (
     <ul className="flex flex-col divide-y">
@@ -222,35 +260,53 @@ export function ActionCenterList({
               {rec.priority}
             </Badge>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium leading-snug">{rec.action}</p>
+              {rec.href ? (
+                <Link
+                  href={rec.href}
+                  className="block rounded-md transition-colors hover:bg-muted/50"
+                >
+                  <p className="text-sm font-medium leading-snug">
+                    {rec.action}
+                    <ArrowUpRight
+                      className="text-muted-foreground ml-1 inline size-3.5 align-text-top"
+                      aria-hidden
+                    />
+                  </p>
+                </Link>
+              ) : (
+                <p className="text-sm font-medium leading-snug">{rec.action}</p>
+              )}
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {REC_OWNER_LABELS[rec.owner]}
                 {rec.sourceLabel ? ` · ${rec.sourceLabel}` : ""}
               </p>
             </div>
-            {rec.href ? (
-              <ArrowUpRight
-                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                aria-hidden
-              />
-            ) : null}
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => handleConvert(rec.id)}
+                title="Tandai sudah ditindaklanjuti"
+                className="text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 rounded-md p-1 transition-colors disabled:opacity-50"
+              >
+                <Check className="size-4" aria-hidden />
+                <span className="sr-only">Tandai ditindaklanjuti</span>
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => handleDismiss(rec.id)}
+                title="Tolak rekomendasi"
+                className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400 rounded-md p-1 transition-colors disabled:opacity-50"
+              >
+                <X className="size-4" aria-hidden />
+                <span className="sr-only">Tolak</span>
+              </button>
+            </div>
           </div>
         );
 
-        return (
-          <li key={rec.id}>
-            {rec.href ? (
-              <Link
-                href={rec.href}
-                className="block rounded-md transition-colors hover:bg-muted/50"
-              >
-                {body}
-              </Link>
-            ) : (
-              body
-            )}
-          </li>
-        );
+        return <li key={rec.id}>{body}</li>;
       })}
     </ul>
   );

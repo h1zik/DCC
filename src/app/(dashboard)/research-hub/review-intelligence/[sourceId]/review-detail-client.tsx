@@ -102,6 +102,7 @@ export type ReviewDetailData = {
   productName: string;
   competitorBrand: string;
   platformKey: string;
+  productUrl: string | null;
   marketplace: string | null;
   status: string;
   reviewCount: number;
@@ -584,11 +585,25 @@ export function ReviewDetailClient({
 
             <ResearchHubSection
               title="Review Timeline"
-              description="Tren sentimen per bulan dari review yang dianalisis."
+              description="Tren sentimen per bulan dari review yang dianalisis. Review tanpa tanggal tidak masuk timeline (tidak diberi tanggal 'sekarang')."
               delayMs={50}
             >
               <div className={hub.panel}>
                 <ReviewTimelineChart data={source.summary.timelineBuckets} />
+                {(() => {
+                  const dated = source.summary.timelineBuckets.reduce(
+                    (acc, b) => acc + b.positive + b.neutral + b.negative,
+                    0,
+                  );
+                  const undated = Math.max(0, source.reviewCount - dated);
+                  return undated > 0 ? (
+                    <p className="text-muted-foreground mt-2 text-[11px]">
+                      {undated.toLocaleString("id-ID")} review tanpa tanggal
+                      valid tidak ditampilkan di timeline (tetap dihitung di
+                      sentimen &amp; tema).
+                    </p>
+                  ) : null;
+                })()}
               </div>
             </ResearchHubSection>
           </TabsContent>
@@ -601,6 +616,7 @@ export function ReviewDetailClient({
               <ReviewRawDataPanel
                 sourceId={source.id}
                 productName={source.productName}
+                productUrl={source.productUrl}
                 reviewCount={source.reviewCount}
                 fetchPage={getReviewIntelRawReviews}
                 exportCsv={exportReviewIntelRawReviewsCsv}
@@ -654,6 +670,7 @@ export function ReviewDetailClient({
           <ReviewRawDataPanel
             sourceId={source.id}
             productName={source.productName}
+            productUrl={source.productUrl}
             reviewCount={source.reviewCount}
             fetchPage={getReviewIntelRawReviews}
             exportCsv={exportReviewIntelRawReviewsCsv}

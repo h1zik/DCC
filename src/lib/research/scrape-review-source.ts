@@ -6,6 +6,7 @@ import {
   ResearchScrapeJobStatus,
   ResearchScrapeJobType,
   ReviewIntelSourceStatus,
+  ScrapeDataProvenance,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fetchApifyDataset } from "@/lib/apify/client";
@@ -13,7 +14,10 @@ import type { NormalizedReview, ReviewScrapeMeta } from "@/lib/apify/normalize";
 import {
   generateDemoReviews,
 } from "@/lib/apify/normalize";
+import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
 import { processReviewScrapeDataset } from "@/lib/review-scrape/process-dataset";
+import { toDbProvenance } from "@/lib/research/provenance-db";
+import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
 import { analyzeReviewSource } from "@/lib/research/review-analyzer";
 import { executeReviewScrapeJob } from "@/lib/research/run-review-scrape-job";
 
@@ -59,6 +63,9 @@ export async function enqueueReviewScrape(sourceId: string): Promise<void> {
 }
 
 export async function runDemoReviewScrape(sourceId: string): Promise<void> {
+  // Fail-loud di produksi: jangan pernah menulis review fabrikasi tanpa izin eksplisit.
+  assertDemoDataAllowed("Scraper review (VPS/Apify)");
+
   const reviews = generateDemoReviews(48);
   await prisma.reviewRaw.createMany({
     data: reviews.map((r) => ({
@@ -74,7 +81,10 @@ export async function runDemoReviewScrape(sourceId: string): Promise<void> {
 
   await prisma.reviewIntelSource.update({
     where: { id: sourceId },
-    data: { reviewCount: reviews.length },
+    data: {
+      reviewCount: reviews.length,
+      dataProvenance: ScrapeDataProvenance.DEMO,
+    },
   });
 
   await runReviewAnalysis(sourceId);
@@ -101,6 +111,7 @@ export async function completeReviewScrapeFromNormalized(
   sourceId: string,
   normalized: NormalizedReview[],
   meta: ReviewScrapeMeta,
+  provider?: ScrapeDataProvider,
 ): Promise<void> {
   if (normalized.length === 0) {
     await prisma.reviewIntelSource.update({
@@ -132,6 +143,9 @@ export async function completeReviewScrapeFromNormalized(
       totalReviewsReported: meta.totalReviewsReported,
       reviewsAccessible: meta.reviewsAccessible,
       reviewsComplete: meta.reviewsComplete,
+      ...(provider
+        ? { dataProvenance: toDbProvenance(provider) ?? undefined }
+        : {}),
     },
   });
 
@@ -168,18 +182,23 @@ export async function completeReviewScrapeFromDataset(
     throw new Error(errorMessage);
   }
 
-  await completeReviewScrapeFromNormalized(sourceId, normalized, meta);
+  await completeReviewScrapeFromNormalized(sourceId, normalized, meta, "apify");
 }
 
 export async function completeReviewScrapeFromImportedReviews(
   sourceId: string,
   normalized: NormalizedReview[],
 ): Promise<void> {
-  await completeReviewScrapeFromNormalized(sourceId, normalized, {
-    totalReviewsReported: normalized.length,
-    reviewsAccessible: normalized.length,
-    reviewsComplete: true,
-  });
+  await completeReviewScrapeFromNormalized(
+    sourceId,
+    normalized,
+    {
+      totalReviewsReported: normalized.length,
+      reviewsAccessible: normalized.length,
+      reviewsComplete: true,
+    },
+    "csv",
+  );
 }
 
 async function markReviewScrapeJobFailed(

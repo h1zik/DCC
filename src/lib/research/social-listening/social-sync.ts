@@ -1,8 +1,14 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { SocialListeningPlatform, SocialListeningStatus } from "@prisma/client";
+import {
+  ScrapeDataProvenance,
+  SocialListeningPlatform,
+  SocialListeningStatus,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isDemoDataAllowed } from "@/lib/demo-data-policy";
+import { PLATFORM_STATUS_PROVIDERS_KEY } from "@/lib/research/scrape-data-provider";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import {
   buildResearchAiStep,
@@ -21,6 +27,10 @@ import {
 } from "@/lib/research/social-listening/platform-scrape-runner";
 import { buildSocialActionPlanPrompt } from "@/lib/research/social-listening/prompts/mention-analysis";
 import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import {
+  corpusFromData,
+  groundActionPlan,
+} from "@/lib/research/usp-gap/evidence-grounding";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
 import type { ActionPlan } from "@/lib/research/prescriptive/types";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
@@ -179,11 +189,33 @@ export async function finalizeSocialListeningBatch(
 
   let usedDemo = false;
   if (mentions.length === 0) {
+    if (!isDemoDataAllowed()) {
+      // Fail-loud: jangan fabrikasi mention. Batch ditandai FAILED dengan
+      // penjelasan, bukan READY berisi data palsu.
+      await prisma.socialListeningBatch.update({
+        where: { id: batchId },
+        data: {
+          status: SocialListeningStatus.FAILED,
+          platformStatus,
+          errorMessage: [
+            "Scrape menghasilkan 0 mention dan data demo dinonaktifkan di produksi.",
+            ...warnings,
+          ].join(" | "),
+        },
+      });
+      return;
+    }
     mentions = generateDemoMentions(monitor.keywords, monitor.platforms);
     usedDemo = true;
     warnings.push(
       "Menggunakan data demo karena scrape kosong atau API tidak tersedia.",
     );
+    platformStatus = {
+      ...platformStatus,
+      [PLATFORM_STATUS_PROVIDERS_KEY]: Object.fromEntries(
+        monitor.platforms.map((p) => [p, "demo"]),
+      ),
+    } as PlatformStatusMap;
   }
 
   if (warnings.length > 0) {
@@ -218,7 +250,14 @@ export async function finalizeSocialListeningBatch(
           }),
           { tier: "pro" },
         );
-        actionPlan = coerceActionPlan(planResult.actionPlan, `social-${batchId}`);
+        actionPlan = groundActionPlan(
+          coerceActionPlan(planResult.actionPlan, `social-${batchId}`),
+          corpusFromData({
+            painPoints: summary.topPainPoints,
+            wishlist: summary.topWishlist,
+            categoryBreakdown: summary.categoryBreakdown,
+          }),
+        );
         aiMeta = mergeResearchAiMeta(
           aiMeta,
           buildResearchAiStep("Rencana aksi sosial", "pro"),
@@ -291,6 +330,7 @@ export async function finalizeSocialListeningBatch(
           status: SocialListeningStatus.READY,
           collectedAt: new Date(),
           platformStatus,
+          dataProvenance: usedDemo ? ScrapeDataProvenance.DEMO : undefined,
           errorMessage: warnings.length > 0 ? warnings.join(" | ") : null,
         },
       });

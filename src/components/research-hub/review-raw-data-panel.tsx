@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
@@ -90,6 +96,7 @@ function sentimentChipClass(value: SentimentFilterValue, active: boolean): strin
 export function ReviewRawDataPanel({
   sourceId,
   productName,
+  productUrl,
   reviewCount,
   fetchPage,
   exportCsv,
@@ -97,6 +104,8 @@ export function ReviewRawDataPanel({
 }: {
   sourceId: string;
   productName: string;
+  /** URL produk sumber — verifikasi review langsung di marketplace. */
+  productUrl?: string | null;
   reviewCount: number;
   fetchPage: FetchPageFn;
   exportCsv: ExportCsvFn;
@@ -179,6 +188,20 @@ export function ReviewRawDataPanel({
               <p className="text-muted-foreground text-xs">
                 {total.toLocaleString("id-ID")} review
                 {hasFilter ? " (hasil filter)" : ""} · data mentah hasil scrape
+                {productUrl && /^https?:\/\//.test(productUrl) ? (
+                  <>
+                    {" · "}
+                    <a
+                      href={productUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary inline-flex items-center gap-0.5 hover:underline"
+                    >
+                      verifikasi di sumber
+                      <ExternalLink className="size-3" aria-hidden />
+                    </a>
+                  </>
+                ) : null}
               </p>
             </div>
           ) : (

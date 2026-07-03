@@ -399,7 +399,7 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
 
       <ResearchHubSection
         title="Limit scrape"
-        description="Atur berapa banyak video TikTok dan post Instagram yang diambil per keyword. Berlaku saat Refresh berikutnya."
+        description="Atur berapa banyak video TikTok dan post Instagram yang diambil per keyword (maksimal 5 keyword pertama per sync). Hasil adalah SAMPEL dari platform, bukan populasi seluruh mention — interpretasikan tema sebagai sinyal, bukan angka absolut."
       >
         <div className="grid gap-4 sm:grid-cols-2">
           {data.platforms.includes(SocialListeningPlatform.TIKTOK) ? (

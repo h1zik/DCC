@@ -11,6 +11,44 @@ const DEFAULT_OLLAMA_BASE = "https://ollama.com";
 const DEFAULT_FLASH = RESEARCH_DEFAULT_OLLAMA_MODELS.flash;
 const DEFAULT_PRO = RESEARCH_DEFAULT_OLLAMA_MODELS.pro;
 
+const DEFAULT_GEMINI_FLASH = "gemini-2.5-flash-lite";
+const DEFAULT_GEMINI_PRO = "gemini-2.5-pro";
+
+/**
+ * Model Gemini per tier. Tier "pro" (report, USP, concept lab, trend, action
+ * plan) memakai model reasoning yang lebih kuat — sebelumnya tier diabaikan
+ * dan semua job jalan di flash-lite meski badge UI menampilkan "Pro".
+ */
+export function resolveGeminiModel(tier: ResearchModelTier): string {
+  if (tier === "pro") {
+    return (
+      process.env.GEMINI_MODEL_PRO?.trim() ||
+      process.env.GEMINI_MODEL?.trim() ||
+      DEFAULT_GEMINI_PRO
+    );
+  }
+  return process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_FLASH;
+}
+
+/** Urutan kandidat model Gemini untuk satu panggilan (primary + fallback). */
+export function resolveGeminiModelCandidates(
+  tier: ResearchModelTier,
+): string[] {
+  const primary = resolveGeminiModel(tier);
+  const fallbacks =
+    tier === "pro"
+      ? ["gemini-2.5-flash", DEFAULT_GEMINI_FLASH]
+      : ["gemini-2.5-flash", "gemini-flash-latest"];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of [primary, ...fallbacks]) {
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
 export function resolveResearchProvider(): ResearchLlmProvider {
   const raw = process.env.RESEARCH_LLM_PROVIDER?.trim().toLowerCase();
   if (raw === "ollama" || raw === "ollama-cloud") {
@@ -21,6 +59,34 @@ export function resolveResearchProvider(): ResearchLlmProvider {
     return "gemini";
   }
   return "gemini";
+}
+
+/**
+ * Provider per tier — mis. flash di Gemini (murah, job massal) sementara pro
+ * di DeepSeek V4 Pro via Ollama Cloud (report/USP/concept/trend).
+ * Override via RESEARCH_LLM_PROVIDER_PRO / RESEARCH_LLM_PROVIDER_FLASH;
+ * bila kosong, ikut RESEARCH_LLM_PROVIDER global.
+ */
+export function resolveResearchProviderForTier(
+  tier: ResearchModelTier,
+): ResearchLlmProvider {
+  const raw = (
+    tier === "pro"
+      ? process.env.RESEARCH_LLM_PROVIDER_PRO
+      : process.env.RESEARCH_LLM_PROVIDER_FLASH
+  )
+    ?.trim()
+    .toLowerCase();
+
+  if (raw === "ollama" || raw === "ollama-cloud") {
+    if (resolveOllamaApiKey()) return "ollama-cloud";
+    console.warn(
+      `[research/llm] provider tier ${tier}=ollama-cloud tapi OLLAMA_API_KEY kosong — fallback ke Gemini`,
+    );
+    return "gemini";
+  }
+  if (raw === "gemini") return "gemini";
+  return resolveResearchProvider();
 }
 
 export function resolveOllamaApiKey(): string | null {

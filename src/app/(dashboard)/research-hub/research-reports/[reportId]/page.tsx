@@ -49,6 +49,10 @@ export default async function ResearchReportDetailPage({
     errorMessage: report.errorMessage,
     aiMeta: parseResearchAiMetaClient(report.aiMeta),
     sharePath: `/research-hub/research-reports/${report.id}`,
+    version: report.version,
+    revisionCount: await prisma.researchReportRevision.count({
+      where: { reportId: report.id },
+    }),
   };
 
   return (

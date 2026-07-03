@@ -10,8 +10,10 @@ export type FeedbackLoopData = {
 };
 
 /**
- * Sankey of the research feedback loop: raw signals -> insight engine ->
- * USP/Gap -> product concepts. Makes the cross-module flow tangible.
+ * Sankey VOLUME AKTIVITAS modul per periode (jumlah record nyata per modul),
+ * BUKAN lineage per-item sinyal→konsep. Satu-satunya link ber-lineage nyata
+ * adalah USP & Gap → Konsep Produk (FK uspGapAnalysisId). Link bernilai 0
+ * tidak dirender — tidak ada nilai minimum palsu.
  */
 export function ReportFeedbackSankey({ data }: { data: FeedbackLoopData }) {
   const option = useMemo<EChartsOption>(

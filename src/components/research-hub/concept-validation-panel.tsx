@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { AiFeedbackButtons } from "@/components/research-hub/ai-feedback-buttons";
 import { ConceptValidationRadar } from "@/components/research-hub/concept-validation-radar";
 
 export type ConceptDecision = "GO" | "PIVOT" | "NO_GO";
@@ -38,7 +39,14 @@ const DECISION_META: Record<
   },
 };
 
-export function ConceptValidationPanel({ data }: { data: ConceptValidationData }) {
+export function ConceptValidationPanel({
+  data,
+  conceptId,
+}: {
+  data: ConceptValidationData;
+  /** Untuk feedback thumbs pada hasil validasi (opsional). */
+  conceptId?: string;
+}) {
   if (!data.overall && !data.aiSummary) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -108,6 +116,23 @@ export function ConceptValidationPanel({ data }: { data: ConceptValidationData }
             ))}
           </ul>
         </div>
+      ) : null}
+
+      <p className="text-muted-foreground text-[11px] leading-relaxed">
+        Metodologi: skor mentah dari AI, lalu dikoreksi deterministik — penalti
+        bila harga target menyimpang jauh dari rentang harga kompetitor, dan
+        skor overall dibatasi maksimal 72 bila konteks riset &le; 1 modul.
+        Skor adalah estimasi berbasis data internal, bukan riset pasar
+        tervalidasi eksternal.
+      </p>
+
+      {conceptId ? (
+        <AiFeedbackButtons
+          module="concept-lab"
+          artifactType="concept-validation"
+          artifactId={conceptId}
+          label="Hasil validasi ini akurat?"
+        />
       ) : null}
     </div>
   );

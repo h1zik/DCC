@@ -3,8 +3,10 @@ import "server-only";
 import {
   ResearchMarketplace,
   ResearchScrapeJobType,
+  ScrapeDataProvenance,
   SocialListeningPlatform,
 } from "@prisma/client";
+import { fromDbProvenance } from "@/lib/research/provenance-db";
 import { prisma } from "@/lib/prisma";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { SOCIAL_LISTENING_PLATFORM_LABELS } from "@/lib/research/labels";
@@ -69,8 +71,13 @@ export function productDiscoveryProvenance(input: {
   marketplaces: ResearchMarketplace[];
   scrapeState: unknown;
   errorMessage: string | null;
+  /** Kolom first-class dari DB — diutamakan di atas heuristik errorMessage. */
+  dataProvenance?: ScrapeDataProvenance | null;
 }): DataProvenanceEntry[] {
-  if (input.errorMessage?.toLowerCase().includes("demo")) {
+  if (
+    input.dataProvenance === ScrapeDataProvenance.DEMO ||
+    input.errorMessage?.toLowerCase().includes("demo")
+  ) {
     return input.marketplaces.map((mp) => ({
       label: MARKETPLACE_LABELS[mp],
       provider: "demo" as const,
@@ -157,6 +164,22 @@ export async function competitorScrapeProvenance(input: {
   marketplace: ResearchMarketplace;
   hasProducts: boolean;
 }): Promise<DataProvenanceEntry[]> {
+  // Kolom first-class (ditulis saat ingest) — sumber kebenaran utama.
+  const stored = await prisma.researchCompetitor.findUnique({
+    where: { id: input.competitorId },
+    select: { dataProvenance: true },
+  });
+  if (stored?.dataProvenance) {
+    const provider = fromDbProvenance(stored.dataProvenance);
+    return [
+      {
+        label: `Toko ${MARKETPLACE_LABELS[input.marketplace]}`,
+        provider,
+        isFallback: provider === "apify",
+      },
+    ];
+  }
+
   const provider = await latestCompletedJobProvider(
     input.competitorId,
     ResearchScrapeJobType.COMPETITOR_SNAPSHOT,
@@ -198,6 +221,22 @@ export async function reviewScrapeProvenance(input: {
   productName: string;
 }): Promise<DataProvenanceEntry[]> {
   const platformKey = input.platformKey ?? "shopee";
+
+  // Kolom first-class (ditulis saat ingest) — sumber kebenaran utama.
+  const stored = await prisma.reviewIntelSource.findUnique({
+    where: { id: input.sourceId },
+    select: { dataProvenance: true },
+  });
+  if (stored?.dataProvenance) {
+    const provider = fromDbProvenance(stored.dataProvenance);
+    return [
+      {
+        label: input.productName,
+        provider,
+        isFallback: provider === "apify",
+      },
+    ];
+  }
 
   if (platformKey === "csv") {
     return [{ label: input.productName, provider: "csv" }];
