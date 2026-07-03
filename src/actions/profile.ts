@@ -8,6 +8,7 @@ import {
   getUploadPublicDir,
 } from "@/lib/upload-storage";
 import { revalidatePath } from "next/cache";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import {
@@ -137,6 +138,42 @@ export async function updateProfileAppearance(input: unknown) {
 
   revalidatePath("/profile");
   revalidatePath(`/profile/${session.user.id}`);
+}
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Masukkan kata sandi saat ini."),
+  newPassword: z
+    .string()
+    .min(8, "Kata sandi baru minimal 8 karakter.")
+    .max(128, "Kata sandi terlalu panjang."),
+});
+
+/** Ganti kata sandi akun sendiri — wajib memverifikasi kata sandi saat ini. */
+export async function changeOwnPassword(
+  input: z.infer<typeof changePasswordSchema>,
+) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Belum masuk.");
+  const data = changePasswordSchema.parse(input);
+
+  const me = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { passwordHash: true },
+  });
+  if (!me) throw new Error("Pengguna tidak ditemukan.");
+
+  const ok = await bcrypt.compare(data.currentPassword, me.passwordHash);
+  if (!ok) throw new Error("Kata sandi saat ini salah.");
+
+  if (data.newPassword === data.currentPassword) {
+    throw new Error("Kata sandi baru harus berbeda dari yang lama.");
+  }
+
+  const passwordHash = await bcrypt.hash(data.newPassword, 10);
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { passwordHash },
+  });
 }
 
 export async function clearProfileAvatar() {

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
+  changeOwnPassword,
   clearProfileAvatar,
   updateProfileAppearance,
   updateProfileAvatar,
@@ -36,7 +37,7 @@ import {
   type ProfileSticker,
 } from "@/lib/profile-appearance";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Camera, Link2, Palette, Shapes, Sparkles, Type, User, UserCircle2 } from "lucide-react";
+import { ArrowLeft, Camera, KeyRound, Link2, Palette, Shapes, Sparkles, Type, User, UserCircle2 } from "lucide-react";
 
 const QUICK_ACCENTS = [
   "#a5b4fc",
@@ -97,10 +98,15 @@ export function ProfileForm({
   const [sticker, setSticker] = useState<ProfileSticker | null>(initialSticker);
   const [avatarFrame, setAvatarFrame] = useState<ProfileAvatarFrame>(initialAvatarFrame);
 
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [pendingBasics, startBasics] = useTransition();
   const [pendingAvatar, startAvatar] = useTransition();
   const [pendingClear, startClear] = useTransition();
   const [pendingLook, startLook] = useTransition();
+  const [pendingPassword, startPassword] = useTransition();
 
   useEffect(() => {
     setBannerPreset(initialBannerPreset);
@@ -161,6 +167,28 @@ export function ProfileForm({
         router.refresh();
       } catch (e) {
         toast.error(actionErrorMessage(e, "Gagal menyimpan tampilan."));
+      }
+    });
+  }
+
+  function onChangePassword() {
+    if (newPassword.length < 8) {
+      toast.error("Kata sandi baru minimal 8 karakter.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Konfirmasi kata sandi tidak sama.");
+      return;
+    }
+    startPassword(async () => {
+      try {
+        await changeOwnPassword({ currentPassword, newPassword });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        toast.success("Kata sandi berhasil diganti.");
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal mengganti kata sandi."));
       }
     });
   }
@@ -648,6 +676,73 @@ export function ProfileForm({
             onClick={() => void onSaveBasics()}
           >
             {pendingBasics ? "Menyimpan…" : "Simpan nama & bio"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <KeyRound className="text-muted-foreground size-4" aria-hidden />
+            <CardTitle className="text-base">Ganti kata sandi</CardTitle>
+          </div>
+          <CardDescription>
+            Masukkan kata sandi saat ini, lalu kata sandi baru minimal 8
+            karakter.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="p-pass-current">Kata sandi saat ini</Label>
+            <Input
+              id="p-pass-current"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              maxLength={128}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="p-pass-new">Kata sandi baru</Label>
+              <Input
+                id="p-pass-new"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+                maxLength={128}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="p-pass-confirm">Ulangi kata sandi baru</Label>
+              <Input
+                id="p-pass-confirm"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+                maxLength={128}
+              />
+            </div>
+          </div>
+          {confirmPassword.length > 0 && newPassword !== confirmPassword ? (
+            <p className="text-destructive text-xs">
+              Konfirmasi kata sandi tidak sama.
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            disabled={
+              pendingPassword ||
+              currentPassword.length === 0 ||
+              newPassword.length === 0 ||
+              confirmPassword.length === 0
+            }
+            onClick={onChangePassword}
+          >
+            {pendingPassword ? "Mengganti…" : "Ganti kata sandi"}
           </Button>
         </CardContent>
       </Card>
