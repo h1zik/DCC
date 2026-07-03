@@ -24,6 +24,19 @@ function StepBadge({
   const providerLabel =
     step.provider === "ollama-cloud" ? "Ollama Cloud" : "Gemini";
 
+  if (step.error) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-red-500/40 bg-red-500/10 font-normal text-red-800 dark:text-red-200"
+        title={`${step.label} gagal · ${providerLabel} · ${step.generatedAt} · ${step.error}`}
+      >
+        <span className="font-semibold">{step.label}: AI gagal</span>
+        <span className="opacity-80">— output tidak tersedia</span>
+      </Badge>
+    );
+  }
+
   return (
     <Badge
       variant="outline"

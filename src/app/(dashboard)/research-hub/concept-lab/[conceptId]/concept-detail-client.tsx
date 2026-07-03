@@ -89,6 +89,8 @@ function statusChipTone(
   switch (status) {
     case "READY":
       return "success";
+    case "SENT_TO_RND":
+      return "primary";
     case "VALIDATING":
       return "warning";
     case "ARCHIVED":
@@ -376,7 +378,10 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
             description="Skor demand, diferensiasi, pricing — disesuaikan dengan data kompetitor & cakupan riset."
           >
             <div className={hub.panel}>
-              <ConceptValidationPanel data={data.validationScores} />
+              <ConceptValidationPanel
+                data={data.validationScores}
+                conceptId={data.id}
+              />
             </div>
           </ResearchHubSection>
         </TabsContent>

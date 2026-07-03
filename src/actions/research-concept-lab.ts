@@ -20,6 +20,7 @@ import { buildMaklonBriefHtml } from "@/lib/research/concept-lab/maklon-brief-ht
 import {
   emptyConceptData,
   parseConceptData,
+  parseRiskFactors,
   parseValidationScores,
   type ConceptData,
 } from "@/lib/research/concept-lab/types";
@@ -200,6 +201,8 @@ export async function getMaklonBriefHtml(conceptId: string) {
     priceTargetMax: concept.priceTargetMax,
     conceptData: parseConceptData(concept.conceptData),
     validationScores: parseValidationScores(concept.validationScores),
+    riskFactors: parseRiskFactors(concept.riskFactors),
+    conceptUpdatedAt: concept.updatedAt,
   });
 }
 
@@ -218,11 +221,32 @@ export async function sendConceptToRdTask(
 
   const concept = await prisma.productConcept.findUnique({
     where: { id: data.conceptId },
+    include: {
+      projects: { select: { id: true, name: true }, take: 1 },
+    },
   });
   if (!concept) throw new Error("Konsep tidak ditemukan.");
 
+  // Cegah duplikasi project diam-diam — konsep yang sudah dikirim tercatat.
+  if (
+    concept.status === ProductConceptStatus.SENT_TO_RND &&
+    concept.projects.length > 0
+  ) {
+    throw new Error(
+      `Konsep ini sudah dikirim ke R&D (project "${concept.projects[0]!.name}"). ` +
+        `Duplikat konsepnya dulu bila memang perlu project kedua.`,
+    );
+  }
+
   const conceptData = parseConceptData(concept.conceptData);
   const scores = parseValidationScores(concept.validationScores);
+  const riskFactors = parseRiskFactors(concept.riskFactors);
+  const sourceModuleKeys =
+    concept.sourceModules && typeof concept.sourceModules === "object"
+      ? Object.entries(concept.sourceModules as Record<string, unknown>)
+          .filter(([, v]) => v === true)
+          .map(([k]) => k)
+      : [];
   const productName =
     conceptData.selectedName ??
     conceptData.nameOptions[0] ??
@@ -257,10 +281,27 @@ export async function sendConceptToRdTask(
     conceptData.packagingDirection || "—",
     ``,
     `### Validator Overall Score`,
-    `${scores.overall}/100`,
+    `${scores.overall}/100${scores.decisionReason ? ` — ${scores.decisionReason}` : ""}`,
     ``,
     `### Why It Will Win`,
     conceptData.whyItWillWin || "—",
+    ``,
+    `### Faktor Risiko (dari data riset — WAJIB dibaca R&D)`,
+    riskFactors.length > 0
+      ? riskFactors
+          .map(
+            (r) =>
+              `- [${r.severity}] ${r.label} (sumber: ${r.source.module}${r.source.label ? ` — ${r.source.label}` : ""})`,
+          )
+          .join("\n")
+      : "— (tidak ada faktor risiko terdeteksi dari modul riset)",
+    ``,
+    `### Sumber Data Riset`,
+    sourceModuleKeys.length > 0
+      ? sourceModuleKeys.map((k) => `- ${k}`).join("\n")
+      : "— (konsep manual, tanpa konteks modul riset)",
+    ``,
+    `_Brief dibuat ${new Date().toLocaleDateString("id-ID", { dateStyle: "long" })} dari Concept Lab (concept id: ${concept.id})._`,
   ].join("\n");
 
   const project = await prisma.project.create({
@@ -268,6 +309,7 @@ export async function sendConceptToRdTask(
       roomId: data.roomId,
       brandId: data.brandId,
       name: data.projectName,
+      sourceConceptId: concept.id,
       currentStage: PipelineStage.PRODUCT_DEVELOPMENT,
       stageEnteredAt: new Date(),
     },
@@ -295,7 +337,16 @@ export async function sendConceptToRdTask(
     },
   });
 
+  await prisma.productConcept.update({
+    where: { id: concept.id },
+    data: {
+      status: ProductConceptStatus.SENT_TO_RND,
+      sentToRdAt: new Date(),
+    },
+  });
+
   revalidatePath("/projects");
   revalidatePath("/tasks");
+  revalidatePath("/research-hub/concept-lab");
   return { projectId: project.id, roomId: data.roomId };
 }

@@ -157,6 +157,7 @@ export async function executeReviewScrapeJob(jobId: string): Promise<void> {
             source.id,
             result.reviews,
             result.meta,
+            "vps",
           );
           await markJobCompleted(jobId);
           return;
@@ -181,12 +182,14 @@ export async function executeReviewScrapeJob(jobId: string): Promise<void> {
         platformKey,
         source.productUrl,
       );
-      await completeReviewScrapeFromNormalized(source.id, reviews, meta);
+      await completeReviewScrapeFromNormalized(source.id, reviews, meta, "native");
       await markJobCompleted(jobId);
       return;
     }
 
     if (!isApifyConfigured()) {
+      // runDemoReviewScrape memanggil assertDemoDataAllowed — di produksi ini
+      // melempar error sehingga job ditandai FAILED, bukan menulis data palsu.
       await runDemoReviewScrape(source.id);
       await markJobCompleted(jobId);
       return;

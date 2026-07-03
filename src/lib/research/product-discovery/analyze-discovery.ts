@@ -7,6 +7,10 @@ import {
   researchAiMetaFromSteps,
 } from "@/lib/research/llm";
 import { coerceActionPlan } from "@/lib/research/prescriptive/parse";
+import {
+  corpusFromData,
+  groundActionPlan,
+} from "@/lib/research/usp-gap/evidence-grounding";
 import { syncModuleRecommendations } from "@/lib/research/prescriptive/sync";
 import { buildActionPlanInstruction } from "@/lib/research/prescriptive/prompt";
 import { buildBrandGuardInstruction, dedupeBrandNames } from "@/lib/research/brand-guard";
@@ -291,6 +295,8 @@ export async function analyzeProductDiscovery(queryId: string): Promise<void> {
 
   let summary: string | null = null;
   let actionPlan: ActionPlan | null = null;
+  let actualModel: string | undefined;
+  let aiError: string | undefined;
   const forbiddenBrands = dedupeBrandNames(
     insights.brandBreakdown.map((b) => b.shopName),
   );
@@ -298,21 +304,30 @@ export async function analyzeProductDiscovery(queryId: string): Promise<void> {
     const result = await generateResearchJson<{
       summary?: string;
       actionPlan?: unknown;
-    }>(buildDiscoveryPrompt(query.keyword, insights, forbiddenBrands));
+    }>(buildDiscoveryPrompt(query.keyword, insights, forbiddenBrands), {
+      onModelUsed: (m) => (actualModel = m),
+    });
     summary = result.summary?.trim() || null;
-    actionPlan = coerceActionPlan(result.actionPlan, `discovery-${queryId}`);
+    actionPlan = groundActionPlan(
+      coerceActionPlan(result.actionPlan, `discovery-${queryId}`),
+      corpusFromData({ keyword: query.keyword, insights }),
+    );
   } catch (err) {
     console.error("[analyze-discovery] action plan gagal", err);
+    aiError = err instanceof Error ? err.message : String(err);
   }
 
   const aiMeta = researchAiMetaFromSteps([
-    buildResearchAiStep("Ringkasan pasar & rencana aksi", "flash"),
+    buildResearchAiStep("Ringkasan pasar & rencana aksi", "flash", {
+      actualModel,
+      error: aiError,
+    }),
   ]);
 
   await prisma.productDiscoveryQuery.update({
     where: { id: queryId },
     data: {
-      aiInsights: { ...insights, summary } as object,
+      aiInsights: { ...insights, summary, aiError: aiError ?? null } as object,
       aiActionPlan: actionPlan ?? undefined,
       aiMeta: aiMeta as object,
     },

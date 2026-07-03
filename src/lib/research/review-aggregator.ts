@@ -90,6 +90,7 @@ export function aggregateReviewAnalyses(rows: AnalysisRow[]) {
   const allComplaints: string[] = [];
   const allPraises: string[] = [];
   const allKeywords: string[] = [];
+  let undatedCount = 0;
   const timelineMap = new Map<string, { positive: number; neutral: number; negative: number }>();
   const severityMap = new Map<string, { total: number; count: number }>();
   const skinTypes: (string | null | undefined)[] = [];
@@ -122,17 +123,22 @@ export function aggregateReviewAnalyses(rows: AnalysisRow[]) {
       genders.push(row.demographicHints.gender);
     }
 
-    const date = row.reviewDate ?? new Date();
-    const key = monthKey(date);
-    const bucket = timelineMap.get(key) ?? {
-      positive: 0,
-      neutral: 0,
-      negative: 0,
-    };
-    if (row.sentiment === ReviewSentiment.POSITIVE) bucket.positive += 1;
-    else if (row.sentiment === ReviewSentiment.NEUTRAL) bucket.neutral += 1;
-    else bucket.negative += 1;
-    timelineMap.set(key, bucket);
+    // Review tanpa tanggal DIKELUARKAN dari timeline — memakai `now()` akan
+    // memalsukan recency dan mendistorsi tren sentimen. Dihitung terpisah.
+    if (row.reviewDate) {
+      const key = monthKey(row.reviewDate);
+      const bucket = timelineMap.get(key) ?? {
+        positive: 0,
+        neutral: 0,
+        negative: 0,
+      };
+      if (row.sentiment === ReviewSentiment.POSITIVE) bucket.positive += 1;
+      else if (row.sentiment === ReviewSentiment.NEUTRAL) bucket.neutral += 1;
+      else bucket.negative += 1;
+      timelineMap.set(key, bucket);
+    } else {
+      undatedCount += 1;
+    }
   }
 
   const timelineBuckets: TimelineBucket[] = [...timelineMap.entries()]
@@ -162,6 +168,8 @@ export function aggregateReviewAnalyses(rows: AnalysisRow[]) {
     topPraises: countThemes(allPraises),
     keywordCloud: countKeywords(allKeywords),
     timelineBuckets,
+    /** Review tanpa tanggal — tidak masuk timeline, disclose di UI. */
+    undatedReviewCount: undatedCount,
     severityByTheme,
     demographics,
   };

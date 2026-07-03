@@ -2,7 +2,7 @@ import "server-only";
 
 import {
   assertResearchProviderConfigured,
-  resolveResearchProvider,
+  resolveResearchProviderForTier,
 } from "./config";
 import { geminiGenerateJson, geminiGenerateText } from "./gemini-adapter";
 import { ollamaGenerateJson, ollamaGenerateText } from "./ollama-adapter";
@@ -29,7 +29,7 @@ export async function generateResearchJson<T>(
   prompt: string,
   opts?: GenerateResearchJsonOpts<T>,
 ): Promise<T> {
-  const provider = resolveResearchProvider();
+  const provider = resolveResearchProviderForTier(opts?.tier ?? "flash");
   assertResearchProviderConfigured(provider);
 
   if (provider === "ollama-cloud") {
@@ -42,7 +42,7 @@ export async function generateResearchText(
   prompt: string,
   opts?: GenerateResearchTextOpts,
 ): Promise<string> {
-  const provider = resolveResearchProvider();
+  const provider = resolveResearchProviderForTier(opts?.tier ?? "flash");
   assertResearchProviderConfigured(provider);
 
   if (provider === "ollama-cloud") {

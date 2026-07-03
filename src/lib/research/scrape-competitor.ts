@@ -6,6 +6,9 @@ import {
   ResearchScrapeJobType,
   ResearchMarketplace,
 } from "@prisma/client";
+import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
+import { toDbProvenance } from "@/lib/research/provenance-db";
+import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
 import { prisma } from "@/lib/prisma";
 import {
   buildShopActorInput,
@@ -58,7 +61,7 @@ export async function enqueueCompetitorScrape(
           "Tidak ada produk dari toko Tokopedia. Pastikan URL toko valid.",
         );
       }
-      await ingestCompetitorProducts(competitorId, products);
+      await ingestCompetitorProducts(competitorId, products, "vps");
       await prisma.researchScrapeJob.update({
         where: { id: job.id },
         data: {
@@ -114,7 +117,7 @@ export async function enqueueCompetitorScrape(
       });
 
       try {
-        await ingestCompetitorProducts(competitorId, shopeeProducts);
+        await ingestCompetitorProducts(competitorId, shopeeProducts, "vps");
         await prisma.researchScrapeJob.update({
           where: { id: job.id },
           data: {
@@ -176,13 +179,16 @@ export async function enqueueCompetitorScrape(
 }
 
 async function runDemoCompetitorScrape(competitorId: string): Promise<void> {
+  // Fail-loud di produksi: jangan menulis SKU/snapshot fabrikasi tanpa izin eksplisit.
+  assertDemoDataAllowed("Scraper kompetitor (VPS/Apify)");
   const products = generateDemoShopProducts();
-  await ingestCompetitorProducts(competitorId, products);
+  await ingestCompetitorProducts(competitorId, products, "demo");
 }
 
 export async function ingestCompetitorProducts(
   competitorId: string,
   products: NormalizedShopProduct[],
+  provider?: ScrapeDataProvider,
 ): Promise<void> {
   const existingSkuCount = await prisma.competitorSku.count({
     where: { competitorId },
@@ -248,6 +254,16 @@ export async function ingestCompetitorProducts(
     );
   }
 
+  if (provider) {
+    const dbProvenance = toDbProvenance(provider);
+    if (dbProvenance) {
+      await prisma.researchCompetitor.update({
+        where: { id: competitorId },
+        data: { dataProvenance: dbProvenance },
+      });
+    }
+  }
+
   try {
     const { analyzeCompetitor } = await import(
       "@/lib/research/competitor-analyzer"
@@ -278,7 +294,7 @@ export async function pollCompetitorScrapeJob(jobId: string): Promise<void> {
     if (competitor?.marketplace === ResearchMarketplace.TIKTOK_SHOP) {
       products = filterShopProductsByShopUrl(products, competitor.shopUrl);
     }
-    await ingestCompetitorProducts(job.entityId, products);
+    await ingestCompetitorProducts(job.entityId, products, "apify");
     await prisma.researchScrapeJob.update({
       where: { id: jobId },
       data: {

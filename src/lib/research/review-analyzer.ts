@@ -11,6 +11,7 @@ import {
 import {
   buildReviewActionPlanPrompt,
   buildReviewBatchPrompt,
+  REVIEW_ANALYSIS_PROMPT_VERSION,
 } from "@/lib/research/prompts/review-analysis";
 import {
   aggregateReviewAnalyses,
@@ -169,7 +170,9 @@ export async function analyzeReviewSource(sourceId: string): Promise<void> {
       if (!usedFlashBatch) {
         aiMeta = mergeResearchAiMeta(
           aiMeta,
-          buildResearchAiStep("Klasifikasi review", "flash"),
+          buildResearchAiStep("Klasifikasi review", "flash", {
+            promptVersion: REVIEW_ANALYSIS_PROMPT_VERSION,
+          }),
         );
         usedFlashBatch = true;
       }

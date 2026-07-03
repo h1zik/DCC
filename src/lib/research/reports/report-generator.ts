@@ -73,9 +73,34 @@ export async function generateResearchReport(reportId: string): Promise<void> {
       category: config.category,
     });
 
+    let actualModel: string | undefined;
     const result = await generateResearchJson<GenerateResult>(prompt, {
       tier: "pro",
+      onModelUsed: (m) => (actualModel = m),
     });
+
+    // Regenerate = versi baru; konten lama diarsip ke revisions, bukan ditimpa.
+    // Keputusan bisnis bisa saja mengutip versi lama — riwayat harus bisa diaudit.
+    const hasPriorContent =
+      Array.isArray(report.sections) && report.sections.length > 0;
+    if (hasPriorContent) {
+      await prisma.researchReportRevision.upsert({
+        where: {
+          reportId_version: { reportId, version: report.version },
+        },
+        create: {
+          reportId,
+          version: report.version,
+          sections: report.sections ?? [],
+          aiSummary: report.aiSummary,
+          actionItems: report.actionItems ?? [],
+          metrics: report.metrics ?? undefined,
+          aiMeta: report.aiMeta ?? undefined,
+          generatedAt: report.updatedAt,
+        },
+        update: {},
+      });
+    }
 
     await prisma.researchReport.update({
       where: { id: reportId },
@@ -88,8 +113,9 @@ export async function generateResearchReport(reportId: string): Promise<void> {
         metrics: data.activity,
         periodStart,
         periodEnd,
+        version: hasPriorContent ? report.version + 1 : report.version,
         aiMeta: researchAiMetaFromSteps([
-          buildResearchAiStep("Laporan riset", "pro"),
+          buildResearchAiStep("Laporan riset", "pro", { actualModel }),
         ]) as object,
       },
     });

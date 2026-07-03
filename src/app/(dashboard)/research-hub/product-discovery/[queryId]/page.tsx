@@ -44,6 +44,7 @@ export default async function ProductDiscoveryDetailPage({
       marketplaces: query.marketplaces,
       scrapeState: query.scrapeState,
       errorMessage: query.errorMessage,
+      dataProvenance: query.dataProvenance,
     }),
     products: query.products.map((p) => mapDiscoveryProductToRow(p)),
   };

@@ -1688,6 +1688,13 @@ export async function aiEvaluateProductProposal(
     competitorBrand: s.competitorBrand,
     marketplace: s.marketplace,
     reviewCount: s.reviewCount,
+    // Provenance & freshness — agar agent hilir bisa mengutip sumber dan
+    // menilai kebasian data, bukan mengklaim angka tanpa jejak.
+    sourceUrl: s.productUrl,
+    totalReviewsReported: s.totalReviewsReported,
+    reviewsComplete: s.reviewsComplete,
+    lastAnalyzedAt: s.lastAnalyzedAt?.toISOString() ?? null,
+    dataProvenance: s.dataProvenance ?? null,
     sentiment: s.summary
       ? {
           positivePct: s.summary.positivePct,
@@ -1705,8 +1712,19 @@ export async function aiEvaluateProductProposal(
       dimension: i.dimension,
       phase: i.phase,
       score: i.score,
+      confidence: i.confidence,
       narrative: i.narrative?.slice(0, 300) ?? null,
+      sources: i.sources ?? null,
     })) ?? [];
+  const trendDigestMeta = trendDigest
+    ? {
+        digestId: trendDigest.id,
+        digestMode: trendDigest.digestMode,
+        generatedAt: (
+          trendDigest.generatedAt ?? trendDigest.createdAt
+        ).toISOString(),
+      }
+    : null;
 
   const keywords = keywordQueries.map((q) => ({
     id: q.id,
@@ -1972,6 +1990,7 @@ export async function aiEvaluateProductProposal(
       digestWeek: trendDigest
         ? { weekStart: iso(trendDigest.weekStart), weekEnd: iso(trendDigest.weekEnd) }
         : null,
+      digestMeta: trendDigestMeta,
       items: trends,
     },
     keywordIntel: keywords,

@@ -20,9 +20,10 @@ function toOwner(value: string): RecOwner {
 
 /**
  * Persist an ActionPlan's recommendations into ResearchRecommendation so they
- * surface in the cross-module dashboard Action Center. Replaces any prior OPEN
- * recommendations for the same (module, sourceId) to avoid duplicates on
- * re-analysis. DISMISSED/CONVERTED rows are left intact.
+ * surface in the cross-module dashboard Action Center. Prior OPEN
+ * recommendations for the same (module, sourceId) are marked SUPERSEDED —
+ * bukan dihapus — sehingga riwayat rekomendasi tetap bisa diaudit.
+ * DISMISSED/CONVERTED rows are left intact.
  */
 export async function syncModuleRecommendations(input: {
   module: string;
@@ -33,8 +34,9 @@ export async function syncModuleRecommendations(input: {
 }): Promise<void> {
   const { module, sourceId, sourceLabel, href, plan } = input;
 
-  await prisma.researchRecommendation.deleteMany({
+  await prisma.researchRecommendation.updateMany({
     where: { module, sourceId, status: RecStatus.OPEN },
+    data: { status: RecStatus.SUPERSEDED },
   });
 
   if (!plan || plan.recommendations.length === 0) return;

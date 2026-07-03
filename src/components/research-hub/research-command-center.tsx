@@ -270,7 +270,9 @@ function DataHealthPanel({
 }
 
 export function ResearchCommandCenter({ data }: { data: DashboardData }) {
-  const { kpis, alerts, health, latestReport, recommendations } = data;
+  const { kpis, alerts, health, latestReport, recommendations, cronHealth } =
+    data;
+  const staleCrons = cronHealth.filter((c) => c.isStale);
   const healthByKey = new Map<string, ModuleHealth>(
     health.map((h) => [h.key, h]),
   );
@@ -382,6 +384,28 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
               recommendations={asActionCenterItems(recommendations)}
             />
           </section>
+
+          {staleCrons.length > 0 ? (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                Refresh terjadwal tidak berjalan — data bisa jadi basi
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-xs text-amber-800 dark:text-amber-300">
+                {staleCrons.map((c) => (
+                  <li key={c.mode}>
+                    {c.label} ({c.schedule}):{" "}
+                    {c.lastRunAt
+                      ? `terakhir ${formatRelativeTime(new Date(c.lastRunAt))}${c.lastStatus === "FAILED" ? " — GAGAL" : ""}`
+                      : "belum pernah jalan"}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                Pastikan cron eksternal (Railway) memanggil
+                /api/cron/research-sync sesuai jadwal.
+              </p>
+            </div>
+          ) : null}
 
           <ResearchHubSection
             title="Yang perlu perhatian"

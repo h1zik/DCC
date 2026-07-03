@@ -42,8 +42,9 @@ export function isApifyFallbackProvider(entry: DataProvenanceEntry): boolean {
 export function providerBadgeTone(
   provider: ScrapeDataProvider,
   isFallback?: boolean,
-): "default" | "warning" | "muted" {
+): "default" | "warning" | "muted" | "danger" {
+  // Demo = data fabrikasi — harus mencolok, bukan abu-abu yang mudah terlewat.
+  if (provider === "demo") return "danger";
   if (provider === "apify" || isFallback) return "warning";
-  if (provider === "demo") return "muted";
   return "default";
 }

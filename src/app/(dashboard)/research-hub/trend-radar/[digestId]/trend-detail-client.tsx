@@ -240,6 +240,13 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
         dataNotice={data.dataNotice}
       />
 
+      <p className="text-muted-foreground text-[11px] leading-relaxed">
+        Metodologi TMI: skor gabungan deterministik — search 30% · social 25% ·
+        market 25% · consumer 20% (skala log per keluarga sumber) + boost
+        velocity. Confidence dihitung dari jumlah keluarga sumber yang berisi
+        sinyal, bukan opini AI; narasi AI tidak dapat mengubah skor/fase.
+      </p>
+
       <Tabs
         value={activeTab}
         onValueChange={(v) => v && setActiveTab(v)}

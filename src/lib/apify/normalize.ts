@@ -307,10 +307,12 @@ export function normalizeKulqizProductReviews(
         pickString(r, ["text", "comment", "review", "content", "body"]) ?? "";
       if (!text.trim()) continue;
 
+      const author = pickString(r, ["author", "username", "user", "user_name"]);
       out.push({
         externalId:
-          pickString(r, ["id", "review_id", "reviewId"]) ?? `${productId}-${i}`,
-        author: pickString(r, ["author", "username", "user", "user_name"]),
+          pickString(r, ["id", "review_id", "reviewId"]) ??
+          contentHashId(productId, author, text.trim()),
+        author,
         rating: pickNumber(r, ["rating", "stars", "score"]),
         text: text.trim(),
         reviewDate: pickDate(r, ["date", "created_at", "reviewDate", "time"]),
@@ -318,6 +320,27 @@ export function normalizeKulqizProductReviews(
     }
   }
   return out;
+}
+
+/**
+ * Fallback externalId berbasis KONTEN, bukan index. Index (`row-3`) berubah
+ * saat re-scrape mengembalikan urutan berbeda — menembus unique constraint
+ * (duplikat) atau menabrak review lain (data hilang). Hash konten stabil.
+ */
+function contentHashId(
+  prefix: string,
+  ...parts: (string | number | null | undefined)[]
+): string {
+  const text = parts
+    .filter((p) => p != null && String(p).trim().length > 0)
+    .join("|");
+  // FNV-1a 32-bit — cukup untuk dedup key, tanpa dependensi crypto.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${prefix}-${hash.toString(36)}-${text.length}`;
 }
 
 /** JSON-LD review extractor output (tom2turnt/review-extractor). */
@@ -335,10 +358,17 @@ export function normalizeJsonLdReviewItems(
           pickString(r, ["body", "reviewBody", "text", "comment", "content"]) ??
           "";
         if (!text.trim()) continue;
+        const nestedAuthor = pickString(r, [
+          "author",
+          "authorName",
+          "name",
+          "username",
+        ]);
         out.push({
           externalId:
-            pickString(r, ["id", "reviewId", "review_id"]) ?? `jsonld-${i}-${j}`,
-          author: pickString(r, ["author", "authorName", "name", "username"]),
+            pickString(r, ["id", "reviewId", "review_id"]) ??
+            contentHashId("jsonld", nestedAuthor, text.trim()),
+          author: nestedAuthor,
           rating: pickNumber(r, ["rating", "ratingValue", "stars", "score"]),
           text: text.trim(),
           reviewDate: pickDate(r, ["datePublished", "date", "reviewDate"]),
@@ -352,10 +382,17 @@ export function normalizeJsonLdReviewItems(
       "";
     if (!text.trim()) continue;
 
+    const flatAuthor = pickString(item, [
+      "author",
+      "authorName",
+      "name",
+      "username",
+    ]);
     out.push({
       externalId:
-        pickString(item, ["id", "reviewId", "review_id"]) ?? `jsonld-${i}`,
-      author: pickString(item, ["author", "authorName", "name", "username"]),
+        pickString(item, ["id", "reviewId", "review_id"]) ??
+        contentHashId("jsonld", flatAuthor, text.trim()),
+      author: flatAuthor,
       rating: pickNumber(item, ["rating", "ratingValue", "stars", "score"]),
       text: text.trim(),
       reviewDate: pickDate(item, ["datePublished", "date", "reviewDate"]),
@@ -384,7 +421,11 @@ export function normalizeGenericReviewItems(
 
     const externalId =
       pickString(item, ["id", "reviewId", "review_id", "externalId", "commentId"]) ??
-      `row-${i}`;
+      contentHashId(
+        "row",
+        pickString(item, ["author", "username", "userName", "buyer", "reviewer_name"]),
+        text.trim(),
+      );
 
     out.push({
       externalId,
@@ -457,7 +498,9 @@ export function normalizeShopProducts(
 
     const externalId =
       pickString(item, ["id", "productId", "product_id", "itemId", "skuId"]) ??
-      (item.itemId != null ? String(item.itemId) : `sku-${i}`);
+      (item.itemId != null
+        ? String(item.itemId)
+        : contentHashId("sku", name.trim(), productUrl.trim()));
 
     let discountPct = pickNumber(item, [
       "discountPercent",

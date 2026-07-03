@@ -355,6 +355,7 @@ model User {
   productConceptsCreated             ProductConcept[]               @relation("ProductConceptCreator")
   productInnovationsCreated          ProductInnovation[]            @relation("ProductInnovationCreator")
   researchReportsCreated             ResearchReport[]               @relation("ResearchReportCreator")
+  aiOutputFeedbackCreated            AiOutputFeedback[]             @relation("AiOutputFeedbackCreator")
   brandCompetitorsCreated            BrandCompetitor[]              @relation("BrandCompetitorCreator")
   brandReviewSourcesCreated          BrandReviewSource[]            @relation("BrandReviewSourceCreator")
   brandKeywordQueriesCreated         BrandKeywordQuery[]            @relation("BrandKeywordQueryCreator")
@@ -1050,6 +1051,11 @@ model Project {
   brandId                  String?
   brand                    Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
   name                     String
+  /**
+   * Konsep Concept Lab asal (lineage riset → produk) — jangan putus jejak evidence.
+   */
+  sourceConceptId          String?
+  sourceConcept            ProductConcept?    @relation("ProjectSourceConcept", fields: [sourceConceptId], references: [id], onDelete: SetNull)
   currentStage             PipelineStage      @default(MARKET_RESEARCH)
   stageEnteredAt           DateTime           @default(now())
   /**
@@ -2004,6 +2010,16 @@ enum ResearchScrapeJobStatus {
   FAILED
 }
 
+/// Asal data scrape — ditulis first-class SAAT ingest, bukan direka ulang
+/// dari heuristik setelahnya. DEMO = data sintetis (wajib di-banner di UI).
+enum ScrapeDataProvenance {
+  VPS
+  APIFY
+  NATIVE
+  CSV
+  DEMO
+}
+
 enum ReviewSentiment {
   POSITIVE
   NEUTRAL
@@ -2033,6 +2049,14 @@ model ProductDiscoveryQuery {
   status         ProductDiscoveryStatus @default(PENDING)
   productCount   Int                    @default(0)
   errorMessage   String?
+  /**
+   * Asal data agregat (DEMO bila hasil fabrikasi; per-marketplace detail di scrapeState.sources).
+   */
+  dataProvenance ScrapeDataProvenance?
+  /**
+   * Waktu koleksi data marketplace terakhir yang berhasil.
+   */
+  collectedAt    DateTime?
   /**
    * Progress scrape multi-marketplace + peringatan per platform.
    */
@@ -2117,6 +2141,10 @@ model ReviewIntelSource {
   reviewsAccessible    Int?
   reviewsComplete      Boolean?
   lastAnalyzedAt       DateTime?
+  /**
+   * Asal data review terakhir (VPS/APIFY/NATIVE/CSV/DEMO) — ditulis saat ingest.
+   */
+  dataProvenance       ScrapeDataProvenance?
   errorMessage         String?
   createdById          String
   createdBy            User                    @relation("ReviewIntelSourceCreator", fields: [createdById], references: [id], onDelete: Cascade)
@@ -2240,6 +2268,10 @@ model ResearchCompetitor {
   marketplace ResearchMarketplace
   shopUrl     String
   isActive    Boolean              @default(true)
+  /**
+   * Asal data SKU/snapshot terakhir (VPS/APIFY/DEMO) — ditulis saat ingest.
+   */
+  dataProvenance ScrapeDataProvenance?
   /**
    * Rencana aksi preskriptif + insight AI (response playbook).
    */
@@ -2710,6 +2742,10 @@ model SocialListeningBatch {
   errorMessage   String?
   collectedAt    DateTime?
   /**
+   * Asal data mention (DEMO bila fabrikasi; per-platform detail di platformStatus.__providers).
+   */
+  dataProvenance ScrapeDataProvenance?
+  /**
    * Per-platform sync state: COLLECTING | READY | FAILED | SKIPPED
    */
   platformStatus Json                    @default("{}")
@@ -2882,6 +2918,8 @@ enum ProductConceptStatus {
   DRAFT
   VALIDATING
   READY
+  /// Sudah dikirim ke R&D — cegah duplikasi project diam-diam.
+  SENT_TO_RND
   ARCHIVED
 }
 
@@ -2912,9 +2950,14 @@ model ProductConcept {
   aiMeta            Json?
   createdById       String
   createdBy         User                 @relation("ProductConceptCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  /**
+   * Waktu terakhir dikirim ke R&D (sendConceptToRdTask).
+   */
+  sentToRdAt        DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   innovationsSeeded ProductInnovation[]  @relation("InnovationBaseConcept")
+  projects          Project[]            @relation("ProjectSourceConcept")
 
   @@index([createdById])
   @@index([status])
@@ -3022,10 +3065,15 @@ model ResearchReport {
   periodStart  DateTime?
   periodEnd    DateTime?
   errorMessage String?
+  /**
+   * Nomor versi konten aktif; naik setiap regenerate. Versi lama diarsip di revisions.
+   */
+  version      Int                  @default(1)
   createdById  String
   createdBy    User                 @relation("ResearchReportCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
+  revisions    ResearchReportRevision[]
 
   @@index([createdById])
   @@index([type])
@@ -3033,10 +3081,80 @@ model ResearchReport {
   @@index([createdAt])
 }
 
+/// Snapshot versi lama laporan — regenerate tidak lagi menimpa riwayat.
+model ResearchReportRevision {
+  id          String         @id @default(cuid())
+  reportId    String
+  report      ResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  version     Int
+  sections    Json           @default("[]")
+  aiSummary   String?        @db.Text
+  actionItems Json           @default("[]")
+  metrics     Json?
+  aiMeta      Json?
+  /**
+   * Kapan versi ini di-generate (sebelum digantikan).
+   */
+  generatedAt DateTime
+  createdAt   DateTime       @default(now())
+
+  @@unique([reportId, version])
+  @@index([reportId])
+}
+
 enum RecStatus {
   OPEN
   DISMISSED
   CONVERTED
+  /// Digantikan hasil analisis yang lebih baru — dipertahankan sebagai riwayat, bukan dihapus.
+  SUPERSEDED
+}
+
+/// Riwayat eksekusi cron research-sync — untuk panel kesehatan data & deteksi data basi.
+model ResearchCronRun {
+  id         String    @id @default(cuid())
+  /**
+   * Mode cron: poll | competitors | trends | social | reports.
+   */
+  mode       String
+  status     String    @default("RUNNING")
+  detail     String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([mode, startedAt])
+}
+
+enum AiFeedbackVerdict {
+  UP
+  DOWN
+}
+
+/// Feedback user pada output AI (thumbs + flag salah) — bahan kalibrasi kualitas.
+model AiOutputFeedback {
+  id           String            @id @default(cuid())
+  /**
+   * Modul asal: usp-analyzer, concept-lab, recommendations, dst.
+   */
+  module       String
+  /**
+   * Jenis artefak: recommendation | usp-candidate | concept-validation | report-summary | ...
+   */
+  artifactType String
+  artifactId   String
+  verdict      AiFeedbackVerdict
+  note         String?           @db.Text
+  /**
+   * Snapshot aiMeta artefak saat feedback diberikan (model, prompt version).
+   */
+  aiMeta       Json?
+  createdById  String
+  createdBy    User              @relation("AiOutputFeedbackCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([artifactType, artifactId, createdById])
+  @@index([module, createdAt])
 }
 
 enum RecOwner {
@@ -3078,6 +3196,12 @@ model ResearchRecommendation {
   effort         String    @default("MED")
   horizon        String    @default("30D")
   status         RecStatus @default(OPEN)
+  /**
+   * Task hasil konversi (lineage rekomendasi → aksi nyata).
+   */
+  convertedToTaskId String?
+  dismissedAt    DateTime?
+  convertedAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

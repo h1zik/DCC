@@ -1,3 +1,4 @@
+import { prisma } from "@/lib/prisma";
 import { syncActiveCompetitors } from "@/lib/research/competitor-sync";
 import { syncActiveBrandCompetitors } from "@/lib/brand-research/brand-competitor-sync";
 import { syncActiveCompetitorProducts } from "@/lib/research/competitor-product-sync";
@@ -16,7 +17,39 @@ import { syncWeeklyTrends } from "@/lib/research/trend-radar/trend-sync";
  * - Trend Radar digest: Senin jam 06:00 WIB (`mode=trends`)
  * - Social Listening sync: harian jam 06:00 WIB (`mode=social`)
  * - Research Reports weekly: Senin jam 06:00 WIB (`mode=reports`)
+ *
+ * Setiap eksekusi dicatat ke `ResearchCronRun` — dipakai panel kesehatan data
+ * di dashboard untuk mendeteksi cron yang tidak terpasang / mati (data basi).
  */
+
+async function runLogged<T>(
+  mode: string,
+  fn: () => Promise<T>,
+): Promise<Response> {
+  const run = await prisma.researchCronRun.create({
+    data: { mode, status: "RUNNING" },
+  });
+  try {
+    const result = await fn();
+    await prisma.researchCronRun.update({
+      where: { id: run.id },
+      data: {
+        status: "COMPLETED",
+        finishedAt: new Date(),
+        detail: JSON.stringify(result).slice(0, 1000),
+      },
+    });
+    return Response.json({ ok: true, mode, result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await prisma.researchCronRun.update({
+      where: { id: run.id },
+      data: { status: "FAILED", finishedAt: new Date(), detail: message },
+    });
+    return Response.json({ ok: false, mode, error: message }, { status: 500 });
+  }
+}
+
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -34,52 +67,53 @@ export async function GET(request: Request) {
   const mode = url.searchParams.get("mode") ?? "poll";
 
   if (mode === "competitors") {
-    const [shops, brandShops, products] = await Promise.all([
-      syncActiveCompetitors(),
-      syncActiveBrandCompetitors(),
-      syncActiveCompetitorProducts(),
-    ]);
-    return Response.json({ ok: true, mode, shops, brandShops, products });
-  }
-
-  if (mode === "trends") {
-    const result = await syncWeeklyTrends();
-    return Response.json({ ok: true, mode, ...result });
-  }
-
-  if (mode === "social") {
-    const result = await syncActiveMonitors();
-    return Response.json({ ok: true, mode, ...result });
-  }
-
-  if (mode === "reports") {
-    const result = await syncWeeklyReports();
-    return Response.json({ ok: true, mode, ...result });
-  }
-
-  await pollRunningResearchJobs();
-
-  if (mode === "full") {
-    const [competitors, brandCompetitors, competitorProducts, trends, social, reports] =
-      await Promise.all([
-      syncActiveCompetitors(),
-      syncActiveBrandCompetitors(),
-      syncActiveCompetitorProducts(),
-      syncWeeklyTrends(),
-      syncActiveMonitors(),
-      syncWeeklyReports(),
-    ]);
-    return Response.json({
-      ok: true,
-      mode: "full",
-      competitors,
-      brandCompetitors,
-      competitorProducts,
-      trends,
-      social,
-      reports,
+    return runLogged(mode, async () => {
+      const [shops, brandShops, products] = await Promise.all([
+        syncActiveCompetitors(),
+        syncActiveBrandCompetitors(),
+        syncActiveCompetitorProducts(),
+      ]);
+      return { shops, brandShops, products };
     });
   }
 
-  return Response.json({ ok: true, mode: "poll" });
+  if (mode === "trends") {
+    return runLogged(mode, () => syncWeeklyTrends());
+  }
+
+  if (mode === "social") {
+    return runLogged(mode, () => syncActiveMonitors());
+  }
+
+  if (mode === "reports") {
+    return runLogged(mode, () => syncWeeklyReports());
+  }
+
+  if (mode === "full") {
+    return runLogged(mode, async () => {
+      await pollRunningResearchJobs();
+      const [competitors, brandCompetitors, competitorProducts, trends, social, reports] =
+        await Promise.all([
+          syncActiveCompetitors(),
+          syncActiveBrandCompetitors(),
+          syncActiveCompetitorProducts(),
+          syncWeeklyTrends(),
+          syncActiveMonitors(),
+          syncWeeklyReports(),
+        ]);
+      return {
+        competitors,
+        brandCompetitors,
+        competitorProducts,
+        trends,
+        social,
+        reports,
+      };
+    });
+  }
+
+  return runLogged("poll", async () => {
+    await pollRunningResearchJobs();
+    return { polled: true };
+  });
 }

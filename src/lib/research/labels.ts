@@ -122,6 +122,7 @@ export const PRODUCT_CONCEPT_STATUS_LABELS: Record<
   DRAFT: "Draft",
   VALIDATING: "Validasi",
   READY: "Siap",
+  SENT_TO_RND: "Dikirim ke R&D",
   ARCHIVED: "Arsip",
 };
 

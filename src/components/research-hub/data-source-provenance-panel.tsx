@@ -20,6 +20,7 @@ export function DataSourceProvenancePanel({
   if (entries.length === 0) return null;
 
   const hasApifyFallback = entries.some(isApifyFallbackProvider);
+  const hasDemo = entries.some((entry) => entry.provider === "demo");
 
   return (
     <div
@@ -51,6 +52,8 @@ export function DataSourceProvenancePanel({
                     "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200",
                   tone === "muted" &&
                     "bg-muted text-muted-foreground",
+                  tone === "danger" &&
+                    "bg-red-100 text-red-900 dark:bg-red-950/60 dark:text-red-200",
                 )}
               >
                 {scrapeProviderLabel(entry.provider)}
@@ -59,6 +62,13 @@ export function DataSourceProvenancePanel({
           );
         })}
       </ul>
+      {hasDemo ? (
+        <p className="rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium leading-relaxed text-red-800 dark:text-red-200">
+          DATA DEMO (sintetis) — angka di modul ini bukan hasil scrape nyata dan
+          TIDAK boleh dipakai untuk keputusan produk. Konfigurasi scraper
+          (VPS/Apify) lalu jalankan refresh untuk data asli.
+        </p>
+      ) : null}
       {hasApifyFallback ? (
         <p className="text-muted-foreground text-[10px] leading-relaxed">
           Apify dipakai sebagai fallback. Jika ini tidak diharapkan, periksa scraper
