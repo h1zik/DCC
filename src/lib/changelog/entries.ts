@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-03-self-service-password-change",
+    date: "2026-07-03",
+    title: "Ganti kata sandi sendiri dari halaman profil",
+    category: "new",
+    description:
+      "Sekarang kamu bisa mengganti kata sandi akunmu sendiri lewat Profil → Edit, tanpa perlu minta bantuan admin. Cukup masukkan kata sandi lama, lalu kata sandi baru minimal 8 karakter.",
+    highlights: [
+      "Kartu 'Ganti kata sandi' baru di halaman edit profil",
+      "Kata sandi lama diverifikasi dulu sebelum diganti",
+      "Reset oleh admin di halaman Admin → Users tetap tersedia",
+    ],
+  },
+  {
     id: "2026-07-02-documents-redesign",
     date: "2026-07-02",
     title: "Documents ruangan — tampilan baru yang lebih rapi",
