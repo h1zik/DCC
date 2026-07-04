@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-04-agent-company-brain",
+    date: "2026-07-04",
+    title: "AI Agent — kini tahu kondisi seluruh perusahaan",
+    category: "improved",
+    description:
+      "AI Agent di panel chat kini bisa membaca kondisi perusahaan lintas modul — briefing eksekutif, finance, pipeline, jadwal, absensi, wiki & dokumen — sesuai hak akses masing-masing peran. Jawaban juga lebih rapi (tabel & link kini tampil benar) dan penghapusan tugas lebih aman.",
+    highlights: [
+      "31 kemampuan baca baru: briefing eksekutif, risiko perusahaan, finance (ringkasan/AP-AR/budget), pipeline & proyek macet, workload tim, tugas user lain, jadwal, absensi, wiki, dokumen, approvals pending",
+      "Otak agent dinaikkan ke Gemini 2.5 Flash (sebelumnya Flash Lite)",
+      "Hapus tugas kini dijaga server: agent wajib menunjukkan preview dan menunggu jawaban \"ya\" eksplisit — tidak bisa langsung menghapus",
+      "Operasi massal melaporkan tugas yang gagal, bukan hanya yang sukses",
+      "Balasan chat mendukung tabel, link, dan format markdown penuh",
+    ],
+  },
+  {
     id: "2026-07-04-research-hub-trust-overhaul",
     date: "2026-07-04",
     title: "Research Hub — data lebih jujur & bisa ditelusuri",

@@ -48,6 +48,10 @@ import {
   RESEARCH_AGENT_TOOL_DECLARATIONS,
   executeAgentResearchTool,
 } from "./research-tools";
+import {
+  COMPANY_AGENT_TOOL_DECLARATIONS,
+  executeAgentCompanyTool,
+} from "./company-tools";
 import type { AgentToolResult, AgentUser } from "./types";
 
 export const AGENT_TOOLS: Tool[] = [
@@ -445,7 +449,7 @@ export const AGENT_TOOLS: Tool[] = [
       {
         name: "delete_task_in_room",
         description:
-          "Hapus SATU tugas permanen. WAJIB 2 langkah: (1) panggil confirmed:false untuk preview, (2) setelah user konfirmasi ya/konfirmasi, panggil confirmed:true. Hanya Manager.",
+          "Hapus SATU tugas permanen. WAJIB 2 langkah: (1) panggil confirmed:false untuk preview (dapat confirmToken), (2) SETELAH user menjawab ya/konfirmasi di pesan berikutnya, panggil confirmed:true + confirmToken dari preview. Server menolak jika user belum menjawab. Hanya Manager.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {
@@ -457,6 +461,11 @@ export const AGENT_TOOLS: Tool[] = [
               description:
                 "false = preview & minta konfirmasi user. true = hapus setelah user setuju.",
             },
+            confirmToken: {
+              type: SchemaType.STRING,
+              description:
+                "Token dari hasil preview (confirmed:false). Wajib saat confirmed:true.",
+            },
           },
           required: ["roomNameOrId", "taskTitleSearch", "confirmed"],
         },
@@ -464,7 +473,7 @@ export const AGENT_TOOLS: Tool[] = [
       {
         name: "delete_tasks_in_room",
         description:
-          "Hapus BEBERAPA tugas permanen sekaligus. WAJIB konfirmasi 2 langkah seperti delete_task_in_room. Gunakan taskTitleSearches, fromStatus, atau fase untuk filter bulk.",
+          "Hapus BEBERAPA tugas permanen sekaligus. WAJIB konfirmasi 2 langkah seperti delete_task_in_room (preview → user jawab ya → confirmed:true + confirmToken). Gunakan taskTitleSearches, fromStatus, atau fase untuk filter bulk.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {
@@ -472,6 +481,11 @@ export const AGENT_TOOLS: Tool[] = [
             confirmed: {
               type: SchemaType.BOOLEAN,
               description: "false = preview. true = hapus setelah user konfirmasi.",
+            },
+            confirmToken: {
+              type: SchemaType.STRING,
+              description:
+                "Token dari hasil preview (confirmed:false). Wajib saat confirmed:true.",
             },
             taskTitleSearches: {
               type: SchemaType.ARRAY,
@@ -645,6 +659,7 @@ export const AGENT_TOOLS: Tool[] = [
         },
       },
       ...RESEARCH_AGENT_TOOL_DECLARATIONS,
+      ...COMPANY_AGENT_TOOL_DECLARATIONS,
     ],
   },
 ];
@@ -672,10 +687,14 @@ export async function executeAgentTool(
   user: AgentUser,
   name: string,
   args: Record<string, unknown>,
+  ctx?: { latestUserMessage?: string | null },
 ): Promise<AgentToolResult> {
   try {
     const researchResult = await executeAgentResearchTool(user, name, args);
     if (researchResult) return researchResult;
+
+    const companyResult = await executeAgentCompanyTool(user, name, args);
+    if (companyResult) return companyResult;
 
     let data: unknown;
 
@@ -894,12 +913,16 @@ export async function executeAgentTool(
             ? String(args.processPhaseNameOrId)
             : null,
           confirmed: args.confirmed === true,
+          confirmToken: args.confirmToken ? String(args.confirmToken) : null,
+          latestUserMessage: ctx?.latestUserMessage ?? null,
         });
         break;
       case "delete_tasks_in_room":
         data = await agentDeleteTasksInRoom(user, {
           roomNameOrId: String(args.roomNameOrId),
           confirmed: args.confirmed === true,
+          confirmToken: args.confirmToken ? String(args.confirmToken) : null,
+          latestUserMessage: ctx?.latestUserMessage ?? null,
           taskTitleSearches: Array.isArray(args.taskTitleSearches)
             ? args.taskTitleSearches.map(String)
             : undefined,

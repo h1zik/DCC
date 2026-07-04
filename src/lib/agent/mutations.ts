@@ -36,6 +36,11 @@ import {
   canSeeAllRooms,
 } from "./access";
 import {
+  buildDeleteConfirmToken,
+  deleteConfirmTokenMatches,
+  isExplicitDeleteConfirmation,
+} from "./confirm-token";
+import {
   findAgentTasksForBulkOperation,
   findAgentTasksForMove,
   listAgentRoomMembers,
@@ -822,7 +827,10 @@ export async function agentDeleteTask(
   };
 }
 
-/** Hapus satu tugas — wajib konfirmasi user (confirmed: true). */
+/**
+ * Hapus satu tugas — konfirmasi dijaga server: eksekusi butuh confirmToken
+ * dari preview + pesan user terakhir berupa konfirmasi eksplisit.
+ */
 export async function agentDeleteTaskInRoom(
   user: AgentUser,
   input: {
@@ -830,6 +838,8 @@ export async function agentDeleteTaskInRoom(
     taskTitleSearch: string;
     processPhaseNameOrId?: string | null;
     confirmed: boolean;
+    confirmToken?: string | null;
+    latestUserMessage?: string | null;
   },
 ) {
   const room = await resolveAgentRoom(user, input.roomNameOrId);
@@ -846,12 +856,16 @@ export async function agentDeleteTaskInRoom(
     );
   }
 
-  if (!input.confirmed) {
+  const taskIds = tasks.map((t) => t.id);
+  const confirmGate = deleteConfirmationGate(user, room.id, taskIds, input);
+  if (!input.confirmed || confirmGate) {
     return {
       needsConfirmation: true,
       action: "delete",
       roomName: room.name,
       taskCount: tasks.length,
+      confirmToken: buildDeleteConfirmToken(user.id, room.id, taskIds),
+      ...(input.confirmed && confirmGate ? { blockedReason: confirmGate } : {}),
       tasks: tasks.map((t) => ({
         title: t.title,
         phaseName: t.phaseName,
@@ -865,12 +879,33 @@ export async function agentDeleteTaskInRoom(
   return agentDeleteTask(user, { taskId: tasks[0]!.id });
 }
 
+/**
+ * Alasan eksekusi hapus masih harus ditahan meski model mengirim
+ * confirmed:true — null berarti boleh lanjut.
+ */
+function deleteConfirmationGate(
+  user: AgentUser,
+  roomId: string,
+  taskIds: string[],
+  input: { confirmToken?: string | null; latestUserMessage?: string | null },
+): string | null {
+  if (!deleteConfirmTokenMatches(input.confirmToken, user.id, roomId, taskIds)) {
+    return "confirmToken tidak cocok dengan daftar tugas saat ini — tampilkan preview ini ke user dan minta konfirmasi ulang.";
+  }
+  if (!isExplicitDeleteConfirmation(input.latestUserMessage)) {
+    return "User belum menjawab konfirmasi eksplisit (mis. \"ya\" / \"hapus saja\"). Tampilkan preview dan tunggu jawaban user — jangan panggil confirmed:true lagi sebelum user menjawab.";
+  }
+  return null;
+}
+
 /** Hapus beberapa tugas sekaligus — wajib konfirmasi user (confirmed: true). */
 export async function agentDeleteTasksInRoom(
   user: AgentUser,
   input: {
     roomNameOrId: string;
     confirmed: boolean;
+    confirmToken?: string | null;
+    latestUserMessage?: string | null;
     taskTitleSearches?: string[] | null;
     taskTitleSearch?: string | null;
     fromStatus?: TaskStatus | null;
@@ -887,12 +922,16 @@ export async function agentDeleteTasksInRoom(
     status: input.fromStatus ?? undefined,
   });
 
-  if (!input.confirmed) {
+  const taskIds = tasks.map((t) => t.id);
+  const confirmGate = deleteConfirmationGate(user, room.id, taskIds, input);
+  if (!input.confirmed || confirmGate) {
     return {
       needsConfirmation: true,
       action: "delete_bulk",
       roomName: room.name,
       taskCount: tasks.length,
+      confirmToken: buildDeleteConfirmToken(user.id, room.id, taskIds),
+      ...(input.confirmed && confirmGate ? { blockedReason: confirmGate } : {}),
       tasks: tasks.map((t) => ({
         title: t.title,
         phaseName: t.phaseName,

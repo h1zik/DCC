@@ -46,7 +46,7 @@ import type {
   AgentUser,
 } from "./types";
 
-function userRoleToAiRole(role: string): AiApiRole {
+export function userRoleToAiRole(role: string): AiApiRole {
   const r = role.toUpperCase();
   if (
     r === "CEO" ||
