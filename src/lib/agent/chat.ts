@@ -83,6 +83,11 @@ async function runAgentChatWithModel(
   const contents: Content[] = toGeminiContents(messages);
   const generationConfig = { temperature: TEMPERATURE };
 
+  // Pesan user terakhir — dipakai server untuk memverifikasi konfirmasi
+  // eksplisit pada aksi destruktif (bukan sekadar percaya confirmed:true).
+  const latestUserMessage =
+    [...messages].reverse().find((m) => m.role === "user")?.content ?? null;
+
   const toolCalls: { name: string; ok: boolean }[] = [];
   const toolRuns: ToolRun[] = [];
 
@@ -102,7 +107,9 @@ async function runAgentChatWithModel(
     const responseParts: Part[] = [];
     for (const call of calls) {
       const args = isPlainObject(call.args) ? call.args : {};
-      const toolResult = await executeAgentTool(user, call.name, args);
+      const toolResult = await executeAgentTool(user, call.name, args, {
+        latestUserMessage,
+      });
 
       toolCalls.push({ name: call.name, ok: toolResult.ok });
       const run: ToolRun = {

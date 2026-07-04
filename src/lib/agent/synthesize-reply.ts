@@ -46,6 +46,18 @@ function formatAnalyzeRoomWorkload(data: Record<string, unknown>): string {
   return msg.trim();
 }
 
+/** Bagian "yang gagal" untuk hasil operasi bulk — jangan sembunyikan partial failure. */
+function formatBulkSkipped(data: Record<string, unknown>): string {
+  const skipped = Number(data.skippedCount ?? 0);
+  if (skipped <= 0) return "";
+  const errors = Array.isArray(data.errors)
+    ? (data.errors as string[]).slice(0, 5).map((e) => `• ${e}`).join("\n")
+    : "";
+  let msg = `\n\n⚠️ **${skipped}** tugas gagal diproses.`;
+  if (errors) msg += `\n${errors}`;
+  return msg;
+}
+
 function formatBulkMove(data: Record<string, unknown>): string {
   const count = Number(data.movedCount ?? 0);
   const room = String(data.roomName ?? "");
@@ -54,10 +66,15 @@ function formatBulkMove(data: Record<string, unknown>): string {
     ? (data.movedTitles as string[]).map((t) => `• ${t}`).join("\n")
     : "";
 
-  if (count === 0) return `Tidak ada tugas yang berhasil dipindahkan di ${room}.`;
+  if (count === 0) {
+    return (
+      `Tidak ada tugas yang berhasil dipindahkan di ${room}.` +
+      formatBulkSkipped(data)
+    );
+  }
   let msg = `**${count}** tugas dipindahkan ke **${status}** di ${room}.`;
   if (titles) msg += `\n\n${titles}`;
-  return msg;
+  return msg + formatBulkSkipped(data);
 }
 
 function formatDeleteConfirm(data: Record<string, unknown>): string {
@@ -82,10 +99,15 @@ function formatBulkDelete(data: Record<string, unknown>): string {
     ? (data.deletedTitles as string[]).map((t) => `• ${t}`).join("\n")
     : "";
 
-  if (count === 0) return `Tidak ada tugas yang berhasil dihapus di ${room}.`;
+  if (count === 0) {
+    return (
+      `Tidak ada tugas yang berhasil dihapus di ${room}.` +
+      formatBulkSkipped(data)
+    );
+  }
   let msg = `**${count}** tugas berhasil dihapus dari ${room}.`;
   if (titles) msg += `\n\n${titles}`;
-  return msg;
+  return msg + formatBulkSkipped(data);
 }
 
 function formatArchiveBulk(data: Record<string, unknown>): string {
@@ -97,12 +119,15 @@ function formatArchiveBulk(data: Record<string, unknown>): string {
     : "";
 
   if (count === 0) {
-    return `Tidak ada tugas selesai yang perlu diarsipkan di ${room}${phase}.`;
+    return (
+      `Tidak ada tugas selesai yang perlu diarsipkan di ${room}${phase}.` +
+      formatBulkSkipped(data)
+    );
   }
 
   let msg = `Berhasil mengarsipkan **${count}** tugas selesai di ${room}${phase}.`;
   if (titles) msg += `\n\n${titles}`;
-  return msg;
+  return msg + formatBulkSkipped(data);
 }
 
 function formatSummarizeWorkspaces(data: Record<string, unknown>): string {

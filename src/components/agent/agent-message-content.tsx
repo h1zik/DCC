@@ -1,50 +1,8 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-  let i = 0;
-
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > last) {
-      nodes.push(text.slice(last, match.index));
-    }
-    const key = `${keyPrefix}-${i++}`;
-    if (match[2]) {
-      nodes.push(
-        <strong key={key} className="font-semibold">
-          {match[2]}
-        </strong>,
-      );
-    } else if (match[3]) {
-      nodes.push(
-        <em key={key} className="italic">
-          {match[3]}
-        </em>,
-      );
-    } else if (match[4]) {
-      nodes.push(
-        <code
-          key={key}
-          className="bg-muted/60 rounded px-1 py-0.5 font-mono text-[0.92em]"
-        >
-          {match[4]}
-        </code>,
-      );
-    }
-    last = match.index + match[0].length;
-  }
-
-  if (last < text.length) {
-    nodes.push(text.slice(last));
-  }
-
-  return nodes;
-}
 
 export function AgentMessageContent({
   content,
@@ -53,42 +11,89 @@ export function AgentMessageContent({
   content: string;
   className?: string;
 }) {
-  const lines = content.split("\n");
-
   return (
-    <div className={cn("space-y-1", className)}>
-      {lines.map((line, index) => {
-        const bullet = line.match(/^\s*[-*]\s+(.*)/);
-        if (bullet) {
-          return (
-            <div key={index} className="flex gap-2 pl-0.5">
-              <span aria-hidden className="text-muted-foreground shrink-0 select-none">
-                •
-              </span>
-              <span className="min-w-0">{renderInline(bullet[1]!, `b-${index}`)}</span>
+    <div className={cn("space-y-2 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => (
+            <p className="whitespace-pre-wrap leading-relaxed">{children}</p>
+          ),
+          ul: ({ children }) => (
+            <ul className="list-disc space-y-1 pl-5">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="list-decimal space-y-1 pl-5">{children}</ol>
+          ),
+          li: ({ children }) => <li className="min-w-0">{children}</li>,
+          strong: ({ children }) => (
+            <strong className="font-semibold">{children}</strong>
+          ),
+          em: ({ children }) => <em className="italic">{children}</em>,
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline underline-offset-2"
+            >
+              {children}
+            </a>
+          ),
+          h1: ({ children }) => (
+            <p className="text-base font-semibold">{children}</p>
+          ),
+          h2: ({ children }) => (
+            <p className="text-base font-semibold">{children}</p>
+          ),
+          h3: ({ children }) => (
+            <p className="text-sm font-semibold">{children}</p>
+          ),
+          code: ({ children, className: codeClassName }) => {
+            const isBlock = codeClassName?.includes("language-");
+            if (isBlock) {
+              return (
+                <code className="block overflow-x-auto font-mono text-[0.85em]">
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code className="bg-muted/60 rounded px-1 py-0.5 font-mono text-[0.92em]">
+                {children}
+              </code>
+            );
+          },
+          pre: ({ children }) => (
+            <pre className="bg-muted/60 overflow-x-auto rounded-md p-3">
+              {children}
+            </pre>
+          ),
+          table: ({ children }) => (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">{children}</table>
             </div>
-          );
-        }
-
-        const numbered = line.match(/^\s*\d+\.\s+(.*)/);
-        if (numbered) {
-          return (
-            <p key={index} className="pl-0.5">
-              {renderInline(numbered[1]!, `n-${index}`)}
-            </p>
-          );
-        }
-
-        if (!line.trim()) {
-          return <div key={index} className="h-1.5" aria-hidden />;
-        }
-
-        return (
-          <p key={index} className="whitespace-pre-wrap">
-            {renderInline(line, `p-${index}`)}
-          </p>
-        );
-      })}
+          ),
+          th: ({ children }) => (
+            <th className="border-border bg-muted/40 border px-2 py-1.5 text-left font-semibold">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="border-border border px-2 py-1.5 align-top">
+              {children}
+            </td>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-border text-muted-foreground border-l-2 pl-3">
+              {children}
+            </blockquote>
+          ),
+          hr: () => <hr className="border-border" />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
