@@ -247,6 +247,62 @@ export async function fetchShopeeSearchViaVps(
   return normalizeVpsShopeeProducts(items);
 }
 
+/**
+ * `include_details` pada shopee-discover: hydrate harga/rating/sold via guest
+ * product API. Default ON (data lengkap); matikan dengan
+ * `SCRAPER_SHOPEE_DISCOVER_DETAILS=false` bila guest API Shopee sedang
+ * diblokir dan run jadi sangat lambat.
+ */
+export function shopeeDiscoverDetailsEnabled(): boolean {
+  return process.env.SCRAPER_SHOPEE_DISCOVER_DETAILS?.trim() !== "false";
+}
+
+/**
+ * Actor `shopee-discover` di VPS — product discovery login-free via Google SERP
+ * (site:shopee.co.id), menembus walled search Shopee tanpa session cookie.
+ *
+ * `include_details: true` (default) meng-hydrate tiap produk via guest product
+ * API — jauh lebih lambat daripada SERP-only dan bisa timeout saat guest API
+ * diblokir Shopee; caller sebaiknya menyiapkan fallback (lihat
+ * scrape-product-discovery). SERP-only (~5-15 detik) hanya mengembalikan
+ * item_id, shop_id, title, url tanpa metrik.
+ */
+export async function fetchShopeeDiscoverViaVps(
+  keyword: string,
+  maxItems: number,
+  opts?: { includeDetails?: boolean },
+): Promise<NormalizedShopProduct[]> {
+  const includeDetails = opts?.includeDetails ?? shopeeDiscoverDetailsEnabled();
+  const limit = Math.min(Math.max(maxItems, 1), 300);
+
+  const run = await startVpsActorRun(
+    "shopee-discover",
+    {
+      keyword: keyword.trim(),
+      limit,
+      // Perluas seed keyword via Google autocomplete — actor tetap dibatasi `limit`.
+      auto_expand: true,
+      include_details: includeDetails,
+      download_images: false,
+    },
+    { wait: true, timeout: includeDetails ? 900 : 300, throwOnFailed: false },
+  );
+
+  if (run.status === "failed") {
+    throw new Error(run.error ?? "Scrape Shopee Discover VPS gagal.");
+  }
+
+  const items = await readVpsRunItems(run);
+  // `page` di baris discover = halaman SERP Google, bukan rank kategori —
+  // buang supaya tidak dinormalisasi jadi categoryRank yang menyesatkan.
+  const cleaned = items.map((item) => {
+    const rest = { ...item };
+    delete rest.page;
+    return rest;
+  });
+  return normalizeVpsShopeeProducts(cleaned).slice(0, limit);
+}
+
 /** Actor `shopee-shop` di VPS — competitor tracker by shop URL. */
 export async function fetchShopeeShopViaVps(
   shopUrl: string,
