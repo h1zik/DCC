@@ -8,6 +8,7 @@ import { signedBalanceForAccount } from "@/lib/finance-money";
 import { buildTrialBalance } from "@/lib/finance-trial-balance";
 import { buildCashFlowStatement } from "@/lib/finance-cashflow";
 import { utcEndOfDay, utcPreviousMonthEnd } from "@/lib/finance-dates";
+import { computeBalanceSheetTotals } from "@/lib/finance-balance-sheet";
 
 const rangeSchema = z.object({
   from: z.coerce.date(),
@@ -136,13 +137,27 @@ export async function reportBalanceSheet(asOf: Date, brandId?: string | null) {
 
   const retained = pl.netIncome;
 
+  const assets = [...byAccount.values()].filter(
+    (r) => r.type === FinanceLedgerType.ASSET,
+  );
+  const liabilities = [...byAccount.values()].filter(
+    (r) => r.type === FinanceLedgerType.LIABILITY,
+  );
+  const equity = [...byAccount.values()].filter(
+    (r) => r.type === FinanceLedgerType.EQUITY,
+  );
+
   return {
-    assets: [...byAccount.values()].filter((r) => r.type === FinanceLedgerType.ASSET),
-    liabilities: [...byAccount.values()].filter(
-      (r) => r.type === FinanceLedgerType.LIABILITY,
-    ),
-    equity: [...byAccount.values()].filter((r) => r.type === FinanceLedgerType.EQUITY),
+    assets,
+    liabilities,
+    equity,
     retainedEarnings: retained,
+    ...computeBalanceSheetTotals({
+      assets,
+      liabilities,
+      equity,
+      retainedEarnings: retained,
+    }),
   };
 }
 

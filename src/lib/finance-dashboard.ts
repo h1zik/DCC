@@ -77,36 +77,32 @@ async function ledgerSumByType(
 }
 
 /**
- * Inflow/outflow per baris arus kas: per-baris (debit - credit) dipisah
- * positif (inflow) dan negatif (outflow). Karena pemisahan bersifat per-baris,
- * dilakukan dengan single SQL `SUM(CASE WHEN ...)` agar tetap satu round-trip.
+ * Inflow/outflow arus kas per ENTRY: delta kas tiap jurnal dijumlahkan dulu,
+ * lalu dipisah positif (inflow) / negatif (outflow), dan jurnal dengan delta
+ * kas nol (mis. transfer antar rekening) dikecualikan — definisi yang sama
+ * dengan laporan arus kas (`buildCashFlowStatement`), sehingga angka KPI
+ * dashboard tidak lagi menyimpang dari tab "Arus kas" setiap ada transfer
+ * internal.
  */
 async function cashFlowSums(range: { gte?: Date; lte: Date }) {
   const rows = await prisma.$queryRaw<
     Array<{ inflow: Prisma.Decimal | null; outflow: Prisma.Decimal | null }>
   >`
     SELECT
-      SUM(
-        CASE
-          WHEN jl."debitBase" > jl."creditBase"
-          THEN jl."debitBase" - jl."creditBase"
-          ELSE 0
-        END
-      )::numeric AS inflow,
-      SUM(
-        CASE
-          WHEN jl."debitBase" < jl."creditBase"
-          THEN jl."creditBase" - jl."debitBase"
-          ELSE 0
-        END
-      )::numeric AS outflow
-    FROM "FinanceJournalLine" jl
-    JOIN "FinanceJournalEntry" je ON je."id" = jl."entryId"
-    JOIN "FinanceLedgerAccount" a ON a."id" = jl."accountId"
-    WHERE je."status" = 'POSTED'
-      AND je."entryDate" >= ${range.gte ?? new Date(0)}
-      AND je."entryDate" <= ${range.lte}
-      AND a."tracksCashflow" = TRUE
+      SUM(CASE WHEN t.delta > 0 THEN t.delta ELSE 0 END)::numeric AS inflow,
+      SUM(CASE WHEN t.delta < 0 THEN -t.delta ELSE 0 END)::numeric AS outflow
+    FROM (
+      SELECT je."id", SUM(jl."debitBase" - jl."creditBase") AS delta
+      FROM "FinanceJournalLine" jl
+      JOIN "FinanceJournalEntry" je ON je."id" = jl."entryId"
+      JOIN "FinanceLedgerAccount" a ON a."id" = jl."accountId"
+      WHERE je."status" = 'POSTED'
+        AND je."entryDate" >= ${range.gte ?? new Date(0)}
+        AND je."entryDate" <= ${range.lte}
+        AND a."tracksCashflow" = TRUE
+      GROUP BY je."id"
+    ) t
+    WHERE t.delta <> 0
   `;
   const row = rows[0] ?? { inflow: null, outflow: null };
   const inflow = toDecimal(row.inflow);
@@ -251,7 +247,13 @@ export async function loadFinanceDashboard(period: DashboardPeriod) {
     cashFlowSums({ gte: start, lte: end }),
     cashFlowSums({ gte: prevStart, lte: prevEnd }),
     prisma.financeApBill.findMany({
-      where: { status: { not: FinanceApArDocStatus.PAID } },
+      // OPEN/PARTIAL saja — `not: PAID` ikut menghitung dokumen VOID,
+      // membuat total di sini beda dengan aging bucket AP/AR.
+      where: {
+        status: {
+          in: [FinanceApArDocStatus.OPEN, FinanceApArDocStatus.PARTIAL],
+        },
+      },
       include: {
         vendor: { select: { name: true } },
         payments: { select: { amount: true } },
@@ -259,7 +261,11 @@ export async function loadFinanceDashboard(period: DashboardPeriod) {
       orderBy: [{ dueDate: "asc" }],
     }),
     prisma.financeArInvoice.findMany({
-      where: { status: { not: FinanceApArDocStatus.PAID } },
+      where: {
+        status: {
+          in: [FinanceApArDocStatus.OPEN, FinanceApArDocStatus.PARTIAL],
+        },
+      },
       include: {
         payments: { select: { amount: true } },
       },

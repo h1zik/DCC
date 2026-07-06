@@ -177,6 +177,11 @@ function serializeBs(bs: {
   liabilities: { code: string; name: string; amount: { toString(): string } }[];
   equity: { code: string; name: string; amount: { toString(): string } }[];
   retainedEarnings: { toString(): string };
+  totalAssets: { toString(): string };
+  totalLiabilities: { toString(): string };
+  totalEquity: { toString(): string };
+  difference: { toString(): string };
+  isBalanced: boolean;
 }) {
   return {
     assets: bs.assets.map((r) => ({
@@ -195,5 +200,10 @@ function serializeBs(bs: {
       amount: r.amount.toString(),
     })),
     retainedEarnings: bs.retainedEarnings.toString(),
+    totalAssets: bs.totalAssets.toString(),
+    totalLiabilities: bs.totalLiabilities.toString(),
+    totalEquity: bs.totalEquity.toString(),
+    difference: bs.difference.toString(),
+    isBalanced: bs.isBalanced,
   };
 }

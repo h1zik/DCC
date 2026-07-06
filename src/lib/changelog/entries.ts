@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-dashboard-alignment",
+    date: "2026-07-06",
+    title: "Finance — KPI dashboard dan laporan kini memakai definisi yang sama",
+    category: "fixed",
+    description:
+      "Angka masuk/keluar kas di dashboard kini menghitung dengan cara yang sama dengan laporan arus kas (transfer antar rekening tidak lagi dihitung dua sisi), total hutang/piutang tidak lagi mengikutkan dokumen yang dibatalkan, dan status seimbang neraca kini dihitung eksak di server — lengkap dengan nilai selisihnya bila tidak seimbang.",
+  },
+  {
     id: "2026-07-06-finance-utc-periods",
     date: "2026-07-06",
     title: "Finance — batas periode laporan kini konsisten lintas zona waktu",
