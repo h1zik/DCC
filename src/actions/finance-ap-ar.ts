@@ -5,8 +5,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
-import { createPostedFinanceJournal } from "@/actions/finance-journals";
-import { getFinanceLedgerAccountByCode } from "@/actions/finance-accounts";
+import {
+  createPostedEntryInTx,
+  lockApBillForUpdate,
+  lockArInvoiceForUpdate,
+} from "@/lib/finance-journal-post";
+import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { positiveMoneyString, toDecimal, zeroDecimal } from "@/lib/finance-money";
 
 function paths() {
@@ -146,71 +150,80 @@ const payApSchema = z.object({
 export async function recordApBillPayment(input: z.infer<typeof payApSchema>) {
   const session = await requireFinance();
   const data = payApSchema.parse(input);
-
-  const bill = await prisma.financeApBill.findUniqueOrThrow({
-    where: { id: data.billId },
-    include: { payments: true },
-  });
-  if (bill.status === FinanceApArDocStatus.VOID) {
-    throw new Error("Tagihan tidak aktif.");
-  }
-
-  const paidBefore = bill.payments.reduce(
-    (s, p) => s.plus(p.amount),
-    zeroDecimal(),
-  );
   const amt = toDecimal(data.amount);
-  const remaining = bill.amount.minus(paidBefore);
-  if (amt.lte(0)) throw new Error("Nominal harus positif.");
-  if (amt.gt(remaining)) throw new Error("Melebihi sisa hutang.");
 
-  const apAccount = await getFinanceLedgerAccountByCode("2000");
-  if (!apAccount) throw new Error('Akun "2000 Hutang usaha" tidak ada — inisialisasi CoA.');
+  // Satu transaksi untuk: kunci bill -> cek sisa -> jurnal -> payment ->
+  // status. Dulu 4 operasi terpisah: dua pembayaran paralel sama-sama lolos
+  // cek sisa (overpayment), dan crash di tengah meninggalkan jurnal tanpa
+  // payment (bill bisa dibayar dua kali).
+  await prisma.$transaction(async (tx) => {
+    await ensurePeriodOpen(data.paidAt, tx);
+    await lockApBillForUpdate(tx, data.billId);
 
-  const bank = await prisma.financeBankAccount.findUniqueOrThrow({
-    where: { id: data.bankAccountId },
-  });
+    const bill = await tx.financeApBill.findUniqueOrThrow({
+      where: { id: data.billId },
+      include: { payments: true },
+    });
+    if (bill.status === FinanceApArDocStatus.VOID) {
+      throw new Error("Tagihan tidak aktif.");
+    }
 
-  const journalId = await createPostedFinanceJournal({
-    entryDate: data.paidAt,
-    reference: bill.billNumber ?? `AP-${bill.id.slice(0, 8)}`,
-    memo: `Bayar hutang: ${bill.vendorName}`,
-    lines: [
-      {
-        accountId: apAccount.id,
-        debit: amt.toFixed(2),
-        credit: "0",
-        memo: "Pelunasan hutang usaha",
-        brandId: bill.brandId,
+    const paidBefore = bill.payments.reduce(
+      (s, p) => s.plus(p.amount),
+      zeroDecimal(),
+    );
+    const remaining = bill.amount.minus(paidBefore);
+    if (amt.gt(remaining)) throw new Error("Melebihi sisa hutang.");
+
+    const apAccount = await tx.financeLedgerAccount.findUnique({
+      where: { code: "2000" },
+    });
+    if (!apAccount) throw new Error('Akun "2000 Hutang usaha" tidak ada — inisialisasi CoA.');
+
+    const bank = await tx.financeBankAccount.findUniqueOrThrow({
+      where: { id: data.bankAccountId },
+    });
+
+    const journalId = await createPostedEntryInTx(tx, {
+      entryDate: data.paidAt,
+      reference: bill.billNumber ?? `AP-${bill.id.slice(0, 8)}`,
+      memo: `Bayar hutang: ${bill.vendorName}`,
+      createdById: session.user.id,
+      lines: [
+        {
+          accountId: apAccount.id,
+          debit: amt.toFixed(2),
+          credit: "0",
+          memo: "Pelunasan hutang usaha",
+          brandId: bill.brandId,
+        },
+        {
+          accountId: bank.ledgerAccountId,
+          debit: "0",
+          credit: amt.toFixed(2),
+          memo: "Keluar bank",
+          brandId: bill.brandId,
+        },
+      ],
+    });
+
+    await tx.financeApPayment.create({
+      data: {
+        billId: bill.id,
+        amount: amt,
+        journalEntryId: journalId,
+        recordedById: session.user.id,
       },
-      {
-        accountId: bank.ledgerAccountId,
-        debit: "0",
-        credit: amt.toFixed(2),
-        memo: "Keluar bank",
-        brandId: bill.brandId,
-      },
-    ],
-  });
+    });
 
-  await prisma.financeApPayment.create({
-    data: {
-      billId: bill.id,
-      amount: amt,
-      journalEntryId: journalId,
-      recordedById: session.user.id,
-    },
-  });
-
-  const paidAfter = paidBefore.plus(amt);
-  let status: FinanceApArDocStatus = FinanceApArDocStatus.PARTIAL;
-  if (paidAfter.equals(bill.amount) || paidAfter.gt(bill.amount)) {
-    status = FinanceApArDocStatus.PAID;
-  }
-
-  await prisma.financeApBill.update({
-    where: { id: bill.id },
-    data: { status },
+    const paidAfter = paidBefore.plus(amt);
+    const status = paidAfter.gte(bill.amount)
+      ? FinanceApArDocStatus.PAID
+      : FinanceApArDocStatus.PARTIAL;
+    await tx.financeApBill.update({
+      where: { id: bill.id },
+      data: { status },
+    });
   });
 
   paths();
@@ -226,71 +239,77 @@ const payArSchema = z.object({
 export async function recordArInvoicePayment(input: z.infer<typeof payArSchema>) {
   const session = await requireFinance();
   const data = payArSchema.parse(input);
-
-  const inv = await prisma.financeArInvoice.findUniqueOrThrow({
-    where: { id: data.invoiceId },
-    include: { payments: true },
-  });
-  if (inv.status === FinanceApArDocStatus.VOID) {
-    throw new Error("Invoice tidak aktif.");
-  }
-
-  const paidBefore = inv.payments.reduce(
-    (s, p) => s.plus(p.amount),
-    zeroDecimal(),
-  );
   const amt = toDecimal(data.amount);
-  const remaining = inv.amount.minus(paidBefore);
-  if (amt.lte(0)) throw new Error("Nominal harus positif.");
-  if (amt.gt(remaining)) throw new Error("Melebihi sisa piutang.");
 
-  const arAccount = await getFinanceLedgerAccountByCode("1200");
-  if (!arAccount) throw new Error('Akun "1200 Piutang usaha" tidak ada — inisialisasi CoA.');
+  // Lihat catatan atomisitas di recordApBillPayment — pola yang sama.
+  await prisma.$transaction(async (tx) => {
+    await ensurePeriodOpen(data.receivedAt, tx);
+    await lockArInvoiceForUpdate(tx, data.invoiceId);
 
-  const bank = await prisma.financeBankAccount.findUniqueOrThrow({
-    where: { id: data.bankAccountId },
-  });
+    const inv = await tx.financeArInvoice.findUniqueOrThrow({
+      where: { id: data.invoiceId },
+      include: { payments: true },
+    });
+    if (inv.status === FinanceApArDocStatus.VOID) {
+      throw new Error("Invoice tidak aktif.");
+    }
 
-  const journalId = await createPostedFinanceJournal({
-    entryDate: data.receivedAt,
-    reference: inv.invoiceNumber ?? `AR-${inv.id.slice(0, 8)}`,
-    memo: `Terima piutang: ${inv.customerName}`,
-    lines: [
-      {
-        accountId: bank.ledgerAccountId,
-        debit: amt.toFixed(2),
-        credit: "0",
-        memo: "Masuk bank",
-        brandId: inv.brandId,
+    const paidBefore = inv.payments.reduce(
+      (s, p) => s.plus(p.amount),
+      zeroDecimal(),
+    );
+    const remaining = inv.amount.minus(paidBefore);
+    if (amt.gt(remaining)) throw new Error("Melebihi sisa piutang.");
+
+    const arAccount = await tx.financeLedgerAccount.findUnique({
+      where: { code: "1200" },
+    });
+    if (!arAccount) throw new Error('Akun "1200 Piutang usaha" tidak ada — inisialisasi CoA.');
+
+    const bank = await tx.financeBankAccount.findUniqueOrThrow({
+      where: { id: data.bankAccountId },
+    });
+
+    const journalId = await createPostedEntryInTx(tx, {
+      entryDate: data.receivedAt,
+      reference: inv.invoiceNumber ?? `AR-${inv.id.slice(0, 8)}`,
+      memo: `Terima piutang: ${inv.customerName}`,
+      createdById: session.user.id,
+      lines: [
+        {
+          accountId: bank.ledgerAccountId,
+          debit: amt.toFixed(2),
+          credit: "0",
+          memo: "Masuk bank",
+          brandId: inv.brandId,
+        },
+        {
+          accountId: arAccount.id,
+          debit: "0",
+          credit: amt.toFixed(2),
+          memo: "Pelunasan piutang",
+          brandId: inv.brandId,
+        },
+      ],
+    });
+
+    await tx.financeArPayment.create({
+      data: {
+        invoiceId: inv.id,
+        amount: amt,
+        journalEntryId: journalId,
+        recordedById: session.user.id,
       },
-      {
-        accountId: arAccount.id,
-        debit: "0",
-        credit: amt.toFixed(2),
-        memo: "Pelunasan piutang",
-        brandId: inv.brandId,
-      },
-    ],
-  });
+    });
 
-  await prisma.financeArPayment.create({
-    data: {
-      invoiceId: inv.id,
-      amount: amt,
-      journalEntryId: journalId,
-      recordedById: session.user.id,
-    },
-  });
-
-  const paidAfter = paidBefore.plus(amt);
-  let status: FinanceApArDocStatus = FinanceApArDocStatus.PARTIAL;
-  if (paidAfter.equals(inv.amount) || paidAfter.gt(inv.amount)) {
-    status = FinanceApArDocStatus.PAID;
-  }
-
-  await prisma.financeArInvoice.update({
-    where: { id: inv.id },
-    data: { status },
+    const paidAfter = paidBefore.plus(amt);
+    const status = paidAfter.gte(inv.amount)
+      ? FinanceApArDocStatus.PAID
+      : FinanceApArDocStatus.PARTIAL;
+    await tx.financeArInvoice.update({
+      where: { id: inv.id },
+      data: { status },
+    });
   });
 
   paths();

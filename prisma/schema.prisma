@@ -1583,8 +1583,10 @@ model FinanceJournalEntry {
    * Bila terisi, jurnal ini adalah jurnal pembalik (reversing entry) untuk
    * jurnal terposting yang lain. Best practice: posted entries tidak boleh
    * diedit/dihapus; koreksi dilakukan dengan jurnal pembalik.
+   * `@unique`: satu jurnal maksimal punya SATU pembalik — penahan DB terhadap
+   * race double-reversal.
    */
-  reversesEntryId String?
+  reversesEntryId String?               @unique
   reversesEntry   FinanceJournalEntry?  @relation("FinanceJournalReversal", fields: [reversesEntryId], references: [id], onDelete: SetNull)
   reversedBy      FinanceJournalEntry[] @relation("FinanceJournalReversal")
   lines           FinanceJournalLine[]
@@ -1596,7 +1598,6 @@ model FinanceJournalEntry {
 
   @@index([entryDate])
   @@index([status])
-  @@index([reversesEntryId])
 }
 
 /**
@@ -1875,7 +1876,11 @@ model FinanceSpendRequest {
   decidedBy        User?                     @relation("FinanceSpendApprover", fields: [decidedById], references: [id], onDelete: SetNull)
   decidedAt        DateTime?
   decisionNote     String?
-  payoutEntryId    String?
+  /**
+   * `@unique`: satu jurnal payout hanya boleh terpakai oleh satu pengajuan —
+   * penahan DB terhadap race double-payout.
+   */
+  payoutEntryId    String?                   @unique
   payoutEntry      FinanceJournalEntry?      @relation(fields: [payoutEntryId], references: [id], onDelete: SetNull)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt

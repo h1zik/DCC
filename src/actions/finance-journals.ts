@@ -13,6 +13,11 @@ import { requireFinance } from "@/lib/auth-helpers";
 import { FINANCE_BASE_CURRENCY, toDecimal, zeroDecimal } from "@/lib/finance-money";
 import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { nextJournalNumber } from "@/lib/finance-journal-number";
+import {
+  createPostedEntryInTx,
+  lockApBillForUpdate,
+  lockArInvoiceForUpdate,
+} from "@/lib/finance-journal-post";
 
 function journalPaths() {
   revalidatePath("/finance/journals");
@@ -382,51 +387,19 @@ export async function createPostedFinanceJournal(
   const session = await requireFinance();
   const data = createPostedSchema.parse(input);
 
-  await ensurePeriodOpen(data.entryDate);
-
-  let debitSum = zeroDecimal();
-  let creditSum = zeroDecimal();
-  const rows = data.lines.map((l) => {
-    const d = toDecimal(l.debit);
-    const c = toDecimal(l.credit);
-    if (d.lt(0) || c.lt(0)) throw new Error("Nominal debit/kredit tidak boleh negatif.");
-    if (d.gt(0) && c.gt(0)) throw new Error("Satu baris tidak boleh debit dan kredit bersamaan.");
-    if (d.lte(0) && c.lte(0)) throw new Error("Setiap baris wajib nominal debit atau kredit.");
-    debitSum = debitSum.plus(d);
-    creditSum = creditSum.plus(c);
-    return {
-      accountId: l.accountId,
-      debitBase: d,
-      creditBase: c,
-      memo: l.memo?.trim() || null,
-      brandId: l.brandId || null,
-      currencyCode: FINANCE_BASE_CURRENCY,
-    };
-  });
-
-  if (!debitSum.equals(creditSum)) {
-    throw new Error("Jurnal tidak seimbang.");
-  }
-
-  const created = await prisma.$transaction(async (tx) => {
-    const entryNumber = await nextJournalNumber(tx, data.entryDate);
-    return tx.financeJournalEntry.create({
-      data: {
-        entryDate: data.entryDate,
-        reference: data.reference?.trim() || null,
-        memo: data.memo?.trim() || null,
-        status: "POSTED",
-        postedAt: new Date(),
-        entryNumber,
-        createdById: session.user.id,
-        lines: { create: rows },
-      },
-      select: { id: true },
+  const entryId = await prisma.$transaction(async (tx) => {
+    await ensurePeriodOpen(data.entryDate, tx);
+    return createPostedEntryInTx(tx, {
+      entryDate: data.entryDate,
+      reference: data.reference,
+      memo: data.memo,
+      createdById: session.user.id,
+      lines: data.lines,
     });
   });
 
   journalPaths();
-  return created.id;
+  return entryId;
 }
 
 export async function postFinanceJournal(entryId: string) {
@@ -445,7 +418,7 @@ export async function postFinanceJournal(entryId: string) {
       throw new Error("Minimal dua baris untuk double-entry.");
     }
 
-    await ensurePeriodOpen(entry.entryDate);
+    await ensurePeriodOpen(entry.entryDate, tx);
 
     let debitSum = zeroDecimal();
     let creditSum = zeroDecimal();
@@ -460,14 +433,20 @@ export async function postFinanceJournal(entryId: string) {
     }
 
     const entryNumber = entry.entryNumber ?? (await nextJournalNumber(tx, entry.entryDate));
-    await tx.financeJournalEntry.update({
-      where: { id: entryId },
+    // Compare-and-set: dua posting paralel sama-sama membaca status DRAFT di
+    // READ COMMITTED; tanpa kondisi status di sini keduanya lanjut
+    // mem-materialisasi sub-ledger (payment ganda).
+    const claimed = await tx.financeJournalEntry.updateMany({
+      where: { id: entryId, status: "DRAFT" },
       data: {
         status: "POSTED",
         postedAt: new Date(),
         entryNumber,
       },
     });
+    if (claimed.count === 0) {
+      throw new Error("Jurnal ini sudah diposting.");
+    }
 
     // Materialize sub-ledger AP/AR dari setiap link baris.
     for (const line of entry.lines) {
@@ -510,6 +489,7 @@ export async function postFinanceJournal(entryId: string) {
           if (!link.billId) {
             throw new Error("billId tidak ditentukan pada link PAY_BILL.");
           }
+          await lockApBillForUpdate(tx, link.billId);
           const bill = await tx.financeApBill.findUniqueOrThrow({
             where: { id: link.billId },
             include: { payments: true },
@@ -574,6 +554,7 @@ export async function postFinanceJournal(entryId: string) {
           if (!link.invoiceId) {
             throw new Error("invoiceId tidak ditentukan pada link RECEIVE_INVOICE.");
           }
+          await lockArInvoiceForUpdate(tx, link.invoiceId);
           const inv = await tx.financeArInvoice.findUniqueOrThrow({
             where: { id: link.invoiceId },
             include: { payments: true },
@@ -628,58 +609,75 @@ export async function reverseFinanceJournal(
 ) {
   const session = await requireFinance();
   const data = reverseSchema.parse(input);
-
-  const target = await prisma.financeJournalEntry.findUniqueOrThrow({
-    where: { id: data.entryId },
-    include: {
-      lines: true,
-      reversedBy: { select: { id: true, entryNumber: true } },
-    },
-  });
-
-  if (target.status !== "POSTED") {
-    throw new Error("Hanya jurnal terposting yang dapat dibalik.");
-  }
-  if (target.reversedBy.length > 0) {
-    throw new Error(
-      `Jurnal sudah dibalik oleh ${target.reversedBy[0].entryNumber ?? target.reversedBy[0].id.slice(0, 8)}.`,
-    );
-  }
-
   const reversalDate = data.reversalDate ?? new Date();
-  await ensurePeriodOpen(target.entryDate);
-  await ensurePeriodOpen(reversalDate);
 
+  // Seluruh guard berada DI DALAM transaksi; unique constraint
+  // `reversesEntryId` menjadi penahan terakhir bila dua reversal berlomba.
   const reversed = await prisma.$transaction(async (tx) => {
-    const entryNumber = await nextJournalNumber(tx, reversalDate);
-    return tx.financeJournalEntry.create({
-      data: {
-        entryDate: reversalDate,
-        reference: `REV-${target.entryNumber ?? target.reference ?? target.id.slice(0, 8)}`,
-        memo:
-          data.memo?.trim() ||
-          `Pembalikan jurnal ${target.entryNumber ?? target.reference ?? target.id.slice(0, 8)}`,
-        status: "POSTED",
-        postedAt: new Date(),
-        entryNumber,
-        reversesEntryId: target.id,
-        createdById: session.user.id,
-        lines: {
-          create: target.lines.map((l) => ({
-            accountId: l.accountId,
-            // Tukar sisi
-            debitBase: l.creditBase,
-            creditBase: l.debitBase,
-            memo: l.memo ? `Pembalikan: ${l.memo}` : "Pembalikan",
-            brandId: l.brandId,
-            currencyCode: l.currencyCode,
-            amountForeign: l.amountForeign,
-            fxRateSnapshot: l.fxRateSnapshot,
-          })),
-        },
+    const target = await tx.financeJournalEntry.findUniqueOrThrow({
+      where: { id: data.entryId },
+      include: {
+        lines: true,
+        reversedBy: { select: { id: true, entryNumber: true } },
       },
-      select: { id: true, entryNumber: true },
     });
+
+    if (target.status !== "POSTED") {
+      throw new Error("Hanya jurnal terposting yang dapat dibalik.");
+    }
+    if (target.reversedBy.length > 0) {
+      throw new Error(
+        `Jurnal sudah dibalik oleh ${target.reversedBy[0].entryNumber ?? target.reversedBy[0].id.slice(0, 8)}.`,
+      );
+    }
+
+    await ensurePeriodOpen(target.entryDate, tx);
+    await ensurePeriodOpen(reversalDate, tx);
+
+    const entryNumber = await nextJournalNumber(tx, reversalDate);
+    try {
+      return await tx.financeJournalEntry.create({
+        data: {
+          entryDate: reversalDate,
+          reference: `REV-${target.entryNumber ?? target.reference ?? target.id.slice(0, 8)}`,
+          memo:
+            data.memo?.trim() ||
+            `Pembalikan jurnal ${target.entryNumber ?? target.reference ?? target.id.slice(0, 8)}`,
+          status: "POSTED",
+          postedAt: new Date(),
+          entryNumber,
+          reversesEntryId: target.id,
+          createdById: session.user.id,
+          lines: {
+            create: target.lines.map((l) => ({
+              accountId: l.accountId,
+              // Tukar sisi
+              debitBase: l.creditBase,
+              creditBase: l.debitBase,
+              memo: l.memo ? `Pembalikan: ${l.memo}` : "Pembalikan",
+              brandId: l.brandId,
+              currencyCode: l.currencyCode,
+              amountForeign: l.amountForeign,
+              fxRateSnapshot: l.fxRateSnapshot,
+            })),
+          },
+        },
+        select: { id: true, entryNumber: true },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002" &&
+        String(
+          Array.isArray(err.meta?.target)
+            ? (err.meta?.target as string[]).join(",")
+            : (err.meta?.target ?? ""),
+        ).includes("reversesEntryId")
+      ) {
+        throw new Error("Jurnal ini baru saja dibalik oleh pengguna lain.");
+      }
+      throw err;
+    }
   });
 
   journalPaths();
