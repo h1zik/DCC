@@ -22,6 +22,7 @@ import {
 } from "@/lib/finance-journal-post";
 import { logFinanceAudit } from "@/lib/finance-audit";
 import { utcDateOnly } from "@/lib/finance-dates";
+import { removeFinanceAttachmentsBestEffort } from "@/lib/finance-uploads";
 import { FinanceAuditAction } from "@prisma/client";
 
 function journalPaths() {
@@ -392,13 +393,16 @@ export async function deleteFinanceJournalLine(lineId: string) {
   await requireFinance();
   const line = await prisma.financeJournalLine.findUniqueOrThrow({
     where: { id: lineId },
-    include: { entry: true },
+    include: { entry: true, attachments: { select: { url: true } } },
   });
   if (line.entry.status !== "DRAFT") {
     throw new Error("Jurnal sudah diposting. Gunakan tombol Balik untuk koreksi.");
   }
   await ensurePeriodOpen(line.entry.entryDate);
   await prisma.financeJournalLine.delete({ where: { id: lineId } });
+  // Baris attachment ikut terhapus via cascade — file fisiknya harus
+  // dibersihkan manual agar tidak jadi yatim di uploads/finance.
+  await removeFinanceAttachmentsBestEffort(line.attachments.map((a) => a.url));
   journalPaths();
 }
 
@@ -406,6 +410,9 @@ export async function deleteFinanceJournalDraft(entryId: string) {
   const session = await requireFinance();
   const entry = await prisma.financeJournalEntry.findUniqueOrThrow({
     where: { id: entryId },
+    include: {
+      lines: { select: { attachments: { select: { url: true } } } },
+    },
   });
   if (entry.status !== "DRAFT") {
     throw new Error("Hanya draf yang dapat dihapus.");
@@ -420,6 +427,9 @@ export async function deleteFinanceJournalDraft(entryId: string) {
       detail: entry.memo ?? entry.reference ?? null,
     });
   });
+  await removeFinanceAttachmentsBestEffort(
+    entry.lines.flatMap((l) => l.attachments.map((a) => a.url)),
+  );
   journalPaths();
 }
 

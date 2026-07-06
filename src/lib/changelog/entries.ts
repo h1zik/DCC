@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-attachment-hygiene",
+    date: "2026-07-06",
+    title: "Finance — lampiran diverifikasi isinya & file tidak tertinggal",
+    category: "improved",
+    description:
+      "Lampiran struk/invoice kini diverifikasi dari isi file-nya (bukan sekadar label tipe dari browser yang bisa dipalsukan), dan menghapus draf jurnal/baris kini ikut membersihkan file lampirannya dari penyimpanan — tidak ada lagi dokumen sensitif yatim yang tertinggal di server.",
+  },
+  {
     id: "2026-07-06-finance-small-guards",
     date: "2026-07-06",
     title: "Finance — rekonsiliasi bank tervalidasi & tombol posting lebih akurat",

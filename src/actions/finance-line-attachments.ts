@@ -11,6 +11,7 @@ import {
   removeFinanceAttachment,
   saveFinanceAttachment,
 } from "@/lib/finance-uploads";
+import { sniffMimeFromBytes } from "@/lib/file-signature";
 
 function paths(entryId?: string) {
   revalidatePath("/finance/journals");
@@ -54,6 +55,15 @@ export async function uploadFinanceLineAttachment(formData: FormData) {
   const arrayBuffer = await file.arrayBuffer();
   const bytes = Buffer.from(arrayBuffer);
 
+  // Tipe yang dipercaya adalah hasil sniff magic bytes — `file.type`
+  // dikirim klien dan mudah dipalsukan (cek di atas hanya fast-feedback).
+  const sniffedMime = sniffMimeFromBytes(bytes);
+  if (!sniffedMime || !FINANCE_ATTACHMENT_ALLOWED_MIME.has(sniffedMime)) {
+    throw new Error(
+      "Isi file tidak dikenali sebagai JPG/PNG/WebP/HEIC/PDF yang valid.",
+    );
+  }
+
   const saved = await saveFinanceAttachment({
     entryId: line.entryId,
     attachmentId,
@@ -66,7 +76,7 @@ export async function uploadFinanceLineAttachment(formData: FormData) {
       id: attachmentId,
       lineId: line.id,
       fileName: file.name,
-      mimeType: file.type,
+      mimeType: sniffedMime,
       size: saved.size,
       url: saved.storagePath,
       hash: saved.hash,

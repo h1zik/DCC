@@ -8,6 +8,7 @@ import {
   assertFinanceDemoResetAllowed,
 } from "@/lib/finance-demo-policy";
 import { logFinanceAudit } from "@/lib/finance-audit";
+import { removeAllFinanceAttachmentFiles } from "@/lib/finance-uploads";
 import { FinanceAuditAction } from "@prisma/client";
 
 /**
@@ -62,6 +63,9 @@ export async function clearAllFinanceDemoData(confirmText: string) {
       detail: "Seluruh data finance dihapus via tombol Bersihkan (reset demo).",
     });
   });
+
+  // File lampiran ikut dibersihkan — baris DB-nya sudah lenyap di atas.
+  await removeAllFinanceAttachmentFiles();
 
   revalidatePath("/finance");
   revalidatePath("/finance/chart-of-accounts");
