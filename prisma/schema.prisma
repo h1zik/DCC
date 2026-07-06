@@ -335,6 +335,8 @@ model User {
   scheduleParticipations             ScheduleEventParticipant[]
   scheduleReminderLogs               ScheduleReminderSent[]
   financeJournalEntries              FinanceJournalEntry[]
+  financeJournalEntriesPosted        FinanceJournalEntry[]          @relation("FinanceJournalPoster")
+  financeAuditEvents                 FinanceAuditEvent[]            @relation("FinanceAuditActor")
   financeApPaymentsRecorded          FinanceApPayment[]             @relation("FinanceApPaymentRecorder")
   financeArPaymentsRecorded          FinanceArPayment[]             @relation("FinanceArPaymentRecorder")
   financeSpendRequests               FinanceSpendRequest[]          @relation("FinanceSpendRequester")
@@ -1574,6 +1576,12 @@ model FinanceJournalEntry {
   createdBy       User                  @relation(fields: [createdById], references: [id], onDelete: Restrict)
   postedAt        DateTime?
   /**
+   * Siapa yang mem-posting — bisa berbeda dari pembuat draf (`createdById`).
+   * Nullable karena data lama tidak mencatatnya.
+   */
+  postedById      String?
+  postedBy        User?                 @relation("FinanceJournalPoster", fields: [postedById], references: [id], onDelete: SetNull)
+  /**
    * Nomor jurnal sekuensial per tahun (mis. JE-2026-000123). Dibuat saat posting
    * sehingga draf tidak menyita nomor (audit trail bersih). Unik agar gampang
    * direferensikan di laporan & ekspor.
@@ -1598,6 +1606,37 @@ model FinanceJournalEntry {
 
   @@index([entryDate])
   @@index([status])
+}
+
+enum FinanceAuditAction {
+  JOURNAL_POST
+  JOURNAL_REVERSE
+  DRAFT_DELETE
+  PERIOD_LOCK
+  PERIOD_UNLOCK
+  FX_RATE_DELETE
+  DEMO_RESET
+}
+
+/**
+ * Jejak audit append-only untuk aksi finance yang sensitif. Tidak pernah
+ * di-update/dihapus oleh aplikasi — termasuk TIDAK ikut terhapus oleh reset
+ * data demo, supaya jejak pemusnahan data tetap ada.
+ */
+model FinanceAuditEvent {
+  id        String             @id @default(cuid())
+  action    FinanceAuditAction
+  /**
+   * Id objek terkait (journal entry, period lock "YYYY-MM", fx rate, dll.).
+   */
+  entityId  String?            @db.VarChar(64)
+  detail    String?            @db.VarChar(1000)
+  actorId   String
+  actor     User               @relation("FinanceAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt DateTime           @default(now())
+
+  @@index([action, createdAt])
+  @@index([entityId])
 }
 
 /**

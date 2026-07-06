@@ -18,6 +18,8 @@ import {
   lockApBillForUpdate,
   lockArInvoiceForUpdate,
 } from "@/lib/finance-journal-post";
+import { logFinanceAudit } from "@/lib/finance-audit";
+import { FinanceAuditAction } from "@prisma/client";
 
 function journalPaths() {
   revalidatePath("/finance/journals");
@@ -353,7 +355,7 @@ export async function deleteFinanceJournalLine(lineId: string) {
 }
 
 export async function deleteFinanceJournalDraft(entryId: string) {
-  await requireFinance();
+  const session = await requireFinance();
   const entry = await prisma.financeJournalEntry.findUniqueOrThrow({
     where: { id: entryId },
   });
@@ -361,7 +363,15 @@ export async function deleteFinanceJournalDraft(entryId: string) {
     throw new Error("Hanya draf yang dapat dihapus.");
   }
   await ensurePeriodOpen(entry.entryDate);
-  await prisma.financeJournalEntry.delete({ where: { id: entryId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.financeJournalEntry.delete({ where: { id: entryId } });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.DRAFT_DELETE,
+      actorId: session.user.id,
+      entityId: entryId,
+      detail: entry.memo ?? entry.reference ?? null,
+    });
+  });
   journalPaths();
 }
 
@@ -441,12 +451,19 @@ export async function postFinanceJournal(entryId: string) {
       data: {
         status: "POSTED",
         postedAt: new Date(),
+        postedById: session.user.id,
         entryNumber,
       },
     });
     if (claimed.count === 0) {
       throw new Error("Jurnal ini sudah diposting.");
     }
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.JOURNAL_POST,
+      actorId: session.user.id,
+      entityId: entry.id,
+      detail: entryNumber,
+    });
 
     // Materialize sub-ledger AP/AR dari setiap link baris.
     for (const line of entry.lines) {
@@ -635,6 +652,12 @@ export async function reverseFinanceJournal(
     await ensurePeriodOpen(reversalDate, tx);
 
     const entryNumber = await nextJournalNumber(tx, reversalDate);
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.JOURNAL_REVERSE,
+      actorId: session.user.id,
+      entityId: target.id,
+      detail: `Dibalik oleh ${entryNumber}`,
+    });
     try {
       return await tx.financeJournalEntry.create({
         data: {
@@ -645,6 +668,7 @@ export async function reverseFinanceJournal(
             `Pembalikan jurnal ${target.entryNumber ?? target.reference ?? target.id.slice(0, 8)}`,
           status: "POSTED",
           postedAt: new Date(),
+          postedById: session.user.id,
           entryNumber,
           reversesEntryId: target.id,
           createdById: session.user.id,
