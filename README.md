@@ -2,9 +2,9 @@
 
 # 🛡️ Dominatus Control Center
 
-### One command center for operations, brand intelligence & market research.
+### One command center for operations, brand intelligence, SEO & market research.
 
-DCC unifies team operations (tasks, rooms, attendance, finance) with an AI‑powered **Research Hub** — marketplace scraping, competitor tracking, review intelligence and trend analysis — in a single, real‑time Next.js workspace.
+DCC unifies company operations, finance, workspaces, brand strategy, content planning, SEO intelligence and AI-powered market research in a single real-time Next.js workspace.
 
 <br/>
 
@@ -21,41 +21,110 @@ DCC unifies team operations (tasks, rooms, attendance, finance) with an AI‑pow
 
 ## ✨ Overview
 
-Dominatus Control Center is an internal, all‑in‑one business platform. It pairs day‑to‑day **team operations** with a deep **market & brand research suite** powered by large language models and a dedicated marketplace scraping backend. Everything runs on a single Next.js App Router codebase backed by PostgreSQL, with an optional **MCP server** that exposes the research tools to AI agents.
+**Dominatus Control Center** is a private internal platform for running the operating rhythm of Dominatus. It combines role-based team workspaces, finance operations, logistics/master data, brand & creative research, SEO workflows, content ideation, and AI-assisted market intelligence.
+
+The application is built on a single **Next.js 16 App Router** codebase backed by **PostgreSQL + Prisma**. It also includes an optional **MCP read-only bridge** so external AI agents can query selected DCC intelligence endpoints programmatically.
 
 > [!NOTE]
-> This is a private, internal product. The sections below describe how to run and develop it locally.
-
-<div align="center">
-  <img src="public/screenshot-dashboard.png" alt="Dominatus Control Center dashboard" width="900"/>
-</div>
+> This is a proprietary internal product. Keep `.env`, credentials, API keys, uploads and production data out of source control.
 
 ---
 
 ## 🚀 Features
 
-### 🧭 Operations
-- **Dashboard & Executive KPIs** — at‑a‑glance company health.
-- **Tasks & Projects** — Kanban boards with drag‑and‑drop (`dnd-kit`).
-- **Rooms, Messages & Direct Chat** — real‑time team comms with presence.
-- **Attendance** — check‑in with **face recognition** (`face-api`).
-- **Schedule, Finance, Inventory, Vendors, Products & Approvals**.
-- **Admin & Profiles** — roles, permissions and user management.
-- **Web Push notifications** — VAPID‑based, even when the tab is closed.
+### 🧭 Operations & Workspaces
+
+- **Executive Overview** — high-level KPI dashboard for CEO monitoring.
+- **Home / My Work / Projects** — personal task focus, project pipelines and work summaries.
+- **Workspaces & Rooms** — room-based collaboration with members, tasks, documents, wiki-style views and content planning.
+- **Kanban Tasks** — drag-and-drop task boards powered by `dnd-kit`, including room-level task organization.
+- **Schedule** — shared calendar and meeting/task reminders.
+- **Attendance** — employee check-in with face recognition via `@vladmandic/face-api`, plus attendance reports/export.
+- **Approvals** — operational and finance approval flows.
+- **Messages** — direct chat, room chat, unread counters, GIF support and presence APIs.
+- **Notifications** — web push via VAPID and optional WhatsApp integration.
+- **Changelog** — internal “what’s new” area for users.
+
+### 💰 Finance & Commercial Control
+
+- **Financial Overview** — finance dashboard and summary insights.
+- **Chart of Accounts** — structured accounting master data.
+- **Journals & General Ledger** — journal entries, ledgers and posting flows.
+- **Bank Reconciliation** — bank/cash matching workflows.
+- **Exchange Rates** — currency support for finance operations.
+- **Cash & Treasury** — treasury movement and cash position tracking.
+- **AP & AR** — payables/receivables aging and operational views.
+- **Brand & Costing** — brand-level cost tracking and costing visibility.
+- **Budget vs Actual** — budget control and variance tracking.
+- **Expense Approvals, Reports & Fixed Assets** — finance governance and reporting modules.
+
+### 📦 Logistics & Master Data
+
+- **Brands** — brand master data and ownership context.
+- **Products & SKU** — product catalog and SKU management.
+- **Inventory** — stock visibility and inventory alerts.
+- **Vendors / Contract Manufacturers** — supplier and manufacturing partner records.
 
 ### 🔬 Research Hub
-- **Product Discovery** — find winning products across marketplaces.
-- **Competitor Tracker** — track competitor products by URL or category with price/sales history.
-- **Review Intelligence** — scrape & analyze buyer reviews (sentiment, complaints, demographics) with AI.
-- **Keyword Intel** — search‑volume & keyword research (DataForSEO).
-- **Trend Radar & Social Listening** — RSS, Google Trends and social signals.
-- **USP Analyzer, Concept Lab & Product Innovation** — turn data into strategy.
-- **Research Reports** — exportable, citation‑backed reports (PDF / DOCX).
+
+- **Product Discovery** — discover promising products across marketplaces.
+- **Competitor Tracker** — track competitors by URL/category with product, price and sales history.
+- **Review Intelligence** — scrape and analyze buyer reviews for sentiment, complaints, demographics and opportunities.
+- **Keyword Intel** — search-volume and marketplace keyword research using DataForSEO and trend signals.
+- **Trend Radar & Social Listening** — RSS, Google Trends, TikTok/Instagram/Pinterest-style signal collection and digesting.
+- **USP Analyzer, Concept Lab & Product Innovation** — convert market evidence into positioning and product strategy.
+- **Research Reports** — citation-backed reports with PDF/DOCX-oriented export flows.
+
+### 🎨 Brand & Creative Hub
+
+- **Brand Strategy** — evidence-backed strategy generation and brand research readers.
+- **Audience Research** — audience insights and positioning support.
+- **Creative Guideline** — creative direction and brand communication support.
+- **Visual Trend & Visual Library** — moodboards, visual references and inspiration workflows.
+- **Ad Library** — competitor ad monitoring and scoring.
+- **Brand-level Review, Keyword, Competitor, USP, Trend and Social modules** — brand-focused versions of core research workflows.
+
+### 📈 SEO Toolkit
+
+- **Keyword Research** — clustering, opportunity analysis and DataForSEO-backed keyword data.
+- **Rank Tracker** — rank checks and rank-change analysis.
+- **Content Briefs & Drafts** — SEO content planning, scoring and draft workflows.
+- **Marketplace SEO** — marketplace listing analysis and rules.
+- **On-page Audit** — page audit rules and recommendations.
+- **Crawler** — crawl jobs and crawl result views.
+- **Backlinks** — backlink gap analysis and profile detail pages.
+- **SEO Reports** — report pages with DOCX export route support.
+
+### ✍️ Content Studio
+
+- **Idea Generation** — content ideas grounded in brand/research context.
+- **Content Planning** — room-level content planning and download/export flows.
+- **Studio Workflow Support** — routes and permissions for studio/project-manager teams.
 
 ### 🤖 AI & Automation
-- LLM‑powered analysis via **Gemini**, **Groq** and **Ollama** (configurable provider).
-- An autonomous **Agent** module and an **MCP server** exposing research & strategic tools.
-- Marketplace data via a dedicated **VPS scraper API** (Shopee, Tokopedia, Lazada) with **Apify** as a fallback.
+
+- **In-app AI Agent** — chat-style assistant panel/module connected to DCC data APIs.
+- **AI read APIs** — guarded `/api/ai/*` endpoints for summaries, research, finance, SEO, tasks, rooms and organization data.
+- **LLM Providers** — Gemini by default, with Groq package support and Ollama/Ollama Cloud-style provider configuration for research tiers.
+- **Research Jobs & Cron** — scheduled sync endpoints for research, SEO and task workflows.
+- **Marketplace Data Pipeline** — custom VPS scraper API for Shopee/Tokopedia/Lazada-style data, with Apify fallback actors.
+- **MCP Server** — optional read-only MCP bridge for external AI/agent access.
+
+---
+
+## 👥 Role-Based Access
+
+DCC is organized around role-aware navigation and route access. Main role areas include:
+
+| Role / Area | Typical Access |
+|---|---|
+| **CEO** | Executive overview, approvals, projects, tasks, rooms, attendance, schedule and AI agent monitoring |
+| **Administrator** | Home, workspaces, brands, users, roles/access, app branding, tasks, rooms and support areas |
+| **Finance** | Finance modules, attendance and finance-specific approvals/reports |
+| **Logistics** | Inventory, products/SKUs, vendors, schedule and attendance |
+| **Studio / Project Manager** | Home, Content Studio, workspaces, projects, schedule, attendance and AI agent |
+| **Market Analyst** | Research Hub, SEO Toolkit, Content Studio, workspaces and market intelligence flows |
+| **Brand Manager** | Brand & Creative Hub, Research Hub, SEO Toolkit, Content Studio and brand workflows |
 
 ---
 
@@ -63,50 +132,68 @@ Dominatus Control Center is an internal, all‑in‑one business platform. It pa
 
 | Layer | Technologies |
 |---|---|
-| **Framework** | Next.js 16 (App Router), React 19, TypeScript 5 |
-| **Styling / UI** | Tailwind CSS 4, Base UI, shadcn, `lucide-react`, `next-themes`, `sonner` |
-| **Database / ORM** | PostgreSQL, Prisma 6 (129 models) |
-| **Auth** | NextAuth v5 + Prisma adapter, `bcryptjs` |
-| **AI / LLM** | Google Generative AI (Gemini), Groq, Ollama |
-| **Data viz** | ECharts, Recharts |
-| **Editor / Docs** | TipTap, `html-to-docx`, `jspdf`, `pdf-parse`, `pdfjs-dist` |
-| **Media** | `sharp`, `fluent-ffmpeg`, ffmpeg/ffprobe |
-| **Scraping / Research** | Custom VPS scraper API, Apify, `cheerio`, `rss-parser`, `google-trends-api` |
-| **Realtime / Notify** | Presence APIs, `web-push` |
+| **Framework** | Next.js 16 App Router, React 19, TypeScript 5 |
+| **Styling / UI** | Tailwind CSS 4, Base UI, shadcn-style components, `lucide-react`, `next-themes`, `sonner` |
+| **Database / ORM** | PostgreSQL, Prisma 6.19.x, 100 Prisma models and 71 enums |
+| **Auth** | NextAuth v5 beta + Prisma adapter, `bcryptjs` |
+| **AI / LLM** | Google Generative AI / Gemini, Groq SDK, Ollama/Ollama Cloud-style research provider config |
+| **Research / Scraping** | Custom scraper API, Apify, `cheerio`, `rss-parser`, `google-trends-api`, DataForSEO |
+| **Charts / Tables** | ECharts, Recharts, TanStack Table |
+| **Editor / Docs** | TipTap, `html-to-docx`, `jspdf`, `pdf-parse`, `pdfjs-dist`, `react-markdown` |
+| **Media** | `sharp`, `fluent-ffmpeg`, ffmpeg/ffprobe installers |
+| **Realtime / Notify** | Presence APIs, Web Push, optional WhatsApp/Fonnte integration |
 | **Validation / Forms** | `zod`, `react-hook-form` |
-| **Tooling** | ESLint 9, Vitest, `tsx` |
+| **Testing / Tooling** | ESLint 9, Vitest 3, `tsx`, Prisma CLI |
 
 ---
 
 ## 🏁 Getting Started
 
 ### Prerequisites
+
 - **Node.js 20+**
-- **PostgreSQL 14+** (a reachable database)
-- A package manager (`npm`, `pnpm`, `yarn` or `bun`)
+- **PostgreSQL 14+** or another reachable PostgreSQL-compatible database
+- A package manager; this repo uses npm scripts by default
+- Optional integration credentials for Gemini, DataForSEO, Apify, scraper API, Web Push and Fonnte
 
 ### 1. Install dependencies
+
 ```bash
 npm install
 ```
 
 ### 2. Configure environment
-Create a `.env` file in the project root (see [Environment Variables](#-environment-variables) below):
+
+Copy the example environment file and fill in the required values:
+
 ```bash
-cp .env.example .env   # if available, otherwise create .env manually
+cp .env.example .env
 ```
+
+At minimum, local development usually needs:
+
+- `DATABASE_URL`
+- `AUTH_SECRET`
+- `NEXTAUTH_URL`
+- `DEFAULT_CEO_PASSWORD` if you want seed/bootstrap to create the CEO account
 
 ### 3. Set up the database
+
 ```bash
-npm run db:push      # sync the Prisma schema to your database
-npm run db:seed      # (optional) seed initial data
+npm run db:push
+npm run db:seed
 ```
 
+> [!WARNING]
+> Some project scripts use `prisma db push --accept-data-loss` for schema evolution/deploy convenience. Review these carefully before running against production data. For safer production workflows, prefer reviewed Prisma migrations and backups.
+
 ### 4. Run the dev server
+
 ```bash
 npm run dev
 ```
-Open **[http://localhost:3000](http://localhost:3000)** 🎉
+
+Open **[http://localhost:3000](http://localhost:3000)**.
 
 ---
 
@@ -114,100 +201,198 @@ Open **[http://localhost:3000](http://localhost:3000)** 🎉
 
 | Script | Description |
 |---|---|
-| `npm run dev` | Start the development server |
-| `npm run build` | Generate Prisma client & build for production |
+| `npm run dev` | Start the Next.js development server |
+| `npm run build` | Generate Prisma client and build the production app |
 | `npm run start` | Start the production server |
 | `npm run lint` | Run ESLint |
 | `npm run test` | Run the Vitest suite |
+| `npm run postinstall` | Generate Prisma client after install |
 | `npm run db:push` | Push the Prisma schema to the database |
-| `npm run db:seed` | Seed the database |
+| `npm run db:migrate` | Run Kanban schema evolution scripts, then Prisma db push with data-loss acceptance |
+| `npm run db:deploy` | Run Kanban evolution, Prisma db push with data-loss acceptance, then Kanban backfill |
+| `npm run db:evolve-kanban` | Run Kanban-related schema evolution scripts |
+| `npm run db:evolve-kanban-position` | Execute task Kanban position SQL evolution |
+| `npm run db:evolve-room-kanban-columns` | Execute room Kanban columns SQL evolution |
+| `npm run db:evolve-pipeline-enum` | Execute pipeline stage enum SQL evolution |
+| `npm run db:backfill-kanban` | Backfill hybrid Kanban data |
+| `npm run db:verify-kanban` | Verify Kanban migration state |
+| `npm run db:clear-projects` | Execute project cleanup SQL script |
+| `npm run db:seed` | Seed initial database data |
 | `npm run db:studio` | Open Prisma Studio |
+| `npm run eval:research` | Run review-analysis evaluation script |
 
 ---
 
 ## 🔐 Environment Variables
 
-Only the most important variables are listed; several integrations are optional and can be left unset if unused.
+Use `.env.example` as the source of truth for local setup. The most important groups are summarized below.
 
-### Core
+### Core / App
+
 | Variable | Description |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `AUTH_SECRET` | NextAuth session secret |
-| `DEFAULT_CEO_PASSWORD` | Password for the seeded admin user |
-| `CRON_SECRET` | Shared secret to authorize cron endpoints |
+| `NEXTAUTH_URL` | Canonical app URL for auth callbacks |
+| `DEFAULT_CEO_PASSWORD` | Bootstrap password for the seeded CEO account; empty means no automatic CEO creation |
+| `CRON_SECRET` | Shared secret for cron endpoints |
+| `ALLOW_DEMO_DATA` | Allows synthetic demo scrape data when scrapers are unconfigured; should stay disabled in production unless intentionally needed |
+
+### Notifications & Media
+
+| Variable | Description |
+|---|---|
+| `FONNTE_API_KEY` | Optional WhatsApp notification provider key |
+| `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` | VAPID public key for browser push |
+| `WEB_PUSH_PRIVATE_KEY` | VAPID private key |
+| `WEB_PUSH_SUBJECT` | VAPID subject, usually `mailto:...` |
+| `GIPHY_API_KEY` | GIF picker support for chat |
 
 ### AI / LLM
+
 | Variable | Description |
 |---|---|
+| `RESEARCH_LLM_PROVIDER` | Default research provider, e.g. `gemini` or `ollama-cloud` |
+| `RESEARCH_LLM_PROVIDER_PRO` | Optional provider override for pro/report-grade tasks |
+| `RESEARCH_LLM_PROVIDER_FLASH` | Optional provider override for flash/bulk tasks |
 | `GEMINI_API_KEY` / `GOOGLE_AI_API_KEY` | Google Gemini credentials |
-| `GEMINI_MODEL` | Gemini model id (optional override) |
-| `RESEARCH_LLM_PROVIDER` | Selects the research LLM provider (e.g. gemini / ollama) |
-| `OLLAMA_BASE_URL` / `OLLAMA_API_KEY` | Self‑hosted Ollama (optional) |
-| `AGENT_LLM_MODEL` | Model used by the Agent module |
+| `AGENT_LLM_MODEL` | Model used by the in-app AI Agent |
+| `GEMINI_MODEL` | Optional Gemini flash-tier override |
+| `GEMINI_MODEL_PRO` | Optional Gemini pro-tier override |
+| `OLLAMA_API_KEY` | Ollama/Ollama Cloud API key |
+| `OLLAMA_BASE_URL` | Ollama-compatible API base URL |
+| `RESEARCH_OLLAMA_MODEL_FLASH` | Ollama model for flash-tier research tasks |
+| `RESEARCH_OLLAMA_MODEL_PRO` | Ollama model for pro-tier research tasks |
+| `RESEARCH_OLLAMA_THINK_FLASH` / `RESEARCH_OLLAMA_THINK_PRO` | Optional reasoning/think controls for Ollama research tiers |
 
 ### Scraping & Research
-| Variable | Description |
-|---|---|
-| `SCRAPER_API_URL` / `SCRAPER_API_KEY` | VPS marketplace scraper backend |
-| `APIFY_API_TOKEN` + `APIFY_ACTOR_*` | Apify actors (fallback scrapers) |
-| `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | Keyword intelligence |
-| `TREND_RSS_FEEDS` | Comma‑separated RSS feeds for Trend Radar |
-| `GIPHY_API_KEY` | GIF picker (chat) |
 
-### Web Push
 | Variable | Description |
 |---|---|
-| `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` | VAPID public key |
-| `WEB_PUSH_PRIVATE_KEY` | VAPID private key |
-| `WEB_PUSH_SUBJECT` | VAPID subject (e.g. `mailto:you@example.com`) |
+| `SCRAPER_API_URL` / `SCRAPER_API_KEY` | Internal VPS scraper API endpoint and key |
+| `SCRAPER_SHOPEE_DISCOVER_DETAILS` | Controls Shopee discovery hydration behavior |
+| `APIFY_API_TOKEN` | Apify API token for fallback scrapers |
+| `APIFY_ACTOR_TOKOPEDIA_*` | Tokopedia scraping actors |
+| `APIFY_ACTOR_TIKTOK_*` | TikTok Shop, trends and comments actors |
+| `APIFY_ACTOR_SHOPEE_*` | Shopee product/review/autocomplete actors |
+| `APIFY_ACTOR_INSTAGRAM` | Instagram scraping actor |
+| `APIFY_ACTOR_PINTEREST` | Pinterest scraping actor |
+| `APIFY_ACTOR_META_AD_LIBRARY` | Meta ad library scraping actor |
+| `BRAND_PINTEREST_MAX_PINS_PER_KEYWORD` | Pinterest visual research limit per keyword |
+| `TREND_RSS_FEEDS` | Comma-separated RSS feeds for Trend Radar |
 
-### MCP Server (optional)
+### DataForSEO & SEO Toolkit
+
 | Variable | Description |
 |---|---|
-| `MCP_PORT` / `MCP_SERVER_URL` | MCP server host/port |
-| `MCP_CLIENT_ID` / `MCP_CLIENT_SECRET` | MCP client auth |
+| `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | DataForSEO API credentials |
+| `DATAFORSEO_LOCATION_CODE` | Default search location code |
+| `DATAFORSEO_LANGUAGE_CODE` | Default search language code |
+| `DATAFORSEO_MAX_KEYWORDS` | Keyword retrieval cap |
+| `DATAFORSEO_CACHE_TTL_HOURS` | Response cache TTL in hours to control API cost |
+
+### AI Read API / MCP Bridge
+
+| Variable | Description |
+|---|---|
+| `AI_READ_API_TOKEN` | Token for guarded read-only AI API access |
+| `AI_READ_API_ROLE` | Server-bound effective role for AI read API access |
+| `AI_READ_API_ALLOW_ROLE_HEADER` | Development-only override to honor `x-dcc-role`; keep disabled in production |
+| `MCP_PORT` / `MCP_SERVER_URL` | Optional MCP server host/port |
+| `MCP_CLIENT_ID` / `MCP_CLIENT_SECRET` | Optional MCP client auth values |
 
 ---
 
 ## 🗂️ Project Structure
 
-```
+```text
 DCC/
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/      # App modules: tasks, rooms, finance, research-hub, …
-│   │   └── api/              # Route handlers (ai, auth, cron, rooms, push, …)
-│   ├── actions/             # Server actions
-│   ├── components/          # UI components (shadcn + Base UI)
-│   └── lib/                 # Core logic
-│       ├── scraper-api/     # VPS marketplace scrapers (Shopee/Tokopedia/Lazada)
-│       ├── research/        # Research jobs, analyzers, ingest
-│       └── apify/           # Apify fallback integrations
-├── mcp-server/             # Model Context Protocol server (research/strategic tools)
-├── prisma/                 # Schema, migrations scripts & seed
-├── public/                 # Static assets
-└── scripts/                # Maintenance & deploy scripts
+│   │   ├── (dashboard)/       # Role-based app modules: finance, brand-hub, seo, rooms, tasks, etc.
+│   │   ├── api/               # Route handlers: auth, ai, cron, chat, attendance, uploads, push, etc.
+│   │   └── uploads/           # Protected upload serving route
+│   ├── actions/               # Server actions for domain workflows
+│   ├── components/            # UI components, layout, nav, dashboards and feature shells
+│   └── lib/                   # Core business logic and integrations
+│       ├── ai-api/            # AI API readers/query helpers
+│       ├── apify/             # Apify actors and normalization
+│       ├── brand-research/    # Brand Hub research, strategy and visual intelligence
+│       ├── content-studio/    # Content ideation and grounding logic
+│       ├── research/          # Research Hub jobs, analysis, evidence and scoring
+│       ├── scraper-api/       # Custom marketplace scraper API integration
+│       └── seo/               # SEO Toolkit logic: content, crawler, rank, backlinks, DataForSEO
+├── mcp-server/                # Read-only MCP bridge package
+├── prisma/                    # Prisma schema, seed and SQL/TS migration helper scripts
+├── public/                    # Static assets
+└── scripts/                   # Maintenance, evaluation and diagnostic scripts
+```
+
+---
+
+## 🧪 Quality & Testing
+
+Current quality tooling includes:
+
+- **ESLint** for static analysis.
+- **Vitest** for unit tests around research scoring, SEO rules, scraper normalization, DataForSEO parsing, content scoring, strategy citation validation and related business logic.
+- **Prisma generate/validation workflows** through build and database scripts.
+
+Recommended local health check before larger changes:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npx prisma validate
 ```
 
 ---
 
 ## 🔌 MCP Server
 
-DCC ships with a [Model Context Protocol](https://modelcontextprotocol.io) server (`mcp-server/`) that exposes the research and strategic tools to external AI agents, so an assistant can run product discovery, competitor analysis and report generation programmatically. Configure it via the `MCP_*` environment variables above.
+DCC ships with a separate MCP package in `mcp-server/` named **`dcc-odysseus-mcp`**. It acts as a **read-only bridge** from external agents to selected DCC AI/read endpoints, rather than a second full application backend.
+
+Basic MCP package commands:
+
+```bash
+cd mcp-server
+npm install
+npm run build
+npm run start
+```
+
+Configure both the main DCC app and MCP package with the appropriate `AI_READ_API_*` and `MCP_*` environment variables.
 
 ---
 
 ## 🚢 Deployment
 
-The app is configured for deployment on **Railway** (note the `RAILWAY_*` variables and persistent volume support). For a production build:
+The app is prepared for Railway-style deployment and persistent upload/media handling. Production builds run:
 
 ```bash
 npm run build
 npm run start
 ```
 
-Ensure all required environment variables are set in your hosting provider, and run `npm run db:push` (or `npm run db:deploy`) against the production database.
+Deployment notes:
+
+- Set all required environment variables in the hosting provider.
+- Ensure PostgreSQL is reachable from the app runtime.
+- Review database scripts before running them against production data, especially scripts that use `--accept-data-loss`.
+- Native/media packages such as `sharp`, `fluent-ffmpeg`, ffmpeg and ffprobe are configured as external server packages in `next.config.ts`.
+- Upload/server-action body limits are configured at **300 MB**. Keep this aligned with hosting limits and storage capacity.
+- Global security headers include HSTS, frame protection, content-type protection, referrer policy and a restrictive permissions policy.
+
+---
+
+## 🧭 Development Notes
+
+- This repository uses a newer Next.js version with active API and convention changes. When changing framework behavior, check the local Next.js docs in `node_modules/next/dist/docs/`.
+- Prefer existing components and domain helpers before introducing new abstractions.
+- Keep route access, server actions and `/api/*` handlers aligned with the role model.
+- Keep `.env.example` updated whenever adding or renaming environment variables.
+- Avoid committing generated artifacts, local uploads, credentials or dependency folders.
 
 ---
 
@@ -217,5 +402,5 @@ Proprietary — © Dominatus. All rights reserved. Internal use only.
 
 <div align="center">
 <br/>
-<sub>Built with ❤️ on Next.js · React · Prisma</sub>
+<sub>Built with Next.js · React · Prisma · PostgreSQL</sub>
 </div>
