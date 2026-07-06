@@ -13,7 +13,14 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Ctx) {
-  await requireFinance();
+  try {
+    await requireFinance();
+  } catch (err) {
+    // requireFinance melempar Error biasa — tanpa ini respons jadi 500.
+    const message = err instanceof Error ? err.message : "Forbidden";
+    const status = message.includes("Belum masuk") ? 401 : 403;
+    return new NextResponse(message, { status });
+  }
   const { id } = await params;
 
   const att = await prisma.financeJournalLineAttachment.findUnique({

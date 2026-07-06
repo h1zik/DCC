@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-polish",
+    date: "2026-07-06",
+    title: "Finance — pemolesan lanjutan: koreksi periode tutup buku, aset, budget",
+    category: "improved",
+    description:
+      "Jurnal di periode yang sudah dikunci kini bisa dikoreksi lewat jurnal pembalik bertanggal periode terbuka (tanpa membuka kunci). Aset tetap baru bisa langsung dijurnalkan perolehannya, baris budget tidak bisa dobel untuk sel yang sama, keputusan approval yang berbarengan tidak saling menimpa, dan neraca per-brand kini menjelaskan bahwa segmen memang tidak harus seimbang.",
+  },
+  {
     id: "2026-07-06-finance-attachment-hygiene",
     date: "2026-07-06",
     title: "Finance — lampiran diverifikasi isinya & file tidak tertinggal",

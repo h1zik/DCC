@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { createPostedEntryInTx } from "@/lib/finance-journal-post";
 import { ensurePeriodOpen } from "@/lib/finance-period-lock";
+import { utcDateOnly } from "@/lib/finance-dates";
 import {
   nonNegativeMoneyString,
   positiveMoneyString,
@@ -28,29 +29,69 @@ const assetSchema = z.object({
   assetAccountId: z.string().min(1),
   accumAccountId: z.string().min(1),
   expenseAccountId: z.string().min(1),
+  /**
+   * Opsional: akun sumber dana (kas/bank/hutang). Bila diisi, jurnal
+   * perolehan (debit akun aset / kredit akun ini) diposting bersamaan —
+   * tanpa ini register aset drift dari akun aset di neraca.
+   */
+  fundingAccountId: z.string().optional().nullable(),
 });
 
 export async function createFinanceFixedAsset(input: z.infer<typeof assetSchema>) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = assetSchema.parse(input);
   const cost = toDecimal(data.cost);
   const salvageValue = toDecimal(data.salvageValue);
   if (salvageValue.gt(cost)) {
     throw new Error("Nilai sisa tidak boleh melebihi harga perolehan.");
   }
-  await prisma.financeFixedAsset.create({
-    data: {
-      name: data.name.trim(),
-      category: data.category?.trim() || null,
-      purchaseDate: data.purchaseDate,
-      cost,
-      salvageValue,
-      usefulLifeMonths: data.usefulLifeMonths,
-      method: data.method ?? FinanceDepreciationMethod.STRAIGHT_LINE,
-      assetAccountId: data.assetAccountId,
-      accumAccountId: data.accumAccountId,
-      expenseAccountId: data.expenseAccountId,
-    },
+  if (data.fundingAccountId && data.fundingAccountId === data.assetAccountId) {
+    throw new Error("Akun sumber dana tidak boleh sama dengan akun aset.");
+  }
+  const purchaseDate = utcDateOnly(data.purchaseDate);
+
+  await prisma.$transaction(async (tx) => {
+    const asset = await tx.financeFixedAsset.create({
+      data: {
+        name: data.name.trim(),
+        category: data.category?.trim() || null,
+        purchaseDate,
+        cost,
+        salvageValue,
+        usefulLifeMonths: data.usefulLifeMonths,
+        method: data.method ?? FinanceDepreciationMethod.STRAIGHT_LINE,
+        assetAccountId: data.assetAccountId,
+        accumAccountId: data.accumAccountId,
+        expenseAccountId: data.expenseAccountId,
+      },
+      select: { id: true },
+    });
+
+    if (data.fundingAccountId) {
+      await ensurePeriodOpen(purchaseDate, tx);
+      await createPostedEntryInTx(tx, {
+        entryDate: purchaseDate,
+        reference: `FA-${asset.id.slice(0, 8)}`,
+        memo: `Perolehan aset: ${data.name.trim()}`,
+        createdById: session.user.id,
+        lines: [
+          {
+            accountId: data.assetAccountId,
+            debit: cost.toFixed(2),
+            credit: "0",
+            memo: `Perolehan ${data.name.trim()}`,
+            brandId: null,
+          },
+          {
+            accountId: data.fundingAccountId,
+            debit: "0",
+            credit: cost.toFixed(2),
+            memo: `Pembayaran aset ${data.name.trim()}`,
+            brandId: null,
+          },
+        ],
+      });
+    }
   });
   paths();
 }

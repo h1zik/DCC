@@ -40,7 +40,25 @@ export async function upsertFinanceBudgetLine(input: z.infer<typeof upsertSchema
       data: payload,
     });
   } else {
-    await prisma.financeBudgetLine.create({ data: payload });
+    // Satu sel budget = kombinasi (tahun, bulan, brand, akun). Tanpa cek ini
+    // double-submit membuat dua baris limit untuk sel yang sama.
+    const existing = await prisma.financeBudgetLine.findFirst({
+      where: {
+        year: payload.year,
+        month: payload.month,
+        brandId: payload.brandId,
+        accountId: payload.accountId,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.financeBudgetLine.update({
+        where: { id: existing.id },
+        data: payload,
+      });
+    } else {
+      await prisma.financeBudgetLine.create({ data: payload });
+    }
   }
 
   revalidatePath("/finance/budget");

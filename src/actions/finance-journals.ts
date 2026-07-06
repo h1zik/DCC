@@ -711,7 +711,10 @@ export async function reverseFinanceJournal(
       );
     }
 
-    await ensurePeriodOpen(target.entryDate, tx);
+    // Kebijakan: hanya TANGGAL REVERSAL yang harus di periode terbuka.
+    // Jurnal asal boleh berada di periode terkunci — justru itu use-case
+    // reversing entry pasca tutup buku; dulu keduanya dicek sehingga koreksi
+    // periode tertutup mustahil tanpa membuka kunci.
     await ensurePeriodOpen(reversalDate, tx);
 
     // --- Sinkronkan sub-ledger yang dihasilkan jurnal asal (H-06) ---
