@@ -83,6 +83,7 @@ export async function createFinanceJournalDraft(
 ) {
   const session = await requireFinance();
   const data = createDraftSchema.parse(input);
+  await ensurePeriodOpen(data.entryDate);
   const entry = await prisma.financeJournalEntry.create({
     data: {
       entryDate: data.entryDate,

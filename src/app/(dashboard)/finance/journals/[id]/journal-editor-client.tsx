@@ -224,15 +224,17 @@ export function JournalEditorClient(props: Props) {
   const canPost = canEdit;
   const canReverse = isPosted && !props.reversedBy && !isLocked;
 
-  // Real-time totals & balance check
+  // Real-time totals & balance check — dijumlahkan dalam sen-integer agar
+  // perbandingan eksak; penjumlahan float membuat 0.10+0.20 !== 0.30 dan
+  // jurnal yang sebenarnya seimbang tidak bisa diposting dari UI.
   const { totalDebit, totalCredit } = useMemo(() => {
-    let d = 0;
-    let c = 0;
+    let dCents = 0;
+    let cCents = 0;
     for (const line of props.lines) {
-      d += Number(line.debitBase);
-      c += Number(line.creditBase);
+      dCents += Math.round(Number(line.debitBase) * 100);
+      cCents += Math.round(Number(line.creditBase) * 100);
     }
-    return { totalDebit: d, totalCredit: c };
+    return { totalDebit: dCents / 100, totalCredit: cCents / 100 };
   }, [props.lines]);
 
   function saveHeader() {

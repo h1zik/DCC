@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-small-guards",
+    date: "2026-07-06",
+    title: "Finance — rekonsiliasi bank tervalidasi & tombol posting lebih akurat",
+    category: "fixed",
+    description:
+      "Mencocokkan mutasi rekening koran kini hanya bisa ke baris jurnal terposting milik rekening yang sama. Tombol posting jurnal tidak lagi salah menonaktifkan diri karena pembulatan sen di browser, dan draf jurnal tidak bisa lagi dibuat dengan tanggal di periode yang sudah dikunci.",
+  },
+  {
     id: "2026-07-06-finance-dashboard-alignment",
     date: "2026-07-06",
     title: "Finance — KPI dashboard dan laporan kini memakai definisi yang sama",
