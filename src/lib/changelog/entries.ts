@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-db-deploy-safety",
+    date: "2026-07-06",
+    title: "Keamanan data — update aplikasi kini anti hilang data",
+    category: "improved",
+    description:
+      "Proses update database saat deploy dirombak agar data operasional tim tidak mungkin terhapus diam-diam. Perubahan schema yang berisiko kini otomatis ditolak dan harus ditinjau manual, plus tersedia perintah backup & pratinjau perubahan sebelum deploy.",
+    highlights: [
+      "Deploy menolak perubahan database yang bisa menghapus data (flag --accept-data-loss dihapus dari semua script)",
+      "Perintah baru db:backup (backup penuh via pg_dump) dan db:diff (pratinjau SQL sebelum diterapkan)",
+      "Script penghapus data (mis. db:clear-projects) diblokir terhadap database production kecuali dipaksa secara eksplisit",
+    ],
+  },
+  {
     id: "2026-07-04-agent-company-brain",
     date: "2026-07-04",
     title: "AI Agent — kini tahu kondisi seluruh perusahaan",

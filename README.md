@@ -184,8 +184,8 @@ npm run db:push
 npm run db:seed
 ```
 
-> [!WARNING]
-> Some project scripts use `prisma db push --accept-data-loss` for schema evolution/deploy convenience. Review these carefully before running against production data. For safer production workflows, prefer reviewed Prisma migrations and backups.
+> [!IMPORTANT]
+> Database scripts are guarded against data loss: `db:migrate`/`db:deploy` run `prisma db push` **without** `--accept-data-loss`, so Prisma refuses destructive schema changes instead of silently dropping data. Before deploying schema changes to production, run `npm run db:backup` (pg_dump) and `npm run db:diff` to preview the exact SQL that will be applied. Destructive helper scripts (e.g. `db:clear-projects`) refuse to run against a non-localhost database unless `FORCE_DESTRUCTIVE_DB=1` is set explicitly.
 
 ### 4. Run the dev server
 
@@ -207,16 +207,18 @@ Open **[http://localhost:3000](http://localhost:3000)**.
 | `npm run lint` | Run ESLint |
 | `npm run test` | Run the Vitest suite |
 | `npm run postinstall` | Generate Prisma client after install |
-| `npm run db:push` | Push the Prisma schema to the database |
-| `npm run db:migrate` | Run Kanban schema evolution scripts, then Prisma db push with data-loss acceptance |
-| `npm run db:deploy` | Run Kanban evolution, Prisma db push with data-loss acceptance, then Kanban backfill |
+| `npm run db:push` | Push the Prisma schema to the database (refuses destructive changes) |
+| `npm run db:diff` | Preview the SQL needed to bring the database in sync with the Prisma schema (read-only) |
+| `npm run db:backup` | Back up the database to `./backups/` via `pg_dump` (requires PostgreSQL client tools) |
+| `npm run db:migrate` | Run Kanban schema evolution scripts, then Prisma db push (refuses destructive changes) |
+| `npm run db:deploy` | Preview pending SQL, run Kanban evolution, Prisma db push (refuses destructive changes), then Kanban backfill |
 | `npm run db:evolve-kanban` | Run Kanban-related schema evolution scripts |
 | `npm run db:evolve-kanban-position` | Execute task Kanban position SQL evolution |
 | `npm run db:evolve-room-kanban-columns` | Execute room Kanban columns SQL evolution |
 | `npm run db:evolve-pipeline-enum` | Execute pipeline stage enum SQL evolution |
 | `npm run db:backfill-kanban` | Backfill hybrid Kanban data |
 | `npm run db:verify-kanban` | Verify Kanban migration state |
-| `npm run db:clear-projects` | Execute project cleanup SQL script |
+| `npm run db:clear-projects` | Delete ALL projects (dev helper; blocked on remote databases unless `FORCE_DESTRUCTIVE_DB=1`) |
 | `npm run db:seed` | Seed initial database data |
 | `npm run db:studio` | Open Prisma Studio |
 | `npm run eval:research` | Run review-analysis evaluation script |
@@ -379,7 +381,8 @@ Deployment notes:
 
 - Set all required environment variables in the hosting provider.
 - Ensure PostgreSQL is reachable from the app runtime.
-- Review database scripts before running them against production data, especially scripts that use `--accept-data-loss`.
+- Before applying schema changes to production: run `npm run db:backup` (or use your database host's backup feature), then `npm run db:diff` to review the pending SQL, then `npm run db:deploy`. If Prisma warns about possible data loss, STOP — write a manual evolution SQL script (see `prisma/scripts/`) instead of forcing the push.
+- Never pass `--accept-data-loss` against production; the npm scripts intentionally omit it so Prisma fails loudly instead of dropping data.
 - Native/media packages such as `sharp`, `fluent-ffmpeg`, ffmpeg and ffprobe are configured as external server packages in `next.config.ts`.
 - Upload/server-action body limits are configured at **300 MB**. Keep this aligned with hosting limits and storage capacity.
 - Global security headers include HSTS, frame protection, content-type protection, referrer policy and a restrictive permissions policy.
