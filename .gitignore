@@ -41,6 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# backup database lokal (berisi data production — jangan pernah commit)
+/backups/
+
 # scratch / debug artifacts (jangan commit — bisa memuat data/kunci pihak ketiga)
 tmp-*
 /tmp-vps-samples/
