@@ -3,6 +3,7 @@
 import {
   FinanceApArDocStatus,
   FinanceJournalLineLinkMode,
+  FinanceSpendRequestStatus,
   Prisma,
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
@@ -14,6 +15,7 @@ import { FINANCE_BASE_CURRENCY, toDecimal, zeroDecimal } from "@/lib/finance-mon
 import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { nextJournalNumber } from "@/lib/finance-journal-number";
 import {
+  apArStatusForPaid,
   createPostedEntryInTx,
   lockApBillForUpdate,
   lockArInvoiceForUpdate,
@@ -647,9 +649,116 @@ export async function reverseFinanceJournal(
         `Jurnal sudah dibalik oleh ${target.reversedBy[0].entryNumber ?? target.reversedBy[0].id.slice(0, 8)}.`,
       );
     }
+    if (target.reversesEntryId) {
+      throw new Error(
+        "Jurnal pembalik tidak dapat dibalik lagi — posting ulang transaksi aslinya bila diperlukan.",
+      );
+    }
 
     await ensurePeriodOpen(target.entryDate, tx);
     await ensurePeriodOpen(reversalDate, tx);
+
+    // --- Sinkronkan sub-ledger yang dihasilkan jurnal asal (H-06) ---
+    // 1) Pembayaran AP/AR yang tercatat oleh jurnal ini (baik via link
+    //    PAY_BILL/RECEIVE_INVOICE maupun form pembayaran langsung): hapus
+    //    payment-nya dan hitung ulang status dokumen.
+    const apPayments = await tx.financeApPayment.findMany({
+      where: { journalEntryId: target.id },
+    });
+    for (const p of apPayments) {
+      await lockApBillForUpdate(tx, p.billId);
+      await tx.financeApPayment.delete({ where: { id: p.id } });
+      const bill = await tx.financeApBill.findUniqueOrThrow({
+        where: { id: p.billId },
+        include: { payments: true },
+      });
+      if (bill.status !== FinanceApArDocStatus.VOID) {
+        const paid = bill.payments.reduce((s, x) => s.plus(x.amount), zeroDecimal());
+        await tx.financeApBill.update({
+          where: { id: bill.id },
+          data: { status: apArStatusForPaid(bill.amount, paid) },
+        });
+      }
+    }
+    const arPayments = await tx.financeArPayment.findMany({
+      where: { journalEntryId: target.id },
+    });
+    for (const p of arPayments) {
+      await lockArInvoiceForUpdate(tx, p.invoiceId);
+      await tx.financeArPayment.delete({ where: { id: p.id } });
+      const inv = await tx.financeArInvoice.findUniqueOrThrow({
+        where: { id: p.invoiceId },
+        include: { payments: true },
+      });
+      if (inv.status !== FinanceApArDocStatus.VOID) {
+        const paid = inv.payments.reduce((s, x) => s.plus(x.amount), zeroDecimal());
+        await tx.financeArInvoice.update({
+          where: { id: inv.id },
+          data: { status: apArStatusForPaid(inv.amount, paid) },
+        });
+      }
+    }
+
+    // 2) Bill/invoice yang DIBUAT jurnal ini (CREATE_BILL/CREATE_INVOICE):
+    //    void dokumennya — tolak bila sudah menerima pembayaran.
+    const links = await tx.financeJournalLineLink.findMany({
+      where: { line: { entryId: target.id } },
+    });
+    for (const link of links) {
+      if (link.createdBillId) {
+        await lockApBillForUpdate(tx, link.createdBillId);
+        const bill = await tx.financeApBill.findUnique({
+          where: { id: link.createdBillId },
+          include: { payments: true },
+        });
+        if (bill && bill.status !== FinanceApArDocStatus.VOID) {
+          if (bill.payments.length > 0) {
+            throw new Error(
+              `Bill ${bill.billNumber ?? bill.id.slice(0, 8)} hasil jurnal ini sudah menerima pembayaran. Balik dulu jurnal pembayarannya.`,
+            );
+          }
+          await tx.financeApBill.update({
+            where: { id: bill.id },
+            data: { status: FinanceApArDocStatus.VOID },
+          });
+        }
+      }
+      if (link.createdInvoiceId) {
+        await lockArInvoiceForUpdate(tx, link.createdInvoiceId);
+        const inv = await tx.financeArInvoice.findUnique({
+          where: { id: link.createdInvoiceId },
+          include: { payments: true },
+        });
+        if (inv && inv.status !== FinanceApArDocStatus.VOID) {
+          if (inv.payments.length > 0) {
+            throw new Error(
+              `Invoice ${inv.invoiceNumber ?? inv.id.slice(0, 8)} hasil jurnal ini sudah menerima pembayaran. Balik dulu jurnal penerimaannya.`,
+            );
+          }
+          await tx.financeArInvoice.update({
+            where: { id: inv.id },
+            data: { status: FinanceApArDocStatus.VOID },
+          });
+        }
+      }
+    }
+
+    // 3) Payout spend request yang jurnalnya dibalik: kembalikan ke APPROVED
+    //    agar bisa dibayar ulang dengan benar.
+    const spend = await tx.financeSpendRequest.findUnique({
+      where: { payoutEntryId: target.id },
+      select: { id: true },
+    });
+    if (spend) {
+      await tx.financeSpendRequest.update({
+        where: { id: spend.id },
+        data: {
+          status: FinanceSpendRequestStatus.APPROVED,
+          payoutEntryId: null,
+        },
+      });
+    }
+    // --- selesai sinkronisasi sub-ledger ---
 
     const entryNumber = await nextJournalNumber(tx, reversalDate);
     await logFinanceAudit(tx, {

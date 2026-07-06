@@ -1,17 +1,19 @@
 import { Wallet } from "lucide-react";
 import { financeApAgingBuckets, listFinanceApBills, listFinanceArInvoices } from "@/actions/finance-ap-ar";
+import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { listFinanceBankAccounts } from "@/actions/finance-bank";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { prisma } from "@/lib/prisma";
 import { ApArClient } from "./ap-ar-client";
 
 export default async function ApArPage() {
-  const [bills, invoices, banks, vendors, brands, aging] = await Promise.all([
+  const [bills, invoices, banks, vendors, brands, accounts, aging] = await Promise.all([
     listFinanceApBills(),
     listFinanceArInvoices(),
     listFinanceBankAccounts(),
     prisma.vendor.findMany({ orderBy: { name: "asc" } }),
     prisma.brand.findMany({ orderBy: { name: "asc" } }),
+    listFinanceAccounts(),
     financeApAgingBuckets(),
   ]);
 
@@ -52,6 +54,12 @@ export default async function ApArPage() {
         banks={banks.map((b) => ({ id: b.id, name: b.name }))}
         vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
         brands={brands.map((b) => ({ id: b.id, name: b.name }))}
+        accounts={accounts.map((a) => ({
+          id: a.id,
+          code: a.code,
+          name: a.name,
+          type: a.type,
+        }))}
         aging={agingProps}
       />
     </FinancePageShell>

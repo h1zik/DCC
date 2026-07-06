@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-subledger-consistency",
+    date: "2026-07-06",
+    title: "Finance — angka dashboard, neraca, dan hutang/piutang kini satu sumber",
+    category: "fixed",
+    description:
+      "Tiga penyebab selisih angka ditutup: tagihan/invoice baru kini otomatis dijurnal ke akun kontrol (bukan hanya masuk daftar), saldo awal rekening bank baru otomatis dijurnal ke ledger, dan membalik jurnal kini ikut membereskan hutang/piutang terkait (pembayaran ditarik, dokumen hasil jurnal di-void, pengajuan dana kembali berstatus disetujui).",
+    highlights: [
+      "Form tagihan AP & invoice AR punya pilihan akun beban/pendapatan dan langsung menjurnal",
+      "Saldo kas & bank di dashboard kini dihitung dari sumber yang sama dengan neraca",
+      "Jurnal pembalik menyinkronkan status bill/invoice/pengajuan dana secara otomatis",
+    ],
+  },
+  {
     id: "2026-07-06-finance-audit-trail",
     date: "2026-07-06",
     title: "Finance — jejak audit untuk aksi sensitif",

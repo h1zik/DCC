@@ -72,6 +72,22 @@ selisihnya harus dibuat sebagai migration baru yang di-review, bukan di-push.
 - [ ] **Error monitor**: pantau log Railway ±15 menit untuk error Prisma
       (P2002/P2003 = constraint) atau 500 di rute `/finance*`.
 
+## 3b. Tugas data satu-kali — rilis "konsistensi sub-ledger" (H-07/H-08)
+
+Berlaku sekali, saat rilis yang membawa perubahan `fix/finance-subledger-consistency`:
+
+- [ ] **Rekening bank lama**: untuk setiap rekening dengan saldo awal ≠ 0 yang
+      dibuat SEBELUM rilis ini, saldo awalnya belum pernah dijurnal. Dashboard
+      kas kini murni membaca ledger, jadi buat jurnal saldo awal manual lewat
+      UI (debit akun bank, kredit `3000 Modal pemilik`, tanggal = tanggal saldo
+      awal rekening; kalau periodenya sudah dikunci, pakai tanggal awal periode
+      terbuka). Setelah itu angka kas dashboard = neraca.
+- [ ] **Bill/invoice lama** yang dibuat lewat form AP/AR (bukan editor jurnal)
+      juga belum pernah dijurnal ke akun kontrol 2000/1200 — bila ingin neraca
+      historis cocok dengan aging, buat jurnal pengakuan manual per dokumen
+      terbuka (debit beban / kredit 2000 untuk bill; debit 1200 / kredit
+      pendapatan untuk invoice) bertanggal di periode terbuka.
+
 ## 4. Rollback
 
 - Kesalahan kode → redeploy commit sebelumnya (migration additive aman

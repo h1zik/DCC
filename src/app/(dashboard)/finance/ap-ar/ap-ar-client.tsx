@@ -53,6 +53,7 @@ export function ApArClient(props: {
   banks: { id: string; name: string }[];
   vendors: { id: string; name: string }[];
   brands: { id: string; name: string }[];
+  accounts: { id: string; code: string; name: string; type: string }[];
   aging: Record<string, string>;
 }) {
   const router = useRouter();
@@ -68,6 +69,22 @@ export function ApArClient(props: {
   const [arAmount, setArAmount] = useState("");
   const [arDue, setArDue] = useState(() => new Date().toISOString().slice(0, 10));
   const [arBrand, setArBrand] = useState("");
+
+  // Akun lawan untuk jurnal pengakuan: AP -> beban, AR -> pendapatan.
+  const apCounterOptions = props.accounts.filter(
+    (a) => (a.type === "EXPENSE" || a.type === "ASSET") && a.code !== "1200",
+  );
+  const arCounterOptions = props.accounts.filter((a) => a.type === "REVENUE");
+  const [apCounterId, setApCounterId] = useState(
+    () => props.accounts.find((a) => a.code === "6000")?.id ?? "",
+  );
+  const [arCounterId, setArCounterId] = useState(
+    () => props.accounts.find((a) => a.code === "4000")?.id ?? "",
+  );
+  const accountLabel = (id: string, fallback: string) => {
+    const a = props.accounts.find((x) => x.id === id);
+    return a ? `${a.code} — ${a.name}` : fallback;
+  };
   const safeApVendorId =
     apVendorId && props.vendors.some((v) => v.id === apVendorId)
       ? apVendorId
@@ -100,6 +117,10 @@ export function ApArClient(props: {
           toast.error("Pilih atau isi nama vendor.");
           return;
         }
+        if (!apCounterId) {
+          toast.error("Pilih akun beban/lawan untuk tagihan ini.");
+          return;
+        }
         await createFinanceApBill({
           vendorId: apVendorId || null,
           vendorName,
@@ -109,6 +130,7 @@ export function ApArClient(props: {
           amount: apAmount,
           memo: null,
           brandId: apBrand || null,
+          counterAccountId: apCounterId,
         });
         toast.success("Tagihan hutang dicatat.");
         setApVendorName("");
@@ -124,6 +146,10 @@ export function ApArClient(props: {
     e.preventDefault();
     startTransition(async () => {
       try {
+        if (!arCounterId) {
+          toast.error("Pilih akun pendapatan untuk invoice ini.");
+          return;
+        }
         await createFinanceArInvoice({
           customerName: arCustomer,
           invoiceNumber: null,
@@ -132,6 +158,7 @@ export function ApArClient(props: {
           amount: arAmount,
           memo: null,
           brandId: arBrand || null,
+          counterAccountId: arCounterId,
         });
         toast.success("Invoice piutang dicatat.");
         setArCustomer("");
@@ -204,6 +231,23 @@ export function ApArClient(props: {
             <Input type="date" value={apDue} onChange={(e) => setApDue(e.target.value)} />
           </div>
           <div className="space-y-2 sm:col-span-2">
+            <Label>Akun beban / lawan</Label>
+            <Select value={apCounterId} onValueChange={(v) => setApCounterId(v || "")}>
+              <SelectTrigger className="w-full">
+                <span className="line-clamp-1">
+                  {accountLabel(apCounterId, "Pilih akun beban")}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {apCounterOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.code} — {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2 sm:col-span-2">
             <Label>Brand (opsional)</Label>
             <Select
               value={safeApBrandId}
@@ -264,6 +308,23 @@ export function ApArClient(props: {
           <div className="space-y-2">
             <Label>Jatuh tempo</Label>
             <Input type="date" value={arDue} onChange={(e) => setArDue(e.target.value)} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Akun pendapatan</Label>
+            <Select value={arCounterId} onValueChange={(v) => setArCounterId(v || "")}>
+              <SelectTrigger className="w-full">
+                <span className="line-clamp-1">
+                  {accountLabel(arCounterId, "Pilih akun pendapatan")}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {arCounterOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.code} — {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Brand</Label>
