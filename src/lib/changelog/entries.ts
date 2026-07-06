@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-demo-reset-guard",
+    date: "2026-07-06",
+    title: "Finance — tombol reset data kini aman dari salah klik",
+    category: "fixed",
+    description:
+      "Tombol \"Bersihkan\" di dashboard Finance (penghapus seluruh data finance untuk kebutuhan demo) kini dinonaktifkan otomatis di lingkungan produksi, meminta konfirmasi ketik-ulang, dan menolak berjalan selama masih ada periode pembukuan yang terkunci.",
+    highlights: [
+      "Di produksi tombol tersembunyi & server menolak reset kecuali diaktifkan eksplisit oleh admin (FINANCE_DEMO_RESET=true)",
+      "Wajib mengetik frasa konfirmasi sebelum reset berjalan",
+      "Reset ditolak selama ada periode pembukuan terkunci",
+    ],
+  },
+  {
     id: "2026-07-06-db-deploy-safety",
     date: "2026-07-06",
     title: "Keamanan data — update aplikasi kini anti hilang data",
