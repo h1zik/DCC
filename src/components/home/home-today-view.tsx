@@ -12,20 +12,18 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
+  Coffee,
   Focus,
   GitBranch,
   ListChecks,
   MessageCircle,
-  ScanFace,
+  Moon,
   Sparkles,
   Sun,
-  Moon,
-  Coffee,
   Sunset,
 } from "lucide-react";
 import { markNotificationRead } from "@/actions/notifications";
 import { MyTasksTaskCard } from "@/app/(dashboard)/for-me/my-tasks-task-card";
-import { Button } from "@/components/ui/button";
 import type { HomeTodayData } from "@/lib/home/get-home-data";
 import { cn } from "@/lib/utils";
 
@@ -79,9 +77,37 @@ function roomInitials(name: string): string {
   return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
 }
 
-/** Staggered fade-in-up helper. */
 function stagger(delay: number) {
-  return `animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both [animation-delay:${delay}ms]`;
+  return `motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both motion-safe:[animation-delay:${delay}ms] motion-reduce:animate-none`;
+}
+
+function CountUpNumber({ value }: { value: number }) {
+  const [displayValue, setDisplayValue] = React.useState(0);
+
+  React.useEffect(() => {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let frame = 0;
+
+    if (reduceMotion || value <= 0) {
+      frame = requestAnimationFrame(() => setDisplayValue(value));
+      return () => cancelAnimationFrame(frame);
+    }
+
+    const duration = 360;
+    const start = performance.now();
+
+    function tick(now: number) {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(Math.round(value * eased));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    }
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  return <>{displayValue}</>;
 }
 
 function SectionHeader({
@@ -101,11 +127,13 @@ function SectionHeader({
     <div className="flex items-center justify-between gap-3">
       <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
         {icon ? (
-          <span className="text-muted-foreground [&>svg]:size-4">{icon}</span>
+          <span className="rounded-lg bg-muted/60 p-1.5 text-muted-foreground ring-1 ring-border/60 [&>svg]:size-4">
+            {icon}
+          </span>
         ) : null}
         {title}
         {typeof count === "number" && count > 0 ? (
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary">
             {count}
           </span>
         ) : null}
@@ -113,10 +141,13 @@ function SectionHeader({
       {href ? (
         <Link
           href={href}
-          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
+          className="group inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-primary outline-none transition-colors duration-150 hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring/40"
         >
           {linkLabel}
-          <ArrowRight className="size-3.5 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden />
+          <ArrowRight
+            className="size-3.5 transition-transform duration-150 motion-safe:group-hover:translate-x-0.5"
+            aria-hidden
+          />
         </Link>
       ) : null}
     </div>
@@ -151,33 +182,38 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-7 pb-8">
-      {/* Hero — gradient soft background + greeting + date + quick stats */}
+    <div className="flex w-full min-w-0 flex-col gap-6 pb-8 sm:gap-7">
       <header
         className={cn(
-          "relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-accent/10 via-card to-card p-5 sm:p-6",
-          "animate-in fade-in slide-in-from-top-1 duration-500 fill-mode-both",
+          "relative overflow-hidden rounded-[1.5rem] border border-border/60 bg-gradient-to-br from-primary/10 via-card to-accent/10 p-5 shadow-sm sm:p-6 lg:p-7",
+          "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both motion-reduce:animate-none",
         )}
       >
-        {/* decorative blobs */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -top-12 -right-12 size-40 rounded-full bg-accent/15 blur-3xl"
+          className="pointer-events-none absolute -top-16 -right-16 size-48 rounded-full bg-accent/15 blur-3xl"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute -bottom-16 -left-8 size-36 rounded-full bg-primary/10 blur-3xl"
+          className="pointer-events-none absolute -bottom-20 -left-12 size-44 rounded-full bg-primary/10 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
         />
 
-        <div className="relative flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-0 space-y-1.5">
-            <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 space-y-2">
+            <p className="inline-flex items-center gap-1.5 rounded-full bg-background/50 px-2.5 py-1 text-sm text-muted-foreground ring-1 ring-border/60 backdrop-blur">
               <span className="text-accent-foreground [&>svg]:size-4">
                 {greeting.icon}
               </span>
-              {greeting.label}, <span className="font-medium text-foreground">{data.displayName}</span>
+              {greeting.label},{" "}
+              <span className="font-medium text-foreground">
+                {data.displayName}
+              </span>
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl lg:text-[2.5rem] lg:leading-tight">
+            <h1 className="max-w-3xl text-2xl font-semibold tracking-tight text-foreground sm:text-3xl lg:text-[2.55rem] lg:leading-tight">
               {data.hasAnyAttention
                 ? "Berikut yang perlu fokus hari ini."
                 : "Hari ini tenang — lanjutkan dari ruangan favoritmu."}
@@ -188,63 +224,64 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
             </p>
           </div>
 
-          {/* Quick stat pills */}
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="grid shrink-0 grid-cols-1 gap-2 sm:flex sm:flex-wrap lg:justify-end">
             <StatPill
               icon={<ListChecks className="size-3.5" />}
               label="Tugas aktif"
               value={data.focusTasks.length}
               tone={data.focusTasks.length > 0 ? "accent" : "neutral"}
+              delay={80}
             />
             <StatPill
               icon={<Bell className="size-3.5" />}
               label="Notifikasi"
               value={data.notifications.length}
               tone={data.notifications.length > 0 ? "warning" : "neutral"}
+              delay={120}
             />
             <StatPill
               icon={<CalendarDays className="size-3.5" />}
               label="Jadwal hari ini"
               value={data.todayEvents.length}
               tone="neutral"
+              delay={160}
             />
           </div>
         </div>
       </header>
 
-      {/* Main grid — attention (2fr) + today schedule (1fr) */}
-      <div className="grid w-full items-start gap-6 lg:grid-cols-3">
-        {/* Attention column */}
+      <div className="grid w-full items-start gap-5 lg:grid-cols-3 lg:gap-6">
         <section className={cn("space-y-3 lg:col-span-2", stagger(80))}>
           <SectionHeader
             title="Perlu perhatian"
             icon={<Focus />}
             href="/for-me"
+            linkLabel="Buka My Work"
             count={attentionCount}
           />
           {data.focusTasks.length === 0 &&
           data.notifications.length === 0 &&
           data.pendingPipeline.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-12 text-center animate-in fade-in zoom-in-95 duration-500">
-              <span className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-12 text-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200 motion-safe:ease-out motion-reduce:animate-none">
+              <span className="flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/20 dark:text-emerald-400">
                 <CheckCircle2 className="size-6" aria-hidden />
               </span>
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-foreground">
                   Tidak ada yang mendesak
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="max-w-md text-xs text-muted-foreground">
                   Semua tugas dan notifikasi sudah tertangani — atau belum ada yang
                   masuk.
                 </p>
               </div>
             </div>
           ) : (
-            <ul className="grid gap-2.5 xl:grid-cols-2">
+            <ul className="grid gap-3 xl:grid-cols-2">
               {data.focusTasks.map((task, i) => (
                 <li
                   key={task.id}
-                  className={cn("min-w-0", stagger(120 + i * 50))}
+                  className={cn("min-w-0", stagger(120 + i * 40))}
                 >
                   <MyTasksTaskCard
                     href={`/room/${task.roomId}/tasks?process=${task.roomProcess}`}
@@ -267,16 +304,16 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                   key={n.id}
                   className={cn(
                     "min-w-0 xl:col-span-2",
-                    stagger(120 + data.focusTasks.length * 50 + i * 50),
+                    stagger(120 + data.focusTasks.length * 40 + i * 40),
                   )}
                 >
                   <button
                     type="button"
                     className={cn(
-                      "group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm",
+                      "group flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 focus-visible:ring-2 focus-visible:ring-ring/40 motion-safe:hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
                       !n.isRead
-                        ? "border-primary/30 bg-primary/5 hover:border-primary/40"
-                        : "border-border/70 bg-card hover:bg-muted/40",
+                        ? "border-primary/30 bg-primary/5 shadow-sm hover:border-primary/45 hover:bg-primary/10"
+                        : "border-border/70 bg-card hover:border-primary/25 hover:bg-muted/35 hover:shadow-sm",
                     )}
                     onClick={() =>
                       void onNotificationClick(n.id, n.isRead, n.href)
@@ -284,10 +321,10 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                   >
                     <span
                       className={cn(
-                        "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
+                        "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl ring-1",
                         !n.isRead
-                          ? "bg-primary/10 text-primary"
-                          : "bg-muted text-muted-foreground",
+                          ? "bg-primary/10 text-primary ring-primary/20"
+                          : "bg-muted text-muted-foreground ring-border/60",
                       )}
                     >
                       <Bell className="size-4" aria-hidden />
@@ -296,7 +333,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                       <p className="line-clamp-2 text-sm leading-snug text-foreground">
                         {n.message}
                       </p>
-                      <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <p className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="size-3" aria-hidden />
                         {formatDistanceToNow(new Date(n.createdAt), {
                           addSuffix: true,
@@ -307,7 +344,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                     {!n.isRead ? (
                       <span
                         aria-hidden
-                        className="mt-1.5 size-2 shrink-0 rounded-full bg-primary animate-pulse"
+                        className="mt-2 size-2 shrink-0 rounded-full bg-primary shadow-[0_0_0_4px_hsl(var(--primary)/0.12)]"
                       />
                     ) : null}
                   </button>
@@ -322,16 +359,16 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                     stagger(
                       120 +
                         (data.focusTasks.length + data.notifications.length) *
-                          50 +
-                        i * 50,
+                          40 +
+                        i * 40,
                     ),
                   )}
                 >
                   <Link
                     href="/projects"
-                    className="group flex items-start gap-3 rounded-xl border border-border/70 bg-card px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-sm"
+                    className="group flex items-start gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3 outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 hover:border-accent/45 hover:bg-accent/5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring/40 motion-safe:hover:-translate-y-0.5 motion-reduce:hover:translate-y-0"
                   >
-                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent-foreground">
+                    <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent-foreground ring-1 ring-accent/20">
                       <GitBranch className="size-4" aria-hidden />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -349,7 +386,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                       </span>
                     </span>
                     <ArrowRight
-                      className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5"
+                      className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform duration-150 motion-safe:group-hover:translate-x-0.5"
                       aria-hidden
                     />
                   </Link>
@@ -359,8 +396,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
           )}
         </section>
 
-        {/* Today schedule — timeline style */}
-        <section className={cn("space-y-3", stagger(160))}>
+        <section className={cn("space-y-3", stagger(150))}>
           <SectionHeader
             title="Hari ini"
             icon={<CalendarDays />}
@@ -369,7 +405,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
           />
           {data.todayEvents.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-10 text-center">
-              <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border/60">
                 <CalendarDays className="size-5" aria-hidden />
               </span>
               <p className="text-sm font-medium text-foreground">
@@ -380,18 +416,18 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
               </p>
             </div>
           ) : (
-            <ol className="relative flex flex-col gap-3 before:absolute before:top-2 before:bottom-2 before:left-[1.15rem] before:w-px before:bg-border/70">
+            <ol className="relative flex flex-col gap-3 before:absolute before:top-2 before:bottom-2 before:left-[1.15rem] before:w-px before:bg-gradient-to-b before:from-border/20 before:via-border/70 before:to-border/20">
               {data.todayEvents.map((event, i) => {
                 const eventDate = new Date(event.startsAt);
                 const past = isPast(eventDate) && !isToday(eventDate);
                 return (
                   <li
                     key={event.id}
-                    className={cn("relative pl-12", stagger(200 + i * 60))}
+                    className={cn("relative pl-12", stagger(190 + i * 50))}
                   >
                     <span
                       className={cn(
-                        "absolute top-1.5 left-0 flex size-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold tabular-nums ring-1",
+                        "absolute top-1.5 left-0 flex size-9 shrink-0 items-center justify-center rounded-xl text-xs font-semibold tabular-nums ring-1",
                         past
                           ? "bg-muted text-muted-foreground ring-border/60"
                           : "bg-primary/10 text-primary ring-primary/20",
@@ -402,10 +438,10 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                     <Link
                       href="/schedule"
                       className={cn(
-                        "group flex flex-col gap-0.5 rounded-xl border px-3 py-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm",
+                        "group flex flex-col gap-0.5 rounded-2xl border px-3.5 py-3 outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 focus-visible:ring-2 focus-visible:ring-ring/40 motion-safe:hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
                         past
                           ? "border-border/50 bg-muted/20"
-                          : "border-border/70 bg-card hover:border-primary/40",
+                          : "border-border/70 bg-card hover:border-primary/35 hover:bg-primary/5 hover:shadow-sm",
                       )}
                     >
                       <p
@@ -430,8 +466,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
         </section>
       </div>
 
-      {/* Continue rooms — richer grid with hover lift */}
-      <section className={cn("space-y-3", stagger(240))}>
+      <section className={cn("space-y-3", stagger(230))}>
         <SectionHeader
           title="Lanjutkan"
           icon={<Sparkles />}
@@ -441,7 +476,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
         />
         {data.continueRooms.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border/60">
               <Sparkles className="size-5" aria-hidden />
             </span>
             <p className="text-sm font-medium text-foreground">
@@ -458,13 +493,13 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                 key={room.id}
                 href={`/room/${room.id}/tasks`}
                 className={cn(
-                  "group flex min-w-0 flex-col gap-2.5 rounded-xl border border-border/70 bg-card p-3 transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-md",
-                  stagger(280 + i * 50),
+                  "group flex min-w-0 flex-col gap-3 rounded-2xl border border-border/70 bg-card p-3.5 outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 hover:border-primary/35 hover:bg-primary/5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/40 motion-safe:hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
+                  stagger(270 + i * 40),
                 )}
               >
                 <span
                   className={cn(
-                    "relative flex size-11 items-center justify-center overflow-hidden rounded-xl text-xs font-bold uppercase transition-transform duration-200 group-hover:scale-105",
+                    "relative flex size-12 items-center justify-center overflow-hidden rounded-2xl text-xs font-bold uppercase shadow-sm ring-1 ring-border/60 transition-transform duration-150 motion-safe:group-hover:scale-[1.03] motion-reduce:group-hover:scale-100",
                     room.logoImage ? "bg-muted" : "text-white",
                   )}
                   style={
@@ -492,12 +527,12 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                     </span>
                   ) : null}
                 </span>
-                <span className="line-clamp-2 text-xs font-medium leading-snug text-foreground">
+                <span className="line-clamp-2 min-h-[2rem] text-xs font-semibold leading-snug text-foreground">
                   {room.name}
                 </span>
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 text-[10px]",
+                    "mt-auto inline-flex items-center gap-1 rounded-full text-[10px] font-medium",
                     room.unreadChatCount > 0
                       ? "text-primary"
                       : "text-muted-foreground",
@@ -505,7 +540,7 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
                 >
                   {room.unreadChatCount > 0 ? (
                     <>
-                      <MessageCircle className="size-3 animate-pulse" aria-hidden />
+                      <MessageCircle className="size-3" aria-hidden />
                       {room.unreadChatCount} chat baru
                     </>
                   ) : (
@@ -520,58 +555,6 @@ export function HomeTodayView({ data }: { data: HomeTodayData }) {
           </div>
         )}
       </section>
-
-      {/* Quick actions — floating-style pill row */}
-      <section
-        className={cn(
-          "flex flex-wrap gap-2 border-t border-border/50 pt-5",
-          stagger(360),
-        )}
-      >
-        <Button
-          type="button"
-          size="sm"
-          nativeButton={false}
-          render={<Link href="/tasks" />}
-          className="gap-2"
-        >
-          <Sparkles className="size-3.5" aria-hidden />
-          Workspaces
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          nativeButton={false}
-          render={<Link href="/for-me" />}
-          className="gap-2"
-        >
-          <Focus className="size-3.5" aria-hidden />
-          My Work
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          nativeButton={false}
-          render={<Link href="/schedule" />}
-          className="gap-2"
-        >
-          <CalendarDays className="size-3.5" aria-hidden />
-          Schedule
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          nativeButton={false}
-          render={<Link href="/attendance" />}
-          className="gap-2"
-        >
-          <ScanFace className="size-3.5" aria-hidden />
-          Attendance
-        </Button>
-      </section>
     </div>
   );
 }
@@ -581,27 +564,35 @@ function StatPill({
   label,
   value,
   tone = "neutral",
+  delay = 0,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   tone?: "neutral" | "accent" | "warning";
+  delay?: number;
 }) {
   const toneClass = {
-    neutral: "bg-muted/60 text-muted-foreground",
-    accent: "bg-accent/15 text-accent-foreground",
-    warning: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    neutral: "border-border/60 bg-background/55 text-muted-foreground",
+    accent: "border-accent/25 bg-accent/15 text-accent-foreground",
+    warning: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   }[tone];
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium",
+        "inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-medium shadow-sm backdrop-blur",
+        "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out motion-safe:fill-mode-both motion-reduce:animate-none",
         toneClass,
       )}
+      style={{ animationDelay: `${delay}ms` }}
     >
-      <span className="[&>svg]:size-3.5">{icon}</span>
-      <span className="font-semibold tabular-nums">{value}</span>
-      <span className="text-muted-foreground/80">{label}</span>
+      <span className="rounded-lg bg-background/55 p-1 ring-1 ring-border/50 [&>svg]:size-3.5">
+        {icon}
+      </span>
+      <span className="font-semibold tabular-nums text-foreground">
+        <CountUpNumber value={value} />
+      </span>
+      <span className="text-muted-foreground/85">{label}</span>
     </span>
   );
 }
