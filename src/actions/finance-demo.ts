@@ -7,6 +7,8 @@ import {
   FINANCE_DEMO_RESET_CONFIRM_PHRASE,
   assertFinanceDemoResetAllowed,
 } from "@/lib/finance-demo-policy";
+import { logFinanceAudit } from "@/lib/finance-audit";
+import { FinanceAuditAction } from "@prisma/client";
 
 /**
  * Hapus seluruh data modul finance untuk kebutuhan demo/reset sandbox.
@@ -19,7 +21,7 @@ import {
  *  3. Wajib menyertakan frasa konfirmasi yang diketik user.
  */
 export async function clearAllFinanceDemoData(confirmText: string) {
-  await requireFinance();
+  const session = await requireFinance();
   assertFinanceDemoResetAllowed();
 
   if (confirmText.trim() !== FINANCE_DEMO_RESET_CONFIRM_PHRASE) {
@@ -52,6 +54,13 @@ export async function clearAllFinanceDemoData(confirmText: string) {
     await tx.financeBankAccount.deleteMany();
     await tx.financeFxRate.deleteMany();
     await tx.financeLedgerAccount.deleteMany();
+    // FinanceAuditEvent sengaja TIDAK dihapus: jejak pemusnahan data harus
+    // tetap ada bahkan setelah reset.
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.DEMO_RESET,
+      actorId: session.user.id,
+      detail: "Seluruh data finance dihapus via tombol Bersihkan (reset demo).",
+    });
   });
 
   revalidatePath("/finance");

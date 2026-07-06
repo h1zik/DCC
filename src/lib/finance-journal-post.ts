@@ -78,6 +78,8 @@ export async function createPostedEntryInTx(
       memo: input.memo?.trim() || null,
       status: "POSTED",
       postedAt: new Date(),
+      // Jalur posted-langsung: pembuat = pem-posting.
+      postedById: input.createdById,
       entryNumber,
       createdById: input.createdById,
       lines: { create: rows },

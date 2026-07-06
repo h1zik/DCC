@@ -1,10 +1,12 @@
 "use server";
 
+import { FinanceAuditAction } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/finance-money";
+import { logFinanceAudit } from "@/lib/finance-audit";
 
 export async function listFinanceFxRates() {
   await requireFinance();
@@ -50,7 +52,16 @@ export async function upsertFinanceFxRate(input: z.infer<typeof upsertSchema>) {
 }
 
 export async function deleteFinanceFxRate(id: string) {
-  await requireFinance();
-  await prisma.financeFxRate.delete({ where: { id } });
+  const session = await requireFinance();
+  await prisma.$transaction(async (tx) => {
+    const rate = await tx.financeFxRate.findUniqueOrThrow({ where: { id } });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.FX_RATE_DELETE,
+      actorId: session.user.id,
+      entityId: id,
+      detail: `${rate.currencyCode} ${rate.rateToBase.toString()} berlaku sejak ${rate.validFrom.toISOString().slice(0, 10)}`,
+    });
+    await tx.financeFxRate.delete({ where: { id } });
+  });
   revalidatePath("/finance/currencies");
 }

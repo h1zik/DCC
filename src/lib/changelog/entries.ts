@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-audit-trail",
+    date: "2026-07-06",
+    title: "Finance — jejak audit untuk aksi sensitif",
+    category: "new",
+    description:
+      "Aksi finance yang sensitif kini tercatat permanen: siapa memposting/membalik jurnal, siapa membuka kunci periode tutup buku (beserta jejak kunci aslinya), siapa menghapus draf/kurs, dan siapa menjalankan reset data. Jejak ini tidak ikut terhapus oleh reset data demo.",
+    highlights: [
+      "Kolom baru \"diposting oleh\" pada jurnal — pembuat draf dan pem-posting kini dibedakan",
+      "Buka kunci periode meninggalkan catatan audit permanen",
+      "Mengunci periode yang sudah terkunci tidak lagi menimpa jejak pengunci asli",
+    ],
+  },
+  {
     id: "2026-07-06-finance-atomic-payments",
     date: "2026-07-06",
     title: "Finance — pembayaran & pembalikan jurnal kini atomik (anti klik ganda)",
