@@ -49,8 +49,12 @@ export async function createPostedEntryInTx(
   let debitSum = zeroDecimal();
   let creditSum = zeroDecimal();
   const rows = input.lines.map((l) => {
-    const d = toDecimal(l.debit);
-    const c = toDecimal(l.credit);
+    // Bulatkan ke 2 desimal SEBELUM validasi & penyimpanan — dulu validasi
+    // menjumlah nilai mentah lalu Postgres membulatkan per-baris secara
+    // independen, sehingga input >2dp bisa lolos seimbang tapi tersimpan
+    // tidak seimbang.
+    const d = toDecimal(l.debit).toDecimalPlaces(2);
+    const c = toDecimal(l.credit).toDecimalPlaces(2);
     if (d.lt(0) || c.lt(0)) throw new Error("Nominal debit/kredit tidak boleh negatif.");
     if (d.gt(0) && c.gt(0)) throw new Error("Satu baris tidak boleh debit dan kredit bersamaan.");
     if (d.lte(0) && c.lte(0)) throw new Error("Setiap baris wajib nominal debit atau kredit.");

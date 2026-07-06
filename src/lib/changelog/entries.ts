@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-fx-rounding",
+    date: "2026-07-06",
+    title: "Finance — kurs valas selalu mengikuti tanggal jurnal & pembulatan konsisten",
+    category: "fixed",
+    description:
+      "Mengubah tanggal draf jurnal kini otomatis menghitung ulang baris valuta asing dengan kurs tanggal baru (dulu diam-diam tetap memakai kurs tanggal lama). Semua nominal juga dibulatkan ke 2 desimal secara eksplisit sebelum divalidasi dan disimpan, sehingga jurnal tidak mungkin tersimpan timpang beda satu sen.",
+  },
+  {
     id: "2026-07-06-finance-depreciation-idempotent",
     date: "2026-07-06",
     title: "Finance — penyusutan bulanan aman dari posting ganda",

@@ -89,6 +89,23 @@ describe("createPostedEntryInTx", () => {
     ).rejects.toThrow(/tidak valid/i);
   });
 
+  it("membulatkan per-baris SEBELUM validasi — input >2dp tidak bisa tersimpan timpang (M-08)", async () => {
+    const { tx, create } = makeTx();
+    // 0.005 + 0.005 vs 0.01: dulu lolos (0.01 = 0.01) lalu DB membulatkan
+    // per baris menjadi 0.01 + 0.01 vs 0.01 — jurnal POSTED timpang.
+    await expect(
+      createPostedEntryInTx(
+        tx,
+        input([
+          { accountId: "a", debit: "0.005", credit: "0" },
+          { accountId: "b", debit: "0.005", credit: "0" },
+          { accountId: "c", debit: "0", credit: "0.01" },
+        ]),
+      ),
+    ).rejects.toThrow(/tidak seimbang/i);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("menolak baris dengan debit dan kredit sekaligus", async () => {
     const { tx } = makeTx();
     await expect(

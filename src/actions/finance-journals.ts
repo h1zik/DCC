@@ -125,13 +125,49 @@ export async function updateFinanceJournalHeader(
   // Periode terkunci di tanggal lama atau baru juga harus diperiksa
   await ensurePeriodOpen(existing.entryDate);
   await ensurePeriodOpen(data.entryDate);
-  await prisma.financeJournalEntry.update({
-    where: { id: data.entryId },
-    data: {
-      entryDate: data.entryDate,
-      reference: data.reference?.trim() || null,
-      memo: data.memo?.trim() || null,
-    },
+
+  const dateChanged =
+    existing.entryDate.getTime() !== data.entryDate.getTime();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.financeJournalEntry.update({
+      where: { id: data.entryId },
+      data: {
+        entryDate: data.entryDate,
+        reference: data.reference?.trim() || null,
+        memo: data.memo?.trim() || null,
+      },
+    });
+
+    // Konversi valas terikat tanggal: baris non-IDR menyimpan kurs & nilai
+    // dasar hasil tanggal LAMA — hitung ulang dengan kurs tanggal baru agar
+    // draf tidak terposting dengan kurs basi.
+    if (dateChanged) {
+      const fxLines = await tx.financeJournalLine.findMany({
+        where: {
+          entryId: data.entryId,
+          NOT: { currencyCode: FINANCE_BASE_CURRENCY },
+        },
+      });
+      for (const line of fxLines) {
+        if (!line.amountForeign) continue;
+        const rate = await latestFxRate(line.currencyCode, data.entryDate, tx);
+        if (!rate) {
+          throw new Error(
+            `Kurs ${line.currencyCode} untuk tanggal ${data.entryDate.toISOString().slice(0, 10)} belum diatur — atur kurs dulu atau batalkan perubahan tanggal.`,
+          );
+        }
+        const baseAmount = line.amountForeign
+          .mul(rate.rateToBase)
+          .toDecimalPlaces(2);
+        await tx.financeJournalLine.update({
+          where: { id: line.id },
+          data: line.debitBase.gt(0)
+            ? { debitBase: baseAmount, fxRateSnapshot: rate.rateToBase }
+            : { creditBase: baseAmount, fxRateSnapshot: rate.rateToBase },
+        });
+      }
+    }
   });
   journalPaths();
 }
@@ -249,7 +285,9 @@ export async function upsertFinanceJournalLine(
       );
     }
     fxSnapshot = rate.rateToBase;
-    const baseAmount = foreignAmt.mul(rate.rateToBase);
+    // Bulatkan eksplisit ke 2 desimal — jangan serahkan ke pembulatan
+    // implisit kolom Decimal(18,2) di DB.
+    const baseAmount = foreignAmt.mul(rate.rateToBase).toDecimalPlaces(2);
     if (debit.gt(0)) {
       debitBase = baseAmount;
       creditBase = zeroDecimal();
@@ -332,8 +370,12 @@ export async function upsertFinanceJournalLine(
   journalPaths();
 }
 
-async function latestFxRate(currencyCode: string, asOf: Date) {
-  return prisma.financeFxRate.findFirst({
+async function latestFxRate(
+  currencyCode: string,
+  asOf: Date,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+  return db.financeFxRate.findFirst({
     where: {
       currencyCode,
       validFrom: { lte: asOf },
