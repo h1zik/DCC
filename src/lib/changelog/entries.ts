@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-ai-api-fail-closed-role",
+    date: "2026-07-06",
+    title: "API AI — akses data kini fail-closed",
+    category: "improved",
+    description:
+      "Endpoint baca untuk integrasi AI (/api/ai/*) tidak lagi diam-diam memakai hak akses tertinggi (CEO) saat role integrasi belum dikonfigurasi. Kini konfigurasi role wajib diset eksplisit; tanpa itu semua request ditolak, sehingga token yang bocor tidak otomatis bisa membaca data finance.",
+  },
+  {
     id: "2026-07-06-finance-subledger-consistency",
     date: "2026-07-06",
     title: "Finance — angka dashboard, neraca, dan hutang/piutang kini satu sumber",

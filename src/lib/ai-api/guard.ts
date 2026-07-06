@@ -47,6 +47,17 @@ export function guardAiApiRequest(req: Request):
   }
 
   const role = resolveAiApiRole(req);
+  if (!role) {
+    return {
+      ok: false,
+      response: aiApiError(
+        "AI_READ_API_ROLE belum diset (atau nilainya tidak valid) di environment. " +
+          "Set salah satu dari: CEO, ADMINISTRATOR, LOGISTICS, FINANCE, STUDIO, ALL — " +
+          "sesuai cakupan data yang boleh dibaca integrasi ini.",
+        503,
+      ),
+    };
+  }
   console.info(
     `[ai-api] ${req.method} ${new URL(req.url).pathname} role=${aiRoleLabel(role)}`,
   );
