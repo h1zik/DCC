@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-db-versioned-migrations",
+    date: "2026-07-06",
+    title: "Database — riwayat migrasi resmi menggantikan sinkronisasi langsung",
+    category: "improved",
+    description:
+      "Perubahan struktur database kini melewati file migrasi ber-versi yang di-review di PR sebelum diterapkan (prisma migrate), menggantikan sinkronisasi schema langsung (db push). Setiap perubahan punya jejak, bisa diaudit, dan urutan deploy aman terdokumentasi di checklist baru.",
+    highlights: [
+      "Baseline migrasi 0_init dibuat dari schema saat ini — tanpa mengubah data",
+      "db:deploy kini = prisma migrate deploy (hanya menjalankan migrasi yang sudah di-commit)",
+      "Checklist deploy produksi baru: docs/audit/DEPLOY-CHECKLIST.md",
+    ],
+  },
+  {
     id: "2026-07-06-finance-posted-line-lock",
     date: "2026-07-06",
     title: "Finance — jurnal terposting kini benar-benar tidak bisa diubah",

@@ -185,7 +185,7 @@ npm run db:seed
 ```
 
 > [!IMPORTANT]
-> Database scripts are guarded against data loss: `db:migrate`/`db:deploy` run `prisma db push` **without** `--accept-data-loss`, so Prisma refuses destructive schema changes instead of silently dropping data. Before deploying schema changes to production, run `npm run db:backup` (pg_dump) and `npm run db:diff` to preview the exact SQL that will be applied. Destructive helper scripts (e.g. `db:clear-projects`) refuse to run against a non-localhost database unless `FORCE_DESTRUCTIVE_DB=1` is set explicitly.
+> Database schema changes flow through **versioned Prisma migrations** (`prisma/migrations/`, baselined as `0_init`). `db:migrate` runs `prisma migrate dev` (local dev only — generates a reviewable SQL file), and `db:deploy` runs `prisma migrate deploy` (applies committed migrations only). Follow [docs/audit/DEPLOY-CHECKLIST.md](docs/audit/DEPLOY-CHECKLIST.md) for the production deploy order — including the one-time `prisma migrate resolve --applied 0_init` baseline step for databases that predate the migration history. `db:push` remains for local prototyping only; never run it against production. Destructive helper scripts (e.g. `db:clear-projects`) refuse to run against a non-localhost database unless `FORCE_DESTRUCTIVE_DB=1` is set explicitly.
 
 ### 4. Run the dev server
 
@@ -210,8 +210,9 @@ Open **[http://localhost:3000](http://localhost:3000)**.
 | `npm run db:push` | Push the Prisma schema to the database (refuses destructive changes) |
 | `npm run db:diff` | Preview the SQL needed to bring the database in sync with the Prisma schema (read-only) |
 | `npm run db:backup` | Back up the database to `./backups/` via `pg_dump` (requires PostgreSQL client tools) |
-| `npm run db:migrate` | Run Kanban schema evolution scripts, then Prisma db push (refuses destructive changes) |
-| `npm run db:deploy` | Preview pending SQL, run Kanban evolution, Prisma db push (refuses destructive changes), then Kanban backfill |
+| `npm run db:migrate` | Create & apply a new versioned migration from schema changes (`prisma migrate dev`, local dev only) |
+| `npm run db:deploy` | Apply committed migrations to the target database (`prisma migrate deploy`) |
+| `npm run db:migrate-status` | Show applied vs pending migrations (`prisma migrate status`) |
 | `npm run db:evolve-kanban` | Run Kanban-related schema evolution scripts |
 | `npm run db:evolve-kanban-position` | Execute task Kanban position SQL evolution |
 | `npm run db:evolve-room-kanban-columns` | Execute room Kanban columns SQL evolution |
@@ -381,7 +382,7 @@ Deployment notes:
 
 - Set all required environment variables in the hosting provider.
 - Ensure PostgreSQL is reachable from the app runtime.
-- Before applying schema changes to production: run `npm run db:backup` (or use your database host's backup feature), then `npm run db:diff` to review the pending SQL, then `npm run db:deploy`. If Prisma warns about possible data loss, STOP — write a manual evolution SQL script (see `prisma/scripts/`) instead of forcing the push.
+- Before applying schema changes to production: follow [docs/audit/DEPLOY-CHECKLIST.md](docs/audit/DEPLOY-CHECKLIST.md) — verify a fresh backup exists (`npm run db:backup` or the host's backup feature), check `npm run db:migrate-status`, then `npm run db:deploy` (`prisma migrate deploy`). Migration SQL is committed and reviewed in PRs; a destructive change must be split into expand → migrate data → contract steps and approved explicitly.
 - Never pass `--accept-data-loss` against production; the npm scripts intentionally omit it so Prisma fails loudly instead of dropping data.
 - Native/media packages such as `sharp`, `fluent-ffmpeg`, ffmpeg and ffprobe are configured as external server packages in `next.config.ts`.
 - Upload/server-action body limits are configured at **300 MB**. Keep this aligned with hosting limits and storage capacity.
