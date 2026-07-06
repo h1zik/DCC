@@ -3,14 +3,15 @@
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { normalizeNumericString } from "@/lib/numeric-string";
 
 export function CogsCalculator() {
   const [hpp, setHpp] = useState("");
   const [price, setPrice] = useState("");
 
   const result = useMemo(() => {
-    const h = Number(hpp.replace(/\./g, "").replace(",", "."));
-    const p = Number(price.replace(/\./g, "").replace(",", "."));
+    const h = Number(normalizeNumericString(hpp));
+    const p = Number(normalizeNumericString(price));
     if (!Number.isFinite(h) || !Number.isFinite(p) || p <= 0) return null;
     const margin = ((p - h) / p) * 100;
     const profit = p - h;

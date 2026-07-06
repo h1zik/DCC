@@ -1,74 +1,59 @@
 import { FinanceLedgerType, Prisma } from "@prisma/client";
+import { z } from "zod";
+import { normalizeNumericString } from "@/lib/numeric-string";
 
 export const FINANCE_BASE_CURRENCY = "IDR";
 
-export function toDecimal(value: string | number): Prisma.Decimal {
-  if (typeof value === "number") {
-    return new Prisma.Decimal(value);
-  }
-  const normalized = normalizeNumericString(value);
-  return new Prisma.Decimal(normalized || "0");
-}
-
 /**
- * Menerima format angka umum:
- * - 18000000
- * - 18.000.000
- * - 18,000,000
- * - 18000000.50
- * - 18.000.000,50
+ * Parse input nominal ke `Prisma.Decimal`.
+ *
+ * Menolak nilai non-finite (`NaN`, `Infinity`) dan string yang tidak bisa
+ * di-parse. Ini penting: decimal.js MENERIMA string "NaN" sebagai nilai
+ * valid, dan semua perbandingan terhadap NaN (`gt`, `lte`, dst.) selalu
+ * false — sehingga NaN yang lolos akan menembus semua guard nominal
+ * (mis. cek "melebihi sisa hutang") dan meracuni agregat laporan.
  */
-function normalizeNumericString(raw: string): string {
-  const s = raw.trim().replace(/\s/g, "");
-  if (!s) return "0";
-
-  const hasDot = s.includes(".");
-  const hasComma = s.includes(",");
-
-  // Kedua separator ada -> separator terakhir dianggap desimal.
-  if (hasDot && hasComma) {
-    const lastDot = s.lastIndexOf(".");
-    const lastComma = s.lastIndexOf(",");
-    if (lastDot > lastComma) {
-      // 18,000,000.50
-      return s.replace(/,/g, "");
-    }
-    // 18.000.000,50
-    return s.replace(/\./g, "").replace(",", ".");
+export function toDecimal(value: string | number): Prisma.Decimal {
+  let dec: Prisma.Decimal;
+  try {
+    dec =
+      typeof value === "number"
+        ? new Prisma.Decimal(value)
+        : new Prisma.Decimal(normalizeNumericString(value) || "0");
+  } catch {
+    throw new Error(`Nominal tidak valid: "${value}".`);
   }
-
-  // Hanya koma.
-  if (hasComma) {
-    const commaCount = (s.match(/,/g) ?? []).length;
-    if (commaCount > 1) {
-      // 18,000,000
-      return s.replace(/,/g, "");
-    }
-    const [left, right = ""] = s.split(",");
-    if (right.length === 0) return left;
-    // 12,5 / 12,50 -> desimal
-    if (right.length <= 2) return `${left}.${right}`;
-    // 18,000 -> grouping
-    return `${left}${right}`;
+  if (!dec.isFinite()) {
+    throw new Error(`Nominal tidak valid: "${value}".`);
   }
-
-  // Hanya titik.
-  if (hasDot) {
-    const dotCount = (s.match(/\./g) ?? []).length;
-    if (dotCount > 1) {
-      // 18.000.000
-      return s.replace(/\./g, "");
-    }
-    const [left, right = ""] = s.split(".");
-    if (right.length === 0) return left;
-    // 12.5 / 12.50 -> desimal
-    if (right.length <= 2) return `${left}.${right}`;
-    // 18.000 -> grouping
-    return `${left}${right}`;
-  }
-
-  return s;
+  return dec;
 }
+
+function parsesToDecimal(s: string, check: (d: Prisma.Decimal) => boolean) {
+  try {
+    return check(toDecimal(s));
+  } catch {
+    return false;
+  }
+}
+
+/** Skema zod untuk nominal uang yang wajib > 0 (harga, tagihan, pembayaran). */
+export const positiveMoneyString = z
+  .string()
+  .min(1)
+  .refine((s) => parsesToDecimal(s, (d) => d.gt(0)), {
+    message: "Nominal harus berupa angka lebih dari 0.",
+  });
+
+/** Skema zod untuk nominal uang yang boleh 0 tetapi tidak negatif. */
+export const nonNegativeMoneyString = z
+  .string()
+  .min(1)
+  .refine((s) => parsesToDecimal(s, (d) => d.gte(0)), {
+    message: "Nominal harus berupa angka dan tidak boleh negatif.",
+  });
+
+export { normalizeNumericString };
 
 export function zeroDecimal(): Prisma.Decimal {
   return new Prisma.Decimal(0);

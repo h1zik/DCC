@@ -1,11 +1,11 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/finance-money";
+import { parseFlexibleBankCsv } from "@/lib/finance-bank-csv";
 
 function paths() {
   revalidatePath("/finance/bank");
@@ -49,7 +49,10 @@ export async function createFinanceBankAccount(
 const importSchema = z.object({
   bankAccountId: z.string().min(1),
   fileName: z.string().min(1),
-  csvText: z.string().min(1),
+  csvText: z
+    .string()
+    .min(1)
+    .max(2_000_000, "CSV terlalu besar (maksimal ±2 MB teks)."),
 });
 
 /**
@@ -81,75 +84,6 @@ export async function importBankStatementCsv(
   });
   paths();
   return { importId: imp.id, count: rows.length };
-}
-
-function parseFlexibleBankCsv(text: string): {
-  txnDate: Date;
-  description: string;
-  amount: Prisma.Decimal;
-}[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  const out: {
-    txnDate: Date;
-    description: string;
-    amount: Prisma.Decimal;
-  }[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const parts = splitCsvLine(raw);
-    if (parts.length < 3) continue;
-    const [a, b, c] = parts;
-    const lower = `${a} ${b} ${c}`.toLowerCase();
-    if (
-      i === 0 &&
-      (lower.includes("tanggal") ||
-        lower.includes("date") ||
-        lower.includes("description") ||
-        lower.includes("amount"))
-    ) {
-      continue;
-    }
-
-    const txnDate = parseLooseDate(a);
-    if (!txnDate) continue;
-    const description = b.trim();
-    const amount = parseAmount(c);
-    if (!amount) continue;
-    out.push({ txnDate, description, amount });
-  }
-
-  return out;
-}
-
-function splitCsvLine(line: string): string[] {
-  const delim = line.includes(";") && !line.includes(",") ? ";" : ",";
-  return line.split(delim).map((s) => s.trim().replace(/^"|"$/g, ""));
-}
-
-function parseLooseDate(s: string): Date | null {
-  const t = s.trim();
-  const iso = Date.parse(t);
-  if (!Number.isNaN(iso)) return new Date(iso);
-  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (!m) return null;
-  const d = Number(m[1]);
-  const mo = Number(m[2]) - 1;
-  let y = Number(m[3]);
-  if (y < 100) y += 2000;
-  const dt = new Date(y, mo, d);
-  return Number.isNaN(dt.getTime()) ? null : dt;
-}
-
-function parseAmount(s: string): Prisma.Decimal | null {
-  try {
-    const normalized = s.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-    const n = Number(normalized);
-    if (Number.isNaN(n)) return null;
-    return new Prisma.Decimal(normalized);
-  } catch {
-    return null;
-  }
 }
 
 const matchSchema = z.object({

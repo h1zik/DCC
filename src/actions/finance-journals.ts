@@ -169,6 +169,9 @@ export async function upsertFinanceJournalLine(
 
   const debit = toDecimal(data.debit);
   const credit = toDecimal(data.credit);
+  if (debit.lt(0) || credit.lt(0)) {
+    throw new Error("Nominal debit/kredit tidak boleh negatif.");
+  }
   if (debit.gt(0) && credit.gt(0)) {
     throw new Error("Baris tidak boleh berisi debit dan kredit sekaligus.");
   }
@@ -266,12 +269,16 @@ export async function upsertFinanceJournalLine(
     };
 
     if (data.lineId) {
-      const updated = await tx.financeJournalLine.update({
-        where: { id: data.lineId },
+      // where memuat entryId: tanpa ini, lineId milik jurnal POSTED lain bisa
+      // diedit karena cek status DRAFT di atas hanya memeriksa data.entryId.
+      const updated = await tx.financeJournalLine.updateMany({
+        where: { id: data.lineId, entryId: data.entryId },
         data: baseLineData,
-        select: { id: true },
       });
-      lineId = updated.id;
+      if (updated.count === 0) {
+        throw new Error("Baris jurnal tidak ditemukan pada jurnal ini.");
+      }
+      lineId = data.lineId;
     } else {
       const created = await tx.financeJournalLine.create({
         data: { ...baseLineData, entryId: data.entryId },
@@ -382,6 +389,7 @@ export async function createPostedFinanceJournal(
   const rows = data.lines.map((l) => {
     const d = toDecimal(l.debit);
     const c = toDecimal(l.credit);
+    if (d.lt(0) || c.lt(0)) throw new Error("Nominal debit/kredit tidak boleh negatif.");
     if (d.gt(0) && c.gt(0)) throw new Error("Satu baris tidak boleh debit dan kredit bersamaan.");
     if (d.lte(0) && c.lte(0)) throw new Error("Setiap baris wajib nominal debit atau kredit.");
     debitSum = debitSum.plus(d);

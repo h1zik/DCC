@@ -37,6 +37,40 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-db-versioned-migrations",
+    date: "2026-07-06",
+    title: "Database — riwayat migrasi resmi menggantikan sinkronisasi langsung",
+    category: "improved",
+    description:
+      "Perubahan struktur database kini melewati file migrasi ber-versi yang di-review di PR sebelum diterapkan (prisma migrate), menggantikan sinkronisasi schema langsung (db push). Setiap perubahan punya jejak, bisa diaudit, dan urutan deploy aman terdokumentasi di checklist baru.",
+    highlights: [
+      "Baseline migrasi 0_init dibuat dari schema saat ini — tanpa mengubah data",
+      "db:deploy kini = prisma migrate deploy (hanya menjalankan migrasi yang sudah di-commit)",
+      "Checklist deploy produksi baru: docs/audit/DEPLOY-CHECKLIST.md",
+    ],
+  },
+  {
+    id: "2026-07-06-finance-posted-line-lock",
+    date: "2026-07-06",
+    title: "Finance — jurnal terposting kini benar-benar tidak bisa diubah",
+    category: "fixed",
+    description:
+      "Menutup celah teknis yang memungkinkan baris milik jurnal yang sudah diposting ikut terubah saat mengedit draf jurnal lain. Kini setiap perubahan baris diverifikasi benar-benar milik draf yang sedang diedit.",
+  },
+  {
+    id: "2026-07-06-finance-money-validation",
+    date: "2026-07-06",
+    title: "Finance — validasi nominal lebih ketat & import CSV bank lebih akurat",
+    category: "fixed",
+    description:
+      "Semua input nominal di modul Finance kini menolak nilai tidak valid (NaN, tak-hingga, negatif di tempat yang tidak semestinya) sebelum tersimpan, sehingga tagihan/pembayaran dengan angka rusak tidak bisa lagi menembus pembukuan. Import CSV rekening koran juga kini membaca format angka Amerika (1234.56) dengan benar.",
+    highlights: [
+      "Tagihan, invoice, pembayaran, pengajuan dana, budget, dan aset menolak nominal non-angka atau bertanda salah",
+      "Baris jurnal menolak nominal negatif",
+      "Nominal CSV bank format US tidak lagi terbaca 100× lipat; ukuran CSV dibatasi ±2 MB",
+    ],
+  },
+  {
     id: "2026-07-06-finance-demo-reset-guard",
     date: "2026-07-06",
     title: "Finance — tombol reset data kini aman dari salah klik",

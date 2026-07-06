@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { createPostedFinanceJournal } from "@/actions/finance-journals";
 import { getFinanceLedgerAccountByCode } from "@/actions/finance-accounts";
-import { toDecimal, zeroDecimal } from "@/lib/finance-money";
+import { positiveMoneyString, toDecimal, zeroDecimal } from "@/lib/finance-money";
 
 function paths() {
   revalidatePath("/finance/ap-ar");
@@ -82,7 +82,7 @@ const billSchema = z.object({
   billNumber: z.string().optional().nullable(),
   billDate: z.coerce.date(),
   dueDate: z.coerce.date(),
-  amount: z.string().min(1),
+  amount: positiveMoneyString,
   memo: z.string().optional().nullable(),
   brandId: z.string().optional().nullable(),
 });
@@ -112,7 +112,7 @@ const invSchema = z.object({
   invoiceNumber: z.string().optional().nullable(),
   invoiceDate: z.coerce.date(),
   dueDate: z.coerce.date(),
-  amount: z.string().min(1),
+  amount: positiveMoneyString,
   memo: z.string().optional().nullable(),
   brandId: z.string().optional().nullable(),
 });
@@ -138,7 +138,7 @@ export async function createFinanceArInvoice(input: z.infer<typeof invSchema>) {
 
 const payApSchema = z.object({
   billId: z.string().min(1),
-  amount: z.string().min(1),
+  amount: positiveMoneyString,
   bankAccountId: z.string().min(1),
   paidAt: z.coerce.date(),
 });
@@ -218,7 +218,7 @@ export async function recordApBillPayment(input: z.infer<typeof payApSchema>) {
 
 const payArSchema = z.object({
   invoiceId: z.string().min(1),
-  amount: z.string().min(1),
+  amount: positiveMoneyString,
   bankAccountId: z.string().min(1),
   receivedAt: z.coerce.date(),
 });
