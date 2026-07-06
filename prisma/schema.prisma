@@ -1608,6 +1608,17 @@ model FinanceJournalEntry {
   @@index([status])
 }
 
+/**
+ * Counter nomor jurnal per tahun. Barisnya di-update secara atomik
+ * (UPDATE ... RETURNING → row lock) sehingga dua posting paralel selalu
+ * mendapat nomor berbeda — menggantikan pola "baca nomor tertinggi lalu +1"
+ * yang menghasilkan nomor kembar (gagal P2002) dan salah urut di atas 999999.
+ */
+model FinanceJournalCounter {
+  year    Int @id
+  lastSeq Int @default(0)
+}
+
 enum FinanceAuditAction {
   JOURNAL_POST
   JOURNAL_REVERSE

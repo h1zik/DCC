@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-journal-counter",
+    date: "2026-07-06",
+    title: "Finance — penomoran jurnal tahan posting bersamaan",
+    category: "fixed",
+    description:
+      "Nomor jurnal kini diambil dari counter khusus yang terkunci per transaksi, sehingga dua posting yang berlangsung bersamaan tidak lagi bisa berebut nomor yang sama (yang dulu membuat salah satunya gagal dengan pesan error teknis).",
+  },
+  {
     id: "2026-07-06-finance-db-constraints",
     date: "2026-07-06",
     title: "Finance — pagar pengaman di level database",

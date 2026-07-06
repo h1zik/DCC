@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => {
     financeJournalLineLink: { findMany: vi.fn() },
     financeSpendRequest: { findUnique: vi.fn(), update: vi.fn() },
     financeAuditEvent: { create: vi.fn() },
+    $executeRaw: vi.fn(),
+    $queryRaw: vi.fn(),
   };
   const prisma = {
     $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
@@ -88,6 +90,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.tx.financeJournalEntry.findUniqueOrThrow.mockResolvedValue(targetBase);
   mocks.tx.financeJournalEntry.findFirst.mockResolvedValue(null);
+  mocks.tx.$executeRaw.mockResolvedValue(0);
+  mocks.tx.$queryRaw.mockResolvedValue([{ lastSeq: 11 }]);
   mocks.tx.financeJournalEntry.create.mockResolvedValue({
     id: "je-2",
     entryNumber: "JE-2026-000011",
