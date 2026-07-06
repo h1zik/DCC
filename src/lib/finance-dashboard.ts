@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { zeroDecimal } from "@/lib/finance-money";
+import { utcMonthEnd, utcMonthStart } from "@/lib/finance-dates";
 
 export type DashboardPeriod = { year: number; month: number };
 
@@ -15,10 +16,10 @@ export type FinanceDashboardData = Awaited<ReturnType<typeof loadFinanceDashboar
 const D0 = () => zeroDecimal();
 
 function periodBounds(period: DashboardPeriod) {
-  const start = new Date(period.year, period.month - 1, 1, 0, 0, 0, 0);
-  const end = new Date(period.year, period.month, 0, 23, 59, 59, 999);
-  const prevStart = new Date(period.year, period.month - 2, 1, 0, 0, 0, 0);
-  const prevEnd = new Date(period.year, period.month - 1, 0, 23, 59, 59, 999);
+  const start = utcMonthStart(period.year, period.month);
+  const end = utcMonthEnd(period.year, period.month);
+  const prevStart = utcMonthStart(period.year, period.month - 1);
+  const prevEnd = utcMonthEnd(period.year, period.month - 1);
   return { start, end, prevStart, prevEnd };
 }
 

@@ -173,5 +173,6 @@ export async function postFinanceDepreciationForMonth(
 }
 
 function lastDayOfMonth(year: number, month: number): Date {
-  return new Date(year, month, 0, 12, 0, 0, 0);
+  // Siang UTC hari terakhir bulan — deterministik lintas TZ server.
+  return new Date(Date.UTC(year, month, 0, 12, 0, 0, 0));
 }

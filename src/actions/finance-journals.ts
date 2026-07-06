@@ -21,6 +21,7 @@ import {
   lockArInvoiceForUpdate,
 } from "@/lib/finance-journal-post";
 import { logFinanceAudit } from "@/lib/finance-audit";
+import { utcDateOnly } from "@/lib/finance-dates";
 import { FinanceAuditAction } from "@prisma/client";
 
 function journalPaths() {
@@ -97,7 +98,9 @@ export async function createFinanceJournalDraft(
 
 export async function redirectNewFinanceJournal() {
   const id = await createFinanceJournalDraft({
-    entryDate: new Date(),
+    // Tanggal murni UTC — timestamp penuh membuat transaksi dini-hari WIB
+    // tanggal 1 tercatat sebagai akhir bulan sebelumnya dalam UTC.
+    entryDate: utcDateOnly(new Date()),
     reference: undefined,
     memo: undefined,
   });

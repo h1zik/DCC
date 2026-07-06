@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { utcMonthEnd, utcMonthStart } from "@/lib/finance-dates";
 import {
   nonNegativeMoneyString,
   signedBalanceForAccount,
@@ -59,8 +60,8 @@ export async function financeBudgetVsActual(input: {
   month: number;
 }) {
   await requireFinance();
-  const start = new Date(input.year, input.month - 1, 1);
-  const end = new Date(input.year, input.month, 0, 23, 59, 59, 999);
+  const start = utcMonthStart(input.year, input.month);
+  const end = utcMonthEnd(input.year, input.month);
 
   const budgets = await prisma.financeBudgetLine.findMany({
     where: { year: input.year, month: input.month },

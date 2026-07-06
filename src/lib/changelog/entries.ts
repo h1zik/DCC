@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-utc-periods",
+    date: "2026-07-06",
+    title: "Finance — batas periode laporan kini konsisten lintas zona waktu",
+    category: "fixed",
+    description:
+      "Semua rentang tanggal laporan, filter periode, kunci tutup buku, dan tanggal draf jurnal kini dihitung dengan patokan waktu yang sama (UTC, mengikuti cara tanggal jurnal disimpan). Transaksi di tanggal 1 atau akhir bulan tidak lagi berisiko masuk ke periode yang salah, dan kolom pembanding neraca untuk tanggal 29–31 tidak lagi salah cut-off.",
+  },
+  {
     id: "2026-07-06-finance-fx-rounding",
     date: "2026-07-06",
     title: "Finance — kurs valas selalu mengikuti tanggal jurnal & pembulatan konsisten",
