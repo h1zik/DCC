@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
-import { createPostedFinanceJournal } from "@/actions/finance-journals";
+import { createPostedEntryInTx } from "@/lib/finance-journal-post";
+import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { positiveMoneyString, toDecimal } from "@/lib/finance-money";
 
 function paths() {
@@ -122,62 +123,80 @@ export async function recordFinanceSpendPayout(input: z.infer<typeof payoutSchem
   const session = await requireFinance();
   const data = payoutSchema.parse(input);
 
-  const req = await prisma.financeSpendRequest.findUniqueOrThrow({
-    where: { id: data.requestId },
-    include: { expenseAccount: true },
-  });
-  if (req.status !== FinanceSpendRequestStatus.APPROVED) {
-    throw new Error("Hanya pengajuan disetujui yang dapat dibayar.");
-  }
-  if (req.payoutEntryId) {
-    throw new Error("Pengajuan ini sudah dibayar.");
-  }
-  if (!req.expenseAccountId || !req.expenseAccount) {
-    throw new Error("Akun beban tidak valid.");
-  }
-  // Segregation of duties: pembayar tidak boleh sama dengan requester.
-  // (Approver boleh membayar — itu lazim di tim kecil; aturan ketat dibuat
-  // opsional di masa depan via threshold/policy.)
-  if (req.requestedById === session.user.id) {
-    throw new Error(
-      "Anda tidak dapat membayar pengajuan yang Anda buat sendiri (segregation of duties).",
-    );
-  }
+  await prisma.$transaction(async (tx) => {
+    const req = await tx.financeSpendRequest.findUniqueOrThrow({
+      where: { id: data.requestId },
+      include: { expenseAccount: true },
+    });
+    if (req.status !== FinanceSpendRequestStatus.APPROVED) {
+      throw new Error("Hanya pengajuan disetujui yang dapat dibayar.");
+    }
+    if (req.payoutEntryId) {
+      throw new Error("Pengajuan ini sudah dibayar.");
+    }
+    if (!req.expenseAccountId || !req.expenseAccount) {
+      throw new Error("Akun beban tidak valid.");
+    }
+    // Segregation of duties: pembayar tidak boleh sama dengan requester.
+    // (Approver boleh membayar — itu lazim di tim kecil; aturan ketat dibuat
+    // opsional di masa depan via threshold/policy.)
+    if (req.requestedById === session.user.id) {
+      throw new Error(
+        "Anda tidak dapat membayar pengajuan yang Anda buat sendiri (segregation of duties).",
+      );
+    }
 
-  const bank = await prisma.financeBankAccount.findUniqueOrThrow({
-    where: { id: data.bankAccountId },
-  });
-
-  const amt = req.amount.toFixed(2);
-
-  const journalId = await createPostedFinanceJournal({
-    entryDate: data.paidAt,
-    reference: `REQ-${req.id.slice(0, 8)}`,
-    memo: req.title,
-    lines: [
-      {
-        accountId: req.expenseAccountId,
-        debit: amt,
-        credit: "0",
-        memo: req.title,
-        brandId: req.brandId,
+    // Klaim dulu via compare-and-set SEBELUM membuat jurnal: dua pembayar
+    // paralel sama-sama lolos pengecekan di atas (READ COMMITTED), tetapi
+    // hanya satu yang berhasil mengklaim — yang lain berhenti di sini tanpa
+    // sempat memposting jurnal payout kedua.
+    const claimed = await tx.financeSpendRequest.updateMany({
+      where: {
+        id: req.id,
+        status: FinanceSpendRequestStatus.APPROVED,
+        payoutEntryId: null,
       },
-      {
-        accountId: bank.ledgerAccountId,
-        debit: "0",
-        credit: amt,
-        memo: req.title,
-        brandId: req.brandId,
-      },
-    ],
-  });
+      data: { status: FinanceSpendRequestStatus.PAID },
+    });
+    if (claimed.count === 0) {
+      throw new Error("Pengajuan ini sudah dibayar.");
+    }
 
-  await prisma.financeSpendRequest.update({
-    where: { id: req.id },
-    data: {
-      status: FinanceSpendRequestStatus.PAID,
-      payoutEntryId: journalId,
-    },
+    await ensurePeriodOpen(data.paidAt, tx);
+
+    const bank = await tx.financeBankAccount.findUniqueOrThrow({
+      where: { id: data.bankAccountId },
+    });
+
+    const amt = req.amount.toFixed(2);
+
+    const journalId = await createPostedEntryInTx(tx, {
+      entryDate: data.paidAt,
+      reference: `REQ-${req.id.slice(0, 8)}`,
+      memo: req.title,
+      createdById: session.user.id,
+      lines: [
+        {
+          accountId: req.expenseAccountId,
+          debit: amt,
+          credit: "0",
+          memo: req.title,
+          brandId: req.brandId,
+        },
+        {
+          accountId: bank.ledgerAccountId,
+          debit: "0",
+          credit: amt,
+          memo: req.title,
+          brandId: req.brandId,
+        },
+      ],
+    });
+
+    await tx.financeSpendRequest.update({
+      where: { id: req.id },
+      data: { payoutEntryId: journalId },
+    });
   });
 
   paths();

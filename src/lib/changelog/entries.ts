@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-atomic-payments",
+    date: "2026-07-06",
+    title: "Finance — pembayaran & pembalikan jurnal kini atomik (anti klik ganda)",
+    category: "fixed",
+    description:
+      "Pembayaran hutang/piutang, pencairan pengajuan dana, posting, dan pembalikan jurnal kini berjalan sebagai satu transaksi database dengan penguncian yang benar. Klik ganda atau dua pengguna yang menekan tombol bersamaan tidak bisa lagi menghasilkan pembayaran dobel, dan kegagalan di tengah proses tidak meninggalkan pembukuan setengah jadi.",
+    highlights: [
+      "Pembayaran AP/AR: kunci baris + cek sisa + jurnal + status dalam satu transaksi",
+      "Pencairan pengajuan dana memakai klaim compare-and-set sebelum jurnal dibuat",
+      "Satu jurnal maksimal satu pembalik — kini ditahan juga di level database (unique constraint)",
+    ],
+  },
+  {
     id: "2026-07-06-db-versioned-migrations",
     date: "2026-07-06",
     title: "Database — riwayat migrasi resmi menggantikan sinkronisasi langsung",
