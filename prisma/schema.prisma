@@ -1834,7 +1834,12 @@ model FinanceApBill {
 model FinanceApPayment {
   id             String              @id @default(cuid())
   billId         String
-  bill           FinanceApBill       @relation(fields: [billId], references: [id], onDelete: Cascade)
+  /**
+   * Restrict (bukan Cascade): riwayat pembayaran tidak boleh lenyap diam-diam
+   * saat bill dihapus — jurnal pembayarannya (Restrict juga) akan tetap ada
+   * dan sub-ledger jadi tak bisa direkonstruksi. Void-kan bill, jangan hapus.
+   */
+  bill           FinanceApBill       @relation(fields: [billId], references: [id], onDelete: Restrict)
   amount         Decimal             @db.Decimal(18, 2)
   paidAt         DateTime            @default(now())
   journalEntryId String
@@ -1873,7 +1878,10 @@ model FinanceArInvoice {
 model FinanceArPayment {
   id             String              @id @default(cuid())
   invoiceId      String
-  invoice        FinanceArInvoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /**
+   * Restrict — lihat catatan di FinanceApPayment.bill.
+   */
+  invoice        FinanceArInvoice    @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   amount         Decimal             @db.Decimal(18, 2)
   receivedAt     DateTime            @default(now())
   journalEntryId String

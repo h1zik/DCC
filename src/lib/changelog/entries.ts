@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-db-constraints",
+    date: "2026-07-06",
+    title: "Finance — pagar pengaman di level database",
+    category: "improved",
+    description:
+      "Database kini ikut menolak data pembukuan yang tidak sah (nominal negatif/rusak, baris debit-kredit ganda) meskipun ada bug aplikasi di masa depan, dan riwayat pembayaran tidak lagi bisa ikut terhapus saat dokumen induknya dihapus.",
+  },
+  {
     id: "2026-07-06-ai-api-fail-closed-role",
     date: "2026-07-06",
     title: "API AI — akses data kini fail-closed",
