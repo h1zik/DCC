@@ -299,7 +299,7 @@ Use `.env.example` as the source of truth for local setup. The most important gr
 | Variable | Description |
 |---|---|
 | `AI_READ_API_TOKEN` | Token for guarded read-only AI API access |
-| `AI_READ_API_ROLE` | Server-bound effective role for AI read API access |
+| `AI_READ_API_ROLE` | Server-bound effective role for AI read API access (**required** — requests are rejected with 503 when unset/invalid; pick the least-privileged role the integration needs) |
 | `AI_READ_API_ALLOW_ROLE_HEADER` | Development-only override to honor `x-dcc-role`; keep disabled in production |
 | `MCP_PORT` / `MCP_SERVER_URL` | Optional MCP server host/port |
 | `MCP_CLIENT_ID` / `MCP_CLIENT_SECRET` | Optional MCP client auth values |

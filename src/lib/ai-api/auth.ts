@@ -26,13 +26,17 @@ const VALID_ROLES = new Set<AiApiRole>([
  * token — bukan dipilih client. Header `x-dcc-role` diabaikan untuk otorisasi
  * kecuali `AI_READ_API_ALLOW_ROLE_HEADER=true` di-set eksplisit (dev/simulasi),
  * sehingga tidak ada eskalasi hak diam-diam ke CEO/ALL.
+ *
+ * Mengembalikan `null` bila `AI_READ_API_ROLE` tidak diset/invalid — dulu
+ * default diam-diam ke "CEO", yang membuat token bersama yang bocor langsung
+ * punya akses baca finance penuh (fail-open). Guard menolak request bila null.
  */
-export function resolveAiApiRole(req: Request): AiApiRole {
+export function resolveAiApiRole(req: Request): AiApiRole | null {
   const configured = process.env.AI_READ_API_ROLE?.trim().toUpperCase();
-  const base: AiApiRole =
+  const base: AiApiRole | null =
     configured && VALID_ROLES.has(configured as AiApiRole)
       ? (configured as AiApiRole)
-      : "CEO";
+      : null;
 
   if (process.env.AI_READ_API_ALLOW_ROLE_HEADER === "true") {
     const raw = req.headers.get(ROLE_HEADER)?.trim().toUpperCase();
