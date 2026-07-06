@@ -22,10 +22,15 @@ export async function nextJournalNumber(
   const prefix = `JE-${year}-`;
   const tailFrom = prefix.length + 1; // SUBSTRING 1-indexed
 
+  // `${tailFrom}::int` wajib: Prisma mengikat number JS sebagai `bigint`
+  // (int8), sedangkan Postgres tidak punya overload `substring(text, bigint)`
+  // dan tak ada cast implisit int8→int4 saat resolusi fungsi — tanpa cast
+  // eksplisit query gagal `42883: function pg_catalog.substring(text, bigint)
+  // does not exist`.
   await tx.$executeRaw`
     INSERT INTO "FinanceJournalCounter" ("year", "lastSeq")
     SELECT ${year},
-           COALESCE(MAX(CAST(SUBSTRING("entryNumber" FROM ${tailFrom}) AS INTEGER)), 0)
+           COALESCE(MAX(CAST(SUBSTRING("entryNumber" FROM ${tailFrom}::int) AS INTEGER)), 0)
     FROM "FinanceJournalEntry"
     WHERE "entryNumber" LIKE ${`${prefix}%`}
     ON CONFLICT ("year") DO NOTHING`;
