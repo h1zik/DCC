@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import {
+  nonNegativeMoneyString,
   signedBalanceForAccount,
   toDecimal,
   zeroDecimal,
@@ -17,7 +18,7 @@ const upsertSchema = z.object({
   month: z.number().int().min(1).max(12),
   brandId: z.string().optional().nullable(),
   accountId: z.string().optional().nullable(),
-  amountLimit: z.string().min(1),
+  amountLimit: nonNegativeMoneyString,
 });
 
 export async function upsertFinanceBudgetLine(input: z.infer<typeof upsertSchema>) {

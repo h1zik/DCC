@@ -6,7 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { createPostedFinanceJournal } from "@/actions/finance-journals";
-import { toDecimal } from "@/lib/finance-money";
+import { positiveMoneyString, toDecimal } from "@/lib/finance-money";
 
 function paths() {
   revalidatePath("/finance/approvals");
@@ -15,7 +15,7 @@ function paths() {
 const createSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional().nullable(),
-  amount: z.string().min(1),
+  amount: positiveMoneyString,
   expenseAccountId: z.string().min(1),
   brandId: z.string().optional().nullable(),
 });

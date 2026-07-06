@@ -169,6 +169,9 @@ export async function upsertFinanceJournalLine(
 
   const debit = toDecimal(data.debit);
   const credit = toDecimal(data.credit);
+  if (debit.lt(0) || credit.lt(0)) {
+    throw new Error("Nominal debit/kredit tidak boleh negatif.");
+  }
   if (debit.gt(0) && credit.gt(0)) {
     throw new Error("Baris tidak boleh berisi debit dan kredit sekaligus.");
   }
@@ -382,6 +385,7 @@ export async function createPostedFinanceJournal(
   const rows = data.lines.map((l) => {
     const d = toDecimal(l.debit);
     const c = toDecimal(l.credit);
+    if (d.lt(0) || c.lt(0)) throw new Error("Nominal debit/kredit tidak boleh negatif.");
     if (d.gt(0) && c.gt(0)) throw new Error("Satu baris tidak boleh debit dan kredit bersamaan.");
     if (d.lte(0) && c.lte(0)) throw new Error("Setiap baris wajib nominal debit atau kredit.");
     debitSum = debitSum.plus(d);

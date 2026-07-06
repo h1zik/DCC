@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-money-validation",
+    date: "2026-07-06",
+    title: "Finance — validasi nominal lebih ketat & import CSV bank lebih akurat",
+    category: "fixed",
+    description:
+      "Semua input nominal di modul Finance kini menolak nilai tidak valid (NaN, tak-hingga, negatif di tempat yang tidak semestinya) sebelum tersimpan, sehingga tagihan/pembayaran dengan angka rusak tidak bisa lagi menembus pembukuan. Import CSV rekening koran juga kini membaca format angka Amerika (1234.56) dengan benar.",
+    highlights: [
+      "Tagihan, invoice, pembayaran, pengajuan dana, budget, dan aset menolak nominal non-angka atau bertanda salah",
+      "Baris jurnal menolak nominal negatif",
+      "Nominal CSV bank format US tidak lagi terbaca 100× lipat; ukuran CSV dibatasi ±2 MB",
+    ],
+  },
+  {
     id: "2026-07-06-finance-demo-reset-guard",
     date: "2026-07-06",
     title: "Finance — tombol reset data kini aman dari salah klik",

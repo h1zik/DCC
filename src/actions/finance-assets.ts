@@ -6,7 +6,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { createPostedFinanceJournal } from "@/actions/finance-journals";
-import { toDecimal } from "@/lib/finance-money";
+import {
+  nonNegativeMoneyString,
+  positiveMoneyString,
+  toDecimal,
+} from "@/lib/finance-money";
 
 function paths() {
   revalidatePath("/finance/fixed-assets");
@@ -16,8 +20,8 @@ const assetSchema = z.object({
   name: z.string().min(1).max(200),
   category: z.string().max(120).optional().nullable(),
   purchaseDate: z.coerce.date(),
-  cost: z.string().min(1),
-  salvageValue: z.string().optional().default("0"),
+  cost: positiveMoneyString,
+  salvageValue: nonNegativeMoneyString.optional().default("0"),
   usefulLifeMonths: z.number().int().min(1).max(600),
   method: z.nativeEnum(FinanceDepreciationMethod).optional(),
   assetAccountId: z.string().min(1),
@@ -28,13 +32,18 @@ const assetSchema = z.object({
 export async function createFinanceFixedAsset(input: z.infer<typeof assetSchema>) {
   await requireFinance();
   const data = assetSchema.parse(input);
+  const cost = toDecimal(data.cost);
+  const salvageValue = toDecimal(data.salvageValue);
+  if (salvageValue.gt(cost)) {
+    throw new Error("Nilai sisa tidak boleh melebihi harga perolehan.");
+  }
   await prisma.financeFixedAsset.create({
     data: {
       name: data.name.trim(),
       category: data.category?.trim() || null,
       purchaseDate: data.purchaseDate,
-      cost: toDecimal(data.cost),
-      salvageValue: toDecimal(data.salvageValue),
+      cost,
+      salvageValue,
       usefulLifeMonths: data.usefulLifeMonths,
       method: data.method ?? FinanceDepreciationMethod.STRAIGHT_LINE,
       assetAccountId: data.assetAccountId,
