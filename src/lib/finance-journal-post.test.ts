@@ -4,17 +4,16 @@ vi.mock("server-only", () => ({}));
 
 import { createPostedEntryInTx, type FinanceTx } from "./finance-journal-post";
 
-function makeTx(overrides: { lastEntryNumber?: string | null } = {}) {
+function makeTx(overrides: { nextSeq?: number } = {}) {
   const create = vi.fn(async () => ({ id: "je-1" }));
-  const findFirst = vi.fn(async () =>
-    overrides.lastEntryNumber === undefined || overrides.lastEntryNumber === null
-      ? null
-      : { entryNumber: overrides.lastEntryNumber },
-  );
+  const $executeRaw = vi.fn(async () => 0);
+  const $queryRaw = vi.fn(async () => [{ lastSeq: overrides.nextSeq ?? 1 }]);
   const tx = {
-    financeJournalEntry: { create, findFirst },
+    financeJournalEntry: { create },
+    $executeRaw,
+    $queryRaw,
   } as unknown as FinanceTx;
-  return { tx, create, findFirst };
+  return { tx, create, $executeRaw, $queryRaw };
 }
 
 function input(lines: Array<{ accountId: string; debit: string; credit: string }>) {
@@ -29,7 +28,7 @@ function input(lines: Array<{ accountId: string; debit: string; credit: string }
 
 describe("createPostedEntryInTx", () => {
   it("membuat entry POSTED bernomor sekuensial di dalam tx pemanggil", async () => {
-    const { tx, create } = makeTx({ lastEntryNumber: "JE-2026-000041" });
+    const { tx, create } = makeTx({ nextSeq: 42 });
 
     const id = await createPostedEntryInTx(
       tx,

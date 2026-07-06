@@ -7,6 +7,12 @@ import type { Prisma } from "@prisma/client";
  * Dipanggil di dalam transaksi posting agar nomor tidak bocor jika posting
  * dibatalkan. Best practice akuntansi: setiap posted entry punya nomor
  * unik berurutan (audit trail).
+ *
+ * Memakai tabel counter `FinanceJournalCounter`: UPDATE atomik me-lock baris
+ * counter sehingga posting paralel terserialisasi dan tidak pernah
+ * menghasilkan nomor kembar. Baris counter diinisialisasi sekali per tahun
+ * dari nomor tertinggi yang sudah terpakai (data lama dibuat sebelum tabel
+ * counter ada).
  */
 export async function nextJournalNumber(
   tx: Prisma.TransactionClient,
@@ -14,19 +20,25 @@ export async function nextJournalNumber(
 ): Promise<string> {
   const year = entryDate.getFullYear();
   const prefix = `JE-${year}-`;
+  const tailFrom = prefix.length + 1; // SUBSTRING 1-indexed
 
-  const last = await tx.financeJournalEntry.findFirst({
-    where: { entryNumber: { startsWith: prefix } },
-    orderBy: { entryNumber: "desc" },
-    select: { entryNumber: true },
-  });
+  await tx.$executeRaw`
+    INSERT INTO "FinanceJournalCounter" ("year", "lastSeq")
+    SELECT ${year},
+           COALESCE(MAX(CAST(SUBSTRING("entryNumber" FROM ${tailFrom}) AS INTEGER)), 0)
+    FROM "FinanceJournalEntry"
+    WHERE "entryNumber" LIKE ${`${prefix}%`}
+    ON CONFLICT ("year") DO NOTHING`;
 
-  const nextSeq = (() => {
-    if (!last?.entryNumber) return 1;
-    const tail = last.entryNumber.slice(prefix.length);
-    const n = Number(tail);
-    return Number.isFinite(n) ? n + 1 : 1;
-  })();
+  const rows = await tx.$queryRaw<Array<{ lastSeq: number }>>`
+    UPDATE "FinanceJournalCounter"
+    SET "lastSeq" = "lastSeq" + 1
+    WHERE "year" = ${year}
+    RETURNING "lastSeq"`;
 
-  return `${prefix}${String(nextSeq).padStart(6, "0")}`;
+  const seq = rows[0]?.lastSeq;
+  if (!seq || !Number.isFinite(seq)) {
+    throw new Error(`Gagal mengambil nomor jurnal untuk tahun ${year}.`);
+  }
+  return `${prefix}${String(seq).padStart(6, "0")}`;
 }
