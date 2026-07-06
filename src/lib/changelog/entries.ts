@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-depreciation-idempotent",
+    date: "2026-07-06",
+    title: "Finance — penyusutan bulanan aman dari posting ganda",
+    category: "fixed",
+    description:
+      "Memposting penyusutan untuk bulan yang sama dua kali kini ditolak dengan pesan jelas (dulu bebannya tercatat dobel). Pembaruan nilai akumulasi penyusutan aset juga kini satu paket transaksi dengan jurnalnya — kegagalan di tengah tidak lagi membuat register aset menyimpang.",
+  },
+  {
     id: "2026-07-06-finance-journal-counter",
     date: "2026-07-06",
     title: "Finance — penomoran jurnal tahan posting bersamaan",
