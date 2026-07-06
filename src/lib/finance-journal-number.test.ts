@@ -26,6 +26,17 @@ describe("nextJournalNumber (counter per tahun, M-03)", () => {
     );
   });
 
+  it("meng-cast offset SUBSTRING ke int agar kompatibel dengan Postgres", async () => {
+    const { tx, $executeRaw } = makeTx(1);
+    await nextJournalNumber(tx, new Date("2026-06-15T00:00:00Z"));
+
+    const call = $executeRaw.mock.calls[0] as unknown as
+      | [TemplateStringsArray, ...unknown[]]
+      | undefined;
+    const sqlShape = Array.from(call?.[0] ?? []).join("${param}");
+    expect(sqlShape).toContain('SUBSTRING("entryNumber" FROM ${param}::int)');
+  });
+
   it("di atas 999999 nomor tetap unik & bertambah (tidak lagi bergantung urutan string)", async () => {
     const { tx } = makeTx(1000000);
     expect(await nextJournalNumber(tx, new Date("2026-06-15T00:00:00Z"))).toBe(

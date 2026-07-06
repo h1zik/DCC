@@ -5,7 +5,9 @@ vi.mock("server-only", () => ({}));
 import { createPostedEntryInTx, type FinanceTx } from "./finance-journal-post";
 
 function makeTx(overrides: { nextSeq?: number } = {}) {
-  const create = vi.fn(async () => ({ id: "je-1" }));
+  const create = vi.fn(async (_args: { data: Record<string, unknown> }) => ({
+    id: "je-1",
+  }));
   const $executeRaw = vi.fn(async () => 0);
   const $queryRaw = vi.fn(async () => [{ lastSeq: overrides.nextSeq ?? 1 }]);
   const tx = {
@@ -39,7 +41,9 @@ describe("createPostedEntryInTx", () => {
     );
 
     expect(id).toBe("je-1");
-    const data = create.mock.calls[0][0].data;
+    const data = create.mock.calls[0]?.[0]?.data as Record<string, unknown> & {
+      lines: { create: unknown[] };
+    };
     expect(data.status).toBe("POSTED");
     expect(data.entryNumber).toBe("JE-2026-000042");
     expect(data.createdById).toBe("user-1");
