@@ -37,6 +37,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-posted-line-lock",
+    date: "2026-07-06",
+    title: "Finance — jurnal terposting kini benar-benar tidak bisa diubah",
+    category: "fixed",
+    description:
+      "Menutup celah teknis yang memungkinkan baris milik jurnal yang sudah diposting ikut terubah saat mengedit draf jurnal lain. Kini setiap perubahan baris diverifikasi benar-benar milik draf yang sedang diedit.",
+  },
+  {
     id: "2026-07-06-finance-money-validation",
     date: "2026-07-06",
     title: "Finance — validasi nominal lebih ketat & import CSV bank lebih akurat",

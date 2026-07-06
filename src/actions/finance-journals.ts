@@ -269,12 +269,16 @@ export async function upsertFinanceJournalLine(
     };
 
     if (data.lineId) {
-      const updated = await tx.financeJournalLine.update({
-        where: { id: data.lineId },
+      // where memuat entryId: tanpa ini, lineId milik jurnal POSTED lain bisa
+      // diedit karena cek status DRAFT di atas hanya memeriksa data.entryId.
+      const updated = await tx.financeJournalLine.updateMany({
+        where: { id: data.lineId, entryId: data.entryId },
         data: baseLineData,
-        select: { id: true },
       });
-      lineId = updated.id;
+      if (updated.count === 0) {
+        throw new Error("Baris jurnal tidak ditemukan pada jurnal ini.");
+      }
+      lineId = data.lineId;
     } else {
       const created = await tx.financeJournalLine.create({
         data: { ...baseLineData, entryId: data.entryId },
