@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/finance-money";
 import { parseFlexibleBankCsv } from "@/lib/finance-bank-csv";
+import { createPostedEntryInTx } from "@/lib/finance-journal-post";
+import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 
 function paths() {
   revalidatePath("/finance/bank");
@@ -31,17 +33,60 @@ const createBankSchema = z.object({
 export async function createFinanceBankAccount(
   input: z.infer<typeof createBankSchema>,
 ) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = createBankSchema.parse(input);
-  await prisma.financeBankAccount.create({
-    data: {
-      name: data.name,
-      ledgerAccountId: data.ledgerAccountId,
-      institution: data.institution?.trim() || null,
-      accountMask: data.accountMask?.trim() || null,
-      openingBalance: toDecimal(data.openingBalance),
-      openingAsOf: data.openingAsOf,
-    },
+  const opening = toDecimal(data.openingBalance);
+
+  // Saldo awal harus masuk ledger (debit akun bank / kredit modal pemilik) —
+  // dulu hanya tersimpan di kolom openingBalance sehingga angka kas dashboard
+  // menyimpang dari neraca (H-07). Kolom openingBalance tetap diisi sebagai
+  // informasi form, tetapi sumber kebenaran saldo adalah jurnal.
+  await prisma.$transaction(async (tx) => {
+    const account = await tx.financeBankAccount.create({
+      data: {
+        name: data.name,
+        ledgerAccountId: data.ledgerAccountId,
+        institution: data.institution?.trim() || null,
+        accountMask: data.accountMask?.trim() || null,
+        openingBalance: opening,
+        openingAsOf: data.openingAsOf,
+      },
+      select: { id: true },
+    });
+
+    if (!opening.isZero()) {
+      await ensurePeriodOpen(data.openingAsOf, tx);
+      const equity = await tx.financeLedgerAccount.findUnique({
+        where: { code: "3000" },
+      });
+      if (!equity) {
+        throw new Error('Akun "3000 Modal pemilik" tidak ada — inisialisasi CoA.');
+      }
+      const amtAbs = opening.abs().toFixed(2);
+      const bankLine = {
+        accountId: data.ledgerAccountId,
+        memo: "Saldo awal rekening",
+      };
+      const equityLine = {
+        accountId: equity.id,
+        memo: `Saldo awal ${data.name}`,
+      };
+      await createPostedEntryInTx(tx, {
+        entryDate: data.openingAsOf,
+        reference: `OPN-${account.id.slice(0, 8)}`,
+        memo: `Saldo awal rekening ${data.name}`,
+        createdById: session.user.id,
+        lines: opening.gt(0)
+          ? [
+              { ...bankLine, debit: amtAbs, credit: "0" },
+              { ...equityLine, debit: "0", credit: amtAbs },
+            ]
+          : [
+              { ...equityLine, debit: amtAbs, credit: "0" },
+              { ...bankLine, debit: "0", credit: amtAbs },
+            ],
+      });
+    }
   });
   paths();
 }

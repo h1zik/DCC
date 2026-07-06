@@ -1,6 +1,10 @@
 "use server";
 
-import { FinanceApArDocStatus, Prisma } from "@prisma/client";
+import {
+  FinanceApArDocStatus,
+  FinanceJournalLineLinkMode,
+  Prisma,
+} from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -89,23 +93,88 @@ const billSchema = z.object({
   amount: positiveMoneyString,
   memo: z.string().optional().nullable(),
   brandId: z.string().optional().nullable(),
+  /** Akun lawan (beban/aset) untuk jurnal pengakuan hutang. */
+  counterAccountId: z.string().min(1),
 });
 
 export async function createFinanceApBill(input: z.infer<typeof billSchema>) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = billSchema.parse(input);
-  await prisma.financeApBill.create({
-    data: {
-      vendorId: data.vendorId || null,
-      vendorName: data.vendorName.trim(),
-      billNumber: data.billNumber?.trim() || null,
-      billDate: data.billDate,
-      dueDate: data.dueDate,
-      amount: toDecimal(data.amount),
-      status: FinanceApArDocStatus.OPEN,
-      memo: data.memo?.trim() || null,
-      brandId: data.brandId || null,
-    },
+  const amt = toDecimal(data.amount);
+
+  // Bill wajib lahir bersama jurnalnya (debit akun lawan / kredit akun
+  // kontrol 2000) — dulu jalur ini menulis sub-ledger saja sehingga total
+  // aging AP menyimpang dari akun kontrol di neraca.
+  await prisma.$transaction(async (tx) => {
+    await ensurePeriodOpen(data.billDate, tx);
+
+    const apControl = await tx.financeLedgerAccount.findUnique({
+      where: { code: "2000" },
+    });
+    if (!apControl) throw new Error('Akun "2000 Hutang usaha" tidak ada — inisialisasi CoA.');
+    if (data.counterAccountId === apControl.id) {
+      throw new Error("Akun lawan tidak boleh akun kontrol hutang itu sendiri.");
+    }
+    await tx.financeLedgerAccount.findUniqueOrThrow({
+      where: { id: data.counterAccountId },
+    });
+
+    const bill = await tx.financeApBill.create({
+      data: {
+        vendorId: data.vendorId || null,
+        vendorName: data.vendorName.trim(),
+        billNumber: data.billNumber?.trim() || null,
+        billDate: data.billDate,
+        dueDate: data.dueDate,
+        amount: amt,
+        status: FinanceApArDocStatus.OPEN,
+        memo: data.memo?.trim() || null,
+        brandId: data.brandId || null,
+      },
+      select: { id: true },
+    });
+
+    const journalId = await createPostedEntryInTx(tx, {
+      entryDate: data.billDate,
+      reference: data.billNumber?.trim() || `BILL-${bill.id.slice(0, 8)}`,
+      memo: `Tagihan: ${data.vendorName.trim()}`,
+      createdById: session.user.id,
+      lines: [
+        {
+          accountId: data.counterAccountId,
+          debit: amt.toFixed(2),
+          credit: "0",
+          memo: data.memo?.trim() || null,
+          brandId: data.brandId,
+        },
+        {
+          accountId: apControl.id,
+          debit: "0",
+          credit: amt.toFixed(2),
+          memo: `Hutang: ${data.vendorName.trim()}`,
+          brandId: data.brandId,
+        },
+      ],
+    });
+
+    // Link dari baris akun kontrol ke bill — agar reversal jurnal ini tahu
+    // harus mem-void bill-nya (konsisten dengan jalur editor jurnal).
+    const apLine = await tx.financeJournalLine.findFirstOrThrow({
+      where: { entryId: journalId, accountId: apControl.id },
+      select: { id: true },
+    });
+    await tx.financeJournalLineLink.create({
+      data: {
+        lineId: apLine.id,
+        mode: FinanceJournalLineLinkMode.CREATE_BILL,
+        vendorId: data.vendorId || null,
+        partyName: data.vendorName.trim(),
+        docNumber: data.billNumber?.trim() || null,
+        docDate: data.billDate,
+        dueDate: data.dueDate,
+        createdBillId: bill.id,
+      },
+    });
   });
   paths();
 }
@@ -119,23 +188,85 @@ const invSchema = z.object({
   amount: positiveMoneyString,
   memo: z.string().optional().nullable(),
   brandId: z.string().optional().nullable(),
+  /** Akun lawan (pendapatan) untuk jurnal pengakuan piutang. */
+  counterAccountId: z.string().min(1),
 });
 
 export async function createFinanceArInvoice(input: z.infer<typeof invSchema>) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = invSchema.parse(input);
-  await prisma.financeArInvoice.create({
-    data: {
-      customerName: data.customerName.trim(),
-      customerEmail: data.customerEmail?.trim() || null,
-      invoiceNumber: data.invoiceNumber?.trim() || null,
-      invoiceDate: data.invoiceDate,
-      dueDate: data.dueDate,
-      amount: toDecimal(data.amount),
-      status: FinanceApArDocStatus.OPEN,
-      memo: data.memo?.trim() || null,
-      brandId: data.brandId || null,
-    },
+  const amt = toDecimal(data.amount);
+
+  // Lihat catatan di createFinanceApBill — pola yang sama untuk piutang:
+  // debit akun kontrol 1200 / kredit akun lawan (pendapatan).
+  await prisma.$transaction(async (tx) => {
+    await ensurePeriodOpen(data.invoiceDate, tx);
+
+    const arControl = await tx.financeLedgerAccount.findUnique({
+      where: { code: "1200" },
+    });
+    if (!arControl) throw new Error('Akun "1200 Piutang usaha" tidak ada — inisialisasi CoA.');
+    if (data.counterAccountId === arControl.id) {
+      throw new Error("Akun lawan tidak boleh akun kontrol piutang itu sendiri.");
+    }
+    await tx.financeLedgerAccount.findUniqueOrThrow({
+      where: { id: data.counterAccountId },
+    });
+
+    const inv = await tx.financeArInvoice.create({
+      data: {
+        customerName: data.customerName.trim(),
+        customerEmail: data.customerEmail?.trim() || null,
+        invoiceNumber: data.invoiceNumber?.trim() || null,
+        invoiceDate: data.invoiceDate,
+        dueDate: data.dueDate,
+        amount: amt,
+        status: FinanceApArDocStatus.OPEN,
+        memo: data.memo?.trim() || null,
+        brandId: data.brandId || null,
+      },
+      select: { id: true },
+    });
+
+    const journalId = await createPostedEntryInTx(tx, {
+      entryDate: data.invoiceDate,
+      reference: data.invoiceNumber?.trim() || `INV-${inv.id.slice(0, 8)}`,
+      memo: `Invoice: ${data.customerName.trim()}`,
+      createdById: session.user.id,
+      lines: [
+        {
+          accountId: arControl.id,
+          debit: amt.toFixed(2),
+          credit: "0",
+          memo: `Piutang: ${data.customerName.trim()}`,
+          brandId: data.brandId,
+        },
+        {
+          accountId: data.counterAccountId,
+          debit: "0",
+          credit: amt.toFixed(2),
+          memo: data.memo?.trim() || null,
+          brandId: data.brandId,
+        },
+      ],
+    });
+
+    const arLine = await tx.financeJournalLine.findFirstOrThrow({
+      where: { entryId: journalId, accountId: arControl.id },
+      select: { id: true },
+    });
+    await tx.financeJournalLineLink.create({
+      data: {
+        lineId: arLine.id,
+        mode: FinanceJournalLineLinkMode.CREATE_INVOICE,
+        partyName: data.customerName.trim(),
+        partyEmail: data.customerEmail?.trim() || null,
+        docNumber: data.invoiceNumber?.trim() || null,
+        docDate: data.invoiceDate,
+        dueDate: data.dueDate,
+        createdInvoiceId: inv.id,
+      },
+    });
   });
   paths();
 }

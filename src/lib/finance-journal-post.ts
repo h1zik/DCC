@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
+import { FinanceApArDocStatus, Prisma } from "@prisma/client";
 import {
   FINANCE_BASE_CURRENCY,
   toDecimal,
@@ -101,4 +101,15 @@ export async function lockApBillForUpdate(tx: FinanceTx, billId: string) {
 /** Padanan `lockApBillForUpdate` untuk invoice piutang. */
 export async function lockArInvoiceForUpdate(tx: FinanceTx, invoiceId: string) {
   await tx.$queryRaw`SELECT id FROM "FinanceArInvoice" WHERE id = ${invoiceId} FOR UPDATE`;
+}
+
+/** Status dokumen AP/AR berdasarkan total terbayar vs nominal dokumen. */
+export function apArStatusForPaid(
+  amount: Prisma.Decimal,
+  paid: Prisma.Decimal,
+): FinanceApArDocStatus {
+  if (paid.lte(0)) return FinanceApArDocStatus.OPEN;
+  return paid.gte(amount)
+    ? FinanceApArDocStatus.PAID
+    : FinanceApArDocStatus.PARTIAL;
 }

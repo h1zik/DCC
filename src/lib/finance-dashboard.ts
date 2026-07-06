@@ -118,35 +118,27 @@ async function cashFlowSums(range: { gte?: Date; lte: Date }) {
 }
 
 /**
- * Saldo total kas + bank per tanggal `asOf`. Opening balance + (debit-credit)
- * dari semua jurnal terposting sampai tanggal tsb, untuk akun `tracksCashflow`.
- * Dua agregat terpisah — opening balance dari `FinanceBankAccount`, mutasi
- * dari `FinanceJournalLine`. Tidak ada baris mentah yang ditarik.
+ * Saldo total kas + bank per tanggal `asOf` — murni dari jurnal terposting
+ * pada akun `tracksCashflow`, sumber yang sama dengan neraca/trial balance.
+ * Saldo awal rekening kini ikut dijurnal saat rekening dibuat (bukan lagi
+ * dijumlahkan terpisah dari kolom `openingBalance` — itu membuat angka kas
+ * dashboard menyimpang dari neraca).
  */
 async function totalCashAndBank(asOf: Date): Promise<Prisma.Decimal> {
-  const [openingRows, mutationAgg] = await Promise.all([
-    prisma.financeBankAccount.findMany({
-      where: { openingAsOf: { lte: asOf } },
-      select: { openingBalance: true },
-    }),
-    prisma.financeJournalLine.aggregate({
-      where: {
-        entry: {
-          status: FinanceJournalStatus.POSTED,
-          entryDate: { lte: asOf },
-        },
-        account: { tracksCashflow: true },
+  const mutationAgg = await prisma.financeJournalLine.aggregate({
+    where: {
+      entry: {
+        status: FinanceJournalStatus.POSTED,
+        entryDate: { lte: asOf },
       },
-      _sum: { debitBase: true, creditBase: true },
-    }),
-  ]);
+      account: { tracksCashflow: true },
+    },
+    _sum: { debitBase: true, creditBase: true },
+  });
 
-  let total = D0();
-  for (const r of openingRows) total = total.plus(r.openingBalance);
-  total = total
+  return D0()
     .plus(toDecimal(mutationAgg._sum.debitBase))
     .minus(toDecimal(mutationAgg._sum.creditBase));
-  return total;
 }
 
 /**
