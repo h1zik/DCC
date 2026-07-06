@@ -3,13 +3,37 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import {
+  FINANCE_DEMO_RESET_CONFIRM_PHRASE,
+  assertFinanceDemoResetAllowed,
+} from "@/lib/finance-demo-policy";
 
 /**
  * Hapus seluruh data modul finance untuk kebutuhan demo/reset sandbox.
  * CoA default akan terisi ulang otomatis oleh layout finance saat halaman dibuka lagi.
+ *
+ * Berlapis-lapis karena aksinya memusnahkan seluruh pembukuan:
+ *  1. Diblokir di produksi kecuali FINANCE_DEMO_RESET=true (lihat finance-demo-policy).
+ *  2. Ditolak selama masih ada periode pembukuan yang terkunci — data dalam
+ *     periode tutup buku tidak boleh lenyap lewat jalur reset.
+ *  3. Wajib menyertakan frasa konfirmasi yang diketik user.
  */
-export async function clearAllFinanceDemoData() {
+export async function clearAllFinanceDemoData(confirmText: string) {
   await requireFinance();
+  assertFinanceDemoResetAllowed();
+
+  if (confirmText.trim() !== FINANCE_DEMO_RESET_CONFIRM_PHRASE) {
+    throw new Error(
+      `Konfirmasi tidak cocok. Ketik "${FINANCE_DEMO_RESET_CONFIRM_PHRASE}" untuk melanjutkan.`,
+    );
+  }
+
+  const lockedPeriods = await prisma.financePeriodLock.count();
+  if (lockedPeriods > 0) {
+    throw new Error(
+      "Masih ada periode pembukuan yang terkunci. Buka semua kunci periode terlebih dahulu bila memang ingin mereset data finance.",
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.bankStatementLine.deleteMany();

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FinanceClearDemoButton } from "@/components/finance/finance-clear-demo-button";
+import { isFinanceDemoResetAllowed } from "@/lib/finance-demo-policy";
 import { formatIdr } from "@/lib/finance-money";
 import { cn } from "@/lib/utils";
 import { loadFinanceDashboard } from "@/lib/finance-dashboard";
@@ -143,7 +144,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
             <Plus className="size-3.5" aria-hidden />
             Jurnal Baru
           </Button>
-          <FinanceClearDemoButton />
+          {isFinanceDemoResetAllowed() ? <FinanceClearDemoButton /> : null}
         </div>
       </header>
 
