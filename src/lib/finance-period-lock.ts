@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { utcYearMonth } from "@/lib/finance-dates";
 
 /** Client Prisma biasa atau transaction client — agar cek kunci periode ikut transaksi pemanggil. */
 type Db = typeof prisma | Prisma.TransactionClient;
@@ -11,8 +12,9 @@ type Db = typeof prisma | Prisma.TransactionClient;
  * jika periode bulan/tahun tersebut belum dikunci). Periode = (tahun, bulan).
  */
 export async function findPeriodLockForDate(date: Date, db: Db = prisma) {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
+  // Periode ditentukan menurut UTC — konsisten dengan entryDate yang
+  // tersimpan UTC-midnight dan rentang laporan yang dibangun Date.UTC.
+  const { year, month } = utcYearMonth(date);
   return db.financePeriodLock.findUnique({
     where: { year_month: { year, month } },
     include: { lockedBy: { select: { name: true, email: true } } },

@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
-import { createPostedFinanceJournal } from "@/actions/finance-journals";
+import { createPostedEntryInTx } from "@/lib/finance-journal-post";
+import { ensurePeriodOpen } from "@/lib/finance-period-lock";
+import { utcDateOnly } from "@/lib/finance-dates";
 import {
   nonNegativeMoneyString,
   positiveMoneyString,
@@ -27,29 +29,69 @@ const assetSchema = z.object({
   assetAccountId: z.string().min(1),
   accumAccountId: z.string().min(1),
   expenseAccountId: z.string().min(1),
+  /**
+   * Opsional: akun sumber dana (kas/bank/hutang). Bila diisi, jurnal
+   * perolehan (debit akun aset / kredit akun ini) diposting bersamaan —
+   * tanpa ini register aset drift dari akun aset di neraca.
+   */
+  fundingAccountId: z.string().optional().nullable(),
 });
 
 export async function createFinanceFixedAsset(input: z.infer<typeof assetSchema>) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = assetSchema.parse(input);
   const cost = toDecimal(data.cost);
   const salvageValue = toDecimal(data.salvageValue);
   if (salvageValue.gt(cost)) {
     throw new Error("Nilai sisa tidak boleh melebihi harga perolehan.");
   }
-  await prisma.financeFixedAsset.create({
-    data: {
-      name: data.name.trim(),
-      category: data.category?.trim() || null,
-      purchaseDate: data.purchaseDate,
-      cost,
-      salvageValue,
-      usefulLifeMonths: data.usefulLifeMonths,
-      method: data.method ?? FinanceDepreciationMethod.STRAIGHT_LINE,
-      assetAccountId: data.assetAccountId,
-      accumAccountId: data.accumAccountId,
-      expenseAccountId: data.expenseAccountId,
-    },
+  if (data.fundingAccountId && data.fundingAccountId === data.assetAccountId) {
+    throw new Error("Akun sumber dana tidak boleh sama dengan akun aset.");
+  }
+  const purchaseDate = utcDateOnly(data.purchaseDate);
+
+  await prisma.$transaction(async (tx) => {
+    const asset = await tx.financeFixedAsset.create({
+      data: {
+        name: data.name.trim(),
+        category: data.category?.trim() || null,
+        purchaseDate,
+        cost,
+        salvageValue,
+        usefulLifeMonths: data.usefulLifeMonths,
+        method: data.method ?? FinanceDepreciationMethod.STRAIGHT_LINE,
+        assetAccountId: data.assetAccountId,
+        accumAccountId: data.accumAccountId,
+        expenseAccountId: data.expenseAccountId,
+      },
+      select: { id: true },
+    });
+
+    if (data.fundingAccountId) {
+      await ensurePeriodOpen(purchaseDate, tx);
+      await createPostedEntryInTx(tx, {
+        entryDate: purchaseDate,
+        reference: `FA-${asset.id.slice(0, 8)}`,
+        memo: `Perolehan aset: ${data.name.trim()}`,
+        createdById: session.user.id,
+        lines: [
+          {
+            accountId: data.assetAccountId,
+            debit: cost.toFixed(2),
+            credit: "0",
+            memo: `Perolehan ${data.name.trim()}`,
+            brandId: null,
+          },
+          {
+            accountId: data.fundingAccountId,
+            debit: "0",
+            credit: cost.toFixed(2),
+            memo: `Pembayaran aset ${data.name.trim()}`,
+            brandId: null,
+          },
+        ],
+      });
+    }
   });
   paths();
 }
@@ -67,98 +109,111 @@ export async function listFinanceFixedAssets() {
 }
 
 const depSchema = z.object({
-  year: z.number().int(),
+  year: z.number().int().min(2000).max(2200),
   month: z.number().int().min(1).max(12),
 });
 
 /**
- * Penyusutan garis lurus per bulan; satu jurnal gabungan untuk semua aset aktif.
+ * Penyusutan garis lurus per bulan; satu jurnal gabungan untuk semua aset
+ * aktif. Idempoten per (tahun, bulan): dijalankan dua kali tidak menggandakan
+ * beban — run kedua ditolak. Jurnal + update akumulasi = satu transaksi.
  */
 export async function postFinanceDepreciationForMonth(
   input: z.infer<typeof depSchema>,
 ) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = depSchema.parse(input);
+  const reference = `DEP-${data.year}-${String(data.month).padStart(2, "0")}`;
+  const entryDate = lastDayOfMonth(data.year, data.month);
 
-  const assets = await prisma.financeFixedAsset.findMany({
-    where: {
-      disposedAt: null,
-      purchaseDate: {
-        lte: lastDayOfMonth(data.year, data.month),
-      },
-    },
-  });
-
-  const lines: {
-    accountId: string;
-    debit: string;
-    credit: string;
-    memo: string;
-  }[] = [];
-
-  const updates: { id: string; add: Prisma.Decimal }[] = [];
-
-  for (const a of assets) {
-    const cap = a.cost.minus(a.salvageValue);
-    const remaining = cap.minus(a.accumulatedDepreciation);
-    if (remaining.lte(0)) continue;
-
-    let monthly = a.cost
-      .minus(a.salvageValue)
-      .dividedBy(a.usefulLifeMonths);
-    if (monthly.gt(remaining)) monthly = remaining;
-    if (monthly.lte(0)) continue;
-
-    const m = monthly.toFixed(2);
-
-    lines.push({
-      accountId: a.expenseAccountId,
-      debit: m,
-      credit: "0",
-      memo: `Depresiasi ${a.name}`,
+  await prisma.$transaction(async (tx) => {
+    // Serialisasi run bulan yang sama (advisory lock rilis saat commit),
+    // lalu tolak bila jurnal depresiasi periode ini sudah pernah diposting.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${reference}))`;
+    const already = await tx.financeJournalEntry.findFirst({
+      where: { reference, status: "POSTED" },
+      select: { id: true, entryNumber: true },
     });
-    lines.push({
-      accountId: a.accumAccountId,
-      debit: "0",
-      credit: m,
-      memo: `Akumulasi ${a.name}`,
-    });
+    if (already) {
+      throw new Error(
+        `Depresiasi ${reference} sudah diposting (${already.entryNumber ?? already.id.slice(0, 8)}). Balik jurnalnya dulu bila perlu posting ulang.`,
+      );
+    }
 
-    updates.push({ id: a.id, add: monthly });
-  }
+    await ensurePeriodOpen(entryDate, tx);
 
-  if (lines.length === 0) {
-    throw new Error("Tidak ada penyusutan untuk diposting.");
-  }
-
-  await createPostedFinanceJournal({
-    entryDate: lastDayOfMonth(data.year, data.month),
-    reference: `DEP-${data.year}-${String(data.month).padStart(2, "0")}`,
-    memo: `Penyusutan bulanan ${data.year}-${data.month}`,
-    lines: lines.map((l) => ({
-      accountId: l.accountId,
-      debit: l.debit,
-      credit: l.credit,
-      memo: l.memo,
-      brandId: null,
-    })),
-  });
-
-  for (const u of updates) {
-    const row = await prisma.financeFixedAsset.findUniqueOrThrow({
-      where: { id: u.id },
-    });
-    await prisma.financeFixedAsset.update({
-      where: { id: u.id },
-      data: {
-        accumulatedDepreciation: row.accumulatedDepreciation.plus(u.add),
+    const assets = await tx.financeFixedAsset.findMany({
+      where: {
+        disposedAt: null,
+        purchaseDate: { lte: entryDate },
       },
     });
-  }
+
+    const lines: {
+      accountId: string;
+      debit: string;
+      credit: string;
+      memo: string;
+      brandId: null;
+    }[] = [];
+    const updates: { id: string; add: Prisma.Decimal }[] = [];
+
+    for (const a of assets) {
+      const cap = a.cost.minus(a.salvageValue);
+      const remaining = cap.minus(a.accumulatedDepreciation);
+      if (remaining.lte(0)) continue;
+
+      let monthly = a.cost
+        .minus(a.salvageValue)
+        .dividedBy(a.usefulLifeMonths);
+      if (monthly.gt(remaining)) monthly = remaining;
+      // Satu nilai 2 desimal untuk jurnal DAN register — dulu register
+      // menambah nilai belum-dibulatkan sehingga dua pembulatan bisa beda.
+      monthly = monthly.toDecimalPlaces(2);
+      if (monthly.lte(0)) continue;
+
+      const m = monthly.toFixed(2);
+      lines.push({
+        accountId: a.expenseAccountId,
+        debit: m,
+        credit: "0",
+        memo: `Depresiasi ${a.name}`,
+        brandId: null,
+      });
+      lines.push({
+        accountId: a.accumAccountId,
+        debit: "0",
+        credit: m,
+        memo: `Akumulasi ${a.name}`,
+        brandId: null,
+      });
+      updates.push({ id: a.id, add: monthly });
+    }
+
+    if (lines.length === 0) {
+      throw new Error("Tidak ada penyusutan untuk diposting.");
+    }
+
+    await createPostedEntryInTx(tx, {
+      entryDate,
+      reference,
+      memo: `Penyusutan bulanan ${data.year}-${data.month}`,
+      createdById: session.user.id,
+      lines,
+    });
+
+    for (const u of updates) {
+      await tx.financeFixedAsset.update({
+        where: { id: u.id },
+        data: { accumulatedDepreciation: { increment: u.add } },
+      });
+    }
+  });
 
   paths();
 }
 
 function lastDayOfMonth(year: number, month: number): Date {
-  return new Date(year, month, 0, 12, 0, 0, 0);
+  // Siang UTC hari terakhir bulan — deterministik lintas TZ server.
+  return new Date(Date.UTC(year, month, 0, 12, 0, 0, 0));
 }

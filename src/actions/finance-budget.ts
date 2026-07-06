@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { utcMonthEnd, utcMonthStart } from "@/lib/finance-dates";
 import {
   nonNegativeMoneyString,
   signedBalanceForAccount,
@@ -39,7 +40,25 @@ export async function upsertFinanceBudgetLine(input: z.infer<typeof upsertSchema
       data: payload,
     });
   } else {
-    await prisma.financeBudgetLine.create({ data: payload });
+    // Satu sel budget = kombinasi (tahun, bulan, brand, akun). Tanpa cek ini
+    // double-submit membuat dua baris limit untuk sel yang sama.
+    const existing = await prisma.financeBudgetLine.findFirst({
+      where: {
+        year: payload.year,
+        month: payload.month,
+        brandId: payload.brandId,
+        accountId: payload.accountId,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.financeBudgetLine.update({
+        where: { id: existing.id },
+        data: payload,
+      });
+    } else {
+      await prisma.financeBudgetLine.create({ data: payload });
+    }
   }
 
   revalidatePath("/finance/budget");
@@ -59,8 +78,8 @@ export async function financeBudgetVsActual(input: {
   month: number;
 }) {
   await requireFinance();
-  const start = new Date(input.year, input.month - 1, 1);
-  const end = new Date(input.year, input.month, 0, 23, 59, 59, 999);
+  const start = utcMonthStart(input.year, input.month);
+  const end = utcMonthEnd(input.year, input.month);
 
   const budgets = await prisma.financeBudgetLine.findMany({
     where: { year: input.year, month: input.month },

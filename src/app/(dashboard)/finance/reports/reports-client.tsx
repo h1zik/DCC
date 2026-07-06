@@ -99,6 +99,11 @@ type BsSnapshot = {
   liabilities: { code: string; name: string; amount: string }[];
   equity: { code: string; name: string; amount: string }[];
   retainedEarnings: string;
+  totalAssets: string;
+  totalLiabilities: string;
+  totalEquity: string;
+  difference: string;
+  isBalanced: boolean;
 };
 
 export function ReportsClient({ data }: { data: SerializedReports }) {
@@ -141,7 +146,10 @@ export function ReportsClient({ data }: { data: SerializedReports }) {
       </TabsContent>
 
       <TabsContent value="balance-sheet">
-        <BalanceSheetView bs={data.balanceSheet} />
+        <BalanceSheetView
+          bs={data.balanceSheet}
+          brandFiltered={Boolean(data.brandId)}
+        />
       </TabsContent>
 
       <TabsContent value="cash-flow">
@@ -454,17 +462,23 @@ function NetIncomeRow({ current, previous }: { current: string; previous: string
 
 /* ---------------- Balance Sheet ---------------- */
 
-function BalanceSheetView({ bs }: { bs: SerializedReports["balanceSheet"] }) {
-  const totalAssets = sum(bs.current.assets.map((r) => r.amount));
-  const totalLiab = sum(bs.current.liabilities.map((r) => r.amount));
-  const totalEq = sum(bs.current.equity.map((r) => r.amount)) + Number(bs.current.retainedEarnings);
-  const totalLE = totalLiab + totalEq;
-  const isBalanced = Math.abs(totalAssets - totalLE) < 0.5;
+function BalanceSheetView({
+  bs,
+  brandFiltered,
+}: {
+  bs: SerializedReports["balanceSheet"];
+  brandFiltered: boolean;
+}) {
+  // Total & flag seimbang dihitung server dengan Decimal (eksak) — klien
+  // hanya menampilkan; dulu dihitung ulang di sini dengan float + toleransi.
+  const totalAssets = Number(bs.current.totalAssets);
+  const totalLiab = Number(bs.current.totalLiabilities);
+  const totalEq = Number(bs.current.totalEquity);
+  const isBalanced = bs.current.isBalanced;
 
-  const totalAssetsPrev = sum(bs.previous.assets.map((r) => r.amount));
-  const totalLiabPrev = sum(bs.previous.liabilities.map((r) => r.amount));
-  const totalEqPrev =
-    sum(bs.previous.equity.map((r) => r.amount)) + Number(bs.previous.retainedEarnings);
+  const totalAssetsPrev = Number(bs.previous.totalAssets);
+  const totalLiabPrev = Number(bs.previous.totalLiabilities);
+  const totalEqPrev = Number(bs.previous.totalEquity);
 
   return (
     <FinanceSectionCard
@@ -472,23 +486,33 @@ function BalanceSheetView({ bs }: { bs: SerializedReports["balanceSheet"] }) {
       accent="sky"
       description={`Posisi per ${formatDateId(new Date(bs.asOf))} · pembanding ${formatDateId(new Date(bs.previousAsOf))}`}
       right={
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
-            isBalanced
-              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-              : "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-          )}
-        >
-          {isBalanced ? (
-            <CheckCircle2 className="size-3.5" />
-          ) : (
-            <AlertTriangle className="size-3.5" />
-          )}
-          {isBalanced
-            ? "Aktiva = Kewajiban + Ekuitas"
-            : "Tidak seimbang"}
-        </span>
+        brandFiltered ? (
+          // Keseimbangan ditegakkan per ENTRY, bukan per brand — filter brand
+          // memotong sebagian baris jurnal, jadi A = L + E memang tidak
+          // berlaku untuk segmen dan bukan tanda korupsi data.
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-semibold text-sky-700 dark:text-sky-300">
+            <Equal className="size-3.5" />
+            Filter brand aktif — neraca segmen tidak harus seimbang
+          </span>
+        ) : (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
+              isBalanced
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                : "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+            )}
+          >
+            {isBalanced ? (
+              <CheckCircle2 className="size-3.5" />
+            ) : (
+              <AlertTriangle className="size-3.5" />
+            )}
+            {isBalanced
+              ? "Aktiva = Kewajiban + Ekuitas"
+              : `Tidak seimbang (selisih ${bs.current.difference})`}
+          </span>
+        )
       }
     >
       <div className="grid gap-3 lg:grid-cols-2">
@@ -840,8 +864,4 @@ function pctDelta(curr: string, prev: string): number | null {
     return null;
   }
   return ((c - p) / Math.abs(p)) * 100;
-}
-
-function sum(arr: string[]): number {
-  return arr.reduce((a, b) => a + Number(b || 0), 0);
 }

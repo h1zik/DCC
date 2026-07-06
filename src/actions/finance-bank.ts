@@ -139,6 +139,34 @@ const matchSchema = z.object({
 export async function matchBankStatementLine(input: z.infer<typeof matchSchema>) {
   await requireFinance();
   const data = matchSchema.parse(input);
+
+  // Validasi konsistensi sebelum match (unmatch = journalLineId null, bebas):
+  // baris jurnal harus POSTED dan berada di akun ledger rekening yang sama
+  // dengan baris rekening korannya — tanpa ini rekonsiliasi bisa "match" ke
+  // baris draf, akun beban, atau lintas rekening.
+  if (data.journalLineId) {
+    const [stmtLine, journalLine] = await Promise.all([
+      prisma.bankStatementLine.findUniqueOrThrow({
+        where: { id: data.statementLineId },
+        include: {
+          import: { include: { bankAccount: { select: { ledgerAccountId: true, name: true } } } },
+        },
+      }),
+      prisma.financeJournalLine.findUniqueOrThrow({
+        where: { id: data.journalLineId },
+        include: { entry: { select: { status: true } } },
+      }),
+    ]);
+    if (journalLine.entry.status !== "POSTED") {
+      throw new Error("Hanya baris jurnal terposting yang bisa direkonsiliasi.");
+    }
+    if (journalLine.accountId !== stmtLine.import.bankAccount.ledgerAccountId) {
+      throw new Error(
+        `Baris jurnal bukan milik akun ledger rekening ${stmtLine.import.bankAccount.name}.`,
+      );
+    }
+  }
+
   await prisma.bankStatementLine.update({
     where: { id: data.statementLineId },
     data: { matchedJournalLineId: data.journalLineId },

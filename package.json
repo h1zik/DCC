@@ -22,7 +22,7 @@
     "db:backfill-kanban": "npx tsx prisma/scripts/backfill-kanban-hybrid.ts",
     "db:verify-kanban": "prisma db execute --file prisma/scripts/verify-kanban-migration.sql --schema prisma/schema.prisma",
     "db:clear-projects": "npx tsx prisma/scripts/guard-destructive.ts && prisma db execute --file prisma/clear-projects.sql --schema prisma/schema.prisma",
-    "db:seed": "prisma db seed",
+    "db:seed": "npx tsx prisma/scripts/guard-destructive.ts && prisma db seed",
     "db:studio": "prisma studio",
     "eval:research": "tsx scripts/eval-review-analysis.ts"
   },

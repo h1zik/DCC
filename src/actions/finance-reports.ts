@@ -7,6 +7,8 @@ import { requireFinance } from "@/lib/auth-helpers";
 import { signedBalanceForAccount } from "@/lib/finance-money";
 import { buildTrialBalance } from "@/lib/finance-trial-balance";
 import { buildCashFlowStatement } from "@/lib/finance-cashflow";
+import { utcEndOfDay, utcPreviousMonthEnd } from "@/lib/finance-dates";
+import { computeBalanceSheetTotals } from "@/lib/finance-balance-sheet";
 
 const rangeSchema = z.object({
   from: z.coerce.date(),
@@ -16,11 +18,9 @@ const rangeSchema = z.object({
   onlyUntagged: z.boolean().optional(),
 });
 
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
+// Akhir hari menurut UTC — entryDate tersimpan UTC-midnight, jadi batas
+// rentang juga harus UTC (setHours lokal salah bila server bukan UTC).
+const endOfDay = utcEndOfDay;
 
 export async function reportProfitLoss(input: z.infer<typeof rangeSchema>) {
   await requireFinance();
@@ -137,13 +137,27 @@ export async function reportBalanceSheet(asOf: Date, brandId?: string | null) {
 
   const retained = pl.netIncome;
 
+  const assets = [...byAccount.values()].filter(
+    (r) => r.type === FinanceLedgerType.ASSET,
+  );
+  const liabilities = [...byAccount.values()].filter(
+    (r) => r.type === FinanceLedgerType.LIABILITY,
+  );
+  const equity = [...byAccount.values()].filter(
+    (r) => r.type === FinanceLedgerType.EQUITY,
+  );
+
   return {
-    assets: [...byAccount.values()].filter((r) => r.type === FinanceLedgerType.ASSET),
-    liabilities: [...byAccount.values()].filter(
-      (r) => r.type === FinanceLedgerType.LIABILITY,
-    ),
-    equity: [...byAccount.values()].filter((r) => r.type === FinanceLedgerType.EQUITY),
+    assets,
+    liabilities,
+    equity,
     retainedEarnings: retained,
+    ...computeBalanceSheetTotals({
+      assets,
+      liabilities,
+      equity,
+      retainedEarnings: retained,
+    }),
   };
 }
 
@@ -333,8 +347,9 @@ export async function reportBalanceSheetComparison(input: {
   brandId?: string | null;
 }) {
   await requireFinance();
-  const previousAsOf = new Date(input.asOf);
-  previousAsOf.setMonth(previousAsOf.getMonth() - 1);
+  // Hari terakhir bulan sebelumnya — bukan setMonth(-1) yang rollover untuk
+  // asOf tanggal 29-31 (31 Juli - 1 bulan = "31 Juni" = 1 Juli).
+  const previousAsOf = utcPreviousMonthEnd(input.asOf);
   const [curr, prev] = await Promise.all([
     reportBalanceSheet(input.asOf, input.brandId ?? null),
     reportBalanceSheet(previousAsOf, input.brandId ?? null),

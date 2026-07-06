@@ -48,10 +48,15 @@ export async function submitFinanceSpendRequest(requestId: string) {
   if (r.status !== FinanceSpendRequestStatus.DRAFT) {
     throw new Error("Hanya draf yang dapat diajukan.");
   }
-  await prisma.financeSpendRequest.update({
-    where: { id: requestId },
+  // Compare-and-set: kondisi status di where menutup race dua transisi
+  // bersamaan (pola yang sama untuk approve/reject di bawah).
+  const updated = await prisma.financeSpendRequest.updateMany({
+    where: { id: requestId, status: FinanceSpendRequestStatus.DRAFT },
     data: { status: FinanceSpendRequestStatus.SUBMITTED },
   });
+  if (updated.count === 0) {
+    throw new Error("Status pengajuan sudah berubah — muat ulang halaman.");
+  }
   paths();
 }
 
@@ -72,8 +77,8 @@ export async function approveFinanceSpendRequest(
       "Anda tidak dapat menyetujui pengajuan yang Anda buat sendiri (segregation of duties).",
     );
   }
-  await prisma.financeSpendRequest.update({
-    where: { id: requestId },
+  const updated = await prisma.financeSpendRequest.updateMany({
+    where: { id: requestId, status: FinanceSpendRequestStatus.SUBMITTED },
     data: {
       status: FinanceSpendRequestStatus.APPROVED,
       decidedById: session.user.id,
@@ -81,6 +86,9 @@ export async function approveFinanceSpendRequest(
       decisionNote: note?.trim() || null,
     },
   });
+  if (updated.count === 0) {
+    throw new Error("Pengajuan sudah diputuskan pengguna lain — muat ulang halaman.");
+  }
   paths();
 }
 
@@ -100,8 +108,8 @@ export async function rejectFinanceSpendRequest(
       "Anda tidak dapat menolak pengajuan yang Anda buat sendiri (segregation of duties).",
     );
   }
-  await prisma.financeSpendRequest.update({
-    where: { id: requestId },
+  const updated = await prisma.financeSpendRequest.updateMany({
+    where: { id: requestId, status: FinanceSpendRequestStatus.SUBMITTED },
     data: {
       status: FinanceSpendRequestStatus.REJECTED,
       decidedById: session.user.id,
@@ -109,6 +117,9 @@ export async function rejectFinanceSpendRequest(
       decisionNote: note?.trim() || null,
     },
   });
+  if (updated.count === 0) {
+    throw new Error("Pengajuan sudah diputuskan pengguna lain — muat ulang halaman.");
+  }
   paths();
 }
 

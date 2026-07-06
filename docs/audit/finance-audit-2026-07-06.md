@@ -472,4 +472,28 @@ Status verifikasi: **C-01, H-01…H-09, M-14, M-15**, kondisi render tombol wipe
 
 ---
 
-*Laporan ini dihasilkan pada FASE 1 (audit read-only). Tidak ada kode aplikasi, schema, maupun data yang diubah. Menunggu review dan persetujuan item-per-item sebelum FASE 2.*
+## Status Implementasi (FASE 2 — 2026-07-06)
+
+Seluruh temuan dikerjakan dalam 17 PR bertumpuk (merge berurutan #118 → #134):
+
+| PR | Branch | Temuan |
+|----|--------|--------|
+| #118 | fix/finance-demo-wipe-guard | C-01 |
+| #119 | fix/finance-money-validation | H-02, M-14, L-06 |
+| #120 | fix/finance-journal-line-scope | H-01 |
+| #121 | chore/finance-migrate-baseline | H-10 + DEPLOY-CHECKLIST.md |
+| #122 | fix/finance-atomicity | H-03, H-04, H-05, M-01, M-04, M-05 |
+| #123 | fix/finance-audit-trail | H-12, M-21, L-07 |
+| #124 | fix/finance-subledger-consistency | H-06, H-07, H-08 |
+| #125 | fix/finance-ai-api-role | H-09 |
+| #126 | fix/finance-db-constraints | M-02, M-20 |
+| #127 | fix/finance-journal-number-counter | M-03 |
+| #128 | fix/finance-depreciation-idempotent | M-06 |
+| #129 | fix/finance-fx-rounding | M-07, M-08, M-09 |
+| #130 | fix/finance-period-timezone | M-10, M-11 |
+| #131 | fix/finance-dashboard-alignment | M-12, M-13, L-03 |
+| #132 | fix/finance-small-guards | M-15, M-16, M-17 |
+| #133 | fix/finance-attachment-hygiene | M-18, M-19 |
+| #134 | fix/finance-low-cluster | L-01, L-02, L-04, L-05, L-08, L-09, L-10 |
+
+H-11 (test coverage) tergarap lintas-PR: 90 test finance baru (dari 0), total suite 153 → 243. Migrasi baru semuanya additive: `0_init` (baseline), `unique_guards`, `audit_trail`, `db_constraints` (CHECK + FK Restrict), `journal_counter`. Butir "Perlu Verifikasi Manual" (env Railway, pre-check duplikat/pelanggar constraint, TZ) tetap tugas operator sebelum deploy — lihat DEPLOY-CHECKLIST.*

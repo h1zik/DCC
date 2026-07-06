@@ -37,6 +37,62 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-06-finance-polish",
+    date: "2026-07-06",
+    title: "Finance — pemolesan lanjutan: koreksi periode tutup buku, aset, budget",
+    category: "improved",
+    description:
+      "Jurnal di periode yang sudah dikunci kini bisa dikoreksi lewat jurnal pembalik bertanggal periode terbuka (tanpa membuka kunci). Aset tetap baru bisa langsung dijurnalkan perolehannya, baris budget tidak bisa dobel untuk sel yang sama, keputusan approval yang berbarengan tidak saling menimpa, dan neraca per-brand kini menjelaskan bahwa segmen memang tidak harus seimbang.",
+  },
+  {
+    id: "2026-07-06-finance-attachment-hygiene",
+    date: "2026-07-06",
+    title: "Finance — lampiran diverifikasi isinya & file tidak tertinggal",
+    category: "improved",
+    description:
+      "Lampiran struk/invoice kini diverifikasi dari isi file-nya (bukan sekadar label tipe dari browser yang bisa dipalsukan), dan menghapus draf jurnal/baris kini ikut membersihkan file lampirannya dari penyimpanan — tidak ada lagi dokumen sensitif yatim yang tertinggal di server.",
+  },
+  {
+    id: "2026-07-06-finance-small-guards",
+    date: "2026-07-06",
+    title: "Finance — rekonsiliasi bank tervalidasi & tombol posting lebih akurat",
+    category: "fixed",
+    description:
+      "Mencocokkan mutasi rekening koran kini hanya bisa ke baris jurnal terposting milik rekening yang sama. Tombol posting jurnal tidak lagi salah menonaktifkan diri karena pembulatan sen di browser, dan draf jurnal tidak bisa lagi dibuat dengan tanggal di periode yang sudah dikunci.",
+  },
+  {
+    id: "2026-07-06-finance-dashboard-alignment",
+    date: "2026-07-06",
+    title: "Finance — KPI dashboard dan laporan kini memakai definisi yang sama",
+    category: "fixed",
+    description:
+      "Angka masuk/keluar kas di dashboard kini menghitung dengan cara yang sama dengan laporan arus kas (transfer antar rekening tidak lagi dihitung dua sisi), total hutang/piutang tidak lagi mengikutkan dokumen yang dibatalkan, dan status seimbang neraca kini dihitung eksak di server — lengkap dengan nilai selisihnya bila tidak seimbang.",
+  },
+  {
+    id: "2026-07-06-finance-utc-periods",
+    date: "2026-07-06",
+    title: "Finance — batas periode laporan kini konsisten lintas zona waktu",
+    category: "fixed",
+    description:
+      "Semua rentang tanggal laporan, filter periode, kunci tutup buku, dan tanggal draf jurnal kini dihitung dengan patokan waktu yang sama (UTC, mengikuti cara tanggal jurnal disimpan). Transaksi di tanggal 1 atau akhir bulan tidak lagi berisiko masuk ke periode yang salah, dan kolom pembanding neraca untuk tanggal 29–31 tidak lagi salah cut-off.",
+  },
+  {
+    id: "2026-07-06-finance-fx-rounding",
+    date: "2026-07-06",
+    title: "Finance — kurs valas selalu mengikuti tanggal jurnal & pembulatan konsisten",
+    category: "fixed",
+    description:
+      "Mengubah tanggal draf jurnal kini otomatis menghitung ulang baris valuta asing dengan kurs tanggal baru (dulu diam-diam tetap memakai kurs tanggal lama). Semua nominal juga dibulatkan ke 2 desimal secara eksplisit sebelum divalidasi dan disimpan, sehingga jurnal tidak mungkin tersimpan timpang beda satu sen.",
+  },
+  {
+    id: "2026-07-06-finance-depreciation-idempotent",
+    date: "2026-07-06",
+    title: "Finance — penyusutan bulanan aman dari posting ganda",
+    category: "fixed",
+    description:
+      "Memposting penyusutan untuk bulan yang sama dua kali kini ditolak dengan pesan jelas (dulu bebannya tercatat dobel). Pembaruan nilai akumulasi penyusutan aset juga kini satu paket transaksi dengan jurnalnya — kegagalan di tengah tidak lagi membuat register aset menyimpang.",
+  },
+  {
     id: "2026-07-06-finance-journal-counter",
     date: "2026-07-06",
     title: "Finance — penomoran jurnal tahan posting bersamaan",

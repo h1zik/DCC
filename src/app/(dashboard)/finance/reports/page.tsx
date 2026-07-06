@@ -13,6 +13,7 @@ import {
   type SerializedReports,
 } from "./reports-client";
 import { ReportFilterBar } from "@/components/finance/report-filter-bar";
+import { utcMonthEnd, utcMonthStart } from "@/lib/finance-dates";
 
 type SearchParams = {
   from?: string;
@@ -23,15 +24,17 @@ type SearchParams = {
 
 function defaultRange() {
   const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const from = utcMonthStart(now.getUTCFullYear(), now.getUTCMonth() + 1);
+  const to = utcMonthEnd(now.getUTCFullYear(), now.getUTCMonth() + 1);
   return { from, to };
 }
 
 function parseRange(sp: SearchParams) {
   const def = defaultRange();
+  // `from` di-parse UTC-midnight oleh new Date("YYYY-MM-DD") — `to` harus
+  // UTC juga (dulu "T23:59:59" tanpa Z = waktu lokal server).
   const from = sp.from ? new Date(sp.from) : def.from;
-  const to = sp.to ? new Date(sp.to + "T23:59:59") : def.to;
+  const to = sp.to ? new Date(sp.to + "T23:59:59.999Z") : def.to;
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return def;
   return { from, to };
 }
@@ -174,6 +177,11 @@ function serializeBs(bs: {
   liabilities: { code: string; name: string; amount: { toString(): string } }[];
   equity: { code: string; name: string; amount: { toString(): string } }[];
   retainedEarnings: { toString(): string };
+  totalAssets: { toString(): string };
+  totalLiabilities: { toString(): string };
+  totalEquity: { toString(): string };
+  difference: { toString(): string };
+  isBalanced: boolean;
 }) {
   return {
     assets: bs.assets.map((r) => ({
@@ -192,5 +200,10 @@ function serializeBs(bs: {
       amount: r.amount.toString(),
     })),
     retainedEarnings: bs.retainedEarnings.toString(),
+    totalAssets: bs.totalAssets.toString(),
+    totalLiabilities: bs.totalLiabilities.toString(),
+    totalEquity: bs.totalEquity.toString(),
+    difference: bs.difference.toString(),
+    isBalanced: bs.isBalanced,
   };
 }

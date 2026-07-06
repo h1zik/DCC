@@ -76,6 +76,16 @@ export function FixedAssetsClient(props: {
       ? `${props.accounts.find((a) => a.id === safeExpAcc)!.code} — ${props.accounts.find((a) => a.id === safeExpAcc)!.name}`
       : "Pilih akun beban";
 
+  // Sumber dana perolehan (opsional): bila dipilih, server memposting jurnal
+  // perolehan (debit akun aset / kredit akun ini) bersamaan dengan register.
+  const [fundAcc, setFundAcc] = useState("");
+  const fundAccLabel = fundAcc
+    ? (() => {
+        const a = props.accounts.find((x) => x.id === fundAcc);
+        return a ? `${a.code} — ${a.name}` : "Tanpa jurnal perolehan";
+      })()
+    : "Tanpa jurnal perolehan (aset lama / sudah dijurnal)";
+
   const [depYear, setDepYear] = useState(new Date().getFullYear());
   const [depMonth, setDepMonth] = useState(new Date().getMonth() + 1);
 
@@ -93,6 +103,7 @@ export function FixedAssetsClient(props: {
           assetAccountId: assetAcc,
           accumAccountId: accumAcc,
           expenseAccountId: expAcc,
+          fundingAccountId: fundAcc || null,
         });
         toast.success("Aset ditambahkan.");
         setName("");
@@ -180,6 +191,27 @@ export function FixedAssetsClient(props: {
               <span className="line-clamp-1">{expAccLabel}</span>
             </SelectTrigger>
             <SelectContent>
+              {props.accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label>Sumber dana perolehan (opsional — membuat jurnal perolehan)</Label>
+          <Select
+            value={fundAcc || "__none__"}
+            onValueChange={(v) => setFundAcc(!v || v === "__none__" ? "" : v)}
+          >
+            <SelectTrigger className="w-full">
+              <span className="line-clamp-1">{fundAccLabel}</span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">
+                Tanpa jurnal perolehan (aset lama / sudah dijurnal)
+              </SelectItem>
               {props.accounts.map((a) => (
                 <SelectItem key={a.id} value={a.id}>
                   {a.code} — {a.name}

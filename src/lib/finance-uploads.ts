@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { mkdir, unlink, writeFile, stat } from "node:fs/promises";
+import { mkdir, rm, unlink, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -79,6 +79,28 @@ export async function removeFinanceAttachment(storagePath: string) {
     if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return;
     throw e;
   }
+}
+
+/**
+ * Hapus banyak file fisik best-effort — untuk jalur hapus draf/baris di mana
+ * baris DB-nya lenyap via cascade tetapi filenya dulu tertinggal (yatim).
+ * Kegagalan per-file dicatat, tidak menggagalkan operasi.
+ */
+export async function removeFinanceAttachmentsBestEffort(
+  storagePaths: string[],
+) {
+  for (const p of storagePaths) {
+    try {
+      await removeFinanceAttachment(p);
+    } catch (err) {
+      console.warn(`[finance-uploads] gagal hapus file lampiran ${p}:`, err);
+    }
+  }
+}
+
+/** Hapus seluruh direktori lampiran finance (dipakai reset data demo). */
+export async function removeAllFinanceAttachmentFiles() {
+  await rm(FINANCE_UPLOAD_ROOT, { recursive: true, force: true });
 }
 
 /** Resolve absolute path (untuk route handler streaming). */
