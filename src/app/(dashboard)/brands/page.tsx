@@ -20,6 +20,7 @@ export default async function BrandsPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={Building2}
+        variant="compact"
         title="Brand"
         subtitle="Kelola merek B2C (Archipelago Scent, Umella, Divaon, dan lainnya). Akun administrator yang ditetapkan CEO dapat mengubah master brand."
         right={

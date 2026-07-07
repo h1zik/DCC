@@ -15,12 +15,14 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  Maximize2,
   MessageSquarePlus,
   Music,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import * as pdfjs from "pdfjs-dist";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { extractDocxTextFromUrl, isDocxMime } from "@/lib/docx-client-text";
 import {
   type AttachmentCommentAnchor,
@@ -1186,6 +1188,75 @@ function ImageRegionPreview({
     [commentMode, onPendingSelection],
   );
 
+  /* ---- Zoom & pan (hanya mode lihat; di mode komentar transform dimatikan
+     agar koordinat anchor komentar tetap presisi seperti semula). ---- */
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [panning, setPanning] = useState(false);
+  const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(
+    null,
+  );
+  const zoomActive = !commentMode;
+
+  // Reset zoom saat gambar berganti atau saat masuk/keluar mode komentar
+  // (pola "adjust state during render").
+  const zoomKey = `${src}|${commentMode}`;
+  const [prevZoomKey, setPrevZoomKey] = useState(zoomKey);
+  if (prevZoomKey !== zoomKey) {
+    setPrevZoomKey(zoomKey);
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+    setPanning(false);
+  }
+
+  const zoomBy = useCallback((delta: number) => {
+    setScale((s) => {
+      const next = Math.min(5, Math.max(1, Math.round((s + delta) * 100) / 100));
+      if (next <= 1) setOffset({ x: 0, y: 0 });
+      return next;
+    });
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  }, []);
+
+  const onWheelZoom = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 0.2 : -0.2);
+    },
+    [zoomBy],
+  );
+
+  const onPanPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (scale <= 1 || e.button !== 0) return;
+      e.preventDefault();
+      panRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+      setPanning(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [scale, offset],
+  );
+
+  const onPanPointerMove = useCallback((e: React.PointerEvent) => {
+    const start = panRef.current;
+    if (!start) return;
+    setOffset({
+      x: start.ox + (e.clientX - start.x),
+      y: start.oy + (e.clientY - start.y),
+    });
+  }, []);
+
+  const onPanPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!panRef.current) return;
+    panRef.current = null;
+    setPanning(false);
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  }, []);
+
   if (loadError) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
@@ -1203,16 +1274,39 @@ function ImageRegionPreview({
     );
   }
 
+  const zoomed = zoomActive && scale > 1;
+
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain bg-muted/30 p-2 sm:p-4">
+    <div
+      className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(125%_100%_at_50%_0%,#221826_0%,#100b14_68%,#080509_100%)] p-3 sm:p-6"
+      onWheel={zoomActive ? onWheelZoom : undefined}
+    >
       <div
         ref={imageBoxRef}
         className={cn(
-          "border-border/50 bg-background relative flex max-h-full max-w-full items-center justify-center rounded-lg border p-2 shadow-sm sm:p-3",
+          "bg-background relative flex max-h-full max-w-full items-center justify-center rounded-xl p-2 shadow-[0_24px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10 sm:p-3",
           commentMode && "touch-none",
           upscalePreview && "min-w-[min(80vw,640px)]",
+          zoomed && (panning ? "cursor-grabbing" : "cursor-grab"),
         )}
-        onPointerDown={commentMode ? onPointerDown : undefined}
+        style={
+          zoomActive
+            ? {
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                transition: panning ? "none" : "transform 0.15s ease",
+                touchAction: zoomed ? "none" : undefined,
+              }
+            : undefined
+        }
+        onPointerDown={commentMode ? onPointerDown : onPanPointerDown}
+        onPointerMove={commentMode ? undefined : onPanPointerMove}
+        onPointerUp={commentMode ? undefined : onPanPointerUp}
+        onPointerCancel={commentMode ? undefined : onPanPointerUp}
+        onDoubleClick={
+          commentMode
+            ? undefined
+            : () => (scale > 1 ? resetZoom() : setScale(2))
+        }
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -1243,6 +1337,50 @@ function ImageRegionPreview({
           />
         ) : null}
       </div>
+
+      {zoomActive ? (
+        <div
+          className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-white/15 bg-black/60 p-1 text-white shadow-lg backdrop-blur-md"
+          role="group"
+          aria-label="Zoom gambar"
+        >
+          <button
+            type="button"
+            aria-label="Perkecil"
+            disabled={scale <= 1}
+            onClick={() => zoomBy(-0.25)}
+            className="grid size-8 place-items-center rounded-full transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none disabled:opacity-35 disabled:hover:bg-transparent"
+          >
+            <ZoomOut className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={resetZoom}
+            className="min-w-[3.25rem] rounded-full px-2 py-1 text-center text-xs font-semibold tabular-nums transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none"
+            title="Reset ke ukuran pas"
+          >
+            {Math.round(scale * 100)}%
+          </button>
+          <button
+            type="button"
+            aria-label="Perbesar"
+            disabled={scale >= 5}
+            onClick={() => zoomBy(0.25)}
+            className="grid size-8 place-items-center rounded-full transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none disabled:opacity-35 disabled:hover:bg-transparent"
+          >
+            <ZoomIn className="size-4" />
+          </button>
+          <span className="mx-0.5 h-4 w-px bg-white/20" aria-hidden />
+          <button
+            type="button"
+            aria-label="Ukuran pas"
+            onClick={resetZoom}
+            className="grid size-8 place-items-center rounded-full transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none"
+          >
+            <Maximize2 className="size-4" />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1313,29 +1451,27 @@ export function AnchoredFilePreview({
     const hasCarousel = imageAttachments.length > 1;
     const current = imageAttachments[imageIndex] ?? attachment;
     return (
-      <PreviewFrame className={cn("relative", className)}>
+      <PreviewFrame className={cn("group/stage relative", className)}>
         {hasCarousel ? (
           <>
-            <Button
+            <button
               type="button"
-              size="icon-sm"
-              variant="secondary"
-              className="absolute top-1/2 left-2 z-20 -translate-y-1/2"
+              aria-label="Gambar sebelumnya"
               disabled={imageIndex <= 0}
               onClick={() => onImageIndexChange(imageIndex - 1)}
+              className="absolute top-1/2 left-3 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-black/55 text-white shadow-lg backdrop-blur-md transition hover:bg-black/75 focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30"
             >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Button
+              <ChevronLeft className="size-5" />
+            </button>
+            <button
               type="button"
-              size="icon-sm"
-              variant="secondary"
-              className="absolute top-1/2 right-2 z-20 -translate-y-1/2"
+              aria-label="Gambar berikutnya"
               disabled={imageIndex >= imageAttachments.length - 1}
               onClick={() => onImageIndexChange(imageIndex + 1)}
+              className="absolute top-1/2 right-3 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-black/55 text-white shadow-lg backdrop-blur-md transition hover:bg-black/75 focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30"
             >
-              <ChevronRight className="size-4" />
-            </Button>
+              <ChevronRight className="size-5" />
+            </button>
           </>
         ) : null}
         <ImageRegionPreview

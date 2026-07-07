@@ -18,6 +18,7 @@ export default async function AdminBrandingPage() {
     <div className="flex flex-col gap-6">
       <PageHero
         icon={Palette}
+        variant="compact"
         title="Web Setting"
         subtitle="Identitas visual aplikasi: nama, judul navigasi, logo, favicon, dan ikon push notification. Hanya administrator yang dapat mengubahnya."
         right={

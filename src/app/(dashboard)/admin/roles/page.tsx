@@ -30,6 +30,7 @@ export default async function AdminRolesPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={ShieldCheck}
+        variant="compact"
         title="Peran (role)"
         subtitle="Kelola label peran yang dapat diberikan ke pengguna. 4 peran inti (CEO, Administrator, Finance, Logistik) selalu ada — sisanya bisa kamu buat bebas dengan tier permission yang dipilih."
         right={

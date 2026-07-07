@@ -19,12 +19,31 @@ import {
   resolveAppThemePreset,
   type AppThemePreset,
 } from "@/lib/app-themes";
+import {
+  activeCustomConfig,
+  DEFAULT_CUSTOM_THEME,
+  newSavedTheme,
+  type CustomThemeConfig,
+  type ThemeLibrary,
+} from "@/lib/theme-generator";
 
 type AppThemeContextValue = {
   preset: AppThemePreset;
   savedPreset: AppThemePreset;
+  library: ThemeLibrary;
+  savedLibrary: ThemeLibrary;
+  /** Config tema kustom yang sedang aktif (derivasi dari library). */
+  activeCustom: CustomThemeConfig;
   setPreset: (preset: AppThemePreset) => void;
+  /** Set preset sekaligus tandai sebagai tersimpan (dipakai setelah persist). */
   commitPreset: (preset: AppThemePreset) => void;
+  /** Jadikan tema tersimpan sebagai aktif (dan pindah ke mode custom). */
+  selectTheme: (id: string) => void;
+  /** Buat tema baru (menyalin tema aktif bila ada) lalu aktifkan. */
+  createTheme: () => void;
+  updateActiveConfig: (patch: Partial<CustomThemeConfig>) => void;
+  renameActiveTheme: (name: string) => void;
+  deleteTheme: (id: string) => void;
   savePreset: () => void;
   resetPreview: () => void;
   isDirty: boolean;
@@ -36,20 +55,28 @@ const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
 export function AppThemeProvider({
   initialPreset,
+  initialLibrary,
   children,
 }: {
   initialPreset: AppThemePreset;
+  initialLibrary: ThemeLibrary;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const saved = resolveAppThemePreset(initialPreset);
   const [preset, setPresetState] = useState<AppThemePreset>(saved);
   const [savedPreset, setSavedPreset] = useState<AppThemePreset>(saved);
+  const [library, setLibraryState] = useState<ThemeLibrary>(initialLibrary);
+  const [savedLibrary, setSavedLibrary] =
+    useState<ThemeLibrary>(initialLibrary);
   const [isSaving, startSave] = useTransition();
 
+  const activeCustom = useMemo(() => activeCustomConfig(library), [library]);
+
+  // Terapkan pratinjau setiap preset atau tema aktif berubah.
   useEffect(() => {
-    applyAppThemeToDocument(preset);
-  }, [preset]);
+    applyAppThemeToDocument(preset, activeCustom);
+  }, [preset, activeCustom]);
 
   useEffect(() => {
     setPresetState(saved);
@@ -63,20 +90,73 @@ export function AppThemeProvider({
   const commitPreset = useCallback((next: AppThemePreset) => {
     setPresetState(next);
     setSavedPreset(next);
-    applyAppThemeToDocument(next);
+  }, []);
+
+  const selectTheme = useCallback((id: string) => {
+    setLibraryState((lib) => ({ ...lib, activeId: id }));
+    setPresetState("custom");
+  }, []);
+
+  const createTheme = useCallback(() => {
+    setLibraryState((lib) => {
+      const base = lib.themes.length
+        ? activeCustomConfig(lib)
+        : DEFAULT_CUSTOM_THEME;
+      const theme = newSavedTheme(`Tema ${lib.themes.length + 1}`, base);
+      return { themes: [...lib.themes, theme], activeId: theme.id };
+    });
+    setPresetState("custom");
+  }, []);
+
+  const updateActiveConfig = useCallback(
+    (patch: Partial<CustomThemeConfig>) => {
+      setLibraryState((lib) => {
+        if (!lib.activeId) return lib;
+        return {
+          ...lib,
+          themes: lib.themes.map((t) =>
+            t.id === lib.activeId
+              ? { ...t, config: { ...t.config, ...patch } }
+              : t,
+          ),
+        };
+      });
+    },
+    [],
+  );
+
+  const renameActiveTheme = useCallback((name: string) => {
+    setLibraryState((lib) => {
+      if (!lib.activeId) return lib;
+      return {
+        ...lib,
+        themes: lib.themes.map((t) =>
+          t.id === lib.activeId ? { ...t, name } : t,
+        ),
+      };
+    });
+  }, []);
+
+  const deleteTheme = useCallback((id: string) => {
+    setLibraryState((lib) => {
+      const themes = lib.themes.filter((t) => t.id !== id);
+      const activeId =
+        lib.activeId === id ? (themes[0]?.id ?? null) : lib.activeId;
+      return { themes, activeId };
+    });
   }, []);
 
   const resetPreview = useCallback(() => {
     setPresetState(savedPreset);
-    applyAppThemeToDocument(savedPreset);
-  }, [savedPreset]);
+    setLibraryState(savedLibrary);
+  }, [savedPreset, savedLibrary]);
 
   const savePreset = useCallback(() => {
     startSave(async () => {
       try {
-        await updateAppTheme(preset);
+        await updateAppTheme(preset, library);
         setSavedPreset(preset);
-        applyAppThemeToDocument(preset);
+        setSavedLibrary(library);
         router.refresh();
         toast.success("Tema aplikasi disimpan.");
       } catch (err) {
@@ -84,21 +164,50 @@ export function AppThemeProvider({
         resetPreview();
       }
     });
-  }, [preset, resetPreview, router]);
+  }, [preset, library, resetPreview, router]);
+
+  const isDirty =
+    preset !== savedPreset ||
+    JSON.stringify(library) !== JSON.stringify(savedLibrary);
 
   const value = useMemo<AppThemeContextValue>(
     () => ({
       preset,
       savedPreset,
+      library,
+      savedLibrary,
+      activeCustom,
       setPreset,
       commitPreset,
+      selectTheme,
+      createTheme,
+      updateActiveConfig,
+      renameActiveTheme,
+      deleteTheme,
       savePreset,
       resetPreview,
-      isDirty: preset !== savedPreset,
+      isDirty,
       isSaving,
       isCustomTheme: savedPreset !== DEFAULT_APP_THEME_PRESET,
     }),
-    [preset, savedPreset, setPreset, commitPreset, savePreset, resetPreview, isSaving],
+    [
+      preset,
+      savedPreset,
+      library,
+      savedLibrary,
+      activeCustom,
+      setPreset,
+      commitPreset,
+      selectTheme,
+      createTheme,
+      updateActiveConfig,
+      renameActiveTheme,
+      deleteTheme,
+      savePreset,
+      resetPreview,
+      isDirty,
+      isSaving,
+    ],
   );
 
   return (

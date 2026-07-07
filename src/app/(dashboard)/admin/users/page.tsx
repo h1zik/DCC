@@ -84,6 +84,7 @@ export default async function AdminUsersPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={Users}
+        variant="compact"
         title="Pengguna"
         subtitle="Kelola akun internal dan peran pengguna. Tambah, ubah, dan tetapkan role langsung dari daftar."
         right={

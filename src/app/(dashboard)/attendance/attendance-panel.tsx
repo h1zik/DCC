@@ -113,6 +113,7 @@ export function AttendancePanel({
     <>
       <PageHero
         icon={ScanFace}
+        variant="compact"
         title="Absensi"
         subtitle="Scan wajah untuk mencatat kehadiran. Wajah Anda diverifikasi dengan data Anda sendiri (1:1) — aman dari titip absen."
         right={heroChips}

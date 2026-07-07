@@ -150,6 +150,7 @@ export default async function MyTasksPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={ListChecks}
+        variant="compact"
         title="My Tasks"
         subtitle="Pekerjaan yang Anda pegang sebagai PIC. Klik kartu untuk langsung membuka ruangan terkait."
         right={

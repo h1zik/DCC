@@ -292,8 +292,14 @@ model User {
   profileAvatarFrame                 String                         @default("ring")
   /**
    * Preset tema UI aplikasi (slug). Lihat `APP_THEME_PRESETS` di kode.
+   * Nilai `"custom"` memakai konfigurasi di `appThemeCustom`.
    */
   appThemePreset                     String                         @default("original")
+  /**
+   * Konfigurasi tema kustom user (mode, aksen, tint, radius, font).
+   * Lihat `CustomThemeConfig` di `lib/theme-generator.ts`. Null = belum diracik.
+   */
+  appThemeCustom                     Json?
   /**
    * Tampilan default modul Tasks saat membuka ruangan.
    */

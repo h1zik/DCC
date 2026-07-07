@@ -134,6 +134,7 @@ export function RekapClient({
     <>
       <PageHero
         icon={ClipboardList}
+        variant="compact"
         title="Rekap Absensi"
         subtitle="Pantau kehadiran tim, tinjau rekap data, dan kelola registrasi wajah."
       />

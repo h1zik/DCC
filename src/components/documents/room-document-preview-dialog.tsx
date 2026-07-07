@@ -14,9 +14,15 @@ import {
   ChevronRight,
   Download,
   ExternalLink,
+  File as FileIcon,
+  FileText,
+  Image as ImageIcon,
   Loader2,
   MessageSquare,
+  Music,
   Tag,
+  Video,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { User } from "@prisma/client";
@@ -30,6 +36,7 @@ import {
 import { updateRoomDocumentTags } from "@/actions/room-documents";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { normalizeRoomDocumentTags } from "@/lib/room-document-tags";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +45,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   AnchoredFilePreview,
   type AnchoredCommentPin,
@@ -59,10 +65,45 @@ function fileTypeLabel(mime: string) {
   return "File";
 }
 
+function fileKindIcon(mime: string, className: string) {
+  if (mime.startsWith("image/")) return <ImageIcon className={className} />;
+  if (mime === "application/pdf") return <FileText className={className} />;
+  if (mime.startsWith("video/")) return <Video className={className} />;
+  if (mime.startsWith("audio/")) return <Music className={className} />;
+  if (mime.startsWith("text/")) return <FileText className={className} />;
+  return <FileIcon className={className} />;
+}
+
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function initialsOf(label: string) {
+  const parts = label.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+}
+
+/** Warna chip tag berdasarkan makna workflow (approved = hijau, tolak/revisi = merah). */
+function tagTone(tag: string) {
+  const t = tag.toLowerCase();
+  if (["approved", "approve", "final", "done", "ok"].includes(t)) {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  }
+  if (["reject", "rejected", "revisi", "revision", "hold", "ulang"].includes(t)) {
+    return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+  }
+  return "border-border bg-muted text-muted-foreground";
+}
+
+/** Chip metadata kecil di top bar. */
+function MetaChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="border-border bg-muted/60 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium">
+      {children}
+    </span>
+  );
 }
 
 export function RoomDocumentPreviewDialog({
@@ -88,7 +129,8 @@ export function RoomDocumentPreviewDialog({
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [comments, setComments] = useState<AnchoredFileComment[]>([]);
   const [users, setUsers] = useState<Pick<User, "id" | "name" | "email">[]>([]);
-  const [tagDraft, setTagDraft] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState("");
   const [savingTags, setSavingTags] = useState(false);
   const [draft, setDraft] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
@@ -109,7 +151,8 @@ export function RoomDocumentPreviewDialog({
   if (sessionKey !== currentKey) {
     setSessionKey(currentKey);
     if (doc) {
-      setTagDraft((doc.tags ?? []).join(", "));
+      setTags(doc.tags ?? []);
+      setNewTag("");
       setDraft("");
       setAssigneeId("");
       setPendingSelection(null);
@@ -244,23 +287,35 @@ export function RoomDocumentPreviewDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, doc, prevDoc, nextDoc, onNavigate]);
 
-  async function saveTags() {
-    if (!doc) return;
-    const tokens = tagDraft
-      .split(/[,;\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const tags = normalizeRoomDocumentTags(tokens);
-    setSavingTags(true);
-    try {
-      await updateRoomDocumentTags({ documentId: doc.id, tags });
-      toast.success("Tag disimpan.");
-      router.refresh();
-    } catch (err) {
-      toast.error(actionErrorMessage(err, "Gagal menyimpan tag."));
-    } finally {
-      setSavingTags(false);
-    }
+  const persistTags = useCallback(
+    async (next: string[]) => {
+      if (!doc) return;
+      const normalized = normalizeRoomDocumentTags(next);
+      setTags(normalized);
+      setSavingTags(true);
+      try {
+        await updateRoomDocumentTags({ documentId: doc.id, tags: normalized });
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menyimpan tag."));
+        setTags(doc.tags ?? []);
+      } finally {
+        setSavingTags(false);
+      }
+    },
+    [doc, router],
+  );
+
+  function addTag(raw: string) {
+    const value = raw.trim();
+    setNewTag("");
+    if (!value) return;
+    if (tags.some((t) => t.toLowerCase() === value.toLowerCase())) return;
+    void persistTags([...tags, value]);
+  }
+
+  function removeTag(target: string) {
+    void persistTags(tags.filter((t) => t !== target));
   }
 
   function onSubmitComment(anchor?: PendingSelection["anchor"] | null) {
@@ -306,6 +361,10 @@ export function RoomDocumentPreviewDialog({
     linkUrl: null as string | null,
   };
 
+  const uploaderLabel = doc.uploadedBy.name ?? doc.uploadedBy.email;
+  const showFilmstrip = imageAttachments.length > 1;
+  const showBottomBar = canManageTags || tags.length > 0 || showFilmstrip;
+
   return (
     <Dialog
       open={open}
@@ -313,30 +372,45 @@ export function RoomDocumentPreviewDialog({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="flex h-[min(calc(100dvh-0.75rem),820px)] w-[min(calc(100vw-0.5rem),1200px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
-        <DialogHeader className="border-border shrink-0 border-b px-3 py-2.5 pr-14 sm:px-4 sm:py-3 sm:pr-16">
-          <div className="flex flex-wrap items-start gap-3">
+      <DialogContent className="flex h-[min(calc(100dvh-0.75rem),840px)] w-[min(calc(100vw-0.5rem),1240px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        {/* ===== Top bar ===== */}
+        <DialogHeader className="border-border bg-card shrink-0 space-y-0 border-b px-3 py-2.5 pr-14 sm:px-4 sm:pr-16">
+          <div className="flex items-center gap-3">
+            <span
+              className="border-primary/25 bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg border"
+              aria-hidden
+            >
+              {fileKindIcon(doc.mimeType, "size-[18px]")}
+            </span>
             <div className="min-w-0 flex-1">
-              <DialogTitle className="truncate text-base">
+              <DialogTitle className="truncate text-sm leading-tight sm:text-base">
                 {doc.title?.trim() ? doc.title : doc.fileName}
               </DialogTitle>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                {doc.fileName} · {fileTypeLabel(doc.mimeType)} ·{" "}
-                {formatFileSize(doc.size)} ·{" "}
-                {doc.uploadedBy.name ?? doc.uploadedBy.email}
-                {hasFileNav
-                  ? ` · File ${previewIndex + 1}/${previewPlaylist.length}`
-                  : null}
-              </p>
-              {commentsOpen ? (
-                <p className="text-muted-foreground mt-1 text-[11px]">
-                  Pilih teks atau blok area untuk komentar
-                </p>
-              ) : null}
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <MetaChip>{fileTypeLabel(doc.mimeType)}</MetaChip>
+                <MetaChip>{formatFileSize(doc.size)}</MetaChip>
+                <MetaChip>
+                  <span
+                    className="flex size-4 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-[8px] font-bold text-white"
+                    aria-hidden
+                  >
+                    {initialsOf(uploaderLabel)}
+                  </span>
+                  <span className="max-w-[140px] truncate">{uploaderLabel}</span>
+                </MetaChip>
+                {hasFileNav ? (
+                  <MetaChip>
+                    <span className="tabular-nums">
+                      {previewIndex + 1}/{previewPlaylist.length}
+                    </span>
+                  </MetaChip>
+                ) : null}
+              </div>
             </div>
-            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
+
+            <div className="flex shrink-0 items-center gap-1.5">
               {hasFileNav ? (
-                <>
+                <div className="mr-0.5 hidden items-center gap-1 sm:flex">
                   <Button
                     type="button"
                     size="icon-sm"
@@ -357,7 +431,7 @@ export function RoomDocumentPreviewDialog({
                   >
                     <ChevronRight className="size-4" />
                   </Button>
-                </>
+                </div>
               ) : null}
               <Button
                 type="button"
@@ -367,9 +441,9 @@ export function RoomDocumentPreviewDialog({
                 aria-pressed={commentsOpen}
               >
                 <MessageSquare className="size-3.5" />
-                Komentar
+                <span className="hidden sm:inline">Komentar</span>
                 {comments.length > 0 ? (
-                  <span className="bg-primary/10 text-primary ml-1 rounded-full px-1.5 text-[10px] font-semibold tabular-nums">
+                  <span className="bg-primary/15 text-primary ml-0.5 rounded-full px-1.5 text-[10px] font-semibold tabular-nums">
                     {comments.length}
                   </span>
                 ) : null}
@@ -377,7 +451,17 @@ export function RoomDocumentPreviewDialog({
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                onClick={() => void onDownload(doc)}
+              >
+                <Download className="size-3.5" />
+                <span className="hidden sm:inline">Download</span>
+              </Button>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                title="Buka di tab baru"
+                aria-label="Buka di tab baru"
                 nativeButton={false}
                 render={
                   <a
@@ -387,71 +471,28 @@ export function RoomDocumentPreviewDialog({
                   />
                 }
               >
-                <ExternalLink className="size-3.5" />
-                Tab baru
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => void onDownload(doc)}
-              >
-                <Download className="size-3.5" />
-                Download
+                <ExternalLink className="size-4" />
               </Button>
             </div>
           </div>
-
-          {canManageTags ? (
-            <div className="mt-3 space-y-1.5">
-              <Label htmlFor="preview-doc-tags" className="text-xs">
-                Tag
-              </Label>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Input
-                  id="preview-doc-tags"
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                  placeholder="footage, raw, approved"
-                  disabled={savingTags}
-                  className="h-8 sm:min-w-[200px] sm:flex-1"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => void saveTags()}
-                  disabled={savingTags}
-                >
-                  {savingTags ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    "Simpan tag"
-                  )}
-                </Button>
-              </div>
-            </div>
-          ) : (doc.tags ?? []).length > 0 ? (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <Tag className="text-muted-foreground size-3.5 shrink-0" />
-              {(doc.tags ?? []).map((t) => (
-                <span
-                  key={t}
-                  className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs font-medium"
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </DialogHeader>
 
+        {/* ===== Stage + comments ===== */}
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div className="bg-muted/20 relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:min-h-0">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {commentsOpen ? (
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
+                <span className="bg-background/85 text-muted-foreground rounded-full border px-3 py-1 text-[11px] shadow-sm backdrop-blur">
+                  Pilih teks atau blok area untuk menambah komentar
+                </span>
+              </div>
+            ) : null}
             {loading && comments.length === 0 ? (
               <div className="bg-background/80 pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2 rounded-full border px-2.5 py-1 shadow-sm">
                 <Loader2 className="text-muted-foreground size-3.5 animate-spin" />
-                <span className="text-muted-foreground text-[10px]">Memuat komentar…</span>
+                <span className="text-muted-foreground text-[10px]">
+                  Memuat komentar…
+                </span>
               </div>
             ) : null}
             <AnchoredFilePreview
@@ -525,6 +566,119 @@ export function RoomDocumentPreviewDialog({
             />
           ) : null}
         </div>
+
+        {/* ===== Bottom bar: tag + filmstrip ===== */}
+        {showBottomBar ? (
+          <div className="border-border bg-card shrink-0 border-t px-3 py-2.5 sm:px-4">
+            <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
+              {/* Tag editor / read-only chips */}
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 md:max-w-[46%]">
+                <span
+                  className="text-muted-foreground flex items-center gap-1.5 text-[11px] font-semibold"
+                  aria-hidden
+                >
+                  <Tag className="size-3.5" />
+                </span>
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                      tagTone(t),
+                    )}
+                  >
+                    {t}
+                    {canManageTags ? (
+                      <button
+                        type="button"
+                        className="-mr-0.5 rounded-full opacity-60 transition hover:opacity-100 disabled:opacity-40"
+                        disabled={savingTags}
+                        aria-label={`Hapus tag ${t}`}
+                        onClick={() => removeTag(t)}
+                      >
+                        <X className="size-3" />
+                      </button>
+                    ) : null}
+                  </span>
+                ))}
+                {canManageTags ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Input
+                      value={newTag}
+                      onChange={(e) => setNewTag(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === ",") {
+                          e.preventDefault();
+                          addTag(newTag);
+                        } else if (
+                          e.key === "Backspace" &&
+                          newTag === "" &&
+                          tags.length > 0
+                        ) {
+                          removeTag(tags[tags.length - 1]!);
+                        }
+                      }}
+                      onBlur={() => addTag(newTag)}
+                      placeholder={tags.length ? "tambah…" : "tambah tag…"}
+                      disabled={savingTags}
+                      aria-label="Tambah tag"
+                      className="h-7 w-28 rounded-full text-xs"
+                    />
+                    {savingTags ? (
+                      <Loader2 className="text-muted-foreground size-3.5 animate-spin" />
+                    ) : null}
+                  </span>
+                ) : null}
+                {!canManageTags && tags.length === 0 ? (
+                  <span className="text-muted-foreground text-xs">Tanpa tag</span>
+                ) : null}
+              </div>
+
+              {showFilmstrip ? (
+                <>
+                  <div
+                    className="bg-border hidden w-px self-stretch md:block"
+                    aria-hidden
+                  />
+                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-0.5">
+                    {imageAttachments.map((img) => {
+                      const active = img.id === doc.id;
+                      return (
+                        <button
+                          key={img.id}
+                          type="button"
+                          aria-label={img.fileName}
+                          aria-current={active}
+                          onClick={() => {
+                            const row = previewPlaylist.find(
+                              (d) => d.id === img.id,
+                            );
+                            if (row) onNavigate(row);
+                          }}
+                          className={cn(
+                            "relative h-12 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition",
+                            "focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none",
+                            active
+                              ? "border-primary shadow-sm"
+                              : "border-transparent opacity-70 hover:opacity-100",
+                          )}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={img.thumbPath ?? img.publicPath ?? ""}
+                            alt=""
+                            loading="lazy"
+                            className="size-full object-cover"
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </DialogContent>
 
       {commentsOpen && pendingSelection ? (

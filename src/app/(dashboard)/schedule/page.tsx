@@ -56,7 +56,7 @@ export default async function SchedulePage() {
     participants: e.participants.map((p) => ({ user: p.user })),
   }));
 
-  const now = Date.now();
+  const now = new Date().getTime();
   const upcomingCount = initialEvents.filter(
     (e) => new Date(e.startsAt).getTime() >= now,
   ).length;
@@ -74,6 +74,7 @@ export default async function SchedulePage() {
     <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={CalendarDays}
+        variant="compact"
         title="Jadwal"
         subtitle="Meeting dan acara umum (tidak terikat ruangan). Pilih peserta — mereka mendapat notifikasi H-1 dan ±1 jam sebelum mulai."
         right={
