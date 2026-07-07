@@ -18,7 +18,7 @@ export type ThemePaletteHues = {
 };
 
 export const THEME_PALETTE_HUES: Record<
-  Exclude<AppThemePreset, "original">,
+  Exclude<AppThemePreset, "original" | "custom">,
   ThemePaletteHues
 > = {
   light: {

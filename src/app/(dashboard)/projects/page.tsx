@@ -88,6 +88,7 @@ export default async function ProjectsPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHero
         icon={GitBranch}
+        variant="compact"
         title="Pipeline proyek"
         subtitle="Linimasa milestone per proyek — pantau progress pengembangan produk dari validasi pasar hingga produksi."
         right={

@@ -245,6 +245,37 @@ export async function updateRoomDocumentTags(
   revalidateTasksAndRoomHub();
 }
 
+const renameDocSchema = z.object({
+  documentId: z.string().min(1),
+  title: z.string().max(200),
+});
+
+export async function renameRoomDocument(
+  input: z.infer<typeof renameDocSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const data = renameDocSchema.parse(input);
+  const title = data.title.trim();
+
+  const doc = await prisma.roomDocument.findUniqueOrThrow({
+    where: { id: data.documentId },
+    select: { roomId: true, uploadedById: true },
+  });
+  const m = await assertRoomMember(doc.roomId, session.user.id);
+  const canModerate = isRoomHubManagerRole(m.role);
+  if (doc.uploadedById !== session.user.id && !canModerate) {
+    throw new Error("Anda tidak dapat mengganti nama dokumen ini.");
+  }
+
+  // Nama tampilan (title); file fisik `fileName` tidak diubah. Kosong = fallback
+  // ke nama file asli.
+  await prisma.roomDocument.update({
+    where: { id: data.documentId },
+    data: { title: title || null },
+  });
+  revalidateTasksAndRoomHub();
+}
+
 const bulkDocIdsSchema = z
   .array(z.string().min(1))
   .min(1, "Pilih minimal satu file.")

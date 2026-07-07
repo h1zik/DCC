@@ -20,6 +20,7 @@ import {
   deleteRoomDocuments,
   moveRoomDocumentToFolder,
   moveRoomDocumentsToFolder,
+  renameRoomDocument,
   renameRoomDocumentFolder,
 } from "@/actions/room-documents";
 import { Button } from "@/components/ui/button";
@@ -46,12 +47,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -63,7 +58,6 @@ import {
   uploadRoomDocumentViaApi,
 } from "@/lib/room-document-upload-xhr";
 import { normalizeRoomDocumentTags } from "@/lib/room-document-tags";
-import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   downloadRoomDocumentsZip,
   downloadRoomFolderZip,
@@ -86,7 +80,6 @@ import {
   ArrowDownAZ,
   ArrowLeft,
   ArrowUpAZ,
-  ArrowUpDown,
   Calendar,
   Check,
   ChevronDown,
@@ -112,6 +105,7 @@ import {
   LayoutList,
   Loader2,
   Music,
+  Pencil,
   Play,
   Search,
   SlidersHorizontal,
@@ -294,8 +288,11 @@ export function RoomDocumentsWorkspace({
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [uploadOptionsOpen, setUploadOptionsOpen] = useState(false);
   const [pending, setPending] = useState(false);
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<
+    | { kind: "folder"; id: string; name: string }
+    | { kind: "document"; id: string; name: string }
+    | null
+  >(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -392,14 +389,6 @@ export function RoomDocumentsWorkspace({
     }
     return Array.from(s).sort((a, b) => a.localeCompare(b, "id"));
   }, [documents]);
-
-  const tagFilterItems = useMemo(
-    (): SelectItemDef[] => [
-      { value: "__all__", label: "Semua tag" },
-      ...allTagsInRoom.map((t) => ({ value: t, label: t })),
-    ],
-    [allTagsInRoom],
-  );
 
   useEffect(() => {
     setDocDisplayLimit(DOCS_PAGE_SIZE);
@@ -659,23 +648,37 @@ export function RoomDocumentsWorkspace({
   }
 
   function openRename(folder: RoomDocumentFolderRow) {
-    setRenameFolderId(folder.id);
+    setRenameTarget({ kind: "folder", id: folder.id, name: folder.name });
     setRenameValue(folder.name);
-    setRenameOpen(true);
   }
 
+  const openRenameDoc = useCallback((d: RoomDocumentRow) => {
+    const name = d.title?.trim() || d.fileName;
+    setRenameTarget({ kind: "document", id: d.id, name });
+    setRenameValue(name);
+  }, []);
+
   async function onSaveRename() {
-    if (!renameFolderId) return;
+    if (!renameTarget) return;
     const name = renameValue.trim();
     if (!name) {
-      toast.error("Nama folder tidak boleh kosong.");
+      toast.error(
+        renameTarget.kind === "folder"
+          ? "Nama folder tidak boleh kosong."
+          : "Nama file tidak boleh kosong.",
+      );
       return;
     }
     setRenameBusy(true);
     try {
-      await renameRoomDocumentFolder({ folderId: renameFolderId, name });
-      toast.success("Nama folder diperbarui.");
-      setRenameOpen(false);
+      if (renameTarget.kind === "folder") {
+        await renameRoomDocumentFolder({ folderId: renameTarget.id, name });
+        toast.success("Nama folder diperbarui.");
+      } else {
+        await renameRoomDocument({ documentId: renameTarget.id, title: name });
+        toast.success("Nama file diperbarui.");
+      }
+      setRenameTarget(null);
       router.refresh();
     } catch (err) {
       toast.error(actionErrorMessage(err, "Gagal menyimpan."));
@@ -1028,74 +1031,7 @@ export function RoomDocumentsWorkspace({
                 </button>
               ) : null}
             </div>
-            <Select
-              value={tagFilter}
-              items={tagFilterItems}
-              onValueChange={(v) => setTagFilter(v ?? "__all__")}
-            >
-              <SelectTrigger
-                size="sm"
-                className="border-border h-8 w-[min(168px,42vw)] gap-1.5 text-xs"
-              >
-                <Tag className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
-                <span className="truncate">
-                  {tagFilter === "__all__" ? "Semua tag" : tagFilter}
-                </span>
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="__all__">Semua tag</SelectItem>
-                {allTagsInRoom.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button type="button" size="sm" variant="outline">
-                    <ArrowUpDown className="size-3.5" />
-                    {SORT_LABEL[sortKey]}
-                  </Button>
-                }
-              />
-              <DropdownMenuContent align="end" sideOffset={4}>
-                <DropdownMenuGroup>
-                <DropdownMenuLabel>Urutkan berdasarkan</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={sortKey}
-                  onValueChange={(v) => setSortKey(v as SortKey)}
-                >
-                  <DropdownMenuRadioItem value="newest">
-                    <Calendar className="size-3.5" /> {SORT_LABEL.newest}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="oldest">
-                    <Calendar className="size-3.5" /> {SORT_LABEL.oldest}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="name">
-                    <ArrowDownAZ className="size-3.5" /> {SORT_LABEL.name}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="name_desc">
-                    <ArrowUpAZ className="size-3.5" /> {SORT_LABEL.name_desc}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="size">
-                    <HardDrive className="size-3.5" /> {SORT_LABEL.size}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="size_asc">
-                    <HardDrive className="size-3.5 opacity-60" />{" "}
-                    {SORT_LABEL.size_asc}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="type">
-                    <Film className="size-3.5" /> {SORT_LABEL.type}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="uploader">
-                    <User className="size-3.5" /> {SORT_LABEL.uploader}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Toggle tampilan grid / list */}
             <div className="border-border bg-background flex shrink-0 items-center rounded-lg border p-0.5">
               <button
                 type="button"
@@ -1128,59 +1064,130 @@ export function RoomDocumentsWorkspace({
                 List
               </button>
             </div>
-            {view === "grid" ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      title="Ukuran kartu (jumlah kolom)"
-                    >
-                      <LayoutGrid className="size-3.5" />
-                      {DENSITY_LABEL[density]}
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent align="end" sideOffset={4}>
-                  <DropdownMenuGroup>
-                  <DropdownMenuLabel>Ukuran kartu</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={density}
-                    onValueChange={(v) => setDensity(v as GridDensity)}
+
+            {/* Opsi tampilan: urutkan + ukuran kartu + filter tag + mode pilih */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    title="Urutkan, ukuran & filter"
                   >
-                    <DropdownMenuRadioItem value="besar">
-                      Besar · lega
+                    <SlidersHorizontal className="size-3.5" />
+                    <span className="hidden sm:inline">Tampilan</span>
+                    {tagFilter !== "__all__" || sortKey !== "newest" ? (
+                      <span
+                        className="bg-primary size-1.5 rounded-full"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </Button>
+                }
+              />
+              <DropdownMenuContent
+                align="end"
+                sideOffset={4}
+                className="max-h-[70vh] w-60 overflow-y-auto"
+              >
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Urutkan</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={sortKey}
+                    onValueChange={(v) => setSortKey(v as SortKey)}
+                  >
+                    <DropdownMenuRadioItem value="newest">
+                      <Calendar className="size-3.5" /> {SORT_LABEL.newest}
                     </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="sedang">
-                      Sedang · sampai 6 kolom
+                    <DropdownMenuRadioItem value="oldest">
+                      <Calendar className="size-3.5" /> {SORT_LABEL.oldest}
                     </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="kecil">
-                      Kecil · sampai 8 kolom
+                    <DropdownMenuRadioItem value="name">
+                      <ArrowDownAZ className="size-3.5" /> {SORT_LABEL.name}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="name_desc">
+                      <ArrowUpAZ className="size-3.5" /> {SORT_LABEL.name_desc}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="size">
+                      <HardDrive className="size-3.5" /> {SORT_LABEL.size}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="size_asc">
+                      <HardDrive className="size-3.5 opacity-60" />{" "}
+                      {SORT_LABEL.size_asc}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="type">
+                      <Film className="size-3.5" /> {SORT_LABEL.type}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="uploader">
+                      <User className="size-3.5" /> {SORT_LABEL.uploader}
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-            {!selectionActive && selectableDocIds.length > 0 ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 shrink-0 text-xs"
-                onClick={selectAllVisibleDocs}
-              >
-                <Check className="size-3.5" />
-                Pilih
-              </Button>
-            ) : null}
-            {/* Aksi utama — toolbar ini jadi satu-satunya bar */}
+                </DropdownMenuGroup>
+
+                {view === "grid" ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Ukuran kartu</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={density}
+                        onValueChange={(v) => setDensity(v as GridDensity)}
+                      >
+                        <DropdownMenuRadioItem value="besar">
+                          <LayoutGrid className="size-3.5" />{" "}
+                          {DENSITY_LABEL.besar}
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="sedang">
+                          <Grid3x3 className="size-3.5" /> {DENSITY_LABEL.sedang}
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="kecil">
+                          <Grid3x3 className="size-3.5 opacity-60" />{" "}
+                          {DENSITY_LABEL.kecil}
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuGroup>
+                  </>
+                ) : null}
+
+                {allTagsInRoom.length > 0 ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Filter tag</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={tagFilter}
+                        onValueChange={(v) => setTagFilter(v ?? "__all__")}
+                      >
+                        <DropdownMenuRadioItem value="__all__">
+                          <Tag className="size-3.5 opacity-60" /> Semua tag
+                        </DropdownMenuRadioItem>
+                        {allTagsInRoom.map((t) => (
+                          <DropdownMenuRadioItem key={t} value={t}>
+                            <Tag className="size-3.5" /> {t}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuGroup>
+                  </>
+                ) : null}
+
+                {!selectionActive && selectableDocIds.length > 0 ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={selectAllVisibleDocs}>
+                      <Check className="size-3.5" /> Pilih file…
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <div
               className="bg-border mx-0.5 hidden h-6 w-px lg:block"
               aria-hidden
             />
+
             <Button
               type="button"
               size="sm"
@@ -1189,77 +1196,88 @@ export function RoomDocumentsWorkspace({
               disabled={pending}
             >
               <FolderPlus className="size-4" />
-              Folder baru
+              <span className="hidden sm:inline">Folder baru</span>
             </Button>
-            <Popover open={uploadOptionsOpen} onOpenChange={setUploadOptionsOpen}>
-              <PopoverTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="outline"
-                    aria-label="Opsi unggah (judul & tag)"
-                    title="Opsi unggah"
-                    className={cn(
-                      (title.trim() || uploadTagsInput.trim()) &&
-                        "border-primary/50 text-primary",
-                    )}
-                  >
-                    <SlidersHorizontal className="size-4" />
-                  </Button>
-                }
-              />
-              <PopoverContent align="end" className="w-80">
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium">Opsi unggah berikutnya</p>
-                  <p className="text-muted-foreground text-xs">
-                    Berlaku untuk file yang diunggah setelah ini.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="doc-title" className="text-xs">
-                    Judul (opsional)
-                  </Label>
-                  <Input
-                    id="doc-title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Contoh: Briefing Q3"
-                    disabled={pending || uploadBusy}
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="doc-upload-tags" className="text-xs">
-                    Tag batch (opsional)
-                  </Label>
-                  <Input
-                    id="doc-upload-tags"
-                    value={uploadTagsInput}
-                    onChange={(e) => setUploadTagsInput(e.target.value)}
-                    placeholder="footage, raw, approved"
-                    disabled={pending || uploadBusy}
-                    className="h-9"
-                  />
-                  <p className="text-muted-foreground text-[11px]">
-                    Maks. 20 tag; huruf kecil otomatis. Pisahkan dengan koma/spasi.
-                  </p>
-                </div>
-              </PopoverContent>
-            </Popover>
-            <Button
-              type="button"
-              size="sm"
-              disabled={pending || uploadBusy}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {pending || uploadBusy ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Upload className="size-4" />
-              )}
-              Unggah
-            </Button>
+
+            {/* Unggah + opsi (judul & tag) sebagai caret */}
+            <div className="flex shrink-0 items-center">
+              <Button
+                type="button"
+                size="sm"
+                className="rounded-r-none"
+                disabled={pending || uploadBusy}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {pending || uploadBusy ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Upload className="size-4" />
+                )}
+                Unggah
+              </Button>
+              <Popover
+                open={uploadOptionsOpen}
+                onOpenChange={setUploadOptionsOpen}
+              >
+                <PopoverTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="sm"
+                      aria-label="Opsi unggah (judul & tag)"
+                      title="Opsi unggah berikutnya"
+                      className="border-primary-foreground/25 rounded-l-none border-l px-1.5"
+                    >
+                      <ChevronDown className="size-4" />
+                      {title.trim() || uploadTagsInput.trim() ? (
+                        <span
+                          className="bg-primary-foreground size-1.5 rounded-full"
+                          aria-hidden
+                        />
+                      ) : null}
+                    </Button>
+                  }
+                />
+                <PopoverContent align="end" className="w-80">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Opsi unggah berikutnya</p>
+                    <p className="text-muted-foreground text-xs">
+                      Berlaku untuk file yang diunggah setelah ini.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="doc-title" className="text-xs">
+                      Judul (opsional)
+                    </Label>
+                    <Input
+                      id="doc-title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Contoh: Briefing Q3"
+                      disabled={pending || uploadBusy}
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="doc-upload-tags" className="text-xs">
+                      Tag batch (opsional)
+                    </Label>
+                    <Input
+                      id="doc-upload-tags"
+                      value={uploadTagsInput}
+                      onChange={(e) => setUploadTagsInput(e.target.value)}
+                      placeholder="footage, raw, approved"
+                      disabled={pending || uploadBusy}
+                      className="h-9"
+                    />
+                    <p className="text-muted-foreground text-[11px]">
+                      Maks. 20 tag; huruf kecil otomatis. Pisahkan dengan
+                      koma/spasi.
+                    </p>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
             </div>
           </div>
 
@@ -1451,6 +1469,7 @@ export function RoomDocumentsWorkspace({
                         onPreview={onPreviewDoc}
                         onDelete={onDeleteDoc}
                         onMove={onMoveDoc}
+                        onRename={openRenameDoc}
                         onDownload={(d) => void onDownloadDocument(d)}
                         // 4 ubin pertama (1 baris di breakpoint 2xl) berada di
                         // atas fold — beri `priority` agar Next.js set
@@ -1486,6 +1505,7 @@ export function RoomDocumentsWorkspace({
               onPreview={onPreviewDoc}
               onDelete={onDeleteDoc}
               onMove={onMoveDoc}
+              onRenameDocument={openRenameDoc}
               onDownloadDocument={(d) => void onDownloadDocument(d)}
             />
           )}
@@ -1683,24 +1703,42 @@ export function RoomDocumentsWorkspace({
         </DialogContent>
       </Dialog>
 
-      {/* Rename folder dialog */}
-      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+      {/* Rename dialog — folder atau file */}
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setRenameTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Ganti nama folder</DialogTitle>
+            <DialogTitle>
+              {renameTarget?.kind === "document"
+                ? "Ganti nama file"
+                : "Ganti nama folder"}
+            </DialogTitle>
           </DialogHeader>
           <Input
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
-            maxLength={80}
+            maxLength={renameTarget?.kind === "document" ? 200 : 80}
             disabled={renameBusy}
             autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && renameValue.trim()) void onSaveRename();
+            }}
           />
+          {renameTarget?.kind === "document" ? (
+            <p className="text-muted-foreground text-xs">
+              Mengubah nama tampilan file. Nama file asli saat diunduh tidak
+              berubah.
+            </p>
+          ) : null}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               type="button"
               variant="outline"
-              onClick={() => setRenameOpen(false)}
+              onClick={() => setRenameTarget(null)}
               disabled={renameBusy}
             >
               Batal
@@ -1710,6 +1748,7 @@ export function RoomDocumentsWorkspace({
               disabled={renameBusy || !renameValue.trim()}
               onClick={() => void onSaveRename()}
             >
+              {renameBusy ? <Loader2 className="size-4 animate-spin" /> : null}
               Simpan
             </Button>
           </DialogFooter>
@@ -1938,6 +1977,7 @@ const DocCard = memo(function DocCard({
   onPreview,
   onDelete,
   onMove,
+  onRename,
   onDownload,
   compact = false,
   priority = false,
@@ -1952,6 +1992,7 @@ const DocCard = memo(function DocCard({
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onRename: (d: RoomDocumentRow) => void;
   onDownload: (d: RoomDocumentRow) => void | Promise<void>;
   /** Kartu padat (kolom banyak): sembunyikan metadata & footer, aksi via hover. */
   compact?: boolean;
@@ -2057,6 +2098,17 @@ const DocCard = memo(function DocCard({
           </Button>
           {canManage ? (
             <>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="secondary"
+                className="size-7 shadow-sm"
+                aria-label={`Ganti nama ${doc.fileName}`}
+                title="Ganti nama"
+                onClick={() => onRename(doc)}
+              >
+                <Pencil className="size-3.5" />
+              </Button>
               <MoveFolderMenu
                 doc={doc}
                 folders={folders}
@@ -2167,6 +2219,7 @@ const DocListRow = memo(function DocListRow({
   onPreview,
   onDelete,
   onMove,
+  onRename,
   onDownload,
 }: {
   doc: RoomDocumentRow;
@@ -2178,6 +2231,7 @@ const DocListRow = memo(function DocListRow({
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onRename: (d: RoomDocumentRow) => void;
   onDownload: (d: RoomDocumentRow) => void | Promise<void>;
 }) {
   const meta = fileTypeMeta(doc.mimeType);
@@ -2271,6 +2325,16 @@ const DocListRow = memo(function DocListRow({
         </Button>
         {canManage ? (
           <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Ganti nama ${doc.fileName}`}
+              title="Ganti nama"
+              onClick={() => onRename(doc)}
+            >
+              <Pencil className="size-4" />
+            </Button>
             <MoveFolderMenu
               doc={doc}
               folders={folders}
@@ -2327,6 +2391,7 @@ function DocList({
   onPreview,
   onDelete,
   onMove,
+  onRenameDocument,
   onDownloadDocument,
 }: {
   childFolders: RoomDocumentFolderRow[];
@@ -2347,6 +2412,7 @@ function DocList({
   onPreview: (d: RoomDocumentRow) => void;
   onDelete: (d: RoomDocumentRow) => void | Promise<void>;
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
+  onRenameDocument: (d: RoomDocumentRow) => void;
   onDownloadDocument: (d: RoomDocumentRow) => void | Promise<void>;
 }) {
   return (
@@ -2392,6 +2458,7 @@ function DocList({
             onPreview={onPreview}
             onDelete={onDelete}
             onMove={onMove}
+            onRename={onRenameDocument}
             onDownload={onDownloadDocument}
           />
         ))}

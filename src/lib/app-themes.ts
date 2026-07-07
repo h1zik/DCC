@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  CUSTOM_THEME_VAR_KEYS,
+  DEFAULT_CUSTOM_THEME,
+  generateThemeVars,
+  isConfigDark,
+  type CustomThemeConfig,
+} from "@/lib/theme-generator";
 
 export const APP_THEME_PRESETS = {
   original: {
@@ -83,16 +90,18 @@ export const APP_THEME_PRESETS = {
   },
 } as const;
 
-export type AppThemePreset = keyof typeof APP_THEME_PRESETS;
+/** Preset bawaan, atau `"custom"` (token dihitung dari `appThemeCustom`). */
+export type AppThemePreset = keyof typeof APP_THEME_PRESETS | "custom";
 
+/** Hanya preset bawaan (untuk galeri swatch); `"custom"` ditangani terpisah. */
 export const APP_THEME_PRESET_IDS = Object.keys(
   APP_THEME_PRESETS,
-) as AppThemePreset[];
+) as Exclude<AppThemePreset, "custom">[];
 
 export const DEFAULT_APP_THEME_PRESET: AppThemePreset = "original";
 
 export function isAppThemePreset(v: string): v is AppThemePreset {
-  return v in APP_THEME_PRESETS;
+  return v === "custom" || v in APP_THEME_PRESETS;
 }
 
 export function resolveAppThemePreset(
@@ -114,11 +123,28 @@ function resolveNextThemesDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-export function applyAppThemeToDocument(preset: AppThemePreset): void {
+export function applyAppThemeToDocument(
+  preset: AppThemePreset,
+  custom?: CustomThemeConfig | null,
+): void {
   if (typeof document === "undefined") return;
 
   const el = document.documentElement;
-  const meta = APP_THEME_PRESETS[preset];
+
+  if (preset === "custom") {
+    const cfg = custom ?? DEFAULT_CUSTOM_THEME;
+    const vars = generateThemeVars(cfg);
+    el.setAttribute("data-theme", "custom");
+    if (isConfigDark(cfg)) el.classList.add("dark");
+    else el.classList.remove("dark");
+    for (const [key, value] of Object.entries(vars)) {
+      el.style.setProperty(key, value);
+    }
+    return;
+  }
+
+  // Bersihkan token inline sisa tema custom sebelumnya (bila ada).
+  for (const key of CUSTOM_THEME_VAR_KEYS) el.style.removeProperty(key);
 
   if (preset === "original") {
     el.removeAttribute("data-theme");
@@ -128,8 +154,7 @@ export function applyAppThemeToDocument(preset: AppThemePreset): void {
   }
 
   el.setAttribute("data-theme", preset);
-
-  if (meta.isDark) {
+  if (APP_THEME_PRESETS[preset].isDark) {
     el.classList.add("dark");
   } else {
     el.classList.remove("dark");
@@ -138,7 +163,11 @@ export function applyAppThemeToDocument(preset: AppThemePreset): void {
 
 export function resolveSonnerTheme(
   preset: AppThemePreset,
+  custom?: CustomThemeConfig | null,
 ): "light" | "dark" {
+  if (preset === "custom") {
+    return custom && isConfigDark(custom) ? "dark" : "light";
+  }
   if (preset === "original") {
     if (typeof document !== "undefined") {
       return document.documentElement.classList.contains("dark")

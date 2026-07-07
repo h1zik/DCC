@@ -18,6 +18,7 @@ const AttendancePanel = dynamic(
       <>
         <PageHero
           icon={ScanFace}
+          variant="compact"
           title="Absensi"
           subtitle="Memuat modul pengenalan wajah…"
         />

@@ -44,6 +44,7 @@ The application is built on a single **Next.js 16 App Router** codebase backed b
 - **Messages** — direct chat, room chat, unread counters, GIF support and presence APIs.
 - **Notifications** — web push via VAPID and optional WhatsApp integration.
 - **Changelog** — internal “what’s new” area for users.
+- **Appearance & Theming** — per-user theme preference with 16 Opera GX-style presets (light & dark), saved to each user's profile and applied app-wide down to theme-aware scrollbars and status colors.
 
 ### 💰 Finance & Commercial Control
 
@@ -133,8 +134,8 @@ DCC is organized around role-aware navigation and route access. Main role areas 
 | Layer | Technologies |
 |---|---|
 | **Framework** | Next.js 16 App Router, React 19, TypeScript 5 |
-| **Styling / UI** | Tailwind CSS 4, Base UI, shadcn-style components, `lucide-react`, `next-themes`, `sonner` |
-| **Database / ORM** | PostgreSQL, Prisma 6.19.x, 100 Prisma models and 71 enums |
+| **Styling / UI** | Tailwind CSS 4, Base UI, shadcn-style components, `lucide-react`, `next-themes`, per-user multi-theme system (16 presets), `sonner` |
+| **Database / ORM** | PostgreSQL, Prisma 6.19.x, 154 Prisma models and 72 enums |
 | **Auth** | NextAuth v5 beta + Prisma adapter, `bcryptjs` |
 | **AI / LLM** | Google Generative AI / Gemini, Groq SDK, Ollama/Ollama Cloud-style research provider config |
 | **Research / Scraping** | Custom scraper API, Apify, `cheerio`, `rss-parser`, `google-trends-api`, DataForSEO |

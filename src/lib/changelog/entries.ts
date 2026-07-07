@@ -37,6 +37,35 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-07-custom-theme-studio",
+    date: "2026-07-07",
+    title: "Racik & simpan tema aplikasimu sendiri",
+    category: "new",
+    description:
+      "Selain tema jadi, kini kamu bisa meracik tema sendiri di Profil: pilih warna latar bebas (teks & kartu otomatis menyesuaikan agar tetap terbaca), warna aksen, tingkat kelengkungan sudut, serta font teks dan judul. Semua berubah dengan pratinjau langsung. Tema hasil racikan bisa kamu simpan, beri nama, dan jadi preset milikmu — buat sebanyak yang kamu mau, ganti-ganti kapan saja.",
+    highlights: [
+      "Warna latar & aksen bebas dengan penyesuaian kontras otomatis",
+      "Atur kelengkungan sudut + pilih font teks & judul",
+      "Simpan banyak tema bernama dan berpindah sesukamu",
+    ],
+  },
+  {
+    id: "2026-07-07-document-preview-revamp",
+    date: "2026-07-07",
+    title: "Pratinjau file didesain ulang: zoom, geser & navigasi lebih enak",
+    category: "improved",
+    description:
+      "Jendela pratinjau dokumen dipoles jadi seperti galeri profesional: panggung gambar gelap yang fokus, tombol pindah-file di tepi, dan deretan thumbnail (filmstrip) untuk lompat antar-gambar. Sekarang gambar juga bisa di-zoom (tombol, scroll, atau klik-ganda) dan digeser saat diperbesar. Bar atasnya lebih ringkas dengan info file yang rapi, dan tag jadi chip berwarna sesuai status.",
+  },
+  {
+    id: "2026-07-07-document-rename-toolbar",
+    date: "2026-07-07",
+    title: "Ganti nama file & folder, plus toolbar Documents lebih ringkas",
+    category: "improved",
+    description:
+      "Di Documents kamu kini bisa mengganti nama file (nama tampilan) maupun folder langsung dari kartu/daftar. Toolbar-nya juga dirapikan: kontrol urutkan, ukuran kartu, filter tag, dan mode pilih digabung ke satu menu “Tampilan”, sehingga bar-nya tidak lagi penuh sesak tombol.",
+  },
+  {
     id: "2026-07-07-admin-pages-redesign",
     date: "2026-07-07",
     title: "Tampilan baru: halaman Brand, Web Setting, Peran & Pengguna",

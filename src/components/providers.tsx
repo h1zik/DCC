@@ -7,14 +7,17 @@ import { AppThemeProvider } from "@/components/app-theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import type { AppThemePreset } from "@/lib/app-themes";
+import type { ThemeLibrary } from "@/lib/theme-generator";
 
 export function Providers({
   session,
   initialAppTheme,
+  initialLibrary,
   children,
 }: {
   session: Session | null;
   initialAppTheme: AppThemePreset;
+  initialLibrary: ThemeLibrary;
   children: React.ReactNode;
 }) {
   return (
@@ -25,7 +28,10 @@ export function Providers({
         enableSystem
         disableTransitionOnChange
       >
-        <AppThemeProvider initialPreset={initialAppTheme}>
+        <AppThemeProvider
+          initialPreset={initialAppTheme}
+          initialLibrary={initialLibrary}
+        >
           <TooltipProvider>
             {children}
             <Toaster richColors position="top-center" />
