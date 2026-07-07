@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   AlertTriangle,
   FlaskConical,
@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PRODUCT_CONCEPT_STATUS_LABELS } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   hub,
   ResearchHubPageHeader,
@@ -129,6 +130,19 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
 
   const inProgress = data.status === "VALIDATING";
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
+
+  const roomItems = useMemo(
+    (): SelectItemDef[] =>
+      data.rooms.map((r) => ({ value: r.id, label: r.name })),
+    [data.rooms],
+  );
+
+  const compareItems = useMemo(
+    (): SelectItemDef[] =>
+      data.otherConcepts.map((c) => ({ value: c.id, label: c.title })),
+    [data.otherConcepts],
+  );
+
   const needsRevalidate =
     data.status === "DRAFT" && data.validationScores.overall > 0;
 
@@ -248,7 +262,11 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
                 <div className="space-y-3 py-2">
                   <div className="space-y-2">
                     <Label>Room</Label>
-                    <Select value={roomId} onValueChange={(v) => v && setRoomId(v)}>
+                    <Select
+                      value={roomId}
+                      items={roomItems}
+                      onValueChange={(v) => v && setRoomId(v)}
+                    >
                       <SelectTrigger />
                       <SelectContent>
                         {data.rooms.map((r) => (
@@ -422,7 +440,11 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
             <div className={cn(hub.panel, "flex flex-wrap items-end gap-2")}>
               <div className="min-w-[200px] flex-1 space-y-2">
                 <Label>Konsep pembanding</Label>
-                <Select value={compareId} onValueChange={(v) => v && setCompareId(v)}>
+                <Select
+                  value={compareId}
+                  items={compareItems}
+                  onValueChange={(v) => v && setCompareId(v)}
+                >
                   <SelectTrigger />
                   <SelectContent>
                     {data.otherConcepts.map((c) => (

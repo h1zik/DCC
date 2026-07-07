@@ -1,7 +1,7 @@
 "use client";
 import { actionErrorMessage } from "@/lib/action-error-message";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TaskStatus } from "@prisma/client";
 import type { RoomProcessPhaseRef } from "@/lib/room-process-phase";
 import { roomProcessPhaseKey } from "@/lib/room-process-phase";
@@ -15,6 +15,7 @@ import {
   updateRoomKanbanColumnTitle,
 } from "@/actions/room-kanban-columns";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { isDefaultKanbanLinkedStatus, taskStatusLabel } from "@/lib/task-status-ui";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +58,12 @@ export function RoomKanbanSettingsDialog({
   const [unused, setUnused] = useState<TaskStatus[]>([]);
   const [addStatus, setAddStatus] = useState<TaskStatus | "">("");
   const [busy, setBusy] = useState(false);
+
+  const addStatusItems = useMemo(
+    (): SelectItemDef[] =>
+      unused.map((s) => ({ value: s, label: taskStatusLabel(s) })),
+    [unused],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -257,6 +264,7 @@ export function RoomKanbanSettingsDialog({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Select
                 value={addStatus || undefined}
+                items={addStatusItems}
                 onValueChange={(v) => {
                   if (v) setAddStatus(v as TaskStatus);
                 }}

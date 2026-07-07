@@ -53,9 +53,8 @@ function formatFileSize(bytes: number) {
 /** Ukuran khusus isi percakapan (sedikit lebih kecil dari UI sekitar, tapi terbaca nyaman). */
 const chatText = "text-[13px] leading-relaxed";
 const chatMeta = "text-[11px] leading-snug";
-/** Sudut bubble pesan — sedikit membulat, panel luar tetap lancip. */
-const bubbleRound = "rounded-lg";
-const bubbleInnerRound = "rounded-md";
+const bubbleRound = "rounded-2xl";
+const bubbleInnerRound = "rounded-xl";
 
 export function DirectChatMessageBubble({
   message: m,
@@ -65,6 +64,7 @@ export function DirectChatMessageBubble({
   onEdit,
   onDelete,
   onScrollToReply,
+  compact = false,
 }: {
   message: DirectChatMessageView;
   own: boolean;
@@ -73,65 +73,86 @@ export function DirectChatMessageBubble({
   onEdit: () => void;
   onDelete: () => void;
   onScrollToReply?: (id: string) => void;
+  compact?: boolean;
 }) {
   const deleted = Boolean(m.deletedAt);
+  const showAvatar = !compact;
 
   return (
-    <div className={cn("group flex gap-2.5", own ? "flex-row-reverse" : "flex-row")}>
-      <Link
-        href={`/profile/${m.author.id}`}
-        className="shrink-0 rounded-full pt-0.5"
-        title={`Profil ${authorLabel(m.author.name, m.author.email)}`}
-      >
-        {m.author.image ? (
-          <Image
-            src={m.author.image}
-            alt=""
-            width={36}
-            height={36}
-            className="border-border size-9 rounded-full border object-cover"
-            unoptimized
-          />
-        ) : (
-          <div
-            className={cn(
-              "border-border bg-accent/40 text-accent-foreground flex size-9 items-center justify-center rounded-full border font-semibold",
-              chatMeta,
-            )}
-            aria-hidden
-          >
-            {(m.author.name?.trim() || m.author.email).slice(0, 1).toUpperCase()}
-          </div>
-        )}
-      </Link>
+    <div
+      className={cn(
+        "group flex gap-2.5",
+        own ? "flex-row-reverse" : "flex-row",
+        compact ? "mt-1" : "mt-2.5",
+      )}
+    >
+      {showAvatar ? (
+        <Link
+          href={`/profile/${m.author.id}`}
+          className="shrink-0 rounded-full pt-0.5"
+          title={`Profil ${authorLabel(m.author.name, m.author.email)}`}
+        >
+          {m.author.image ? (
+            <Image
+              src={m.author.image}
+              alt=""
+              width={36}
+              height={36}
+              className="border-border size-9 rounded-full border object-cover"
+              unoptimized
+            />
+          ) : (
+            <div
+              className={cn(
+                "border-border bg-accent/40 text-accent-foreground flex size-9 items-center justify-center rounded-full border font-semibold",
+                chatMeta,
+              )}
+              aria-hidden
+            >
+              {(m.author.name?.trim() || m.author.email).slice(0, 1).toUpperCase()}
+            </div>
+          )}
+        </Link>
+      ) : (
+        <div className="size-9 shrink-0" aria-hidden />
+      )}
       <div
         className={cn(
-          "max-w-[min(100%,min(72rem,92%))] min-w-0 border px-3 py-2 shadow-sm",
+          "min-w-0 max-w-[min(82%,42rem)] border px-3 py-2 shadow-sm md:max-w-[min(76%,46rem)]",
           bubbleRound,
           chatText,
-          own ? "border-primary/25 bg-primary/12" : "border-border bg-card",
+          own
+            ? "border-primary/20 bg-primary/12 rounded-tr-md"
+            : "border-border bg-card rounded-tl-md",
+          compact && (own ? "rounded-tr-2xl" : "rounded-tl-2xl"),
           deleted && "opacity-75",
         )}
       >
-        <div
-          className={cn(
-            "text-muted-foreground flex flex-wrap items-center justify-between gap-1.5",
-            chatMeta,
-          )}
-        >
-          <Link
-            href={`/profile/${m.author.id}`}
-            className="font-semibold text-foreground underline-offset-4 hover:underline"
+        {!compact ? (
+          <div
+            className={cn(
+              "text-muted-foreground flex flex-wrap items-center justify-between gap-1.5",
+              chatMeta,
+            )}
           >
-            {own ? "Anda" : authorLabel(m.author.name, m.author.email)}
-          </Link>
-          <span className="flex items-center gap-1">
-            {m.editedAt && !deleted ? (
-              <span className="italic opacity-80">diedit</span>
-            ) : null}
+            <Link
+              href={`/profile/${m.author.id}`}
+              className="font-semibold text-foreground underline-offset-4 hover:underline"
+            >
+              {own ? "Anda" : authorLabel(m.author.name, m.author.email)}
+            </Link>
+            <span className="flex items-center gap-1">
+              {m.editedAt && !deleted ? (
+                <span className="italic opacity-80">diedit</span>
+              ) : null}
+              <time dateTime={m.createdAt}>{formatTime(m.createdAt)}</time>
+            </span>
+          </div>
+        ) : (
+          <div className="sr-only">
             <time dateTime={m.createdAt}>{formatTime(m.createdAt)}</time>
-          </span>
-        </div>
+          </div>
+        )}
 
         {m.replyTo ? (
           <button
@@ -231,8 +252,9 @@ export function DirectChatMessageBubble({
 
         <div
           className={cn(
-            "mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5",
+            "mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5",
             own ? "justify-start" : "justify-end",
+            compact && "opacity-80",
           )}
         >
           {own && readReceipt && !deleted ? (

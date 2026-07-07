@@ -72,6 +72,7 @@ export default async function RoomMembersPage({ params }: PageProps) {
       id: m.user.id,
       name: m.user.name,
       email: m.user.email,
+      image: m.user.image,
       role: m.user.role,
     },
   }));

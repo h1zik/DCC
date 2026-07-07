@@ -564,6 +564,10 @@ export function SingleSelectField({
       </span>
       <Select
         value={value || "__auto__"}
+        items={[
+          { value: "__auto__", label: placeholder },
+          ...items.map((item) => ({ value: item.id, label: item.label })),
+        ]}
         onValueChange={(v) => onChange(v === "__auto__" ? "" : (v ?? ""))}
       >
         <SelectTrigger className="bg-background h-10 w-full text-xs">

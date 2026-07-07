@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   CalendarRange,
   Copy,
@@ -54,6 +54,7 @@ import {
   KEYWORD_INTEL_STATUS_LABELS,
   MARKETPLACE_LABELS,
 } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import type {
   GapKeywordRow,
   KeywordMatrixRow,
@@ -133,6 +134,15 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
 
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
   const canBrief = data.status === "READY";
+
+  const roomItems = useMemo(
+    (): SelectItemDef[] =>
+      data.rooms.map((r) => ({
+        value: r.id,
+        label: r.brandName ? `${r.name} — ${r.brandName}` : r.name,
+      })),
+    [data.rooms],
+  );
 
   const isProcessing =
     data.status === "COLLECTING" ||
@@ -256,6 +266,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                       <Label>Room / Brand</Label>
                       <Select
                         value={roomId}
+                        items={roomItems}
                         onValueChange={(v) => setRoomId(v ?? "")}
                       >
                         <SelectTrigger>

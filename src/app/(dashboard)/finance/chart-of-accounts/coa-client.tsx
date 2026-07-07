@@ -36,6 +36,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Table,
   TableBody,
@@ -52,6 +53,10 @@ import {
 } from "@/lib/finance-format";
 import { cn } from "@/lib/utils";
 import { FinanceEmptyState } from "@/components/finance/empty-state";
+
+const FINANCE_TYPE_ITEMS: SelectItemDef[] = FINANCE_TYPE_GROUP_ORDER.map(
+  (t) => ({ value: t, label: FINANCE_TYPE_LABEL[t] }),
+);
 
 type Row = {
   id: string;
@@ -453,6 +458,7 @@ function CoaEditDialog({
           <Label>Tipe</Label>
           <Select
             value={type}
+            items={FINANCE_TYPE_ITEMS}
             onValueChange={(v) =>
               setType((v ?? "EXPENSE") as FinanceLedgerType)
             }

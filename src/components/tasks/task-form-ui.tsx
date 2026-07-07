@@ -34,6 +34,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { TaskDocumentUploadOptions } from "@/components/tasks/task-document-upload-options";
 import type { RoomFolderNode } from "@/lib/room-document-folders";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { taskStatusLabel } from "@/lib/task-status-ui";
 import { cn } from "@/lib/utils";
 
@@ -259,6 +260,14 @@ function priorityTone(p: TaskPriority): string {
   }
 }
 
+const TASK_STATUS_ITEMS: SelectItemDef[] = (
+  Object.values(TaskStatus) as TaskStatus[]
+).map((s) => ({ value: s, label: taskStatusLabel(s) }));
+
+const TASK_PRIORITY_ITEMS: SelectItemDef[] = (
+  Object.values(TaskPriority) as TaskPriority[]
+).map((p) => ({ value: p, label: priorityLabel(p) }));
+
 export function TaskFormPlanning({
   status,
   onStatusChange,
@@ -305,6 +314,7 @@ export function TaskFormPlanning({
             <Label className="text-xs">Status</Label>
             <Select
               value={status}
+              items={TASK_STATUS_ITEMS}
               disabled={statusDisabled}
               onValueChange={(v) => {
                 if (v) onStatusChange(v as TaskStatus);
@@ -327,6 +337,7 @@ export function TaskFormPlanning({
           <Label className="text-xs">Prioritas</Label>
           <Select
             value={priority}
+            items={TASK_PRIORITY_ITEMS}
             onValueChange={(v) => {
               if (v) onPriorityChange(v as TaskPriority);
             }}

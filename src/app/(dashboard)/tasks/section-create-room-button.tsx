@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
+import { brandIdItems, type SelectItemDef } from "@/lib/select-option-items";
 import { Plus } from "lucide-react";
 
 export function SectionCreateRoomButton({
@@ -41,6 +42,14 @@ export function SectionCreateRoomButton({
   const [pending, setPending] = useState(false);
 
   const title = useMemo(() => roomWorkspaceSectionTitle(section), [section]);
+
+  const brandSelectItems = useMemo(
+    (): SelectItemDef[] => [
+      { value: "__none__", label: "Tanpa brand" },
+      ...brandIdItems(brands),
+    ],
+    [brands],
+  );
 
   function reset() {
     setName("");
@@ -109,6 +118,7 @@ export function SectionCreateRoomButton({
             <Label>Brand terkait (opsional)</Label>
             <Select
               value={brandId || "__none__"}
+              items={brandSelectItems}
               onValueChange={(v) => setBrandId(!v || v === "__none__" ? "" : v)}
             >
               <SelectTrigger>

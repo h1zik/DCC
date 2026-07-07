@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { USP_GAP_STATUS_LABELS } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { assessStoredContextQuality } from "@/lib/research/usp-gap/context-quality";
 import type { StoredContextModules, ResolvedContextSources } from "@/lib/research/usp-gap/context-types";
 import {
@@ -154,6 +155,12 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
   const contextQuality = useMemo(
     () => assessStoredContextQuality(data.contextModules),
     [data.contextModules],
+  );
+
+  const roomItems = useMemo(
+    (): SelectItemDef[] =>
+      data.rooms.map((r) => ({ value: r.id, label: r.name })),
+    [data.rooms],
   );
 
   useEffect(() => {
@@ -472,7 +479,11 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
             </p>
             <div className="space-y-2">
               <Label>Room</Label>
-              <Select value={roomId} onValueChange={(v) => v && setRoomId(v)}>
+              <Select
+                value={roomId}
+                items={roomItems}
+                onValueChange={(v) => v && setRoomId(v)}
+              >
                 <SelectTrigger />
                 <SelectContent>
                   {data.rooms.map((r) => (

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -10,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 
 export type VisualLibrarySourceKey =
   | "pinterest"
@@ -91,6 +93,12 @@ export function VisualLibraryEntityPicker({
   onChange: (id: string) => void;
   className?: string;
 }) {
+  const entityItems = useMemo<SelectItemDef[]>(
+    () =>
+      entities.map((e) => ({ value: e.id, label: `${e.name} (${e.count})` })),
+    [entities],
+  );
+
   if (entities.length === 0) return null;
 
   const active = entities.find((e) => e.id === activeId) ?? entities[0];
@@ -100,6 +108,7 @@ export function VisualLibraryEntityPicker({
       <div className={cn("md:hidden", className)}>
         <Select
           value={active?.id}
+          items={entityItems}
           onValueChange={(v) => {
             if (v) onChange(v);
           }}

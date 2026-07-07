@@ -21,6 +21,12 @@ import {
 import { FinanceSectionCard } from "@/components/finance/section-card";
 import { FINANCE_MONTH_LABELS, periodLabel } from "@/lib/finance-period";
 import { formatDateId } from "@/lib/finance-format";
+import type { SelectItemDef } from "@/lib/select-option-items";
+
+const MONTH_ITEMS: SelectItemDef[] = FINANCE_MONTH_LABELS.map((label, i) => ({
+  value: String(i + 1),
+  label,
+}));
 
 type Lock = {
   id: string;
@@ -94,6 +100,7 @@ export function PeriodLockPanel({ currentPeriod, locks }: Props) {
               <Label className="text-xs">Bulan</Label>
               <Select
                 value={String(month)}
+                items={MONTH_ITEMS}
                 onValueChange={(v) => setMonth(Number(v))}
               >
                 <SelectTrigger className="h-8 w-full text-sm">

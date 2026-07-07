@@ -14,6 +14,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Table,
   TableBody,
@@ -54,6 +55,12 @@ export function TreasuryClient(props: { banks: Bank[]; cashflow: CfLine[] }) {
   const toLabel =
     props.banks.find((b) => b.id === safeToId)?.name ??
     (safeToId === "__none__" ? "Belum ada rekening" : "Pilih rekening tujuan");
+  const bankItems: SelectItemDef[] = [
+    ...(props.banks.length === 0
+      ? [{ value: "__none__", label: "Belum ada rekening" }]
+      : []),
+    ...props.banks.map((b) => ({ value: b.id, label: b.name })),
+  ];
 
   useEffect(() => {
     if (safeFromId !== fromId && safeFromId !== "__none__") {
@@ -102,6 +109,7 @@ export function TreasuryClient(props: { banks: Bank[]; cashflow: CfLine[] }) {
           <Label>Dari rekening</Label>
           <Select
             value={safeFromId}
+            items={bankItems}
             onValueChange={(v) => setFromId(!v || v === "__none__" ? "" : v)}
           >
             <SelectTrigger className="w-full">
@@ -123,6 +131,7 @@ export function TreasuryClient(props: { banks: Bank[]; cashflow: CfLine[] }) {
           <Label>Ke rekening</Label>
           <Select
             value={safeToId}
+            items={bankItems}
             onValueChange={(v) => setToId(!v || v === "__none__" ? "" : v)}
           >
             <SelectTrigger className="w-full">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   BarChart3,
   FileText,
@@ -50,9 +50,11 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { USP_GAP_STATUS_LABELS } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import type { ResolvedContextSources } from "@/lib/research/usp-gap/context-types";
 import {
   BrandHubPageHeader,
@@ -144,6 +146,11 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
   const [uspIndex, setUspIndex] = useState(0);
   const [roomId, setRoomId] = useState(data.rooms[0]?.id ?? "");
   const [projectName, setProjectName] = useState(`USP: ${data.category}`);
+
+  const roomItems = useMemo<SelectItemDef[]>(
+    () => data.rooms.map((r) => ({ value: r.id, label: r.name })),
+    [data.rooms],
+  );
 
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
   const inProgress =
@@ -457,8 +464,14 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
             </p>
             <div className="space-y-2">
               <Label>Room</Label>
-              <Select value={roomId} onValueChange={(v) => v && setRoomId(v)}>
-                <SelectTrigger />
+              <Select
+                value={roomId}
+                items={roomItems}
+                onValueChange={(v) => v && setRoomId(v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {data.rooms.map((r) => (
                     <SelectItem key={r.id} value={r.id}>

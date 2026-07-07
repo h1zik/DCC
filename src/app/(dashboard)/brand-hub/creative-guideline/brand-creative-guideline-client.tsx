@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -23,6 +23,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import type { GuidelineReadiness } from "@/lib/brand-research/strategy/evidence-gate";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandStudioGenerationPoll } from "../use-brand-studio-generation-poll";
 import {
@@ -97,6 +98,15 @@ export function BrandCreativeGuidelineClient({
     strategyOptions[0]?.id ?? "",
   );
 
+  const strategyItems = useMemo<SelectItemDef[]>(
+    () =>
+      strategyOptions.map((s) => ({
+        value: s.id,
+        label: s.brandEssence ?? s.id,
+      })),
+    [strategyOptions],
+  );
+
   const selected = guidelines.find((g) => g.id === selectedId) ?? null;
   const isGenerating = selected?.status === "GENERATING";
 
@@ -163,7 +173,11 @@ export function BrandCreativeGuidelineClient({
         action={
           <div className="grid w-full gap-2">
             {strategyOptions.length > 0 ? (
-              <Select value={strategyPick} onValueChange={(v) => setStrategyPick(v ?? "")}>
+              <Select
+                value={strategyPick}
+                items={strategyItems}
+                onValueChange={(v) => setStrategyPick(v ?? "")}
+              >
                 <SelectTrigger className="h-8 text-xs">
                   {strategyOptions.find((s) => s.id === strategyPick)?.brandEssence ??
                     "Pilih strategy"}

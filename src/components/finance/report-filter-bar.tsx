@@ -12,6 +12,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { cn } from "@/lib/utils";
 
 export type ReportFilterPreset = "this-month" | "last-month" | "ytd" | "last-90" | "custom";
@@ -115,6 +116,10 @@ export function ReportFilterBar({
     safeBrand === "__all__"
       ? "Semua brand"
       : brands.find((b) => b.id === safeBrand)?.name ?? "Semua brand";
+  const brandItems: SelectItemDef[] = [
+    { value: "__all__", label: "Semua brand" },
+    ...brands.map((b) => ({ value: b.id, label: b.name })),
+  ];
 
   return (
     <div className="border-border bg-card flex flex-wrap items-end gap-3 rounded-xl border p-3">
@@ -191,6 +196,7 @@ export function ReportFilterBar({
         </Label>
         <Select
           value={safeBrand}
+          items={brandItems}
           onValueChange={(v) =>
             pushQuery({ brandId: !v || v === "__all__" ? null : v })
           }

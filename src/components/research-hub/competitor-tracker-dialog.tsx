@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PackagePlus } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 
 type CategoryOption = { id: string; name: string };
 
@@ -116,6 +117,14 @@ export function CompetitorTrackerDialog({
     !loadingCategories &&
     (useNewCategory ? newCategoryName.trim().length > 0 : categoryId.length > 0);
 
+  const categoryItems = useMemo(
+    (): SelectItemDef[] => [
+      ...categories.map((c) => ({ value: c.id, label: c.name })),
+      { value: "__new__", label: "+ Buat kategori baru" },
+    ],
+    [categories],
+  );
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
@@ -145,6 +154,7 @@ export function CompetitorTrackerDialog({
             {categories.length > 0 ? (
               <Select
                 value={useNewCategory ? "__new__" : categoryId}
+                items={categoryItems}
                 onValueChange={(value) => {
                   if (value === "__new__") {
                     setUseNewCategory(true);

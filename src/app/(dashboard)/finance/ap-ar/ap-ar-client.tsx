@@ -19,6 +19,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -104,6 +105,22 @@ export function ApArClient(props: {
   const arBrandLabel =
     props.brands.find((b) => b.id === safeArBrandId)?.name ??
     "Tanpa brand";
+  const apVendorItems: SelectItemDef[] = [
+    { value: "__manual__", label: "Ketik manual di bawah" },
+    ...props.vendors.map((v) => ({ value: v.id, label: v.name })),
+  ];
+  const brandOptionItems: SelectItemDef[] = [
+    { value: "__none__", label: "—" },
+    ...props.brands.map((b) => ({ value: b.id, label: b.name })),
+  ];
+  const apCounterItems: SelectItemDef[] = apCounterOptions.map((a) => ({
+    value: a.id,
+    label: `${a.code} — ${a.name}`,
+  }));
+  const arCounterItems: SelectItemDef[] = arCounterOptions.map((a) => ({
+    value: a.id,
+    label: `${a.code} — ${a.name}`,
+  }));
 
   function createBill(e: React.FormEvent) {
     e.preventDefault();
@@ -195,6 +212,7 @@ export function ApArClient(props: {
             <Label>Vendor</Label>
             <Select
               value={safeApVendorId}
+              items={apVendorItems}
               onValueChange={(v) => {
                 if (!v || v === "__manual__") {
                   setApVendorId("");
@@ -232,7 +250,7 @@ export function ApArClient(props: {
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Akun beban / lawan</Label>
-            <Select value={apCounterId} onValueChange={(v) => setApCounterId(v || "")}>
+            <Select value={apCounterId} items={apCounterItems} onValueChange={(v) => setApCounterId(v || "")}>
               <SelectTrigger className="w-full">
                 <span className="line-clamp-1">
                   {accountLabel(apCounterId, "Pilih akun beban")}
@@ -251,6 +269,7 @@ export function ApArClient(props: {
             <Label>Brand (opsional)</Label>
             <Select
               value={safeApBrandId}
+              items={brandOptionItems}
               onValueChange={(v) => setApBrand(!v || v === "__none__" ? "" : v)}
             >
               <SelectTrigger className="w-full">
@@ -311,7 +330,7 @@ export function ApArClient(props: {
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Akun pendapatan</Label>
-            <Select value={arCounterId} onValueChange={(v) => setArCounterId(v || "")}>
+            <Select value={arCounterId} items={arCounterItems} onValueChange={(v) => setArCounterId(v || "")}>
               <SelectTrigger className="w-full">
                 <span className="line-clamp-1">
                   {accountLabel(arCounterId, "Pilih akun pendapatan")}
@@ -330,6 +349,7 @@ export function ApArClient(props: {
             <Label>Brand</Label>
             <Select
               value={safeArBrandId}
+              items={brandOptionItems}
               onValueChange={(v) => setArBrand(!v || v === "__none__" ? "" : v)}
             >
               <SelectTrigger className="w-full">
@@ -388,6 +408,12 @@ function BillTable({
 }) {
   const [payAmt, setPayAmt] = useState<Record<string, string>>({});
   const [bankId, setBankId] = useState<Record<string, string>>({});
+  const bankItems: SelectItemDef[] = [
+    ...(banks.length === 0
+      ? [{ value: "__none__", label: "Belum ada bank" }]
+      : []),
+    ...banks.map((bk) => ({ value: bk.id, label: bk.name })),
+  ];
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">
@@ -427,6 +453,7 @@ function BillTable({
                           ? bankId[b.id]
                           : banks[0]?.id ?? "__none__"
                       }
+                      items={bankItems}
                       onValueChange={(v) =>
                         setBankId((p) => ({ ...p, [b.id]: v ?? "" }))
                       }
@@ -486,6 +513,12 @@ function InvTable({
 }) {
   const [amt, setAmt] = useState<Record<string, string>>({});
   const [bankId, setBankId] = useState<Record<string, string>>({});
+  const bankItems: SelectItemDef[] = [
+    ...(banks.length === 0
+      ? [{ value: "__none__", label: "Belum ada bank" }]
+      : []),
+    ...banks.map((bk) => ({ value: bk.id, label: bk.name })),
+  ];
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">
@@ -525,6 +558,7 @@ function InvTable({
                           ? bankId[inv.id]
                           : banks[0]?.id ?? "__none__"
                       }
+                      items={bankItems}
                       onValueChange={(v) =>
                         setBankId((p) => ({ ...p, [inv.id]: v ?? "" }))
                       }

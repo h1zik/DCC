@@ -22,6 +22,7 @@ import {
 } from "@/components/research-hub/research-hub-primitives";
 import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
 import { isSeoStatusBusy, scoreToneClass } from "@/lib/seo/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   createSeoMarketplaceAnalysis,
@@ -40,6 +41,11 @@ const SUPPORTED = [
   ResearchMarketplace.TOKOPEDIA,
   ResearchMarketplace.LAZADA,
 ];
+
+const MARKETPLACE_ITEMS: SelectItemDef[] = SUPPORTED.map((m) => ({
+  value: m,
+  label: MARKETPLACE_LABELS[m],
+}));
 
 export type MarketplaceRow = {
   id: string;
@@ -121,6 +127,7 @@ export function MarketplaceClient({ analyses }: { analyses: MarketplaceRow[] }) 
             <Label>Marketplace</Label>
             <Select
               value={marketplace}
+              items={MARKETPLACE_ITEMS}
               onValueChange={(v) => {
                 if (v) setMarketplace(v as ResearchMarketplace);
               }}

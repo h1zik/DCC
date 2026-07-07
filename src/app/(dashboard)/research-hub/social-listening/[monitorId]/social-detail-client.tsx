@@ -56,6 +56,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { statusToProgress } from "@/components/research-hub/job-status-progress";
@@ -321,11 +322,18 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
                     <Label>Jenis insight</Label>
                     <Select
                       value={insightType}
+                      items={[
+                        { value: "pain", label: "Top Pain Points" },
+                        { value: "wishlist", label: "Top Wishlist" },
+                        { value: "viral", label: "Viral Content" },
+                      ]}
                       onValueChange={(v) =>
                         setInsightType(v as "pain" | "wishlist" | "viral")
                       }
                     >
-                      <SelectTrigger />
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pain">Top Pain Points</SelectItem>
                         <SelectItem value="wishlist">Top Wishlist</SelectItem>
@@ -337,9 +345,15 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
                     <Label>Room</Label>
                     <Select
                       value={roomId}
+                      items={data.rooms.map((r) => ({
+                        value: r.id,
+                        label: r.name,
+                      }))}
                       onValueChange={(v) => v && setRoomId(v)}
                     >
-                      <SelectTrigger />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih room" />
+                      </SelectTrigger>
                       <SelectContent>
                         {data.rooms.map((r) => (
                           <SelectItem key={r.id} value={r.id}>

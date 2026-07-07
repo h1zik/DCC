@@ -23,6 +23,7 @@ import {
   hub,
 } from "@/components/research-hub/research-hub-primitives";
 import { SEO_DEVICE_LABELS } from "@/lib/seo/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   createSeoRankProject,
@@ -30,6 +31,11 @@ import {
   toggleRankProjectActive,
 } from "@/actions/seo-rank-tracker";
 import { cn } from "@/lib/utils";
+
+const DEVICE_ITEMS: SelectItemDef[] = Object.values(SeoRankDevice).map((d) => ({
+  value: d,
+  label: SEO_DEVICE_LABELS[d],
+}));
 
 export type RankProjectRow = {
   id: string;
@@ -136,6 +142,7 @@ export function RankTrackerClient({
             <Label>Perangkat</Label>
             <Select
               value={device}
+              items={DEVICE_ITEMS}
               onValueChange={(v) => {
                 if (v) setDevice(v as SeoRankDevice);
               }}

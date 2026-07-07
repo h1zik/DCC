@@ -48,7 +48,12 @@ import {
   ResearchHubStatChip,
 } from "@/components/research-hub/research-hub-primitives";
 import { MARKETPLACE_LABELS, formatRp } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { cn } from "@/lib/utils";
+
+const MARKETPLACE_ITEMS: SelectItemDef[] = Object.entries(MARKETPLACE_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
 
 export type CompetitorProductTrackRow = {
   id: string;
@@ -188,6 +193,7 @@ export function CompetitorProductCategoryClient({
                   <Label>Marketplace</Label>
                   <Select
                     value={marketplace}
+                    items={MARKETPLACE_ITEMS}
                     onValueChange={(v) => {
                       if (v) setMarketplace(v as ResearchMarketplace);
                     }}
@@ -196,9 +202,9 @@ export function CompetitorProductCategoryClient({
                       {MARKETPLACE_LABELS[marketplace]}
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.entries(MARKETPLACE_LABELS).map(([key, lbl]) => (
-                        <SelectItem key={key} value={key}>
-                          {lbl}
+                      {MARKETPLACE_ITEMS.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

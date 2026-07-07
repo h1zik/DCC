@@ -30,6 +30,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   hub,
   ResearchHubEmptyState,
@@ -38,6 +39,10 @@ import {
 } from "@/components/research-hub/research-hub-primitives";
 import { CompetitorTrackerModeNav } from "@/components/research-hub/competitor-tracker-mode-nav";
 import { cn } from "@/lib/utils";
+
+const MARKETPLACE_ITEMS: SelectItemDef[] = Object.entries(MARKETPLACE_LABELS)
+  .filter(([k]) => k !== ResearchMarketplace.LAZADA)
+  .map(([value, label]) => ({ value, label }));
 
 export type CompetitorCard = {
   id: string;
@@ -155,6 +160,7 @@ export function CompetitorTrackerClient({
                 <Label>Marketplace</Label>
                 <Select
                   value={marketplace}
+                  items={MARKETPLACE_ITEMS}
                   onValueChange={(v) => {
                     if (v) setMarketplace(v as ResearchMarketplace);
                   }}
@@ -163,13 +169,11 @@ export function CompetitorTrackerClient({
                     {MARKETPLACE_LABELS[marketplace]}
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(MARKETPLACE_LABELS)
-                      .filter(([k]) => k !== ResearchMarketplace.LAZADA)
-                      .map(([k, label]) => (
-                        <SelectItem key={k} value={k}>
-                          {label}
-                        </SelectItem>
-                      ))}
+                    {MARKETPLACE_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
