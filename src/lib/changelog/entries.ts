@@ -37,6 +37,43 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-07-admin-pages-redesign",
+    date: "2026-07-07",
+    title: "Tampilan baru: halaman Brand, Web Setting, Peran & Pengguna",
+    category: "improved",
+    description:
+      "Empat halaman pengelolaan didesain ulang agar lebih rapi dan informatif. Brand kini tampil sebagai galeri kartu dengan logo, warna tema, serta jumlah produk/proyek/room. Web Setting punya pratinjau langsung (sidebar, tab browser, dan notifikasi) saat kamu mengganti logo atau nama. Halaman Peran memakai kartu berwarna per tier, dan Pengguna menampilkan foto, status online, serta pencarian & filter peran.",
+    highlights: [
+      "Brand: galeri kartu dengan pratinjau langsung saat menambah/mengubah brand",
+      "Web Setting: unggah logo, favicon & ikon dengan pratinjau seketika",
+      "Peran & Pengguna: kartu berwarna, status online, cari & filter peran",
+    ],
+  },
+  {
+    id: "2026-07-07-dropdown-labels-fix",
+    date: "2026-07-07",
+    title: "Dropdown di seluruh aplikasi menampilkan label yang benar",
+    category: "fixed",
+    description:
+      "Sebelumnya sebagian menu pilihan menampilkan kode mentah seperti \"ROOM_MANAGER\" atau \"__pick__\" alih-alih teks yang mudah dibaca. Kini semua dropdown di aplikasi — Finance, Research Hub, Brand Hub, ruangan, tugas, dan lainnya — menampilkan label yang benar dan manusiawi.",
+  },
+  {
+    id: "2026-07-07-themed-scrollbar",
+    date: "2026-07-07",
+    title: "Scrollbar mengikuti warna tema pilihanmu",
+    category: "improved",
+    description:
+      "Batang penggulir (scrollbar) di semua halaman kini mengikuti warna tema yang kamu pilih di profil, tidak lagi memakai abu-abu bawaan browser. Berlaku di seluruh area yang bisa di-scroll dan menyesuaikan otomatis begitu kamu berganti tema.",
+  },
+  {
+    id: "2026-07-07-direct-chat-redesign",
+    date: "2026-07-07",
+    title: "Tampilan chat langsung diperbarui",
+    category: "improved",
+    description:
+      "Tampilan percakapan langsung (direct chat) dipoles: gelembung pesan lebih membulat dan pesan beruntun dari orang yang sama ditampilkan lebih ringkas, sehingga percakapan terasa lebih rapi dan mudah diikuti.",
+  },
+  {
     id: "2026-07-06-finance-polish",
     date: "2026-07-06",
     title: "Finance — pemolesan lanjutan: koreksi periode tutup buku, aset, budget",

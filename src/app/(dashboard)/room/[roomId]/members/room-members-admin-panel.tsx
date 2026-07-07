@@ -1,13 +1,14 @@
 "use client";
 import { actionErrorMessage } from "@/lib/action-error-message";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import Image from "next/image";
 import { RoomMemberRole, type User } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { removeRoomMember, upsertRoomMember } from "@/actions/room-members";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
   SelectContent,
@@ -25,7 +26,17 @@ import {
   ROOM_PROJECT_MANAGER_ROLE,
   roomMemberToProcessAccess,
 } from "@/lib/room-member-process-access";
-import { Trash2 } from "lucide-react";
+import type { SelectItemDef } from "@/lib/select-option-items";
+import {
+  ListChecks,
+  Loader2,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type MemberRow = {
   id: string;
@@ -34,14 +45,123 @@ type MemberRow = {
   role: RoomMemberRole;
   allowedRoomProcesses: import("@prisma/client").RoomTaskProcess[];
   allowedCustomProcessPhaseIds: string[];
-  user: Pick<User, "id" | "name" | "email" | "role">;
+  user: Pick<User, "id" | "name" | "email" | "image" | "role">;
 };
 
 type StudioUserRow = Pick<User, "id" | "name" | "email" | "role">;
 
+const PICK_SENTINEL = "__pick__";
+
 function roomRoleLabel(role: RoomMemberRole): string {
   if (role === ROOM_PROJECT_MANAGER_ROLE) return "Project manager ruangan";
   return role === RoomMemberRole.ROOM_MANAGER ? "Administrator ruangan" : "Kontributor";
+}
+
+/** Warna badge per peran ruangan (PM amber, administrator sky, kontributor netral). */
+function roomRoleTone(role: RoomMemberRole): { chip: string; dot: string } {
+  if (role === ROOM_PROJECT_MANAGER_ROLE) {
+    return {
+      chip: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+      dot: "bg-amber-500",
+    };
+  }
+  if (role === RoomMemberRole.ROOM_MANAGER) {
+    return {
+      chip: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+      dot: "bg-sky-500",
+    };
+  }
+  return {
+    chip: "border-border bg-muted/60 text-muted-foreground",
+    dot: "bg-slate-400",
+  };
+}
+
+const ROLE_ITEMS: SelectItemDef[] = [
+  {
+    value: RoomMemberRole.ROOM_MANAGER,
+    label: roomRoleLabel(RoomMemberRole.ROOM_MANAGER),
+  },
+  {
+    value: RoomMemberRole.ROOM_CONTRIBUTOR,
+    label: roomRoleLabel(RoomMemberRole.ROOM_CONTRIBUTOR),
+  },
+  {
+    value: ROOM_PROJECT_MANAGER_ROLE,
+    label: roomRoleLabel(ROOM_PROJECT_MANAGER_ROLE),
+  },
+];
+
+function initialsOf(label: string): string {
+  const parts = label.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+}
+
+function MemberAvatar({
+  user,
+  size = 36,
+}: {
+  user: Pick<User, "name" | "email" | "image">;
+  size?: number;
+}) {
+  const label = user.name?.trim() || user.email;
+  return user.image ? (
+    <Image
+      src={user.image}
+      alt={label}
+      width={size}
+      height={size}
+      unoptimized
+      className="shrink-0 rounded-full border border-border object-cover"
+      style={{ width: size, height: size }}
+    />
+  ) : (
+    <span
+      className="bg-muted text-muted-foreground flex shrink-0 items-center justify-center rounded-full border border-border text-[11px] font-semibold"
+      style={{ width: size, height: size }}
+      aria-hidden
+    >
+      {initialsOf(label)}
+    </span>
+  );
+}
+
+function PhaseSectionHeader({
+  selectedCount,
+  totalCount,
+  disabled,
+  onSelectAll,
+}: {
+  selectedCount: number;
+  totalCount: number;
+  disabled: boolean;
+  onSelectAll: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
+        Fase tugas yang dapat diakses
+      </p>
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground text-[10px] tabular-nums">
+          {selectedCount}/{totalCount} fase
+        </span>
+        {selectedCount < totalCount ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-2 text-[11px]"
+            disabled={disabled}
+            onClick={onSelectAll}
+          >
+            <ListChecks className="size-3" aria-hidden />
+            Pilih semua
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export function RoomMembersAdminPanel({
@@ -65,14 +185,38 @@ export function RoomMembersAdminPanel({
     allRoomPhaseIds(roomPhases),
   );
 
-  useEffect(() => {
+  // Reset pilihan fase untuk anggota baru saat daftar fase ruangan berubah
+  // (pola "adjust state when props change" — tanpa effect, dan tidak mereset
+  // saat refresh menghasilkan array baru berisi fase yang sama).
+  const phasesKey = roomPhases.map((p) => p.id).join("|");
+  const [prevPhasesKey, setPrevPhasesKey] = useState(phasesKey);
+  if (prevPhasesKey !== phasesKey) {
+    setPrevPhasesKey(phasesKey);
     setAddPhaseIds(allRoomPhaseIds(roomPhases));
-  }, [roomPhases]);
+  }
 
   const addableUsers = useMemo(() => {
     const ids = new Set(members.map((m) => m.userId));
     return studioUsers.filter((u) => !ids.has(u.id));
   }, [members, studioUsers]);
+
+  const addUserItems = useMemo((): SelectItemDef[] => {
+    return [
+      { value: PICK_SENTINEL, label: "Pilih pengguna…" },
+      ...addableUsers.map((u) => ({
+        value: u.id,
+        label: u.name?.trim() || u.email,
+      })),
+    ];
+  }, [addableUsers]);
+
+  const roleCounts = useMemo(() => {
+    const map = new Map<RoomMemberRole, number>();
+    for (const m of members) {
+      map.set(m.role, (map.get(m.role) ?? 0) + 1);
+    }
+    return [...map.entries()];
+  }, [members]);
 
   async function onChangeRole(
     userId: string,
@@ -175,132 +319,224 @@ export function RoomMembersAdminPanel({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold">Kelola anggota & peran</h2>
-        <p className="text-muted-foreground text-xs">
+      <div className="space-y-2.5">
+        <p className="text-muted-foreground text-xs leading-relaxed">
           Administrator dan kontributor memiliki pengaturan fase proses yang sama:
           centang fase mana saja yang boleh mereka akses di ruangan ini (sesuai fase
           yang dikonfigurasi di ruangan).
         </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="border-border bg-muted/40 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium">
+            <Users className="size-3" aria-hidden />
+            <span className="text-foreground font-semibold tabular-nums">
+              {members.length}
+            </span>
+            anggota
+          </span>
+          {roleCounts.map(([role, count]) => {
+            const tone = roomRoleTone(role);
+            return (
+              <span
+                key={role}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                  tone.chip,
+                )}
+              >
+                <span className={cn("size-1.5 rounded-full", tone.dot)} aria-hidden />
+                <span className="font-semibold tabular-nums">{count}</span>
+                {roomRoleLabel(role)}
+              </span>
+            );
+          })}
+        </div>
       </div>
 
-      <ul className="space-y-3">
-        {members.map((m) => {
-          const access = roomMemberToProcessAccess(m);
-          const phaseIds = memberAllowedPhaseIds(access, roomPhases);
-          return (
-            <li key={m.id} className="space-y-2 rounded-lg border border-border p-3">
-              <div className="flex flex-col items-start justify-between gap-2 sm:flex-row">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{m.user.name ?? m.user.email}</p>
-                  <p className="text-muted-foreground truncate text-xs">{m.user.email}</p>
+      {members.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="Belum ada anggota"
+          description="Tambahkan pengguna lewat formulir di bawah agar mereka dapat membuka ruangan ini."
+        />
+      ) : (
+        <ul className="space-y-3">
+          {members.map((m) => {
+            const access = roomMemberToProcessAccess(m);
+            const phaseIds = memberAllowedPhaseIds(access, roomPhases);
+            const tone = roomRoleTone(m.role);
+            return (
+              <li
+                key={m.id}
+                className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm"
+              >
+                <div className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <MemberAvatar user={m.user} />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {m.user.name?.trim() || m.user.email}
+                        </p>
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                            tone.chip,
+                          )}
+                        >
+                          <span
+                            className={cn("size-1.5 rounded-full", tone.dot)}
+                            aria-hidden
+                          />
+                          {roomRoleLabel(m.role)}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground truncate font-mono text-xs">
+                        {m.user.email}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex w-full items-center gap-1.5 sm:w-auto">
+                    <Select
+                      value={m.role}
+                      items={ROLE_ITEMS}
+                      disabled={pending}
+                      onValueChange={(v) => {
+                        if (!v) return;
+                        void onChangeRole(m.userId, v as RoomMemberRole, phaseIds);
+                      }}
+                    >
+                      <SelectTrigger
+                        className="h-8 w-full sm:w-[230px]"
+                        aria-label={`Peran ${m.user.name ?? m.user.email}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLE_ITEMS.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-destructive hover:bg-destructive/10 shrink-0"
+                      disabled={pending}
+                      aria-label={`Keluarkan ${m.user.name ?? m.user.email} dari ruangan`}
+                      title="Keluarkan dari ruangan"
+                      onClick={() => void onRemoveMember(m.userId)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                  <Select
-                    value={m.role}
-                    disabled={pending}
-                    onValueChange={(v) => {
-                      if (!v) return;
-                      void onChangeRole(m.userId, v as RoomMemberRole, phaseIds);
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-full sm:w-[240px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={RoomMemberRole.ROOM_MANAGER}>
-                        {roomRoleLabel(RoomMemberRole.ROOM_MANAGER)}
-                      </SelectItem>
-                      <SelectItem value={RoomMemberRole.ROOM_CONTRIBUTOR}>
-                        {roomRoleLabel(RoomMemberRole.ROOM_CONTRIBUTOR)}
-                      </SelectItem>
-                      <SelectItem value={ROOM_PROJECT_MANAGER_ROLE}>
-                        {roomRoleLabel(ROOM_PROJECT_MANAGER_ROLE)}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="self-end sm:self-auto"
-                    disabled={pending}
-                    aria-label="Hapus anggota"
-                    onClick={() => void onRemoveMember(m.userId)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              </div>
 
-              {access.role === ROOM_PROJECT_MANAGER_ROLE ? (
-                <p className="text-muted-foreground text-xs">
-                  Project manager ruangan: akses otomatis ke semua fase.
-                </p>
-              ) : simpleRoom ? (
-                <p className="text-muted-foreground text-xs">
-                  Ruangan HQ/Team sederhana: fase proses tidak dipisah.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-muted-foreground text-xs font-medium">
-                    Fase tugas yang dapat diakses
-                  </p>
-                  <RoomMemberPhaseCheckboxes
-                    roomPhases={roomPhases}
-                    selectedIds={phaseIds}
-                    disabled={pending}
-                    onChange={(next) => void onSavePhaseIds(m.userId, m.role, next)}
-                  />
+                <div className="border-t border-border/50 bg-muted/20 px-3.5 py-3">
+                  {access.role === ROOM_PROJECT_MANAGER_ROLE ? (
+                    <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                      <ShieldCheck
+                        className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                        aria-hidden
+                      />
+                      Project manager ruangan — akses otomatis ke semua fase.
+                    </p>
+                  ) : simpleRoom ? (
+                    <p className="text-muted-foreground text-xs">
+                      Ruangan HQ/Team sederhana: fase proses tidak dipisah.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <PhaseSectionHeader
+                        selectedCount={phaseIds.length}
+                        totalCount={roomPhases.length}
+                        disabled={pending}
+                        onSelectAll={() =>
+                          void onSavePhaseIds(
+                            m.userId,
+                            m.role,
+                            allRoomPhaseIds(roomPhases),
+                          )
+                        }
+                      />
+                      <RoomMemberPhaseCheckboxes
+                        roomPhases={roomPhases}
+                        selectedIds={phaseIds}
+                        disabled={pending}
+                        onChange={(next) => void onSavePhaseIds(m.userId, m.role, next)}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
-      <div className="border-border space-y-2 border-t pt-3">
-        <Label>Tambah anggota</Label>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      {/* Tambah anggota baru */}
+      <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 p-4">
+        <div className="mb-3 flex items-center gap-2.5">
+          <span
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+            aria-hidden
+          >
+            <UserPlus className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">Tambah anggota</p>
+            <p className="text-muted-foreground text-xs">
+              Pilih pengguna dan perannya, lalu atur fase yang boleh diakses.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
             <Select
-              value={addUserId || "__pick__"}
-              onValueChange={(v) => setAddUserId(!v || v === "__pick__" ? "" : v)}
+              value={addUserId || PICK_SENTINEL}
+              items={addUserItems}
+              disabled={pending || addableUsers.length === 0}
+              onValueChange={(v) =>
+                setAddUserId(!v || v === PICK_SENTINEL ? "" : v)
+              }
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih pengguna" />
+              <SelectTrigger className="w-full" aria-label="Pilih pengguna">
+                <SelectValue placeholder="Pilih pengguna…" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__pick__">Pilih pengguna…</SelectItem>
-                {addableUsers.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name ?? u.email}
+                {addUserItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div className="w-full sm:w-[240px]">
-            <Select value={addRole} onValueChange={(v) => v && setAddRole(v as RoomMemberRole)}>
-              <SelectTrigger className="w-full">
+          <div className="w-full sm:w-[230px]">
+            <Select
+              value={addRole}
+              items={ROLE_ITEMS}
+              disabled={pending}
+              onValueChange={(v) => v && setAddRole(v as RoomMemberRole)}
+            >
+              <SelectTrigger className="w-full" aria-label="Peran anggota baru">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={RoomMemberRole.ROOM_MANAGER}>
-                  {roomRoleLabel(RoomMemberRole.ROOM_MANAGER)}
-                </SelectItem>
-                <SelectItem value={RoomMemberRole.ROOM_CONTRIBUTOR}>
-                  {roomRoleLabel(RoomMemberRole.ROOM_CONTRIBUTOR)}
-                </SelectItem>
-                <SelectItem value={ROOM_PROJECT_MANAGER_ROLE}>
-                  {roomRoleLabel(ROOM_PROJECT_MANAGER_ROLE)}
-                </SelectItem>
+                {ROLE_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <Button
             type="button"
-            className="w-full sm:w-auto"
+            className="w-full shrink-0 sm:w-auto"
             disabled={
               pending ||
               !addUserId ||
@@ -310,12 +546,36 @@ export function RoomMembersAdminPanel({
             }
             onClick={() => void onAddMember()}
           >
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Plus className="size-4" aria-hidden />
+            )}
             Tambah
           </Button>
         </div>
-        {addRole !== ROOM_PROJECT_MANAGER_ROLE && !simpleRoom ? (
-          <div className="space-y-2">
-            <Label className="text-xs">Fase tugas untuk anggota baru</Label>
+
+        {addRole === ROOM_PROJECT_MANAGER_ROLE ? (
+          <p className="text-muted-foreground mt-2.5 flex items-center gap-1.5 text-xs">
+            <ShieldCheck
+              className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+              aria-hidden
+            />
+            Project manager ruangan: akses otomatis ke semua fase.
+          </p>
+        ) : simpleRoom ? (
+          <p className="text-muted-foreground mt-2.5 text-xs">
+            Fase proses tidak digunakan di ruangan ini; anggota baru langsung dapat
+            berkolaborasi di tugas & chat.
+          </p>
+        ) : (
+          <div className="mt-3 space-y-2 border-t border-border/50 pt-3">
+            <PhaseSectionHeader
+              selectedCount={addPhaseIds.length}
+              totalCount={roomPhases.length}
+              disabled={pending}
+              onSelectAll={() => setAddPhaseIds(allRoomPhaseIds(roomPhases))}
+            />
             <RoomMemberPhaseCheckboxes
               roomPhases={roomPhases}
               selectedIds={addPhaseIds}
@@ -323,6 +583,12 @@ export function RoomMembersAdminPanel({
               onChange={setAddPhaseIds}
             />
           </div>
+        )}
+
+        {addableUsers.length === 0 ? (
+          <p className="text-muted-foreground mt-2.5 text-xs">
+            Semua pengguna yang memenuhi syarat sudah menjadi anggota ruangan ini.
+          </p>
         ) : null}
       </div>
     </div>

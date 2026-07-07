@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { SelectItemDef } from "@/lib/select-option-items";
 
 type Milestone = {
   id: string;
@@ -74,6 +75,10 @@ const STATUS_META: Record<
     tone: "text-destructive",
   },
 };
+
+const STATUS_ITEMS: SelectItemDef[] = (
+  Object.keys(STATUS_META) as RoomTimelineStatus[]
+).map((k) => ({ value: k, label: STATUS_META[k].label }));
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -304,6 +309,7 @@ export function TimelineViewClient({
                 <Label>Status</Label>
                 <Select
                   value={form.status}
+                  items={STATUS_ITEMS}
                   onValueChange={(v) =>
                     setForm((s) => ({
                       ...s,
@@ -315,13 +321,11 @@ export function TimelineViewClient({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(STATUS_META) as RoomTimelineStatus[]).map(
-                      (k) => (
-                        <SelectItem key={k} value={k}>
-                          {STATUS_META[k].label}
-                        </SelectItem>
-                      ),
-                    )}
+                    {STATUS_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

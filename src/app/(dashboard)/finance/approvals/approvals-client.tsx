@@ -21,6 +21,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Table,
   TableBody,
@@ -65,6 +66,17 @@ export function ApprovalsClient(props: {
       : "Pilih akun beban";
   const brandLabel =
     props.brands.find((b) => b.id === safeBrandId)?.name ?? "Tanpa brand";
+  const expenseItems: SelectItemDef[] = [
+    { value: "__none__", label: "Pilih akun beban" },
+    ...props.expenseAccounts.map((a) => ({
+      value: a.id,
+      label: `${a.code} — ${a.name}`,
+    })),
+  ];
+  const brandItems: SelectItemDef[] = [
+    { value: "__none__", label: "—" },
+    ...props.brands.map((b) => ({ value: b.id, label: b.name })),
+  ];
 
   function createReq(e: React.FormEvent) {
     e.preventDefault();
@@ -101,6 +113,7 @@ export function ApprovalsClient(props: {
           <Label>Akun beban</Label>
           <Select
             value={safeExpenseId}
+            items={expenseItems}
             onValueChange={(v) =>
               setExpenseId(!v || v === "__none__" ? "" : v)
             }
@@ -122,6 +135,7 @@ export function ApprovalsClient(props: {
           <Label>Brand</Label>
           <Select
             value={safeBrandId}
+            items={brandItems}
             onValueChange={(v) => setBrandId(!v || v === "__none__" ? "" : v)}
           >
             <SelectTrigger className="w-full">
@@ -203,6 +217,12 @@ function RowActions({
     : banks[0]?.id ?? "__none__";
   const bankLabel =
     banks.find((b) => b.id === safeBankId)?.name ?? "Belum ada bank";
+  const bankItems: SelectItemDef[] = [
+    ...(banks.length === 0
+      ? [{ value: "__none__", label: "Belum ada bank" }]
+      : []),
+    ...banks.map((b) => ({ value: b.id, label: b.name })),
+  ];
 
   function run(fn: () => Promise<void>) {
     startRow(async () => {
@@ -272,6 +292,7 @@ function RowActions({
         <div className="flex flex-col items-end gap-1">
           <Select
             value={safeBankId}
+            items={bankItems}
             onValueChange={(v) => setBankId(v ?? "")}
           >
             <SelectTrigger className="h-7 w-44 text-xs">

@@ -63,6 +63,7 @@ import {
   uploadRoomDocumentViaApi,
 } from "@/lib/room-document-upload-xhr";
 import { normalizeRoomDocumentTags } from "@/lib/room-document-tags";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   downloadRoomDocumentsZip,
   downloadRoomFolderZip,
@@ -391,6 +392,14 @@ export function RoomDocumentsWorkspace({
     }
     return Array.from(s).sort((a, b) => a.localeCompare(b, "id"));
   }, [documents]);
+
+  const tagFilterItems = useMemo(
+    (): SelectItemDef[] => [
+      { value: "__all__", label: "Semua tag" },
+      ...allTagsInRoom.map((t) => ({ value: t, label: t })),
+    ],
+    [allTagsInRoom],
+  );
 
   useEffect(() => {
     setDocDisplayLimit(DOCS_PAGE_SIZE);
@@ -1021,6 +1030,7 @@ export function RoomDocumentsWorkspace({
             </div>
             <Select
               value={tagFilter}
+              items={tagFilterItems}
               onValueChange={(v) => setTagFilter(v ?? "__all__")}
             >
               <SelectTrigger

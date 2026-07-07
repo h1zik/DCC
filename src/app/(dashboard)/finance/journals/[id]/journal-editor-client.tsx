@@ -41,6 +41,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Table,
   TableBody,
@@ -165,6 +166,57 @@ export function JournalEditorClient(props: Props) {
   const safeBrandId =
     brandId && props.brands.some((b) => b.id === brandId) ? brandId : "__none__";
 
+  const accountItems = useMemo(
+    (): SelectItemDef[] => [
+      ...(props.accounts.length === 0
+        ? [{ value: "__none__", label: "Belum ada akun" }]
+        : []),
+      ...props.accounts.map((a) => ({
+        value: a.id,
+        label: `${a.code} — ${a.name}`,
+      })),
+    ],
+    [props.accounts],
+  );
+  const brandItems = useMemo(
+    (): SelectItemDef[] => [
+      { value: "__none__", label: "Tanpa tag brand" },
+      ...props.brands.map((b) => ({ value: b.id, label: b.name })),
+    ],
+    [props.brands],
+  );
+  const vendorItems = useMemo(
+    (): SelectItemDef[] => [
+      { value: "__none__", label: "— Tanpa master —" },
+      ...props.vendors.map((v) => ({ value: v.id, label: v.name })),
+    ],
+    [props.vendors],
+  );
+  const openBillItems = useMemo(
+    (): SelectItemDef[] => [
+      ...(props.openBills.length === 0
+        ? [{ value: "__none__", label: "Tidak ada tagihan terbuka" }]
+        : []),
+      ...props.openBills.map((b) => ({
+        value: b.id,
+        label: `${b.vendorName} — ${b.billNumber ?? "no#?"} — sisa ${formatIdrShort(b.remaining)}`,
+      })),
+    ],
+    [props.openBills],
+  );
+  const openInvoiceItems = useMemo(
+    (): SelectItemDef[] => [
+      ...(props.openInvoices.length === 0
+        ? [{ value: "__none__", label: "Tidak ada invoice terbuka" }]
+        : []),
+      ...props.openInvoices.map((i) => ({
+        value: i.id,
+        label: `${i.customerName} — ${i.invoiceNumber ?? "no#?"} — sisa ${formatIdrShort(i.remaining)}`,
+      })),
+    ],
+    [props.openInvoices],
+  );
+
   // Sub-state untuk dynamic AP/AR link pada add-line panel.
   const selectedAccount = props.accounts.find((a) => a.id === accountId);
   const isApAccount = !!selectedAccount?.isApControl;
@@ -204,6 +256,18 @@ export function JournalEditorClient(props: Props) {
   const effectiveLinkMode: LinkMode = linkMode === "NONE" ? autoMode : linkMode;
   const showLinkPanel =
     (isApAccount || isArAccount) && (sideIsDebit || sideIsCredit);
+  const linkModeItems = useMemo(
+    (): SelectItemDef[] =>
+      (
+        [
+          ...(isApAccount && sideIsCredit ? ["CREATE_BILL" as const] : []),
+          ...(isApAccount && sideIsDebit ? ["PAY_BILL" as const] : []),
+          ...(isArAccount && sideIsDebit ? ["CREATE_INVOICE" as const] : []),
+          ...(isArAccount && sideIsCredit ? ["RECEIVE_INVOICE" as const] : []),
+        ]
+      ).map((mode) => ({ value: mode, label: modeLabel(mode) })),
+    [isApAccount, isArAccount, sideIsDebit, sideIsCredit],
+  );
 
   function resetLink() {
     setLinkMode("NONE");
@@ -583,6 +647,7 @@ export function JournalEditorClient(props: Props) {
               <Label>Akun</Label>
               <Select
                 value={safeAccountId}
+                items={accountItems}
                 onValueChange={(v) =>
                   setAccountId(!v || v === "__none__" ? "" : v)
                 }
@@ -639,6 +704,7 @@ export function JournalEditorClient(props: Props) {
               <Label>Brand (opsional)</Label>
               <Select
                 value={safeBrandId}
+                items={brandItems}
                 onValueChange={(v) => setBrandId(!v || v === "__none__" ? "" : v)}
               >
                 <SelectTrigger className="w-full">
@@ -689,6 +755,7 @@ export function JournalEditorClient(props: Props) {
                 </span>
                 <Select
                   value={effectiveLinkMode}
+                  items={linkModeItems}
                   onValueChange={(v) => setLinkMode(v as LinkMode)}
                 >
                   <SelectTrigger className="h-7 w-56 text-xs">
@@ -727,6 +794,7 @@ export function JournalEditorClient(props: Props) {
                     <Label className="text-xs">Vendor (master, opsional)</Label>
                     <Select
                       value={linkVendorId || "__none__"}
+                      items={vendorItems}
                       onValueChange={(v) => {
                         const next = v ?? "";
                         if (!next || next === "__none__") {
@@ -789,6 +857,7 @@ export function JournalEditorClient(props: Props) {
                   <Label className="text-xs">Tagihan yang dilunasi *</Label>
                   <Select
                     value={linkBillId || "__none__"}
+                    items={openBillItems}
                     onValueChange={(v) => {
                       const next = v ?? "";
                       setLinkBillId(!next || next === "__none__" ? "" : next);
@@ -869,6 +938,7 @@ export function JournalEditorClient(props: Props) {
                   <Label className="text-xs">Invoice yang dilunasi *</Label>
                   <Select
                     value={linkInvoiceId || "__none__"}
+                    items={openInvoiceItems}
                     onValueChange={(v) => {
                       const next = v ?? "";
                       setLinkInvoiceId(!next || next === "__none__" ? "" : next);

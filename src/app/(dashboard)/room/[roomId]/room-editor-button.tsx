@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
+import { brandIdItems, type SelectItemDef } from "@/lib/select-option-items";
 
 export function RoomEditorButton({
   roomId,
@@ -56,6 +57,23 @@ export function RoomEditorButton({
   const sectionOptions = useMemo(
     () => [RoomWorkspaceSection.HQ, RoomWorkspaceSection.TEAM, RoomWorkspaceSection.ROOMS],
     [],
+  );
+
+  const brandItems = useMemo(
+    (): SelectItemDef[] => [
+      { value: "__none__", label: "Tanpa brand" },
+      ...brandIdItems(brands),
+    ],
+    [brands],
+  );
+
+  const sectionItems = useMemo(
+    (): SelectItemDef[] =>
+      sectionOptions.map((sec) => ({
+        value: sec,
+        label: roomWorkspaceSectionTitle(sec),
+      })),
+    [sectionOptions],
   );
 
   function reset() {
@@ -114,6 +132,7 @@ export function RoomEditorButton({
             <Label>Brand terkait (opsional)</Label>
             <Select
               value={brandId || "__none__"}
+              items={brandItems}
               onValueChange={(v) => setBrandId(!v || v === "__none__" ? "" : v)}
             >
               <SelectTrigger>
@@ -133,6 +152,7 @@ export function RoomEditorButton({
             <Label>Bagian menu Tugas</Label>
             <Select
               value={workspaceSection}
+              items={sectionItems}
               onValueChange={(v) => v && setWorkspaceSection(v as RoomWorkspaceSection)}
             >
               <SelectTrigger>

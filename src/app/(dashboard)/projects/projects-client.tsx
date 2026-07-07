@@ -78,6 +78,12 @@ type ProjectRow = Project & {
 
 type SortKey = "progress_desc" | "progress_asc" | "name";
 
+const SORT_KEY_ITEMS: SelectItemDef[] = [
+  { value: "progress_desc", label: "Progress tertinggi" },
+  { value: "progress_asc", label: "Progress terendah" },
+  { value: "name", label: "Nama A–Z" },
+];
+
 function progressTone(pct: number): string {
   if (pct >= 100) return "text-emerald-600 dark:text-emerald-400";
   if (pct >= 50) return "text-primary";
@@ -352,6 +358,7 @@ export function ProjectsPipeline({
         ) : null}
         <Select
           value={sortKey}
+          items={SORT_KEY_ITEMS}
           onValueChange={(v) => {
             if (v) setSortKey(v as SortKey);
           }}

@@ -436,7 +436,14 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
             </p>
             <div className="grid gap-1.5">
               <Label>Room / Brand</Label>
-              <Select value={roomId} onValueChange={(v) => setRoomId(v ?? "")}>
+              <Select
+                value={roomId}
+                items={data.rooms.map((r) => ({
+                  value: r.id,
+                  label: r.brandName ? `${r.name} — ${r.brandName}` : r.name,
+                }))}
+                onValueChange={(v) => setRoomId(v ?? "")}
+              >
                 <SelectTrigger>
                   {selectedRoom
                     ? `${selectedRoom.name}${selectedRoom.brandName ? ` (${selectedRoom.brandName})` : ""}`

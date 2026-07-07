@@ -43,6 +43,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -80,6 +81,8 @@ type EligibleUser = {
   lastSeenAt: Date | string | null;
 };
 
+type InboxFilter = "all" | "unread";
+
 function authorLabel(name: string | null, email: string) {
   return name?.trim() || email;
 }
@@ -93,18 +96,44 @@ function isOnline(lastSeenAt: string | null): boolean {
   return Date.now() - new Date(lastSeenAt).getTime() < 2 * 60 * 1000;
 }
 
+function isSameCalendarDay(a: Date, b: Date) {
+  return (
+    a.getDate() === b.getDate() &&
+    a.getMonth() === b.getMonth() &&
+    a.getFullYear() === b.getFullYear()
+  );
+}
+
 function formatTime(iso: string) {
   const d = new Date(iso);
   const now = new Date();
-  const sameDay =
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear();
   return d.toLocaleString("id-ID", {
-    ...(sameDay ? {} : { day: "numeric", month: "short" }),
+    ...(isSameCalendarDay(d, now) ? {} : { day: "numeric", month: "short" }),
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatDateSeparator(iso: string) {
+  const d = new Date(iso);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameCalendarDay(d, now)) return "Hari ini";
+  if (isSameCalendarDay(d, yesterday)) return "Kemarin";
+  return d.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}
+
+function formatPresence(lastSeenAt: Date | string | null) {
+  if (!lastSeenAt) return "Belum ada aktivitas";
+  const iso = typeof lastSeenAt === "string" ? lastSeenAt : lastSeenAt.toISOString();
+  if (isOnline(iso)) return "Online sekarang";
+  return `Terakhir aktif ${formatTime(iso)}`;
 }
 
 function messageActivityMs(m: DirectChatMessageView): number {
@@ -160,7 +189,9 @@ export function DirectChatExperience({
   } | null>(null);
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [userQuery, setUserQuery] = useState("");
+  const [startingUserId, setStartingUserId] = useState<string | null>(null);
   const [inboxQuery, setInboxQuery] = useState("");
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pendingGifUrl, setPendingGifUrl] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
@@ -190,9 +221,6 @@ export function DirectChatExperience({
   const nearBottomRef = useRef(true);
   const suppressNearBottomCheckRef = useRef(true);
   const shouldScrollToEndRef = useRef(true);
-  const bodyRef = useRef(body);
-  bodyRef.current = body;
-
   const activeItem = useMemo(
     () => inbox.find((i) => i.conversationId === activeId) ?? null,
     [inbox, activeId],
@@ -200,12 +228,18 @@ export function DirectChatExperience({
 
   const filteredInbox = useMemo(() => {
     const q = inboxQuery.trim().toLowerCase();
-    if (!q) return inbox;
     return inbox.filter((i) => {
+      if (inboxFilter === "unread" && i.unreadCount === 0) return false;
+      if (!q) return true;
       const name = (i.otherUser.name ?? i.otherUser.email).toLowerCase();
       return name.includes(q) || i.otherUser.email.toLowerCase().includes(q);
     });
-  }, [inbox, inboxQuery]);
+  }, [inbox, inboxFilter, inboxQuery]);
+
+  const unreadConversationCount = useMemo(
+    () => inbox.filter((i) => i.unreadCount > 0).length,
+    [inbox],
+  );
 
   const filteredUsers = useMemo(() => {
     const q = userQuery.trim().toLowerCase();
@@ -228,6 +262,39 @@ export function DirectChatExperience({
     }
     return null;
   }, [messages, currentUserId]);
+
+  const messageItems = useMemo(
+    () =>
+      messages.flatMap((message, index) => {
+        const createdAt = new Date(message.createdAt);
+        const dayKey = `${createdAt.getFullYear()}-${createdAt.getMonth()}-${createdAt.getDate()}`;
+        const previous = index > 0 ? messages[index - 1]! : null;
+        const previousCreatedAt = previous ? new Date(previous.createdAt) : null;
+        const previousDayKey = previousCreatedAt
+          ? `${previousCreatedAt.getFullYear()}-${previousCreatedAt.getMonth()}-${previousCreatedAt.getDate()}`
+          : "";
+        const showDate = dayKey !== previousDayKey;
+        const compact = Boolean(
+          previous &&
+            previous.author.id === message.author.id &&
+            !showDate &&
+            createdAt.getTime() - previousCreatedAt!.getTime() < 5 * 60 * 1000,
+        );
+        return [
+          ...(showDate
+            ? [
+                {
+                  type: "date" as const,
+                  id: `date-${dayKey}-${index}`,
+                  label: formatDateSeparator(message.createdAt),
+                },
+              ]
+            : []),
+          { type: "message" as const, message, compact },
+        ];
+      }),
+    [messages],
+  );
 
   function readReceiptForMessage(m: DirectChatMessageView): "read" | "unread" | null {
     if (m.author.id !== currentUserId || m.deletedAt || m.id !== lastOwnMessageId) {
@@ -391,6 +458,7 @@ export function DirectChatExperience({
   }
 
   function startChatWithUser(userId: string) {
+    setStartingUserId(userId);
     startTransition(async () => {
       try {
         const { conversationId } = await getOrCreateDirectConversation(userId);
@@ -400,6 +468,8 @@ export function DirectChatExperience({
         openConversation(conversationId);
       } catch (e) {
         toast.error(actionErrorMessage(e, "Gagal memulai percakapan."));
+      } finally {
+        setStartingUserId(null);
       }
     });
   }
@@ -588,29 +658,31 @@ export function DirectChatExperience({
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}>
-      <div className="border-border bg-card flex h-full min-h-0 flex-1 overflow-hidden rounded-none border shadow-sm">
+      <div className="border-border/70 bg-card/95 flex h-full min-h-0 flex-1 overflow-hidden rounded-xl border shadow-sm">
         {/* Inbox */}
         <aside
           className={cn(
-            "border-border flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden border-r md:w-[260px] lg:w-[280px]",
+            "border-border/70 flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden border-r md:w-[300px] lg:w-[340px]",
             activeId ? "hidden md:flex" : "flex",
           )}
         >
-          <div className="border-border shrink-0 space-y-2 border-b p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-semibold">Pesan</h2>
-                <p className="text-muted-foreground text-xs">
-                  {totalUnread > 0 ? `${totalUnread} belum dibaca` : "Semua terbaca"}
+          <div className="border-border/70 bg-card/95 shrink-0 space-y-3 border-b p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold tracking-tight">Inbox</h2>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {totalUnread > 0
+                    ? `${totalUnread} pesan belum dibaca`
+                    : "Semua percakapan terbaca"}
                 </p>
               </div>
               <Button
                 type="button"
                 size="sm"
-                className="h-8 shrink-0"
+                className="h-8 shrink-0 rounded-full px-3"
                 onClick={() => setNewChatOpen(true)}
               >
-                Baru
+                Pesan baru
               </Button>
             </div>
             <div className="relative">
@@ -618,29 +690,90 @@ export function DirectChatExperience({
               <Input
                 value={inboxQuery}
                 onChange={(e) => setInboxQuery(e.target.value)}
-                placeholder="Cari percakapan…"
-                className="h-9 pl-8 text-sm"
+                placeholder="Cari nama atau email…"
+                className="h-9 rounded-full bg-background/70 pl-8 pr-8 text-sm"
               />
+              {inboxQuery ? (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground absolute top-2 right-2 inline-flex size-5 items-center justify-center rounded-full"
+                  onClick={() => setInboxQuery("")}
+                  aria-label="Hapus pencarian"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+            <div className="bg-muted/50 flex rounded-full p-1 text-xs font-medium">
+              <button
+                type="button"
+                className={cn(
+                  "flex-1 rounded-full px-3 py-1.5 transition-colors",
+                  inboxFilter === "all"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setInboxFilter("all")}
+              >
+                Semua
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "flex-1 rounded-full px-3 py-1.5 transition-colors",
+                  inboxFilter === "unread"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => setInboxFilter("unread")}
+              >
+                Belum dibaca{unreadConversationCount > 0 ? ` (${unreadConversationCount})` : ""}
+              </button>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
             {filteredInbox.length === 0 ? (
-              <p className="text-muted-foreground p-4 text-center text-sm">
-                Belum ada percakapan. Ketuk <strong>Baru</strong> untuk mulai.
-              </p>
+              <div className="text-muted-foreground flex h-full min-h-[220px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-5 text-center text-sm">
+                <div className="bg-primary/10 text-primary flex size-10 items-center justify-center rounded-full">
+                  <MessageCircle className="size-5" aria-hidden />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-foreground font-medium">
+                    {inbox.length === 0
+                      ? "Belum ada percakapan"
+                      : inboxFilter === "unread"
+                        ? "Tidak ada pesan belum dibaca"
+                        : "Percakapan tidak ditemukan"}
+                  </p>
+                  <p className="text-xs leading-relaxed">
+                    {inbox.length === 0
+                      ? "Mulai percakapan pribadi dengan anggota tim yang tersedia."
+                      : inboxFilter === "unread"
+                        ? "Semua pesan sudah terbaca. Ubah filter untuk melihat semua percakapan."
+                        : "Coba kata kunci lain atau mulai pesan baru."}
+                  </p>
+                </div>
+                {inbox.length === 0 ? (
+                  <Button type="button" size="sm" onClick={() => setNewChatOpen(true)}>
+                    Mulai pesan baru
+                  </Button>
+                ) : null}
+              </div>
             ) : (
-              <ul>
+              <ul className="space-y-1">
                 {filteredInbox.map((item) => {
                   const active = item.conversationId === activeId;
                   const online = isOnline(item.otherUser.lastSeenAt);
+                  const unread = item.unreadCount > 0;
                   return (
                     <li key={item.conversationId}>
                       <button
                         type="button"
                         onClick={() => openConversation(item.conversationId)}
                         className={cn(
-                          "hover:bg-muted/50 flex w-full gap-3 px-3 py-3 text-left transition-colors",
-                          active && "bg-primary/8 border-primary/20 border-l-2",
+                          "group hover:bg-muted/60 flex w-full gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors",
+                          active && "border-primary/25 bg-primary/10 shadow-sm",
+                          unread && !active && "bg-primary/5",
                         )}
                       >
                         <div className="relative shrink-0">
@@ -650,11 +783,11 @@ export function DirectChatExperience({
                               alt=""
                               width={44}
                               height={44}
-                              className="size-11 rounded-full border object-cover"
+                              className="border-border size-11 rounded-full border object-cover"
                               unoptimized
                             />
                           ) : (
-                            <div className="bg-accent/30 text-accent-foreground flex size-11 items-center justify-center rounded-full text-sm font-semibold">
+                            <div className="border-border bg-accent/40 text-accent-foreground flex size-11 items-center justify-center rounded-full border text-sm font-semibold">
                               {authorInitial(
                                 item.otherUser.name,
                                 item.otherUser.email,
@@ -664,34 +797,52 @@ export function DirectChatExperience({
                           {online ? (
                             <span
                               className="border-background absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 bg-emerald-500"
-                              aria-hidden
+                              aria-label="Online"
                             />
                           ) : null}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className="truncate text-sm font-semibold">
+                            <span
+                              className={cn(
+                                "truncate text-sm",
+                                unread ? "font-bold" : "font-semibold",
+                              )}
+                            >
                               {authorLabel(
                                 item.otherUser.name,
                                 item.otherUser.email,
                               )}
                             </span>
                             {item.lastMessage ? (
-                              <time className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+                              <time
+                                className={cn(
+                                  "shrink-0 text-[10px] tabular-nums",
+                                  unread ? "text-primary font-semibold" : "text-muted-foreground",
+                                )}
+                              >
                                 {formatTime(item.lastMessage.createdAt)}
                               </time>
                             ) : null}
                           </div>
-                          <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                          <p
+                            className={cn(
+                              "mt-0.5 truncate text-xs",
+                              unread ? "text-foreground font-medium" : "text-muted-foreground",
+                            )}
+                          >
                             {previewText(
                               item.lastMessage,
                               item.lastMessage?.authorId ?? "",
                               currentUserId,
                             )}
                           </p>
+                          <p className="text-muted-foreground mt-1 text-[10px]">
+                            {online ? "Online" : "Pesan pribadi"}
+                          </p>
                         </div>
-                        {item.unreadCount > 0 ? (
-                          <span className="bg-primary text-primary-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums">
+                        {unread ? (
+                          <span className="bg-primary text-primary-foreground mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums shadow-sm">
                             {item.unreadCount > 9 ? "9+" : item.unreadCount}
                           </span>
                         ) : null}
@@ -712,21 +863,30 @@ export function DirectChatExperience({
           )}
         >
           {!activeId ? (
-            <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-              <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-none">
-                <MessageCircle className="size-7" aria-hidden />
+            <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center">
+              <div className="border-border/70 bg-background/70 max-w-sm rounded-2xl border p-6 shadow-sm">
+                <div className="bg-primary/10 text-primary mx-auto flex size-14 items-center justify-center rounded-2xl">
+                  <MessageCircle className="size-7" aria-hidden />
+                </div>
+                <h3 className="text-foreground mt-4 text-base font-semibold">
+                  Pilih percakapan
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed">
+                  Buka percakapan dari inbox, atau mulai chat pribadi baru dengan anggota tim yang tersedia.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setNewChatOpen(true)}
+                >
+                  Mulai pesan baru
+                </Button>
               </div>
-              <p className="text-foreground text-sm font-medium">
-                Pilih percakapan atau mulai chat baru
-              </p>
-              <p className="max-w-xs text-xs leading-relaxed">
-                Pesan pribadi antar tim. Aktifkan notifikasi push agar tidak ketinggalan
-                pesan masuk.
-              </p>
             </div>
           ) : activeItem ? (
             <>
-              <header className="border-border bg-card z-10 flex shrink-0 items-center gap-3 border-b px-4 py-3">
+              <header className="border-border/70 bg-card/95 z-10 flex shrink-0 items-center gap-3 border-b px-3 py-3 backdrop-blur-sm sm:px-4">
                 <Button
                   type="button"
                   variant="ghost"
@@ -741,23 +901,31 @@ export function DirectChatExperience({
                   href={`/profile/${activeItem.otherUser.id}`}
                   className="flex min-w-0 flex-1 items-center gap-3"
                 >
-                  {activeItem.otherUser.image ? (
-                    <Image
-                      src={activeItem.otherUser.image}
-                      alt=""
-                      width={40}
-                      height={40}
-                      className="size-10 rounded-full border object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="bg-accent/30 flex size-10 items-center justify-center rounded-full text-sm font-semibold">
-                      {authorInitial(
-                        activeItem.otherUser.name,
-                        activeItem.otherUser.email,
-                      )}
-                    </div>
-                  )}
+                  <div className="relative shrink-0">
+                    {activeItem.otherUser.image ? (
+                      <Image
+                        src={activeItem.otherUser.image}
+                        alt=""
+                        width={40}
+                        height={40}
+                        className="border-border size-10 rounded-full border object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="border-border bg-accent/40 flex size-10 items-center justify-center rounded-full border text-sm font-semibold">
+                        {authorInitial(
+                          activeItem.otherUser.name,
+                          activeItem.otherUser.email,
+                        )}
+                      </div>
+                    )}
+                    {isOnline(activeItem.otherUser.lastSeenAt) ? (
+                      <span
+                        className="border-background absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 bg-emerald-500"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">
                       {authorLabel(
@@ -765,11 +933,8 @@ export function DirectChatExperience({
                         activeItem.otherUser.email,
                       )}
                     </p>
-                    <p className="text-muted-foreground text-xs">
-                      {peerReadSubtitle ??
-                        (isOnline(activeItem.otherUser.lastSeenAt)
-                          ? "Online"
-                          : "Pesan pribadi")}
+                    <p className="text-muted-foreground truncate text-xs">
+                      {peerReadSubtitle ?? formatPresence(activeItem.otherUser.lastSeenAt)}
                     </p>
                   </div>
                 </Link>
@@ -777,7 +942,7 @@ export function DirectChatExperience({
 
               <div
                 ref={scrollRef}
-                className="bg-muted/15 min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
+                className="bg-muted/15 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
                 onScroll={() => {
                   if (suppressNearBottomCheckRef.current) return;
                   const el = scrollRef.current;
@@ -787,44 +952,75 @@ export function DirectChatExperience({
                 }}
               >
                 {loadingThread && messages.length === 0 ? (
-                  <p className="text-muted-foreground text-center text-sm">
+                  <div className="text-muted-foreground flex min-h-[200px] items-center justify-center text-sm">
                     Memuat pesan…
-                  </p>
+                  </div>
                 ) : messages.length === 0 ? (
-                  <p className="text-muted-foreground text-center text-sm">
-                    Belum ada pesan. Ucapkan halo 👋
-                  </p>
-                ) : (
-                  <div className="direct-chat-messages flex flex-col gap-2.5">
-                    {messages.map((m) => (
-                      <div
-                        key={m.id}
-                        ref={(el) => {
-                          if (el) messageRefs.current.set(m.id, el);
-                          else messageRefs.current.delete(m.id);
-                        }}
-                        data-message-id={m.id}
+                  <div className="flex min-h-[260px] items-center justify-center">
+                    <div className="border-border/70 bg-background/70 max-w-sm rounded-2xl border p-5 text-center shadow-sm">
+                      <p className="text-foreground text-sm font-semibold">
+                        Mulai percakapan dengan {authorLabel(activeItem.otherUser.name, activeItem.otherUser.email)}
+                      </p>
+                      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+                        Belum ada pesan di percakapan ini. Tulis pesan pertama di composer bawah.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="mt-4"
+                        onClick={() => taRef.current?.focus()}
                       >
-                        <DirectChatMessageBubble
-                          message={m}
-                          own={m.author.id === currentUserId}
-                          readReceipt={readReceiptForMessage(m)}
-                          onReply={() => startReplyTo(m)}
-                          onEdit={() => startEdit(m)}
-                          onDelete={() => confirmDeleteMessage(m.id)}
-                          onScrollToReply={scrollToMessage}
-                        />
-                      </div>
-                    ))}
+                        Tulis pesan
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="direct-chat-messages flex flex-col">
+                    {messageItems.map((item) => {
+                      if (item.type === "date") {
+                        return (
+                          <div key={item.id} className="my-4 flex items-center gap-3">
+                            <span className="bg-border h-px flex-1" />
+                            <span className="border-border bg-background text-muted-foreground rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm">
+                              {item.label}
+                            </span>
+                            <span className="bg-border h-px flex-1" />
+                          </div>
+                        );
+                      }
+                      const m = item.message;
+                      return (
+                        <div
+                          key={m.id}
+                          ref={(el) => {
+                            if (el) messageRefs.current.set(m.id, el);
+                            else messageRefs.current.delete(m.id);
+                          }}
+                          data-message-id={m.id}
+                        >
+                          <DirectChatMessageBubble
+                            message={m}
+                            own={m.author.id === currentUserId}
+                            readReceipt={readReceiptForMessage(m)}
+                            onReply={() => startReplyTo(m)}
+                            onEdit={() => startEdit(m)}
+                            onDelete={() => confirmDeleteMessage(m.id)}
+                            onScrollToReply={scrollToMessage}
+                            compact={item.compact}
+                          />
+                        </div>
+                      );
+                    })}
                     <div ref={endRef} aria-hidden />
                   </div>
                 )}
               </div>
 
-              <div className="border-border bg-card/95 supports-[backdrop-filter]:bg-card/90 sticky bottom-0 z-20 shrink-0 space-y-2 border-t p-3 shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.45)]">
-                <DirectChatPushSetup className="mb-0.5" />
+              <div className="border-border/70 bg-card/95 supports-[backdrop-filter]:bg-card/90 sticky bottom-0 z-20 shrink-0 space-y-2 border-t p-2.5 shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.12)] backdrop-blur-sm sm:p-3 dark:shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.45)]">
+                <DirectChatPushSetup className="mb-0.5 rounded-xl" />
                 {editingMessage ? (
-                  <div className="bg-primary/10 flex items-center justify-between gap-2 rounded-none border border-dashed px-2 py-1.5 text-xs">
+                  <div className="border-primary/25 bg-primary/10 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs">
                     <span>
                       <strong>Mengedit pesan</strong> — Enter simpan, Esc batal
                     </span>
@@ -840,7 +1036,7 @@ export function DirectChatExperience({
                   </div>
                 ) : null}
                 {reply ? (
-                  <div className="bg-muted/50 flex items-center justify-between gap-2 rounded-none border border-dashed px-2 py-1.5 text-xs">
+                  <div className="border-border bg-muted/60 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs">
                     <span className="truncate">
                       Balas <strong>{reply.authorLabel}</strong>: {reply.snippet}
                     </span>
@@ -856,13 +1052,13 @@ export function DirectChatExperience({
                   </div>
                 ) : null}
                 {pendingGifUrl ? (
-                  <div className="bg-muted/60 flex items-center justify-between gap-2 rounded-none border border-dashed px-2 py-1.5">
+                  <div className="border-border bg-muted/60 flex items-center justify-between gap-2 rounded-xl border px-3 py-2">
                     <div className="flex min-w-0 items-center gap-2">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={pendingGifUrl}
                         alt=""
-                        className="border-border size-12 shrink-0 rounded-none border object-cover"
+                        className="border-border size-12 shrink-0 rounded-lg border object-cover"
                       />
                       <p className="text-muted-foreground truncate text-xs">
                         GIF akan dikirim bersama teks.
@@ -880,13 +1076,13 @@ export function DirectChatExperience({
                   </div>
                 ) : null}
                 {pendingFiles.length > 0 ? (
-                  <ul className="bg-muted/40 max-h-28 space-y-1 overflow-y-auto rounded-none border border-dashed p-2 text-xs">
+                  <ul className="border-border bg-muted/40 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-xl border p-2 text-xs">
                     {pendingFiles.map((f, idx) => (
                       <li
                         key={`${f.name}-${idx}`}
-                        className="flex items-center justify-between gap-2"
+                        className="bg-background/80 flex max-w-full items-center justify-between gap-2 rounded-full border px-2 py-1"
                       >
-                        <span className="truncate">{f.name}</span>
+                        <span className="max-w-[12rem] truncate">{f.name}</span>
                         <Button
                           type="button"
                           variant="ghost"
@@ -917,16 +1113,16 @@ export function DirectChatExperience({
                     onPickFiles(picked);
                   }}
                 />
-                <div className="border-border bg-background focus-within:border-ring focus-within:ring-ring/50 overflow-hidden rounded-xl border transition-[border-color,box-shadow] focus-within:ring-3">
+                <div className="border-border bg-background focus-within:border-ring focus-within:ring-ring/50 overflow-hidden rounded-2xl border transition-[border-color,box-shadow] focus-within:ring-3">
                   <Textarea
                     ref={taRef}
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     onPaste={onComposerPaste}
                     placeholder={editingMessage ? "Edit teks pesan…" : "Tulis pesan…"}
-                    rows={2}
+                    rows={1}
                     disabled={pending}
-                    className="min-h-[72px] resize-none rounded-none border-0 bg-transparent px-3 pt-3 pb-1 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+                    className="max-h-40 min-h-12 resize-none rounded-none border-0 bg-transparent px-3 pt-3 pb-1 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
                     onKeyDown={(e) => {
                       if (e.key === "Escape" && editingMessage) {
                         e.preventDefault();
@@ -1085,17 +1281,22 @@ export function DirectChatExperience({
                         Mode edit: hanya teks pesan.
                       </p>
                     )}
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="shrink-0 gap-1.5"
-                      disabled={pending || !canSend}
-                      onMouseDown={preventComposerBlur}
-                      onClick={submitMessage}
-                    >
-                      {!editingMessage ? <Send className="size-4" aria-hidden /> : null}
-                      {pending ? "…" : editingMessage ? "Simpan" : "Kirim"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground hidden text-[10px] sm:inline">
+                        Enter kirim · Shift+Enter baris baru
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="shrink-0 gap-1.5 rounded-full px-3"
+                        disabled={pending || !canSend}
+                        onMouseDown={preventComposerBlur}
+                        onClick={submitMessage}
+                      >
+                        {!editingMessage ? <Send className="size-4" aria-hidden /> : null}
+                        {pending ? "…" : editingMessage ? "Simpan" : "Kirim"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1105,9 +1306,12 @@ export function DirectChatExperience({
       </div>
 
       <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md gap-3">
           <DialogHeader>
             <DialogTitle>Pesan baru</DialogTitle>
+            <DialogDescription>
+              Cari anggota tim yang punya akses pesan pribadi, lalu pilih untuk membuka percakapan 1:1.
+            </DialogDescription>
           </DialogHeader>
           <div className="relative">
             <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-3.5" />
@@ -1115,42 +1319,85 @@ export function DirectChatExperience({
               value={userQuery}
               onChange={(e) => setUserQuery(e.target.value)}
               placeholder="Cari nama atau email…"
-              className="pl-8"
+              className="rounded-full pl-8 pr-8"
             />
+            {userQuery ? (
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground absolute top-1.5 right-2 inline-flex size-5 items-center justify-center rounded-full"
+                onClick={() => setUserQuery("")}
+                aria-label="Hapus pencarian pengguna"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null}
           </div>
-          <ul className="max-h-72 overflow-y-auto">
-            {filteredUsers.map((u) => (
-              <li key={u.id}>
-                <button
-                  type="button"
-                  className="hover:bg-muted/50 flex w-full items-center gap-3 rounded-none px-2 py-2.5 text-left"
-                  disabled={pending}
-                  onClick={() => startChatWithUser(u.id)}
-                >
-                  {u.image ? (
-                    <Image
-                      src={u.image}
-                      alt=""
-                      width={36}
-                      height={36}
-                      className="size-9 rounded-full object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="bg-muted flex size-9 items-center justify-center rounded-full text-xs font-semibold">
-                      {authorInitial(u.name, u.email)}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {authorLabel(u.name, u.email)}
-                    </p>
-                    <p className="text-muted-foreground truncate text-xs">{u.email}</p>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {filteredUsers.length === 0 ? (
+            <div className="text-muted-foreground rounded-xl border border-dashed p-5 text-center text-sm">
+              <p className="text-foreground font-medium">
+                {eligibleUsers.length === 0
+                  ? "Belum ada pengguna tersedia"
+                  : "Pengguna tidak ditemukan"}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed">
+                {eligibleUsers.length === 0
+                  ? "Tidak ada anggota tim lain yang bisa dikirimi pesan saat ini."
+                  : "Coba cari dengan nama atau email lain."}
+              </p>
+            </div>
+          ) : (
+            <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
+              {filteredUsers.map((u) => {
+                const online = isOnline(typeof u.lastSeenAt === "string" ? u.lastSeenAt : u.lastSeenAt?.toISOString() ?? null);
+                const starting = startingUserId === u.id;
+                return (
+                  <li key={u.id}>
+                    <button
+                      type="button"
+                      className="hover:bg-muted/60 flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors disabled:cursor-wait disabled:opacity-70"
+                      disabled={pending}
+                      onClick={() => startChatWithUser(u.id)}
+                    >
+                      <div className="relative shrink-0">
+                        {u.image ? (
+                          <Image
+                            src={u.image}
+                            alt=""
+                            width={36}
+                            height={36}
+                            className="border-border size-9 rounded-full border object-cover"
+                            unoptimized
+                          />
+                        ) : (
+                          <div className="border-border bg-muted flex size-9 items-center justify-center rounded-full border text-xs font-semibold">
+                            {authorInitial(u.name, u.email)}
+                          </div>
+                        )}
+                        {online ? (
+                          <span
+                            className="border-background absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 bg-emerald-500"
+                            aria-hidden
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {authorLabel(u.name, u.email)}
+                        </p>
+                        <p className="text-muted-foreground truncate text-xs">{u.email}</p>
+                        <p className="text-muted-foreground mt-0.5 text-[10px]">
+                          {formatPresence(u.lastSeenAt)}
+                        </p>
+                      </div>
+                      {starting ? (
+                        <span className="text-muted-foreground text-xs">Membuka…</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </DialogContent>
       </Dialog>
     </div>

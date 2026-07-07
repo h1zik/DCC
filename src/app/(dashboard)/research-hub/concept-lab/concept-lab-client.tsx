@@ -38,6 +38,7 @@ import {
   PRODUCT_CONCEPT_STATUS_LABELS,
   formatRelativeTime,
 } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   hub,
   ResearchHubEmptyState,
@@ -45,6 +46,17 @@ import {
   ResearchHubStatChip,
 } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
+
+const CONCEPT_MODE_ITEMS: SelectItemDef[] = [
+  {
+    value: ProductConceptMode.AI_GENERATED,
+    label: PRODUCT_CONCEPT_MODE_LABELS[ProductConceptMode.AI_GENERATED],
+  },
+  {
+    value: ProductConceptMode.MANUAL,
+    label: PRODUCT_CONCEPT_MODE_LABELS[ProductConceptMode.MANUAL],
+  },
+];
 
 export type ConceptRow = {
   id: string;
@@ -217,6 +229,7 @@ export function ConceptLabClient({ concepts }: { concepts: ConceptRow[] }) {
                   <Label>Mode</Label>
                   <Select
                     value={mode}
+                    items={CONCEPT_MODE_ITEMS}
                     onValueChange={(v) => v && setMode(v as ProductConceptMode)}
                   >
                     <SelectTrigger />

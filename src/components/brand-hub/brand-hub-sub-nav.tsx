@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   BRAND_HUB_ALL_ITEMS,
@@ -13,6 +14,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import { brandFilterItems } from "@/lib/select-option-items";
 import { cn } from "@/lib/utils";
 
 type BrandOption = { id: string; name: string };
@@ -33,6 +35,7 @@ export function BrandHubSubNav({
   const searchParams = useSearchParams();
   const brandId = searchParams.get("brandId");
   const selectedBrand = brands.find((b) => b.id === brandId);
+  const brandItems = useMemo(() => brandFilterItems(brands), [brands]);
 
   function handleBrandChange(nextId: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -77,6 +80,7 @@ export function BrandHubSubNav({
       {brands.length > 0 ? (
         <Select
           value={brandId ?? "all"}
+          items={brandItems}
           onValueChange={(v) => handleBrandChange(v === "all" ? null : v)}
         >
           <SelectTrigger className="h-8 w-[130px] shrink-0 rounded-lg text-xs">

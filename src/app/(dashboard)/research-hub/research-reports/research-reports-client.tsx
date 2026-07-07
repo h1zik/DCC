@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { FileText, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import {
   ResearchReportStatus,
@@ -50,6 +50,7 @@ import {
   RESEARCH_REPORT_TYPE_LABELS,
   formatRelativeTime,
 } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   hub,
   ResearchHubEmptyState,
@@ -57,6 +58,12 @@ import {
   ResearchHubStatChip,
 } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
+
+const REPORT_TYPE_ITEMS: SelectItemDef[] = (
+  Object.keys(RESEARCH_REPORT_TYPE_LABELS) as ResearchReportType[]
+)
+  .filter((t) => t !== "WEEKLY")
+  .map((t) => ({ value: t, label: RESEARCH_REPORT_TYPE_LABELS[t] }));
 
 export type ReportRow = {
   id: string;
@@ -118,6 +125,24 @@ export function ResearchReportsClient({
 
   const hasInProgress = reports.some((r) => isInProgress(r.status));
   const readyCount = reports.filter((r) => r.status === "READY").length;
+
+  const competitorItems = useMemo(
+    (): SelectItemDef[] =>
+      options.competitors.map((c) => ({
+        value: c.id,
+        label: `${c.label} — ${c.meta}`,
+      })),
+    [options.competitors],
+  );
+
+  const digestItems = useMemo(
+    (): SelectItemDef[] =>
+      options.digests.map((d) => ({
+        value: d.id,
+        label: `${d.label} · ${d.meta}`,
+      })),
+    [options.digests],
+  );
 
   const showModulePickers =
     reportType === ResearchReportType.CUSTOM ||
@@ -303,17 +328,16 @@ export function ResearchReportsClient({
                 <Label>Tipe laporan</Label>
                 <Select
                   value={reportType}
+                  items={REPORT_TYPE_ITEMS}
                   onValueChange={(v) => v && setReportType(v as ResearchReportType)}
                 >
                   <SelectTrigger />
                   <SelectContent>
-                    {(Object.keys(RESEARCH_REPORT_TYPE_LABELS) as ResearchReportType[])
-                      .filter((t) => t !== "WEEKLY")
-                      .map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {RESEARCH_REPORT_TYPE_LABELS[t]}
-                        </SelectItem>
-                      ))}
+                    {REPORT_TYPE_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -328,6 +352,7 @@ export function ResearchReportsClient({
                   <Label>Kompetitor</Label>
                   <Select
                     value={competitorId}
+                    items={competitorItems}
                     onValueChange={(v) => v && setCompetitorId(v)}
                   >
                     <SelectTrigger />
@@ -345,7 +370,11 @@ export function ResearchReportsClient({
               {reportType === "TREND_BRIEF" && (
                 <div className="space-y-2">
                   <Label>Digest tren (opsional)</Label>
-                  <Select value={digestId} onValueChange={(v) => v && setDigestId(v)}>
+                  <Select
+                    value={digestId}
+                    items={digestItems}
+                    onValueChange={(v) => v && setDigestId(v)}
+                  >
                     <SelectTrigger />
                     <SelectContent>
                       {options.digests.map((d) => (

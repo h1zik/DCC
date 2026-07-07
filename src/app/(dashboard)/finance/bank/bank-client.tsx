@@ -17,6 +17,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Table,
   TableBody,
@@ -58,6 +59,21 @@ export function BankClient(props: {
   const importBankLabel =
     props.banks.find((b) => b.id === safeImportBankId)?.name ??
     (safeImportBankId === "__none__" ? "Belum ada rekening" : "Pilih rekening");
+  const ledgerItems: SelectItemDef[] = [
+    ...(props.assetAccounts.length === 0
+      ? [{ value: "__none__", label: "Belum ada akun aset" }]
+      : []),
+    ...props.assetAccounts.map((a) => ({
+      value: a.id,
+      label: `${a.code} — ${a.name}`,
+    })),
+  ];
+  const importBankItems: SelectItemDef[] = [
+    ...(props.banks.length === 0
+      ? [{ value: "__none__", label: "Belum ada rekening" }]
+      : []),
+    ...props.banks.map((b) => ({ value: b.id, label: b.name })),
+  ];
 
   function createBank(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +131,7 @@ export function BankClient(props: {
           <Label>Akun buku besar (Kas/Bank)</Label>
           <Select
             value={safeLedgerId}
+            items={ledgerItems}
             onValueChange={(v) =>
               setLedgerId(!v || v === "__none__" ? "" : v)
             }
@@ -195,6 +212,7 @@ export function BankClient(props: {
               <Label>Rekening</Label>
               <Select
                 value={safeImportBankId}
+                items={importBankItems}
                 onValueChange={(v) =>
                   setImportBankId(!v || v === "__none__" ? "" : v)
                 }

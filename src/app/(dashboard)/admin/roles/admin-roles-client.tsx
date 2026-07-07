@@ -13,8 +13,11 @@ import {
 } from "@/actions/custom-roles";
 import {
   ASSIGNABLE_PERMISSION_TIERS,
+  enumRoleLabel,
   permissionTierLabel,
 } from "@/lib/role-labels";
+import { tierDescription, tierTone } from "@/lib/role-tier-tone";
+import { hub } from "@/components/brand-hub/brand-hub-primitives";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -34,7 +38,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { SelectItemDef } from "@/lib/select-option-items";
-import { Lock, Pencil, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
+import {
+  Lock,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type AdminRoleRow = {
@@ -45,6 +57,174 @@ export type AdminRoleRow = {
   isProtected: boolean;
   _count: { users: number };
 };
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  count,
+  hint,
+}: {
+  icon: typeof ShieldCheck;
+  title: string;
+  count: number;
+  hint?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className="rounded-lg bg-muted/60 p-1.5 text-muted-foreground ring-1 ring-border/60"
+        aria-hidden
+      >
+        <Icon className="size-4" />
+      </span>
+      <h2 className="text-sm font-semibold tracking-tight text-foreground">
+        {title}
+      </h2>
+      <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary">
+        {count}
+      </span>
+      {hint ? (
+        <span className="text-muted-foreground text-xs">· {hint}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function RoleCard({
+  role,
+  index,
+  totalUsers,
+  pending,
+  onEdit,
+  onDelete,
+}: {
+  role: AdminRoleRow;
+  index: number;
+  totalUsers: number;
+  pending: boolean;
+  onEdit: (r: AdminRoleRow) => void;
+  onDelete: (r: AdminRoleRow) => void;
+}) {
+  const tone = tierTone(role.permissionTier);
+  const pct =
+    totalUsers > 0 ? Math.round((role._count.users / totalUsers) * 100) : 0;
+  const barWidth = role._count.users > 0 ? Math.max(pct, 6) : 0;
+
+  return (
+    <article
+      className={cn(
+        hub.card,
+        hub.cardHover,
+        hub.entrance,
+        "group flex flex-col gap-3 p-4 fill-mode-both",
+        role.isProtected && "border-primary/20",
+      )}
+      style={{ animationDelay: `${Math.min(index, 10) * 45}ms` }}
+    >
+      {role.isProtected ? (
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+          aria-hidden
+        />
+      ) : null}
+
+      <div className="flex items-start justify-between gap-2">
+        <span
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-xl",
+            role.isProtected ? "bg-primary/10 text-primary" : tone.iconTile,
+          )}
+          aria-hidden
+        >
+          {role.isProtected ? (
+            <ShieldCheck className="size-5" />
+          ) : (
+            <Sparkles className="size-5" />
+          )}
+        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Edit ${role.name}`}
+            title="Edit peran"
+            onClick={() => onEdit(role)}
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+          {!role.isProtected ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Hapus ${role.name}`}
+              title={
+                role._count.users > 0
+                  ? "Pindahkan dulu pengguna sebelum menghapus"
+                  : "Hapus peran"
+              }
+              disabled={role._count.users > 0 || pending}
+              className="text-destructive hover:bg-destructive/10 disabled:text-muted-foreground disabled:hover:bg-transparent"
+              onClick={() => onDelete(role)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="min-w-0 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <h3 className="truncate text-sm font-semibold tracking-tight text-foreground">
+            {role.name}
+          </h3>
+          {role.isProtected ? (
+            <span className="border-border bg-muted/60 text-muted-foreground inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase">
+              <Lock className="size-2.5" aria-hidden /> Inti
+            </span>
+          ) : null}
+        </div>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+            tone.chip,
+          )}
+        >
+          <span className={cn("size-1.5 rounded-full", tone.dot)} aria-hidden />
+          Tier {enumRoleLabel(role.permissionTier)}
+        </span>
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          {tierDescription(role.permissionTier)}
+        </p>
+      </div>
+
+      <div className="mt-auto space-y-1.5 border-t border-border/50 pt-3">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground flex items-center gap-1">
+            <Users className="size-3" aria-hidden />
+            Pengguna
+          </span>
+          <span className="font-semibold tabular-nums text-foreground">
+            {role._count.users}
+          </span>
+        </div>
+        <div
+          className="h-1.5 overflow-hidden rounded-full bg-muted"
+          role="presentation"
+        >
+          <div
+            className={cn(
+              "h-full rounded-full transition-[width] duration-500",
+              role.isProtected ? "bg-primary/70" : tone.bar,
+            )}
+            style={{ width: `${barWidth}%` }}
+          />
+        </div>
+      </div>
+    </article>
+  );
+}
 
 export function AdminRolesClient({ roles }: { roles: AdminRoleRow[] }) {
   const router = useRouter();
@@ -64,6 +244,10 @@ export function AdminRolesClient({ roles }: { roles: AdminRoleRow[] }) {
       })),
     [],
   );
+
+  const protectedRoles = roles.filter((r) => r.isProtected);
+  const customRoles = roles.filter((r) => !r.isProtected);
+  const totalUsers = roles.reduce((acc, r) => acc + r._count.users, 0);
 
   function openEdit(row: AdminRoleRow) {
     setEditing(row);
@@ -146,9 +330,9 @@ export function AdminRolesClient({ roles }: { roles: AdminRoleRow[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground max-w-2xl text-sm">
           Buat, ganti nama, atau hapus peran sesuai kebutuhan tim. Tier
           permission menentukan modul/halaman apa yang dapat diakses oleh user
           dengan peran tersebut.
@@ -164,85 +348,63 @@ export function AdminRolesClient({ roles }: { roles: AdminRoleRow[] }) {
         </Button>
       </div>
 
-      <ul className="flex flex-col gap-2">
-        {roles.map((r) => (
-          <li
-            key={r.id}
-            className={cn(
-              "border-border bg-card flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:gap-4",
-              r.isProtected && "ring-1 ring-primary/15",
-            )}
-          >
-            <span
-              className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-lg",
-                r.isProtected
-                  ? "bg-primary/10 text-primary"
-                  : "bg-muted text-muted-foreground",
-              )}
-              aria-hidden
-            >
-              {r.isProtected ? (
-                <ShieldCheck className="size-4" />
-              ) : (
-                <Pencil className="size-4" />
-              )}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-foreground truncate text-sm font-semibold">
-                  {r.name}
-                </span>
-                {r.isProtected ? (
-                  <span className="border-border bg-muted/60 text-muted-foreground inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase">
-                    <Lock className="size-2.5" /> Inti
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                Tier permission:{" "}
-                <span className="text-foreground font-medium">
-                  {permissionTierLabel(r.permissionTier)}
-                </span>
-              </p>
-            </div>
-            <div className="text-muted-foreground inline-flex shrink-0 items-center gap-1 rounded-md bg-muted/50 px-2 py-1 text-[11px] tabular-nums">
-              <Users className="size-3" aria-hidden />
-              {r._count.users}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                aria-label={`Edit ${r.name}`}
-                title="Edit peran"
-                onClick={() => openEdit(r)}
-              >
-                <Pencil className="size-3.5" />
+      <section className="flex flex-col gap-3">
+        <SectionHeader
+          icon={ShieldCheck}
+          title="Peran inti"
+          count={protectedRoles.length}
+          hint="dikunci sistem, hanya bisa ganti nama"
+        />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {protectedRoles.map((r, i) => (
+            <RoleCard
+              key={r.id}
+              role={r}
+              index={i}
+              totalUsers={totalUsers}
+              pending={pending}
+              onEdit={openEdit}
+              onDelete={(row) => void onDelete(row)}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <SectionHeader
+          icon={Sparkles}
+          title="Peran kustom"
+          count={customRoles.length}
+          hint="bebas dibuat, diubah, dan dihapus"
+        />
+        {customRoles.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {customRoles.map((r, i) => (
+              <RoleCard
+                key={r.id}
+                role={r}
+                index={protectedRoles.length + i}
+                totalUsers={totalUsers}
+                pending={pending}
+                onEdit={openEdit}
+                onDelete={(row) => void onDelete(row)}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Sparkles}
+            title="Belum ada peran kustom"
+            description="Buat peran sesuai struktur tim — mis. DevOps Engineer dengan tier Logistik."
+            action={
+              <Button type="button" size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" />
+                Tambah peran
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                aria-label={`Hapus ${r.name}`}
-                title={
-                  r.isProtected
-                    ? "Peran inti tidak dapat dihapus"
-                    : r._count.users > 0
-                      ? "Pindahkan dulu pengguna sebelum menghapus"
-                      : "Hapus peran"
-                }
-                disabled={r.isProtected || r._count.users > 0 || pending}
-                className="text-destructive hover:bg-destructive/10 disabled:hover:bg-transparent disabled:text-muted-foreground"
-                onClick={() => void onDelete(r)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
+            }
+          />
+        )}
+      </section>
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

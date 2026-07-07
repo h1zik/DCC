@@ -14,6 +14,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Table,
   TableBody,
@@ -22,6 +23,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+const MONTH_ITEMS: SelectItemDef[] = Array.from({ length: 12 }, (_, i) => ({
+  value: String(i + 1),
+  label: String(i + 1),
+}));
 
 export function BudgetClient(props: {
   year: number;
@@ -58,6 +64,17 @@ export function BudgetClient(props: {
     safeBrand === "__all__"
       ? "Semua brand"
       : props.brands.find((b) => b.id === safeBrand)?.name ?? "Semua brand";
+  const acctItems: SelectItemDef[] = [
+    { value: "__all__", label: "Semua akun beban" },
+    ...props.accounts.map((a) => ({
+      value: a.id,
+      label: `${a.code} — ${a.name}`,
+    })),
+  ];
+  const brandItems: SelectItemDef[] = [
+    { value: "__all__", label: "Semua brand" },
+    ...props.brands.map((b) => ({ value: b.id, label: b.name })),
+  ];
 
   function saveLine(e: React.FormEvent) {
     e.preventDefault();
@@ -111,7 +128,7 @@ export function BudgetClient(props: {
         </div>
         <div className="space-y-2">
           <Label>Bulan</Label>
-          <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+          <Select value={String(month)} items={MONTH_ITEMS} onValueChange={(v) => setMonth(Number(v))}>
             <SelectTrigger className="w-full">
               <span className="line-clamp-1">Bulan {month}</span>
             </SelectTrigger>
@@ -128,6 +145,7 @@ export function BudgetClient(props: {
           <Label>Akun beban (opsional)</Label>
           <Select
             value={safeAcct}
+            items={acctItems}
             onValueChange={(v) => setAcct(!v || v === "__all__" ? "" : v)}
           >
             <SelectTrigger className="w-full">
@@ -147,6 +165,7 @@ export function BudgetClient(props: {
           <Label>Brand (opsional)</Label>
           <Select
             value={safeBrand}
+            items={brandItems}
             onValueChange={(v) => setBrand(!v || v === "__all__" ? "" : v)}
           >
             <SelectTrigger className="w-full">

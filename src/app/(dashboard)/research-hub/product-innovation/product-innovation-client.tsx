@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Lightbulb, Plus, Trash2 } from "lucide-react";
 import { ProductInnovationStatus } from "@prisma/client";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatRelativeTime } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   hub,
   ResearchHubEmptyState,
@@ -115,6 +116,14 @@ export function ProductInnovationClient({
   const hasInProgress = innovations.some((i) => i.status === "GENERATING");
   const readyCount = innovations.filter((i) => i.status === "READY").length;
   const promotedTotal = innovations.reduce((n, i) => n + i.promotedCount, 0);
+
+  const baseConceptItems = useMemo(
+    (): SelectItemDef[] => [
+      { value: "none", label: "Tanpa basis konsep" },
+      ...baseConcepts.map((c) => ({ value: c.id, label: c.title })),
+    ],
+    [baseConcepts],
+  );
 
   useEffect(() => {
     if (!hasInProgress) return;
@@ -209,7 +218,11 @@ export function ProductInnovationClient({
               {baseConcepts.length > 0 ? (
                 <div className="space-y-2">
                   <Label>Basis dari konsep (opsional)</Label>
-                  <Select value={baseConceptId} onValueChange={applyConcept}>
+                  <Select
+                    value={baseConceptId}
+                    items={baseConceptItems}
+                    onValueChange={applyConcept}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Tanpa basis konsep" />
                     </SelectTrigger>

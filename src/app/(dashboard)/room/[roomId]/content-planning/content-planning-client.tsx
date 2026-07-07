@@ -1290,6 +1290,24 @@ export function ContentPlanningClient({
     ).map((s) => ({ value: s, label: STATUS_LABEL[s] }));
   }, []);
 
+  const jenisFilterItems = useMemo((): SelectItemDef[] => {
+    return [{ value: "all", label: "Semua jenis" }, ...jenisKontenSelectItems];
+  }, [jenisKontenSelectItems]);
+
+  const statusFilterItems = useMemo((): SelectItemDef[] => {
+    return [{ value: "all", label: "Semua status" }, ...statusKerjaSelectItems];
+  }, [statusKerjaSelectItems]);
+
+  const picFilterItems = useMemo((): SelectItemDef[] => {
+    return [
+      { value: "all", label: "Semua PIC" },
+      ...picUserOptions.map((u) => ({
+        value: u.id,
+        label: u.name?.trim() || u.email,
+      })),
+    ];
+  }, [picUserOptions]);
+
   const reset = useCallback(() => {
     setEditing(null);
     setKonten("");
@@ -1552,6 +1570,7 @@ export function ContentPlanningClient({
             <div className="min-w-0">
               <Select
                 value={row.original.jenisKonten}
+                items={jenisKontenSelectItems}
                 disabled={inlineSavingCellRef.current === cellKey}
                 onValueChange={(v, details) => {
                   if (!isInlineSelectUserPick(details)) return;
@@ -1599,6 +1618,7 @@ export function ContentPlanningClient({
             <div className="min-w-0">
               <Select
                 value={storedUsage}
+                items={usageSelectItems}
                 disabled={inlineSavingCellRef.current === cellKey}
                 onValueChange={(v, details) => {
                   if (!isInlineSelectUserPick(details)) return;
@@ -1745,6 +1765,7 @@ export function ContentPlanningClient({
             <div className={STATUS_COL_BOX}>
               <Select
                 value={row.original.statusCopywriting}
+                items={statusKerjaSelectItems}
                 disabled={inlineSavingCellRef.current === cellKey}
                 onValueChange={(v, details) => {
                   if (!isInlineSelectUserPick(details)) return;
@@ -1794,6 +1815,7 @@ export function ContentPlanningClient({
             <div className={STATUS_COL_BOX}>
               <Select
                 value={row.original.statusDesign}
+                items={statusKerjaSelectItems}
                 disabled={inlineSavingCellRef.current === cellKey}
                 onValueChange={(v, details) => {
                   if (!isInlineSelectUserPick(details)) return;
@@ -1926,6 +1948,7 @@ export function ContentPlanningClient({
     [
       activeCell,
       allKanbanSelected,
+      jenisKontenSelectItems,
       kanbanEligibleCount,
       kanbanEligibleIds,
       kanbanSet,
@@ -1933,7 +1956,9 @@ export function ContentPlanningClient({
       openEdit,
       roomId,
       saveInlineRow,
+      statusKerjaSelectItems,
       toggleKanbanSelect,
+      usageSelectItems,
     ],
   );
 
@@ -2533,6 +2558,7 @@ export function ContentPlanningClient({
             </Label>
             <Select
               value={jenisFilter}
+              items={jenisFilterItems}
               onValueChange={(v) =>
                 setJenisFilter((v ?? "all") as ContentPlanJenis | "all")
               }
@@ -2558,6 +2584,7 @@ export function ContentPlanningClient({
             </Label>
             <Select
               value={statusCwFilter}
+              items={statusFilterItems}
               onValueChange={(v) =>
                 setStatusCwFilter((v ?? "all") as ContentPlanStatusKerja | "all")
               }
@@ -2587,6 +2614,7 @@ export function ContentPlanningClient({
             </Label>
             <Select
               value={statusDesignFilter}
+              items={statusFilterItems}
               onValueChange={(v) =>
                 setStatusDesignFilter((v ?? "all") as ContentPlanStatusKerja | "all")
               }
@@ -2616,6 +2644,7 @@ export function ContentPlanningClient({
             </Label>
             <Select
               value={picFilter}
+              items={picFilterItems}
               onValueChange={(v) => setPicFilter(v ?? "all")}
             >
               <SelectTrigger className="h-9 w-full">

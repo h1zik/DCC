@@ -31,8 +31,8 @@ function MessagesPageContent({
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       {!inThread ? (
-        <header className="border-border bg-card mb-1 flex shrink-0 items-center gap-2.5 rounded-none border px-3 py-2 shadow-sm">
-          <span className="border-primary/30 bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-none border">
+        <header className="border-border/70 bg-card/85 mb-2 flex shrink-0 items-center gap-3 rounded-xl border px-3 py-2.5 shadow-sm backdrop-blur-sm">
+          <span className="border-primary/25 bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl border shadow-inner">
             <MessageCircle className="size-4" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
@@ -41,10 +41,15 @@ function MessagesPageContent({
             </h1>
             <p className="text-muted-foreground truncate text-xs">
               {totalUnread > 0
-                ? `${totalUnread} belum dibaca`
+                ? `${totalUnread} pesan belum dibaca`
                 : "Pilih percakapan atau mulai chat baru"}
             </p>
           </div>
+          {totalUnread > 0 ? (
+            <span className="bg-primary/10 text-primary rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums">
+              {totalUnread > 99 ? "99+" : totalUnread}
+            </span>
+          ) : null}
         </header>
       ) : null}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Layers, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ import type {
   BrandPortfolioView,
   ProductDiscoveryOption,
 } from "@/lib/brand-research/portfolio/types";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { cn } from "@/lib/utils";
 
 const ROLE_OPTIONS: { value: BrandPortfolioLineRole; label: string }[] = [
@@ -33,6 +34,11 @@ const ROLE_OPTIONS: { value: BrandPortfolioLineRole; label: string }[] = [
   { value: "FLANKER", label: "Flanker — pelengkap" },
   { value: "EXPERIMENTAL", label: "Eksperimental" },
 ];
+
+const ROLE_ITEMS: SelectItemDef[] = ROLE_OPTIONS.map((opt) => ({
+  value: opt.value,
+  label: opt.label,
+}));
 
 function emptyLine(): BrandPortfolioLineInput {
   return {
@@ -59,6 +65,16 @@ export function BrandPortfolioClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [summary, setSummary] = useState(portfolio?.summary ?? "");
+  const discoveryItems = useMemo<SelectItemDef[]>(
+    () => [
+      { value: "none", label: "— Tidak dihubungkan —" },
+      ...discoveryOptions.map((q) => ({
+        value: q.id,
+        label: `${q.label}${q.detail ? ` · ${q.detail}` : ""}`,
+      })),
+    ],
+    [discoveryOptions],
+  );
   const [lines, setLines] = useState<BrandPortfolioLineInput[]>(
     portfolio?.lines.length
       ? portfolio.lines.map((line) => ({
@@ -214,6 +230,7 @@ export function BrandPortfolioClient({
               <Label className="text-xs">Peran di portfolio</Label>
               <Select
                 value={line.role ?? "CORE"}
+                items={ROLE_ITEMS}
                 onValueChange={(v) =>
                   updateLine(index, { role: v as BrandPortfolioLineRole })
                 }
@@ -254,6 +271,7 @@ export function BrandPortfolioClient({
               <Label className="text-xs">Product Discovery (opsional)</Label>
               <Select
                 value={line.productDiscoveryQueryId ?? "none"}
+                items={discoveryItems}
                 onValueChange={(v) =>
                   updateLine(index, {
                     productDiscoveryQueryId: v === "none" ? null : v,

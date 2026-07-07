@@ -6,9 +6,15 @@ import { BrandsClient } from "./brands-client";
 
 export default async function BrandsPage() {
   await ensureBrandPageAccess();
-  const brands = await prisma.brand.findMany({ orderBy: { name: "asc" } });
+  const brands = await prisma.brand.findMany({
+    orderBy: { name: "asc" },
+    include: {
+      _count: { select: { products: true, projects: true, rooms: true } },
+    },
+  });
 
   const withLogo = brands.filter((b) => Boolean(b.logo)).length;
+  const totalProducts = brands.reduce((acc, b) => acc + b._count.products, 0);
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -30,6 +36,14 @@ export default async function BrandsPage() {
                   {withLogo}
                 </span>
                 berlogo
+              </PageHeroChip>
+            ) : null}
+            {totalProducts > 0 ? (
+              <PageHeroChip>
+                <span className="text-foreground font-semibold tabular-nums">
+                  {totalProducts}
+                </span>
+                produk
               </PageHeroChip>
             ) : null}
           </>

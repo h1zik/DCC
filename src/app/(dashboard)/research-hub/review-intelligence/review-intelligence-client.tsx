@@ -40,6 +40,7 @@ import {
   reviewPlatformsByCategory,
 } from "@/lib/review-platforms/platforms";
 import { SOURCE_STATUS_LABELS } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { RelativeTime } from "@/components/research-hub/relative-time";
 import {
   hub,
@@ -49,6 +50,11 @@ import {
 } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 import { useReviewIntelPolling } from "./use-review-intel-polling";
+
+const PLATFORM_ITEMS: SelectItemDef[] = [
+  ...reviewPlatformsByCategory("marketplace"),
+  ...reviewPlatformsByCategory("community"),
+].map((p) => ({ value: p.key, label: p.label }));
 
 export type ReviewSourceRow = {
   id: string;
@@ -289,6 +295,7 @@ export function ReviewIntelligenceClient({
                     <Label>Sumber review</Label>
                     <Select
                       value={platformKey}
+                      items={PLATFORM_ITEMS}
                       onValueChange={(v) => {
                         if (v) setPlatformKey(v);
                       }}

@@ -223,6 +223,7 @@ function MilestoneCard({
         <div className="mt-3 border-t border-border/60 pt-2">
           <Select
             value={m.status}
+            items={STATUS_OPTIONS}
             onValueChange={(v) => {
               if (v) onQuickStatus(m, v as RoomTimelineStatus);
             }}
@@ -725,6 +726,7 @@ export function ProjectMilestoneSheet({
               <Label>Status</Label>
               <Select
                 value={form.status}
+                items={STATUS_OPTIONS}
                 onValueChange={(v) => {
                   if (v) setForm((s) => ({ ...s, status: v as RoomTimelineStatus }));
                 }}

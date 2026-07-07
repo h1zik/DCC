@@ -21,6 +21,7 @@ import {
 } from "@/components/research-hub/research-hub-primitives";
 import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
 import { isSeoStatusBusy } from "@/lib/seo/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { downloadHtmlAsPdf } from "@/lib/research/research-pdf-client";
 import {
@@ -36,6 +37,10 @@ const REPORT_TYPE_LABELS: Record<SeoReportType, string> = {
   TECHNICAL: "Teknis",
   FULL: "Lengkap",
 };
+
+const REPORT_TYPE_ITEMS: SelectItemDef[] = Object.values(SeoReportType).map(
+  (t) => ({ value: t, label: REPORT_TYPE_LABELS[t] }),
+);
 
 export type ReportRow = {
   id: string;
@@ -108,6 +113,7 @@ export function ReportsClient({ reports }: { reports: ReportRow[] }) {
             <Label>Tipe</Label>
             <Select
               value={type}
+              items={REPORT_TYPE_ITEMS}
               onValueChange={(v) => {
                 if (v) setType(v as SeoReportType);
               }}

@@ -289,6 +289,10 @@ export function ReviewDetailClient({
                       <Label>Ruangan</Label>
                       <Select
                         value={roomId}
+                        items={rooms.map((r) => ({
+                          value: r.id,
+                          label: r.brandName ? `${r.name} · ${r.brandName}` : r.name,
+                        }))}
                         onValueChange={(v) => setRoomId(v ?? "")}
                       >
                         <SelectTrigger>

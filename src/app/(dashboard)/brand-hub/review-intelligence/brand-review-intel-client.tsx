@@ -39,6 +39,7 @@ import {
   REVIEW_PLATFORMS,
   reviewPlatformsByCategory,
 } from "@/lib/review-platforms/platforms";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { SOURCE_STATUS_LABELS, formatRelativeTime } from "@/lib/research/labels";
 import {
   BrandHubEmptyState,
@@ -64,6 +65,11 @@ export type BrandReviewSourceRow = {
   lastAnalyzedAt: string | null;
   errorMessage: string | null;
 };
+
+const PLATFORM_ITEMS: SelectItemDef[] = [
+  ...reviewPlatformsByCategory("marketplace"),
+  ...reviewPlatformsByCategory("community"),
+].map((p) => ({ value: p.key, label: p.label }));
 
 function statusChipTone(
   status: ReviewIntelSourceStatus,
@@ -294,6 +300,7 @@ export function BrandReviewIntelClient({
                     <Label>Sumber review</Label>
                     <Select
                       value={platformKey}
+                      items={PLATFORM_ITEMS}
                       onValueChange={(v) => {
                         if (v) setPlatformKey(v);
                       }}

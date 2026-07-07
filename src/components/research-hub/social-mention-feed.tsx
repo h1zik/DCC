@@ -17,7 +17,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SOCIAL_MENTION_CLASS_LABELS } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { cn } from "@/lib/utils";
+
+const MENTION_CLASS_ITEMS: SelectItemDef[] = [
+  { value: "ALL", label: "Semua klasifikasi" },
+  ...(Object.keys(SOCIAL_MENTION_CLASS_LABELS) as SocialMentionClass[]).map(
+    (key) => ({ value: key, label: SOCIAL_MENTION_CLASS_LABELS[key] }),
+  ),
+];
 
 export type MentionFeedRow = {
   id: string;
@@ -65,6 +73,7 @@ export function SocialMentionFeed({ rows }: { rows: MentionFeedRow[] }) {
         </p>
         <Select
           value={filter}
+          items={MENTION_CLASS_ITEMS}
           onValueChange={(v) => setFilter(v as SocialMentionClass | "ALL")}
         >
           <SelectTrigger className="h-8 w-44 text-xs">

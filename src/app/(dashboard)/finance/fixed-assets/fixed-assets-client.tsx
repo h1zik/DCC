@@ -17,6 +17,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Table,
   TableBody,
@@ -75,6 +76,24 @@ export function FixedAssetsClient(props: {
     props.accounts.find((a) => a.id === safeExpAcc)
       ? `${props.accounts.find((a) => a.id === safeExpAcc)!.code} — ${props.accounts.find((a) => a.id === safeExpAcc)!.name}`
       : "Pilih akun beban";
+
+  const accountItems: SelectItemDef[] = props.accounts.map((a) => ({
+    value: a.id,
+    label: `${a.code} — ${a.name}`,
+  }));
+  const assetAccItems: SelectItemDef[] = [
+    ...(props.accounts.length === 0
+      ? [{ value: "__none__", label: "Belum ada akun" }]
+      : []),
+    ...accountItems,
+  ];
+  const fundAccItems: SelectItemDef[] = [
+    {
+      value: "__none__",
+      label: "Tanpa jurnal perolehan (aset lama / sudah dijurnal)",
+    },
+    ...accountItems,
+  ];
 
   // Sumber dana perolehan (opsional): bila dipilih, server memposting jurnal
   // perolehan (debit akun aset / kredit akun ini) bersamaan dengan register.
@@ -146,6 +165,7 @@ export function FixedAssetsClient(props: {
           <Label>Akun aset</Label>
           <Select
             value={safeAssetAcc}
+            items={assetAccItems}
             onValueChange={(v) => setAssetAcc(!v || v === "__none__" ? "" : v)}
           >
             <SelectTrigger className="w-full">
@@ -167,6 +187,7 @@ export function FixedAssetsClient(props: {
           <Label>Akun akumulasi penyusutan</Label>
           <Select
             value={safeAccumAcc}
+            items={accountItems}
             onValueChange={(v) => setAccumAcc(!v || v === "__none__" ? "" : v)}
           >
             <SelectTrigger className="w-full">
@@ -185,6 +206,7 @@ export function FixedAssetsClient(props: {
           <Label>Akun beban penyusutan</Label>
           <Select
             value={safeExpAcc}
+            items={accountItems}
             onValueChange={(v) => setExpAcc(!v || v === "__none__" ? "" : v)}
           >
             <SelectTrigger className="w-full">
@@ -203,6 +225,7 @@ export function FixedAssetsClient(props: {
           <Label>Sumber dana perolehan (opsional — membuat jurnal perolehan)</Label>
           <Select
             value={fundAcc || "__none__"}
+            items={fundAccItems}
             onValueChange={(v) => setFundAcc(!v || v === "__none__" ? "" : v)}
           >
             <SelectTrigger className="w-full">

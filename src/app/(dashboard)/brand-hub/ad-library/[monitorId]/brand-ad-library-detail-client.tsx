@@ -33,6 +33,7 @@ import {
 import { AdCreativeMedia } from "@/components/brand-hub/ad-creative-media";
 import { DemoDataBanner } from "@/components/brand-hub/demo-data-banner";
 import { isAdVideo, scrapeMediaTypeLabel } from "@/lib/brand-research/ad-library-media";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   AD_WINNING_TIER_LABEL,
   computeDaysRunning,
@@ -108,6 +109,12 @@ const STATUS_LABEL: Record<string, string> = {
   FAILED: "Gagal",
 };
 
+const SORT_BY_ITEMS: SelectItemDef[] = [
+  { value: "winning", label: "Winning score" },
+  { value: "newest", label: "Terbaru" },
+  { value: "longest", label: "Tayang terlama" },
+];
+
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -143,6 +150,14 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
     }
     return [...set].sort();
   }, [data.ads]);
+
+  const ctaFilterItems = useMemo<SelectItemDef[]>(
+    () => [
+      { value: "all", label: "Semua CTA" },
+      ...ctaTypes.map((c) => ({ value: c, label: c })),
+    ],
+    [ctaTypes],
+  );
 
   const filteredAds = useMemo(() => {
     const filtered = data.ads.filter((ad) => {
@@ -393,6 +408,7 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
           <div className="flex flex-wrap gap-2">
             <Select
               value={sortBy}
+              items={SORT_BY_ITEMS}
               onValueChange={(v) =>
                 setSortBy((v as "winning" | "newest" | "longest") ?? "winning")
               }
@@ -408,6 +424,7 @@ export function BrandAdLibraryDetailClient({ data }: { data: AdLibraryDetailData
             </Select>
             <Select
               value={ctaFilter}
+              items={ctaFilterItems}
               onValueChange={(v) => setCtaFilter(v ?? "all")}
             >
               <SelectTrigger className="h-8 w-[130px] text-xs">

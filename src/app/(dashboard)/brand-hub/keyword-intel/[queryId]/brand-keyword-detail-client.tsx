@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   CalendarRange,
   Copy,
@@ -60,6 +60,7 @@ import type {
   KeywordSignalStats,
   SeasonalCurve,
 } from "@/lib/research/keyword-intel/keyword-signal-types";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   BrandHubPageHeader,
   BrandHubSection,
@@ -137,6 +138,15 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
 
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
   const canBrief = data.status === "READY";
+
+  const roomItems = useMemo<SelectItemDef[]>(
+    () =>
+      data.rooms.map((r) => ({
+        value: r.id,
+        label: `${r.name}${r.brandName ? ` — ${r.brandName}` : ""}`,
+      })),
+    [data.rooms],
+  );
 
   const isProcessing =
     data.status === "COLLECTING" ||
@@ -256,6 +266,7 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
                       <Label>Room / Brand</Label>
                       <Select
                         value={roomId}
+                        items={roomItems}
                         onValueChange={(v) => setRoomId(v ?? "")}
                       >
                         <SelectTrigger>
