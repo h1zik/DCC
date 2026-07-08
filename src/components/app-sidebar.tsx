@@ -35,6 +35,7 @@ import {
   Microscope,
   Palette,
   Gauge,
+  Trophy,
 } from "lucide-react";
 import { effectiveRoleLabel } from "@/lib/role-labels";
 import {
@@ -70,6 +71,7 @@ const navCeo = [
   { href: "/schedule", label: "Calendar", icon: CalendarDays },
   { href: "/attendance", label: "Attendance", icon: ScanFace },
   { href: "/attendance/rekap", label: "Attendance Reports", icon: ClipboardList },
+  { href: "/admin/gamification", label: "Gamifikasi", icon: Trophy },
 ] as const;
 
 const navAdministrator = [
@@ -84,6 +86,7 @@ const navAdministrator = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/roles", label: "Roles & Access", icon: ShieldCheck },
   { href: "/admin/branding", label: "App Settings", icon: WandSparkles },
+  { href: "/admin/gamification", label: "Gamifikasi", icon: Trophy },
 ] as const;
 
 const navLogistics = [
@@ -218,7 +221,11 @@ export function AppSidebar() {
   const { data: session } = useSession();
   const { open: agentOpen, toggle: toggleAgent } = useAgentPanel();
   const role = session?.user?.role;
-  const nav = navForRole(role);
+  const isFreelance = session?.user?.employmentType === "FREELANCE";
+  // Freelance tidak ikut absensi — sembunyikan menu Attendance & laporannya.
+  const nav = navForRole(role).filter(
+    (item) => !isFreelance || !item.href.startsWith("/attendance"),
+  );
   const groupLabel = groupLabelForRole(role);
   const [branding, setBranding] = useState<{
     navTitle: string;

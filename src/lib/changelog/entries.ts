@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-08-profile-gamification",
+    date: "2026-07-08",
+    title: "Profil gamifikasi ala Steam: level, XP, achievement & kosmetik",
+    category: "new",
+    description:
+      "Profilmu kini punya level & XP yang benar-benar berarti. Kumpulkan XP dari hal bernilai — check-in absensi terverifikasi tepat waktu (dengan streak beruntun), tugas selesai sebelum tenggat, dan menjaga data tetap segar — lalu buka achievement dan kosmetik. Hias profilmu di halaman Edit: background hidup, frame avatar beranimasi, nameplate, gelar, warna aksen, dan etalase pencapaian yang bisa diatur urutannya. Level lamamu tidak turun — dihitung sebagai lantai. Bisa dinyalakan/dimatikan admin lewat Pengaturan → Gamifikasi.",
+    highlights: [
+      "Level & XP dari outcome terverifikasi (absensi tepat waktu, task on-time, data segar) — anti-gaming",
+      "Achievement + streak absensi, dengan notifikasi saat terbuka",
+      "Kosmetik: background beranimasi, frame, nameplate, gelar, accent — sebagian gratis, sebagian di-unlock",
+      "Editor 2-kolom dengan pratinjau langsung + galeri achievement",
+      "Ikut tema aktif (tema terang/gelap/custom) & hormati preferensi 'reduce motion'",
+    ],
+  },
+  {
     id: "2026-07-07-custom-theme-studio",
     date: "2026-07-07",
     title: "Racik & simpan tema aplikasimu sendiri",

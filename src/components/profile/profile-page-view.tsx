@@ -2,11 +2,13 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   Activity,
+  Award,
   CalendarDays,
   CheckCircle2,
   DoorOpen,
   ListTodo,
   MessageSquare,
+  Trophy,
   User,
   Users,
 } from "lucide-react";
@@ -30,6 +32,16 @@ import type {
 import { profileMemberTenure } from "./user-profile-hero";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import type { GamificationView } from "@/lib/gamification/profile-view";
+import { LiveBackground } from "./gamification/live-background";
+import { ProfileAvatarFrame as GamifiedAvatarFrame } from "./gamification/animated-avatar-frame";
+import { LevelPanel } from "./gamification/level-panel";
+import { Nameplate } from "./gamification/nameplate";
+import { Celebration } from "./gamification/celebration";
+import {
+  AchievementShelf,
+  AchievementShowcase,
+} from "./gamification/achievement-visuals";
 
 const ONLINE_THRESHOLD_MS = 2 * 60 * 1000;
 
@@ -75,6 +87,8 @@ export function ProfilePageView({
   rooms,
   recentDoneTasks,
   actions,
+  gamification,
+  galleryHref = "/profile",
 }: {
   user: ProfilePageUser;
   stats: ProfileShowcaseStats;
@@ -82,15 +96,42 @@ export function ProfilePageView({
   recentDoneTasks: ProfileShowcaseActivity[];
   /** Tombol aksi di hero (Edit profil / Kirim pesan / Salin tautan). */
   actions?: React.ReactNode;
+  /** Data gamifikasi; null bila feature flag mati → render seperti semula. */
+  gamification?: GamificationView | null;
+  /** Tautan galeri achievement (mis. /profile/edit#achievements). */
+  galleryHref?: string;
 }) {
   const displayName = user.name?.trim() || user.email;
-  const accent = resolveProfileAccent(user.bannerPreset, user.accentHex);
+  const accent =
+    gamification?.cosmetics.accentColor ??
+    resolveProfileAccent(user.bannerPreset, user.accentHex);
   const patternStyle = bannerPatternStyle(user.bannerPattern);
   const tenure = profileMemberTenure(user.createdAt);
+  // Rayakan bila ada achievement yang baru terbuka (dihitung server-side).
+  const celebrate = gamification?.celebrate ?? false;
   const online =
     user.lastSeenAt != null &&
     Date.now() - user.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS;
   const stickerMeta = user.sticker ? PROFILE_STICKERS[user.sticker] : null;
+
+  const avatarImage = (
+    <div className="relative size-32 overflow-hidden rounded-full border-[3px] border-background bg-muted sm:size-40">
+      {user.image ? (
+        <Image
+          src={user.image}
+          alt={displayName}
+          fill
+          sizes="160px"
+          className="object-cover"
+          unoptimized
+        />
+      ) : (
+        <div className="text-muted-foreground flex size-full items-center justify-center">
+          <User className="size-16" aria-hidden />
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div
@@ -99,11 +140,16 @@ export function ProfilePageView({
     >
       {/* ------------------------------ HERO ------------------------------ */}
       <section className="border-border/70 relative overflow-hidden rounded-3xl border bg-card shadow-xl shadow-black/5 ring-1 ring-black/[0.04] dark:shadow-black/30 dark:ring-white/[0.06]">
+        {gamification ? <Celebration active={celebrate} /> : null}
         <div className="relative isolate h-52 sm:h-72">
-          <div
-            className="absolute inset-0"
-            style={{ background: bannerGradientCss(user.bannerPreset) }}
-          />
+          {gamification ? (
+            <LiveBackground background={gamification.cosmetics.background} />
+          ) : (
+            <div
+              className="absolute inset-0"
+              style={{ background: bannerGradientCss(user.bannerPreset) }}
+            />
+          )}
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.35] mix-blend-overlay dark:opacity-[0.45]"
             style={{
@@ -151,24 +197,13 @@ export function ProfilePageView({
           <div className="flex flex-col gap-5 px-5 pb-6 pt-1 sm:px-8 lg:flex-row lg:items-end lg:gap-8">
             {/* Avatar */}
             <div className="relative z-10 -mt-20 flex shrink-0 justify-center sm:-mt-24 lg:justify-start">
-              <AvatarFrame frame={user.avatarFrame}>
-                <div className="relative size-32 overflow-hidden rounded-full border-[3px] border-background bg-muted sm:size-40">
-                  {user.image ? (
-                    <Image
-                      src={user.image}
-                      alt={displayName}
-                      fill
-                      sizes="160px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="text-muted-foreground flex size-full items-center justify-center">
-                      <User className="size-16" aria-hidden />
-                    </div>
-                  )}
-                </div>
-              </AvatarFrame>
+              {gamification ? (
+                <GamifiedAvatarFrame border={gamification.cosmetics.border}>
+                  {avatarImage}
+                </GamifiedAvatarFrame>
+              ) : (
+                <AvatarFrame frame={user.avatarFrame}>{avatarImage}</AvatarFrame>
+              )}
               <span
                 className={cn(
                   "border-background absolute bottom-2 right-2 z-10 size-5 rounded-full border-[3px] sm:size-6",
@@ -183,7 +218,13 @@ export function ProfilePageView({
             <div className="min-w-0 flex-1 space-y-2.5 text-center lg:pb-1 lg:text-left">
               <div className="flex flex-wrap items-center justify-center gap-2.5 lg:justify-start">
                 <h1 className="text-balance text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                  {displayName}
+                  {gamification?.cosmetics.nameplate ? (
+                    <Nameplate effect={gamification.cosmetics.nameplate.effect}>
+                      {displayName}
+                    </Nameplate>
+                  ) : (
+                    displayName
+                  )}
                 </h1>
                 {stickerMeta ? (
                   <span
@@ -193,6 +234,14 @@ export function ProfilePageView({
                   >
                     {stickerMeta.emoji}
                   </span>
+                ) : null}
+                {gamification?.cosmetics.title ? (
+                  <Badge
+                    variant="secondary"
+                    className="border border-[color:var(--profile-accent)]/40 font-medium"
+                  >
+                    {gamification.cosmetics.title}
+                  </Badge>
                 ) : null}
               </div>
               {user.tagline?.trim() ? (
@@ -246,6 +295,23 @@ export function ProfilePageView({
       {/* --------------------------- SHOWCASES ---------------------------- */}
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-6">
+          {/* Gamifikasi: etalase pencapaian + shelf */}
+          {gamification && gamification.showcase.length > 0 ? (
+            <ShowcaseCard title="Etalase pencapaian" icon={<Trophy className="size-4" />}>
+              <AchievementShowcase items={gamification.showcase} />
+            </ShowcaseCard>
+          ) : null}
+          {gamification ? (
+            <ShowcaseCard title="Pencapaian" icon={<Award className="size-4" />}>
+              <AchievementShelf
+                achievements={gamification.achievements}
+                unlockedCount={gamification.unlockedCount}
+                totalCount={gamification.totalCount}
+                galleryHref={galleryHref}
+              />
+            </ShowcaseCard>
+          ) : null}
+
           {/* Bio showcase */}
           <ShowcaseCard title="Tentang" icon={<User className="size-4" />}>
             {user.bio?.trim() ? (
@@ -407,33 +473,47 @@ export function ProfilePageView({
             </dl>
           </ShowcaseCard>
 
-          {/* Tenure "level" flex card, Steam-vibe */}
-          <div className="border-border/70 relative overflow-hidden rounded-2xl border p-5">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.08]"
-              style={{ background: bannerGradientCss(user.bannerPreset) }}
-              aria-hidden
+          {/* Level & XP — gamifikasi (fallback: kartu tenure lama) */}
+          {gamification ? (
+            <LevelPanel
+              level={gamification.level}
+              xpTotal={gamification.xpTotal}
+              into={gamification.levelInto}
+              span={gamification.levelSpan}
+              ratio={gamification.levelRatio}
+              nextLevelXp={gamification.nextLevelXp}
+              streak={gamification.attendanceStreak}
+              longestStreak={gamification.longestAttendanceStreak}
+              streakAlive={gamification.streakAlive}
             />
-            <div className="relative flex items-center gap-4">
-              <span
-                className="flex size-14 shrink-0 items-center justify-center rounded-full border-2 text-lg font-bold tabular-nums"
-                style={{
-                  borderColor: `color-mix(in srgb, var(--profile-accent) 70%, transparent)`,
-                  color: `var(--profile-accent)`,
-                }}
-              >
-                {Math.max(1, Math.floor(tenure.days / 30) + 1)}
-              </span>
-              <div className="min-w-0">
-                <p className="text-foreground text-sm font-semibold">
-                  Level keanggotaan
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Naik tiap 30 hari aktif — terus berkarya!
-                </p>
+          ) : (
+            <div className="border-border/70 relative overflow-hidden rounded-2xl border p-5">
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.08]"
+                style={{ background: bannerGradientCss(user.bannerPreset) }}
+                aria-hidden
+              />
+              <div className="relative flex items-center gap-4">
+                <span
+                  className="flex size-14 shrink-0 items-center justify-center rounded-full border-2 text-lg font-bold tabular-nums"
+                  style={{
+                    borderColor: `color-mix(in srgb, var(--profile-accent) 70%, transparent)`,
+                    color: `var(--profile-accent)`,
+                  }}
+                >
+                  {Math.max(1, Math.floor(tenure.days / 30) + 1)}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-foreground text-sm font-semibold">
+                    Level keanggotaan
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Naik tiap 30 hari aktif — terus berkarya!
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </aside>
       </div>
     </div>

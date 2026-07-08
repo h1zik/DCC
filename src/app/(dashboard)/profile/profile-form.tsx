@@ -67,6 +67,7 @@ export function ProfileForm({
   initialAvatarFrame,
   profileSharePath,
   viewProfileHref,
+  slimAppearance = false,
 }: {
   email: string;
   initialName: string;
@@ -81,6 +82,8 @@ export function ProfileForm({
   initialAvatarFrame: ProfileAvatarFrame;
   profileSharePath: string;
   viewProfileHref?: string;
+  /** Bila true, sembunyikan "Studio tampilan profil" (redundan saat gamifikasi ON). */
+  slimAppearance?: boolean;
 }) {
   const router = useRouter();
   const { update } = useSession();
@@ -258,6 +261,7 @@ export function ProfileForm({
 
   return (
     <div className="flex flex-col gap-6">
+      {!slimAppearance ? (
       <Card
         className="overflow-hidden border-border/70 ring-1 ring-black/[0.03] dark:ring-white/[0.04]"
         style={{ ["--profile-accent" as string]: accent }}
@@ -569,6 +573,7 @@ export function ProfileForm({
           </Button>
         </CardContent>
       </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

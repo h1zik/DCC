@@ -7,6 +7,11 @@ import {
   isAttendanceAdmin,
   isValidAttendanceType,
 } from "@/lib/attendance";
+import {
+  evaluateAchievements,
+  isProfileGamificationEnabled,
+  onVerifiedCheckIn,
+} from "@/lib/gamification";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -173,6 +178,25 @@ export async function POST(request: NextRequest) {
     },
     include: { user: { select: userSelect } },
   });
+
+  // Gamifikasi profil (fire-and-forget, di balik feature flag). Tak pernah
+  // menggagalkan pencatatan absensi bila engine gamifikasi error.
+  if (
+    (await isProfileGamificationEnabled()) &&
+    created.type === AttendanceType.CHECK_IN &&
+    created.confidence > 0
+  ) {
+    void onVerifiedCheckIn({
+      userId,
+      date: created.date,
+      timestamp: created.timestamp,
+      employmentType: session.user.employmentType,
+    })
+      .then(() => evaluateAchievements(userId, { notify: true }))
+      .catch((err) =>
+        console.error("[gamification] attendance grant failed", err),
+      );
+  }
 
   return NextResponse.json(created, { status: 201 });
 }

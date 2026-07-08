@@ -16,6 +16,7 @@ import {
   isProfileSticker,
 } from "@/lib/profile-appearance";
 import { getProfileShowcaseData } from "@/lib/profile-showcase";
+import { getProfileGamificationView } from "@/lib/gamification/profile-view";
 import { cn } from "@/lib/utils";
 
 type PageProps = { params: Promise<{ userId: string }> };
@@ -27,7 +28,7 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
   const { userId } = await params;
   if (userId === session.user.id) redirect("/profile");
 
-  const [user, showcase] = await Promise.all([
+  const [user, showcase, gamification] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -49,6 +50,7 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
       },
     }),
     getProfileShowcaseData(userId),
+    getProfileGamificationView(userId),
   ]);
 
   if (!user) notFound();
@@ -85,6 +87,8 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
       stats={showcase.stats}
       rooms={showcase.rooms}
       recentDoneTasks={showcase.recentDoneTasks}
+      gamification={gamification}
+      galleryHref={`/profile/${user.id}`}
       actions={
         <>
           <MessageUserButton userId={user.id} />

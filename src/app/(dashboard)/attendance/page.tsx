@@ -16,6 +16,15 @@ export default async function AttendancePage() {
   if (!session?.user?.id) redirect("/login");
 
   const userId = session.user.id;
+
+  // Freelance tidak ikut absensi — blokir akses (baca dari DB agar otoritatif
+  // walau token JWT masih basi).
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { employmentType: true },
+  });
+  if (me?.employmentType === "FREELANCE") redirect("/");
+
   const today = getTodayDateString();
 
   const [faceCount, records] = await Promise.all([
