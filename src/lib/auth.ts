@@ -11,7 +11,7 @@ import {
   registerLoginFailure,
   resetLogin,
 } from "@/lib/auth-rate-limit";
-import type { UserRole } from "@prisma/client";
+import type { EmploymentType, UserRole } from "@prisma/client";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -84,6 +84,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name ?? undefined,
           image: user.image ?? undefined,
           role: user.role as UserRole,
+          employmentType: user.employmentType,
           bio: user.bio ?? undefined,
           customRoleName: user.customRole?.name ?? null,
         };
@@ -96,6 +97,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id;
         token.email = user.email;
         token.role = user.role;
+        token.employmentType = user.employmentType;
         token.name = user.name ?? undefined;
         token.picture = user.image ?? undefined;
         token.bio = user.bio ?? undefined;
@@ -135,12 +137,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.customRoleName = row.customRole?.name ?? null;
         }
       }
+      // Isi employmentType untuk token lama (dibuat sebelum field ini ada).
+      // Sekali refetch lalu tersimpan di token.
+      if (token.id && token.employmentType === undefined) {
+        const row = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { employmentType: true },
+        });
+        if (row) token.employmentType = row.employmentType;
+      }
       return token;
     },
     session: async ({ session, token }) => {
       if (session.user) {
         if (token.id) session.user.id = token.id as string;
         if (token.role) session.user.role = token.role as UserRole;
+        session.user.employmentType =
+          (token.employmentType as EmploymentType | undefined) ?? "EMPLOYEE";
         if (token.name !== undefined) session.user.name = token.name as string | null;
         if (token.picture !== undefined)
           session.user.image = (token.picture as string | null) ?? null;

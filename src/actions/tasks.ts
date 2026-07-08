@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
+import { isProfileGamificationEnabled, onTaskDone } from "@/lib/gamification";
 import { notifyCeo, notifyTaskCompletedForCeo } from "@/lib/notify";
 import {
   notifyPicTaskViaWhatsApp,
@@ -426,12 +427,22 @@ export async function moveTaskToColumn(
       status,
       ...(status === TaskStatus.DONE && task.status !== TaskStatus.DONE
         ? {
+            completedAt: new Date(),
             whatsappReminder3dSentAt: null,
             whatsappReminder1dSentAt: null,
           }
         : {}),
     },
   });
+
+  // Gamifikasi: XP tugas selesai tepat waktu (first close, fire-and-forget).
+  if (
+    (await isProfileGamificationEnabled()) &&
+    status === TaskStatus.DONE &&
+    task.status !== TaskStatus.DONE
+  ) {
+    void onTaskDone(taskId);
+  }
 
   if (orderedTaskIdsInTarget && orderedTaskIdsInTarget.length > 0) {
     await assertKanbanReorderTasksByColumn(
@@ -533,12 +544,22 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
       kanbanColumnId: targetColumnId,
       ...(status === TaskStatus.DONE && task.status !== TaskStatus.DONE
         ? {
+            completedAt: new Date(),
             whatsappReminder3dSentAt: null,
             whatsappReminder1dSentAt: null,
           }
         : {}),
     },
   });
+
+  // Gamifikasi: XP tugas selesai tepat waktu (first close, fire-and-forget).
+  if (
+    (await isProfileGamificationEnabled()) &&
+    status === TaskStatus.DONE &&
+    task.status !== TaskStatus.DONE
+  ) {
+    void onTaskDone(taskId);
+  }
 
   if (orderedTaskIdsInTarget && orderedTaskIdsInTarget.length > 0) {
     await assertKanbanReorderTasks(
@@ -981,6 +1002,7 @@ export async function updateTask(
             whatsappReminder1dSentAt: null,
           }
         : {}),
+      ...(markingDone ? { completedAt: new Date() } : {}),
       ...(assigneesChanged
         ? {
             assignees: {
@@ -1017,6 +1039,8 @@ export async function updateTask(
   }
 
   if (data.status === TaskStatus.DONE && prev.status !== TaskStatus.DONE) {
+    // Gamifikasi: XP tugas selesai tepat waktu (first close, fire-and-forget).
+    if (await isProfileGamificationEnabled()) void onTaskDone(task.id);
     notificationJobs.push(
       notifyTaskCompletedForCeo(
         task.title,

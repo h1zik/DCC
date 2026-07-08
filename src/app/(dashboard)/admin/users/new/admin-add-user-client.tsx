@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserRole } from "@prisma/client";
+import type { EmploymentType } from "@prisma/client";
 import { toast } from "sonner";
 import { createUserByCeo } from "@/actions/users";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -41,6 +42,8 @@ export function AdminAddUserClient({ roles }: { roles: AddUserRoleOption[] }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [customRoleId, setCustomRoleId] = useState<string>(defaultId);
+  const [employmentType, setEmploymentType] =
+    useState<EmploymentType>("EMPLOYEE");
   const [pending, setPending] = useState(false);
 
   const roleSelectItems = useMemo(
@@ -65,6 +68,7 @@ export function AdminAddUserClient({ roles }: { roles: AddUserRoleOption[] }) {
         name: name.trim() || undefined,
         password,
         customRoleId,
+        employmentType,
       });
       toast.success("Pengguna berhasil dibuat. Sampaikan kredensial dengan saluran aman.");
       setEmail("");
@@ -132,6 +136,32 @@ export function AdminAddUserClient({ roles }: { roles: AddUserRoleOption[] }) {
             Peran (role)
           </Link>
           . Peran CEO tidak dapat dibuat dari halaman ini.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label>Status kepegawaian</Label>
+        <div className="border-border bg-background inline-flex rounded-lg border p-0.5">
+          {(["EMPLOYEE", "FREELANCE"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={employmentType === v}
+              onClick={() => setEmploymentType(v)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                employmentType === v
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {v === "EMPLOYEE" ? "Employee" : "Freelance"}
+            </button>
+          ))}
+        </div>
+        <p className="text-muted-foreground text-[11px]">
+          {employmentType === "FREELANCE"
+            ? "Freelance tidak ikut absensi & tidak melihat menu Absensi."
+            : "Employee masuk daftar absensi."}
         </p>
       </div>
       <div className="space-y-2">

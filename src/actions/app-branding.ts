@@ -4,7 +4,10 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { requireAdministrator } from "@/lib/auth-helpers";
+import {
+  requireAdministrator,
+  requireCeoOrAdministrator,
+} from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import {
   absolutePathFromStoredPublicPath,
@@ -112,4 +115,20 @@ export async function updateAppBranding(formData: FormData) {
 
   revalidatePath("/", "layout");
   revalidatePath("/admin/branding");
+}
+
+/**
+ * Toggle feature flag Profil Gamifikasi (khusus admin). Env
+ * `PROFILE_GAMIFICATION_ENABLED` (bila diset) tetap menang sebagai override.
+ */
+export async function setProfileGamificationEnabled(enabled: boolean) {
+  await requireCeoOrAdministrator();
+  await prisma.appBranding.upsert({
+    where: { id: BRANDING_ID },
+    update: { profileGamificationEnabled: enabled },
+    create: { id: BRANDING_ID, profileGamificationEnabled: enabled },
+  });
+  revalidatePath("/", "layout");
+  revalidatePath("/admin/gamification");
+  revalidatePath("/profile");
 }

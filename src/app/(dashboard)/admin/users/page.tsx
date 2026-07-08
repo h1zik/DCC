@@ -44,6 +44,7 @@ export default async function AdminUsersPage() {
         name: true,
         image: true,
         role: true,
+        employmentType: true,
         createdAt: true,
         lastSeenAt: true,
         customRoleId: true,

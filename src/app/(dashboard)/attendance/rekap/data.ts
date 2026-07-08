@@ -91,6 +91,8 @@ export async function getAttendanceAdminData(): Promise<{
       select: { date: true, type: true, userId: true },
     }),
     prisma.user.findMany({
+      // Hanya pekerja tetap yang masuk daftar absensi — freelance dikecualikan.
+      where: { employmentType: "EMPLOYEE" },
       select: {
         id: true,
         name: true,

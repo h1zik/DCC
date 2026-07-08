@@ -17,13 +17,14 @@ import {
   isProfileSticker,
 } from "@/lib/profile-appearance";
 import { getProfileShowcaseData } from "@/lib/profile-showcase";
+import { getProfileGamificationView } from "@/lib/gamification/profile-view";
 import { cn } from "@/lib/utils";
 
 export default async function ProfilePage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const [user, showcase] = await Promise.all([
+  const [user, showcase, gamification] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
@@ -45,6 +46,7 @@ export default async function ProfilePage() {
       },
     }),
     getProfileShowcaseData(session.user.id),
+    getProfileGamificationView(session.user.id),
   ]);
   if (!user) redirect("/login");
 
@@ -80,6 +82,8 @@ export default async function ProfilePage() {
       stats={showcase.stats}
       rooms={showcase.rooms}
       recentDoneTasks={showcase.recentDoneTasks}
+      gamification={gamification}
+      galleryHref="/profile/edit"
       actions={
         <>
           <CopyProfileLinkButton sharePath={`/profile/${user.id}`} />

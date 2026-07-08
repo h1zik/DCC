@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { Lock, Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
+import type { EmploymentType } from "@prisma/client";
 import { cn } from "@/lib/utils";
 
 export type UserAdminRow = {
@@ -44,6 +45,7 @@ export type UserAdminRow = {
   name: string | null;
   image: string | null;
   role: UserRole;
+  employmentType: EmploymentType;
   createdAt: Date;
   customRoleId: string | null;
   customRole: { id: string; name: string; isProtected: boolean } | null;
@@ -139,11 +141,16 @@ export function AdminUsersClient({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [employmentFilter, setEmploymentFilter] = useState<
+    "all" | EmploymentType
+  >("all");
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<UserAdminRow | null>(null);
   const [draftEmail, setDraftEmail] = useState("");
   const [draftName, setDraftName] = useState("");
   const [draftCustomRoleId, setDraftCustomRoleId] = useState<string>("");
+  const [draftEmployment, setDraftEmployment] =
+    useState<EmploymentType>("EMPLOYEE");
   const [draftPassword, setDraftPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
@@ -177,19 +184,23 @@ export function AdminUsersClient({
       if (roleFilter !== "all" && effectiveRoleLabel(u) !== roleFilter) {
         return false;
       }
+      if (employmentFilter !== "all" && u.employmentType !== employmentFilter) {
+        return false;
+      }
       if (!q) return true;
       return (
         u.email.toLowerCase().includes(q) ||
         (u.name ?? "").toLowerCase().includes(q)
       );
     });
-  }, [users, query, roleFilter]);
+  }, [users, query, roleFilter, employmentFilter]);
 
   function openEdit(row: UserAdminRow) {
     setEditing(row);
     setDraftEmail(row.email);
     setDraftName(row.name ?? "");
     setDraftCustomRoleId(row.customRoleId ?? fallbackRoleId);
+    setDraftEmployment(row.employmentType);
     setDraftPassword("");
     setEditOpen(true);
   }
@@ -214,6 +225,7 @@ export function AdminUsersClient({
         userId: editing.id,
         email: draftEmail,
         name: draftName,
+        employmentType: draftEmployment,
       });
 
       if (
@@ -316,6 +328,11 @@ export function AdminUsersClient({
                 Kamu
               </span>
             ) : null}
+            {u.employmentType === "FREELANCE" ? (
+              <span className="shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+                Freelance
+              </span>
+            ) : null}
           </div>
           <p className="text-muted-foreground truncate font-mono text-xs">
             {u.email}
@@ -385,6 +402,39 @@ export function AdminUsersClient({
               <span className="tabular-nums opacity-70">{chip.count}</span>
             </button>
           ))}
+          <span
+            className="bg-border mx-1 hidden h-4 w-px self-center sm:block"
+            aria-hidden
+          />
+          {(
+            [
+              ["EMPLOYEE", "Employee"],
+              ["FREELANCE", "Freelance"],
+            ] as const
+          ).map(([value, label]) => {
+            const count = users.filter(
+              (u) => u.employmentType === value,
+            ).length;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() =>
+                  setEmploymentFilter((prev) => (prev === value ? "all" : value))
+                }
+                aria-pressed={employmentFilter === value}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                  employmentFilter === value
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {label}
+                <span className="tabular-nums opacity-70">{count}</span>
+              </button>
+            );
+          })}
         </div>
         <p className="text-muted-foreground text-xs">
           Untuk membuat peran baru, buka{" "}
@@ -422,6 +472,7 @@ export function AdminUsersClient({
               onClick={() => {
                 setQuery("");
                 setRoleFilter("all");
+                setEmploymentFilter("all");
               }}
             >
               <X className="size-4" />
@@ -601,6 +652,32 @@ export function AdminUsersClient({
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+              <div className="space-y-2">
+                <Label>Status kepegawaian</Label>
+                <div className="border-border bg-background inline-flex rounded-lg border p-0.5">
+                  {(["EMPLOYEE", "FREELANCE"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      aria-pressed={draftEmployment === v}
+                      onClick={() => setDraftEmployment(v)}
+                      className={cn(
+                        "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                        draftEmployment === v
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {v === "EMPLOYEE" ? "Employee" : "Freelance"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-muted-foreground text-[11px]">
+                  {draftEmployment === "FREELANCE"
+                    ? "Freelance tidak ikut absensi & tidak melihat menu Absensi."
+                    : "Employee masuk daftar absensi."}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="eu-password">Kata sandi baru (opsional)</Label>

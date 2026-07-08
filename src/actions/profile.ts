@@ -140,6 +140,34 @@ export async function updateProfileAppearance(input: unknown) {
   revalidatePath(`/profile/${session.user.id}`);
 }
 
+const taglineStickerSchema = z.object({
+  tagline: z.string().max(160).optional().nullable(),
+  sticker: z.string().max(24).optional().nullable(),
+});
+
+/**
+ * Update ringan: hanya slogan + stiker (dipakai editor gamifikasi supaya studio
+ * tampilan lama bisa disembunyikan tanpa kehilangan kontrol ini).
+ */
+export async function updateProfileTaglineSticker(
+  input: z.infer<typeof taglineStickerSchema>,
+) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Belum masuk.");
+  const parsed = taglineStickerSchema.parse(input);
+  const taglineRaw = (parsed.tagline ?? "").trim();
+  const tagline = taglineRaw ? taglineRaw.slice(0, 160) : null;
+  const sticker = normalizeProfileSticker(parsed.sticker ?? null);
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { profileTagline: tagline, profileSticker: sticker },
+  });
+
+  revalidatePath("/profile");
+  revalidatePath(`/profile/${session.user.id}`);
+}
+
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Masukkan kata sandi saat ini."),
   newPassword: z

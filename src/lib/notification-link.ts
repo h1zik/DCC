@@ -7,6 +7,8 @@ export function hrefForNotificationType(type: NotificationType): string {
       return "/approvals";
     case NotificationType.SCHEDULE_REMINDER:
       return "/schedule";
+    case NotificationType.ACHIEVEMENT_UNLOCKED:
+      return "/profile";
     default:
       return "/for-me";
   }

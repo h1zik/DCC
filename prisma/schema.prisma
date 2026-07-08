@@ -124,6 +124,11 @@ enum NotificationType {
    * Alert dari modul Research Hub (Competitor Tracker, dll).
    */
   RESEARCH_ALERT
+  /**
+   * Achievement gamifikasi profil baru terbuka (🏆). Additive — hanya dipakai
+   * saat `PROFILE_GAMIFICATION_ENABLED`.
+   */
+  ACHIEVEMENT_UNLOCKED
 }
 
 /**
@@ -312,6 +317,12 @@ model User {
    */
   role                               UserRole                       @default(LOGISTICS)
   /**
+   * Status kepegawaian — terpisah dari `role`/izin. `EMPLOYEE` masuk daftar
+   * absensi & melihat menu Absensi; `FREELANCE` tidak. Default EMPLOYEE agar
+   * perilaku lama tetap.
+   */
+  employmentType                     EmploymentType                 @default(EMPLOYEE)
+  /**
    * Label peran kustom yang dipilih CEO/Admin (mis. "Creative Director",
    * "DevOps Engineer"). Bila null, label peran berasal dari enum `role`.
    * Permission tier sebenarnya tetap mengikuti `role`.
@@ -380,13 +391,19 @@ model User {
   seoRankProjectsCreated             SeoRankProject[]               @relation("SeoRankProjectCreator")
   seoOnPageAuditsCreated             SeoOnPageAudit[]               @relation("SeoOnPageAuditCreator")
   seoSiteCrawlsCreated               SeoSiteCrawl[]                 @relation("SeoSiteCrawlCreator")
-  seoBacklinkProfilesCreated         SeoBacklinkProfile[]          @relation("SeoBacklinkProfileCreator")
-  seoContentBriefsCreated            SeoContentBrief[]             @relation("SeoContentBriefCreator")
-  seoContentDraftsCreated            SeoContentDraft[]             @relation("SeoContentDraftCreator")
-  seoMarketplaceAnalysesCreated      SeoMarketplaceAnalysis[]      @relation("SeoMarketplaceAnalysisCreator")
-  seoReportsCreated                  SeoReport[]                   @relation("SeoReportCreator")
-  seoContentTopicRunsCreated         SeoContentTopicRun[]          @relation("SeoContentTopicRunCreator")
-  contentStudioIdeaSetsCreated       ContentStudioIdeaSet[]        @relation("ContentStudioIdeaSetCreator")
+  seoBacklinkProfilesCreated         SeoBacklinkProfile[]           @relation("SeoBacklinkProfileCreator")
+  seoContentBriefsCreated            SeoContentBrief[]              @relation("SeoContentBriefCreator")
+  seoContentDraftsCreated            SeoContentDraft[]              @relation("SeoContentDraftCreator")
+  seoMarketplaceAnalysesCreated      SeoMarketplaceAnalysis[]       @relation("SeoMarketplaceAnalysisCreator")
+  seoReportsCreated                  SeoReport[]                    @relation("SeoReportCreator")
+  seoContentTopicRunsCreated         SeoContentTopicRun[]           @relation("SeoContentTopicRunCreator")
+  contentStudioIdeaSetsCreated       ContentStudioIdeaSet[]         @relation("ContentStudioIdeaSetCreator")
+  // ─── Profile Gamification (additive; hanya aktif saat feature flag on) ───
+  progression                        UserProgression?
+  xpLedger                           XpLedger[]
+  achievements                       UserAchievement[]
+  cosmetics                          UserCosmetic[]
+  profileConfig                      UserProfileConfig?
 
   @@index([customRoleId])
 }
@@ -1151,6 +1168,13 @@ model Task {
   contentPlanItemId        String?
   contentPlanItem          RoomContentPlanItem?    @relation(fields: [contentPlanItemId], references: [id], onDelete: SetNull)
   contentPlanJenis         ContentPlanJenis?
+  /**
+   * Waktu tugas PERTAMA kali berpindah ke status DONE. Ditulis oleh domain Task
+   * (actions/tasks.ts) pada transisi DONE, hanya DIBACA oleh XP engine gamifikasi
+   * (deteksi "selesai ≤ tenggat", first-close-only). Nullable + additive; tugas
+   * lama tetap null. Tidak di-null saat keluar DONE (semantik first-close).
+   */
+  completedAt              DateTime?
 
   @@index([projectId, roomProcess, archivedAt, sortOrder])
   @@index([projectId, customProcessPhaseId, archivedAt, sortOrder])
@@ -1486,6 +1510,11 @@ model AppBranding {
    * Icon untuk web push notification (chat, dsb).
    */
   pushIconPath  String?
+  /**
+   * Feature flag: nyalakan Profil Gamifikasi dari admin (runtime, tanpa restart).
+   * Env `PROFILE_GAMIFICATION_ENABLED` (true/false) tetap jadi override darurat.
+   */
+  profileGamificationEnabled Boolean @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -1995,6 +2024,15 @@ enum AttendanceType {
 }
 
 /**
+ * Status kepegawaian. EMPLOYEE = pekerja tetap (ikut absensi). FREELANCE =
+ * tidak masuk daftar absensi & tidak melihat menu Absensi.
+ */
+enum EmploymentType {
+  EMPLOYEE
+  FREELANCE
+}
+
+/**
  * Data wajah terdaftar milik seorang User untuk verifikasi absensi 1:1.
  * `descriptor` = Float32Array 128 nilai hasil face-api, di-serialize JSON.
  * `label` = pose/sumber data (front/left/right/smile, atau foto-N dari upload).
@@ -2330,13 +2368,13 @@ model ResearchScrapeJob {
 }
 
 model ResearchCompetitor {
-  id          String               @id @default(cuid())
-  name        String
-  brand       String
-  category    String
-  marketplace ResearchMarketplace
-  shopUrl     String
-  isActive    Boolean              @default(true)
+  id             String                @id @default(cuid())
+  name           String
+  brand          String
+  category       String
+  marketplace    ResearchMarketplace
+  shopUrl        String
+  isActive       Boolean               @default(true)
   /**
    * Asal data SKU/snapshot terakhir (VPS/APIFY/DEMO) — ditulis saat ingest.
    */
@@ -2344,18 +2382,18 @@ model ResearchCompetitor {
   /**
    * Rencana aksi preskriptif + insight AI (response playbook).
    */
-  aiInsights  Json?
+  aiInsights     Json?
   /**
    * Metadata model AI yang dipakai saat analisis terakhir.
    */
-  aiMeta      Json?
-  createdById String
-  createdBy   User                 @relation("ResearchCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  skus        CompetitorSku[]
-  snapshots   CompetitorSnapshot[]
-  alerts      CompetitorAlert[]
+  aiMeta         Json?
+  createdById    String
+  createdBy      User                  @relation("ResearchCompetitorCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  skus           CompetitorSku[]
+  snapshots      CompetitorSnapshot[]
+  alerts         CompetitorAlert[]
 
   @@index([createdById])
   @@index([isActive])
@@ -3108,17 +3146,17 @@ enum ResearchReportStatus {
 }
 
 model ResearchReport {
-  id           String               @id @default(cuid())
+  id           String                   @id @default(cuid())
   title        String
   type         ResearchReportType
-  status       ResearchReportStatus @default(PENDING)
-  config       Json                 @default("{}")
-  sections     Json                 @default("[]")
-  aiSummary    String?              @db.Text
+  status       ResearchReportStatus     @default(PENDING)
+  config       Json                     @default("{}")
+  sections     Json                     @default("[]")
+  aiSummary    String?                  @db.Text
   /**
    * Cross-module action items (deterministic, dari ResearchRecommendation).
    */
-  actionItems  Json                 @default("[]")
+  actionItems  Json                     @default("[]")
   /**
    * Feedback-loop Sankey data: signal -> insight -> concept.
    */
@@ -3137,11 +3175,11 @@ model ResearchReport {
   /**
    * Nomor versi konten aktif; naik setiap regenerate. Versi lama diarsip di revisions.
    */
-  version      Int                  @default(1)
+  version      Int                      @default(1)
   createdById  String
-  createdBy    User                 @relation("ResearchReportCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  createdBy    User                     @relation("ResearchReportCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
   revisions    ResearchReportRevision[]
 
   @@index([createdById])
@@ -3237,42 +3275,42 @@ enum RecOwner {
 
 /// Rekomendasi preskriptif lintas-modul yang menyalakan Action Center di dashboard.
 model ResearchRecommendation {
-  id             String    @id @default(cuid())
+  id                String    @id @default(cuid())
   /**
    * Modul asal: "review-intelligence", "competitor-tracker", dst.
    */
-  module         String
+  module            String
   /**
    * Id record sumber (sourceId/digestId/queryId/analysisId/conceptId).
    */
-  sourceId       String?
+  sourceId          String?
   /**
    * Label sumber agar bisa di-deep-link dari UI.
    */
-  sourceLabel    String?
+  sourceLabel       String?
   /**
    * Path deep-link ke detail sumber.
    */
-  href           String?
-  owner          RecOwner
-  priority       String    @default("P1")
-  action         String    @db.Text
-  rationale      String    @db.Text
-  expectedImpact String?   @db.Text
-  metricToWatch  String?
-  evidence       Json      @default("[]")
-  confidence     Float     @default(0.6)
-  effort         String    @default("MED")
-  horizon        String    @default("30D")
-  status         RecStatus @default(OPEN)
+  href              String?
+  owner             RecOwner
+  priority          String    @default("P1")
+  action            String    @db.Text
+  rationale         String    @db.Text
+  expectedImpact    String?   @db.Text
+  metricToWatch     String?
+  evidence          Json      @default("[]")
+  confidence        Float     @default(0.6)
+  effort            String    @default("MED")
+  horizon           String    @default("30D")
+  status            RecStatus @default(OPEN)
   /**
    * Task hasil konversi (lineage rekomendasi → aksi nyata).
    */
   convertedToTaskId String?
-  dismissedAt    DateTime?
-  convertedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  dismissedAt       DateTime?
+  convertedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([status, createdAt])
   @@index([module, sourceId])
@@ -3672,53 +3710,69 @@ model BrandAdLibraryBatch {
 }
 
 model BrandAdLibraryAd {
-  id             String                @id @default(cuid())
-  monitorId      String
-  monitor        BrandAdLibraryMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
-  batchId        String?
-  externalId     String
-  pageId         String?
-  pageName       String?
-  pageProfileUrl String?
-  bodyText       String?               @db.Text
-  linkTitle      String?
-  linkUrl        String?
-  ctaType        String?
-  ctaText        String?
-  mediaType      String?
-  imageUrl       String?
-  videoUrl       String?
-  snapshotUrl    String?
-  platforms      String[]              @default([])
-  isActive       Boolean               @default(true)
-  deliveryStart  DateTime?
-  deliveryStop   DateTime?
-  /** Deskripsi link preview (ad_creative_link_descriptions). */
-  linkDescription  String?             @db.Text
-  /** Caption / display URL link preview (ad_creative_link_captions). */
+  id               String                @id @default(cuid())
+  monitorId        String
+  monitor          BrandAdLibraryMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  batchId          String?
+  externalId       String
+  pageId           String?
+  pageName         String?
+  pageProfileUrl   String?
+  bodyText         String?               @db.Text
+  linkTitle        String?
+  linkUrl          String?
+  ctaType          String?
+  ctaText          String?
+  mediaType        String?
+  imageUrl         String?
+  videoUrl         String?
+  snapshotUrl      String?
+  platforms        String[]              @default([])
+  isActive         Boolean               @default(true)
+  deliveryStart    DateTime?
+  deliveryStop     DateTime?
+  /**
+   * Deskripsi link preview (ad_creative_link_descriptions).
+   */
+  linkDescription  String?               @db.Text
+  /**
+   * Caption / display URL link preview (ad_creative_link_captions).
+   */
   linkCaption      String?
-  /** Jumlah varian kreatif dalam grup (collation_count) — sinyal scaling/winning. */
+  /**
+   * Jumlah varian kreatif dalam grup (collation_count) — sinyal scaling/winning.
+   */
   collationCount   Int?
   pageLikeCount    Int?
-  pageCategories   String[]            @default([])
+  pageCategories   String[]              @default([])
   pageCreationDate String?
-  /** Total iklan aktif halaman (pageTransparency.totalActiveAds). */
+  /**
+   * Total iklan aktif halaman (pageTransparency.totalActiveAds).
+   */
   totalActiveAds   Int?
-  /** Estimasi audiens (estimated_audience_size). */
+  /**
+   * Estimasi audiens (estimated_audience_size).
+   */
   audienceLower    Int?
   audienceUpper    Int?
-  /** Rentang spend (spend.lower/upper) — umumnya hanya iklan politik/EU. */
+  /**
+   * Rentang spend (spend.lower/upper) — umumnya hanya iklan politik/EU.
+   */
   spendLower       Int?
   spendUpper       Int?
   currency         String?
-  /** Kartu carousel: [{ imageUrl, videoUrl, title, body, linkUrl }]. */
+  /**
+   * Kartu carousel: [{ imageUrl, videoUrl, title, body, linkUrl }].
+   */
   cards            Json?
-  /** Skor "winning" 0-100 (longevity + variasi + aktif + reach). */
+  /**
+   * Skor "winning" 0-100 (longevity + variasi + aktif + reach).
+   */
   winningScore     Int?
-  rawData        Json?
-  scrapedAt      DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  rawData          Json?
+  scrapedAt        DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@unique([monitorId, externalId])
   @@index([monitorId])
@@ -4286,7 +4340,9 @@ model SeoRankSnapshot {
 // SEO Toolkit — Fase 2: On-Page Audit & Technical Crawler
 // ============================================================
 
-/** Tingkat keparahan isu SEO (untuk prioritisasi). */
+/**
+ * Tingkat keparahan isu SEO (untuk prioritisasi).
+ */
 enum SeoIssueSeverity {
   CRITICAL
   HIGH
@@ -4305,15 +4361,25 @@ model SeoOnPageAudit {
   url               String
   targetKeyword     String?
   status            SeoAnalysisStatus @default(PENDING)
-  /** Skor On-Page 0-100. */
+  /**
+   * Skor On-Page 0-100.
+   */
   score             Int?
-  /** Sinyal terstruktur (title, meta, word count, link, readability, dll). */
+  /**
+   * Sinyal terstruktur (title, meta, word count, link, readability, dll).
+   */
   signals           Json?
-  /** Struktur heading H1-H6. */
+  /**
+   * Struktur heading H1-H6.
+   */
   headings          Json?
-  /** Daftar isu { type, severity, message, recommendation }. */
+  /**
+   * Daftar isu { type, severity, message, recommendation }.
+   */
   issues            Json?
-  /** Rekomendasi actionable dari LLM (Bahasa Indonesia). */
+  /**
+   * Rekomendasi actionable dari LLM (Bahasa Indonesia).
+   */
   aiRecommendations Json?
   aiMeta            Json?
   dataNotice        String?           @db.Text
@@ -4339,12 +4405,18 @@ model SeoSiteCrawl {
   maxPages          Int               @default(100)
   includeLighthouse Boolean           @default(false)
   status            SeoAnalysisStatus @default(PENDING)
-  /** ID task DataForSEO On-Page (metode standard/queue). */
+  /**
+   * ID task DataForSEO On-Page (metode standard/queue).
+   */
   dataforseoTaskId  String?
   pagesCrawled      Int               @default(0)
-  /** Ringkasan agregat (page_metrics, domain_info). */
+  /**
+   * Ringkasan agregat (page_metrics, domain_info).
+   */
   summary           Json?
-  /** Core Web Vitals (Lighthouse) bila diaktifkan. */
+  /**
+   * Core Web Vitals (Lighthouse) bila diaktifkan.
+   */
   lighthouse        Json?
   dataNotice        String?           @db.Text
   errorMessage      String?
@@ -4363,12 +4435,18 @@ model SeoCrawlIssue {
   id        String           @id @default(cuid())
   crawlId   String
   crawl     SeoSiteCrawl     @relation(fields: [crawlId], references: [id], onDelete: Cascade)
-  /** Kategori isu, mis. "broken_links", "duplicate_title", "is_4xx_code". */
+  /**
+   * Kategori isu, mis. "broken_links", "duplicate_title", "is_4xx_code".
+   */
   type      String
   severity  SeoIssueSeverity
-  /** Jumlah halaman / kemunculan (untuk isu agregat). */
+  /**
+   * Jumlah halaman / kemunculan (untuk isu agregat).
+   */
   count     Int              @default(1)
-  /** URL spesifik (untuk isu per-halaman); null untuk isu agregat. */
+  /**
+   * URL spesifik (untuk isu per-halaman); null untuk isu agregat.
+   */
   url       String?
   message   String
   detail    Json?
@@ -4388,16 +4466,26 @@ model SeoCrawlIssue {
 model SeoBacklinkProfile {
   id                  String                @id @default(cuid())
   name                String
-  /** Domain atau URL target. */
+  /**
+   * Domain atau URL target.
+   */
   target              String
   status              SeoAnalysisStatus     @default(PENDING)
-  /** Metrik agregat { rank, backlinks, referringDomains, dofollow, spamScore, ... }. */
+  /**
+   * Metrik agregat { rank, backlinks, referringDomains, dofollow, spamScore, ... }.
+   */
   summary             Json?
-  /** Top referring domains (array). */
+  /**
+   * Top referring domains (array).
+   */
   topReferringDomains Json?
-  /** Top anchor text (array). */
+  /**
+   * Top anchor text (array).
+   */
   topAnchors          Json?
-  /** Time-series new/lost dari DataForSEO history. */
+  /**
+   * Time-series new/lost dari DataForSEO history.
+   */
   history             Json?
   dataNotice          String?               @db.Text
   errorMessage        String?
@@ -4412,7 +4500,9 @@ model SeoBacklinkProfile {
   @@index([status])
 }
 
-/** Time-series metrik backlink per pengecekan (untuk tren naik/turun). */
+/**
+ * Time-series metrik backlink per pengecekan (untuk tren naik/turun).
+ */
 model SeoBacklinkSnapshot {
   id               String             @id @default(cuid())
   profileId        String
@@ -4425,14 +4515,18 @@ model SeoBacklinkSnapshot {
   @@index([profileId, capturedAt])
 }
 
-/** Backlink gap: domain yang menaut ke kompetitor tapi belum ke target. */
+/**
+ * Backlink gap: domain yang menaut ke kompetitor tapi belum ke target.
+ */
 model SeoBacklinkGap {
   id           String             @id @default(cuid())
   profileId    String
   profile      SeoBacklinkProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   competitor   String
   status       SeoAnalysisStatus  @default(PENDING)
-  /** Daftar domain gap [{ domain, rank, backlinks }]. */
+  /**
+   * Daftar domain gap [{ domain, rank, backlinks }].
+   */
   gapDomains   Json?
   gapCount     Int                @default(0)
   errorMessage String?
@@ -4451,11 +4545,17 @@ model SeoContentBrief {
   targetKeyword   String
   title           String
   status          SeoAnalysisStatus @default(PENDING)
-  /** Related/long-tail keywords yang disarankan (string[]). */
+  /**
+   * Related/long-tail keywords yang disarankan (string[]).
+   */
   relatedKeywords Json?
-  /** Outline artikel [{ heading, points[] }]. */
+  /**
+   * Outline artikel [{ heading, points[] }].
+   */
   outline         Json?
-  /** Catatan angle/strategi (Bahasa Indonesia). */
+  /**
+   * Catatan angle/strategi (Bahasa Indonesia).
+   */
   aiSummary       String?           @db.Text
   aiMeta          Json?
   errorMessage    String?
@@ -4469,23 +4569,29 @@ model SeoContentBrief {
   @@index([status])
 }
 
-/** Draft artikel (HTML TipTap) + hasil analisis SEO (skor + saran). */
+/**
+ * Draft artikel (HTML TipTap) + hasil analisis SEO (skor + saran).
+ */
 model SeoContentDraft {
-  id            String            @id @default(cuid())
+  id            String           @id @default(cuid())
   briefId       String?
-  brief         SeoContentBrief?  @relation(fields: [briefId], references: [id], onDelete: SetNull)
+  brief         SeoContentBrief? @relation(fields: [briefId], references: [id], onDelete: SetNull)
   title         String
   targetKeyword String?
-  /** Konten HTML dari editor TipTap. */
-  contentHtml   String            @default("") @db.Text
-  /** Hasil analisis { checks[], density, structure, suggestions[] }. */
+  /**
+   * Konten HTML dari editor TipTap.
+   */
+  contentHtml   String           @default("") @db.Text
+  /**
+   * Hasil analisis { checks[], density, structure, suggestions[] }.
+   */
   analysis      Json?
   score         Int?
   aiMeta        Json?
   createdById   String
-  createdBy     User              @relation("SeoContentDraftCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  createdBy     User             @relation("SeoContentDraftCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([createdById])
   @@index([briefId])
@@ -4506,14 +4612,22 @@ model SeoMarketplaceAnalysis {
   marketplace       ResearchMarketplace
   ownTitle          String?
   status            SeoAnalysisStatus   @default(PENDING)
-  /** Statistik listing { count, avgTitleLength, medianPrice, priceRange, avgRating, totalSold, officialShopRate }. */
+  /**
+   * Statistik listing { count, avgTitleLength, medianPrice, priceRange, avgRating, totalSold, officialShopRate }.
+   */
   listingStats      Json?
-  /** Top istilah judul [{ term, count }]. */
+  /**
+   * Top istilah judul [{ term, count }].
+   */
   titlePatterns     Json?
-  /** Sampel listing teratas. */
+  /**
+   * Sampel listing teratas.
+   */
   topListings       Json?
   optimizationScore Int?
-  /** Hasil skor judul sendiri { score, missingTerms[], recommendations[] }. */
+  /**
+   * Hasil skor judul sendiri { score, missingTerms[], recommendations[] }.
+   */
   recommendations   Json?
   aiMeta            Json?
   dataNotice        String?             @db.Text
@@ -4544,10 +4658,14 @@ model SeoReport {
   type         SeoReportType     @default(OVERVIEW)
   status       SeoAnalysisStatus @default(PENDING)
   config       Json?
-  /** Section laporan [{ id, title, body, moduleRef? }]. */
+  /**
+   * Section laporan [{ id, title, body, moduleRef? }].
+   */
   sections     Json?
   aiSummary    String?           @db.Text
-  /** Metrik ringkas untuk bar chart. */
+  /**
+   * Metrik ringkas untuk bar chart.
+   */
   metrics      Json?
   aiMeta       Json?
   periodStart  DateTime?
@@ -4571,7 +4689,9 @@ model SeoContentTopicRun {
   id           String            @id @default(cuid())
   seed         String
   status       SeoAnalysisStatus @default(PENDING)
-  /** Saran topik ter-ranking [{ keyword, searchVolume, difficulty, intent, opportunityScore, suggestedTitle, angle, competingTitles[] }]. */
+  /**
+   * Saran topik ter-ranking [{ keyword, searchVolume, difficulty, intent, opportunityScore, suggestedTitle, angle, competingTitles[] }].
+   */
   suggestions  Json?
   dataNotice   String?           @db.Text
   aiMeta       Json?
@@ -4617,7 +4737,9 @@ model ContentStudioIdeaSet {
   goal             String?
   platforms        String[]            @default([])
   status           ContentStudioStatus @default(PENDING)
-  /** Sumber grounding yang benar-benar terpakai (transparansi: review/ad/trend/voice). */
+  /**
+   * Sumber grounding yang benar-benar terpakai (transparansi: review/ad/trend/voice).
+   */
   groundingSources String[]            @default([])
   dataNotice       String?             @db.Text
   aiSummary        String?             @db.Text
@@ -4638,7 +4760,9 @@ model ContentStudioIdea {
   id           String               @id @default(cuid())
   setId        String
   set          ContentStudioIdeaSet @relation(fields: [setId], references: [id], onDelete: Cascade)
-  /** Didenormalisasi dari set agar "winner" bisa diquery cepat per brand untuk few-shot. */
+  /**
+   * Didenormalisasi dari set agar "winner" bisa diquery cepat per brand untuk few-shot.
+   */
   ownerBrandId String?
   title        String
   angle        String               @db.Text
@@ -4646,11 +4770,17 @@ model ContentStudioIdea {
   hook         String?              @db.Text
   platform     String?
   cta          String?
-  /** Bukti/citation: sinyal nyata yang mendasari ide — [{ source, text }]. */
+  /**
+   * Bukti/citation: sinyal nyata yang mendasari ide — [{ source, text }].
+   */
   citations    Json?
-  /** Skor "sharpness" 1-100 dari self-critique (anti-generic). */
+  /**
+   * Skor "sharpness" 1-100 dari self-critique (anti-generic).
+   */
   score        Int?
-  /** Feedback adopsi tim → jadi few-shot untuk generasi berikutnya. */
+  /**
+   * Feedback adopsi tim → jadi few-shot untuk generasi berikutnya.
+   */
   feedback     ContentIdeaFeedback?
   used         Boolean              @default(false)
   createdAt    DateTime             @default(now())
@@ -4658,4 +4788,224 @@ model ContentStudioIdea {
   @@index([setId])
   @@index([ownerBrandId, feedback])
   @@index([ownerBrandId, used])
+}
+
+// ─── Profile Gamification (ala Steam) ────────────────────────────────────────
+// Semua ADDITIVE & data-driven (katalog via tabel + seed). XP hanya MEMBACA
+// sumber riil (Attendance/Task/Finance/Research); tabel di bawah adalah state
+// gamifikasi terpisah, hanya di-load/tulis saat `PROFILE_GAMIFICATION_ENABLED`.
+// Lihat docs/design/profile-gamification-2026-07-08.md.
+
+enum XpReason {
+  ATTENDANCE
+  TASK_ONTIME
+  DATA_FRESH
+  ACHIEVEMENT
+  TENURE
+}
+
+enum AchievementCategory {
+  ATTENDANCE
+  TASK
+  DATA
+  SOCIAL
+  MILESTONE
+}
+
+enum AchievementTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum CosmeticType {
+  PROFILE_BACKGROUND
+  AVATAR_BORDER
+  NAMEPLATE
+  TITLE
+  ACCENT
+}
+
+enum CosmeticRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+enum CosmeticUnlockType {
+  FREE
+  LEVEL
+  ACHIEVEMENT
+  CUSTOM_UPLOAD
+}
+
+enum CosmeticSource {
+  DEFAULT
+  LEVEL
+  ACHIEVEMENT
+  UPLOAD
+}
+
+/**
+ * Progres XP/level seorang User (satu baris per user). Di-recompute idempotent
+ * dari `XpLedger`. `level` tidak pernah turun (lantai = level keanggotaan lama).
+ */
+model UserProgression {
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xpTotal                 Int      @default(0)
+  level                   Int      @default(1)
+  attendanceStreak        Int      @default(0)
+  longestAttendanceStreak Int      @default(0)
+  /**
+   * Hari check-in terakhir, "YYYY-MM-DD" Asia/Jakarta (samakan dgn Attendance.date).
+   */
+  lastCheckinDate         String?  @db.VarChar(10)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([level])
+  @@index([xpTotal])
+}
+
+/**
+ * Ledger XP append-only: audit + idempotensi. Satu event = satu `dedupeKey`
+ * unik (mis. `attendance:<userId>:<date>`, `task_ontime:<taskId>`).
+ */
+model XpLedger {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Int
+  reason    XpReason
+  refType   String?  @db.VarChar(32)
+  refId     String?  @db.VarChar(64)
+  /**
+   * KUNCI anti-double-grant.
+   */
+  dedupeKey String   @unique @db.VarChar(180)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, reason])
+}
+
+/**
+ * Katalog achievement (data-driven). `criteria` = JSON machine-evaluable, mis.
+ * {"type":"attendance_streak","threshold":7}. `unlocksCosmeticKey` = soft-ref
+ * ke `CosmeticItem.key` (bukan FK, biar katalog fleksibel).
+ */
+model Achievement {
+  id                 String              @id @default(cuid())
+  key                String              @unique @db.VarChar(64)
+  name               String              @db.VarChar(120)
+  description        String              @db.VarChar(400)
+  category           AchievementCategory
+  tier               AchievementTier
+  icon               String              @db.VarChar(48)
+  xpReward           Int                 @default(0)
+  criteria           Json
+  unlocksCosmeticKey String?             @db.VarChar(64)
+  hidden             Boolean             @default(false)
+  isActive           Boolean             @default(true)
+  sortOrder          Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  userAchievements   UserAchievement[]
+
+  @@index([category, tier])
+  @@index([isActive])
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  /**
+   * Progres menuju threshold (mis. streak berjalan).
+   */
+  progress      Int         @default(0)
+  /**
+   * Null = masih tracked/in-progress; terisi = sudah terbuka.
+   */
+  unlockedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([userId, achievementId])
+  @@index([userId, unlockedAt])
+}
+
+/**
+ * Katalog item kosmetik (data-driven). `styleConfig` mereferensi PRESET ANIMASI
+ * TERKURASI (mis. {"effect":"aurora-webgl","palette":"theme"}) — BUKAN CSS/JS
+ * mentah dari user. Warna item earned ambil dari token tema aktif (`palette:"theme"`).
+ */
+model CosmeticItem {
+  id                   String             @id @default(cuid())
+  key                  String             @unique @db.VarChar(64)
+  name                 String             @db.VarChar(120)
+  type                 CosmeticType
+  rarity               CosmeticRarity     @default(COMMON)
+  /**
+   * Slug preset/asset (mis. "twilight", "ring") untuk renderer.
+   */
+  previewRef           String             @db.VarChar(120)
+  styleConfig          Json
+  unlockType           CosmeticUnlockType @default(FREE)
+  unlockLevel          Int?
+  unlockAchievementKey String?            @db.VarChar(64)
+  isActive             Boolean            @default(true)
+  sortOrder            Int                @default(0)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  userCosmetics        UserCosmetic[]
+
+  @@index([type, isActive])
+  @@index([unlockType])
+}
+
+/**
+ * Kepemilikan kosmetik oleh User (unik per item).
+ */
+model UserCosmetic {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cosmeticItemId String
+  cosmeticItem   CosmeticItem   @relation(fields: [cosmeticItemId], references: [id], onDelete: Cascade)
+  source         CosmeticSource @default(DEFAULT)
+  acquiredAt     DateTime       @default(now())
+
+  @@unique([userId, cosmeticItemId])
+  @@index([userId])
+}
+
+/**
+ * Kosmetik yang sedang di-equip seorang User. Equipped id sengaja "loose"
+ * (String?, bukan FK) supaya item non-aktif tak pernah memblok baris user;
+ * kepemilikan divalidasi di server action (sumber kebenaran authz).
+ */
+model UserProfileConfig {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equippedBackgroundId   String?
+  equippedBorderId       String?
+  equippedNameplateId    String?
+  equippedTitleId        String?
+  accentColor            String?  @db.VarChar(7)
+  customBackgroundUrl    String?  @db.VarChar(300)
+  customBorderColor      String?  @db.VarChar(7)
+  /**
+   * String[] terurut dari Achievement.id yang di-showcase.
+   */
+  showcaseAchievementIds Json     @default("[]")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }

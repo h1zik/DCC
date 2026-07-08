@@ -23,6 +23,7 @@ const createUserSchema = z.object({
     .min(8, "Kata sandi minimal 8 karakter.")
     .max(128, "Kata sandi terlalu panjang."),
   customRoleId: z.string().min(1, "Pilih peran."),
+  employmentType: z.enum(["EMPLOYEE", "FREELANCE"]).default("EMPLOYEE"),
 });
 
 /**
@@ -61,6 +62,7 @@ export async function createUserByCeo(
       passwordHash,
       role: role.permissionTier,
       customRoleId: role.id,
+      employmentType: data.employmentType,
     },
   });
 
@@ -76,6 +78,7 @@ const updateUserDetailsSchema = z.object({
     .email("Format email tidak valid.")
     .transform((s) => s.trim().toLowerCase()),
   name: z.string().max(120),
+  employmentType: z.enum(["EMPLOYEE", "FREELANCE"]),
 });
 
 /**
@@ -112,6 +115,7 @@ export async function updateUserDetailsByCeo(
     data: {
       email: data.email,
       name,
+      employmentType: data.employmentType,
     },
   });
 
