@@ -425,51 +425,70 @@ function BrandHeader({
   const logo = branding?.logoImagePath;
 
   return (
-    <div className="relative w-full min-w-0 shrink-0 bg-transparent">
+    <div className="relative w-full min-w-0 shrink-0">
+      {/* Aksen garis atas — glow tipis warna brand */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sidebar-primary/50 to-transparent"
+      />
       <div
         className={cn(
-          "relative flex w-full min-w-0 flex-col items-center justify-center",
-          "px-2 py-3 transition-[padding] duration-300 ease-in-out",
-          "group-data-[collapsible=icon]:px-0.5 group-data-[collapsible=icon]:py-2.5",
+          "relative flex w-full min-w-0 items-center gap-3",
+          "px-3 pt-4 pb-3 transition-[padding,gap] duration-300 ease-in-out",
+          "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0",
+          "group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:pt-3 group-data-[collapsible=icon]:pb-2.5",
         )}
       >
-        {logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logo}
-            alt={title}
-            className="size-11 shrink-0 object-contain transition-[width,height] duration-300 ease-in-out group-data-[collapsible=icon]:size-8"
+        {/* Slot logo — tile bergradien dengan glow di belakangnya */}
+        <div className="relative shrink-0">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -inset-1.5 rounded-[1.25rem] bg-sidebar-primary/20 opacity-70 blur-xl transition-opacity duration-300 ease-in-out group-data-[collapsible=icon]:opacity-50"
           />
-        ) : (
           <div
             className={cn(
-              "relative flex shrink-0 items-center justify-center overflow-hidden",
-              "rounded-2xl border border-sidebar-border/70 bg-sidebar shadow-sm",
-              "size-11 transition-[width,height,border-radius] duration-300 ease-in-out",
-              "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-lg",
+              "relative flex size-10 items-center justify-center overflow-hidden rounded-xl shadow-sm",
+              "border border-sidebar-border/70",
+              "bg-gradient-to-br from-[color:color-mix(in_srgb,var(--sidebar-accent)_65%,transparent)] to-sidebar",
+              "transition-[width,height] duration-300 ease-in-out",
+              "group-data-[collapsible=icon]:size-9",
             )}
           >
-            <Sparkles
-              className="size-5 text-sidebar-primary transition-[width,height] duration-300 group-data-[collapsible=icon]:size-4"
-              aria-hidden
-            />
+            {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logo}
+                alt={title}
+                className="size-full object-contain p-1.5"
+              />
+            ) : (
+              <Sparkles className="size-5 text-sidebar-primary" aria-hidden />
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Wordmark — judul bergradien + subjudul */}
         <div
           className={cn(
-            "mt-1.5 flex w-full min-w-0 flex-col items-center gap-0.5 overflow-hidden text-center leading-tight",
-            "transition-[max-height,opacity,margin] duration-300 ease-in-out motion-reduce:transition-none",
-            "group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:max-h-0 group-data-[collapsible=icon]:opacity-0",
+            "flex min-w-0 flex-1 flex-col justify-center gap-1 overflow-hidden leading-none",
+            "transition-[max-width,opacity] duration-300 ease-in-out motion-reduce:transition-none",
+            "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0",
           )}
         >
-          <span className="text-sidebar-primary w-full truncate px-0.5 text-sm font-semibold tracking-tight">
+          <span className="w-full truncate bg-gradient-to-r from-sidebar-primary to-[color:color-mix(in_srgb,var(--sidebar-primary)_55%,var(--sidebar-foreground))] bg-clip-text text-[15px] font-bold tracking-tight text-transparent">
             {title}
           </span>
-          <span className="text-sidebar-foreground/55 w-full truncate px-0.5 text-[10px] font-medium tracking-[0.16em] uppercase">
+          <span className="text-sidebar-foreground/45 w-full truncate text-[9px] font-semibold tracking-[0.24em] uppercase">
             {subtitle}
           </span>
         </div>
       </div>
+
+      {/* Pemisah halus antara header & menu */}
+      <div
+        aria-hidden
+        className="mx-3 h-px bg-gradient-to-r from-transparent via-sidebar-border to-transparent transition-[margin] duration-300 ease-in-out group-data-[collapsible=icon]:mx-2"
+      />
     </div>
   );
 }
