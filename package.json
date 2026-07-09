@@ -25,6 +25,7 @@
     "db:clear-projects": "npx tsx prisma/scripts/guard-destructive.ts && prisma db execute --file prisma/clear-projects.sql --schema prisma/schema.prisma",
     "db:seed": "npx tsx prisma/scripts/guard-destructive.ts && prisma db seed",
     "db:seed-gamification": "npx tsx prisma/scripts/seed-gamification.ts",
+    "cosmetics:generate": "npx tsx prisma/scripts/generate-cosmetic-assets.ts",
     "db:backfill-gamification": "npx tsx prisma/scripts/backfill-gamification.ts",
     "db:studio": "prisma studio",
     "eval:research": "tsx scripts/eval-review-analysis.ts"
@@ -42,6 +43,7 @@
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.2.2",
+    "@lottiefiles/dotlottie-react": "^0.19.7",
     "@prisma/client": "6.19.3",
     "@tanstack/react-table": "^8.21.3",
     "@tiptap/extension-link": "^3.23.1",

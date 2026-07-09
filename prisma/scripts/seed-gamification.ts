@@ -24,11 +24,25 @@ import {
 } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import {
+  COSMETIC_BG_ASSETS,
+  COSMETIC_BORDER_ASSETS,
+} from "../../src/lib/gamification/cosmetic-assets";
+import {
   PROFILE_AVATAR_FRAMES,
   PROFILE_AVATAR_FRAME_IDS,
   PROFILE_BANNER_PRESET_IDS,
   PROFILE_BANNER_PRESETS,
 } from "../../src/lib/profile-appearance";
+
+function bgAsset(key: keyof typeof COSMETIC_BG_ASSETS): Prisma.InputJsonValue {
+  const a = COSMETIC_BG_ASSETS[key];
+  return {
+    effect: "asset-loop",
+    src: a.src,
+    poster: a.poster,
+    media: a.media,
+  };
+}
 
 type CosmeticSeed = {
   key: string;
@@ -106,29 +120,19 @@ const freeExtras: CosmeticSeed[] = [
     unlockType: CosmeticUnlockType.FREE,
     sortOrder: 301,
   },
-  {
-    key: "bg-upload-slot",
-    name: "Latar Unggahan",
-    type: CosmeticType.PROFILE_BACKGROUND,
-    rarity: CosmeticRarity.COMMON,
-    previewRef: "upload",
-    styleConfig: { effect: "image", src: "user-upload" },
-    unlockType: CosmeticUnlockType.CUSTOM_UPLOAD,
-    sortOrder: 302,
-  },
 ];
 
-/* ── EARNED cosmetics — level/achievement gated, animated, palette=theme ───── */
+/* ── EARNED cosmetics — level/achievement gated, animated asset-loop ───────── */
 
 const earnedCosmetics: CosmeticSeed[] = [
-  // Backgrounds
+  // Backgrounds (animated WebP/WebM kurasi — lihat public/cosmetics/)
   {
     key: "bg-aurora",
     name: "Aurora Hidup",
     type: CosmeticType.PROFILE_BACKGROUND,
     rarity: CosmeticRarity.RARE,
     previewRef: "aurora",
-    styleConfig: { effect: "aurora-webgl", palette: "theme", intensity: 2 },
+    styleConfig: bgAsset("aurora"),
     unlockType: CosmeticUnlockType.ACHIEVEMENT,
     unlockAchievementKey: "attendance_30",
     sortOrder: 400,
@@ -139,7 +143,7 @@ const earnedCosmetics: CosmeticSeed[] = [
     type: CosmeticType.PROFILE_BACKGROUND,
     rarity: CosmeticRarity.RARE,
     previewRef: "bokeh",
-    styleConfig: { effect: "bokeh-webgl", palette: "theme", particles: 40 },
+    styleConfig: bgAsset("bokeh"),
     unlockType: CosmeticUnlockType.ACHIEVEMENT,
     unlockAchievementKey: "firefighter",
     sortOrder: 401,
@@ -150,7 +154,7 @@ const earnedCosmetics: CosmeticSeed[] = [
     type: CosmeticType.PROFILE_BACKGROUND,
     rarity: CosmeticRarity.EPIC,
     previewRef: "parallax",
-    styleConfig: { effect: "parallax", palette: "theme", layers: 3 },
+    styleConfig: bgAsset("parallax"),
     unlockType: CosmeticUnlockType.ACHIEVEMENT,
     unlockAchievementKey: "night_owl",
     sortOrder: 402,
@@ -161,7 +165,7 @@ const earnedCosmetics: CosmeticSeed[] = [
     type: CosmeticType.PROFILE_BACKGROUND,
     rarity: CosmeticRarity.EPIC,
     previewRef: "shader-flux",
-    styleConfig: { effect: "shader-flux", palette: "theme", intensity: 1 },
+    styleConfig: bgAsset("shader-flux"),
     unlockType: CosmeticUnlockType.LEVEL,
     unlockLevel: 15,
     sortOrder: 403,
@@ -195,10 +199,101 @@ const earnedCosmetics: CosmeticSeed[] = [
     type: CosmeticType.AVATAR_BORDER,
     rarity: CosmeticRarity.EPIC,
     previewRef: "holo",
-    styleConfig: { effect: "holographic", asset: "apng" },
+    styleConfig: {
+      effect: "asset-frame",
+      src: COSMETIC_BORDER_ASSETS.holo.src,
+      poster: COSMETIC_BORDER_ASSETS.holo.poster,
+    },
     unlockType: CosmeticUnlockType.LEVEL,
     unlockLevel: 12,
     sortOrder: 412,
+  },
+  // Frame CSS beranimasi tambahan (lihat src/lib/gamification/frame-styles.ts).
+  // Tiga pertama FREE supaya langsung ada variasi; sisanya gated progresi.
+  {
+    key: "border-neon",
+    name: "Nadi Neon",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.RARE,
+    previewRef: "neon-pulse",
+    styleConfig: { effect: "neon-pulse", palette: "theme" },
+    unlockType: CosmeticUnlockType.FREE,
+    sortOrder: 413,
+  },
+  {
+    key: "border-frost",
+    name: "Halo Beku",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.RARE,
+    previewRef: "frost",
+    styleConfig: { effect: "frost", palette: "theme" },
+    unlockType: CosmeticUnlockType.FREE,
+    sortOrder: 414,
+  },
+  {
+    key: "border-sunset",
+    name: "Senja",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.RARE,
+    previewRef: "sunset",
+    styleConfig: { effect: "sunset", palette: "theme" },
+    unlockType: CosmeticUnlockType.FREE,
+    sortOrder: 415,
+  },
+  {
+    key: "border-aurora-ring",
+    name: "Tirai Aurora",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.EPIC,
+    previewRef: "aurora",
+    styleConfig: { effect: "aurora", palette: "theme" },
+    unlockType: CosmeticUnlockType.LEVEL,
+    unlockLevel: 8,
+    sortOrder: 416,
+  },
+  {
+    key: "border-ember",
+    name: "Bara Api",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.EPIC,
+    previewRef: "ember",
+    styleConfig: { effect: "ember", palette: "theme" },
+    unlockType: CosmeticUnlockType.LEVEL,
+    unlockLevel: 14,
+    sortOrder: 417,
+  },
+  {
+    key: "border-venom",
+    name: "Bisa Toksik",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.EPIC,
+    previewRef: "venom",
+    styleConfig: { effect: "venom", palette: "theme" },
+    unlockType: CosmeticUnlockType.LEVEL,
+    unlockLevel: 20,
+    sortOrder: 418,
+  },
+  {
+    key: "border-gold",
+    name: "Emas Mewah",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.LEGENDARY,
+    previewRef: "gold-luxe",
+    styleConfig: { effect: "gold-luxe", palette: "theme" },
+    unlockType: CosmeticUnlockType.LEVEL,
+    unlockLevel: 25,
+    sortOrder: 418.3,
+  },
+  {
+    key: "border-spectrum",
+    name: "Spektrum",
+    type: CosmeticType.AVATAR_BORDER,
+    rarity: CosmeticRarity.LEGENDARY,
+    previewRef: "spectrum",
+    styleConfig: { effect: "spectrum", palette: "theme" },
+    unlockType: CosmeticUnlockType.LEVEL,
+    unlockLevel: 35,
+    sortOrder: 418.6,
   },
   // Nameplates
   {

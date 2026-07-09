@@ -20,6 +20,10 @@ import { getProfileShowcaseData } from "@/lib/profile-showcase";
 import { getProfileGamificationView } from "@/lib/gamification/profile-view";
 import { cn } from "@/lib/utils";
 
+function currentServerTimeMs(): number {
+  return Date.now();
+}
+
 export default async function ProfilePage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -49,6 +53,7 @@ export default async function ProfilePage() {
     getProfileGamificationView(session.user.id),
   ]);
   if (!user) redirect("/login");
+  const renderedAtMs = currentServerTimeMs();
 
   const viewUser: ProfilePageUser = {
     id: user.id,
@@ -84,6 +89,7 @@ export default async function ProfilePage() {
       recentDoneTasks={showcase.recentDoneTasks}
       gamification={gamification}
       galleryHref="/profile/edit"
+      renderedAtMs={renderedAtMs}
       actions={
         <>
           <CopyProfileLinkButton sharePath={`/profile/${user.id}`} />

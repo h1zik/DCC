@@ -1,10 +1,8 @@
 "use client";
 
 /**
- * Gerbang animasi sesuai Kontrak Animasi: efek berat hanya aktif saat
- * (a) diizinkan, (b) `prefers-reduced-motion` tidak reduce, (c) elemen on-screen
- * (IntersectionObserver), dan (d) tab terlihat (visibilitychange). Semua kondisi
- * gagal → fallback statis (engine tak dijalankan).
+ * Gerbang animasi: efek berat (video loop) hanya aktif saat on-screen & tab
+ * terlihat. Untuk animated WebP/APNG, parent biasanya bypass gate (murah).
  */
 import { useEffect, useState, type RefObject } from "react";
 
@@ -13,7 +11,6 @@ export function usePrefersReducedMotion(): boolean {
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReduced(mq.matches);
-    // Set awal via rAF (async) — hindari setState sinkron di body effect.
     const id = requestAnimationFrame(update);
     mq.addEventListener?.("change", update);
     return () => {
@@ -24,12 +21,17 @@ export function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+function isElementVisible(el: HTMLElement): boolean {
+  const rect = el.getBoundingClientRect();
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  const vw = window.innerWidth || document.documentElement.clientWidth;
+  return rect.bottom > 0 && rect.right > 0 && rect.top < vh && rect.left < vw;
+}
+
 export function useAnimationGate(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
 ): boolean {
-  // State di-set HANYA di dalam observer/listener callback (async) — bukan
-  // sinkron di body effect — lalu `active` diturunkan saat render.
   const [onScreen, setOnScreen] = useState(false);
   const [visible, setVisible] = useState(true);
   const reduced = usePrefersReducedMotion();
@@ -39,9 +41,12 @@ export function useAnimationGate(
     const el = ref.current;
     if (!el) return;
 
+    // Bootstrap segera — IntersectionObserver pertama bisa telat 1+ frame.
+    setOnScreen(isElementVisible(el));
+
     const io = new IntersectionObserver(
       (entries) => setOnScreen(entries[0]?.isIntersecting ?? false),
-      { threshold: 0.05 },
+      { threshold: 0.01 },
     );
     io.observe(el);
 

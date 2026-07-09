@@ -21,6 +21,10 @@ import { cn } from "@/lib/utils";
 
 type PageProps = { params: Promise<{ userId: string }> };
 
+function currentServerTimeMs(): number {
+  return Date.now();
+}
+
 export default async function OtherUserProfilePage({ params }: PageProps) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -54,6 +58,7 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
   ]);
 
   if (!user) notFound();
+  const renderedAtMs = currentServerTimeMs();
 
   const viewUser: ProfilePageUser = {
     id: user.id,
@@ -89,6 +94,7 @@ export default async function OtherUserProfilePage({ params }: PageProps) {
       recentDoneTasks={showcase.recentDoneTasks}
       gamification={gamification}
       galleryHref={`/profile/${user.id}`}
+      renderedAtMs={renderedAtMs}
       actions={
         <>
           <MessageUserButton userId={user.id} />

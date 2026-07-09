@@ -126,6 +126,7 @@ export async function getProfileGamificationView(
           equippedTitleId: config.equippedTitleId,
           accentColor: config.accentColor,
           customBackgroundUrl: config.customBackgroundUrl,
+          customBackgroundMedia: config.customBackgroundMedia,
           customBorderColor: config.customBorderColor,
         }
       : null,

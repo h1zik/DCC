@@ -1,14 +1,18 @@
 "use client";
 
 /**
- * Kerangka halaman "Edit profil": rail navigasi kiri (desktop) / tab horizontal
- * (mobile), menampilkan SATU bagian dalam satu waktu. Menggantikan satu scroll
- * panjang berisi banyak domain agar tidak sesak. Bagian aktif dipertahankan
- * lewat state klien sehingga router.refresh() (dari tiap simpan) tidak
- * melompatkannya kembali ke atas.
+ * Kerangka Edit Profil: navigasi vertikal (desktop) / segmented (mobile),
+ * satu bagian aktif, deep-link hash, fokus keyboard.
  */
 import { useEffect, useState, type ReactNode } from "react";
-import { Palette, ShieldCheck, Sparkles, User } from "lucide-react";
+import {
+  ChevronRight,
+  Monitor,
+  Palette,
+  ShieldCheck,
+  Sparkles,
+  User,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SectionId = "profil" | "kustomisasi" | "akun" | "aplikasi";
@@ -19,26 +23,57 @@ const SECTIONS: {
   hint: string;
   Icon: typeof User;
 }[] = [
-  { id: "profil", label: "Profil", hint: "Foto · nama · bio", Icon: User },
+  {
+    id: "profil",
+    label: "Profil",
+    hint: "Foto, nama, bio publik",
+    Icon: User,
+  },
   {
     id: "kustomisasi",
     label: "Kustomisasi",
-    hint: "Tema · frame · showcase",
+    hint: "Latar, frame, showcase",
     Icon: Sparkles,
   },
   {
     id: "akun",
-    label: "Akun & keamanan",
-    hint: "Email · WhatsApp · sandi",
+    label: "Akun",
+    hint: "Kontak & keamanan",
     Icon: ShieldCheck,
   },
   {
     id: "aplikasi",
-    label: "Tampilan aplikasi",
-    hint: "Tema & warna app",
+    label: "Tampilan app",
+    hint: "Tema warna aplikasi",
     Icon: Palette,
   },
 ];
+
+const SECTION_COPY: Record<
+  SectionId,
+  { title: string; description: string }
+> = {
+  profil: {
+    title: "Profil publik",
+    description:
+      "Identitas yang orang lain lihat di Kanban, chat, dan halaman profilmu.",
+  },
+  kustomisasi: {
+    title: "Kustomisasi tampilan",
+    description:
+      "Atur latar, frame avatar, nameplate, dan showcase — seperti profil Steam.",
+  },
+  akun: {
+    title: "Akun & keamanan",
+    description:
+      "Kontak notifikasi dan kredensial masuk. Terpisah dari identitas publik.",
+  },
+  aplikasi: {
+    title: "Tampilan aplikasi",
+    description:
+      "Tema warna seluruh DCC — hanya berlaku untuk perangkatmu.",
+  },
+};
 
 function isSectionId(v: string): v is SectionId {
   return SECTIONS.some((s) => s.id === v);
@@ -57,14 +92,11 @@ export function EditProfileShell({
 }) {
   const [active, setActive] = useState<SectionId>("profil");
 
-  // Deep-link: #kustomisasi | #akun | #aplikasi | #achievements → buka bagian terkait.
-  // Hash hanya bisa dibaca setelah mount (window tak ada saat render SSR), jadi
-  // effect + setState di sini memang perlu — sekali saat mount saja.
   useEffect(() => {
     const h = window.location.hash.replace("#", "");
     const target: SectionId | null =
       h === "achievements" ? "kustomisasi" : isSectionId(h) ? h : null;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time URL-hash sync post-hydration
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hash sync post-hydration
     if (target) setActive(target);
   }, []);
 
@@ -74,7 +106,7 @@ export function EditProfileShell({
     akun,
     aplikasi,
   };
-  const activeLabel = SECTIONS.find((s) => s.id === active)?.label ?? "";
+  const meta = SECTION_COPY[active];
 
   function selectSection(id: SectionId) {
     setActive(id);
@@ -96,7 +128,7 @@ export function EditProfileShell({
     e.preventDefault();
     const next = SECTIONS[nextIdx]!;
     selectSection(next.id);
-    const nav = e.currentTarget.parentElement;
+    const nav = e.currentTarget.closest("[data-nav-rail]");
     const btn = nav?.querySelector<HTMLButtonElement>(
       `[data-tab="${next.id}"]`,
     );
@@ -104,73 +136,141 @@ export function EditProfileShell({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:gap-8">
-      <nav
-        role="tablist"
-        aria-label="Bagian pengaturan"
-        aria-orientation="vertical"
-        className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] lg:sticky lg:top-20 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0 [&::-webkit-scrollbar]:hidden"
-      >
-        {SECTIONS.map((s) => {
-          const on = active === s.id;
-          return (
-            <button
-              key={s.id}
-              data-tab={s.id}
-              role="tab"
-              type="button"
-              aria-selected={on}
-              tabIndex={on ? 0 : -1}
-              onClick={() => selectSection(s.id)}
-              onKeyDown={(e) => onKeyDown(e, s.id)}
-              className={cn(
-                "group relative flex shrink-0 items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                on
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {on ? (
-                <span
-                  className="absolute inset-y-2 left-0 hidden w-0.5 rounded-full bg-sidebar-primary lg:block"
-                  aria-hidden
-                />
-              ) : null}
-              <s.Icon
+    <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)] xl:gap-8">
+      {/* ── Navigasi ── */}
+      <aside className="xl:sticky xl:top-20 xl:self-start">
+        {/* Mobile: segmented 2×2 */}
+        <div
+          role="tablist"
+          aria-label="Bagian pengaturan"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:hidden"
+        >
+          {SECTIONS.map((s) => {
+            const on = active === s.id;
+            return (
+              <button
+                key={s.id}
+                data-tab={s.id}
+                role="tab"
+                type="button"
+                aria-selected={on}
+                onClick={() => selectSection(s.id)}
                 className={cn(
-                  "size-[18px] shrink-0",
+                  "flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-center transition-all",
                   on
-                    ? "text-sidebar-primary"
-                    : "text-muted-foreground group-hover:text-foreground",
+                    ? "border-primary/40 bg-primary/5 text-foreground shadow-sm"
+                    : "border-border/60 bg-card/50 text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground",
                 )}
-                aria-hidden
-              />
-              <span className="flex min-w-0 flex-col leading-tight">
-                <span className="text-sm font-medium tracking-tight">
+              >
+                <s.Icon className="size-4 shrink-0" aria-hidden />
+                <span className="text-xs font-medium leading-tight">
                   {s.label}
                 </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Desktop: rail */}
+        <nav
+          data-nav-rail
+          role="tablist"
+          aria-label="Bagian pengaturan"
+          aria-orientation="vertical"
+          className="border-border/60 bg-card/50 hidden flex-col gap-1 rounded-2xl border p-2 shadow-sm xl:flex"
+        >
+          <p className="text-muted-foreground px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider">
+            Pengaturan
+          </p>
+          {SECTIONS.map((s) => {
+            const on = active === s.id;
+            return (
+              <button
+                key={s.id}
+                data-tab={s.id}
+                role="tab"
+                type="button"
+                aria-selected={on}
+                tabIndex={on ? 0 : -1}
+                onClick={() => selectSection(s.id)}
+                onKeyDown={(e) => onKeyDown(e, s.id)}
+                className={cn(
+                  "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  on
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                )}
+              >
                 <span
                   className={cn(
-                    "hidden truncate text-[11.5px] lg:block",
-                    on ? "text-accent-foreground/70" : "text-muted-foreground",
+                    "flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+                    on
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted/60 text-muted-foreground group-hover:text-foreground",
                   )}
                 >
-                  {s.hint}
+                  <s.Icon className="size-4" aria-hidden />
                 </span>
-              </span>
-            </button>
-          );
-        })}
-      </nav>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium leading-tight">
+                    {s.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "mt-0.5 block truncate text-[11px]",
+                      on ? "text-muted-foreground" : "text-muted-foreground/80",
+                    )}
+                  >
+                    {s.hint}
+                  </span>
+                </span>
+                <ChevronRight
+                  className={cn(
+                    "size-4 shrink-0 transition-opacity",
+                    on ? "text-muted-foreground opacity-100" : "opacity-0",
+                  )}
+                  aria-hidden
+                />
+              </button>
+            );
+          })}
 
+          <div className="border-border/50 mt-2 flex items-start gap-2 border-t px-3 py-3">
+            <Monitor className="text-muted-foreground mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <p className="text-muted-foreground text-[11px] leading-relaxed">
+              Perubahan disimpan per bagian. Kustomisasi punya pratinjau langsung.
+            </p>
+          </div>
+        </nav>
+      </aside>
+
+      {/* ── Konten ── */}
       <div className="min-w-0">
+        <header className="mb-4 hidden xl:block">
+          <h2 className="text-foreground text-xl font-semibold tracking-tight">
+            {meta.title}
+          </h2>
+          <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
+            {meta.description}
+          </p>
+        </header>
+
         <div
           key={active}
           role="tabpanel"
-          aria-label={activeLabel}
+          aria-label={meta.title}
           tabIndex={-1}
           className="outline-none duration-200 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1"
         >
+          {/* Mobile section title */}
+          <div className="mb-4 xl:hidden">
+            <h2 className="text-foreground text-lg font-semibold tracking-tight">
+              {meta.title}
+            </h2>
+            <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+              {meta.description}
+            </p>
+          </div>
           {content[active]}
         </div>
       </div>

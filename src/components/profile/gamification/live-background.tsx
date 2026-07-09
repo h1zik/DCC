@@ -1,28 +1,27 @@
 "use client";
 
 /**
- * Latar hero profil. Selalu merender BASE statis (gradien preset lama / gambar
- * unggahan / gradien token tema) — WebGL "hidup" hanya overlay progressive-
- * enhancement yang dimuat lazy & aktif lewat gerbang animasi. Bila WebGL mati/
- * reduced-motion/off-screen, base tetap cakep. Warna WebGL dari token tema.
+ * Latar hero profil. Statis (gradien / unggahan) atau earned `asset-loop`
+ * (WebM / animated WebP kurasi). Animated WebP diputar saat toggle ON;
+ * video loop di-pause off-screen (hemat CPU).
  */
-import dynamic from "next/dynamic";
 import { useRef } from "react";
 import type { BackgroundDescriptor } from "@/lib/gamification/cosmetics";
+import { backgroundIsAnimated } from "@/lib/gamification/cosmetics";
 import {
+  THEMED_BANNER_GRADIENT,
   bannerGradientCss,
   isProfileBannerPreset,
 } from "@/lib/profile-appearance";
 import { cn } from "@/lib/utils";
-import { useThemeColors } from "./theme-sampler";
-import { useAnimationGate } from "./use-animation-gate";
+import { CosmeticAssetLoop } from "./cosmetic-asset-loop";
+import {
+  useAnimationGate,
+  usePrefersReducedMotion,
+} from "./use-animation-gate";
 import { useAnimationsPref } from "./use-animations-pref";
 
-const CanvasAurora = dynamic(() => import("./canvas-aurora"), { ssr: false });
-
-// Base statis bertema untuk efek earned (fully token-based, ikut tema aktif).
-const THEMED_BASE =
-  "linear-gradient(140deg, var(--chart-4) 0%, var(--chart-2) 45%, var(--chart-5) 100%)";
+const THEMED_BASE = THEMED_BANNER_GRADIENT;
 
 export function LiveBackground({
   background,
@@ -36,11 +35,19 @@ export function LiveBackground({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pref] = useAnimationsPref();
+  const reduced = usePrefersReducedMotion();
   const enabled = animate ?? pref;
-  const needsLiveEffect =
-    background.effect !== "gradient" && background.effect !== "image";
-  const active = useAnimationGate(ref, enabled && needsLiveEffect);
-  const colors = useThemeColors();
+  const needsAnimation = backgroundIsAnimated(background);
+
+  const isVideoLoop =
+    background.effect === "asset-loop" && background.media === "video";
+  const videoOnScreen = useAnimationGate(
+    ref,
+    enabled && needsAnimation && isVideoLoop,
+  );
+
+  const canAnimate = enabled && !reduced && needsAnimation;
+  const active = canAnimate && (!isVideoLoop || videoOnScreen);
 
   const style: React.CSSProperties = {};
   if (background.effect === "gradient") {
@@ -51,15 +58,14 @@ export function LiveBackground({
   } else if (background.effect === "image") {
     style.backgroundImage = `url(${"url" in background ? background.url : ""})`;
     style.backgroundSize = "cover";
-    style.backgroundPosition = "center";
-  } else {
-    style.background = THEMED_BASE;
+    style.backgroundPosition = background.focalPoint ?? "center";
+  } else if (background.effect === "asset-loop") {
+    // Backdrop tema di belakang aset — mengisi bar bila di-zoom-out di bawah
+    // cover. Aset (img/video/lottie) di-render CosmeticAssetLoop di atasnya.
+    // Longhand only (React warning saat `active` toggle menghapus longhand).
+    style.backgroundImage = THEMED_BASE;
+    style.backgroundSize = "cover";
   }
-
-  const intensity =
-    "params" in background && typeof background.params.intensity === "number"
-      ? background.params.intensity
-      : 1;
 
   return (
     <div
@@ -68,8 +74,16 @@ export function LiveBackground({
       style={style}
       aria-hidden
     >
-      {active && needsLiveEffect ? (
-        <CanvasAurora colors={colors} intensity={intensity} />
+      {background.effect === "asset-loop" ? (
+        <CosmeticAssetLoop
+          src={background.src}
+          poster={background.poster}
+          media={background.media}
+          active={active}
+          focalPoint={background.focalPoint}
+          zoom={background.zoom}
+          fit={background.fit}
+        />
       ) : null}
     </div>
   );

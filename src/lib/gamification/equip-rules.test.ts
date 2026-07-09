@@ -46,4 +46,18 @@ describe("canEquipCosmetic", () => {
       canEquipCosmetic(item, opts({ ownedIds: new Set(["earned1"]) })).ok,
     ).toBe(true);
   });
+
+  it("allows ACHIEVEMENT items when the linked achievement is already unlocked", () => {
+    const item = base({
+      id: "late-reward",
+      unlockType: "ACHIEVEMENT",
+      unlockAchievementKey: "attendance_30",
+    });
+    expect(
+      canEquipCosmetic(
+        item,
+        opts({ unlockedAchievementKeys: new Set(["attendance_30"]) }),
+      ).ok,
+    ).toBe(true);
+  });
 });
