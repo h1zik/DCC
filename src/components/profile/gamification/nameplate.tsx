@@ -26,9 +26,12 @@ export function Nameplate({
   const enabled = animate !== undefined ? animate : pref && !reduceMotion;
 
   const molten = effect === "molten";
+  const isPlain = effect === "plain";
   const base = molten
     ? "linear-gradient(90deg, color-mix(in oklab, var(--chart-4) 85%, black), color-mix(in oklab, var(--chart-1) 80%, transparent), color-mix(in oklab, var(--chart-2) 85%, black))"
-    : "color-mix(in oklab, var(--card) 55%, transparent)";
+    : isPlain
+      ? "color-mix(in oklab, var(--card) 75%, transparent)"
+      : "color-mix(in oklab, var(--card) 55%, transparent)";
 
   return (
     <span
@@ -38,7 +41,7 @@ export function Nameplate({
       )}
       style={{ background: base }}
     >
-      {enabled ? (
+      {enabled && !isPlain ? (
         <motion.span
           className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-12"
           style={{

@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -7,10 +9,34 @@ import {
   isProfileBannerPreset,
   isProfileSticker,
 } from "@/lib/profile-appearance";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { AppThemePicker } from "@/components/app-theme-picker";
 import { getGamificationEditorData } from "@/lib/gamification/editor-data";
 import { GamificationEditor } from "@/components/profile/gamification/gamification-editor";
-import { ProfileForm } from "../profile-form";
+import {
+  AccountSecuritySection,
+  AppearanceStudio,
+  IdentitySection,
+} from "../profile-form";
+import { EditProfileShell } from "./edit-profile-shell";
+
+function SectionHeader({
+  title,
+  desc,
+}: {
+  title: string;
+  desc: string;
+}) {
+  return (
+    <div className="mb-5">
+      <h2 className="text-foreground text-lg font-semibold tracking-tight">
+        {title}
+      </h2>
+      <p className="text-muted-foreground mt-1 text-sm">{desc}</p>
+    </div>
+  );
+}
 
 export default async function ProfileEditPage() {
   const session = await auth();
@@ -52,69 +78,116 @@ export default async function ProfileEditPage() {
     ? user.profileAvatarFrame
     : "ring";
 
-  const profileForm = (
-    <ProfileForm
-      email={user.email}
-      initialName={user.name ?? ""}
-      initialBio={user.bio ?? ""}
-      initialWhatsappPhone={user.whatsappPhone ?? ""}
-      initialImage={user.image}
-      initialBannerPreset={bannerPreset}
-      initialBannerPattern={bannerPattern}
-      initialTagline={user.profileTagline ?? ""}
-      initialAccentHex={user.profileAccentHex}
-      initialSticker={sticker}
-      initialAvatarFrame={avatarFrame}
-      profileSharePath={`/profile/${user.id}`}
-      viewProfileHref="/profile"
-      slimAppearance={!!gamificationEditor}
-    />
+  const sharePath = `/profile/${user.id}`;
+
+  const profil = (
+    <section aria-label="Profil">
+      <SectionHeader
+        title="Profil publik"
+        desc="Yang orang lihat saat membuka profilmu di Kanban, chat, dan halaman publik."
+      />
+      <IdentitySection
+        email={user.email}
+        initialName={user.name ?? ""}
+        initialBio={user.bio ?? ""}
+        initialImage={user.image}
+        profileSharePath={sharePath}
+      />
+    </section>
+  );
+
+  const kustomisasi = (
+    <section aria-label="Kustomisasi">
+      <SectionHeader
+        title="Kustomisasi tampilan"
+        desc="Background, frame, nameplate, gelar, accent & showcase. Item terkunci terbuka lewat level & achievement."
+      />
+      {gamificationEditor ? (
+        <div className="border-border/70 rounded-2xl border bg-card p-4 shadow-sm sm:p-6">
+          <GamificationEditor
+            data={gamificationEditor}
+            legacy={{
+              bannerPreset,
+              avatarFrame,
+              accentHex: user.profileAccentHex,
+            }}
+            avatarImageUrl={user.image}
+            displayName={user.name?.trim() || user.email}
+            initialTagline={user.profileTagline ?? ""}
+            initialSticker={sticker}
+          />
+        </div>
+      ) : (
+        <AppearanceStudio
+          email={user.email}
+          initialName={user.name ?? ""}
+          initialImage={user.image}
+          initialBannerPreset={bannerPreset}
+          initialBannerPattern={bannerPattern}
+          initialTagline={user.profileTagline ?? ""}
+          initialAccentHex={user.profileAccentHex}
+          initialSticker={sticker}
+          initialAvatarFrame={avatarFrame}
+          profileSharePath={sharePath}
+          viewProfileHref="/profile"
+        />
+      )}
+    </section>
+  );
+
+  const akun = (
+    <section aria-label="Akun & keamanan">
+      <SectionHeader
+        title="Akun & keamanan"
+        desc="Kontak untuk notifikasi dan kredensial masuk — terpisah dari identitas publik."
+      />
+      <AccountSecuritySection
+        email={user.email}
+        initialWhatsappPhone={user.whatsappPhone ?? ""}
+      />
+    </section>
+  );
+
+  const aplikasi = (
+    <section aria-label="Tampilan aplikasi">
+      <SectionHeader
+        title="Tampilan aplikasi"
+        desc="Tema warna seluruh aplikasi — hanya untukmu. Klik untuk pratinjau langsung, lalu simpan."
+      />
+      <AppThemePicker />
+    </section>
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
-      <div>
-        <h1 className="text-foreground text-2xl font-bold">Edit profil</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Sesuaikan tampilan, identitas, dan tema aplikasimu.
-        </p>
-      </div>
-
-      {gamificationEditor ? (
-        <section className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-foreground text-lg font-semibold">
-              Kustomisasi profil
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              Background, frame, nameplate, gelar, accent, slogan & showcase. Item
-              terkunci terbuka lewat level &amp; achievement.
-            </p>
-          </div>
-          <div className="border-border/70 rounded-2xl border bg-card p-4 shadow-sm sm:p-6">
-            <GamificationEditor
-              data={gamificationEditor}
-              legacy={{ bannerPreset, avatarFrame, accentHex: user.profileAccentHex }}
-              avatarImageUrl={user.image}
-              displayName={user.name?.trim() || user.email}
-              initialTagline={user.profileTagline ?? ""}
-              initialSticker={sticker}
-            />
-          </div>
-        </section>
-      ) : null}
-
-      <section className="flex flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-foreground text-lg font-semibold">Identitas &amp; akun</h2>
-          <p className="text-muted-foreground text-sm">
-            Foto, nama, bio, WhatsApp, dan kata sandi.
+          <h1 className="text-foreground text-2xl font-bold tracking-tight">
+            Edit profil
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Kelola identitas, tampilan, dan preferensi akunmu — satu bagian dalam
+            satu waktu.
           </p>
         </div>
-        {profileForm}
-      </section>
+        <Link
+          href="/profile"
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "shrink-0",
+          )}
+        >
+          <ArrowLeft className="size-4" />
+          <span className="hidden sm:inline">Lihat profil</span>
+        </Link>
+      </div>
 
-      <AppThemePicker />
+      <EditProfileShell
+        profil={profil}
+        kustomisasi={kustomisasi}
+        akun={akun}
+        aplikasi={aplikasi}
+      />
     </div>
   );
 }

@@ -59,6 +59,32 @@ export async function updateProfileBasics(input: {
   revalidatePath("/profile");
 }
 
+/**
+ * Update kontak (WhatsApp) tersendiri — dipakai bagian "Akun & keamanan" agar
+ * menyimpan nomor tidak ikut menimpa nama/bio (yang disimpan di bagian Profil).
+ */
+export async function updateProfileContact(input: {
+  whatsappPhone?: string | null;
+}) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Belum masuk.");
+
+  const t = (input.whatsappPhone ?? "").trim();
+  let whatsappPhone: string | null;
+  if (t === "") whatsappPhone = null;
+  else if (!E164.test(t)) {
+    throw new Error(
+      "Nomor WhatsApp pakai format E.164 (contoh +6281234567890).",
+    );
+  } else whatsappPhone = t;
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { whatsappPhone },
+  });
+  revalidatePath("/profile");
+}
+
 const AVATAR_MAX = 2 * 1024 * 1024;
 const AVATAR_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 
