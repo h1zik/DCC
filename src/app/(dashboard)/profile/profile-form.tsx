@@ -29,6 +29,7 @@ import {
   PROFILE_BANNER_PRESET_IDS,
   PROFILE_STICKERS,
   PROFILE_STICKER_IDS,
+  THEMED_BANNER_GRADIENT,
   bannerGradientCss,
   bannerPatternStyle,
   resolveProfileAccent,
@@ -147,50 +148,53 @@ export function IdentitySection({
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-4">
+    <div className="flex w-full flex-col gap-6">
       {/* Pratinjau identitas ringkas */}
-      <div className="border-border/70 overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="border-border/60 overflow-hidden rounded-xl border bg-card/60 shadow-sm">
         <div
-          className="h-20"
-          style={{
-            background:
-              "linear-gradient(140deg, var(--chart-4) 0%, var(--chart-2) 55%, var(--chart-5) 100%)",
-          }}
-        />
-        <div className="flex items-end gap-3 px-4 pb-4 sm:px-5">
-          <div className="bg-muted border-background -mt-8 size-16 shrink-0 overflow-hidden rounded-full border-[3px] shadow-sm">
-            {initialImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={initialImage} alt="" className="size-full object-cover" />
-            ) : (
-              <span className="text-muted-foreground flex size-full items-center justify-center text-lg font-semibold">
-                {(displayName.slice(0, 1) || "?").toUpperCase()}
-              </span>
-            )}
+          className="relative h-20 opacity-90"
+          style={{ background: THEMED_BANNER_GRADIENT }}
+        >
+          <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/25 to-transparent" />
+        </div>
+        <div className="relative px-4 pb-4 sm:px-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex min-w-0 items-end gap-3">
+              <div className="bg-muted ring-background -mt-8 size-16 shrink-0 overflow-hidden rounded-full border border-border/50 shadow-lg ring-4">
+                {initialImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={initialImage} alt="" className="size-full object-cover" />
+                ) : (
+                  <span className="text-muted-foreground flex size-full items-center justify-center text-xl font-semibold">
+                    {(displayName.slice(0, 1) || "?").toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 pb-1 pt-3">
+                <p className="text-foreground truncate text-base font-semibold leading-tight tracking-tight">
+                  {displayName}
+                </p>
+                <p className="text-muted-foreground mt-1 truncate font-mono text-[11px] leading-none">
+                  {email}
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-center sm:mb-1 sm:w-auto"
+              onClick={() => void copyProfileUrl(profileSharePath)}
+            >
+              <Link2 className="size-4" />
+              <span>Salin tautan</span>
+            </Button>
           </div>
-          <div className="min-w-0 flex-1 pb-0.5">
-            <p className="text-foreground truncate text-base font-semibold tracking-tight">
-              {displayName}
-            </p>
-            <p className="text-muted-foreground truncate font-mono text-[11px]">
-              {email}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            onClick={() => void copyProfileUrl(profileSharePath)}
-          >
-            <Link2 className="size-4" />
-            <span className="hidden sm:inline">Salin tautan</span>
-          </Button>
         </div>
       </div>
 
       {/* Foto profil */}
-      <Card>
+      <Card className="border-border/60 shadow-none">
         <CardHeader>
           <CardTitle className="text-base">Foto profil</CardTitle>
           <CardDescription>
@@ -242,7 +246,7 @@ export function IdentitySection({
       </Card>
 
       {/* Nama & bio */}
-      <Card>
+      <Card className="border-border/60 shadow-none">
         <CardHeader>
           <CardTitle className="text-base">Nama &amp; bio</CardTitle>
           <CardDescription>
@@ -345,9 +349,9 @@ export function AccountSecuritySection({
   }
 
   return (
-    <div className="flex max-w-2xl flex-col gap-4">
+    <div className="flex w-full flex-col gap-6">
       {/* Kontak */}
-      <Card>
+      <Card className="border-border/60 shadow-none">
         <CardHeader>
           <CardTitle className="text-base">Kontak</CardTitle>
           <CardDescription>
@@ -395,7 +399,7 @@ export function AccountSecuritySection({
       </Card>
 
       {/* Ganti kata sandi */}
-      <Card>
+      <Card className="border-border/60 shadow-none">
         <CardHeader>
           <div className="flex items-center gap-2">
             <KeyRound className="text-muted-foreground size-4" aria-hidden />

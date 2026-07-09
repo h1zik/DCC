@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-09-cosmetic-catalog-admin",
+    date: "2026-07-09",
+    title: "Katalog kosmetik dikelola admin: background & frame animasi (Lottie)",
+    category: "improved",
+    description:
+      "Semua background dan frame avatar kini berasal dari satu katalog yang dikelola admin lewat menu Gamifikasi — tim bisa menambah, mengedit, dan mengunci kosmetik (gratis atau di-unlock via achievement) langsung dari panel baru. Kosmetik kini mendukung media animasi Lottie selain gambar. Fitur 'unggah latar sendiri' di profil dilepas: pilihan latar jadi lebih rapi dan konsisten dari katalog kurasi.",
+    highlights: [
+      "Panel admin baru untuk mengelola background & frame avatar",
+      "Dukungan aset animasi Lottie untuk kosmetik",
+      "Slot 'unggah latar sendiri' dipensiunkan — semua latar dari katalog",
+      "Pratinjau langsung saat admin menambah/mengedit kosmetik",
+    ],
+  },
+  {
     id: "2026-07-08-profile-gamification",
     date: "2026-07-08",
     title: "Profil gamifikasi ala Steam: level, XP, achievement & kosmetik",

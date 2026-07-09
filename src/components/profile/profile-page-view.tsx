@@ -62,9 +62,9 @@ export type ProfilePageUser = {
   avatarFrame: ProfileAvatarFrame;
 };
 
-function lastSeenLabel(lastSeenAt: Date | null): string {
+function lastSeenLabel(lastSeenAt: Date | null, nowMs: number): string {
   if (!lastSeenAt) return "Belum pernah online";
-  const diff = Date.now() - lastSeenAt.getTime();
+  const diff = nowMs - lastSeenAt.getTime();
   if (diff < 60_000) return "Baru saja online";
   if (diff < 60 * 60_000) return `Online ${Math.floor(diff / 60_000)} menit lalu`;
   if (diff < 24 * 60 * 60_000)
@@ -89,6 +89,7 @@ export function ProfilePageView({
   actions,
   gamification,
   galleryHref = "/profile",
+  renderedAtMs,
 }: {
   user: ProfilePageUser;
   stats: ProfileShowcaseStats;
@@ -100,6 +101,8 @@ export function ProfilePageView({
   gamification?: GamificationView | null;
   /** Tautan galeri achievement (mis. /profile/edit#achievements). */
   galleryHref?: string;
+  /** Timestamp render dari server; menjaga status online stabil dalam render. */
+  renderedAtMs: number;
 }) {
   const displayName = user.name?.trim() || user.email;
   const accent =
@@ -111,7 +114,7 @@ export function ProfilePageView({
   const celebrate = gamification?.celebrate ?? false;
   const online =
     user.lastSeenAt != null &&
-    Date.now() - user.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS;
+    renderedAtMs - user.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS;
   const stickerMeta = user.sticker ? PROFILE_STICKERS[user.sticker] : null;
 
   const avatarImage = (
@@ -141,7 +144,10 @@ export function ProfilePageView({
       {/* ------------------------------ HERO ------------------------------ */}
       <section className="border-border/70 relative overflow-hidden rounded-3xl border bg-card shadow-xl shadow-black/5 ring-1 ring-black/[0.04] dark:shadow-black/30 dark:ring-white/[0.06]">
         {gamification ? <Celebration active={celebrate} /> : null}
-        <div className="relative isolate h-52 sm:h-72">
+        {/* Rasio 31/10 = identik dengan frame editor admin → background yang
+            di-set admin (crop/pan/zoom) tampil penuh sama persis, tanpa bar
+            kosong. min/max-h menjaga tinggi wajar di mobile & layar sangat lebar. */}
+        <div className="relative isolate aspect-[31/10] max-h-[28rem] min-h-56 overflow-hidden">
           {gamification ? (
             <LiveBackground background={gamification.cosmetics.background} />
           ) : (
@@ -206,10 +212,10 @@ export function ProfilePageView({
               )}
               <span
                 className={cn(
-                  "border-background absolute bottom-2 right-2 z-10 size-5 rounded-full border-[3px] sm:size-6",
+                  "border-background absolute bottom-2 right-2 z-50 size-5 rounded-full border-[3px] shadow-[0_2px_10px_rgba(0,0,0,0.35)] sm:size-6",
                   online ? "bg-emerald-500" : "bg-muted-foreground/50",
                 )}
-                title={online ? "Online" : lastSeenLabel(user.lastSeenAt)}
+                title={online ? "Online" : lastSeenLabel(user.lastSeenAt, renderedAtMs)}
                 aria-label={online ? "Online" : "Offline"}
               />
             </div>
@@ -277,7 +283,9 @@ export function ProfilePageView({
                     )}
                     aria-hidden
                   />
-                  {online ? "Online sekarang" : lastSeenLabel(user.lastSeenAt)}
+                  {online
+                    ? "Online sekarang"
+                    : lastSeenLabel(user.lastSeenAt, renderedAtMs)}
                 </span>
               </div>
             </div>

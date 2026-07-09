@@ -11,11 +11,17 @@ export type EquipCandidate = {
   type: string;
   unlockType: string;
   unlockLevel: number | null;
+  unlockAchievementKey?: string | null;
 };
 
 export function canEquipCosmetic(
   item: EquipCandidate,
-  opts: { slotType: string; level: number; ownedIds: Set<string> },
+  opts: {
+    slotType: string;
+    level: number;
+    ownedIds: Set<string>;
+    unlockedAchievementKeys?: Set<string>;
+  },
 ): { ok: boolean; reason?: string } {
   if (item.type !== opts.slotType) {
     return { ok: false, reason: "Tipe kosmetik tidak cocok dengan slot." };
@@ -31,7 +37,10 @@ export function canEquipCosmetic(
         : { ok: false, reason: `Item terbuka di Level ${item.unlockLevel ?? "?"}.` };
     case "ACHIEVEMENT":
     default:
-      return opts.ownedIds.has(item.id)
+      return opts.ownedIds.has(item.id) ||
+        (item.unlockAchievementKey
+          ? opts.unlockedAchievementKeys?.has(item.unlockAchievementKey)
+          : false)
         ? { ok: true }
         : { ok: false, reason: "Item kosmetik ini belum kamu miliki." };
   }

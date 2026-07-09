@@ -312,6 +312,57 @@
   }
 }
 
+/* Profile avatar frames */
+@keyframes profile-avatar-frame-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.profile-avatar-frame-spin {
+  animation: profile-avatar-frame-spin var(--profile-avatar-frame-duration, 6s)
+    linear infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+
+/* Glow "bernapas" untuk frame ember/aurora/venom/neon. */
+@keyframes profile-avatar-frame-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+.profile-avatar-frame-pulse {
+  animation: profile-avatar-frame-pulse 2.6s ease-in-out infinite;
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
+/* Siklus hue untuk frame iridesen (aurora/spectrum). */
+@keyframes profile-avatar-frame-hue {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+.profile-avatar-frame-hue {
+  animation: profile-avatar-frame-hue 8s linear infinite;
+  will-change: filter;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-avatar-frame-spin,
+  .profile-avatar-frame-pulse,
+  .profile-avatar-frame-hue {
+    animation: none !important;
+  }
+}
+
 /* ----------- Rich-text editor (Tiptap) — gaya mirip Google Docs ----------- */
 .tiptap {
   color: var(--foreground);

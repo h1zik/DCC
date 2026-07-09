@@ -5001,6 +5001,8 @@ model UserProfileConfig {
   equippedTitleId        String?
   accentColor            String?  @db.VarChar(7)
   customBackgroundUrl    String?  @db.VarChar(300)
+  /** `image` | `lottie` — jenis unggahan latar kustom user. */
+  customBackgroundMedia  String?  @db.VarChar(16)
   customBorderColor      String?  @db.VarChar(7)
   /**
    * String[] terurut dari Achievement.id yang di-showcase.

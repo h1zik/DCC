@@ -1,27 +1,55 @@
 "use client";
 
 /**
- * Frame avatar. Static-frame (ring/glow/gem/dashed/none atau warna kustom) ikut
- * `--profile-accent`; efek earned (orbit-glow/foil/holographic) = cincin gradient
- * ber-rotasi (transform-only, GPU-friendly) dari token tema. Reduced-motion →
- * cincin statis (tetap cakep).
+ * Frame avatar. Static-frame ikut `--profile-accent`; frame CSS beranimasi
+ * (orbit-glow/foil/aurora/ember/… — katalog di `frame-styles.ts`) = cincin
+ * conic ber-rotasi + opsi glow-pulse & hue-cycle; earned premium `asset-frame`
+ * = overlay animated WebP/APNG kurasi (ala Steam).
  */
-import { motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import type { BorderDescriptor } from "@/lib/gamification/cosmetics";
+import { getCssFrameSpec } from "@/lib/gamification/frame-styles";
+import { cn } from "@/lib/utils";
 import { useAnimationsPref } from "./use-animations-pref";
 
 const STATIC_EFFECTS = new Set(["static-frame"]);
-
-const ORBIT_GRADIENT =
-  "conic-gradient(from 0deg, var(--chart-1), var(--chart-2), var(--chart-3), var(--chart-1))";
-const FOIL_GRADIENT =
-  "conic-gradient(from 0deg, var(--chart-2), var(--chart-4), var(--chart-1), var(--chart-3), var(--chart-2))";
 
 function ringColor(border: BorderDescriptor): string {
   if (border.effect === "static-frame" && "color" in border && border.color) {
     return border.color;
   }
   return "var(--profile-accent)";
+}
+
+function AssetFrameOverlay({
+  src,
+  poster,
+  active,
+  scale,
+}: {
+  src: string;
+  poster?: string;
+  active: boolean;
+  scale?: number;
+}) {
+  const show = active ? src : (poster ?? src);
+  const frameScale = Math.max(0.9, Math.min(2, scale ?? 1.28));
+  const size = `${Math.round(frameScale * 100)}%`;
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-20"
+      aria-hidden
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={show}
+        alt=""
+        className="absolute left-1/2 top-1/2 max-w-none -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-[0_8px_28px_rgba(0,0,0,0.45)]"
+        style={{ width: size, height: size }}
+        decoding="async"
+      />
+    </div>
+  );
 }
 
 export function ProfileAvatarFrame({
@@ -38,7 +66,6 @@ export function ProfileAvatarFrame({
   const [pref] = useAnimationsPref();
   const reduce = reduceMotion || !(animate ?? pref);
 
-  // ── Static frames (parity dengan tampilan lama) ──
   if (STATIC_EFFECTS.has(border.effect)) {
     const variant =
       "variant" in border && border.variant ? border.variant : "ring";
@@ -83,7 +110,6 @@ export function ProfileAvatarFrame({
         </div>
       );
     }
-    // ring (default)
     return (
       <div
         className="relative rounded-full p-[3px] shadow-2xl"
@@ -97,24 +123,64 @@ export function ProfileAvatarFrame({
     );
   }
 
-  // ── Earned animated frames (cincin gradient ber-rotasi) ──
-  const gradient = border.effect === "foil" ? FOIL_GRADIENT : ORBIT_GRADIENT;
-  const duration = border.effect === "foil" ? 9 : 6;
+  if (border.effect === "asset-frame") {
+    return (
+      <div className={cn("relative rounded-full shadow-2xl")}>
+        <AssetFrameOverlay
+          src={border.src}
+          poster={border.poster}
+          scale={border.scale}
+          active={!reduce}
+        />
+        <div className="relative rounded-full">{children}</div>
+      </div>
+    );
+  }
+
+  // Frame CSS beranimasi (orbit-glow / foil / aurora / ember / … dari katalog).
+  const spec = getCssFrameSpec(
+    border.effect === "css-frame" ? border.frame : "orbit-glow",
+  );
+  const ring = (
+    <div
+      className={cn(
+        "absolute inset-0 rounded-full",
+        !reduce && "profile-avatar-frame-spin",
+      )}
+      style={{
+        background: spec.gradient,
+        ["--profile-avatar-frame-duration" as string]: `${spec.duration}s`,
+        animationDirection: spec.reverse ? "reverse" : undefined,
+      }}
+      aria-hidden
+    />
+  );
 
   return (
-    <div className="relative rounded-full p-[3px] shadow-2xl">
-      <motion.div
-        className="absolute inset-0 rounded-full"
-        style={{ background: gradient }}
-        animate={reduce ? {} : { rotate: 360 }}
-        transition={{ duration, repeat: Infinity, ease: "linear" }}
-        aria-hidden
-      />
+    <div
+      className="relative rounded-full shadow-2xl"
+      style={{ padding: spec.thickness ?? 3 }}
+    >
+      {spec.hueCycle && !reduce ? (
+        <div className="profile-avatar-frame-hue absolute inset-0 rounded-full">
+          {ring}
+        </div>
+      ) : (
+        ring
+      )}
+      {spec.pulse && !reduce ? (
+        <div
+          className="profile-avatar-frame-pulse pointer-events-none absolute inset-0 rounded-full"
+          style={{
+            boxShadow: `0 0 20px 3px color-mix(in oklab, ${spec.halo} 70%, transparent)`,
+          }}
+          aria-hidden
+        />
+      ) : null}
       <div
         className="pointer-events-none absolute inset-0 rounded-full"
         style={{
-          boxShadow:
-            "0 0 0 4px color-mix(in oklab, var(--chart-1) 14%, transparent), 0 18px 55px -12px color-mix(in oklab, var(--chart-1) 60%, transparent)",
+          boxShadow: `0 0 0 4px color-mix(in oklab, ${spec.halo} 14%, transparent), 0 18px 55px -12px color-mix(in oklab, ${spec.halo} 60%, transparent)`,
         }}
         aria-hidden
       />

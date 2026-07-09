@@ -6,7 +6,7 @@
  * bertab (Tampilan / Showcase / Achievements). Perubahan equip di-stage lalu
  * Simpan/Batal eksplisit; server RE-VALIDASI kepemilikan (equip hanya yang berhak).
  */
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -25,7 +25,16 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Lock, Sparkles, Upload, User, X } from "lucide-react";
+import {
+  Award,
+  GripVertical,
+  Layers,
+  Lock,
+  Sparkles,
+  Trophy,
+  User,
+  X,
+} from "lucide-react";
 import {
   resolveProfileCosmetics,
   type CosmeticLite,
@@ -34,19 +43,20 @@ import type {
   CosmeticOption,
   GamificationEditorData,
 } from "@/lib/gamification/editor-data";
-import {
-  clearCustomBackground,
-  updateProfileConfig,
-  uploadCustomBackground,
-} from "@/actions/gamification";
+import { updateProfileConfig } from "@/actions/gamification";
 import { updateProfileTaglineSticker } from "@/actions/profile";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
+  THEMED_BANNER_GRADIENT,
   bannerGradientCss,
   isProfileBannerPreset,
   PROFILE_STICKERS,
   PROFILE_STICKER_IDS,
 } from "@/lib/profile-appearance";
+import {
+  EditGroup,
+  EditStickyBar,
+} from "@/components/profile/edit/edit-ui";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -60,13 +70,34 @@ import {
   MiniBackgroundPreview,
   MiniBorderPreview,
   MiniNameplatePreview,
+  backgroundFromStyleConfig,
+  borderFromStyleConfig,
 } from "./cosmetic-mini-preview";
+
+const THEMED_BASE = THEMED_BANNER_GRADIENT;
 
 type Cfg = GamificationEditorData["config"];
 
+/**
+ * Label ringkas untuk kartu kosmetik. Nama katalog panjang (mis. "Nameplate
+ * Molten", 'Gelar "Level 10"') terpotong di sel grid sempit — di dalam grup yang
+ * sudah berjudul (Nameplate / Gelar) prefiks itu mubazir. Nama asli tetap
+ * dipakai untuk tooltip.
+ */
+function cosmeticLabel(c: CosmeticOption): string {
+  if (c.type === "TITLE") {
+    const m = /^Gelar\s+["“](.+)["”]$/.exec(c.name);
+    return m ? m[1]! : c.name;
+  }
+  if (c.type === "NAMEPLATE") {
+    return c.name.replace(/^Nameplate\s+/i, "");
+  }
+  return c.name;
+}
+
 /* ── Swatch per tipe kosmetik ─────────────────────────────────────────────── */
 
-function Swatch({ c, url }: { c: CosmeticOption; url: string | null }) {
+function Swatch({ c }: { c: CosmeticOption }) {
   if (c.type === "PROFILE_BACKGROUND") {
     const effect = String(c.styleConfig.effect ?? "gradient");
     if (effect === "gradient") {
@@ -78,25 +109,19 @@ function Swatch({ c, url }: { c: CosmeticOption; url: string | null }) {
         />
       );
     }
-    if (effect === "image") {
-      return url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="h-12 w-full rounded-md object-cover" />
-      ) : (
-        <div className="text-muted-foreground flex h-12 w-full items-center justify-center rounded-md border border-dashed border-border">
-          <Upload className="size-4" aria-hidden />
-        </div>
-      );
-    }
-    // Earned animated background → live mini preview (down-fidelity aurora).
-    const params: Record<string, number> = {};
-    for (const [k, v] of Object.entries(c.styleConfig)) {
-      if (typeof v === "number") params[k] = v;
+    const bgDesc = backgroundFromStyleConfig(c.styleConfig);
+    if (bgDesc) {
+      return <MiniBackgroundPreview background={bgDesc} />;
     }
     return (
-      <MiniBackgroundPreview
-        background={{ effect, palette: "theme", params }}
-      />
+      <div
+        className="relative h-12 w-full overflow-hidden rounded-md"
+        style={{ background: THEMED_BASE }}
+      >
+        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white/90">
+          ✦ animasi
+        </span>
+      </div>
     );
   }
   if (c.type === "AVATAR_BORDER") {
@@ -115,14 +140,27 @@ function Swatch({ c, url }: { c: CosmeticOption; url: string | null }) {
         </div>
       );
     }
-    // Earned animated border → live mini preview (cincin gradient ber-rotasi).
-    return <MiniBorderPreview border={{ effect }} />;
+    // Earned animated border → live mini preview.
+    const borderDesc = borderFromStyleConfig(c.styleConfig);
+    if (borderDesc) {
+      return <MiniBorderPreview border={borderDesc} />;
+    }
   }
   if (c.type === "NAMEPLATE") {
     const effect = String(c.styleConfig.effect ?? "plain");
     return <MiniNameplatePreview effect={effect} />;
   }
-  // TITLE / ACCENT — teks statis.
+  if (c.type === "TITLE") {
+    // Chip aksen ala pratinjau — bukan teks abu polos.
+    return (
+      <div className="flex h-12 items-center justify-center px-1">
+        <span className="max-w-full truncate rounded-full border border-[color:var(--profile-accent)]/40 bg-[color:var(--profile-accent)]/10 px-2.5 py-1 text-[11px] font-medium text-foreground">
+          {String(c.styleConfig.text ?? cosmeticLabel(c))}
+        </span>
+      </div>
+    );
+  }
+  // ACCENT / lainnya — teks statis.
   return (
     <div className="flex h-12 items-center justify-center">
       <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground">
@@ -138,18 +176,19 @@ function CosmeticGrid({
   items,
   selectedId,
   onSelect,
-  uploadUrl,
+  gridClassName = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
 }: {
   items: CosmeticOption[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  uploadUrl?: string | null;
+  /** Override kolom grid (mis. seksi sempit side-by-side). */
+  gridClassName?: string;
 }) {
   if (items.length === 0) {
     return <p className="text-muted-foreground text-sm">Belum ada item.</p>;
   }
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <div className={cn("grid gap-2", gridClassName)}>
       {items.map((c) => {
         const selected = selectedId === c.id;
         const locked = c.locked;
@@ -161,24 +200,39 @@ function CosmeticGrid({
             onClick={() => onSelect(selected ? null : c.id)}
             title={locked ? c.requirement ?? "Terkunci" : c.name}
             className={cn(
-              "group relative flex flex-col gap-1.5 rounded-xl border p-2 text-left transition-all",
+              "group relative flex flex-col overflow-hidden rounded-xl border text-left transition-all",
               selected
-                ? "border-primary ring-2 ring-primary/30"
-                : "border-border/70 hover:border-primary/40",
-              locked && "cursor-not-allowed opacity-60",
+                ? "border-primary ring-2 ring-primary/25 shadow-sm"
+                : "border-border/60 hover:border-primary/35 hover:shadow-sm",
+              locked && "cursor-not-allowed",
             )}
           >
-            <Swatch c={c} url={uploadUrl ?? null} />
-            <span className="text-foreground truncate text-xs font-medium">
-              {c.name}
-            </span>
+            <div
+              className={cn(
+                "bg-muted/30 relative p-2",
+                locked && "opacity-70 grayscale-[0.35]",
+              )}
+            >
+              <Swatch c={c} />
+            </div>
+            <div className="border-border/40 flex min-h-[2.5rem] flex-1 items-center border-t px-2 py-1.5">
+              <span className="text-foreground line-clamp-2 text-[11px] font-medium leading-tight">
+                {cosmeticLabel(c)}
+              </span>
+            </div>
             {locked ? (
-              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-xl bg-background/60 backdrop-blur-[1px]">
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-background/55 p-2 backdrop-blur-[2px]">
                 <Lock className="text-muted-foreground size-4" aria-hidden />
-                <span className="text-muted-foreground px-1 text-center text-[10px] leading-tight">
+                <span className="text-muted-foreground text-center text-[10px] leading-snug">
                   {c.requirement}
                 </span>
               </span>
+            ) : null}
+            {selected && !locked ? (
+              <span
+                className="bg-primary absolute right-1.5 top-1.5 size-2 rounded-full shadow-sm"
+                aria-hidden
+              />
             ) : null}
           </button>
         );
@@ -245,14 +299,20 @@ export function GamificationEditor({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [uploading, startUpload] = useTransition();
   const [animate, setAnimate] = useAnimationsPref();
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const [cfg, setCfg] = useState<Cfg>(data.config);
   const [tagline, setTagline] = useState(initialTagline);
   const [sticker, setSticker] = useState<string | null>(initialSticker);
   const [dirty, setDirty] = useState(false);
+  const [editorTab, setEditorTab] = useState("tampilan");
+
+  useEffect(() => {
+    if (window.location.hash.replace("#", "") === "achievements") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hash deep-link
+      setEditorTab("achievements");
+    }
+  }, []);
 
   const itemsById = new Map<string, CosmeticLite>(
     data.cosmetics.map((c) => [
@@ -306,33 +366,6 @@ export function GamificationEditor({
     setDirty(false);
   }
 
-  function onPickBackground(file: File | undefined) {
-    if (!file) return;
-    const fd = new FormData();
-    fd.set("background", file);
-    startUpload(async () => {
-      try {
-        await uploadCustomBackground(fd);
-        toast.success("Latar diunggah & dipasang.");
-        router.refresh();
-      } catch (e) {
-        toast.error(actionErrorMessage(e, "Gagal mengunggah latar."));
-      }
-    });
-  }
-
-  function onClearBackground() {
-    startUpload(async () => {
-      try {
-        await clearCustomBackground();
-        toast.success("Latar unggahan dihapus.");
-        router.refresh();
-      } catch (e) {
-        toast.error(actionErrorMessage(e, "Gagal menghapus latar."));
-      }
-    });
-  }
-
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
@@ -345,314 +378,378 @@ export function GamificationEditor({
   }
 
   const accent = preview.accentColor ?? "#888888";
+  const unlockedCount = data.achievements.filter((a) => a.unlocked).length;
 
   return (
     <div
-      className="grid gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]"
+      className="border-border/60 bg-card/80 overflow-hidden rounded-2xl border shadow-sm backdrop-blur-sm"
       style={{ ["--profile-accent" as string]: accent }}
     >
-      {/* ── LIVE PREVIEW ── */}
-      <div className="lg:sticky lg:top-4 lg:self-start">
-        <div className="border-border/70 relative overflow-hidden rounded-2xl border bg-card shadow-sm">
-          <div className="relative isolate h-32">
-            <LiveBackground background={preview.background} animate={animate} />
-            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 to-transparent" />
-          </div>
-          <div className="relative -mt-10 flex flex-col items-center px-4 pb-5">
-            <ProfileAvatarFrame border={preview.border} animate={animate}>
-              <div className="relative size-20 overflow-hidden rounded-full border-[3px] border-background bg-muted">
-                {avatarImageUrl ? (
-                  <Image src={avatarImageUrl} alt="" fill sizes="80px" className="object-cover" unoptimized />
-                ) : (
-                  <div className="text-muted-foreground flex size-full items-center justify-center">
-                    <User className="size-8" aria-hidden />
-                  </div>
-                )}
-              </div>
-            </ProfileAvatarFrame>
-            <p className="text-foreground mt-2 text-base font-bold">
-              {preview.nameplate ? (
-                <Nameplate effect={preview.nameplate.effect} animate={animate}>
-                  {displayName}
-                </Nameplate>
-              ) : (
-                displayName
-              )}
+      <div className="grid lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:divide-x lg:divide-border/50">
+        {/* ── LIVE PREVIEW ── */}
+        <aside className="border-border/50 border-b bg-muted/20 p-5 lg:border-b-0 lg:p-6">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-foreground text-xs font-semibold uppercase tracking-wider">
+              Pratinjau langsung
             </p>
-            {preview.title ? (
-              <span className="border-[color:var(--profile-accent)]/40 mt-1 rounded-full border bg-background/70 px-2 py-0.5 text-xs font-medium">
-                {preview.title}
-              </span>
-            ) : null}
-            <span className="text-muted-foreground mt-2 inline-flex items-center gap-1 text-xs">
-              <Sparkles className="size-3.5" style={{ color: "var(--chart-1)" }} aria-hidden />
-              Level {data.level}
-            </span>
-          </div>
-        </div>
-        <p className="text-muted-foreground mt-2 text-center text-xs">
-          Pratinjau langsung — animasi sungguhan sesuai yang kamu pilih.
-        </p>
-      </div>
-
-      {/* ── EDITOR ── */}
-      <div className="min-w-0">
-        <Tabs defaultValue="tampilan">
-          <TabsList>
-            <TabsTrigger value="tampilan">Tampilan</TabsTrigger>
-            <TabsTrigger value="showcase">Showcase</TabsTrigger>
-            <TabsTrigger value="achievements">Achievements</TabsTrigger>
-          </TabsList>
-
-          {/* TAB TAMPILAN */}
-          <TabsContent value="tampilan" className="space-y-6 pt-4">
-            <section>
-              <h3 className="text-foreground mb-2 text-sm font-semibold">
-                Slogan & stiker
-              </h3>
-              <input
-                type="text"
-                value={tagline}
-                maxLength={160}
-                onChange={(e) => {
-                  setTagline(e.target.value);
-                  setDirty(true);
-                }}
-                placeholder="Slogan singkat di bawah nama (opsional)"
-                className="border-border/70 focus-visible:ring-ring w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2"
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-[11px]">Animasi</span>
+              <ToggleSwitch
+                checked={animate}
+                onChange={setAnimate}
+                label="Animasi profil"
               />
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSticker(null);
-                    setDirty(true);
-                  }}
-                  className={cn(
-                    "rounded-lg border px-2.5 py-1 text-xs",
-                    sticker === null
-                      ? "border-primary ring-1 ring-primary/30"
-                      : "border-border/70 hover:border-primary/40",
+            </div>
+          </div>
+
+          <div className="border-border/70 relative overflow-hidden rounded-2xl border bg-card shadow-md ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
+            <div className="relative isolate aspect-[31/10] min-h-40 overflow-hidden">
+              <LiveBackground background={preview.background} animate={animate} />
+              <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
+            </div>
+            <div className="relative -mt-12 flex flex-col items-center px-4 pb-5 pt-0">
+              <ProfileAvatarFrame border={preview.border} animate={animate}>
+                <div className="relative size-[4.5rem] overflow-hidden rounded-full border-[3px] border-background bg-muted shadow-lg sm:size-20">
+                  {avatarImageUrl ? (
+                    <Image
+                      src={avatarImageUrl}
+                      alt=""
+                      fill
+                      sizes="80px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="text-muted-foreground flex size-full items-center justify-center">
+                      <User className="size-8" aria-hidden />
+                    </div>
                   )}
+                </div>
+              </ProfileAvatarFrame>
+              <p className="text-foreground mt-2.5 text-center text-base font-bold leading-tight">
+                {preview.nameplate ? (
+                  <Nameplate effect={preview.nameplate.effect} animate={animate}>
+                    {displayName}
+                  </Nameplate>
+                ) : (
+                  displayName
+                )}
+              </p>
+              {tagline.trim() ? (
+                <p className="text-muted-foreground mt-1 line-clamp-2 max-w-[220px] text-center text-xs">
+                  {tagline.trim()}
+                </p>
+              ) : null}
+              {preview.title ? (
+                <span className="border-[color:var(--profile-accent)]/40 mt-1.5 rounded-full border bg-background/80 px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-sm">
+                  {preview.title}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="border-border/50 bg-background/60 rounded-xl border px-3 py-2.5">
+              <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+                Level
+              </p>
+              <p className="text-foreground mt-0.5 flex items-center gap-1 text-sm font-semibold tabular-nums">
+                <Sparkles className="size-3.5 text-[var(--chart-1)]" aria-hidden />
+                {data.level}
+              </p>
+            </div>
+            <div className="border-border/50 bg-background/60 rounded-xl border px-3 py-2.5">
+              <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+                Achievement
+              </p>
+              <p className="text-foreground mt-0.5 text-sm font-semibold tabular-nums">
+                {unlockedCount}
+                <span className="text-muted-foreground font-normal">
+                  /{data.achievements.length}
+                </span>
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        {/* ── EDITOR ── */}
+        <div className="relative min-w-0">
+          <Tabs value={editorTab} onValueChange={setEditorTab} className="gap-0">
+            <div className="border-border/50 border-b p-3 sm:px-6 sm:py-4">
+              {/* h-auto HARUS pakai modifier yang sama dgn base (group-data-horizontal
+                  /tabs:h-8) — kalau tidak, tailwind-merge tak bisa menimpanya dan
+                  konten py-2 meluber dari track 32px (thumb aktif jadi terpotong). */}
+              <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl bg-muted/70 p-1 group-data-horizontal/tabs:h-auto">
+                <TabsTrigger
+                  value="tampilan"
+                  className="h-auto min-w-0 gap-1.5 rounded-lg px-2 py-2 text-xs font-medium sm:text-sm"
                 >
-                  Tanpa
-                </button>
-                {PROFILE_STICKER_IDS.map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    title={PROFILE_STICKERS[id].label}
-                    onClick={() => {
-                      setSticker(id);
+                  <Layers className="size-4 shrink-0" aria-hidden />
+                  <span className="truncate">Tampilan</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="showcase"
+                  className="h-auto min-w-0 gap-1.5 rounded-lg px-2 py-2 text-xs font-medium sm:text-sm"
+                >
+                  <Trophy className="size-4 shrink-0" aria-hidden />
+                  <span className="truncate">Showcase</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="achievements"
+                  className="h-auto min-w-0 gap-1.5 rounded-lg px-2 py-2 text-xs font-medium sm:text-sm"
+                >
+                  <Award className="size-4 shrink-0" aria-hidden />
+                  <span className="truncate">Achievement</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="px-4 py-5 sm:px-6">
+              <TabsContent value="tampilan" className="mt-0 space-y-8">
+                <EditGroup
+                  title="Slogan & stiker"
+                  description="Teks singkat dan emoji flair di samping nama."
+                >
+                  <input
+                    type="text"
+                    value={tagline}
+                    maxLength={160}
+                    onChange={(e) => {
+                      setTagline(e.target.value);
                       setDirty(true);
                     }}
-                    className={cn(
-                      "flex size-8 items-center justify-center rounded-lg border text-base",
-                      sticker === id
-                        ? "border-primary ring-1 ring-primary/30"
-                        : "border-border/70 hover:border-primary/40",
-                    )}
-                  >
-                    {PROFILE_STICKERS[id].emoji}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-foreground mb-2 text-sm font-semibold">Background</h3>
-              <CosmeticGrid
-                items={byType("PROFILE_BACKGROUND")}
-                selectedId={cfg.equippedBackgroundId}
-                onSelect={(id) => patch({ equippedBackgroundId: id })}
-                uploadUrl={cfg.customBackgroundUrl}
-              />
-              <div className="mt-2 flex flex-wrap gap-2">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => onPickBackground(e.target.files?.[0])}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload className="size-4" /> Upload latar custom
-                </Button>
-                {cfg.customBackgroundUrl ? (
-                  <Button type="button" size="sm" variant="ghost" disabled={uploading} onClick={onClearBackground}>
-                    Hapus latar
-                  </Button>
-                ) : null}
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-foreground mb-2 text-sm font-semibold">Frame avatar</h3>
-              <CosmeticGrid
-                items={byType("AVATAR_BORDER")}
-                selectedId={cfg.equippedBorderId}
-                onSelect={(id) => patch({ equippedBorderId: id })}
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <label className="text-muted-foreground text-xs">Warna border</label>
-                <input
-                  type="color"
-                  value={cfg.customBorderColor ?? "#888888"}
-                  onChange={(e) => patch({ customBorderColor: e.target.value })}
-                  className="size-7 cursor-pointer rounded border border-border bg-transparent"
-                  aria-label="Warna border kustom"
-                />
-              </div>
-            </section>
-
-            <section>
-              <h3 className="text-foreground mb-2 text-sm font-semibold">Nameplate</h3>
-              <CosmeticGrid
-                items={byType("NAMEPLATE")}
-                selectedId={cfg.equippedNameplateId}
-                onSelect={(id) => patch({ equippedNameplateId: id })}
-              />
-            </section>
-
-            <section>
-              <h3 className="text-foreground mb-2 text-sm font-semibold">Gelar (Title)</h3>
-              <CosmeticGrid
-                items={byType("TITLE")}
-                selectedId={cfg.equippedTitleId}
-                onSelect={(id) => patch({ equippedTitleId: id })}
-              />
-            </section>
-
-            <section className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label className="text-foreground text-sm font-medium">Accent</label>
-                <input
-                  type="color"
-                  value={cfg.accentColor ?? "#888888"}
-                  onChange={(e) => patch({ accentColor: e.target.value })}
-                  className="size-7 cursor-pointer rounded border border-border bg-transparent"
-                  aria-label="Warna aksen"
-                />
-                {cfg.accentColor ? (
-                  <Button type="button" size="sm" variant="ghost" onClick={() => patch({ accentColor: null })}>
-                    Default tema
-                  </Button>
-                ) : null}
-              </div>
-              <div className="ml-auto flex items-center gap-2 text-sm">
-                <span className="text-foreground font-medium">Animasi</span>
-                <ToggleSwitch
-                  checked={animate}
-                  onChange={setAnimate}
-                  label="Animasi profil"
-                />
-              </div>
-            </section>
-          </TabsContent>
-
-          {/* TAB SHOWCASE */}
-          <TabsContent value="showcase" className="space-y-4 pt-4">
-            <p className="text-muted-foreground text-sm">
-              Pilih pencapaian yang tampil di profil (maks {data.showcaseSlots} slot,
-              bertambah seiring level). Seret untuk mengurutkan.
-            </p>
-            {cfg.showcaseAchievementIds.length > 0 ? (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-                <SortableContext
-                  items={cfg.showcaseAchievementIds}
-                  strategy={horizontalListSortingStrategy}
-                >
-                  <div className="flex flex-wrap gap-2">
-                    {cfg.showcaseAchievementIds.map((id) => (
-                      <SortableChip
+                    placeholder="Misalnya: Always on time, always curious"
+                    className="border-border/70 focus-visible:ring-ring w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus-visible:ring-2"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSticker(null);
+                        setDirty(true);
+                      }}
+                      className={cn(
+                        "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                        sticker === null
+                          ? "border-primary bg-primary/5 text-foreground"
+                          : "border-border/70 text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                      )}
+                    >
+                      Tanpa stiker
+                    </button>
+                    {PROFILE_STICKER_IDS.map((id) => (
+                      <button
                         key={id}
-                        id={id}
-                        label={achById.get(id)?.name ?? "?"}
-                        onRemove={() =>
-                          patch({
-                            showcaseAchievementIds: cfg.showcaseAchievementIds.filter(
-                              (x) => x !== id,
-                            ),
-                          })
-                        }
-                      />
+                        type="button"
+                        title={PROFILE_STICKERS[id].label}
+                        onClick={() => {
+                          setSticker(id);
+                          setDirty(true);
+                        }}
+                        className={cn(
+                          "flex size-9 items-center justify-center rounded-lg border text-base transition-colors",
+                          sticker === id
+                            ? "border-primary bg-primary/5"
+                            : "border-border/70 hover:border-primary/40",
+                        )}
+                      >
+                        {PROFILE_STICKERS[id].emoji}
+                      </button>
                     ))}
                   </div>
-                </SortableContext>
-              </DndContext>
-            ) : (
-              <p className="text-muted-foreground text-sm italic">Belum ada item terpilih.</p>
-            )}
+                </EditGroup>
 
-            <div>
-              <h4 className="text-foreground mb-2 text-xs font-semibold uppercase tracking-wide">
-                Tersedia
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {unlockedAch
-                  .filter((a) => !cfg.showcaseAchievementIds.includes(a.id))
-                  .map((a) => {
-                    const full = cfg.showcaseAchievementIds.length >= data.showcaseSlots;
-                    return (
-                      <button
-                        key={a.id}
+                <EditGroup
+                  title="Background"
+                  description="Pilih dari katalog. Background baru terbuka seiring naik level atau meraih achievement."
+                >
+                  <CosmeticGrid
+                    items={byType("PROFILE_BACKGROUND")}
+                    selectedId={cfg.equippedBackgroundId}
+                    onSelect={(id) => patch({ equippedBackgroundId: id })}
+                  />
+                </EditGroup>
+
+                <EditGroup title="Frame avatar" description="Bingkai di sekitar foto profil.">
+                  <CosmeticGrid
+                    items={byType("AVATAR_BORDER")}
+                    selectedId={cfg.equippedBorderId}
+                    onSelect={(id) => patch({ equippedBorderId: id })}
+                  />
+                  <div className="border-border/50 flex flex-wrap items-center gap-3 rounded-xl border bg-muted/20 px-3 py-2.5">
+                    <input
+                      type="color"
+                      value={cfg.customBorderColor ?? "#888888"}
+                      onChange={(e) => patch({ customBorderColor: e.target.value })}
+                      className="size-8 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
+                      aria-label="Warna border kustom"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-foreground text-xs font-medium">
+                        Warna kustom
+                      </p>
+                      <p className="text-muted-foreground text-[11px] leading-tight">
+                        Untuk frame “Warna Border Kustom”.
+                      </p>
+                    </div>
+                  </div>
+                </EditGroup>
+
+                <div className="grid gap-6 sm:grid-cols-2 sm:gap-5">
+                  <EditGroup title="Nameplate" description="Banner di belakang nama.">
+                    <CosmeticGrid
+                      items={byType("NAMEPLATE")}
+                      selectedId={cfg.equippedNameplateId}
+                      onSelect={(id) => patch({ equippedNameplateId: id })}
+                      gridClassName="grid-cols-2"
+                    />
+                  </EditGroup>
+                  <EditGroup title="Gelar" description="Title di bawah identitas.">
+                    <CosmeticGrid
+                      items={byType("TITLE")}
+                      selectedId={cfg.equippedTitleId}
+                      onSelect={(id) => patch({ equippedTitleId: id })}
+                      gridClassName="grid-cols-2"
+                    />
+                  </EditGroup>
+                </div>
+
+                <EditGroup title="Warna aksen" description="Menyelaraskan highlight profil dengan tema.">
+                  <div className="border-border/50 flex flex-wrap items-center gap-3 rounded-xl border bg-muted/20 px-3 py-2.5">
+                    <input
+                      type="color"
+                      value={cfg.accentColor ?? "#888888"}
+                      onChange={(e) => patch({ accentColor: e.target.value })}
+                      className="size-8 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
+                      aria-label="Warna aksen"
+                    />
+                    <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                      {cfg.accentColor
+                        ? `Aksen kustom · ${cfg.accentColor.toUpperCase()}`
+                        : "Mengikuti tema aktif"}
+                    </span>
+                    {cfg.accentColor ? (
+                      <Button
                         type="button"
-                        disabled={full}
-                        onClick={() =>
-                          patch({
-                            showcaseAchievementIds: [...cfg.showcaseAchievementIds, a.id],
-                          })
-                        }
-                        className={cn(
-                          "border-border/70 rounded-full border px-2.5 py-1 text-xs transition-colors",
-                          full
-                            ? "cursor-not-allowed opacity-50"
-                            : "hover:border-primary/50 hover:bg-muted/40",
-                        )}
-                        title={full ? "Slot penuh" : `Tambah ${a.name}`}
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto shrink-0"
+                        onClick={() => patch({ accentColor: null })}
                       >
-                        {a.name}
-                      </button>
-                    );
-                  })}
-                {unlockedAch.length === 0 ? (
-                  <p className="text-muted-foreground text-sm italic">
-                    Buka achievement dulu untuk mengisi showcase.
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </TabsContent>
+                        Reset ke tema
+                      </Button>
+                    ) : null}
+                  </div>
+                </EditGroup>
+              </TabsContent>
 
-          {/* TAB ACHIEVEMENTS */}
-          <TabsContent value="achievements" className="pt-4" id="achievements">
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-              {data.achievements.map((a) => (
-                <AchievementBadge key={a.key} ach={a} />
-              ))}
-            </div>
-          </TabsContent>
-        </Tabs>
+              <TabsContent value="showcase" className="mt-0 space-y-5">
+                <EditGroup
+                  title="Pilih pencapaian"
+                  description={`Maks. ${data.showcaseSlots} slot — bertambah tiap 5 level. Seret untuk mengurutkan.`}
+                >
+                  {cfg.showcaseAchievementIds.length > 0 ? (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={onDragEnd}
+                    >
+                      <SortableContext
+                        items={cfg.showcaseAchievementIds}
+                        strategy={horizontalListSortingStrategy}
+                      >
+                        <div className="flex min-h-10 flex-wrap gap-2">
+                          {cfg.showcaseAchievementIds.map((id) => (
+                            <SortableChip
+                              key={id}
+                              id={id}
+                              label={achById.get(id)?.name ?? "?"}
+                              onRemove={() =>
+                                patch({
+                                  showcaseAchievementIds:
+                                    cfg.showcaseAchievementIds.filter(
+                                      (x) => x !== id,
+                                    ),
+                                })
+                              }
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  ) : (
+                    <p className="text-muted-foreground rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center text-sm">
+                      Belum ada achievement di showcase. Tambahkan dari daftar
+                      di bawah.
+                    </p>
+                  )}
 
-        {/* SAVE BAR */}
-        <div className="mt-6 flex items-center justify-end gap-2 border-t border-border/60 pt-4">
-          {dirty ? (
-            <span className="text-muted-foreground mr-auto text-xs">
-              Ada perubahan belum disimpan
-            </span>
-          ) : null}
-          <Button type="button" variant="ghost" disabled={pending || !dirty} onClick={onCancel}>
-            Batal
-          </Button>
-          <Button type="button" disabled={pending || !dirty} onClick={onSave}>
-            {pending ? "Menyimpan…" : "Simpan"}
-          </Button>
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                      Tersedia ({unlockedAch.length})
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {unlockedAch
+                        .filter((a) => !cfg.showcaseAchievementIds.includes(a.id))
+                        .map((a) => {
+                          const full =
+                            cfg.showcaseAchievementIds.length >= data.showcaseSlots;
+                          return (
+                            <button
+                              key={a.id}
+                              type="button"
+                              disabled={full}
+                              onClick={() =>
+                                patch({
+                                  showcaseAchievementIds: [
+                                    ...cfg.showcaseAchievementIds,
+                                    a.id,
+                                  ],
+                                })
+                              }
+                              className={cn(
+                                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                                full
+                                  ? "cursor-not-allowed opacity-40"
+                                  : "border-border/70 hover:border-primary/50 hover:bg-primary/5",
+                              )}
+                              title={full ? "Slot penuh" : `Tambah ${a.name}`}
+                            >
+                              + {a.name}
+                            </button>
+                          );
+                        })}
+                      {unlockedAch.length === 0 ? (
+                        <p className="text-muted-foreground text-sm italic">
+                          Buka achievement dulu untuk mengisi showcase.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </EditGroup>
+              </TabsContent>
+
+              <TabsContent value="achievements" className="mt-0" id="achievements">
+                <EditGroup
+                  title="Galeri achievement"
+                  description={`${unlockedCount} dari ${data.achievements.length} terbuka.`}
+                >
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {data.achievements.map((a) => (
+                      <AchievementBadge key={a.key} ach={a} />
+                    ))}
+                  </div>
+                </EditGroup>
+              </TabsContent>
+
+              <EditStickyBar
+                dirty={dirty}
+                pending={pending}
+                onSave={onSave}
+                onCancel={onCancel}
+              />
+            </div>
+          </Tabs>
         </div>
       </div>
     </div>

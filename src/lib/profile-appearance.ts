@@ -111,6 +111,15 @@ export function bannerGradientCss(preset: ProfileBannerPreset): string {
   return `linear-gradient(135deg, ${from} 0%, ${via} 48%, ${to} 100%)`;
 }
 
+/**
+ * Gradien banner "bertema" — dipakai sebagai latar pratinjau kosmetik &
+ * backdrop aset. Membentang penuh rentang terang→gelap palet chart
+ * (chart-1 → chart-3 → chart-5), bukan cuma ujung gelapnya, supaya terbaca
+ * sebagai gradien dekoratif dan bukan kotak nyaris hitam di tema apa pun.
+ */
+export const THEMED_BANNER_GRADIENT =
+  "linear-gradient(140deg, var(--chart-1) 0%, var(--chart-3) 50%, var(--chart-5) 100%)";
+
 /* -------------------------------------------------------------------------- */
 /*                              Banner patterns                                */
 /* -------------------------------------------------------------------------- */

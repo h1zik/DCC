@@ -31,6 +31,7 @@ export type EditorConfig = {
   equippedTitleId: string | null;
   accentColor: string | null;
   customBackgroundUrl: string | null;
+  customBackgroundMedia: string | null;
   customBorderColor: string | null;
   showcaseAchievementIds: string[];
 };
@@ -174,6 +175,7 @@ export async function getGamificationEditorData(
       equippedTitleId: config?.equippedTitleId ?? null,
       accentColor: config?.accentColor ?? null,
       customBackgroundUrl: config?.customBackgroundUrl ?? null,
+      customBackgroundMedia: config?.customBackgroundMedia ?? null,
       customBorderColor: config?.customBorderColor ?? null,
       showcaseAchievementIds: Array.isArray(config?.showcaseAchievementIds)
         ? (config!.showcaseAchievementIds as string[])

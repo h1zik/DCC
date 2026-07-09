@@ -49,13 +49,40 @@ describe("updateProfileConfig authorization", () => {
 
   it("REJECTS equipping an ACHIEVEMENT item the user does not own", async () => {
     mocks.prisma.cosmeticItem.findMany.mockResolvedValue([
-      { id: "bg-earned", type: "PROFILE_BACKGROUND", unlockType: "ACHIEVEMENT", unlockLevel: null },
+      {
+        id: "bg-earned",
+        type: "PROFILE_BACKGROUND",
+        unlockType: "ACHIEVEMENT",
+        unlockLevel: null,
+        unlockAchievementKey: "attendance_30",
+      },
     ]);
     // ownedIds empty → not owned
     await expect(
       updateProfileConfig({ equippedBackgroundId: "bg-earned" }),
     ).rejects.toThrow(/belum kamu miliki/i);
     expect(mocks.prisma.userProfileConfig.upsert).not.toHaveBeenCalled();
+  });
+
+  it("allows an ACHIEVEMENT item when the linked achievement is already unlocked", async () => {
+    mocks.prisma.cosmeticItem.findMany.mockResolvedValue([
+      {
+        id: "bg-earned",
+        type: "PROFILE_BACKGROUND",
+        unlockType: "ACHIEVEMENT",
+        unlockLevel: null,
+        unlockAchievementKey: "attendance_30",
+      },
+    ]);
+    mocks.prisma.userAchievement.findMany.mockResolvedValue([
+      { achievement: { key: "attendance_30" } },
+    ]);
+    await updateProfileConfig({ equippedBackgroundId: "bg-earned" });
+    expect(mocks.prisma.userProfileConfig.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ equippedBackgroundId: "bg-earned" }),
+      }),
+    );
   });
 
   it("REJECTS a LEVEL item above the user's level", async () => {
