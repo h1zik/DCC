@@ -56,9 +56,11 @@ import { AchievementBadge } from "./achievement-visuals";
 import { Nameplate } from "./nameplate";
 import { ToggleSwitch } from "./toggle-switch";
 import { useAnimationsPref } from "./use-animations-pref";
-
-const THEMED_BASE =
-  "linear-gradient(140deg, var(--chart-4) 0%, var(--chart-2) 45%, var(--chart-5) 100%)";
+import {
+  MiniBackgroundPreview,
+  MiniBorderPreview,
+  MiniNameplatePreview,
+} from "./cosmetic-mini-preview";
 
 type Cfg = GamificationEditorData["config"];
 
@@ -86,31 +88,41 @@ function Swatch({ c, url }: { c: CosmeticOption; url: string | null }) {
         </div>
       );
     }
+    // Earned animated background → live mini preview (down-fidelity aurora).
+    const params: Record<string, number> = {};
+    for (const [k, v] of Object.entries(c.styleConfig)) {
+      if (typeof v === "number") params[k] = v;
+    }
     return (
-      <div
-        className="relative h-12 w-full overflow-hidden rounded-md"
-        style={{ background: THEMED_BASE }}
-      >
-        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white/90">
-          ✦ animasi
-        </span>
-      </div>
+      <MiniBackgroundPreview
+        background={{ effect, palette: "theme", params }}
+      />
     );
   }
   if (c.type === "AVATAR_BORDER") {
-    return (
-      <div className="flex h-12 items-center justify-center">
-        <span
-          className="size-9 rounded-full border-2"
-          style={{
-            borderColor: "var(--chart-1)",
-            background: "color-mix(in oklab, var(--chart-1) 12%, transparent)",
-          }}
-        />
-      </div>
-    );
+    const effect = String(c.styleConfig.effect ?? "static-frame");
+    if (effect === "static-frame") {
+      return (
+        <div className="flex h-12 items-center justify-center">
+          <span
+            className="size-9 rounded-full border-2"
+            style={{
+              borderColor: "var(--chart-1)",
+              background:
+                "color-mix(in oklab, var(--chart-1) 12%, transparent)",
+            }}
+          />
+        </div>
+      );
+    }
+    // Earned animated border → live mini preview (cincin gradient ber-rotasi).
+    return <MiniBorderPreview border={{ effect }} />;
   }
-  // NAMEPLATE / TITLE / ACCENT
+  if (c.type === "NAMEPLATE") {
+    const effect = String(c.styleConfig.effect ?? "plain");
+    return <MiniNameplatePreview effect={effect} />;
+  }
+  // TITLE / ACCENT — teks statis.
   return (
     <div className="flex h-12 items-center justify-center">
       <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground">
