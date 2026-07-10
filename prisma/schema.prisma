@@ -346,6 +346,7 @@ model User {
   directMessages                     DirectMessage[]
   roomDocuments                      RoomDocument[]
   roomWikiAttachments                RoomWikiAttachment[]
+  roomWikiVersionsCreated            RoomWikiPageVersion[]
   roomMembers                        RoomMember[]
   contentPlanItemsCreated            RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
   contentPlanItemsAsPic              RoomContentPlanItem[]          @relation("ContentPlanItemPic")
@@ -643,13 +644,32 @@ model RoomWikiPage {
    * Konten halaman dalam HTML terstruktur dari Tiptap.
    */
   content     String               @default("")
+  /** Monotonik; dipakai optimistic concurrency guard saat auto-save. */
+  revision    Int                  @default(0)
   sortOrder   Int                  @default(0)
   updatedById String?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   attachments RoomWikiAttachment[]
+  versions    RoomWikiPageVersion[]
 
   @@index([viewId, sortOrder])
+}
+
+model RoomWikiPageVersion {
+  id          String       @id @default(cuid())
+  pageId      String
+  page        RoomWikiPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  revision    Int
+  title       String       @db.VarChar(160)
+  content     String
+  createdById String
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  reason      String       @default("autosave") @db.VarChar(32)
+  createdAt   DateTime     @default(now())
+
+  @@unique([pageId, revision])
+  @@index([pageId, createdAt(sort: Desc)])
 }
 
 model RoomWikiAttachment {

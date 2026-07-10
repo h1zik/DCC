@@ -106,6 +106,7 @@ async function renderViewBody(
             id: p.id,
             title: p.title,
             content: p.content,
+            revision: p.revision,
             updatedAt: p.updatedAt.toISOString(),
           }))}
         />

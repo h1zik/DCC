@@ -25,23 +25,114 @@ const upsertSchema = z.object({
   viewId: z.string().min(1),
   title: z.string().trim().min(1).max(160),
   content: z.string().max(50_000).optional().default(""),
+  baseRevision: z.number().int().min(0).optional(),
 });
+
+const VERSION_CHECKPOINT_MS = 60_000;
+
+type SaveConflict = {
+  conflict: true;
+  id: string;
+  revision: number;
+  title: string;
+  content: string;
+  updatedAt: string;
+};
 
 export async function upsertRoomWikiPage(input: z.infer<typeof upsertSchema>) {
   const session = await requireTasksRoomHubSession();
   const data = upsertSchema.parse(input);
   const roomId = await ensureWikiMember(data.viewId, session.user.id);
 
-  let pageId = data.id;
-  if (pageId) {
-    await prisma.roomWikiPage.update({
-      where: { id: pageId },
-      data: {
-        title: data.title,
-        content: data.content ?? "",
-        updatedById: session.user.id,
+  if (data.id) {
+    const current = await prisma.roomWikiPage.findFirst({
+      where: { id: data.id, viewId: data.viewId },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        revision: true,
+        updatedAt: true,
       },
     });
+    if (!current) throw new Error("Halaman Wiki tidak ditemukan pada view ini.");
+    if (data.baseRevision != null && data.baseRevision !== current.revision) {
+      return {
+        conflict: true,
+        id: current.id,
+        revision: current.revision,
+        title: current.title,
+        content: current.content,
+        updatedAt: current.updatedAt.toISOString(),
+      } satisfies SaveConflict;
+    }
+    if (current.title === data.title && current.content === data.content) {
+      return {
+        conflict: false as const,
+        id: current.id,
+        revision: current.revision,
+        updatedAt: current.updatedAt.toISOString(),
+      };
+    }
+
+    const latestVersion = await prisma.roomWikiPageVersion.findFirst({
+      where: { pageId: current.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    const nextRevision = current.revision + 1;
+    const shouldCheckpoint =
+      !latestVersion || Date.now() - latestVersion.createdAt.getTime() >= VERSION_CHECKPOINT_MS;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const guarded = await tx.roomWikiPage.updateMany({
+        where: { id: current.id, viewId: data.viewId, revision: current.revision },
+        data: {
+          title: data.title,
+          content: data.content,
+          revision: nextRevision,
+          updatedById: session.user.id,
+        },
+      });
+      if (guarded.count !== 1) return null;
+      if (shouldCheckpoint) {
+        await tx.roomWikiPageVersion.create({
+          data: {
+            pageId: current.id,
+            revision: nextRevision,
+            title: data.title,
+            content: data.content,
+            createdById: session.user.id,
+          },
+        });
+      }
+      return tx.roomWikiPage.findUniqueOrThrow({
+        where: { id: current.id },
+        select: { revision: true, updatedAt: true },
+      });
+    });
+
+    if (!updated) {
+      const latest = await prisma.roomWikiPage.findUniqueOrThrow({
+        where: { id: current.id },
+        select: { id: true, revision: true, title: true, content: true, updatedAt: true },
+      });
+      return {
+        conflict: true,
+        id: latest.id,
+        revision: latest.revision,
+        title: latest.title,
+        content: latest.content,
+        updatedAt: latest.updatedAt.toISOString(),
+      } satisfies SaveConflict;
+    }
+    revalidatePath(`/room/${roomId}/view/${data.viewId}`);
+    return {
+      conflict: false as const,
+      id: current.id,
+      revision: updated.revision,
+      updatedAt: updated.updatedAt.toISOString(),
+    };
   } else {
     const max = await prisma.roomWikiPage.aggregate({
       where: { viewId: data.viewId },
@@ -54,13 +145,93 @@ export async function upsertRoomWikiPage(input: z.infer<typeof upsertSchema>) {
         content: data.content ?? "",
         updatedById: session.user.id,
         sortOrder: (max._max.sortOrder ?? -1) + 1,
+        versions: {
+          create: {
+            revision: 0,
+            title: data.title,
+            content: data.content,
+            createdById: session.user.id,
+            reason: "initial",
+          },
+        },
       },
-      select: { id: true },
+      select: { id: true, revision: true, updatedAt: true },
     });
-    pageId = created.id;
+    revalidatePath(`/room/${roomId}/view/${data.viewId}`);
+    return {
+      conflict: false as const,
+      id: created.id,
+      revision: created.revision,
+      updatedAt: created.updatedAt.toISOString(),
+    };
   }
-  revalidatePath(`/room/${roomId}/view/${data.viewId}`);
-  return { id: pageId };
+}
+
+export async function listRoomWikiPageVersions(pageId: string) {
+  const session = await requireTasksRoomHubSession();
+  const page = await prisma.roomWikiPage.findUniqueOrThrow({
+    where: { id: pageId },
+    select: { viewId: true },
+  });
+  await ensureWikiMember(page.viewId, session.user.id);
+  const versions = await prisma.roomWikiPageVersion.findMany({
+    where: { pageId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      revision: true,
+      title: true,
+      content: true,
+      reason: true,
+      createdAt: true,
+      createdBy: { select: { id: true, name: true, email: true, image: true } },
+    },
+  });
+  return versions.map((version) => ({
+    ...version,
+    createdAt: version.createdAt.toISOString(),
+  }));
+}
+
+export async function restoreRoomWikiPageVersion(pageId: string, versionId: string) {
+  const session = await requireTasksRoomHubSession();
+  const page = await prisma.roomWikiPage.findUniqueOrThrow({
+    where: { id: pageId },
+    select: { viewId: true, revision: true },
+  });
+  const roomId = await ensureWikiMember(page.viewId, session.user.id);
+  const version = await prisma.roomWikiPageVersion.findFirst({
+    where: { id: versionId, pageId },
+    select: { title: true, content: true },
+  });
+  if (!version) throw new Error("Versi Wiki tidak ditemukan.");
+  const nextRevision = page.revision + 1;
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.roomWikiPage.update({
+      where: { id: pageId },
+      data: {
+        title: version.title,
+        content: version.content,
+        revision: nextRevision,
+        updatedById: session.user.id,
+      },
+      select: { updatedAt: true },
+    });
+    await tx.roomWikiPageVersion.create({
+      data: {
+        pageId,
+        revision: nextRevision,
+        title: version.title,
+        content: version.content,
+        createdById: session.user.id,
+        reason: "restore",
+      },
+    });
+    return row;
+  });
+  revalidatePath(`/room/${roomId}/view/${page.viewId}`);
+  return { revision: nextRevision, updatedAt: updated.updatedAt.toISOString() };
 }
 
 export async function deleteRoomWikiPage(pageId: string) {

@@ -15,9 +15,11 @@ import { toast } from "sonner";
 import {
   BookOpen,
   Check,
+  CloudOff,
   FileText,
   Loader2,
   Plus,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import {
@@ -30,16 +32,24 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { WikiPageDownloadMenu } from "@/components/wiki-page-download-menu";
+import { WikiVersionHistory } from "@/components/wiki-version-history";
 import { cn } from "@/lib/utils";
+import {
+  parseWikiDraft,
+  shouldRecoverWikiDraft,
+  wikiDraftStorageKey,
+  type WikiDraft,
+} from "@/lib/wiki-draft";
 
 type Page = {
   id: string;
   title: string;
   content: string;
+  revision: number;
   updatedAt: string;
 };
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
+type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error" | "conflict";
 
 const AUTOSAVE_DELAY_MS = 800;
 
@@ -118,6 +128,10 @@ export function WikiViewClient({
   /** Judul & konten terbaru per halaman (dari editor), untuk auto-save & unduhan. */
   const latestTitleByPageIdRef = useRef<Map<string, string>>(new Map());
   const latestContentByPageIdRef = useRef<Map<string, string>>(new Map());
+  const revisionsRef = useRef<Map<string, number>>(
+    new Map(initialPages.map((page) => [page.id, page.revision])),
+  );
+  const saveChainsRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const persistPage = useCallback(
     (page: Page, patch: { title?: string; content?: string }) => {
@@ -125,25 +139,44 @@ export function WikiViewClient({
         patch.title ??
         latestTitleByPageIdRef.current.get(page.id) ??
         page.title;
-      setSaveState({ pageId: page.id, status: "saving" });
-      startTransition(async () => {
-        try {
-          await upsertRoomWikiPage({
-            id: page.id,
-            viewId,
-            title: resolvedTitle,
-            content: patch.content ?? page.content,
-          });
-          setSaveState({ pageId: page.id, status: "saved" });
-          router.refresh();
-        } catch (err) {
-          setSaveState({ pageId: page.id, status: "error" });
-          toast.error(
-            actionErrorMessage(err, "Gagal menyimpan halaman."));
-        }
-      });
+      const resolvedContent =
+        patch.content ??
+        latestContentByPageIdRef.current.get(page.id) ??
+        page.content;
+      const snapshot = { title: resolvedTitle, content: resolvedContent };
+      const previous = saveChainsRef.current.get(page.id) ?? Promise.resolve();
+      const next = previous
+        .catch(() => undefined)
+        .then(async () => {
+          setSaveState({ pageId: page.id, status: "saving" });
+          try {
+            const result = await upsertRoomWikiPage({
+              id: page.id,
+              viewId,
+              title: snapshot.title,
+              content: snapshot.content,
+              baseRevision: revisionsRef.current.get(page.id) ?? page.revision,
+            });
+            if (result.conflict) {
+              setSaveState({ pageId: page.id, status: "conflict" });
+              toast.error("Halaman diubah pengguna lain. Draft lokal tetap aman.");
+              return;
+            }
+            revisionsRef.current.set(page.id, result.revision);
+            const latestTitle = latestTitleByPageIdRef.current.get(page.id) ?? page.title;
+            const latestContent = latestContentByPageIdRef.current.get(page.id) ?? page.content;
+            if (latestTitle === snapshot.title && latestContent === snapshot.content) {
+              localStorage.removeItem(wikiDraftStorageKey(page.id));
+              setSaveState({ pageId: page.id, status: "saved" });
+            }
+          } catch (err) {
+            setSaveState({ pageId: page.id, status: "error" });
+            toast.error(actionErrorMessage(err, "Gagal menyimpan halaman. Draft lokal tetap aman."));
+          }
+        });
+      saveChainsRef.current.set(page.id, next);
     },
-    [router, viewId],
+    [viewId],
   );
 
   // Judul: JANGAN pakai useOptimistic + startTransition sinkron — pola itu
@@ -152,6 +185,21 @@ export function WikiViewClient({
   const onTitleChange = useCallback(
     (page: Page, nextTitle: string) => {
       latestTitleByPageIdRef.current.set(page.id, nextTitle);
+      setSaveState({ pageId: page.id, status: "dirty" });
+      try {
+        localStorage.setItem(
+          wikiDraftStorageKey(page.id),
+          JSON.stringify({
+            pageId: page.id,
+            title: nextTitle,
+            content: latestContentByPageIdRef.current.get(page.id) ?? page.content,
+            baseRevision: revisionsRef.current.get(page.id) ?? page.revision,
+            savedAt: new Date().toISOString(),
+          } satisfies WikiDraft),
+        );
+      } catch {
+        // Browser dapat menolak localStorage; server auto-save tetap berjalan.
+      }
       const existing = titleTimersRef.current.get(page.id);
       if (existing) clearTimeout(existing);
       if (!nextTitle.trim()) return;
@@ -174,6 +222,21 @@ export function WikiViewClient({
       latestContentByPageIdRef.current.set(page.id, nextContent);
       if (!latestTitleByPageIdRef.current.has(page.id)) {
         latestTitleByPageIdRef.current.set(page.id, page.title);
+      }
+      setSaveState({ pageId: page.id, status: "dirty" });
+      try {
+        localStorage.setItem(
+          wikiDraftStorageKey(page.id),
+          JSON.stringify({
+            pageId: page.id,
+            title: latestTitleByPageIdRef.current.get(page.id) ?? page.title,
+            content: nextContent,
+            baseRevision: revisionsRef.current.get(page.id) ?? page.revision,
+            savedAt: new Date().toISOString(),
+          } satisfies WikiDraft),
+        );
+      } catch {
+        // Browser dapat menolak localStorage; server auto-save tetap berjalan.
       }
       const existing = contentTimersRef.current.get(page.id);
       if (existing) clearTimeout(existing);
@@ -230,6 +293,23 @@ export function WikiViewClient({
       contentTimers.clear();
     };
   }, []);
+
+  useEffect(() => {
+    const retryDrafts = () => {
+      for (const page of initialPages) {
+        const draft = parseWikiDraft(
+          localStorage.getItem(wikiDraftStorageKey(page.id)),
+          page.id,
+        );
+        if (!draft) continue;
+        latestTitleByPageIdRef.current.set(page.id, draft.title);
+        latestContentByPageIdRef.current.set(page.id, draft.content);
+        persistPage(page, { title: draft.title, content: draft.content });
+      }
+    };
+    window.addEventListener("online", retryDrafts);
+    return () => window.removeEventListener("online", retryDrafts);
+  }, [initialPages, persistPage]);
 
   if (pages.length === 0) {
     return (
@@ -314,6 +394,10 @@ export function WikiViewClient({
           onTitleChange={(v) => onTitleChange(selected, v)}
           onContentChange={(v) => onContentChange(selected, v)}
           onDelete={() => onDeletePage(selected)}
+          onRestored={() => {
+            localStorage.removeItem(wikiDraftStorageKey(selected.id));
+            router.refresh();
+          }}
         />
       ) : (
         <Card>
@@ -334,6 +418,7 @@ function PageEditor({
   onTitleChange,
   onContentChange,
   onDelete,
+  onRestored,
 }: {
   roomId: string;
   viewId: string;
@@ -342,10 +427,23 @@ function PageEditor({
   onTitleChange: (next: string) => void;
   onContentChange: (next: string) => void;
   onDelete: () => void;
+  onRestored: () => void;
 }) {
   /** Input judul & konten lokal untuk unduhan (konten editor tidak re-render parent tiap ketik). */
   const [titleDraft, setTitleDraft] = useState(page.title);
   const [contentDraft, setContentDraft] = useState(page.content);
+  const [editorGeneration, setEditorGeneration] = useState(0);
+  const [recoveryCandidate, setRecoveryCandidate] = useState<WikiDraft | null>(null);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const draft = parseWikiDraft(localStorage.getItem(wikiDraftStorageKey(page.id)), page.id);
+      if (draft && shouldRecoverWikiDraft(draft, page)) {
+        setRecoveryCandidate(draft);
+      }
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [page]);
 
   return (
     <Card>
@@ -369,6 +467,13 @@ function PageEditor({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <WikiVersionHistory
+              pageId={page.id}
+              currentTitle={titleDraft}
+              currentContent={contentDraft}
+              restoreDisabled={saveStatus === "dirty" || saveStatus === "saving"}
+              onRestored={onRestored}
+            />
             <WikiPageDownloadMenu
               roomId={roomId}
               viewId={viewId}
@@ -389,8 +494,48 @@ function PageEditor({
           </div>
         </div>
 
+        {recoveryCandidate ? (
+          <div className="border-amber-500/30 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+            <div>
+              <p className="font-medium">Draft lokal yang belum tersimpan ditemukan</p>
+              <p className="text-muted-foreground text-xs">
+                Disimpan {fmt(recoveryCandidate.savedAt)}. Pilih pulihkan agar perubahan tidak hilang.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  localStorage.removeItem(wikiDraftStorageKey(page.id));
+                  setRecoveryCandidate(null);
+                }}
+              >
+                Buang draft
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setTitleDraft(recoveryCandidate.title);
+                  setContentDraft(recoveryCandidate.content);
+                  setEditorGeneration((value) => value + 1);
+                  onTitleChange(recoveryCandidate.title);
+                  onContentChange(recoveryCandidate.content);
+                  setRecoveryCandidate(null);
+                }}
+              >
+                <RefreshCw className="size-3.5" />
+                Pulihkan draft
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <RichTextEditor
-          initialContent={page.content}
+          key={editorGeneration}
+          initialContent={contentDraft}
           onUpdate={(html) => {
             setContentDraft(html);
             onContentChange(html);
@@ -408,6 +553,13 @@ function PageEditor({
 }
 
 function SaveBadge({ status }: { status: SaveStatus }) {
+  if (status === "dirty") {
+    return (
+      <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+        Perubahan belum disimpan
+      </span>
+    );
+  }
   if (status === "saving") {
     return (
       <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
@@ -427,7 +579,16 @@ function SaveBadge({ status }: { status: SaveStatus }) {
   if (status === "error") {
     return (
       <span className="text-destructive inline-flex items-center gap-1 text-xs">
-        Gagal menyimpan
+        <CloudOff className="size-3" aria-hidden />
+        Gagal · draft aman
+      </span>
+    );
+  }
+  if (status === "conflict") {
+    return (
+      <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1 text-xs">
+        <RefreshCw className="size-3" aria-hidden />
+        Konflik · muat ulang
       </span>
     );
   }
