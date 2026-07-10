@@ -11,7 +11,6 @@ import { TableKit } from "@tiptap/extension-table";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { TextStyle } from "@tiptap/extension-text-style";
-import Underline from "@tiptap/extension-underline";
 import Youtube from "@tiptap/extension-youtube";
 import { common, createLowlight } from "lowlight";
 import {
@@ -123,7 +122,6 @@ export function RichTextEditor({
       CodeBlockLowlight.configure({ lowlight }),
       TextStyle,
       FontSize,
-      Underline,
       Link.configure({
         openOnClick: false,
         autolink: true,

@@ -113,10 +113,10 @@ async function renderViewBody(
           members={members}
           pages={pages.map((p) => ({
             id: p.id,
-            parentId: p.parentId,
+            parentId: p.parentId ?? null,
             title: p.title,
             content: p.content,
-            tags: p.tags,
+            tags: p.tags ?? [],
             revision: p.revision,
             updatedAt: p.updatedAt.toISOString(),
           }))}

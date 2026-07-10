@@ -458,7 +458,9 @@ function WikiTreeItem({
   depth?: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const hasChildren = node.children.length > 0;
+  const children = node.children ?? [];
+  const tags = node.tags ?? [];
+  const hasChildren = children.length > 0;
   return (
     <li
       role="treeitem"
@@ -489,8 +491,8 @@ function WikiTreeItem({
           <FileText className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium">{node.title || "Tanpa judul"}</span>
-            {node.tags.length > 0 ? (
-              <span className="text-muted-foreground block truncate text-[10px]">{node.tags.join(" · ")}</span>
+            {tags.length > 0 ? (
+              <span className="text-muted-foreground block truncate text-[10px]">{tags.join(" · ")}</span>
             ) : null}
           </span>
         </button>
@@ -506,7 +508,7 @@ function WikiTreeItem({
       </div>
       {hasChildren && !collapsed ? (
         <ul role="group" className="space-y-0.5">
-          {node.children.map((child) => (
+          {children.map((child) => (
             <WikiTreeItem
               key={child.id}
               node={child}
@@ -560,7 +562,7 @@ function PageEditor({
   const [contentDraft, setContentDraft] = useState(page.content);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [recoveryCandidate, setRecoveryCandidate] = useState<WikiDraft | null>(null);
-  const [tagsDraft, setTagsDraft] = useState(page.tags.join(", "));
+  const [tagsDraft, setTagsDraft] = useState((page.tags ?? []).join(", "));
   const [organizationPending, startOrganizationTransition] = useTransition();
   const [canEdit, setCanEdit] = useState(false);
 
@@ -577,7 +579,7 @@ function PageEditor({
   function saveTags() {
     const tags = normalizeWikiTags(tagsDraft.split(","));
     setTagsDraft(tags.join(", "));
-    if (tags.join("|") === page.tags.join("|")) return;
+    if (tags.join("|") === (page.tags ?? []).join("|")) return;
     startOrganizationTransition(async () => {
       try {
         await updateRoomWikiPageOrganization({ pageId: page.id, tags });

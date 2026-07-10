@@ -47,7 +47,7 @@ export function searchWikiPages<T extends WikiOrganizationPage>(pages: T[], quer
     .filter(Boolean);
   if (terms.length === 0) return pages;
   return pages.filter((page) => {
-    const haystack = [page.title, page.tags.join(" "), htmlToWikiText(page.content)]
+    const haystack = [page.title, (page.tags ?? []).join(" "), htmlToWikiText(page.content)]
       .join(" ")
       .toLocaleLowerCase("id-ID");
     return terms.every((term) => haystack.includes(term));
