@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   deleteRoomWikiPage,
+  uploadRoomWikiAttachment,
   upsertRoomWikiPage,
 } from "@/actions/room-view-wiki";
 import { Button } from "@/components/ui/button";
@@ -345,10 +346,6 @@ function PageEditor({
   /** Input judul & konten lokal untuk unduhan (konten editor tidak re-render parent tiap ketik). */
   const [titleDraft, setTitleDraft] = useState(page.title);
   const [contentDraft, setContentDraft] = useState(page.content);
-  useEffect(() => {
-    setTitleDraft(page.title);
-    setContentDraft(page.content);
-  }, [page.id, page.title, page.content]);
 
   return (
     <Card>
@@ -397,6 +394,11 @@ function PageEditor({
           onUpdate={(html) => {
             setContentDraft(html);
             onContentChange(html);
+          }}
+          onUploadFile={async (file) => {
+            const formData = new FormData();
+            formData.set("file", file);
+            return uploadRoomWikiAttachment(page.id, formData);
           }}
           placeholder="Tulis catatan, keputusan rapat, atau brief singkat di sini…"
         />

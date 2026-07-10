@@ -476,6 +476,146 @@
   background: transparent;
   padding: 0;
 }
+.tiptap .hljs-comment,
+.tiptap .hljs-quote {
+  color: color-mix(in oklab, var(--muted-foreground) 78%, transparent);
+  font-style: italic;
+}
+.tiptap .hljs-keyword,
+.tiptap .hljs-selector-tag,
+.tiptap .hljs-literal,
+.tiptap .hljs-section,
+.tiptap .hljs-link {
+  color: #c678dd;
+}
+.tiptap .hljs-string,
+.tiptap .hljs-title,
+.tiptap .hljs-name,
+.tiptap .hljs-type,
+.tiptap .hljs-attribute,
+.tiptap .hljs-symbol,
+.tiptap .hljs-bullet,
+.tiptap .hljs-addition,
+.tiptap .hljs-variable,
+.tiptap .hljs-template-tag,
+.tiptap .hljs-template-variable {
+  color: #98c379;
+}
+.tiptap .hljs-number,
+.tiptap .hljs-meta,
+.tiptap .hljs-built_in,
+.tiptap .hljs-builtin-name,
+.tiptap .hljs-params {
+  color: #d19a66;
+}
+.tiptap .hljs-deletion {
+  color: #e06c75;
+}
+.tiptap .tableWrapper {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+.tiptap table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--border);
+  min-width: 7rem;
+  padding: 0.5rem 0.625rem;
+  vertical-align: top;
+}
+.tiptap th {
+  background: var(--muted);
+  font-weight: 600;
+  text-align: left;
+}
+.tiptap .selectedCell::after {
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.tiptap .column-resize-handle {
+  background-color: var(--primary);
+  bottom: -2px;
+  pointer-events: none;
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 3px;
+}
+.tiptap img {
+  border-radius: 0.625rem;
+  display: block;
+  height: auto;
+  margin: 1rem auto;
+  max-width: 100%;
+}
+.tiptap img.ProseMirror-selectednode {
+  outline: 3px solid color-mix(in oklab, var(--primary) 45%, transparent);
+}
+.tiptap div[data-youtube-video] {
+  aspect-ratio: 16 / 9;
+  margin: 1rem 0;
+}
+.tiptap div[data-youtube-video] iframe {
+  border: 0;
+  border-radius: 0.625rem;
+  height: 100%;
+  width: 100%;
+}
+.tiptap .wiki-file-node,
+.tiptap .wiki-embed-node {
+  align-items: center;
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  color: var(--foreground);
+  display: flex;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.875rem;
+  text-decoration: none;
+}
+.tiptap .wiki-file-node:hover,
+.tiptap .wiki-embed-node:hover {
+  background: var(--muted);
+}
+.tiptap .wiki-file-node__icon {
+  align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  display: inline-flex;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+.tiptap .wiki-file-node__body,
+.tiptap .wiki-embed-node {
+  min-width: 0;
+}
+.tiptap .wiki-file-node__name,
+.tiptap .wiki-file-node__meta,
+.tiptap .wiki-embed-node strong,
+.tiptap .wiki-embed-node span {
+  display: block;
+}
+.tiptap .wiki-file-node__name,
+.tiptap .wiki-embed-node strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tiptap .wiki-file-node__meta,
+.tiptap .wiki-embed-node span {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
 .tiptap hr {
   border: 0;
   border-top: 1px solid var(--border);

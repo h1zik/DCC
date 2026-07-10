@@ -345,6 +345,7 @@ model User {
   directConversationMembers          DirectConversationMember[]
   directMessages                     DirectMessage[]
   roomDocuments                      RoomDocument[]
+  roomWikiAttachments                RoomWikiAttachment[]
   roomMembers                        RoomMember[]
   contentPlanItemsCreated            RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
   contentPlanItemsAsPic              RoomContentPlanItem[]          @relation("ContentPlanItemPic")
@@ -634,20 +635,36 @@ model RoomTimelineMilestone {
  * Halaman wiki / catatan keputusan di view WIKI per ruangan.
  */
 model RoomWikiPage {
-  id          String   @id @default(cuid())
+  id          String               @id @default(cuid())
   viewId      String
-  view        RoomView @relation(fields: [viewId], references: [id], onDelete: Cascade)
-  title       String   @db.VarChar(160)
+  view        RoomView             @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title       String               @db.VarChar(160)
   /**
-   * Konten halaman dalam markdown sederhana.
+   * Konten halaman dalam HTML terstruktur dari Tiptap.
    */
-  content     String   @default("")
-  sortOrder   Int      @default(0)
+  content     String               @default("")
+  sortOrder   Int                  @default(0)
   updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  attachments RoomWikiAttachment[]
 
   @@index([viewId, sortOrder])
+}
+
+model RoomWikiAttachment {
+  id           String       @id @default(cuid())
+  pageId       String
+  page         RoomWikiPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  fileName     String       @db.VarChar(240)
+  mimeType     String       @db.VarChar(160)
+  size         Int
+  publicPath   String       @db.VarChar(800)
+  createdAt    DateTime     @default(now())
+
+  @@index([pageId, createdAt])
 }
 
 /**
