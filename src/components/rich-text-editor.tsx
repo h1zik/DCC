@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Image from "@tiptap/extension-image";
@@ -33,6 +33,7 @@ import {
   Redo,
   Minus,
   Plus,
+  RotateCcw,
   Strikethrough,
   Table2,
   Type,
@@ -60,6 +61,15 @@ import {
   filterWikiSlashCommands,
   type WikiSlashCommandId,
 } from "@/lib/wiki-editor";
+import {
+  clampWikiImageWidth,
+  getActiveTableColumnWidth,
+  getActiveTableRowHeight,
+  ResizableTableRow,
+  setActiveTableColumnWidth,
+  setActiveTableRowHeight,
+  TableRowResize,
+} from "@/lib/tiptap-table-resize";
 
 const lowlight = createLowlight(common);
 
@@ -137,11 +147,24 @@ export function RichTextEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       TableKit.configure({
-        table: { resizable: true, lastColumnResizable: false },
+        table: {
+          resizable: true,
+          lastColumnResizable: true,
+          handleWidth: 8,
+          cellMinWidth: 48,
+        },
+        tableRow: false,
       }),
+      ResizableTableRow,
+      TableRowResize,
       Image.configure({
         allowBase64: false,
-        resize: { enabled: true, minWidth: 120, minHeight: 80 },
+        resize: {
+          enabled: true,
+          minWidth: 80,
+          minHeight: 40,
+          alwaysPreserveAspectRatio: true,
+        },
         HTMLAttributes: { loading: "lazy" },
       }),
       Youtube.configure({
@@ -602,6 +625,242 @@ function FontSizeControl({ editor }: { editor: Editor }) {
   );
 }
 
+function PixelDimensionControl({
+  label,
+  value,
+  fallback,
+  step,
+  onApply,
+  onReset,
+}: {
+  label: string;
+  value: number | null;
+  fallback: number;
+  step: number;
+  onApply: (value: number) => void;
+  onReset: () => void;
+}) {
+  const [inputValue, setInputValue] = useState(value == null ? "" : String(value));
+  const editingRef = useRef(false);
+
+  useEffect(() => {
+    if (!editingRef.current) setInputValue(value == null ? "" : String(value));
+  }, [value]);
+
+  const applyInput = () => {
+    const parsed = Number.parseFloat(inputValue);
+    if (!inputValue.trim() || !Number.isFinite(parsed)) {
+      onReset();
+      setInputValue("");
+      return;
+    }
+    onApply(parsed);
+  };
+
+  const applyStep = (delta: number) => {
+    const next = (value ?? fallback) + delta;
+    onApply(next);
+    setInputValue(String(next));
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-muted-foreground whitespace-nowrap text-xs font-medium">{label}</span>
+      <div className="border-border bg-background flex h-8 items-stretch overflow-hidden rounded-md border">
+        <button
+          type="button"
+          title={`Perkecil ${label.toLowerCase()}`}
+          aria-label={`Perkecil ${label.toLowerCase()}`}
+          onClick={() => applyStep(-step)}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 items-center justify-center"
+        >
+          <Minus className="size-3.5" aria-hidden />
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min="1"
+          value={inputValue}
+          placeholder="Auto"
+          aria-label={`${label} dalam pixel`}
+          title={`${label} dalam pixel`}
+          onChange={(event) => setInputValue(event.target.value)}
+          onFocus={() => {
+            editingRef.current = true;
+          }}
+          onBlur={() => {
+            editingRef.current = false;
+            applyInput();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              applyInput();
+            }
+            if (event.key === "Escape") {
+              editingRef.current = false;
+              setInputValue(value == null ? "" : String(value));
+              event.currentTarget.blur();
+            }
+          }}
+          className="text-foreground w-14 min-w-0 border-x border-y-0 border-border bg-transparent px-1 text-center text-xs tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          title={`Perbesar ${label.toLowerCase()}`}
+          aria-label={`Perbesar ${label.toLowerCase()}`}
+          onClick={() => applyStep(step)}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 items-center justify-center"
+        >
+          <Plus className="size-3.5" aria-hidden />
+        </button>
+      </div>
+      <button
+        type="button"
+        title={`Kembalikan ${label.toLowerCase()} ke otomatis`}
+        aria-label={`Kembalikan ${label.toLowerCase()} ke otomatis`}
+        onClick={() => {
+          onReset();
+          setInputValue("");
+        }}
+        className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 items-center justify-center rounded-md"
+      >
+        <RotateCcw className="size-3.5" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function selectedImageElement(editor: Editor): HTMLImageElement | null {
+  const dom = editor.view.nodeDOM(editor.state.selection.from);
+  if (dom instanceof HTMLImageElement) return dom;
+  return dom instanceof HTMLElement ? dom.querySelector<HTMLImageElement>("img") : null;
+}
+
+function renderedImageWidth(editor: Editor): number | null {
+  const image = selectedImageElement(editor);
+  if (!image) return null;
+  const width = image.getBoundingClientRect().width;
+  return width > 0 ? Math.round(width) : null;
+}
+
+function setSelectedImageWidth(editor: Editor, value: number | null): boolean {
+  if (!editor.isActive("image")) return false;
+  const image = selectedImageElement(editor);
+
+  if (value == null) {
+    const changed = editor
+      .chain()
+      .focus()
+      .updateAttributes("image", { width: null, height: null })
+      .run();
+    image?.style.removeProperty("width");
+    image?.style.removeProperty("height");
+    return changed;
+  }
+
+  const currentWidth = image?.getBoundingClientRect().width ?? 0;
+  const currentHeight = image?.getBoundingClientRect().height ?? 0;
+  const naturalRatio = image?.naturalWidth && image.naturalHeight
+    ? image.naturalWidth / image.naturalHeight
+    : 0;
+  const ratio = currentWidth > 0 && currentHeight > 0
+    ? currentWidth / currentHeight
+    : naturalRatio || 1;
+  const editorWidth = Math.max(80, editor.view.dom.clientWidth);
+  const width = Math.min(clampWikiImageWidth(value), editorWidth);
+  const height = Math.max(1, Math.round(width / ratio));
+  const changed = editor
+    .chain()
+    .focus()
+    .updateAttributes("image", { width, height })
+    .run();
+  if (image) {
+    image.style.width = `${width}px`;
+    image.style.height = `${height}px`;
+  }
+  return changed;
+}
+
+function TableDimensionControls({
+  editor,
+  rowHeight,
+  columnWidth,
+}: {
+  editor: Editor;
+  rowHeight: number | null;
+  columnWidth: number | null;
+}) {
+  const applyRowHeight = (value: number | null) => {
+    editor.chain().focus().run();
+    setActiveTableRowHeight(editor, value);
+  };
+  const applyColumnWidth = (value: number | null) => {
+    editor.chain().focus().run();
+    setActiveTableColumnWidth(editor, value);
+  };
+
+  return (
+    <>
+      <PixelDimensionControl
+        label="Tinggi row"
+        value={rowHeight}
+        fallback={44}
+        step={4}
+        onApply={applyRowHeight}
+        onReset={() => applyRowHeight(null)}
+      />
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      <PixelDimensionControl
+        label="Lebar kolom"
+        value={columnWidth}
+        fallback={120}
+        step={16}
+        onApply={applyColumnWidth}
+        onReset={() => applyColumnWidth(null)}
+      />
+      <span className="text-muted-foreground hidden text-[11px] xl:inline">
+        Atau drag tepi row/kolom
+      </span>
+    </>
+  );
+}
+
+function ImageDimensionControls({ editor, width }: { editor: Editor; width: number | null }) {
+  const applyPercentage = (percentage: number) => {
+    setSelectedImageWidth(editor, editor.view.dom.clientWidth * percentage);
+  };
+
+  return (
+    <>
+      <PixelDimensionControl
+        label="Lebar gambar"
+        value={width}
+        fallback={renderedImageWidth(editor) ?? 480}
+        step={24}
+        onApply={(value) => setSelectedImageWidth(editor, value)}
+        onReset={() => setSelectedImageWidth(editor, null)}
+      />
+      <div className="flex items-center gap-0.5">
+        {[25, 50, 75, 100].map((percentage) => (
+          <button
+            key={percentage}
+            type="button"
+            title={`Atur gambar ke ${percentage}% lebar editor`}
+            onClick={() => applyPercentage(percentage / 100)}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-1.5 text-xs"
+          >
+            {percentage}%
+          </button>
+        ))}
+      </div>
+      <span className="text-muted-foreground hidden text-[11px] xl:inline">
+        Atau drag titik sudut gambar
+      </span>
+    </>
+  );
+}
+
 function Toolbar({
   editor,
   onOpenLinkDialog,
@@ -609,13 +868,30 @@ function Toolbar({
   onOpenMediaDialog,
   editable,
 }: {
-  editor: ReturnType<typeof useEditor>;
+  editor: Editor;
   onOpenLinkDialog: () => void;
   onRemoveLink: () => void;
   onOpenMediaDialog: (mode: RichTextMediaMode) => void;
   editable: boolean;
 }) {
-  if (!editor || !editable) return null;
+  const toolbarState = useEditorState({
+    editor,
+    selector: ({ editor: currentEditor, transactionNumber }) => {
+      const isTable = currentEditor.isActive("table");
+      const isImage = currentEditor.isActive("image");
+      const imageWidth = Number(currentEditor.getAttributes("image").width);
+      return {
+        transactionNumber,
+        isTable,
+        isImage,
+        rowHeight: isTable ? getActiveTableRowHeight(currentEditor) : null,
+        columnWidth: isTable ? getActiveTableColumnWidth(currentEditor) : null,
+        imageWidth: Number.isFinite(imageWidth) && imageWidth > 0 ? imageWidth : null,
+      };
+    },
+  });
+
+  if (!editable) return null;
 
   const btn = (
     active: boolean,
@@ -779,6 +1055,20 @@ function Toolbar({
         <Redo className="size-4" aria-hidden />,
         !editor.can().redo(),
       )}
+      {toolbarState.isTable || toolbarState.isImage ? (
+        <div className="border-border mt-1 flex basis-full flex-wrap items-center gap-2 border-t px-1 pt-1">
+          {toolbarState.isTable ? (
+            <TableDimensionControls
+              editor={editor}
+              rowHeight={toolbarState.rowHeight}
+              columnWidth={toolbarState.columnWidth}
+            />
+          ) : null}
+          {toolbarState.isImage ? (
+            <ImageDimensionControls editor={editor} width={toolbarState.imageWidth} />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

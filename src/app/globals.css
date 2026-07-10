@@ -523,9 +523,20 @@
 .tiptap th,
 .tiptap td {
   border: 1px solid var(--border);
-  min-width: 7rem;
+  min-width: 3rem;
   padding: 0.5rem 0.625rem;
   vertical-align: top;
+}
+.tiptap tr[data-row-height] > th,
+.tiptap tr[data-row-height] > td {
+  height: inherit;
+}
+.tiptap tr[data-row-resize-hover],
+.tiptap tr[data-row-resizing] {
+  box-shadow: inset 0 -2px var(--primary);
+}
+.tiptap tr[data-row-resizing] {
+  user-select: none;
 }
 .tiptap th {
   background: var(--muted);
@@ -544,9 +555,12 @@
   bottom: -2px;
   pointer-events: none;
   position: absolute;
-  right: -2px;
+  right: -4px;
   top: 0;
-  width: 3px;
+  width: 8px;
+}
+.tiptap.resize-cursor {
+  cursor: col-resize;
 }
 .tiptap img {
   border-radius: 0.625rem;
@@ -557,6 +571,58 @@
 }
 .tiptap img.ProseMirror-selectednode {
   outline: 3px solid color-mix(in oklab, var(--primary) 45%, transparent);
+}
+.tiptap [data-resize-container][data-node="image"].ProseMirror-selectednode img {
+  outline: 3px solid color-mix(in oklab, var(--primary) 45%, transparent);
+}
+.tiptap [data-resize-container][data-node="image"] {
+  justify-content: center;
+  margin: 1rem 0;
+  max-width: 100%;
+}
+.tiptap [data-resize-container][data-node="image"] [data-resize-wrapper] {
+  max-width: 100%;
+}
+.tiptap [data-resize-container][data-node="image"] img {
+  margin: 0;
+}
+.tiptap [data-resize-container][data-node="image"] [data-resize-handle] {
+  background: var(--primary);
+  border: 2px solid var(--background);
+  border-radius: 0.2rem;
+  box-shadow: 0 1px 4px color-mix(in oklab, var(--foreground) 25%, transparent);
+  height: 12px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  width: 12px;
+  z-index: 2;
+}
+.tiptap [data-resize-container][data-node="image"]:hover [data-resize-handle],
+.tiptap [data-resize-container][data-node="image"].ProseMirror-selectednode [data-resize-handle],
+.tiptap [data-resize-container][data-node="image"][data-resize-state="true"] [data-resize-handle] {
+  opacity: 1;
+}
+.tiptap [data-resize-handle^="top"] {
+  transform: translateY(-50%);
+}
+.tiptap [data-resize-handle^="bottom"] {
+  transform: translateY(50%);
+}
+.tiptap [data-resize-handle$="left"] {
+  cursor: nwse-resize;
+  margin-left: -6px;
+}
+.tiptap [data-resize-handle$="right"] {
+  cursor: nesw-resize;
+  margin-right: -6px;
+}
+.tiptap [data-resize-handle="top-right"],
+.tiptap [data-resize-handle="bottom-left"] {
+  cursor: nesw-resize;
+}
+.tiptap [data-resize-handle="top-left"],
+.tiptap [data-resize-handle="bottom-right"] {
+  cursor: nwse-resize;
 }
 .tiptap div[data-youtube-video] {
   aspect-ratio: 16 / 9;
