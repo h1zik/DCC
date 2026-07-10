@@ -1970,8 +1970,11 @@ export function ContentPlanningClient({
   const totalCount = tableRows.length;
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-xl border p-2">
+    <div
+      data-content-plan-shell
+      className="flex min-w-0 flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden"
+    >
+      <div className="border-border bg-card flex shrink-0 flex-wrap items-center gap-2 rounded-xl border p-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="border-border bg-background/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
             <Layers className="size-3.5 opacity-70" aria-hidden /> {stats.total} total
@@ -2551,7 +2554,7 @@ export function ContentPlanningClient({
 
       {/* Filter pills (collapsible) */}
       {showFilters ? (
-        <div className="border-border bg-muted/30 grid gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="border-border bg-muted/30 grid shrink-0 gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
               Jenis
@@ -2812,7 +2815,7 @@ export function ContentPlanningClient({
         )}
       </div>
 
-      <div className="hidden min-w-0 max-w-full md:block">
+      <div className="hidden min-w-0 max-w-full md:flex md:min-h-0 md:flex-1 md:flex-col">
         <DataTable
           columns={columns}
           data={filteredRows}
@@ -2824,7 +2827,7 @@ export function ContentPlanningClient({
           fitViewport
           sortable
           stickyHeader
-          viewportMaxHeight="min(70vh, calc(100dvh - 320px))"
+          viewportHeight="100%"
         />
       </div>
 

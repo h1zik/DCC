@@ -451,7 +451,7 @@ function CustomEditor({
 
       <EditorRow
         label="Warna aksen"
-        hint="Menggerakkan tombol, sidebar aktif, chip, fokus & chart."
+        hint="Warna pilihan dipakai pada tombol dan sidebar aktif; warna teks menyesuaikan otomatis."
       >
         <div className="flex flex-wrap items-center gap-2">
           {THEME_ACCENT_PRESETS.map((c) => (

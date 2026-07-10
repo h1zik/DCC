@@ -111,8 +111,8 @@ export function AgentPanelToggle({ className }: { className?: string }) {
       className={cn(
         "relative shrink-0 overflow-hidden transition-[border-color,background-color,box-shadow,transform] duration-200 ease-out",
         "hover:border-primary/30 hover:bg-primary/5 active:scale-[0.96]",
-        open && "border-primary/35 bg-primary/10 text-primary shadow-sm",
         className,
+        open && "border-primary/35 bg-primary/10 text-primary shadow-sm",
       )}
     >
       <Sparkles

@@ -120,6 +120,18 @@ function ok(L: number, C: number, H: number): string {
   return `oklch(${Math.max(0, Math.min(1, L)).toFixed(3)} ${Math.max(0, C).toFixed(3)} ${H.toFixed(1)})`;
 }
 
+/** Luminans relatif sRGB untuk memilih teks hitam/putih berkontras tertinggi. */
+function relativeLuminance(hex: string): number {
+  const safe = HEX6.test(hex) ? hex : "#808080";
+  const channels = [1, 3, 5].map((start) => {
+    const channel = parseInt(safe.slice(start, start + 2), 16) / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : Math.pow((channel + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+}
+
 /** Apakah tema tergolong gelap (dari kecerahan latar yang dipilih). */
 export function isConfigDark(config: CustomThemeConfig): boolean {
   return hexToOklch(config.bg).L < 0.5;
@@ -168,8 +180,11 @@ export function generateThemeVars(
   config: CustomThemeConfig,
 ): Record<string, string> {
   const acc = hexToOklch(config.accent);
-  const aH = acc.H;
-  const aC = Math.max(0.09, Math.min(0.19, acc.C));
+  // Hue tidak bermakna untuk warna netral. Menormalkannya mencegah noise
+  // floating-point pada putih/abu/hitam berubah menjadi tint kuning atau warna
+  // lain ketika token turunannya dibuat.
+  const aH = acc.C < 0.0005 ? 0 : acc.H;
+  const aC = Math.min(0.19, acc.C);
 
   // Latar: hormati hue & chroma, tapi petakan lightness ke rentang legible.
   const bgSrc = hexToOklch(config.bg);
@@ -181,9 +196,17 @@ export function generateThemeVars(
     ? 0.13 + Math.min(bgSrc.L / 0.5, 1) * 0.11
     : 0.9 + Math.min((bgSrc.L - 0.5) / 0.5, 1) * 0.08;
 
-  const primaryL = dark ? 0.7 : 0.56;
-  const primaryFg = primaryL < 0.62 ? ok(0.99, 0.02, aH) : ok(0.2, 0.03, aH);
-  const ring = ok(dark ? 0.62 : 0.6, aC, aH);
+  // Token utama harus merepresentasikan warna yang benar-benar dipilih user,
+  // termasuk lightness dan saturasinya. Sebelumnya lightness diganti nilai tetap
+  // dan chroma dipaksa minimal 0.09, sehingga #FFFFFF menjadi kuning/cokelat.
+  const primary = ok(acc.L, acc.C, aH);
+  // 0.179 adalah titik saat hitam mulai memberi rasio kontras lebih tinggi
+  // daripada putih menurut rumus kontras WCAG.
+  const primaryFg =
+    relativeLuminance(config.accent) > 0.179
+      ? ok(0.18, 0, 0)
+      : ok(0.99, 0, 0);
+  const ring = primary;
   const chartRamp = dark
     ? [0.78, 0.7, 0.62, 0.54, 0.46]
     : [0.72, 0.63, 0.55, 0.47, 0.4];
@@ -191,7 +214,7 @@ export function generateThemeVars(
   const vars: Record<string, string> = {};
 
   // Aksen / brand.
-  vars["--primary"] = ok(primaryL, aC * 1.05, aH);
+  vars["--primary"] = primary;
   vars["--primary-foreground"] = primaryFg;
   vars["--ring"] = ring;
   vars["--sidebar-primary"] = vars["--primary"];

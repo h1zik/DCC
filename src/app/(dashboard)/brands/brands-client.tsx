@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Brand } from "@prisma/client";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -19,7 +19,13 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createBrand, deleteBrand, updateBrand } from "@/actions/brands";
+import {
+  clearBrandLogo,
+  createBrand,
+  deleteBrand,
+  updateBrand,
+  uploadBrandLogo,
+} from "@/actions/brands";
 import { DataTable } from "@/components/data-table";
 import { hub } from "@/components/brand-hub/brand-hub-primitives";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -65,6 +71,65 @@ const COLOR_PRESETS = [
   "#A855F7",
   "#EC4899",
 ];
+
+/** Sisi kotak editor crop di dialog (px) dan resolusi file hasil crop. */
+const CROP_BOX = 176;
+const CROP_OUTPUT = 512;
+const ZOOM_MAX = 3;
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Gagal memuat gambar."));
+    img.src = src;
+  });
+}
+
+/** Skala minimum agar gambar menutupi seluruh kotak crop. */
+function coverScale(natural: { w: number; h: number }) {
+  return Math.max(CROP_BOX / natural.w, CROP_BOX / natural.h);
+}
+
+function clampOffset(
+  offset: { x: number; y: number },
+  natural: { w: number; h: number },
+  scale: number,
+) {
+  return {
+    x: Math.min(0, Math.max(CROP_BOX - natural.w * scale, offset.x)),
+    y: Math.min(0, Math.max(CROP_BOX - natural.h * scale, offset.y)),
+  };
+}
+
+/** Render area kotak crop (sesuai zoom + offset) ke canvas persegi. */
+function cropToCanvas(
+  img: HTMLImageElement,
+  natural: { w: number; h: number },
+  zoom: number,
+  offset: { x: number; y: number },
+  outSize: number,
+) {
+  const scale = coverScale(natural) * zoom;
+  const canvas = document.createElement("canvas");
+  canvas.width = outSize;
+  canvas.height = outSize;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    img,
+    -offset.x / scale,
+    -offset.y / scale,
+    CROP_BOX / scale,
+    CROP_BOX / scale,
+    0,
+    0,
+    outSize,
+    outSize,
+  );
+  return canvas;
+}
 
 type SortKey = "name" | "newest" | "products";
 
@@ -115,7 +180,8 @@ function BrandLogo({
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background shadow-sm",
+        // relative + z-10 agar logo selalu di atas banner/dekorasi yang bertumpuk.
+        "relative z-10 flex shrink-0 items-center justify-center overflow-hidden border border-border bg-background shadow-sm",
         className,
       )}
       style={!showImage && accentBg ? { backgroundColor: accentBg } : undefined}
@@ -125,7 +191,7 @@ function BrandLogo({
         <img
           src={logo!}
           alt={name}
-          className="size-full object-contain p-1"
+          className="size-full object-cover"
           loading="lazy"
           onError={() => setFailedSrc(logo)}
         />
@@ -276,9 +342,28 @@ export function BrandsClient({ brands }: { brands: BrandRow[] }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BrandRow | null>(null);
   const [name, setName] = useState("");
-  const [logo, setLogo] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoRemoved, setLogoRemoved] = useState(false);
+  // Editor posisi logo — hanya aktif saat file baru dipilih.
+  const [cropImage, setCropImage] = useState<HTMLImageElement | null>(null);
+  const [cropNatural, setCropNatural] = useState<{ w: number; h: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
   const [colorCode, setColorCode] = useState("");
   const [pending, setPending] = useState(false);
+
+  // Sinkronkan preview mini di kartu dengan hasil crop terkini.
+  useEffect(() => {
+    if (!cropImage || !cropNatural) return;
+    const t = setTimeout(() => {
+      const canvas = cropToCanvas(cropImage, cropNatural, zoom, offset, 128);
+      if (canvas) setLogoPreview(canvas.toDataURL("image/png"));
+    }, 120);
+    return () => clearTimeout(t);
+  }, [cropImage, cropNatural, zoom, offset]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -304,11 +389,115 @@ export function BrandsClient({ brands }: { brands: BrandRow[] }) {
     return rows;
   }, [brands, query, sort]);
 
+  function resetCrop() {
+    setCropImage(null);
+    setCropNatural(null);
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+    dragRef.current = null;
+  }
+
   function resetForm() {
     setName("");
-    setLogo("");
+    setLogoFile(null);
+    setLogoPreview(null);
+    setLogoRemoved(false);
+    resetCrop();
+    if (fileRef.current) fileRef.current.value = "";
     setColorCode("");
     setEditing(null);
+  }
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setLogoFile(file);
+    setLogoRemoved(false);
+    resetCrop();
+    if (!file) {
+      setLogoPreview(null);
+      return;
+    }
+    const dataUrl = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+    if (!dataUrl) {
+      toast.error("Gagal membaca file gambar.");
+      return;
+    }
+    setLogoPreview(dataUrl);
+    try {
+      const img = await loadImage(dataUrl);
+      const natural = { w: img.naturalWidth, h: img.naturalHeight };
+      // SVG tanpa dimensi intrinsik tidak bisa di-crop — pakai file apa adanya.
+      if (natural.w > 0 && natural.h > 0) {
+        const scale = coverScale(natural);
+        setCropImage(img);
+        setCropNatural(natural);
+        setZoom(1);
+        setOffset({
+          x: (CROP_BOX - natural.w * scale) / 2,
+          y: (CROP_BOX - natural.h * scale) / 2,
+        });
+      }
+    } catch {
+      /* preview tetap tampil, upload memakai file asli */
+    }
+  }
+
+  function onClearLogo() {
+    setLogoFile(null);
+    setLogoPreview(null);
+    setLogoRemoved(true);
+    resetCrop();
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function onCropPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { px: e.clientX, py: e.clientY, ox: offset.x, oy: offset.y };
+  }
+
+  function onCropPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || !cropNatural) return;
+    const scale = coverScale(cropNatural) * zoom;
+    setOffset(
+      clampOffset(
+        { x: drag.ox + e.clientX - drag.px, y: drag.oy + e.clientY - drag.py },
+        cropNatural,
+        scale,
+      ),
+    );
+  }
+
+  function onCropPointerUp() {
+    dragRef.current = null;
+  }
+
+  function onZoomChange(nextZoom: number) {
+    if (!cropNatural) return;
+    // Pertahankan titik tengah kotak saat zoom berubah.
+    const prevScale = coverScale(cropNatural) * zoom;
+    const nextScale = coverScale(cropNatural) * nextZoom;
+    const center = {
+      x: (CROP_BOX / 2 - offset.x) / prevScale,
+      y: (CROP_BOX / 2 - offset.y) / prevScale,
+    };
+    setZoom(nextZoom);
+    setOffset(
+      clampOffset(
+        {
+          x: CROP_BOX / 2 - center.x * nextScale,
+          y: CROP_BOX / 2 - center.y * nextScale,
+        },
+        cropNatural,
+        nextScale,
+      ),
+    );
   }
 
   function openCreate() {
@@ -317,9 +506,9 @@ export function BrandsClient({ brands }: { brands: BrandRow[] }) {
   }
 
   function openEdit(b: BrandRow) {
+    resetForm();
     setEditing(b);
     setName(b.name);
-    setLogo(b.logo ?? "");
     setColorCode(b.colorCode ?? "");
     setOpen(true);
   }
@@ -329,16 +518,38 @@ export function BrandsClient({ brands }: { brands: BrandRow[] }) {
     try {
       const payload = {
         name: name.trim(),
-        logo: logo.trim() || null,
         colorCode: colorCode.trim() || null,
       };
+      let brandId: string;
       if (editing) {
         await updateBrand(editing.id, payload);
-        toast.success("Brand diperbarui.");
+        brandId = editing.id;
       } else {
-        await createBrand(payload);
-        toast.success("Brand ditambahkan.");
+        brandId = (await createBrand(payload)).id;
       }
+      if (logoFile) {
+        const fd = new FormData();
+        // Kirim hasil crop bila editor aktif; selain itu file asli apa adanya.
+        let blob: Blob = logoFile;
+        let filename = logoFile.name;
+        if (cropImage && cropNatural) {
+          const canvas = cropToCanvas(cropImage, cropNatural, zoom, offset, CROP_OUTPUT);
+          const cropped = canvas
+            ? await new Promise<Blob | null>((resolve) =>
+                canvas.toBlob(resolve, "image/png"),
+              )
+            : null;
+          if (cropped) {
+            blob = cropped;
+            filename = `${filename.replace(/\.[^.]+$/, "") || "logo"}.png`;
+          }
+        }
+        fd.append("file", blob, filename);
+        await uploadBrandLogo(brandId, fd);
+      } else if (editing && logoRemoved) {
+        await clearBrandLogo(brandId);
+      }
+      toast.success(editing ? "Brand diperbarui." : "Brand ditambahkan.");
       setOpen(false);
       resetForm();
       router.refresh();
@@ -464,6 +675,7 @@ export function BrandsClient({ brands }: { brands: BrandRow[] }) {
   );
 
   const previewAccent = colorCode.trim() && HEX6.test(colorCode.trim()) ? colorCode.trim() : null;
+  const previewLogo = logoPreview ?? (logoRemoved ? null : (editing?.logo ?? null));
 
   return (
     <div className="flex flex-col gap-4">
@@ -614,9 +826,9 @@ export function BrandsClient({ brands }: { brands: BrandRow[] }) {
               </div>
               <div className="flex items-center gap-3 px-4 pb-3">
                 <BrandLogo
-                  key={`${logo}|${colorCode}`}
+                  key={`${previewLogo}|${colorCode}`}
                   name={name || "?"}
-                  logo={logo.trim() || null}
+                  logo={previewLogo}
                   colorCode={colorCode.trim() || null}
                   className="-mt-5 size-12 rounded-xl"
                 />
@@ -643,15 +855,80 @@ export function BrandsClient({ brands }: { brands: BrandRow[] }) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="b-logo">Logo URL</Label>
-              <Input
-                id="b-logo"
-                value={logo}
-                onChange={(e) => setLogo(e.target.value)}
-                placeholder="https://…"
-              />
+              <Label htmlFor="b-logo">Logo</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="b-logo"
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onPickFile}
+                  disabled={pending}
+                />
+                {previewLogo ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={onClearLogo}
+                    title="Hapus logo"
+                    aria-label="Hapus logo"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                ) : null}
+              </div>
+              {cropImage && cropNatural ? (
+                <div className="flex items-start gap-4 pt-1">
+                  <div
+                    className="relative shrink-0 cursor-grab touch-none overflow-hidden rounded-xl border border-border bg-muted select-none active:cursor-grabbing"
+                    style={{ width: CROP_BOX, height: CROP_BOX }}
+                    onPointerDown={onCropPointerDown}
+                    onPointerMove={onCropPointerMove}
+                    onPointerUp={onCropPointerUp}
+                    onPointerCancel={onCropPointerUp}
+                    role="application"
+                    aria-label="Atur posisi logo dengan menggeser gambar"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={cropImage.src}
+                      alt=""
+                      draggable={false}
+                      className="pointer-events-none absolute top-0 left-0 max-w-none"
+                      style={{
+                        width: cropNatural.w * coverScale(cropNatural) * zoom,
+                        height: cropNatural.h * coverScale(cropNatural) * zoom,
+                        transform: `translate(${offset.x}px, ${offset.y}px)`,
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2 pt-1">
+                    <Label htmlFor="b-logo-zoom" className="text-xs">
+                      Zoom
+                    </Label>
+                    <input
+                      id="b-logo-zoom"
+                      type="range"
+                      min={1}
+                      max={ZOOM_MAX}
+                      step={0.01}
+                      value={zoom}
+                      onChange={(e) => onZoomChange(Number(e.target.value))}
+                      disabled={pending}
+                      className="accent-primary w-full"
+                      aria-label="Zoom logo"
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      Geser gambar untuk memilih bagian yang ditampilkan, lalu
+                      atur zoom bila perlu.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               <p className="text-muted-foreground text-xs">
-                Tempel URL gambar logo (PNG/SVG). Kosongkan untuk memakai inisial.
+                Unggah gambar logo (PNG/SVG/JPG/WebP). Gambar akan mengisi
+                penuh area logo. Kosongkan untuk memakai inisial.
               </p>
             </div>
             <div className="space-y-2">

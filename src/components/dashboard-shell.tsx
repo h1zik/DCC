@@ -31,6 +31,7 @@ export function DashboardShell({
                 PAGE_PADDING_CLASS,
                 "flex min-h-0 flex-1 flex-col",
                 "has-[_[data-chat-shell]]:h-[calc(100svh-3.5rem)] has-[_[data-chat-shell]]:max-h-[calc(100svh-3.5rem)] has-[_[data-chat-shell]]:overflow-hidden has-[_[data-chat-shell]]:p-0",
+                "md:has-[_[data-content-plan-shell]]:h-[calc(100svh-3.5rem)] md:has-[_[data-content-plan-shell]]:max-h-[calc(100svh-3.5rem)] md:has-[_[data-content-plan-shell]]:overflow-hidden",
               )}
             >
               <div
@@ -39,6 +40,7 @@ export function DashboardShell({
                   PAGE_MAX_WIDTH_CLASS,
                   PAGE_GAP_CLASS,
                   "has-[_[data-chat-shell]]:mx-0 has-[_[data-chat-shell]]:max-w-none has-[_[data-chat-shell]]:min-h-0 has-[_[data-chat-shell]]:flex-1 has-[_[data-chat-shell]]:overflow-hidden has-[_[data-chat-shell]]:gap-0",
+                  "md:has-[_[data-content-plan-shell]]:min-h-0 md:has-[_[data-content-plan-shell]]:flex-1 md:has-[_[data-content-plan-shell]]:overflow-hidden",
                 )}
               >
                 {children}
