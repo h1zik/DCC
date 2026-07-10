@@ -38,6 +38,8 @@ import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { WikiPageDownloadMenu } from "@/components/wiki-page-download-menu";
 import { WikiVersionHistory } from "@/components/wiki-version-history";
+import { WikiCollaborationPanel } from "@/components/wiki-collaboration-panel";
+import type { RoomMemberAvatarUser } from "@/components/room-member-avatar-stack";
 import { cn } from "@/lib/utils";
 import {
   parseWikiDraft,
@@ -91,10 +93,14 @@ function applyOptimistic(state: Page[], action: OptimisticAction): Page[] {
 export function WikiViewClient({
   roomId,
   viewId,
+  currentUserId,
+  members,
   pages: initialPages,
 }: {
   roomId: string;
   viewId: string;
+  currentUserId: string;
+  members: RoomMemberAvatarUser[];
   pages: Page[];
 }) {
   const router = useRouter();
@@ -411,6 +417,8 @@ export function WikiViewClient({
           roomId={roomId}
           viewId={viewId}
           page={selected}
+          currentUserId={currentUserId}
+          members={members}
           saveStatus={saveStatus}
           onTitleChange={(v) => onTitleChange(selected, v)}
           onContentChange={(v) => onContentChange(selected, v)}
@@ -518,6 +526,8 @@ function PageEditor({
   roomId,
   viewId,
   page,
+  currentUserId,
+  members,
   pages,
   backlinks,
   saveStatus,
@@ -532,6 +542,8 @@ function PageEditor({
   roomId: string;
   viewId: string;
   page: Page;
+  currentUserId: string;
+  members: RoomMemberAvatarUser[];
   pages: Page[];
   backlinks: Page[];
   saveStatus: SaveStatus;
@@ -550,6 +562,7 @@ function PageEditor({
   const [recoveryCandidate, setRecoveryCandidate] = useState<WikiDraft | null>(null);
   const [tagsDraft, setTagsDraft] = useState(page.tags.join(", "));
   const [organizationPending, startOrganizationTransition] = useTransition();
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -593,6 +606,7 @@ function PageEditor({
           <div className="min-w-0 flex-1">
             <Input
               value={titleDraft}
+              disabled={!canEdit}
               onChange={(e) => {
                 const v = e.target.value;
                 setTitleDraft(v);
@@ -612,7 +626,7 @@ function PageEditor({
               pageId={page.id}
               currentTitle={titleDraft}
               currentContent={contentDraft}
-              restoreDisabled={saveStatus === "dirty" || saveStatus === "saving"}
+              restoreDisabled={!canEdit || saveStatus === "dirty" || saveStatus === "saving"}
               onRestored={onRestored}
             />
             <WikiPageDownloadMenu
@@ -629,6 +643,7 @@ function PageEditor({
               size="icon-sm"
               aria-label="Hapus halaman"
               onClick={onDelete}
+              disabled={!canEdit}
             >
               <Trash2 className="size-3.5" aria-hidden />
             </Button>
@@ -652,13 +667,13 @@ function PageEditor({
               placeholder="tag-satu, tag-dua"
               aria-label="Tag halaman Wiki"
               className="h-8 pl-8 text-xs"
-              disabled={organizationPending}
+              disabled={organizationPending || !canEdit}
             />
           </div>
           <select
             value={page.parentId ?? ""}
             onChange={(event) => moveToParent(event.target.value || null)}
-            disabled={organizationPending}
+            disabled={organizationPending || !canEdit}
             aria-label="Halaman induk"
             className="border-input bg-background h-8 max-w-56 rounded-md border px-2 text-xs"
           >
@@ -669,7 +684,7 @@ function PageEditor({
               </option>
             ))}
           </select>
-          <Button type="button" size="sm" variant="ghost" onClick={onCreateChild}>
+          <Button type="button" size="sm" variant="ghost" onClick={onCreateChild} disabled={!canEdit}>
             <Plus className="size-3.5" /> Subhalaman
           </Button>
         </div>
@@ -716,6 +731,7 @@ function PageEditor({
         <RichTextEditor
           key={editorGeneration}
           initialContent={contentDraft}
+          editable={canEdit}
           onUpdate={(html) => {
             setContentDraft(html);
             onContentChange(html);
@@ -749,6 +765,13 @@ function PageEditor({
             </div>
           </div>
         ) : null}
+
+        <WikiCollaborationPanel
+          pageId={page.id}
+          currentUserId={currentUserId}
+          members={members}
+          onEditableChange={setCanEdit}
+        />
       </CardContent>
     </Card>
   );

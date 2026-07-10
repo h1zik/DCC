@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { RoomViewType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
+import {
+  getRoomHubMemberUsers,
+  getRoomMemberContextOrThrow,
+} from "@/lib/ensure-room-studio";
 import { isRoomHubManagerRole } from "@/lib/room-access";
 import { RoomViewHeader } from "./room-view-header";
 import { CalendarViewClient } from "./calendar-view-client";
@@ -17,7 +20,7 @@ type PageProps = {
 
 export default async function RoomCustomViewPage({ params }: PageProps) {
   const { roomId, viewId } = await params;
-  const { role } = await getRoomMemberContextOrThrow(roomId);
+  const { role, viewerUserId } = await getRoomMemberContextOrThrow(roomId);
 
   const view = await prisma.roomView.findUnique({
     where: { id: viewId },
@@ -38,7 +41,7 @@ export default async function RoomCustomViewPage({ params }: PageProps) {
   return (
     <div className="flex flex-col gap-4">
       <RoomViewHeader view={view} canManage={canManage} />
-      {await renderViewBody(roomId, view, canManage)}
+      {await renderViewBody(roomId, view, canManage, viewerUserId)}
     </div>
   );
 }
@@ -53,6 +56,7 @@ async function renderViewBody(
     subtitle: string | null;
   },
   canManage: boolean,
+  viewerUserId: string,
 ) {
   switch (view.type) {
     case RoomViewType.CALENDAR: {
@@ -94,14 +98,19 @@ async function renderViewBody(
       );
     }
     case RoomViewType.WIKI: {
-      const pages = await prisma.roomWikiPage.findMany({
-        where: { viewId: view.id },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      });
+      const [pages, members] = await Promise.all([
+        prisma.roomWikiPage.findMany({
+          where: { viewId: view.id },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        }),
+        getRoomHubMemberUsers(roomId),
+      ]);
       return (
         <WikiViewClient
           roomId={roomId}
           viewId={view.id}
+          currentUserId={viewerUserId}
+          members={members}
           pages={pages.map((p) => ({
             id: p.id,
             parentId: p.parentId,

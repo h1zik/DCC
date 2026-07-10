@@ -111,6 +111,8 @@ enum NotificationType {
    * Komentar pada dokumen ruangan ditugaskan ke anggota tim.
    */
   ROOM_DOCUMENT_COMMENT_ASSIGNED
+  /** Mention anggota pada komentar Wiki. */
+  WIKI_MENTION
   CEO_APPROVAL_REQUESTED
   /**
    * Pengajuan pindah tahap pipeline proyek menunggu CEO.
@@ -347,6 +349,9 @@ model User {
   roomDocuments                      RoomDocument[]
   roomWikiAttachments                RoomWikiAttachment[]
   roomWikiVersionsCreated            RoomWikiPageVersion[]
+  roomWikiCommentsAuthored           RoomWikiComment[]              @relation("RoomWikiCommentAuthor")
+  roomWikiPageLocks                  RoomWikiPage[]                  @relation("RoomWikiPageLock")
+  roomWikiPresences                  RoomWikiPresence[]
   roomMembers                        RoomMember[]
   contentPlanItemsCreated            RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
   contentPlanItemsAsPic              RoomContentPlanItem[]          @relation("ContentPlanItemPic")
@@ -650,15 +655,47 @@ model RoomWikiPage {
   /** Monotonik; dipakai optimistic concurrency guard saat auto-save. */
   revision    Int                  @default(0)
   tags        String[]             @default([])
+  editLockedById String?
+  editLockedBy   User?                @relation("RoomWikiPageLock", fields: [editLockedById], references: [id], onDelete: SetNull)
+  editLockExpiresAt DateTime?
   sortOrder   Int                  @default(0)
   updatedById String?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   attachments RoomWikiAttachment[]
   versions    RoomWikiPageVersion[]
+  comments    RoomWikiComment[]
+  presences   RoomWikiPresence[]
 
   @@index([viewId, sortOrder])
   @@index([viewId, parentId, sortOrder])
+}
+
+model RoomWikiComment {
+  id               String       @id @default(cuid())
+  pageId           String
+  page             RoomWikiPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  authorId         String
+  author           User         @relation("RoomWikiCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body             String
+  mentionedUserIds String[]     @default([])
+  resolvedAt       DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([pageId, resolvedAt, createdAt])
+}
+
+model RoomWikiPresence {
+  id         String       @id @default(cuid())
+  pageId     String
+  page       RoomWikiPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime     @default(now())
+
+  @@unique([pageId, userId])
+  @@index([pageId, lastSeenAt])
 }
 
 model RoomWikiPageVersion {
