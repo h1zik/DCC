@@ -1515,6 +1515,13 @@ model AppBranding {
    * Env `PROFILE_GAMIFICATION_ENABLED` (true/false) tetap jadi override darurat.
    */
   profileGamificationEnabled Boolean @default(false)
+  /**
+   * Hash versi katalog gamifikasi (kode) yang terakhir disinkronkan ke DB.
+   * Dipakai `ensureGamificationCatalog()` (dipanggil otomatis di `instrumentation.ts`
+   * saat server boot) sebagai penjaga: bila sama, sinkronisasi dilewati. Jadi tak
+   * perlu seed manual di produksi — deploy → boot → katalog auto-sync.
+   */
+  gamificationCatalogVersion String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -4906,6 +4913,10 @@ model Achievement {
   category           AchievementCategory
   tier               AchievementTier
   icon               String              @db.VarChar(48)
+  symbolSrc          String?             @db.VarChar(300)
+  symbolMedia        String?             @db.VarChar(16)
+  symbolPoster       String?             @db.VarChar(300)
+  symbolFileName     String?             @db.VarChar(160)
   xpReward           Int                 @default(0)
   criteria           Json
   unlocksCosmeticKey String?             @db.VarChar(64)

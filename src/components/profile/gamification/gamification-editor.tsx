@@ -50,6 +50,8 @@ import {
   THEMED_BANNER_GRADIENT,
   bannerGradientCss,
   isProfileBannerPreset,
+  PROFILE_BANNER_PRESET_IDS,
+  PROFILE_BANNER_PRESETS,
   PROFILE_STICKERS,
   PROFILE_STICKER_IDS,
 } from "@/lib/profile-appearance";
@@ -304,6 +306,14 @@ export function GamificationEditor({
   const [cfg, setCfg] = useState<Cfg>(data.config);
   const [tagline, setTagline] = useState(initialTagline);
   const [sticker, setSticker] = useState<string | null>(initialSticker);
+  // Preset gradient dasar (Twilight–Candy) di-hard-code seperti mode non-gamifikasi
+  // & disimpan di User.profileBannerPreset — bukan CosmeticItem. Dipakai sebagai
+  // fallback `legacy.bannerPreset` di preview & menang bila tak ada bg unlockable
+  // yang di-equip.
+  const initialBannerPreset = isProfileBannerPreset(legacy.bannerPreset)
+    ? legacy.bannerPreset
+    : "twilight";
+  const [bannerPreset, setBannerPreset] = useState<string>(initialBannerPreset);
   const [dirty, setDirty] = useState(false);
   const [editorTab, setEditorTab] = useState("tampilan");
 
@@ -321,18 +331,31 @@ export function GamificationEditor({
     ]),
   );
   const byType = (t: string) => data.cosmetics.filter((c) => c.type === t);
+  // Katalog background yang di-katalog admin (unlockable, animasi) — preset
+  // gradient tak lagi disimpan sebagai CosmeticItem; disaring agar tak dobel
+  // dengan swatch hard-coded meski masih ada baris `bg-preset-*` yang aktif.
+  const unlockableBackgrounds = byType("PROFILE_BACKGROUND").filter(
+    (c) => String(c.styleConfig.effect ?? "") !== "gradient",
+  );
   const achById = new Map(data.achievements.map((a) => [a.id, a]));
   const unlockedAch = data.achievements.filter((a) => a.unlocked);
 
+  // Preview memakai preset gradient terpilih sebagai fallback legacy.
   const preview = resolveProfileCosmetics({
     config: cfg,
     itemsById,
-    legacy,
+    legacy: { ...legacy, bannerPreset },
   });
 
   function patch(next: Partial<Cfg>) {
     setCfg((c) => ({ ...c, ...next }));
     setDirty(true);
+  }
+
+  /** Pilih preset gradient dasar → lepas background unlockable yang di-equip. */
+  function selectGradientPreset(id: string) {
+    setBannerPreset(id);
+    patch({ equippedBackgroundId: null });
   }
 
   function onSave() {
@@ -348,7 +371,7 @@ export function GamificationEditor({
             customBorderColor: cfg.customBorderColor,
             showcaseAchievementIds: cfg.showcaseAchievementIds,
           }),
-          updateProfileTaglineSticker({ tagline, sticker }),
+          updateProfileTaglineSticker({ tagline, sticker, bannerPreset }),
         ]);
         toast.success("Profil disimpan.");
         setDirty(false);
@@ -363,6 +386,7 @@ export function GamificationEditor({
     setCfg(data.config);
     setTagline(initialTagline);
     setSticker(initialSticker);
+    setBannerPreset(initialBannerPreset);
     setDirty(false);
   }
 
@@ -561,13 +585,58 @@ export function GamificationEditor({
 
                 <EditGroup
                   title="Background"
-                  description="Pilih dari katalog. Background baru terbuka seiring naik level atau meraih achievement."
+                  description="Preset dasar selalu tersedia. Background animasi terbuka seiring naik level atau meraih achievement."
                 >
-                  <CosmeticGrid
-                    items={byType("PROFILE_BACKGROUND")}
-                    selectedId={cfg.equippedBackgroundId}
-                    onSelect={(id) => patch({ equippedBackgroundId: id })}
-                  />
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {PROFILE_BANNER_PRESET_IDS.map((id) => {
+                      const active = !cfg.equippedBackgroundId && bannerPreset === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => selectGradientPreset(id)}
+                          title={PROFILE_BANNER_PRESETS[id].label}
+                          className={cn(
+                            "group relative flex flex-col overflow-hidden rounded-xl border text-left transition-all",
+                            active
+                              ? "border-primary ring-2 ring-primary/25 shadow-sm"
+                              : "border-border/60 hover:border-primary/35 hover:shadow-sm",
+                          )}
+                        >
+                          <div className="bg-muted/30 p-2">
+                            <div
+                              className="h-12 w-full rounded-md"
+                              style={{ background: bannerGradientCss(id) }}
+                            />
+                          </div>
+                          <div className="border-border/40 flex min-h-[2.5rem] flex-1 items-center border-t px-2 py-1.5">
+                            <span className="text-foreground line-clamp-2 text-[11px] font-medium leading-tight">
+                              {PROFILE_BANNER_PRESETS[id].label}
+                            </span>
+                          </div>
+                          {active ? (
+                            <span
+                              className="bg-primary absolute right-1.5 top-1.5 size-2 rounded-full shadow-sm"
+                              aria-hidden
+                            />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {unlockableBackgrounds.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                        Background animasi
+                      </p>
+                      <CosmeticGrid
+                        items={unlockableBackgrounds}
+                        selectedId={cfg.equippedBackgroundId}
+                        onSelect={(id) => patch({ equippedBackgroundId: id })}
+                      />
+                    </div>
+                  ) : null}
                 </EditGroup>
 
                 <EditGroup title="Frame avatar" description="Bingkai di sekitar foto profil.">

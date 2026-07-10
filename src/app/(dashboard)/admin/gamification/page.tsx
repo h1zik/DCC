@@ -27,6 +27,10 @@ import {
   AvatarFrameAdminPanel,
   type AdminAvatarFrameItem,
 } from "./avatar-frame-admin-panel";
+import {
+  AchievementSymbolAdminPanel,
+  type AdminAchievementSymbolItem,
+} from "./achievement-symbol-admin-panel";
 
 /**
  * Pengaturan + pemantau gamifikasi profil (khusus admin). Toggle on/off runtime
@@ -46,7 +50,8 @@ export default async function GamificationAdminPage() {
   const branding = await prisma.appBranding.findFirst({
     select: { profileGamificationEnabled: true },
   });
-  const [backgrounds, avatarFrames, achievements] = await Promise.all([
+  const [backgrounds, avatarFrames, achievements, achievementSymbols] =
+    await Promise.all([
     prisma.cosmeticItem.findMany({
       where: { type: "PROFILE_BACKGROUND" },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -83,6 +88,25 @@ export default async function GamificationAdminPage() {
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: { key: true, name: true },
+    }),
+    prisma.achievement.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        description: true,
+        category: true,
+        tier: true,
+        icon: true,
+        symbolSrc: true,
+        symbolMedia: true,
+        symbolPoster: true,
+        symbolFileName: true,
+        hidden: true,
+        isActive: true,
+        sortOrder: true,
+      },
     }),
   ]);
   const dbEnabled = branding?.profileGamificationEnabled ?? false;
@@ -128,6 +152,10 @@ export default async function GamificationAdminPage() {
           })) as AdminAvatarFrameItem[]
         }
         achievements={achievements as AdminAchievementOption[]}
+      />
+
+      <AchievementSymbolAdminPanel
+        achievements={achievementSymbols as AdminAchievementSymbolItem[]}
       />
     </div>
   );

@@ -27,10 +27,16 @@
       "NotificationType" ADD VALUE`. Tidak menyentuh data existing.
 - [ ] Verifikasi: `npx prisma migrate status` → "Database schema is up to date".
 
-## 2. Seed katalog (idempotent)
+## 2. Seed katalog (OTOMATIS saat boot)
 
-- [ ] `npm run db:seed-gamification` → ~33 cosmetics + 12 achievements (`upsert` by key).
-      Aman diulang; tak menyentuh data user.
+- [x] **Tidak perlu langkah manual.** Katalog (cosmetics + achievements) auto-sync
+      saat server boot via `src/instrumentation.ts` → `ensureGamificationCatalog()`,
+      dijaga hash-versi (`AppBranding.gamificationCatalogVersion`) supaya boot normal
+      = no-op dan hanya menulis saat definisi katalog di kode berubah. `upsert` by key,
+      idempotent, tak menyentuh data user; kosmetik unggahan admin tak tersentuh.
+- [ ] (Opsional) memaksa sync lokal setelah edit katalog: `npm run db:seed-gamification`.
+- [ ] Preset gradient banner (Twilight–Candy) di-hard-code di editor (disimpan di
+      `User.profileBannerPreset`) — sengaja TIDAK ikut katalog DB.
 
 ## 3. Backfill (idempotent, additive)
 

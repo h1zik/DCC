@@ -72,11 +72,21 @@ export function borderFromStyleConfig(
       typeof styleConfig.scale === "number"
         ? styleConfig.scale
         : Number(styleConfig.scale);
+    const offsetXRaw =
+      typeof styleConfig.offsetX === "number"
+        ? styleConfig.offsetX
+        : Number(styleConfig.offsetX);
+    const offsetYRaw =
+      typeof styleConfig.offsetY === "number"
+        ? styleConfig.offsetY
+        : Number(styleConfig.offsetY);
     return {
       effect: "asset-frame",
       src: String(styleConfig.src ?? ""),
       poster: String(styleConfig.poster ?? "") || undefined,
       scale: Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : undefined,
+      offsetX: Number.isFinite(offsetXRaw) ? offsetXRaw : undefined,
+      offsetY: Number.isFinite(offsetYRaw) ? offsetYRaw : undefined,
     };
   }
   if (effect === "holographic") {
@@ -150,6 +160,8 @@ export function MiniBorderPreview({
     const show = !reduce ? border.src : (border.poster ?? border.src);
     const scale = Math.max(0.9, Math.min(2, border.scale ?? 1.36));
     const size = `${Math.round(scale * 100)}%`;
+    const x = Number.isFinite(border.offsetX) ? border.offsetX : 0;
+    const y = Number.isFinite(border.offsetY) ? border.offsetY : 0;
     return (
       <div
         ref={ref}
@@ -162,8 +174,13 @@ export function MiniBorderPreview({
           <img
             src={show}
             alt=""
-            className="absolute left-1/2 top-1/2 max-w-none -translate-x-1/2 -translate-y-1/2 object-contain"
-            style={{ width: size, height: size }}
+            className="absolute max-w-none -translate-x-1/2 -translate-y-1/2 object-contain"
+            style={{
+              left: `calc(50% + ${x}%)`,
+              top: `calc(50% + ${y}%)`,
+              width: size,
+              height: size,
+            }}
             decoding="async"
           />
         </div>

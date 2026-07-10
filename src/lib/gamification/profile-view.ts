@@ -26,6 +26,10 @@ export type AchievementView = {
   category: string;
   tier: string;
   icon: string;
+  symbolSrc: string | null;
+  symbolMedia: "image" | "video" | "lottie" | "file" | null;
+  symbolPoster: string | null;
+  symbolFileName: string | null;
   unlocked: boolean;
   unlockedAt: string | null;
   progress: number;
@@ -125,8 +129,6 @@ export async function getProfileGamificationView(
           equippedNameplateId: config.equippedNameplateId,
           equippedTitleId: config.equippedTitleId,
           accentColor: config.accentColor,
-          customBackgroundUrl: config.customBackgroundUrl,
-          customBackgroundMedia: config.customBackgroundMedia,
           customBorderColor: config.customBorderColor,
         }
       : null,
@@ -168,6 +170,17 @@ export async function getProfileGamificationView(
       category: a.category,
       tier: a.tier,
       icon: masked ? "Lock" : a.icon,
+      symbolSrc: masked ? null : a.symbolSrc,
+      symbolMedia:
+        !masked &&
+        (a.symbolMedia === "image" ||
+          a.symbolMedia === "video" ||
+          a.symbolMedia === "lottie" ||
+          a.symbolMedia === "file")
+          ? a.symbolMedia
+          : null,
+      symbolPoster: masked ? null : a.symbolPoster,
+      symbolFileName: masked ? null : a.symbolFileName,
       unlocked,
       unlockedAt: ua?.unlockedAt ? ua.unlockedAt.toISOString() : null,
       progress: ua?.progress ?? 0,

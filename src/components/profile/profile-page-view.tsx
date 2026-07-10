@@ -144,10 +144,9 @@ export function ProfilePageView({
       {/* ------------------------------ HERO ------------------------------ */}
       <section className="border-border/70 relative overflow-hidden rounded-3xl border bg-card shadow-xl shadow-black/5 ring-1 ring-black/[0.04] dark:shadow-black/30 dark:ring-white/[0.06]">
         {gamification ? <Celebration active={celebrate} /> : null}
-        {/* Rasio 31/10 = identik dengan frame editor admin → background yang
-            di-set admin (crop/pan/zoom) tampil penuh sama persis, tanpa bar
-            kosong. min/max-h menjaga tinggi wajar di mobile & layar sangat lebar. */}
-        <div className="relative isolate aspect-[31/10] max-h-[28rem] min-h-56 overflow-hidden">
+        {/* Tinggi mengikuti rasio 31/10 di viewport normal, lalu terkunci di
+            layar lebar tanpa mengecilkan lebar background. */}
+        <div className="relative isolate h-56 w-full overflow-hidden sm:h-[32vw] sm:max-h-[28rem]">
           {gamification ? (
             <LiveBackground background={gamification.cosmetics.background} />
           ) : (
@@ -202,7 +201,7 @@ export function ProfilePageView({
         <div className="relative bg-card/95 backdrop-blur-sm supports-[backdrop-filter]:bg-card/85">
           <div className="flex flex-col gap-5 px-5 pb-6 pt-1 sm:px-8 lg:flex-row lg:items-end lg:gap-8">
             {/* Avatar */}
-            <div className="relative z-10 -mt-20 flex shrink-0 justify-center sm:-mt-24 lg:justify-start">
+            <div className="relative z-10 -mt-20 flex shrink-0 justify-center sm:-mt-24 lg:ml-10 lg:justify-start xl:ml-12">
               {gamification ? (
                 <GamifiedAvatarFrame border={gamification.cosmetics.border}>
                   {avatarImage}

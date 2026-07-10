@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  customBackgroundMediaLabel,
   detectCustomBackgroundKind,
-  inferCustomBackgroundMedia,
   validateDotLottie,
   validateLottieJson,
   validateMp4,
@@ -58,20 +56,5 @@ describe("custom-background-upload", () => {
     mp4.write("ftyp", 4);
     expect(() => validateMp4(mp4)).not.toThrow();
     expect(() => validateMp4(Buffer.from("not-mp4"))).toThrow(/mp4/i);
-  });
-
-  it("infers media from url when column empty", () => {
-    expect(inferCustomBackgroundMedia("/uploads/x.json", null)).toBe("lottie");
-    expect(inferCustomBackgroundMedia("/uploads/x.mp4", null)).toBe("video");
-    expect(inferCustomBackgroundMedia("/uploads/x.webp", null)).toBe("image");
-  });
-
-  it("labels stored upload types for UI", () => {
-    expect(
-      customBackgroundMediaLabel("/uploads/x.mp4", "video"),
-    ).toBe("Video");
-    expect(
-      customBackgroundMediaLabel("/uploads/x.json", "lottie"),
-    ).toBe("Lottie");
   });
 });

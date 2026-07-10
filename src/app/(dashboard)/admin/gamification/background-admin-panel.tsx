@@ -50,7 +50,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-type UnlockType = "FREE" | "LEVEL" | "ACHIEVEMENT" | "CUSTOM_UPLOAD";
+type UnlockType = "FREE" | "LEVEL" | "ACHIEVEMENT";
 
 export type AdminBackgroundItem = {
   id: string;
@@ -413,15 +413,12 @@ function UnlockChip({
   } else if (item.unlockType === "LEVEL") {
     icon = <Lock className="size-3" aria-hidden />;
     text = `Level ${item.unlockLevel ?? "?"}`;
-  } else if (item.unlockType === "ACHIEVEMENT") {
+  } else {
     icon = <Trophy className="size-3" aria-hidden />;
     text =
       achievements.find((a) => a.key === item.unlockAchievementKey)?.name ??
       item.unlockAchievementKey ??
       "Achievement";
-  } else {
-    icon = <Upload className="size-3" aria-hidden />;
-    text = "Upload custom";
   }
   return (
     <span className="border-border/70 bg-background/80 text-foreground inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium">

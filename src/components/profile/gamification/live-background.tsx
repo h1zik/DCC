@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Latar hero profil. Statis (gradien / unggahan) atau earned `asset-loop`
+ * Latar hero profil. Statis (gradien preset) atau earned `asset-loop`
  * (WebM / animated WebP kurasi). Animated WebP diputar saat toggle ON;
  * video loop di-pause off-screen (hemat CPU).
  */
@@ -55,10 +55,6 @@ export function LiveBackground({
     style.background = bannerGradientCss(
       isProfileBannerPreset(preset) ? preset : "twilight",
     );
-  } else if (background.effect === "image") {
-    style.backgroundImage = `url(${"url" in background ? background.url : ""})`;
-    style.backgroundSize = "cover";
-    style.backgroundPosition = background.focalPoint ?? "center";
   } else if (background.effect === "asset-loop") {
     // Backdrop tema di belakang aset — mengisi bar bila di-zoom-out di bawah
     // cover. Aset (img/video/lottie) di-render CosmeticAssetLoop di atasnya.

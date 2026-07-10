@@ -59,17 +59,31 @@ function frameScale(item: AdminAvatarFrameItem): number {
   return Number.isFinite(n) ? Math.max(0.9, Math.min(2, n)) : 1.28;
 }
 
+function frameOffset(
+  item: AdminAvatarFrameItem,
+  key: "offsetX" | "offsetY",
+): number {
+  const n = Number(item.styleConfig[key]);
+  return Number.isFinite(n) ? Math.max(-50, Math.min(50, n)) : 0;
+}
+
 function FramePreview({
   item,
   scale,
+  offsetX,
+  offsetY,
   className,
 }: {
   item: AdminAvatarFrameItem;
   scale?: number;
+  offsetX?: number;
+  offsetY?: number;
   className?: string;
 }) {
   const src = frameSrc(item);
   const previewScale = scale ?? frameScale(item);
+  const x = offsetX ?? frameOffset(item, "offsetX");
+  const y = offsetY ?? frameOffset(item, "offsetY");
   const size = `${Math.round(previewScale * 100)}%`;
 
   return (
@@ -88,8 +102,13 @@ function FramePreview({
           <img
             src={src}
             alt=""
-            className="pointer-events-none absolute left-1/2 top-1/2 max-w-none -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.35)]"
-            style={{ width: size, height: size }}
+            className="pointer-events-none absolute max-w-none -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-[0_10px_28px_rgba(0,0,0,0.35)]"
+            style={{
+              left: `calc(50% + ${x}%)`,
+              top: `calc(50% + ${y}%)`,
+              width: size,
+              height: size,
+            }}
             decoding="async"
           />
         ) : (
@@ -268,6 +287,45 @@ function ScaleField({
   );
 }
 
+function OffsetField({
+  label,
+  name,
+  defaultValue,
+  onPreview,
+}: {
+  label: string;
+  name: "offsetX" | "offsetY";
+  defaultValue: number;
+  onPreview?: (offset: number) => void;
+}) {
+  const [offset, setOffset] = useState(defaultValue);
+  return (
+    <Field label={label}>
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          name={name}
+          min={-50}
+          max={50}
+          step={1}
+          value={offset}
+          onChange={(e) => {
+            const next = Number(e.currentTarget.value);
+            setOffset(next);
+            onPreview?.(next);
+          }}
+          className="accent-primary h-1.5 flex-1 cursor-pointer"
+          aria-label={label}
+        />
+        <span className="text-muted-foreground w-12 text-right text-xs tabular-nums">
+          {offset > 0 ? "+" : ""}
+          {offset}%
+        </span>
+      </div>
+    </Field>
+  );
+}
+
 function FrameCard({
   item,
   achievements,
@@ -278,6 +336,12 @@ function FrameCard({
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [previewScale, setPreviewScale] = useState(() => frameScale(item));
+  const [previewOffsetX, setPreviewOffsetX] = useState(() =>
+    frameOffset(item, "offsetX"),
+  );
+  const [previewOffsetY, setPreviewOffsetY] = useState(() =>
+    frameOffset(item, "offsetY"),
+  );
 
   function onSubmit(formData: FormData) {
     startTransition(async () => {
@@ -351,7 +415,13 @@ function FrameCard({
         <form action={onSubmit} className="space-y-4">
           <input type="hidden" name="id" value={item.id} />
 
-          <FramePreview item={item} scale={previewScale} className="aspect-video rounded-xl border border-border/60" />
+          <FramePreview
+            item={item}
+            scale={previewScale}
+            offsetX={previewOffsetX}
+            offsetY={previewOffsetY}
+            className="aspect-video rounded-xl border border-border/60"
+          />
 
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px]">
             <Field label="Nama frame">
@@ -386,6 +456,21 @@ function FrameCard({
               </label>
             </Field>
             <ScaleField defaultValue={frameScale(item)} onPreview={setPreviewScale} />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <OffsetField
+              label="Posisi kiri/kanan"
+              name="offsetX"
+              defaultValue={frameOffset(item, "offsetX")}
+              onPreview={setPreviewOffsetX}
+            />
+            <OffsetField
+              label="Posisi atas/bawah"
+              name="offsetY"
+              defaultValue={frameOffset(item, "offsetY")}
+              onPreview={setPreviewOffsetY}
+            />
           </div>
 
           <UnlockFields
@@ -518,6 +603,19 @@ function AddFrameCard({
               </label>
             </Field>
             <ScaleField defaultValue={1.28} />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <OffsetField
+              label="Posisi kiri/kanan"
+              name="offsetX"
+              defaultValue={0}
+            />
+            <OffsetField
+              label="Posisi atas/bawah"
+              name="offsetY"
+              defaultValue={0}
+            />
           </div>
 
           <label className="border-border/60 bg-muted/30 flex items-center gap-2.5 rounded-lg border p-3 text-sm text-foreground">
