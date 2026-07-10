@@ -1,6 +1,7 @@
 /**
- * Validasi & deteksi unggahan latar profil kustom (gambar / Lottie / video).
- * User tidak boleh menyuplai JS/SVG-berscript — hanya format aman ini.
+ * Validasi & deteksi unggahan latar animasi (gambar / Lottie / video) yang
+ * dipakai admin saat menambah background kosmetik di menu Gamifikasi. Hanya
+ * format aman ini yang diterima — tak boleh ada JS/SVG-berscript.
  */
 import type { CosmeticAssetMedia } from "./cosmetic-assets";
 
@@ -104,34 +105,9 @@ export function mediaForUploadKind(
   return "lottie";
 }
 
-/** Turunkan media dari URL tersimpan (backfill bila kolom media kosong). */
-export function inferCustomBackgroundMedia(
-  url: string,
-  stored: string | null | undefined,
-): CosmeticAssetMedia {
-  if (stored === "lottie" || stored === "image" || stored === "video") {
-    return stored;
-  }
-  const lower = url.toLowerCase();
-  if (lower.endsWith(".json") || lower.endsWith(".lottie")) return "lottie";
-  if (lower.endsWith(".mp4") || lower.endsWith(".webm")) return "video";
-  return "image";
-}
-
 export function storedExtensionForKind(kind: CustomBackgroundUploadKind): string {
   if (kind === "image") return "webp";
   if (kind === "video-mp4") return "mp4";
   if (kind === "lottie-json") return "json";
   return "lottie";
-}
-
-/** Label UI untuk jenis unggahan tersimpan. */
-export function customBackgroundMediaLabel(
-  url: string,
-  media: string | null | undefined,
-): "Gambar" | "Lottie" | "Video" {
-  const resolved = inferCustomBackgroundMedia(url, media);
-  if (resolved === "lottie") return "Lottie";
-  if (resolved === "video") return "Video";
-  return "Gambar";
 }

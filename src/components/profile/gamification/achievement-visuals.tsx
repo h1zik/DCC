@@ -7,6 +7,7 @@ import {
   CircleCheckBig,
   Crown,
   DatabaseZap,
+  FileIcon,
   Flame,
   Gauge,
   Lock,
@@ -19,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AchievementView } from "@/lib/gamification/profile-view";
+import { CosmeticLottiePlayer } from "./cosmetic-lottie-player";
 import { cn } from "@/lib/utils";
 
 /**
@@ -51,6 +53,67 @@ function iconFor(name: string): LucideIcon {
 /** Render ikon dinamis via createElement (hindari komponen di dalam render). */
 function renderIcon(name: string, className: string) {
   return createElement(iconFor(name), { className, "aria-hidden": true });
+}
+
+function AchievementSymbol({
+  ach,
+  className,
+}: {
+  ach: AchievementView;
+  className?: string;
+}) {
+  const src = ach.symbolSrc;
+  const media = ach.symbolMedia;
+
+  if (src && media === "image") {
+    return (
+      <span className={cn("absolute inset-0 overflow-hidden", className)} aria-hidden>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          className="absolute inset-0 h-full w-full object-contain"
+          decoding="async"
+        />
+      </span>
+    );
+  }
+
+  if (src && media === "video") {
+    return (
+      <span className={cn("absolute inset-0 overflow-hidden", className)} aria-hidden>
+        <video
+          src={src}
+          poster={ach.symbolPoster ?? undefined}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 h-full w-full object-contain"
+        />
+      </span>
+    );
+  }
+
+  if (src && media === "lottie") {
+    return (
+      <div className={cn("absolute inset-0 overflow-hidden", className)} aria-hidden>
+        <CosmeticLottiePlayer
+          src={src}
+          poster={ach.symbolPoster ?? undefined}
+          active
+          fit="contain"
+          className="!inset-0 !h-full !w-full"
+        />
+      </div>
+    );
+  }
+
+  if (src && media === "file") {
+    return <FileIcon className={cn("size-6", className)} aria-hidden />;
+  }
+
+  return renderIcon(ach.icon, cn("size-6", className));
 }
 
 type TierStyle = { ring: string; medal: string; text: string; label: string };
@@ -86,6 +149,10 @@ function tierStyle(tier: string): TierStyle {
   return TIER_STYLE[tier] ?? TIER_STYLE.BRONZE;
 }
 
+function hasCustomSymbol(ach: AchievementView): boolean {
+  return Boolean(ach.symbolSrc && ach.symbolMedia);
+}
+
 export function AchievementBadge({
   ach,
   className,
@@ -95,6 +162,7 @@ export function AchievementBadge({
 }) {
   const t = tierStyle(ach.tier);
   const unlocked = ach.unlocked;
+  const customSymbol = hasCustomSymbol(ach);
   const pct =
     ach.threshold > 0
       ? Math.min(100, Math.round((ach.progress / ach.threshold) * 100))
@@ -119,13 +187,14 @@ export function AchievementBadge({
 
       <div
         className={cn(
-          "relative flex size-14 items-center justify-center rounded-full bg-gradient-to-br ring-2",
-          t.medal,
-          t.ring,
+          "relative flex items-center justify-center overflow-hidden rounded-full",
+          customSymbol ? "size-16" : "size-14 bg-gradient-to-br ring-2",
+          !customSymbol && t.medal,
+          !customSymbol && t.ring,
           !unlocked && "grayscale",
         )}
       >
-        {renderIcon(ach.icon, "size-6")}
+        <AchievementSymbol ach={ach} />
         {!unlocked ? (
           <span className="bg-background/70 text-muted-foreground absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border border-border">
             <Lock className="size-3" aria-hidden />
@@ -201,17 +270,19 @@ export function AchievementShelf({
         <div className="flex flex-wrap gap-2">
           {recent.map((a) => {
             const t = tierStyle(a.tier);
+            const customSymbol = hasCustomSymbol(a);
             return (
               <span
                 key={a.key}
                 className={cn(
-                  "flex size-10 items-center justify-center rounded-full bg-gradient-to-br ring-2",
-                  t.medal,
-                  t.ring,
+                  "relative flex items-center justify-center overflow-hidden rounded-full",
+                  customSymbol ? "size-11" : "size-10 bg-gradient-to-br ring-2",
+                  !customSymbol && t.medal,
+                  !customSymbol && t.ring,
                 )}
                 title={a.name}
               >
-                {renderIcon(a.icon, "size-4")}
+                <AchievementSymbol ach={a} />
               </span>
             );
           })}

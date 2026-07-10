@@ -165,6 +165,9 @@ const ADMIN_BG_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const ADMIN_BG_DIR = "gamification/backgrounds";
 const ADMIN_FRAME_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ADMIN_FRAME_DIR = "gamification/avatar-frames";
+const ADMIN_ACHIEVEMENT_MAX_FILE_BYTES = 15 * 1024 * 1024;
+const ADMIN_ACHIEVEMENT_DIR = "gamification/achievements";
+type AchievementSymbolMedia = "image" | "video" | "lottie" | "file";
 
 function formText(formData: FormData, key: string): string {
   const v = formData.get(key);
@@ -264,6 +267,12 @@ async function ensureAdminFrameDir(): Promise<string> {
   return dir;
 }
 
+async function ensureAdminAchievementDir(): Promise<string> {
+  const dir = path.join(getUploadPublicDir(), ADMIN_ACHIEVEMENT_DIR);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
 async function writeAdminBgFile(
   file: File,
   prefix: "loop" | "poster",
@@ -320,6 +329,77 @@ async function writeAdminBgFile(
   return {
     publicPath: `/uploads/${ADMIN_BG_DIR}/${stored}`,
     media: mediaForUploadKind(kind),
+  };
+}
+
+async function writeAchievementSymbolFile(
+  file: File,
+): Promise<{
+  publicPath: string;
+  media: AchievementSymbolMedia;
+  fileName: string;
+}> {
+  const raw = Buffer.from(await file.arrayBuffer());
+  if (raw.length > ADMIN_ACHIEVEMENT_MAX_FILE_BYTES) {
+    throw new Error("File simbol achievement maksimal 15 MB.");
+  }
+
+  const name = file.name || "symbol";
+  const lower = name.toLowerCase();
+  const dir = await ensureAdminAchievementDir();
+  let body = raw;
+  let ext = path.extname(lower).replace(".", "");
+  let media: AchievementSymbolMedia = "file";
+
+  if (
+    lower.endsWith(".png") ||
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg") ||
+    lower.endsWith(".webp") ||
+    lower.endsWith(".gif") ||
+    file.type.startsWith("image/")
+  ) {
+    try {
+      const metadata = await sharp(raw).metadata();
+      if (!metadata.format) throw new Error("invalid");
+      if (!["png", "jpeg", "webp", "gif"].includes(metadata.format)) {
+        throw new Error("unsupported");
+      }
+      ext = metadata.format === "jpeg" ? "jpg" : metadata.format;
+      media = "image";
+    } catch {
+      throw new Error("Simbol gambar harus berupa PNG, JPG, WebP, atau GIF valid.");
+    }
+  } else if (lower.endsWith(".json") || file.type === "application/json") {
+    body = Buffer.from(JSON.stringify(validateLottieJson(raw)), "utf8");
+    ext = "json";
+    media = "lottie";
+  } else if (lower.endsWith(".lottie")) {
+    validateDotLottie(raw);
+    ext = "lottie";
+    media = "lottie";
+  } else if (lower.endsWith(".mp4") || file.type === "video/mp4") {
+    validateMp4(raw);
+    ext = "mp4";
+    media = "video";
+  } else if (lower.endsWith(".pdf") || file.type === "application/pdf") {
+    if (raw.subarray(0, 5).toString("ascii") !== "%PDF-") {
+      throw new Error("PDF tidak valid.");
+    }
+    ext = "pdf";
+    media = "file";
+  } else {
+    throw new Error(
+      "Gunakan PNG/JPG/WebP/GIF, MP4, Lottie JSON, dotLottie, atau PDF.",
+    );
+  }
+
+  const stored = `${randomUUID()}-${sanitizeStoredName(`achievement-symbol.${ext}`)}`;
+  await writeFile(path.join(dir, stored), body);
+  return {
+    publicPath: `/uploads/${ADMIN_ACHIEVEMENT_DIR}/${stored}`,
+    media,
+    fileName: sanitizeStoredName(name),
   };
 }
 
@@ -465,12 +545,19 @@ async function writeAdminAvatarFrameFile(file: File): Promise<string> {
   return `/uploads/${ADMIN_FRAME_DIR}/${stored}`;
 }
 
-function frameStyleConfig(src: string, scale: number): Prisma.InputJsonObject {
+function frameStyleConfig(
+  src: string,
+  scale: number,
+  offsetX: number,
+  offsetY: number,
+): Prisma.InputJsonObject {
   return {
     effect: "asset-frame",
     src,
     poster: src,
     scale,
+    offsetX,
+    offsetY,
     media: "image",
   };
 }
@@ -479,6 +566,12 @@ function parseFrameScale(formData: FormData): number {
   const n = Number(formText(formData, "scale"));
   if (!Number.isFinite(n)) return 1.28;
   return Math.max(0.9, Math.min(2, Math.round(n * 100) / 100));
+}
+
+function parseFrameOffset(formData: FormData, key: "offsetX" | "offsetY"): number {
+  const n = Number(formText(formData, key));
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(-50, Math.min(50, Math.round(n * 10) / 10));
 }
 
 export async function createGamificationAvatarFrame(formData: FormData) {
@@ -503,7 +596,12 @@ export async function createGamificationAvatarFrame(formData: FormData) {
       type: "AVATAR_BORDER",
       rarity: CosmeticRarity.RARE,
       previewRef: key,
-      styleConfig: frameStyleConfig(src, parseFrameScale(formData)),
+      styleConfig: frameStyleConfig(
+        src,
+        parseFrameScale(formData),
+        parseFrameOffset(formData, "offsetX"),
+        parseFrameOffset(formData, "offsetY"),
+      ),
       unlockType: unlock.unlockType,
       unlockLevel: unlock.unlockLevel,
       unlockAchievementKey: unlock.unlockAchievementKey,
@@ -547,13 +645,61 @@ export async function updateGamificationAvatarFrame(formData: FormData) {
     where: { id },
     data: {
       name,
-      styleConfig: frameStyleConfig(src, parseFrameScale(formData)),
+      styleConfig: frameStyleConfig(
+        src,
+        parseFrameScale(formData),
+        parseFrameOffset(formData, "offsetX"),
+        parseFrameOffset(formData, "offsetY"),
+      ),
       unlockType: unlock.unlockType,
       unlockLevel: unlock.unlockLevel,
       unlockAchievementKey: unlock.unlockAchievementKey,
       sortOrder: parseSortOrder(formData),
       isActive: formData.get("isActive") === "on",
     },
+  });
+
+  revalidateProfileCosmeticViews();
+}
+
+export async function updateGamificationAchievementSymbol(formData: FormData) {
+  await requireCeoOrAdministrator();
+
+  const id = formText(formData, "id");
+  if (!id) throw new Error("Achievement tidak ditemukan.");
+
+  const fallbackIcon = formText(formData, "icon").slice(0, 48);
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(fallbackIcon)) {
+    throw new Error("Nama ikon fallback tidak valid.");
+  }
+
+  const existing = await prisma.achievement.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Achievement tidak ditemukan.");
+
+  const symbolFile = formData.get("symbolFile");
+  const removeSymbol = formData.get("removeSymbol") === "on";
+
+  const data: Prisma.AchievementUpdateInput = { icon: fallbackIcon };
+
+  if (symbolFile instanceof File && symbolFile.size > 0) {
+    const asset = await writeAchievementSymbolFile(symbolFile);
+    data.symbolSrc = asset.publicPath;
+    data.symbolMedia = asset.media;
+    data.symbolPoster = asset.media === "image" ? asset.publicPath : null;
+    data.symbolFileName = asset.fileName;
+  } else if (removeSymbol) {
+    data.symbolSrc = null;
+    data.symbolMedia = null;
+    data.symbolPoster = null;
+    data.symbolFileName = null;
+  }
+
+  await prisma.achievement.update({
+    where: { id },
+    data,
   });
 
   revalidateProfileCosmeticViews();

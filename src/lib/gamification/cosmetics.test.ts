@@ -34,8 +34,6 @@ describe("resolveProfileCosmetics", () => {
       equippedNameplateId: null,
       equippedTitleId: null,
       accentColor: null,
-      customBackgroundUrl: null,
-      customBackgroundMedia: null,
       customBorderColor: null,
     };
     const aurora = COSMETIC_BG_ASSETS.aurora;
@@ -67,8 +65,6 @@ describe("resolveProfileCosmetics", () => {
       equippedNameplateId: null,
       equippedTitleId: null,
       accentColor: null,
-      customBackgroundUrl: null,
-      customBackgroundMedia: null,
       customBorderColor: null,
     };
     const item: CosmeticLite = {
@@ -97,8 +93,6 @@ describe("resolveProfileCosmetics", () => {
       equippedNameplateId: null,
       equippedTitleId: null,
       accentColor: null,
-      customBackgroundUrl: null,
-      customBackgroundMedia: null,
       customBorderColor: null,
     };
     const item: CosmeticLite = {
@@ -114,80 +108,6 @@ describe("resolveProfileCosmetics", () => {
     });
   });
 
-  it("uses the uploaded image url for a custom-upload background", () => {
-    const cfg = {
-      equippedBackgroundId: "up1",
-      equippedBorderId: null,
-      equippedNameplateId: null,
-      equippedTitleId: null,
-      accentColor: null,
-      customBackgroundUrl: "/uploads/profile-bg/u/x.webp",
-      customBackgroundMedia: "image",
-      customBorderColor: null,
-    };
-    const item: CosmeticLite = {
-      key: "bg-upload-slot",
-      type: "PROFILE_BACKGROUND",
-      previewRef: "upload",
-      styleConfig: { effect: "image", src: "user-upload" },
-    };
-    const r = resolveProfileCosmetics(build(cfg, [["up1", item]]));
-    expect(r.background).toEqual({ effect: "image", url: "/uploads/profile-bg/u/x.webp" });
-    expect(backgroundIsAnimated(r.background)).toBe(false);
-  });
-
-  it("uses uploaded lottie as animated asset-loop", () => {
-    const cfg = {
-      equippedBackgroundId: "up1",
-      equippedBorderId: null,
-      equippedNameplateId: null,
-      equippedTitleId: null,
-      accentColor: null,
-      customBackgroundUrl: "/uploads/profile-bg/u/anim.json",
-      customBackgroundMedia: "lottie",
-      customBorderColor: null,
-    };
-    const item: CosmeticLite = {
-      key: "bg-upload-slot",
-      type: "PROFILE_BACKGROUND",
-      previewRef: "upload",
-      styleConfig: { effect: "image", src: "user-upload" },
-    };
-    const r = resolveProfileCosmetics(build(cfg, [["up1", item]]));
-    expect(r.background).toEqual({
-      effect: "asset-loop",
-      src: "/uploads/profile-bg/u/anim.json",
-      media: "lottie",
-    });
-    expect(r.animated).toBe(true);
-  });
-
-  it("uses uploaded mp4 as animated video asset-loop", () => {
-    const cfg = {
-      equippedBackgroundId: "up1",
-      equippedBorderId: null,
-      equippedNameplateId: null,
-      equippedTitleId: null,
-      accentColor: null,
-      customBackgroundUrl: "/uploads/profile-bg/u/loop.mp4",
-      customBackgroundMedia: "video",
-      customBorderColor: null,
-    };
-    const item: CosmeticLite = {
-      key: "bg-upload-slot",
-      type: "PROFILE_BACKGROUND",
-      previewRef: "upload",
-      styleConfig: { effect: "image", src: "user-upload" },
-    };
-    const r = resolveProfileCosmetics(build(cfg, [["up1", item]]));
-    expect(r.background).toEqual({
-      effect: "asset-loop",
-      src: "/uploads/profile-bg/u/loop.mp4",
-      media: "video",
-    });
-    expect(r.animated).toBe(true);
-  });
-
   it("applies a custom border color and config accent override", () => {
     const cfg = {
       equippedBackgroundId: null,
@@ -195,8 +115,6 @@ describe("resolveProfileCosmetics", () => {
       equippedNameplateId: null,
       equippedTitleId: null,
       accentColor: "#00ccaa",
-      customBackgroundUrl: null,
-      customBackgroundMedia: null,
       customBorderColor: "#123456",
     };
     const item: CosmeticLite = {
@@ -217,8 +135,6 @@ describe("resolveProfileCosmetics", () => {
       equippedNameplateId: null,
       equippedTitleId: null,
       accentColor: null,
-      customBackgroundUrl: null,
-      customBackgroundMedia: null,
       customBorderColor: null,
     };
 
@@ -247,5 +163,37 @@ describe("resolveProfileCosmetics", () => {
       expect(borderIsAnimated(r.border)).toBe(true);
       expect(r.animated).toBe(true);
     }
+  });
+
+  it("resolves asset-frame position tuning", () => {
+    const cfg = {
+      equippedBackgroundId: null,
+      equippedBorderId: "frame1",
+      equippedNameplateId: null,
+      equippedTitleId: null,
+      accentColor: null,
+      customBorderColor: null,
+    };
+    const item: CosmeticLite = {
+      key: "frame-admin-crown",
+      type: "AVATAR_BORDER",
+      previewRef: "frame-admin-crown",
+      styleConfig: {
+        effect: "asset-frame",
+        src: "/uploads/gamification/avatar-frames/crown.png",
+        scale: 1.42,
+        offsetX: -8,
+        offsetY: 12,
+      },
+    };
+    const r = resolveProfileCosmetics(build(cfg, [["frame1", item]]));
+    expect(r.border).toEqual({
+      effect: "asset-frame",
+      src: "/uploads/gamification/avatar-frames/crown.png",
+      poster: undefined,
+      scale: 1.42,
+      offsetX: -8,
+      offsetY: 12,
+    });
   });
 });

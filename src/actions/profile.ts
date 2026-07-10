@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import {
+  isProfileBannerPreset,
   normalizeProfileAccentHex,
   normalizeProfileSticker,
   profileAppearanceSchema,
@@ -169,15 +170,25 @@ export async function updateProfileAppearance(input: unknown) {
 const taglineStickerSchema = z.object({
   tagline: z.string().max(160).optional().nullable(),
   sticker: z.string().max(24).optional().nullable(),
+  bannerPreset: z
+    .string()
+    .trim()
+    .refine(isProfileBannerPreset, "Tema banner tidak dikenal")
+    .optional(),
 });
 
 /**
- * Update ringan: hanya slogan + stiker (dipakai editor gamifikasi supaya studio
- * tampilan lama bisa disembunyikan tanpa kehilangan kontrol ini).
+ * Update ringan bagian identitas gamifikasi: slogan, stiker, dan preset banner
+ * dasar (Twilight–Candy). Preset banner disimpan di `User.profileBannerPreset`
+ * — sama seperti mode non-gamifikasi — karena di editor gamifikasi ia di-hard-code
+ * dari `PROFILE_BANNER_PRESETS`, bukan berupa CosmeticItem di katalog.
  */
-export async function updateProfileTaglineSticker(
-  input: z.infer<typeof taglineStickerSchema>,
-) {
+export async function updateProfileTaglineSticker(input: {
+  tagline?: string | null;
+  sticker?: string | null;
+  /** Preset banner dasar (Twilight–Candy); divalidasi ke daftar preset dikenal. */
+  bannerPreset?: string;
+}) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Belum masuk.");
   const parsed = taglineStickerSchema.parse(input);
@@ -187,11 +198,16 @@ export async function updateProfileTaglineSticker(
 
   await prisma.user.update({
     where: { id: session.user.id },
-    data: { profileTagline: tagline, profileSticker: sticker },
+    data: {
+      profileTagline: tagline,
+      profileSticker: sticker,
+      ...(parsed.bannerPreset ? { profileBannerPreset: parsed.bannerPreset } : {}),
+    },
   });
 
   revalidatePath("/profile");
   revalidatePath(`/profile/${session.user.id}`);
+  revalidatePath("/profile/edit");
 }
 
 const changePasswordSchema = z.object({

@@ -30,8 +30,6 @@ export type EditorConfig = {
   equippedNameplateId: string | null;
   equippedTitleId: string | null;
   accentColor: string | null;
-  customBackgroundUrl: string | null;
-  customBackgroundMedia: string | null;
   customBorderColor: string | null;
   showcaseAchievementIds: string[];
 };
@@ -102,7 +100,6 @@ export async function getGamificationEditorData(
     let requirement: string | null = null;
     switch (c.unlockType) {
       case "FREE":
-      case "CUSTOM_UPLOAD":
         owned = true;
         break;
       case "LEVEL":
@@ -158,6 +155,17 @@ export async function getGamificationEditorData(
       category: a.category,
       tier: a.tier,
       icon: masked ? "Lock" : a.icon,
+      symbolSrc: masked ? null : a.symbolSrc,
+      symbolMedia:
+        !masked &&
+        (a.symbolMedia === "image" ||
+          a.symbolMedia === "video" ||
+          a.symbolMedia === "lottie" ||
+          a.symbolMedia === "file")
+          ? a.symbolMedia
+          : null,
+      symbolPoster: masked ? null : a.symbolPoster,
+      symbolFileName: masked ? null : a.symbolFileName,
       unlocked,
       unlockedAt: ua?.unlockedAt ? ua.unlockedAt.toISOString() : null,
       progress: ua?.progress ?? 0,
@@ -174,8 +182,6 @@ export async function getGamificationEditorData(
       equippedNameplateId: config?.equippedNameplateId ?? null,
       equippedTitleId: config?.equippedTitleId ?? null,
       accentColor: config?.accentColor ?? null,
-      customBackgroundUrl: config?.customBackgroundUrl ?? null,
-      customBackgroundMedia: config?.customBackgroundMedia ?? null,
       customBorderColor: config?.customBorderColor ?? null,
       showcaseAchievementIds: Array.isArray(config?.showcaseAchievementIds)
         ? (config!.showcaseAchievementIds as string[])

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
-const BRANDING_ID = "default";
+/** Id singleton baris AppBranding (satu-satunya baris pengaturan aplikasi). */
+export const BRANDING_ID = "default";
 
 export async function getAppBranding() {
   return prisma.appBranding.upsert({

@@ -16,12 +16,10 @@ import {
   LEGACY_BG_EFFECT_TO_ASSET,
   type CosmeticAssetMedia,
 } from "./cosmetic-assets";
-import { inferCustomBackgroundMedia } from "./custom-background-upload";
 import { isCssFrameEffect } from "./frame-styles";
 
 export type BackgroundDescriptor =
   | { effect: "gradient"; preset: string }
-  | { effect: "image"; url: string; focalPoint?: string }
   | {
       effect: "asset-loop";
       src: string;
@@ -40,7 +38,16 @@ export type BorderDescriptor =
   | { effect: "static-frame"; color: string }
   /** Frame CSS beranimasi; `frame` = key di CSS_FRAME_SPECS (orbit-glow/foil/…). */
   | { effect: "css-frame"; frame: string }
-  | { effect: "asset-frame"; src: string; poster?: string; scale?: number };
+  | {
+      effect: "asset-frame";
+      src: string;
+      poster?: string;
+      scale?: number;
+      /** Offset horizontal dalam persen container avatar. Positif = kanan. */
+      offsetX?: number;
+      /** Offset vertikal dalam persen container avatar. Positif = bawah. */
+      offsetY?: number;
+    };
 
 export type ResolvedCosmetics = {
   background: BackgroundDescriptor;
@@ -70,8 +77,6 @@ export type EquipInput = {
     equippedNameplateId: string | null;
     equippedTitleId: string | null;
     accentColor: string | null;
-    customBackgroundUrl: string | null;
-    customBackgroundMedia: string | null;
     customBorderColor: string | null;
   } | null;
   /** Map id → CosmeticItem untuk id yang ter-equip. */
@@ -84,7 +89,7 @@ export type EquipInput = {
   };
 };
 
-const STATIC_BG_EFFECTS = new Set(["gradient", "image"]);
+const STATIC_BG_EFFECTS = new Set(["gradient"]);
 const STATIC_BORDER_EFFECTS = new Set(["static-frame"]);
 
 function str(v: unknown): string {
@@ -139,40 +144,24 @@ function resolveBackground(input: EquipInput): {
         animated: false,
       };
     }
-    if (effect === "image") {
-      const url = input.config?.customBackgroundUrl ?? "";
-      if (url) {
-        const media = inferCustomBackgroundMedia(
-          url,
-          input.config?.customBackgroundMedia,
-        );
-        if (media === "lottie" || media === "video") {
-          return {
-            descriptor: { effect: "asset-loop", src: url, media },
-            animated: true,
-          };
-        }
-        return { descriptor: { effect: "image", url }, animated: false };
-      }
-    } else if (effect === "asset-loop") {
+    if (effect === "asset-loop") {
       return {
         descriptor: resolveAssetLoop(item.styleConfig, item.key),
         animated: true,
       };
-    } else {
-      const legacyKey = LEGACY_BG_EFFECT_TO_ASSET[effect];
-      if (legacyKey) {
-        const asset = COSMETIC_BG_ASSETS[legacyKey];
-        return {
-          descriptor: {
-            effect: "asset-loop",
-            src: asset.src,
-            poster: asset.poster,
-            media: asset.media,
-          },
-          animated: true,
-        };
-      }
+    }
+    const legacyKey = LEGACY_BG_EFFECT_TO_ASSET[effect];
+    if (legacyKey) {
+      const asset = COSMETIC_BG_ASSETS[legacyKey];
+      return {
+        descriptor: {
+          effect: "asset-loop",
+          src: asset.src,
+          poster: asset.poster,
+          media: asset.media,
+        },
+        animated: true,
+      };
     }
   }
 
@@ -215,6 +204,16 @@ function resolveBorder(input: EquipInput): {
           ? item.styleConfig.scale
           : Number(item.styleConfig.scale);
       const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : undefined;
+      const offsetXRaw =
+        typeof item.styleConfig.offsetX === "number"
+          ? item.styleConfig.offsetX
+          : Number(item.styleConfig.offsetX);
+      const offsetYRaw =
+        typeof item.styleConfig.offsetY === "number"
+          ? item.styleConfig.offsetY
+          : Number(item.styleConfig.offsetY);
+      const offsetX = Number.isFinite(offsetXRaw) ? offsetXRaw : undefined;
+      const offsetY = Number.isFinite(offsetYRaw) ? offsetYRaw : undefined;
       if (!src) {
         const fallback = COSMETIC_BORDER_BY_ITEM_KEY[item.key];
         if (fallback) {
@@ -223,7 +222,7 @@ function resolveBorder(input: EquipInput): {
         }
       }
       return {
-        descriptor: { effect: "asset-frame", src, poster, scale },
+        descriptor: { effect: "asset-frame", src, poster, scale, offsetX, offsetY },
         animated: true,
       };
     }

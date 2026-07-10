@@ -26,15 +26,21 @@ function AssetFrameOverlay({
   poster,
   active,
   scale,
+  offsetX,
+  offsetY,
 }: {
   src: string;
   poster?: string;
   active: boolean;
   scale?: number;
+  offsetX?: number;
+  offsetY?: number;
 }) {
   const show = active ? src : (poster ?? src);
   const frameScale = Math.max(0.9, Math.min(2, scale ?? 1.28));
   const size = `${Math.round(frameScale * 100)}%`;
+  const x = Number.isFinite(offsetX) ? offsetX : 0;
+  const y = Number.isFinite(offsetY) ? offsetY : 0;
   return (
     <div
       className="pointer-events-none absolute inset-0 z-20"
@@ -44,8 +50,13 @@ function AssetFrameOverlay({
       <img
         src={show}
         alt=""
-        className="absolute left-1/2 top-1/2 max-w-none -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-[0_8px_28px_rgba(0,0,0,0.45)]"
-        style={{ width: size, height: size }}
+        className="absolute max-w-none -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-[0_8px_28px_rgba(0,0,0,0.45)]"
+        style={{
+          left: `calc(50% + ${x}%)`,
+          top: `calc(50% + ${y}%)`,
+          width: size,
+          height: size,
+        }}
         decoding="async"
       />
     </div>
@@ -130,6 +141,8 @@ export function ProfileAvatarFrame({
           src={border.src}
           poster={border.poster}
           scale={border.scale}
+          offsetX={border.offsetX}
+          offsetY={border.offsetY}
           active={!reduce}
         />
         <div className="relative rounded-full">{children}</div>
