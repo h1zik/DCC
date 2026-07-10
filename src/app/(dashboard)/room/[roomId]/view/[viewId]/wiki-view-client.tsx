@@ -15,17 +15,22 @@ import { toast } from "sonner";
 import {
   BookOpen,
   Check,
+  ChevronRight,
   CloudOff,
   FileText,
+  Link2,
   Loader2,
   Plus,
   RefreshCw,
+  Search,
+  Tag,
   Trash2,
 } from "lucide-react";
 import {
   deleteRoomWikiPage,
   uploadRoomWikiAttachment,
   upsertRoomWikiPage,
+  updateRoomWikiPageOrganization,
 } from "@/actions/room-view-wiki";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,11 +45,20 @@ import {
   wikiDraftStorageKey,
   type WikiDraft,
 } from "@/lib/wiki-draft";
+import {
+  buildWikiTree,
+  findWikiBacklinks,
+  normalizeWikiTags,
+  searchWikiPages,
+  type WikiTreeNode,
+} from "@/lib/wiki-organization";
 
 type Page = {
   id: string;
+  parentId: string | null;
   title: string;
   content: string;
+  tags: string[];
   revision: number;
   updatedAt: string;
 };
@@ -130,6 +144,16 @@ export function WikiViewClient({
   const latestContentByPageIdRef = useRef<Map<string, string>>(new Map());
   const revisionsRef = useRef<Map<string, number>>(
     new Map(initialPages.map((page) => [page.id, page.revision])),
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const visiblePages = useMemo(
+    () => searchWikiPages(pages, searchQuery),
+    [pages, searchQuery],
+  );
+  const pageTree = useMemo(() => buildWikiTree(visiblePages), [visiblePages]);
+  const backlinks = useMemo(
+    () => (selected ? findWikiBacklinks(pages, selected.id) : []),
+    [pages, selected],
   );
   const saveChainsRef = useRef<Map<string, Promise<void>>>(new Map());
 
@@ -249,13 +273,14 @@ export function WikiViewClient({
     [persistPage],
   );
 
-  function onCreatePage() {
+  function onCreatePage(parentId: string | null = null) {
     startTransition(async () => {
       try {
         const res = await upsertRoomWikiPage({
           viewId,
           title: "Halaman baru",
           content: "",
+          parentId,
         });
         if (res?.id) setRequestedId(res.id);
         router.refresh();
@@ -323,7 +348,7 @@ export function WikiViewClient({
           <Button
             type="button"
             size="sm"
-            onClick={onCreatePage}
+            onClick={() => onCreatePage()}
             className="gap-1.5"
           >
             <Plus className="size-3.5" aria-hidden />
@@ -344,7 +369,7 @@ export function WikiViewClient({
             </span>
             <button
               type="button"
-              onClick={onCreatePage}
+              onClick={() => onCreatePage()}
               className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 items-center justify-center rounded-md transition-colors"
               aria-label="Tambah halaman"
               title="Tambah halaman"
@@ -352,35 +377,31 @@ export function WikiViewClient({
               <Plus className="size-3.5" aria-hidden />
             </button>
           </div>
-          <ul role="list" className="space-y-0.5">
-            {pages.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => setRequestedId(p.id)}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                    selectedId === p.id
-                      ? "bg-primary/10 text-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <FileText
-                    className="mt-0.5 size-3.5 shrink-0"
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {p.title || "Tanpa judul"}
-                    </span>
-                    <span className="text-muted-foreground block truncate text-[10px]">
-                      {fmt(p.updatedAt)}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="relative py-1">
+            <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" aria-hidden />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Cari judul, isi, tag…"
+              aria-label="Cari halaman Wiki"
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          {pageTree.length > 0 ? (
+            <ul role="tree" className="space-y-0.5">
+              {pageTree.map((node) => (
+                <WikiTreeItem
+                  key={node.id}
+                  node={node}
+                  selectedId={selectedId}
+                  onSelect={setRequestedId}
+                  onCreateChild={(parentId) => onCreatePage(parentId)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground px-2 py-5 text-center text-xs">Tidak ada halaman yang cocok.</p>
+          )}
         </CardContent>
       </Card>
 
@@ -393,6 +414,11 @@ export function WikiViewClient({
           saveStatus={saveStatus}
           onTitleChange={(v) => onTitleChange(selected, v)}
           onContentChange={(v) => onContentChange(selected, v)}
+          pages={pages}
+          backlinks={backlinks}
+          onNavigatePage={setRequestedId}
+          onCreateChild={() => onCreatePage(selected.id)}
+          onOrganizationUpdated={() => router.refresh()}
           onDelete={() => onDeletePage(selected)}
           onRestored={() => {
             localStorage.removeItem(wikiDraftStorageKey(selected.id));
@@ -410,30 +436,120 @@ export function WikiViewClient({
   );
 }
 
+function WikiTreeItem({
+  node,
+  selectedId,
+  onSelect,
+  onCreateChild,
+  depth = 0,
+}: {
+  node: WikiTreeNode<Page>;
+  selectedId: string | null;
+  onSelect: (pageId: string) => void;
+  onCreateChild: (parentId: string) => void;
+  depth?: number;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const hasChildren = node.children.length > 0;
+  return (
+    <li
+      role="treeitem"
+      aria-expanded={hasChildren ? !collapsed : undefined}
+      aria-selected={selectedId === node.id}
+    >
+      <div
+        className={cn(
+          "group flex items-center rounded-md transition-colors",
+          selectedId === node.id ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+        style={{ paddingLeft: `${depth * 12 + 2}px` }}
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsed((value) => !value)}
+          disabled={!hasChildren}
+          aria-label={collapsed ? "Buka halaman turunan" : "Tutup halaman turunan"}
+          className="inline-flex size-6 shrink-0 items-center justify-center disabled:opacity-30"
+        >
+          <ChevronRight className={cn("size-3 transition-transform", hasChildren && !collapsed && "rotate-90")} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelect(node.id)}
+          className="flex min-w-0 flex-1 items-start gap-1.5 py-1.5 text-left text-sm"
+        >
+          <FileText className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">{node.title || "Tanpa judul"}</span>
+            {node.tags.length > 0 ? (
+              <span className="text-muted-foreground block truncate text-[10px]">{node.tags.join(" · ")}</span>
+            ) : null}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onCreateChild(node.id)}
+          className="hover:bg-background mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded opacity-0 group-hover:opacity-100 focus:opacity-100"
+          aria-label={`Tambah halaman di bawah ${node.title}`}
+          title="Tambah subhalaman"
+        >
+          <Plus className="size-3" />
+        </button>
+      </div>
+      {hasChildren && !collapsed ? (
+        <ul role="group" className="space-y-0.5">
+          {node.children.map((child) => (
+            <WikiTreeItem
+              key={child.id}
+              node={child}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              onCreateChild={onCreateChild}
+              depth={depth + 1}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 function PageEditor({
   roomId,
   viewId,
   page,
+  pages,
+  backlinks,
   saveStatus,
   onTitleChange,
   onContentChange,
   onDelete,
   onRestored,
+  onNavigatePage,
+  onCreateChild,
+  onOrganizationUpdated,
 }: {
   roomId: string;
   viewId: string;
   page: Page;
+  pages: Page[];
+  backlinks: Page[];
   saveStatus: SaveStatus;
   onTitleChange: (next: string) => void;
   onContentChange: (next: string) => void;
   onDelete: () => void;
   onRestored: () => void;
+  onNavigatePage: (pageId: string) => void;
+  onCreateChild: () => void;
+  onOrganizationUpdated: () => void;
 }) {
   /** Input judul & konten lokal untuk unduhan (konten editor tidak re-render parent tiap ketik). */
   const [titleDraft, setTitleDraft] = useState(page.title);
   const [contentDraft, setContentDraft] = useState(page.content);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [recoveryCandidate, setRecoveryCandidate] = useState<WikiDraft | null>(null);
+  const [tagsDraft, setTagsDraft] = useState(page.tags.join(", "));
+  const [organizationPending, startOrganizationTransition] = useTransition();
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -444,6 +560,31 @@ function PageEditor({
     }, 0);
     return () => clearTimeout(timeout);
   }, [page]);
+
+  function saveTags() {
+    const tags = normalizeWikiTags(tagsDraft.split(","));
+    setTagsDraft(tags.join(", "));
+    if (tags.join("|") === page.tags.join("|")) return;
+    startOrganizationTransition(async () => {
+      try {
+        await updateRoomWikiPageOrganization({ pageId: page.id, tags });
+        onOrganizationUpdated();
+      } catch (error) {
+        toast.error(actionErrorMessage(error, "Gagal menyimpan tag Wiki."));
+      }
+    });
+  }
+
+  function moveToParent(parentId: string | null) {
+    startOrganizationTransition(async () => {
+      try {
+        await updateRoomWikiPageOrganization({ pageId: page.id, parentId });
+        onOrganizationUpdated();
+      } catch (error) {
+        toast.error(actionErrorMessage(error, "Gagal memindahkan halaman."));
+      }
+    });
+  }
 
   return (
     <Card>
@@ -492,6 +633,45 @@ function PageEditor({
               <Trash2 className="size-3.5" aria-hidden />
             </Button>
           </div>
+        </div>
+
+        <div className="border-border flex flex-wrap items-center gap-2 border-y py-2">
+          <div className="relative min-w-48 flex-1">
+            <Tag className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" aria-hidden />
+            <Input
+              value={tagsDraft}
+              onChange={(event) => setTagsDraft(event.target.value)}
+              onBlur={saveTags}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  saveTags();
+                  event.currentTarget.blur();
+                }
+              }}
+              placeholder="tag-satu, tag-dua"
+              aria-label="Tag halaman Wiki"
+              className="h-8 pl-8 text-xs"
+              disabled={organizationPending}
+            />
+          </div>
+          <select
+            value={page.parentId ?? ""}
+            onChange={(event) => moveToParent(event.target.value || null)}
+            disabled={organizationPending}
+            aria-label="Halaman induk"
+            className="border-input bg-background h-8 max-w-56 rounded-md border px-2 text-xs"
+          >
+            <option value="">Root Wiki</option>
+            {pages.filter((candidate) => candidate.id !== page.id).map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.title || "Tanpa judul"}
+              </option>
+            ))}
+          </select>
+          <Button type="button" size="sm" variant="ghost" onClick={onCreateChild}>
+            <Plus className="size-3.5" /> Subhalaman
+          </Button>
         </div>
 
         {recoveryCandidate ? (
@@ -545,8 +725,30 @@ function PageEditor({
             formData.set("file", file);
             return uploadRoomWikiAttachment(page.id, formData);
           }}
+          wikiPages={pages.filter((candidate) => candidate.id !== page.id)}
+          onNavigateWikiPage={onNavigatePage}
           placeholder="Tulis catatan, keputusan rapat, atau brief singkat di sini…"
         />
+
+        {backlinks.length > 0 ? (
+          <div className="border-border border-t pt-4">
+            <div className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+              <Link2 className="size-3.5" /> {backlinks.length} backlink
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {backlinks.map((backlink) => (
+                <button
+                  key={backlink.id}
+                  type="button"
+                  onClick={() => onNavigatePage(backlink.id)}
+                  className="bg-muted hover:bg-muted/80 rounded-md px-2.5 py-1.5 text-xs"
+                >
+                  {backlink.title || "Tanpa judul"}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

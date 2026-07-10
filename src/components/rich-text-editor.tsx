@@ -73,6 +73,8 @@ export type RichTextEditorProps = {
   editable?: boolean;
   className?: string;
   onUploadFile?: (file: File) => Promise<UploadedRichTextFile>;
+  wikiPages?: { id: string; title: string }[];
+  onNavigateWikiPage?: (pageId: string) => void;
 };
 
 /**
@@ -86,6 +88,8 @@ export function RichTextEditor({
   editable = true,
   className,
   onUploadFile,
+  wikiPages = [],
+  onNavigateWikiPage,
 }: RichTextEditorProps) {
   const onUpdateRef = useRef(onUpdate);
   useEffect(() => {
@@ -247,6 +251,27 @@ export function RichTextEditor({
     [editor],
   );
 
+  const applyWikiPageLink = useCallback(
+    (page: { id: string; title: string }) => {
+      if (!editor) return;
+      const href = `#wiki-page-${page.id}`;
+      if (editor.state.selection.empty) {
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "text",
+            text: page.title || "Tanpa judul",
+            marks: [{ type: "link", attrs: { href } }],
+          })
+          .run();
+      } else {
+        editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+      }
+    },
+    [editor],
+  );
+
   const runSlashCommand = useCallback(
     (id: WikiSlashCommandId) => {
       if (!editor || !slashMenu) return;
@@ -355,11 +380,15 @@ export function RichTextEditor({
       if (e.altKey) return;
       e.preventDefault();
       e.stopPropagation();
+      if (href.startsWith("#wiki-page-") && onNavigateWikiPage) {
+        onNavigateWikiPage(href.slice("#wiki-page-".length));
+        return;
+      }
       window.open(href, "_blank", "noopener,noreferrer");
     };
     dom.addEventListener("click", onClick, true);
     return () => dom.removeEventListener("click", onClick, true);
-  }, [editor]);
+  }, [editor, onNavigateWikiPage]);
 
   if (!editor) {
     return (
@@ -392,6 +421,8 @@ export function RichTextEditor({
         initialUrl={linkInitialUrl}
         onApply={applyLink}
         onRemove={removeLink}
+        wikiPages={wikiPages}
+        onApplyWikiPage={applyWikiPageLink}
       />
       {mediaDialog.open ? (
         <RichTextMediaDialog

@@ -104,8 +104,10 @@ async function renderViewBody(
           viewId={view.id}
           pages={pages.map((p) => ({
             id: p.id,
+            parentId: p.parentId,
             title: p.title,
             content: p.content,
+            tags: p.tags,
             revision: p.revision,
             updatedAt: p.updatedAt.toISOString(),
           }))}

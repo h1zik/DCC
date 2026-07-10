@@ -639,6 +639,9 @@ model RoomWikiPage {
   id          String               @id @default(cuid())
   viewId      String
   view        RoomView             @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      RoomWikiPage?        @relation("WikiPageTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    RoomWikiPage[]       @relation("WikiPageTree")
   title       String               @db.VarChar(160)
   /**
    * Konten halaman dalam HTML terstruktur dari Tiptap.
@@ -646,6 +649,7 @@ model RoomWikiPage {
   content     String               @default("")
   /** Monotonik; dipakai optimistic concurrency guard saat auto-save. */
   revision    Int                  @default(0)
+  tags        String[]             @default([])
   sortOrder   Int                  @default(0)
   updatedById String?
   createdAt   DateTime             @default(now())
@@ -654,6 +658,7 @@ model RoomWikiPage {
   versions    RoomWikiPageVersion[]
 
   @@index([viewId, sortOrder])
+  @@index([viewId, parentId, sortOrder])
 }
 
 model RoomWikiPageVersion {

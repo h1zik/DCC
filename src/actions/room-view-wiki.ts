@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
 import { getUploadPublicDir } from "@/lib/upload-storage";
+import { normalizeWikiTags, WIKI_TAG_LIMITS } from "@/lib/wiki-organization";
 
 async function ensureWikiMember(viewId: string, userId: string) {
   const v = await prisma.roomView.findUniqueOrThrow({
@@ -26,6 +27,8 @@ const upsertSchema = z.object({
   title: z.string().trim().min(1).max(160),
   content: z.string().max(50_000).optional().default(""),
   baseRevision: z.number().int().min(0).optional(),
+  parentId: z.string().nullable().optional(),
+  tags: z.array(z.string().max(WIKI_TAG_LIMITS.maxLength)).max(WIKI_TAG_LIMITS.maxTags).optional(),
 });
 
 const VERSION_CHECKPOINT_MS = 60_000;
@@ -134,15 +137,25 @@ export async function upsertRoomWikiPage(input: z.infer<typeof upsertSchema>) {
       updatedAt: updated.updatedAt.toISOString(),
     };
   } else {
+    const parentId = data.parentId ?? null;
+    if (parentId) {
+      const parent = await prisma.roomWikiPage.findFirst({
+        where: { id: parentId, viewId: data.viewId },
+        select: { id: true },
+      });
+      if (!parent) throw new Error("Halaman induk tidak valid.");
+    }
     const max = await prisma.roomWikiPage.aggregate({
-      where: { viewId: data.viewId },
+      where: { viewId: data.viewId, parentId },
       _max: { sortOrder: true },
     });
     const created = await prisma.roomWikiPage.create({
       data: {
         viewId: data.viewId,
+        parentId,
         title: data.title,
         content: data.content ?? "",
+        tags: normalizeWikiTags(data.tags ?? []),
         updatedById: session.user.id,
         sortOrder: (max._max.sortOrder ?? -1) + 1,
         versions: {
@@ -165,6 +178,50 @@ export async function upsertRoomWikiPage(input: z.infer<typeof upsertSchema>) {
       updatedAt: created.updatedAt.toISOString(),
     };
   }
+}
+
+const organizationSchema = z.object({
+  pageId: z.string().min(1),
+  parentId: z.string().min(1).nullable().optional(),
+  tags: z.array(z.string().max(WIKI_TAG_LIMITS.maxLength)).max(WIKI_TAG_LIMITS.maxTags).optional(),
+});
+
+export async function updateRoomWikiPageOrganization(
+  input: z.infer<typeof organizationSchema>,
+) {
+  const session = await requireTasksRoomHubSession();
+  const data = organizationSchema.parse(input);
+  const page = await prisma.roomWikiPage.findUniqueOrThrow({
+    where: { id: data.pageId },
+    select: { viewId: true, parentId: true },
+  });
+  const roomId = await ensureWikiMember(page.viewId, session.user.id);
+
+  if (data.parentId !== undefined) {
+    if (data.parentId === data.pageId) throw new Error("Halaman tidak dapat menjadi induknya sendiri.");
+    let cursor = data.parentId;
+    let depth = 0;
+    while (cursor) {
+      if (cursor === data.pageId) throw new Error("Pemindahan ini akan membuat siklus halaman.");
+      const parent = await prisma.roomWikiPage.findFirst({
+        where: { id: cursor, viewId: page.viewId },
+        select: { parentId: true },
+      });
+      if (!parent) throw new Error("Halaman induk tidak valid.");
+      cursor = parent.parentId;
+      depth += 1;
+      if (depth > 20) throw new Error("Kedalaman halaman maksimal 20 tingkat.");
+    }
+  }
+
+  await prisma.roomWikiPage.update({
+    where: { id: data.pageId },
+    data: {
+      ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+      ...(data.tags !== undefined ? { tags: normalizeWikiTags(data.tags) } : {}),
+    },
+  });
+  revalidatePath(`/room/${roomId}/view/${page.viewId}`);
 }
 
 export async function listRoomWikiPageVersions(pageId: string) {
