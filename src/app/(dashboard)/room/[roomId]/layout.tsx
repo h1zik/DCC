@@ -32,7 +32,7 @@ export default async function RoomHubLayout({ children, params }: LayoutProps) {
   ]);
 
   return (
-    <div className="flex min-w-0 w-full flex-col gap-6 has-[>[data-chat-shell]]:min-h-0 has-[>[data-chat-shell]]:flex-1 has-[>[data-chat-shell]]:overflow-hidden has-[>[data-chat-shell]]:gap-0">
+    <div className="flex min-w-0 w-full flex-col gap-6 has-[>[data-chat-shell]]:min-h-0 has-[>[data-chat-shell]]:flex-1 has-[>[data-chat-shell]]:overflow-hidden has-[>[data-chat-shell]]:gap-0 md:has-[>[data-content-plan-shell]]:min-h-0 md:has-[>[data-content-plan-shell]]:flex-1 md:has-[>[data-content-plan-shell]]:overflow-hidden">
       <RoomHubNav
         roomId={roomId}
         roomName={room.name}

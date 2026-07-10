@@ -35,6 +35,8 @@ interface DataTableProps<TData, TValue> {
    * Contoh nilai: `"calc(100dvh - 280px)"` atau `"60vh"`.
    */
   viewportMaxHeight?: string;
+  /** Tinggi tetap viewport tabel; isi tabel akan scroll di dalam area ini. */
+  viewportHeight?: string;
   /** Sticky `<thead>` di atas saat scroll vertikal di dalam viewport. */
   stickyHeader?: boolean;
 }
@@ -63,6 +65,7 @@ export function DataTable<TData, TValue>({
   fitViewport = false,
   sortable = false,
   viewportMaxHeight,
+  viewportHeight,
   stickyHeader = false,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -77,7 +80,7 @@ export function DataTable<TData, TValue>({
     enableSorting: sortable,
   });
 
-  const useInternalScroll = !!viewportMaxHeight;
+  const useInternalScroll = !!viewportMaxHeight || !!viewportHeight;
 
   return (
     <div
@@ -86,12 +89,18 @@ export function DataTable<TData, TValue>({
         useInternalScroll ? "overflow-hidden bg-card" : "overflow-hidden",
         fitViewport && "min-w-0",
       )}
+      style={viewportHeight ? { height: viewportHeight } : undefined}
     >
       <Table
         fitViewport={fitViewport}
         className={fitViewport ? "text-[11px] leading-snug" : undefined}
         containerStyle={
-          useInternalScroll ? { maxHeight: viewportMaxHeight } : undefined
+          useInternalScroll
+            ? {
+                height: viewportHeight ? "100%" : undefined,
+                maxHeight: viewportMaxHeight,
+              }
+            : undefined
         }
       >
         <TableHeader sticky={stickyHeader}>

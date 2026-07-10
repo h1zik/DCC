@@ -409,9 +409,9 @@ export function GamificationEditor({
       className="border-border/60 bg-card/80 overflow-hidden rounded-2xl border shadow-sm backdrop-blur-sm"
       style={{ ["--profile-accent" as string]: accent }}
     >
-      <div className="grid lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:divide-x lg:divide-border/50">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] lg:divide-x lg:divide-border/50">
         {/* ── LIVE PREVIEW ── */}
-        <aside className="border-border/50 border-b bg-muted/20 p-5 lg:border-b-0 lg:p-6">
+        <aside className="border-border/50 min-w-0 border-b bg-muted/20 p-5 lg:border-b-0 lg:p-6">
           <div className="mb-3 flex items-center justify-between gap-2">
             <p className="text-foreground text-xs font-semibold uppercase tracking-wider">
               Pratinjau langsung
@@ -427,7 +427,7 @@ export function GamificationEditor({
           </div>
 
           <div className="border-border/70 relative overflow-hidden rounded-2xl border bg-card shadow-md ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
-            <div className="relative isolate aspect-[31/10] min-h-40 overflow-hidden">
+            <div className="relative isolate aspect-[31/10] min-h-40 w-full overflow-hidden">
               <LiveBackground background={preview.background} animate={animate} />
               <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
             </div>

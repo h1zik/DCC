@@ -23,7 +23,7 @@ type Row = {
   createdAt: string;
 };
 
-export function NotificationBell() {
+export function NotificationBell({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Row[]>([]);
   const [unread, setUnread] = useState(0);
@@ -81,7 +81,7 @@ export function NotificationBell() {
             type="button"
             variant="outline"
             size="icon-sm"
-            className="relative shrink-0"
+            className={cn("relative shrink-0", className)}
             aria-label="Notifikasi"
           />
         }

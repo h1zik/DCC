@@ -37,6 +37,8 @@ type AppThemeContextValue = {
   setPreset: (preset: AppThemePreset) => void;
   /** Set preset sekaligus tandai sebagai tersimpan (dipakai setelah persist). */
   commitPreset: (preset: AppThemePreset) => void;
+  /** Seperti `commitPreset`, tapi bisa sekalian meng-commit library kustom. */
+  commitSelection: (preset: AppThemePreset, lib?: ThemeLibrary) => void;
   /** Jadikan tema tersimpan sebagai aktif (dan pindah ke mode custom). */
   selectTheme: (id: string) => void;
   /** Buat tema baru (menyalin tema aktif bila ada) lalu aktifkan. */
@@ -91,6 +93,18 @@ export function AppThemeProvider({
     setPresetState(next);
     setSavedPreset(next);
   }, []);
+
+  const commitSelection = useCallback(
+    (next: AppThemePreset, lib?: ThemeLibrary) => {
+      setPresetState(next);
+      setSavedPreset(next);
+      if (lib) {
+        setLibraryState(lib);
+        setSavedLibrary(lib);
+      }
+    },
+    [],
+  );
 
   const selectTheme = useCallback((id: string) => {
     setLibraryState((lib) => ({ ...lib, activeId: id }));
@@ -179,6 +193,7 @@ export function AppThemeProvider({
       activeCustom,
       setPreset,
       commitPreset,
+      commitSelection,
       selectTheme,
       createTheme,
       updateActiveConfig,
@@ -198,6 +213,7 @@ export function AppThemeProvider({
       activeCustom,
       setPreset,
       commitPreset,
+      commitSelection,
       selectTheme,
       createTheme,
       updateActiveConfig,

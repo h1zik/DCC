@@ -7,8 +7,15 @@ import { AgentPanelToggle } from "@/components/agent/agent-right-panel";
 import { DirectChatHeaderButton } from "@/components/direct-chat/direct-chat-header-button";
 import { NotificationBell } from "@/components/notification-bell";
 import { OnlinePresence } from "@/components/online-presence";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeMenu } from "@/components/theme-menu";
 import { cn } from "@/lib/utils";
+
+/**
+ * Tombol aksi di dalam pill toolbar dibuat "blend": tanpa border/latar sendiri,
+ * mengandalkan hover & state aktif masing-masing komponen.
+ */
+const headerActionClass =
+  "rounded-full border-transparent bg-transparent shadow-none dark:border-transparent dark:bg-transparent";
 
 function SidebarToggleButton() {
   const { open, openMobile, isMobile, toggleSidebar } = useSidebar();
@@ -56,17 +63,18 @@ function SidebarToggleButton() {
 
 export function DashboardHeader() {
   return (
-    <header className="border-border/70 bg-background/90 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b px-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75 sm:gap-3 sm:px-4">
+    <header className="border-border/60 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-gradient-to-b from-background/95 to-background/80 px-3 shadow-[0_1px_2px_-1px_rgb(0_0_0/0.06)] backdrop-blur-md sm:gap-3 sm:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <SidebarToggleButton />
 
         <div
-          className="bg-border/70 hidden h-6 w-px shrink-0 sm:block"
+          className="bg-border/60 hidden h-5 w-px shrink-0 sm:block"
           aria-hidden
         />
 
         <div className="flex min-w-0 flex-col leading-none">
-          <span className="text-muted-foreground text-[10px] font-semibold tracking-[0.18em] uppercase">
+          <span className="text-muted-foreground/80 hidden items-center gap-1.5 text-[10px] font-semibold tracking-[0.18em] uppercase sm:flex">
+            <span className="bg-primary size-1.5 rounded-full" aria-hidden />
             Workspace
           </span>
           <span className="text-foreground truncate text-sm font-semibold tracking-tight">
@@ -89,11 +97,15 @@ export function DashboardHeader() {
           <OnlinePresence />
         </div>
 
-        <div className="flex items-center gap-1" role="toolbar" aria-label="Aksi cepat">
-          <AgentPanelToggle />
-          <DirectChatHeaderButton />
-          <ThemeToggle />
-          <NotificationBell />
+        <div
+          className="border-border/60 bg-muted/40 flex items-center gap-0.5 rounded-full border p-0.5"
+          role="toolbar"
+          aria-label="Aksi cepat"
+        >
+          <AgentPanelToggle className={headerActionClass} />
+          <DirectChatHeaderButton className={headerActionClass} />
+          <ThemeMenu className={headerActionClass} />
+          <NotificationBell className={headerActionClass} />
         </div>
       </div>
     </header>

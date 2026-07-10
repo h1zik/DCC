@@ -26,17 +26,23 @@ export function EditorLinkDialog({
   initialUrl,
   onApply,
   onRemove,
+  wikiPages = [],
+  onApplyWikiPage,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialUrl: string;
   onApply: (href: string) => void;
   onRemove: () => void;
+  wikiPages?: { id: string; title: string }[];
+  onApplyWikiPage?: (page: { id: string; title: string }) => void;
 }) {
   const [url, setUrl] = useState(initialUrl);
 
   useEffect(() => {
-    if (open) setUrl(initialUrl);
+    if (!open) return;
+    const timeout = setTimeout(() => setUrl(initialUrl), 0);
+    return () => clearTimeout(timeout);
   }, [open, initialUrl]);
 
   function handleApply() {
@@ -77,6 +83,26 @@ export function EditorLinkDialog({
             Klik tautan di dokumen untuk membukanya di tab baru. Alt+klik untuk mengedit
             teks di dalam tautan.
           </p>
+          {wikiPages.length > 0 && onApplyWikiPage ? (
+            <div className="space-y-1.5 pt-2">
+              <Label>Tautkan halaman Wiki</Label>
+              <div className="border-border max-h-40 overflow-y-auto rounded-md border p-1">
+                {wikiPages.map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    onClick={() => {
+                      onApplyWikiPage(page);
+                      onOpenChange(false);
+                    }}
+                    className="hover:bg-muted w-full truncate rounded px-2 py-1.5 text-left text-sm"
+                  >
+                    {page.title || "Tanpa judul"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex gap-2">

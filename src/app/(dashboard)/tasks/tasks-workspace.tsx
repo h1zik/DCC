@@ -20,6 +20,7 @@ import {
   createTask,
   createTaskTag,
   deleteTask,
+  updateTask,
 } from "@/actions/tasks";
 import {
   addTaskLinkAttachment,
@@ -517,9 +518,56 @@ export function TasksWorkspace({
       localTasks.map((t) => ({
         id: t.id,
         title: t.title,
+        status: t.status,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
         createdAt: t.createdAt.toISOString(),
+        projectId: t.projectId,
+        projectName: t.project.name,
+        projectContext: taskProjectContextLabel(t.project),
+        checklistDone: t.checklistItems.filter((item) => item.done).length,
+        checklistTotal: t.checklistItems.length,
+        assignees: t.assignees.map((a) => ({
+          id: a.user.id,
+          name: a.user.name,
+          email: a.user.email,
+          image: a.user.image ?? null,
+        })),
       })),
+    [localTasks],
+  );
+
+  const onGanttReschedule = useCallback(
+    async (taskId: string, nextDue: Date) => {
+      const task = localTasks.find((t) => t.id === taskId);
+      if (!task) return;
+      const prevDue = task.dueDate;
+      // Optimistis: geser bar dulu, rollback jika server menolak.
+      setLocalTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, dueDate: nextDue } : t)),
+      );
+      try {
+        await updateTask({
+          taskId: task.id,
+          projectId: task.projectId,
+          title: task.title,
+          description: task.description ?? null,
+          assigneeIds: task.assignees.map((a) => a.user.id),
+          tagIds: task.tags.map((row) => row.tagId),
+          vendorId: task.vendorId ?? null,
+          priority: task.priority,
+          dueDate: nextDue,
+          leadTimeDays: task.leadTimeDays,
+          isApprovalRequired: task.isApprovalRequired,
+          status: task.status,
+        });
+        toast.success("Tenggat diperbarui.");
+      } catch (e) {
+        setLocalTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, dueDate: prevDue } : t)),
+        );
+        toast.error(actionErrorMessage(e, "Gagal memperbarui tenggat."));
+      }
+    },
     [localTasks],
   );
   const calendarTasks: CalendarTask[] = useMemo(
@@ -912,10 +960,19 @@ export function TasksWorkspace({
         <TabsContent value="gantt" className="mt-0">
           <TasksGantt
             tasks={ganttTasks}
+            readOnly={showArchived}
             onTaskClick={(id) => {
               const t = localTasks.find((x) => x.id === id);
               if (t) openDetail(t);
             }}
+            onTaskReschedule={
+              showArchived
+                ? undefined
+                : (taskId, nextDue) => void onGanttReschedule(taskId, nextDue)
+            }
+            onAddTask={
+              isRoomManager && !showArchived ? () => openCreate() : undefined
+            }
           />
         </TabsContent>
         <TabsContent value="calendar" className="mt-0">

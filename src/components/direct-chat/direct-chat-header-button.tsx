@@ -9,7 +9,11 @@ import { Button } from "@/components/ui/button";
 import { canUseDirectChat } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
-export function DirectChatHeaderButton() {
+export function DirectChatHeaderButton({
+  className,
+}: {
+  className?: string;
+}) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const role = session?.user?.role;
@@ -75,7 +79,11 @@ export function DirectChatHeaderButton() {
       variant="outline"
       size="icon-sm"
       nativeButton={false}
-      className={cn("relative shrink-0", onMessagesPage && "bg-muted")}
+      className={cn(
+        "relative shrink-0",
+        className,
+        onMessagesPage && "border-primary/35 bg-primary/10 text-primary",
+      )}
       render={<Link href="/messages" />}
       aria-label={
         unread > 0

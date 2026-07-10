@@ -15,30 +15,57 @@ import { toast } from "sonner";
 import {
   BookOpen,
   Check,
+  ChevronRight,
+  CloudOff,
   FileText,
+  Link2,
   Loader2,
   Plus,
+  RefreshCw,
+  Search,
+  Tag,
   Trash2,
 } from "lucide-react";
 import {
   deleteRoomWikiPage,
+  uploadRoomWikiAttachment,
   upsertRoomWikiPage,
+  updateRoomWikiPageOrganization,
 } from "@/actions/room-view-wiki";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { WikiPageDownloadMenu } from "@/components/wiki-page-download-menu";
+import { WikiVersionHistory } from "@/components/wiki-version-history";
+import { WikiCollaborationPanel } from "@/components/wiki-collaboration-panel";
+import type { RoomMemberAvatarUser } from "@/components/room-member-avatar-stack";
 import { cn } from "@/lib/utils";
+import {
+  parseWikiDraft,
+  shouldRecoverWikiDraft,
+  wikiDraftStorageKey,
+  type WikiDraft,
+} from "@/lib/wiki-draft";
+import {
+  buildWikiTree,
+  findWikiBacklinks,
+  normalizeWikiTags,
+  searchWikiPages,
+  type WikiTreeNode,
+} from "@/lib/wiki-organization";
 
 type Page = {
   id: string;
+  parentId: string | null;
   title: string;
   content: string;
+  tags: string[];
+  revision: number;
   updatedAt: string;
 };
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
+type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error" | "conflict";
 
 const AUTOSAVE_DELAY_MS = 800;
 
@@ -66,10 +93,14 @@ function applyOptimistic(state: Page[], action: OptimisticAction): Page[] {
 export function WikiViewClient({
   roomId,
   viewId,
+  currentUserId,
+  members,
   pages: initialPages,
 }: {
   roomId: string;
   viewId: string;
+  currentUserId: string;
+  members: RoomMemberAvatarUser[];
   pages: Page[];
 }) {
   const router = useRouter();
@@ -117,6 +148,20 @@ export function WikiViewClient({
   /** Judul & konten terbaru per halaman (dari editor), untuk auto-save & unduhan. */
   const latestTitleByPageIdRef = useRef<Map<string, string>>(new Map());
   const latestContentByPageIdRef = useRef<Map<string, string>>(new Map());
+  const revisionsRef = useRef<Map<string, number>>(
+    new Map(initialPages.map((page) => [page.id, page.revision])),
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const visiblePages = useMemo(
+    () => searchWikiPages(pages, searchQuery),
+    [pages, searchQuery],
+  );
+  const pageTree = useMemo(() => buildWikiTree(visiblePages), [visiblePages]);
+  const backlinks = useMemo(
+    () => (selected ? findWikiBacklinks(pages, selected.id) : []),
+    [pages, selected],
+  );
+  const saveChainsRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const persistPage = useCallback(
     (page: Page, patch: { title?: string; content?: string }) => {
@@ -124,25 +169,44 @@ export function WikiViewClient({
         patch.title ??
         latestTitleByPageIdRef.current.get(page.id) ??
         page.title;
-      setSaveState({ pageId: page.id, status: "saving" });
-      startTransition(async () => {
-        try {
-          await upsertRoomWikiPage({
-            id: page.id,
-            viewId,
-            title: resolvedTitle,
-            content: patch.content ?? page.content,
-          });
-          setSaveState({ pageId: page.id, status: "saved" });
-          router.refresh();
-        } catch (err) {
-          setSaveState({ pageId: page.id, status: "error" });
-          toast.error(
-            actionErrorMessage(err, "Gagal menyimpan halaman."));
-        }
-      });
+      const resolvedContent =
+        patch.content ??
+        latestContentByPageIdRef.current.get(page.id) ??
+        page.content;
+      const snapshot = { title: resolvedTitle, content: resolvedContent };
+      const previous = saveChainsRef.current.get(page.id) ?? Promise.resolve();
+      const next = previous
+        .catch(() => undefined)
+        .then(async () => {
+          setSaveState({ pageId: page.id, status: "saving" });
+          try {
+            const result = await upsertRoomWikiPage({
+              id: page.id,
+              viewId,
+              title: snapshot.title,
+              content: snapshot.content,
+              baseRevision: revisionsRef.current.get(page.id) ?? page.revision,
+            });
+            if (result.conflict) {
+              setSaveState({ pageId: page.id, status: "conflict" });
+              toast.error("Halaman diubah pengguna lain. Draft lokal tetap aman.");
+              return;
+            }
+            revisionsRef.current.set(page.id, result.revision);
+            const latestTitle = latestTitleByPageIdRef.current.get(page.id) ?? page.title;
+            const latestContent = latestContentByPageIdRef.current.get(page.id) ?? page.content;
+            if (latestTitle === snapshot.title && latestContent === snapshot.content) {
+              localStorage.removeItem(wikiDraftStorageKey(page.id));
+              setSaveState({ pageId: page.id, status: "saved" });
+            }
+          } catch (err) {
+            setSaveState({ pageId: page.id, status: "error" });
+            toast.error(actionErrorMessage(err, "Gagal menyimpan halaman. Draft lokal tetap aman."));
+          }
+        });
+      saveChainsRef.current.set(page.id, next);
     },
-    [router, viewId],
+    [viewId],
   );
 
   // Judul: JANGAN pakai useOptimistic + startTransition sinkron — pola itu
@@ -151,6 +215,21 @@ export function WikiViewClient({
   const onTitleChange = useCallback(
     (page: Page, nextTitle: string) => {
       latestTitleByPageIdRef.current.set(page.id, nextTitle);
+      setSaveState({ pageId: page.id, status: "dirty" });
+      try {
+        localStorage.setItem(
+          wikiDraftStorageKey(page.id),
+          JSON.stringify({
+            pageId: page.id,
+            title: nextTitle,
+            content: latestContentByPageIdRef.current.get(page.id) ?? page.content,
+            baseRevision: revisionsRef.current.get(page.id) ?? page.revision,
+            savedAt: new Date().toISOString(),
+          } satisfies WikiDraft),
+        );
+      } catch {
+        // Browser dapat menolak localStorage; server auto-save tetap berjalan.
+      }
       const existing = titleTimersRef.current.get(page.id);
       if (existing) clearTimeout(existing);
       if (!nextTitle.trim()) return;
@@ -174,6 +253,21 @@ export function WikiViewClient({
       if (!latestTitleByPageIdRef.current.has(page.id)) {
         latestTitleByPageIdRef.current.set(page.id, page.title);
       }
+      setSaveState({ pageId: page.id, status: "dirty" });
+      try {
+        localStorage.setItem(
+          wikiDraftStorageKey(page.id),
+          JSON.stringify({
+            pageId: page.id,
+            title: latestTitleByPageIdRef.current.get(page.id) ?? page.title,
+            content: nextContent,
+            baseRevision: revisionsRef.current.get(page.id) ?? page.revision,
+            savedAt: new Date().toISOString(),
+          } satisfies WikiDraft),
+        );
+      } catch {
+        // Browser dapat menolak localStorage; server auto-save tetap berjalan.
+      }
       const existing = contentTimersRef.current.get(page.id);
       if (existing) clearTimeout(existing);
       const t = setTimeout(() => {
@@ -185,13 +279,14 @@ export function WikiViewClient({
     [persistPage],
   );
 
-  function onCreatePage() {
+  function onCreatePage(parentId: string | null = null) {
     startTransition(async () => {
       try {
         const res = await upsertRoomWikiPage({
           viewId,
           title: "Halaman baru",
           content: "",
+          parentId,
         });
         if (res?.id) setRequestedId(res.id);
         router.refresh();
@@ -230,6 +325,23 @@ export function WikiViewClient({
     };
   }, []);
 
+  useEffect(() => {
+    const retryDrafts = () => {
+      for (const page of initialPages) {
+        const draft = parseWikiDraft(
+          localStorage.getItem(wikiDraftStorageKey(page.id)),
+          page.id,
+        );
+        if (!draft) continue;
+        latestTitleByPageIdRef.current.set(page.id, draft.title);
+        latestContentByPageIdRef.current.set(page.id, draft.content);
+        persistPage(page, { title: draft.title, content: draft.content });
+      }
+    };
+    window.addEventListener("online", retryDrafts);
+    return () => window.removeEventListener("online", retryDrafts);
+  }, [initialPages, persistPage]);
+
   if (pages.length === 0) {
     return (
       <Card>
@@ -242,7 +354,7 @@ export function WikiViewClient({
           <Button
             type="button"
             size="sm"
-            onClick={onCreatePage}
+            onClick={() => onCreatePage()}
             className="gap-1.5"
           >
             <Plus className="size-3.5" aria-hidden />
@@ -263,7 +375,7 @@ export function WikiViewClient({
             </span>
             <button
               type="button"
-              onClick={onCreatePage}
+              onClick={() => onCreatePage()}
               className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 items-center justify-center rounded-md transition-colors"
               aria-label="Tambah halaman"
               title="Tambah halaman"
@@ -271,35 +383,31 @@ export function WikiViewClient({
               <Plus className="size-3.5" aria-hidden />
             </button>
           </div>
-          <ul role="list" className="space-y-0.5">
-            {pages.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => setRequestedId(p.id)}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                    selectedId === p.id
-                      ? "bg-primary/10 text-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <FileText
-                    className="mt-0.5 size-3.5 shrink-0"
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {p.title || "Tanpa judul"}
-                    </span>
-                    <span className="text-muted-foreground block truncate text-[10px]">
-                      {fmt(p.updatedAt)}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="relative py-1">
+            <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" aria-hidden />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Cari judul, isi, tag…"
+              aria-label="Cari halaman Wiki"
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          {pageTree.length > 0 ? (
+            <ul role="tree" className="space-y-0.5">
+              {pageTree.map((node) => (
+                <WikiTreeItem
+                  key={node.id}
+                  node={node}
+                  selectedId={selectedId}
+                  onSelect={setRequestedId}
+                  onCreateChild={(parentId) => onCreatePage(parentId)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground px-2 py-5 text-center text-xs">Tidak ada halaman yang cocok.</p>
+          )}
         </CardContent>
       </Card>
 
@@ -309,10 +417,21 @@ export function WikiViewClient({
           roomId={roomId}
           viewId={viewId}
           page={selected}
+          currentUserId={currentUserId}
+          members={members}
           saveStatus={saveStatus}
           onTitleChange={(v) => onTitleChange(selected, v)}
           onContentChange={(v) => onContentChange(selected, v)}
+          pages={pages}
+          backlinks={backlinks}
+          onNavigatePage={setRequestedId}
+          onCreateChild={() => onCreatePage(selected.id)}
+          onOrganizationUpdated={() => router.refresh()}
           onDelete={() => onDeletePage(selected)}
+          onRestored={() => {
+            localStorage.removeItem(wikiDraftStorageKey(selected.id));
+            router.refresh();
+          }}
         />
       ) : (
         <Card>
@@ -325,30 +444,162 @@ export function WikiViewClient({
   );
 }
 
+function WikiTreeItem({
+  node,
+  selectedId,
+  onSelect,
+  onCreateChild,
+  depth = 0,
+}: {
+  node: WikiTreeNode<Page>;
+  selectedId: string | null;
+  onSelect: (pageId: string) => void;
+  onCreateChild: (parentId: string) => void;
+  depth?: number;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const children = node.children ?? [];
+  const tags = node.tags ?? [];
+  const hasChildren = children.length > 0;
+  return (
+    <li
+      role="treeitem"
+      aria-expanded={hasChildren ? !collapsed : undefined}
+      aria-selected={selectedId === node.id}
+    >
+      <div
+        className={cn(
+          "group flex items-center rounded-md transition-colors",
+          selectedId === node.id ? "bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+        style={{ paddingLeft: `${depth * 12 + 2}px` }}
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsed((value) => !value)}
+          disabled={!hasChildren}
+          aria-label={collapsed ? "Buka halaman turunan" : "Tutup halaman turunan"}
+          className="inline-flex size-6 shrink-0 items-center justify-center disabled:opacity-30"
+        >
+          <ChevronRight className={cn("size-3 transition-transform", hasChildren && !collapsed && "rotate-90")} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelect(node.id)}
+          className="flex min-w-0 flex-1 items-start gap-1.5 py-1.5 text-left text-sm"
+        >
+          <FileText className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">{node.title || "Tanpa judul"}</span>
+            {tags.length > 0 ? (
+              <span className="text-muted-foreground block truncate text-[10px]">{tags.join(" · ")}</span>
+            ) : null}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onCreateChild(node.id)}
+          className="hover:bg-background mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded opacity-0 group-hover:opacity-100 focus:opacity-100"
+          aria-label={`Tambah halaman di bawah ${node.title}`}
+          title="Tambah subhalaman"
+        >
+          <Plus className="size-3" />
+        </button>
+      </div>
+      {hasChildren && !collapsed ? (
+        <ul role="group" className="space-y-0.5">
+          {children.map((child) => (
+            <WikiTreeItem
+              key={child.id}
+              node={child}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              onCreateChild={onCreateChild}
+              depth={depth + 1}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 function PageEditor({
   roomId,
   viewId,
   page,
+  currentUserId,
+  members,
+  pages,
+  backlinks,
   saveStatus,
   onTitleChange,
   onContentChange,
   onDelete,
+  onRestored,
+  onNavigatePage,
+  onCreateChild,
+  onOrganizationUpdated,
 }: {
   roomId: string;
   viewId: string;
   page: Page;
+  currentUserId: string;
+  members: RoomMemberAvatarUser[];
+  pages: Page[];
+  backlinks: Page[];
   saveStatus: SaveStatus;
   onTitleChange: (next: string) => void;
   onContentChange: (next: string) => void;
   onDelete: () => void;
+  onRestored: () => void;
+  onNavigatePage: (pageId: string) => void;
+  onCreateChild: () => void;
+  onOrganizationUpdated: () => void;
 }) {
   /** Input judul & konten lokal untuk unduhan (konten editor tidak re-render parent tiap ketik). */
   const [titleDraft, setTitleDraft] = useState(page.title);
   const [contentDraft, setContentDraft] = useState(page.content);
+  const [editorGeneration, setEditorGeneration] = useState(0);
+  const [recoveryCandidate, setRecoveryCandidate] = useState<WikiDraft | null>(null);
+  const [tagsDraft, setTagsDraft] = useState((page.tags ?? []).join(", "));
+  const [organizationPending, startOrganizationTransition] = useTransition();
+  const [canEdit, setCanEdit] = useState(false);
+
   useEffect(() => {
-    setTitleDraft(page.title);
-    setContentDraft(page.content);
-  }, [page.id, page.title, page.content]);
+    const timeout = setTimeout(() => {
+      const draft = parseWikiDraft(localStorage.getItem(wikiDraftStorageKey(page.id)), page.id);
+      if (draft && shouldRecoverWikiDraft(draft, page)) {
+        setRecoveryCandidate(draft);
+      }
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [page]);
+
+  function saveTags() {
+    const tags = normalizeWikiTags(tagsDraft.split(","));
+    setTagsDraft(tags.join(", "));
+    if (tags.join("|") === (page.tags ?? []).join("|")) return;
+    startOrganizationTransition(async () => {
+      try {
+        await updateRoomWikiPageOrganization({ pageId: page.id, tags });
+        onOrganizationUpdated();
+      } catch (error) {
+        toast.error(actionErrorMessage(error, "Gagal menyimpan tag Wiki."));
+      }
+    });
+  }
+
+  function moveToParent(parentId: string | null) {
+    startOrganizationTransition(async () => {
+      try {
+        await updateRoomWikiPageOrganization({ pageId: page.id, parentId });
+        onOrganizationUpdated();
+      } catch (error) {
+        toast.error(actionErrorMessage(error, "Gagal memindahkan halaman."));
+      }
+    });
+  }
 
   return (
     <Card>
@@ -357,6 +608,7 @@ function PageEditor({
           <div className="min-w-0 flex-1">
             <Input
               value={titleDraft}
+              disabled={!canEdit}
               onChange={(e) => {
                 const v = e.target.value;
                 setTitleDraft(v);
@@ -372,6 +624,13 @@ function PageEditor({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <WikiVersionHistory
+              pageId={page.id}
+              currentTitle={titleDraft}
+              currentContent={contentDraft}
+              restoreDisabled={!canEdit || saveStatus === "dirty" || saveStatus === "saving"}
+              onRestored={onRestored}
+            />
             <WikiPageDownloadMenu
               roomId={roomId}
               viewId={viewId}
@@ -386,19 +645,134 @@ function PageEditor({
               size="icon-sm"
               aria-label="Hapus halaman"
               onClick={onDelete}
+              disabled={!canEdit}
             >
               <Trash2 className="size-3.5" aria-hidden />
             </Button>
           </div>
         </div>
 
+        <div className="border-border flex flex-wrap items-center gap-2 border-y py-2">
+          <div className="relative min-w-48 flex-1">
+            <Tag className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" aria-hidden />
+            <Input
+              value={tagsDraft}
+              onChange={(event) => setTagsDraft(event.target.value)}
+              onBlur={saveTags}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  saveTags();
+                  event.currentTarget.blur();
+                }
+              }}
+              placeholder="tag-satu, tag-dua"
+              aria-label="Tag halaman Wiki"
+              className="h-8 pl-8 text-xs"
+              disabled={organizationPending || !canEdit}
+            />
+          </div>
+          <select
+            value={page.parentId ?? ""}
+            onChange={(event) => moveToParent(event.target.value || null)}
+            disabled={organizationPending || !canEdit}
+            aria-label="Halaman induk"
+            className="border-input bg-background h-8 max-w-56 rounded-md border px-2 text-xs"
+          >
+            <option value="">Root Wiki</option>
+            {pages.filter((candidate) => candidate.id !== page.id).map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.title || "Tanpa judul"}
+              </option>
+            ))}
+          </select>
+          <Button type="button" size="sm" variant="ghost" onClick={onCreateChild} disabled={!canEdit}>
+            <Plus className="size-3.5" /> Subhalaman
+          </Button>
+        </div>
+
+        {recoveryCandidate ? (
+          <div className="border-amber-500/30 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+            <div>
+              <p className="font-medium">Draft lokal yang belum tersimpan ditemukan</p>
+              <p className="text-muted-foreground text-xs">
+                Disimpan {fmt(recoveryCandidate.savedAt)}. Pilih pulihkan agar perubahan tidak hilang.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  localStorage.removeItem(wikiDraftStorageKey(page.id));
+                  setRecoveryCandidate(null);
+                }}
+              >
+                Buang draft
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setTitleDraft(recoveryCandidate.title);
+                  setContentDraft(recoveryCandidate.content);
+                  setEditorGeneration((value) => value + 1);
+                  onTitleChange(recoveryCandidate.title);
+                  onContentChange(recoveryCandidate.content);
+                  setRecoveryCandidate(null);
+                }}
+              >
+                <RefreshCw className="size-3.5" />
+                Pulihkan draft
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <RichTextEditor
-          initialContent={page.content}
+          key={editorGeneration}
+          initialContent={contentDraft}
+          editable={canEdit}
           onUpdate={(html) => {
             setContentDraft(html);
             onContentChange(html);
           }}
+          onUploadFile={async (file) => {
+            const formData = new FormData();
+            formData.set("file", file);
+            return uploadRoomWikiAttachment(page.id, formData);
+          }}
+          wikiPages={pages.filter((candidate) => candidate.id !== page.id)}
+          onNavigateWikiPage={onNavigatePage}
           placeholder="Tulis catatan, keputusan rapat, atau brief singkat di sini…"
+        />
+
+        {backlinks.length > 0 ? (
+          <div className="border-border border-t pt-4">
+            <div className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+              <Link2 className="size-3.5" /> {backlinks.length} backlink
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {backlinks.map((backlink) => (
+                <button
+                  key={backlink.id}
+                  type="button"
+                  onClick={() => onNavigatePage(backlink.id)}
+                  className="bg-muted hover:bg-muted/80 rounded-md px-2.5 py-1.5 text-xs"
+                >
+                  {backlink.title || "Tanpa judul"}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <WikiCollaborationPanel
+          pageId={page.id}
+          currentUserId={currentUserId}
+          members={members}
+          onEditableChange={setCanEdit}
         />
       </CardContent>
     </Card>
@@ -406,6 +780,13 @@ function PageEditor({
 }
 
 function SaveBadge({ status }: { status: SaveStatus }) {
+  if (status === "dirty") {
+    return (
+      <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+        Perubahan belum disimpan
+      </span>
+    );
+  }
   if (status === "saving") {
     return (
       <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
@@ -425,7 +806,16 @@ function SaveBadge({ status }: { status: SaveStatus }) {
   if (status === "error") {
     return (
       <span className="text-destructive inline-flex items-center gap-1 text-xs">
-        Gagal menyimpan
+        <CloudOff className="size-3" aria-hidden />
+        Gagal · draft aman
+      </span>
+    );
+  }
+  if (status === "conflict") {
+    return (
+      <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1 text-xs">
+        <RefreshCw className="size-3" aria-hidden />
+        Konflik · muat ulang
       </span>
     );
   }

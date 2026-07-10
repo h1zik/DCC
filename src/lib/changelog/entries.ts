@@ -37,6 +37,46 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-10-tasks-gantt-revamp",
+    date: "2026-07-10",
+    title: "Gantt Tasks dirombak: geser jadwal, filter, dan status berwarna",
+    category: "improved",
+    description:
+      "Tampilan Gantt di menu Tasks kini jauh lebih interaktif. Kamu bisa menggeser bar tugas langsung di garis waktu untuk mengubah jadwal, melihat status (belum mulai/berjalan/selesai/telat) lewat warna, serta avatar penanggung jawab dan progres checklist di setiap baris. Ada panel daftar tugas yang bisa dilipat, filter status & proyek, dan tombol tambah tugas langsung dari Gantt.",
+    highlights: [
+      "Geser bar untuk reschedule tugas, lengkap dengan pembaruan langsung & rollback jika gagal",
+      "Warna bar mengikuti status tugas, termasuk penanda telat",
+      "Avatar penanggung jawab & progres checklist tampil di setiap baris",
+      "Filter status/proyek, panel daftar yang bisa dilipat, dan tombol tambah tugas baru",
+    ],
+  },
+  {
+    id: "2026-07-10-theme-menu-and-header",
+    date: "2026-07-10",
+    title: "Menu tema baru di header + perbaikan warna tema custom",
+    category: "improved",
+    description:
+      "Pemilihan tema (preset, tema custom tersimpan, dan mode terang/gelap) kini digabung jadi satu menu ringkas di header, menggantikan tombol toggle lama. Tombol-tombol header (notifikasi, chat langsung, panel agent, tema) sekarang duduk rapi dalam satu toolbar. Kami juga memperbaiki perhitungan kontras warna tema custom — sebelumnya beberapa pilihan warna aksen bisa membuat teks jadi kekuningan/kecokelatan; sekarang kontras dihitung dengan benar sesuai standar WCAG.",
+    highlights: [
+      "Satu menu tema di header untuk preset, tema custom, dan mode terang/gelap",
+      "Toolbar header lebih rapi untuk notifikasi, chat, panel agent, dan tema",
+      "Perbaikan bug: warna teks pada tema custom kini kontras dengan benar",
+    ],
+  },
+  {
+    id: "2026-07-10-brand-logo-upload",
+    date: "2026-07-10",
+    title: "Upload & crop logo brand langsung dari panel Brands",
+    category: "improved",
+    description:
+      "Logo brand tidak lagi diisi lewat tautan URL — sekarang admin bisa mengunggah file gambar langsung dan mengatur posisi/zoom-nya lewat editor crop sebelum disimpan. File lama otomatis dibersihkan saat logo diganti atau brand dihapus.",
+    highlights: [
+      "Unggah file gambar untuk logo brand, lengkap editor crop & zoom",
+      "Pratinjau langsung saat mengatur posisi logo",
+      "File logo lama dibersihkan otomatis saat diganti/dihapus",
+    ],
+  },
+  {
     id: "2026-07-09-cosmetic-catalog-admin",
     date: "2026-07-09",
     title: "Katalog kosmetik dikelola admin: background & frame animasi (Lottie)",

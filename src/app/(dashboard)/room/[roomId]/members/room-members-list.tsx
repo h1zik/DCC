@@ -227,7 +227,7 @@ export function RoomMembersList({
                     {meta.description}
                   </span>
                 </div>
-                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <ul className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {items.map((member) => {
                     const access = roomMemberToProcessAccess(member);
                     const fullAccess = access.role === ROOM_PROJECT_MANAGER_ROLE;
@@ -236,21 +236,21 @@ export function RoomMembersList({
                     return (
                       <li
                         key={member.id}
-                        className="bg-card hover:border-primary/30 hover:shadow-md transition-shadow rounded-xl border border-border p-3 shadow-sm"
+                        className="bg-card hover:border-primary/30 hover:shadow-md min-w-0 rounded-xl border border-border p-3 shadow-sm transition-shadow"
                       >
-                        <div className="flex items-start gap-3">
+                        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1 min-[400px]:grid-cols-[auto_minmax(0,1fr)_auto]">
                           {member.user.image ? (
                             <Image
                               src={member.user.image}
                               alt={displayName}
                               width={44}
                               height={44}
-                              className="border-border size-11 shrink-0 rounded-full border object-cover"
+                              className="border-border row-span-2 size-11 shrink-0 rounded-full border object-cover"
                               unoptimized
                             />
                           ) : (
                             <div
-                              className="border-border bg-muted text-muted-foreground flex size-11 shrink-0 items-center justify-center rounded-full border text-sm font-semibold"
+                              className="border-border bg-muted text-muted-foreground row-span-2 flex size-11 shrink-0 items-center justify-center rounded-full border text-sm font-semibold"
                               aria-hidden
                             >
                               {userInitial(member.user.name, member.user.email)}
@@ -267,7 +267,10 @@ export function RoomMembersList({
                               {member.user.email}
                             </p>
                           </div>
-                          <Badge variant="outline" className="shrink-0 text-[10px]">
+                          <Badge
+                            variant="outline"
+                            className="col-start-2 row-start-2 max-w-full justify-self-start text-[10px] min-[400px]:col-start-3 min-[400px]:row-start-1"
+                          >
                             {roomRoleLabel(access.role)}
                           </Badge>
                         </div>
