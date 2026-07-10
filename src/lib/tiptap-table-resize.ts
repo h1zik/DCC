@@ -1,12 +1,13 @@
 import { Extension, type Editor } from "@tiptap/core";
-import { TableRow } from "@tiptap/extension-table";
+import { TableRow, TableView } from "@tiptap/extension-table";
 import type { Node as ProseMirrorNode, NodeSpec } from "@tiptap/pm/model";
 import { Plugin } from "@tiptap/pm/state";
-import { selectionCell, TableMap } from "@tiptap/pm/tables";
+import { columnResizing, selectionCell, TableMap } from "@tiptap/pm/tables";
 
 export const WIKI_TABLE_ROW_MIN_HEIGHT = 28;
 export const WIKI_TABLE_COLUMN_MIN_WIDTH = 48;
 export const WIKI_IMAGE_MIN_WIDTH = 80;
+export const WIKI_TABLE_COLUMN_HANDLE_WIDTH = 12;
 
 function clampInteger(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
@@ -59,6 +60,29 @@ export const ResizableTableRow = TableRow.extend({
         },
       },
     };
+  },
+});
+
+/**
+ * Tiptap hanya memasang columnResizing jika editor editable saat dibuat.
+ * Wiki mulai read-only sambil menunggu lock, jadi plugin harus selalu ada;
+ * handler ProseMirror sendiri tetap menghormati `view.editable`.
+ */
+export function createWikiTableColumnResizePlugin() {
+  return columnResizing({
+    handleWidth: WIKI_TABLE_COLUMN_HANDLE_WIDTH,
+    cellMinWidth: WIKI_TABLE_COLUMN_MIN_WIDTH,
+    defaultCellMinWidth: WIKI_TABLE_COLUMN_MIN_WIDTH,
+    lastColumnResizable: true,
+    View: TableView,
+  });
+}
+
+export const TableColumnResize = Extension.create({
+  name: "tableColumnResize",
+
+  addProseMirrorPlugins() {
+    return [createWikiTableColumnResizePlugin()];
   },
 });
 
@@ -151,6 +175,7 @@ export const TableRowResize = Extension.create({
         view: (editorView) => {
           let hoveredRow: HTMLTableRowElement | null = null;
           let removeDragListeners: (() => void) | null = null;
+          let animationFrame: number | null = null;
 
           const clearHoveredRow = () => {
             hoveredRow?.removeAttribute("data-row-resize-hover");
@@ -194,18 +219,34 @@ export const TableRowResize = Extension.create({
             event.preventDefault();
             const startY = event.clientY;
             const startHeight = row.getBoundingClientRect().height;
+            const previousInlineHeight = row.style.height;
             let nextHeight = clampWikiTableRowHeight(startHeight);
             row.setAttribute("data-row-resizing", "true");
+            const previousCursor = document.body.style.cursor;
+            const previousUserSelect = document.body.style.userSelect;
+            document.body.style.cursor = "row-resize";
+            document.body.style.userSelect = "none";
+
+            const renderHeight = () => {
+              animationFrame = null;
+              row.style.height = `${nextHeight}px`;
+              row.style.setProperty("--wiki-live-row-height", `${nextHeight}px`);
+            };
 
             const onDrag = (moveEvent: MouseEvent) => {
               nextHeight = clampWikiTableRowHeight(startHeight + moveEvent.clientY - startY);
-              row.style.height = `${nextHeight}px`;
+              if (animationFrame == null) animationFrame = requestAnimationFrame(renderHeight);
             };
             const onDrop = () => {
               document.removeEventListener("mousemove", onDrag);
               document.removeEventListener("mouseup", onDrop);
               removeDragListeners = null;
+              if (animationFrame != null) cancelAnimationFrame(animationFrame);
+              animationFrame = null;
+              renderHeight();
               row.removeAttribute("data-row-resizing");
+              document.body.style.cursor = previousCursor;
+              document.body.style.userSelect = previousUserSelect;
               const node = this.editor.state.doc.nodeAt(rowPosition);
               if (isTableRow(node)) {
                 this.editor.view.dispatch(
@@ -215,10 +256,18 @@ export const TableRowResize = Extension.create({
                   }),
                 );
               }
+              row.style.removeProperty("--wiki-live-row-height");
             };
             removeDragListeners = () => {
               document.removeEventListener("mousemove", onDrag);
               document.removeEventListener("mouseup", onDrop);
+              if (animationFrame != null) cancelAnimationFrame(animationFrame);
+              animationFrame = null;
+              row.removeAttribute("data-row-resizing");
+              row.style.removeProperty("--wiki-live-row-height");
+              row.style.height = previousInlineHeight;
+              document.body.style.cursor = previousCursor;
+              document.body.style.userSelect = previousUserSelect;
             };
             document.addEventListener("mousemove", onDrag);
             document.addEventListener("mouseup", onDrop);

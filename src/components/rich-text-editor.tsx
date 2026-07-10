@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { TableKit } from "@tiptap/extension-table";
@@ -14,6 +13,10 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import Youtube from "@tiptap/extension-youtube";
 import { common, createLowlight } from "lowlight";
 import {
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
   Bold,
   Braces,
   Code,
@@ -68,8 +71,14 @@ import {
   ResizableTableRow,
   setActiveTableColumnWidth,
   setActiveTableRowHeight,
+  TableColumnResize,
   TableRowResize,
 } from "@/lib/tiptap-table-resize";
+import {
+  normalizeWikiImageAlignment,
+  ResizableWikiImage,
+  type WikiImageAlignment,
+} from "@/lib/tiptap-image-layout";
 
 const lowlight = createLowlight(common);
 
@@ -146,18 +155,17 @@ export function RichTextEditor({
       Placeholder.configure({ placeholder }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      TableColumnResize,
       TableKit.configure({
         table: {
-          resizable: true,
-          lastColumnResizable: true,
-          handleWidth: 8,
-          cellMinWidth: 48,
+          resizable: false,
+          View: null,
         },
         tableRow: false,
       }),
       ResizableTableRow,
       TableRowResize,
-      Image.configure({
+      ResizableWikiImage.configure({
         allowBase64: false,
         resize: {
           enabled: true,
@@ -744,6 +752,21 @@ function renderedImageWidth(editor: Editor): number | null {
   return width > 0 ? Math.round(width) : null;
 }
 
+function setSelectedImageAlignment(
+  editor: Editor,
+  alignment: WikiImageAlignment,
+): boolean {
+  if (!editor.isActive("image")) return false;
+  const image = selectedImageElement(editor);
+  const changed = editor
+    .chain()
+    .focus()
+    .updateAttributes("image", { alignment })
+    .run();
+  image?.setAttribute("data-align", alignment);
+  return changed;
+}
+
 function setSelectedImageWidth(editor: Editor, value: number | null): boolean {
   if (!editor.isActive("image")) return false;
   const image = selectedImageElement(editor);
@@ -826,10 +849,28 @@ function TableDimensionControls({
   );
 }
 
-function ImageDimensionControls({ editor, width }: { editor: Editor; width: number | null }) {
+function ImageDimensionControls({
+  editor,
+  width,
+  alignment,
+}: {
+  editor: Editor;
+  width: number | null;
+  alignment: WikiImageAlignment;
+}) {
   const applyPercentage = (percentage: number) => {
     setSelectedImageWidth(editor, editor.view.dom.clientWidth * percentage);
   };
+
+  const alignmentButtons: Array<{
+    value: WikiImageAlignment;
+    label: string;
+    icon: React.ReactNode;
+  }> = [
+    { value: "left", label: "Ratakan gambar ke kiri", icon: <AlignLeft className="size-4" aria-hidden /> },
+    { value: "center", label: "Ratakan gambar ke tengah", icon: <AlignCenter className="size-4" aria-hidden /> },
+    { value: "right", label: "Ratakan gambar ke kanan", icon: <AlignRight className="size-4" aria-hidden /> },
+  ];
 
   return (
     <>
@@ -841,7 +882,35 @@ function ImageDimensionControls({ editor, width }: { editor: Editor; width: numb
         onApply={(value) => setSelectedImageWidth(editor, value)}
         onReset={() => setSelectedImageWidth(editor, null)}
       />
-      <div className="flex items-center gap-0.5">
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      <div role="group" aria-label="Alignment gambar" className="flex items-center gap-0.5">
+        {alignmentButtons.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            title={option.label}
+            aria-label={option.label}
+            aria-pressed={alignment === option.value}
+            onClick={() => setSelectedImageAlignment(editor, option.value)}
+            className={cn(
+              "text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 items-center justify-center rounded-md",
+              alignment === option.value && "bg-primary/10 text-primary",
+            )}
+          >
+            {option.icon}
+          </button>
+        ))}
+        <button
+          type="button"
+          title="Lebar penuh seperti justify"
+          aria-label="Lebar penuh seperti justify"
+          onClick={() => applyPercentage(1)}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 items-center justify-center rounded-md"
+        >
+          <AlignJustify className="size-4" aria-hidden />
+        </button>
+      </div>
+      <div role="group" aria-label="Preset lebar gambar" className="flex items-center gap-0.5">
         {[25, 50, 75, 100].map((percentage) => (
           <button
             key={percentage}
@@ -879,7 +948,8 @@ function Toolbar({
     selector: ({ editor: currentEditor, transactionNumber }) => {
       const isTable = currentEditor.isActive("table");
       const isImage = currentEditor.isActive("image");
-      const imageWidth = Number(currentEditor.getAttributes("image").width);
+      const imageAttributes = currentEditor.getAttributes("image");
+      const imageWidth = Number(imageAttributes.width);
       return {
         transactionNumber,
         isTable,
@@ -887,6 +957,7 @@ function Toolbar({
         rowHeight: isTable ? getActiveTableRowHeight(currentEditor) : null,
         columnWidth: isTable ? getActiveTableColumnWidth(currentEditor) : null,
         imageWidth: Number.isFinite(imageWidth) && imageWidth > 0 ? imageWidth : null,
+        imageAlignment: normalizeWikiImageAlignment(imageAttributes.alignment),
       };
     },
   });
@@ -1065,7 +1136,11 @@ function Toolbar({
             />
           ) : null}
           {toolbarState.isImage ? (
-            <ImageDimensionControls editor={editor} width={toolbarState.imageWidth} />
+            <ImageDimensionControls
+              editor={editor}
+              width={toolbarState.imageWidth}
+              alignment={toolbarState.imageAlignment}
+            />
           ) : null}
         </div>
       ) : null}

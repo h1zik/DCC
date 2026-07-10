@@ -525,6 +525,7 @@
   border: 1px solid var(--border);
   min-width: 3rem;
   padding: 0.5rem 0.625rem;
+  position: relative;
   vertical-align: top;
 }
 .tiptap tr[data-row-height] > th,
@@ -536,7 +537,13 @@
   box-shadow: inset 0 -2px var(--primary);
 }
 .tiptap tr[data-row-resizing] {
+  height: var(--wiki-live-row-height) !important;
   user-select: none;
+}
+.tiptap tr[data-row-resizing] > th,
+.tiptap tr[data-row-resizing] > td {
+  height: var(--wiki-live-row-height) !important;
+  transition: none !important;
 }
 .tiptap th {
   background: var(--muted);
@@ -559,6 +566,9 @@
   top: 0;
   width: 8px;
 }
+.tiptap .column-resize-dragging {
+  box-shadow: inset -2px 0 color-mix(in oklab, var(--primary) 70%, transparent);
+}
 .tiptap.resize-cursor {
   cursor: col-resize;
 }
@@ -572,6 +582,18 @@
 .tiptap img.ProseMirror-selectednode {
   outline: 3px solid color-mix(in oklab, var(--primary) 45%, transparent);
 }
+.tiptap img[data-align="left"] {
+  margin-left: 0;
+  margin-right: auto;
+}
+.tiptap img[data-align="center"] {
+  margin-left: auto;
+  margin-right: auto;
+}
+.tiptap img[data-align="right"] {
+  margin-left: auto;
+  margin-right: 0;
+}
 .tiptap [data-resize-container][data-node="image"].ProseMirror-selectednode img {
   outline: 3px solid color-mix(in oklab, var(--primary) 45%, transparent);
 }
@@ -579,6 +601,12 @@
   justify-content: center;
   margin: 1rem 0;
   max-width: 100%;
+}
+.tiptap [data-resize-container][data-node="image"]:has(img[data-align="left"]) {
+  justify-content: flex-start;
+}
+.tiptap [data-resize-container][data-node="image"]:has(img[data-align="right"]) {
+  justify-content: flex-end;
 }
 .tiptap [data-resize-container][data-node="image"] [data-resize-wrapper] {
   max-width: 100%;

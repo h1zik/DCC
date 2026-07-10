@@ -7,6 +7,7 @@ import {
   clampWikiImageWidth,
   clampWikiTableColumnWidth,
   clampWikiTableRowHeight,
+  createWikiTableColumnResizePlugin,
   getActiveTableColumnWidth,
   getActiveTableRowHeight,
   setActiveTableColumnWidth,
@@ -105,5 +106,11 @@ describe("Wiki editor dimensions", () => {
     const table = editor.state.doc.firstChild!;
     expect(table.child(0).child(0).attrs.colwidth).toEqual([72]);
     expect(table.child(1).child(0).attrs.colwidth).toEqual([72]);
+  });
+
+  it("selalu menyediakan handler drag kolom meski status editable berubah belakangan", () => {
+    const plugin = createWikiTableColumnResizePlugin();
+    expect(plugin.spec.props?.handleDOMEvents?.mousemove).toBeTypeOf("function");
+    expect(plugin.spec.props?.handleDOMEvents?.mousedown).toBeTypeOf("function");
   });
 });
