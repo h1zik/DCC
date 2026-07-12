@@ -7,6 +7,7 @@ import {
   isFinanceAppRoute,
   isLogisticsRoute,
   isMarketAnalystAppRoute,
+  isPersonalRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
 } from "@/lib/routes";
@@ -43,7 +44,11 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
-  if (isProfileRoute(pathname) || isChangelogRoute(pathname)) {
+  if (
+    isProfileRoute(pathname) ||
+    isChangelogRoute(pathname) ||
+    isPersonalRoute(pathname)
+  ) {
     return NextResponse.next();
   }
 

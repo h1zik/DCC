@@ -2036,11 +2036,14 @@ const DocCard = memo(function DocCard({
         className="bg-muted/30 relative block aspect-[4/3] w-full overflow-hidden text-left"
         title={`Pratinjau ${doc.title?.trim() || doc.fileName}`}
       >
-        {isImage ? (
-          // Pakai thumbnail webp (~480px) bila ada — 1 file mentah bisa
-          // puluhan MB (mis. PNG transparan), thumbnail biasanya <50 KB.
+        {isImage && doc.thumbPath ? (
+          // Hanya thumbnail webp (~480px) yang boleh tampil di kartu — 1 file
+          // mentah bisa puluhan MB (mis. PNG transparan), thumbnail biasanya
+          // <50 KB. Tanpa thumbnail, fallback ke ikon tipe file di bawah;
+          // memuat file asli di grid pernah membuat folder tertentu macet
+          // total. File asli tetap dimuat penuh di dialog pratinjau.
           <Image
-            src={doc.thumbPath ?? doc.publicPath}
+            src={doc.thumbPath}
             alt={doc.fileName}
             fill
             unoptimized
@@ -2255,9 +2258,11 @@ const DocListRow = memo(function DocListRow({
       />
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="bg-muted relative size-9 shrink-0 overflow-hidden rounded-md">
-          {isImage ? (
+          {isImage && doc.thumbPath ? (
+            // Sama seperti kartu grid: tanpa thumbnail jangan muat file asli
+            // (bisa puluhan MB per baris) — jatuh ke ikon tipe file.
             <Image
-              src={doc.thumbPath ?? doc.publicPath}
+              src={doc.thumbPath}
               alt=""
               fill
               unoptimized

@@ -21,6 +21,7 @@ import {
   Landmark,
   LayoutDashboard,
   LayoutGrid,
+  Lock,
   LogOut,
   Package,
   PiggyBank,
@@ -381,6 +382,21 @@ export function AppSidebar() {
 
         <SidebarGroup className="mt-auto pt-1">
           <SidebarGroupContent>
+            {/* Space Pribadi — universal, tampil untuk semua peran (isi
+                di-gate per-pemilik di server, bukan per-peran). */}
+            <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:items-center">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Space Pribadi"
+                  isActive={pathname.startsWith("/personal")}
+                  className={sidebarMenuItemClass}
+                  render={<Link href="/personal" />}
+                >
+                  <Lock />
+                  <SidebarNavLabel>Space Pribadi</SidebarNavLabel>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
             <ChangelogNavItem className={sidebarMenuItemClass} />
           </SidebarGroupContent>
         </SidebarGroup>
