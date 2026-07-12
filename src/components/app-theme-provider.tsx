@@ -85,6 +85,19 @@ export function AppThemeProvider({
     setSavedPreset(saved);
   }, [saved]);
 
+  // Sinkronkan pustaka tema saat prop dari server berubah tanpa provider
+  // di-remount — mis. setelah login, root layout mengirim ulang initialLibrary
+  // (tema kustom tersimpan) lewat navigasi klien. Tanpa ini, preset berubah ke
+  // "custom" tapi library tetap kosong (default), sehingga tema tersimpan
+  // tampak hilang sampai reload penuh. Key by-value agar hanya jalan saat isi
+  // benar-benar berubah, bukan tiap render (referensi objek selalu baru).
+  const initialLibraryKey = JSON.stringify(initialLibrary);
+  useEffect(() => {
+    setLibraryState(initialLibrary);
+    setSavedLibrary(initialLibrary);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sinkron by-value via key
+  }, [initialLibraryKey]);
+
   const setPreset = useCallback((next: AppThemePreset) => {
     setPresetState(next);
   }, []);
