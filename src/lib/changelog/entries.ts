@@ -37,6 +37,30 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-12-personal-space",
+    date: "2026-07-12",
+    title: "Space Pribadi baru: catatan, kanban, bookmark & file — 100% privat",
+    category: "new",
+    description:
+      "Menu baru \"Space Pribadi\" di sidebar bawah, tersedia untuk semua peran. Isinya murni milikmu sendiri: catatan rich-text bertingkat (folder), papan kanban pribadi, daftar bookmark, dan penyimpanan file dengan folder. Tidak ada admin, CEO, atau AI Assistant yang bisa membaca isinya — bahkan lewat panel admin sekalipun.",
+
+    highlights: [
+      "Catatan: editor rich-text (Tiptap) dengan struktur folder & autosave aman multi-tab",
+      "Kanban pribadi: kolom & kartu bisa diatur bebas, terpisah total dari kanban proyek/room",
+      "Bookmark: simpan tautan dengan judul, deskripsi, dan tag",
+      "File pribadi: unggah & atur folder, diunduh hanya lewat endpoint ber-autentikasi milik sendiri",
+      "Isolasi privasi dijaga di server (filter ownerId) — tidak pernah muncul di endpoint AI/MCP atau laporan apa pun",
+    ],
+  },
+  {
+    id: "2026-07-12-document-thumb-only-preview",
+    date: "2026-07-12",
+    title: "Documents — kartu & filmstrip tidak lagi memuat file mentah",
+    category: "fixed",
+    description:
+      "Perbaikan kinerja: kartu grid, baris daftar, dan filmstrip pratinjau dokumen kini hanya menampilkan thumbnail WebP terkompres. File tanpa thumbnail jatuh ke ikon tipe file (bukan file asli yang bisa puluhan MB), yang sebelumnya bisa membuat folder tertentu macet total saat dimuat.",
+  },
+  {
     id: "2026-07-10-tasks-gantt-revamp",
     date: "2026-07-10",
     title: "Gantt Tasks dirombak: geser jadwal, filter, dan status berwarna",

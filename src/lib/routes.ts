@@ -15,6 +15,14 @@ export function isChangelogRoute(pathname: string): boolean {
   return pathname === "/changelog" || pathname.startsWith("/changelog/");
 }
 
+/**
+ * Space Pribadi — semua peran yang sudah login. Isolasi per-pemilik
+ * dijamin di server action / route handler (filter ownerId), bukan di sini.
+ */
+export function isPersonalRoute(pathname: string): boolean {
+  return pathname === "/personal" || pathname.startsWith("/personal/");
+}
+
 /** Jadwal & pengingat meeting (umum, tidak per ruangan). */
 export function isScheduleRoute(pathname: string): boolean {
   return pathname === "/schedule" || pathname.startsWith("/schedule/");

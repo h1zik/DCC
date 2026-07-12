@@ -663,13 +663,22 @@ export function RoomDocumentPreviewDialog({
                               : "border-transparent opacity-70 hover:opacity-100",
                           )}
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={img.thumbPath ?? img.publicPath ?? ""}
-                            alt=""
-                            loading="lazy"
-                            className="size-full object-cover"
-                          />
+                          {img.thumbPath ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={img.thumbPath}
+                              alt=""
+                              loading="lazy"
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            // Tanpa thumbnail jangan muat file asli — filmstrip
+                            // memuat SEMUA gambar folder sekaligus, file mentah
+                            // bisa puluhan MB per item.
+                            <span className="bg-muted flex size-full items-center justify-center">
+                              <ImageIcon className="text-muted-foreground size-4" />
+                            </span>
+                          )}
                         </button>
                       );
                     })}

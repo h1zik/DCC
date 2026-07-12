@@ -411,6 +411,13 @@ model User {
   achievements                       UserAchievement[]
   cosmetics                          UserCosmetic[]
   profileConfig                      UserProfileConfig?
+  // ─── Space Pribadi (privat murni — lihat kontrak privasi di model Personal*) ───
+  personalNotes                      PersonalNote[]                 @relation("PersonalNoteOwner")
+  personalKanbanColumns              PersonalKanbanColumn[]         @relation("PersonalKanbanColumnOwner")
+  personalKanbanCards                PersonalKanbanCard[]           @relation("PersonalKanbanCardOwner")
+  personalBookmarks                  PersonalBookmark[]             @relation("PersonalBookmarkOwner")
+  personalFileFolders                PersonalFileFolder[]           @relation("PersonalFileFolderOwner")
+  personalFiles                      PersonalFile[]                 @relation("PersonalFileOwner")
 
   @@index([customRoleId])
 }
@@ -5100,4 +5107,132 @@ model UserProfileConfig {
   showcaseAchievementIds Json     @default("[]")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+}
+
+/// ═══════════════════════ SPACE PRIBADI ═══════════════════════
+/// PRIVASI KERAS: semua tabel Personal* hanya boleh di-query dengan filter
+/// `ownerId = session.user.id`. TIDAK ADA bypass peran — CEO/ADMINISTRATOR
+/// pun dilarang membaca milik user lain. JANGAN pernah di-join/di-agregasi
+/// dari endpoint /api/ai/**, tool MCP, halaman admin, atau laporan apa pun.
+/// Guard tunggal: `requirePersonalOwnerId()` di `src/lib/personal-space.ts`.
+
+/**
+ * Catatan pribadi (rich text Tiptap, HTML). Mendukung tree via `parentId`
+ * dan guard autosave multi-tab via `revision` (optimistic concurrency).
+ */
+model PersonalNote {
+  id        String         @id @default(cuid())
+  ownerId   String
+  owner     User           @relation("PersonalNoteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    PersonalNote?  @relation("PersonalNoteTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  PersonalNote[] @relation("PersonalNoteTree")
+  title     String         @db.VarChar(160)
+  content   String         @default("")
+  revision  Int            @default(0)
+  tags      String[]       @default([])
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([ownerId, parentId, sortOrder])
+  @@index([ownerId, updatedAt(sort: Desc)])
+}
+
+/**
+ * Kolom papan tugas pribadi (kanban) milik satu user.
+ */
+model PersonalKanbanColumn {
+  id        String               @id @default(cuid())
+  ownerId   String
+  owner     User                 @relation("PersonalKanbanColumnOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  title     String               @db.VarChar(80)
+  colorHex  String?              @db.VarChar(7)
+  sortOrder Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  cards     PersonalKanbanCard[]
+
+  @@index([ownerId, sortOrder])
+}
+
+/**
+ * Kartu papan tugas pribadi. `ownerId` didenormalisasi agar guard cukup
+ * satu `where { id, ownerId }` tanpa join ke kolom.
+ */
+model PersonalKanbanCard {
+  id          String               @id @default(cuid())
+  ownerId     String
+  owner       User                 @relation("PersonalKanbanCardOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  columnId    String
+  column      PersonalKanbanColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  title       String               @db.VarChar(200)
+  description String?
+  dueDate     DateTime?
+  isDone      Boolean              @default(false)
+  /** Posisi dalam kolom — midpoint float, pola TaskKanbanPosition. */
+  sortKey     Float                @default(0)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([columnId, sortKey])
+  @@index([ownerId, isDone, dueDate])
+}
+
+/**
+ * Bookmark / tautan tersimpan pribadi.
+ */
+model PersonalBookmark {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation("PersonalBookmarkOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(160)
+  url         String   @db.VarChar(800)
+  description String?
+  tags        String[] @default([])
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId, sortOrder])
+}
+
+/**
+ * Folder file pribadi (tree).
+ */
+model PersonalFileFolder {
+  id        String               @id @default(cuid())
+  ownerId   String
+  owner     User                 @relation("PersonalFileFolderOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    PersonalFileFolder?  @relation("PersonalFileFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  PersonalFileFolder[] @relation("PersonalFileFolderTree")
+  name      String               @db.VarChar(120)
+  createdAt DateTime             @default(now())
+
+  files PersonalFile[]
+
+  @@unique([ownerId, parentId, name])
+  @@index([ownerId, parentId])
+}
+
+/**
+ * File pribadi. `storagePath` RELATIF terhadap `getPersonalUploadRoot()`
+ * (mis. "<ownerId>/<uuid>-nama.pdf") — BUKAN publicPath /uploads/**.
+ * File hanya dilayani lewat route ber-auth
+ * `/api/personal/files/[fileId]/download` yang memverifikasi ownerId.
+ */
+model PersonalFile {
+  id          String              @id @default(cuid())
+  ownerId     String
+  owner       User                @relation("PersonalFileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  folderId    String?
+  folder      PersonalFileFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  fileName    String              @db.VarChar(240)
+  mimeType    String              @db.VarChar(160)
+  size        Int
+  storagePath String              @db.VarChar(500)
+  createdAt   DateTime            @default(now())
+
+  @@index([ownerId, folderId, createdAt(sort: Desc)])
 }
