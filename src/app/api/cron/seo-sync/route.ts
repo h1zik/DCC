@@ -1,6 +1,20 @@
 import { pruneDataForSeoCache } from "@/lib/seo/dataforseo/cache";
 import { syncActiveRankProjects } from "@/lib/seo/rank-tracker/rank-sync";
 import { pollRunningSiteCrawls } from "@/lib/seo/crawler/crawler";
+import { refreshOpportunities } from "@/lib/seo/content/opportunity-feed";
+import { sendWeeklyRankSummaries } from "@/lib/seo/rank-tracker/weekly-notify";
+import { runDueCrawlSchedules } from "@/lib/seo/crawler/crawl-schedule";
+import { syncGscDaily } from "@/lib/seo/gsc/sync";
+
+/** Refresh feed Content Opportunities (best-effort setelah rank sync). */
+async function refreshOpportunitiesSafe() {
+  try {
+    return await refreshOpportunities();
+  } catch (err) {
+    console.warn("[cron/seo-sync] refresh opportunities gagal", err);
+    return { total: 0, pruned: 0 };
+  }
+}
 
 /**
  * Cron SEO Toolkit. Lindungi dengan env `CRON_SECRET`
@@ -37,16 +51,33 @@ export async function GET(request: Request) {
     return Response.json({ ok: true, mode, ...result });
   }
 
+  if (mode === "weekly") {
+    const result = await sendWeeklyRankSummaries();
+    return Response.json({ ok: true, mode, ...result });
+  }
+
+  if (mode === "crawls") {
+    const result = await runDueCrawlSchedules();
+    return Response.json({ ok: true, mode, ...result });
+  }
+
+  if (mode === "gsc") {
+    const result = await syncGscDaily();
+    return Response.json({ ok: true, mode, ...result });
+  }
+
   if (mode === "full") {
     const [ranks, crawls, pruned] = await Promise.all([
       syncActiveRankProjects(),
       pollRunningSiteCrawls(),
       pruneDataForSeoCache(),
     ]);
-    return Response.json({ ok: true, mode, ranks, crawls, pruned });
+    const opportunities = await refreshOpportunitiesSafe();
+    return Response.json({ ok: true, mode, ranks, crawls, pruned, opportunities });
   }
 
-  // default: ranks
+  // default: ranks (+ refresh feed opportunities dari posisi terbaru)
   const result = await syncActiveRankProjects();
-  return Response.json({ ok: true, mode: "ranks", ...result });
+  const opportunities = await refreshOpportunitiesSafe();
+  return Response.json({ ok: true, mode: "ranks", ...result, opportunities });
 }

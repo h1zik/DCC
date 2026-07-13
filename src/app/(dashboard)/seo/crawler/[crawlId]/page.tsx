@@ -43,6 +43,14 @@ export default async function SeoCrawlerDetailPage({
         b.count - a.count,
     );
 
+  // Tren health score: crawl READY untuk domain yang sama (maks 12 terakhir).
+  const historyRows = await prisma.seoSiteCrawl.findMany({
+    where: { domain: crawl.domain, status: "READY", healthScore: { not: null } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, healthScore: true, createdAt: true },
+    take: 12,
+  });
+
   const detail: CrawlDetail = {
     id: crawl.id,
     name: crawl.name,
@@ -53,6 +61,13 @@ export default async function SeoCrawlerDetailPage({
     includeLighthouse: crawl.includeLighthouse,
     summary: (crawl.summary as Record<string, unknown> | null) ?? null,
     lighthouse: (crawl.lighthouse as CrawlDetail["lighthouse"]) ?? null,
+    healthScore: crawl.healthScore,
+    issueDiff: (crawl.issueDiff as CrawlDetail["issueDiff"]) ?? null,
+    healthHistory: historyRows.map((h) => ({
+      date: h.createdAt.toISOString().slice(0, 10),
+      score: h.healthScore!,
+      current: h.id === crawl.id,
+    })),
     dataNotice: crawl.dataNotice,
     errorMessage: crawl.errorMessage,
     issues,

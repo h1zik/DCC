@@ -1,12 +1,17 @@
 import {
+  Activity,
+  Bot,
   Bug,
   FileText,
+  Globe,
   LayoutDashboard,
+  Lightbulb,
   LineChart,
   ListChecks,
   PenLine,
   Search,
   Store,
+  Swords,
   type LucideIcon,
 } from "lucide-react";
 
@@ -47,6 +52,24 @@ export const SEO_ZONES: SeoNavZone[] = [
         label: "Rank Tracker",
         icon: LineChart,
       },
+      {
+        key: "domain-overview",
+        href: "/seo/domain-overview",
+        label: "Domain Overview",
+        icon: Globe,
+      },
+      {
+        key: "keyword-gap",
+        href: "/seo/keyword-gap",
+        label: "Keyword Gap",
+        icon: Swords,
+      },
+      {
+        key: "ai-visibility",
+        href: "/seo/ai-visibility",
+        label: "AI Visibility",
+        icon: Bot,
+      },
     ],
   },
   {
@@ -72,10 +95,22 @@ export const SEO_ZONES: SeoNavZone[] = [
     label: "Konten",
     items: [
       {
+        key: "opportunities",
+        href: "/seo/content/opportunities",
+        label: "Opportunities",
+        icon: Lightbulb,
+      },
+      {
         key: "content",
         href: "/seo/content",
         label: "Content Optimizer",
         icon: PenLine,
+      },
+      {
+        key: "content-audit",
+        href: "/seo/content-audit",
+        label: "Content Audit",
+        icon: Activity,
       },
     ],
   },
@@ -106,5 +141,13 @@ export const SEO_ALL_ITEMS: SeoNavItem[] = [
 
 export function isSeoNavActive(itemHref: string, pathname: string): boolean {
   if (itemHref === "/seo") return pathname === "/seo";
-  return pathname.startsWith(itemHref);
+  if (!pathname.startsWith(itemHref)) return false;
+  // Item lain yang prefix-nya lebih spesifik menang (mis. /seo/content vs
+  // /seo/content/opportunities) agar tidak dua item aktif sekaligus.
+  return !SEO_ALL_ITEMS.some(
+    (item) =>
+      item.href !== itemHref &&
+      item.href.startsWith(itemHref) &&
+      pathname.startsWith(item.href),
+  );
 }

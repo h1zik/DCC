@@ -9,6 +9,8 @@ export function hrefForNotificationType(type: NotificationType): string {
       return "/schedule";
     case NotificationType.ACHIEVEMENT_UNLOCKED:
       return "/profile";
+    case NotificationType.SEO_ALERT:
+      return "/seo/rank-tracker";
     default:
       return "/for-me";
   }

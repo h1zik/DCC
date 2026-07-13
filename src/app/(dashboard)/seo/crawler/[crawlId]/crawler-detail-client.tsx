@@ -59,6 +59,15 @@ export type CrawlDetail = {
     fcp?: string | null;
     speedIndex?: string | null;
   } | null;
+  healthScore: number | null;
+  issueDiff: {
+    new: number;
+    fixed: number;
+    persisting: number;
+    newIssues: { type: string; url: string | null; severity: string; message: string }[];
+    fixedIssues: { type: string; url: string | null; severity: string; message: string }[];
+  } | null;
+  healthHistory: { date: string; score: number; current: boolean }[];
   dataNotice: string | null;
   errorMessage: string | null;
   issues: CrawlIssueRow[];
@@ -151,6 +160,93 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
         />
       ) : (
         <div className="flex flex-col gap-5">
+          {/* Health + diff */}
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className={cn(hub.card, "p-4")}>
+              <p className={cn(hub.label, "mb-1")}>Health score</p>
+              <p
+                className={cn(
+                  "text-4xl font-bold tabular-nums",
+                  scoreToneClass(crawl.healthScore),
+                )}
+              >
+                {crawl.healthScore ?? "—"}
+                <span className="text-muted-foreground text-lg font-normal">
+                  /100
+                </span>
+              </p>
+              {crawl.healthHistory.length >= 2 ? (
+                <div className="mt-3 flex items-end gap-1">
+                  {crawl.healthHistory.map((h) => (
+                    <div
+                      key={h.date + String(h.current)}
+                      className={cn(
+                        "w-4 rounded-t",
+                        h.current ? "bg-primary" : "bg-muted-foreground/30",
+                      )}
+                      style={{ height: `${Math.max(6, h.score * 0.5)}px` }}
+                      title={`${h.date}: ${h.score}`}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground mt-2 text-xs">
+                  Tren muncul setelah beberapa crawl untuk domain ini.
+                </p>
+              )}
+            </div>
+
+            {crawl.issueDiff ? (
+              <div className={cn(hub.card, "p-4 lg:col-span-2")}>
+                <p className={cn(hub.label, "mb-2")}>Vs crawl sebelumnya</p>
+                <div className="mb-3 flex flex-wrap gap-3">
+                  <ResearchHubStatChip
+                    label="Isu baru"
+                    value={crawl.issueDiff.new}
+                    tone={crawl.issueDiff.new > 0 ? "warning" : undefined}
+                  />
+                  <ResearchHubStatChip label="Diperbaiki" value={crawl.issueDiff.fixed} tone="primary" />
+                  <ResearchHubStatChip label="Tetap" value={crawl.issueDiff.persisting} />
+                </div>
+                {crawl.issueDiff.newIssues.length > 0 ? (
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      Isu baru:
+                    </p>
+                    <ul className="text-muted-foreground ml-4 list-disc text-xs">
+                      {crawl.issueDiff.newIssues.slice(0, 6).map((i, idx) => (
+                        <li key={idx}>
+                          [{i.severity}] {i.message}
+                          {i.url ? ` — ${i.url}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {crawl.issueDiff.fixedIssues.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="mb-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                      Diperbaiki:
+                    </p>
+                    <ul className="text-muted-foreground ml-4 list-disc text-xs">
+                      {crawl.issueDiff.fixedIssues.slice(0, 4).map((i, idx) => (
+                        <li key={idx}>
+                          {i.message}
+                          {i.url ? ` — ${i.url}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className={cn(hub.card, "text-muted-foreground p-4 text-sm lg:col-span-2")}>
+                Diff isu muncul mulai crawl kedua untuk domain & jumlah halaman
+                yang sama.
+              </div>
+            )}
+          </div>
+
           {/* Ringkasan metrik */}
           {pm ? (
             <div className="flex flex-wrap gap-3">

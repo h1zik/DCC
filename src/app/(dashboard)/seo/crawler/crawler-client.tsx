@@ -17,7 +17,7 @@ import {
   hub,
 } from "@/components/research-hub/research-hub-primitives";
 import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
-import { isSeoStatusBusy } from "@/lib/seo/labels";
+import { isSeoStatusBusy, scoreToneClass } from "@/lib/seo/labels";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   createSeoSiteCrawl,
@@ -34,6 +34,7 @@ export type CrawlRow = {
   maxPages: number;
   includeLighthouse: boolean;
   issueCount: number;
+  healthScore: number | null;
   errorMessage: string | null;
   createdAt: string;
 };
@@ -169,6 +170,17 @@ export function CrawlerClient({ crawls }: { crawls: CrawlRow[] }) {
                     </p>
                   ) : null}
                 </Link>
+                {c.healthScore != null ? (
+                  <span
+                    className={cn(
+                      "hidden text-sm font-bold tabular-nums sm:inline",
+                      scoreToneClass(c.healthScore),
+                    )}
+                    title="Health score"
+                  >
+                    {c.healthScore}
+                  </span>
+                ) : null}
                 {c.includeLighthouse ? (
                   <Badge variant="outline" className="hidden sm:inline-flex">
                     CWV

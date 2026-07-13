@@ -200,15 +200,154 @@ export async function fetchBulkKeywordDifficulty(
   return out;
 }
 
+type DfsSearchVolumeEntry = {
+  keyword?: string | null;
+  search_volume?: number | null;
+};
+
 /**
- * Pipeline ringkas: ambil suggestions lalu lengkapi difficulty yang kosong via
- * satu panggilan bulk. Seed selalu disertakan di hasil (volume diisi bila ada).
+ * Volume pencarian bulanan untuk hingga 1000 keyword dalam satu panggilan.
+ * Endpoint: `keywords_data/google_ads/search_volume/live`. Map keyword → volume.
+ */
+export async function fetchBulkSearchVolume(
+  keywords: string[],
+  opts: KeywordResearchOptions = {},
+): Promise<Map<string, number>> {
+  const unique = [...new Set(keywords.map((k) => k.trim()).filter(Boolean))].slice(0, 1000);
+  const out = new Map<string, number>();
+  if (unique.length === 0) return out;
+
+  const locationCode = opts.locationCode ?? getDataForSeoLocationCode();
+  const languageCode = String(opts.languageCode ?? getDataForSeoLanguageCode());
+  const endpoint = "keywords_data/google_ads/search_volume/live";
+  const payload = {
+    keywords: unique,
+    location_code: locationCode,
+    language_code: languageCode,
+  };
+
+  // Catatan: untuk keywords_data, `result` adalah array entri keyword langsung.
+  const items = await withDataForSeoCache(endpoint, payload, async () => {
+    return await dataForSeoLive<DfsSearchVolumeEntry>(endpoint, payload);
+  });
+
+  for (const item of items ?? []) {
+    const kw = item.keyword?.trim().toLowerCase();
+    if (kw && item.search_volume != null && Number.isFinite(item.search_volume)) {
+      out.set(kw, Math.max(0, item.search_volume));
+    }
+  }
+  return out;
+}
+
+type DfsRelatedItem = {
+  keyword_data?: {
+    keyword?: string | null;
+    keyword_info?: {
+      search_volume?: number | null;
+      cpc?: number | null;
+      competition?: number | null;
+      monthly_searches?: { year?: number; month?: number; search_volume?: number }[] | null;
+    } | null;
+    keyword_properties?: { keyword_difficulty?: number | null } | null;
+    search_intent_info?: { main_intent?: string | null } | null;
+  } | null;
+};
+
+/**
+ * Keyword terkait secara semantik (tidak harus mengandung seed) —
+ * `dataforseo_labs/google/related_keywords/live` (graf "searches related to").
+ * Melengkapi `keyword_suggestions` yang hanya long-tail berisi seed.
+ */
+export async function fetchRelatedKeywords(
+  seed: string,
+  opts: KeywordResearchOptions = {},
+): Promise<SeoKeywordIdea[]> {
+  const keyword = seed.trim();
+  if (!keyword) return [];
+
+  const locationCode = opts.locationCode ?? getDataForSeoLocationCode();
+  const languageCode = String(opts.languageCode ?? getDataForSeoLanguageCode());
+  const endpoint = "dataforseo_labs/google/related_keywords/live";
+  const payload = {
+    keyword,
+    location_code: locationCode,
+    language_code: languageCode,
+    depth: 2,
+    limit: Math.min(200, clampLimit(opts.limit)),
+  };
+
+  const items = await withDataForSeoCache(endpoint, payload, async () => {
+    const result = await dataForSeoLive<{ items?: DfsRelatedItem[] | null }>(
+      endpoint,
+      payload,
+    );
+    return result[0]?.items ?? [];
+  });
+
+  return (items ?? [])
+    .map((item): SeoKeywordIdea | null => {
+      const kw = item.keyword_data?.keyword?.trim();
+      if (!kw) return null;
+      const info = item.keyword_data?.keyword_info ?? {};
+      return {
+        keyword: kw,
+        searchVolume:
+          info.search_volume != null && Number.isFinite(info.search_volume)
+            ? Math.max(0, info.search_volume)
+            : null,
+        cpc: info.cpc != null && Number.isFinite(info.cpc) ? info.cpc : null,
+        competition: normalizeCompetition(info.competition),
+        difficulty:
+          item.keyword_data?.keyword_properties?.keyword_difficulty != null
+            ? Math.round(item.keyword_data.keyword_properties.keyword_difficulty)
+            : null,
+        intent: mapIntent(item.keyword_data?.search_intent_info?.main_intent),
+        monthlyTrend: parseMonthlyTrend(info.monthly_searches),
+        source: "dataforseo_labs_related",
+      };
+    })
+    .filter((k): k is SeoKeywordIdea => k != null);
+}
+
+/**
+ * Pipeline ringkas: gabungkan suggestions (long-tail berisi seed) + related
+ * keywords (semantik terkait), lalu lengkapi difficulty yang kosong via satu
+ * panggilan bulk. Seed selalu disertakan di hasil (volume diisi bila ada).
  */
 export async function collectKeywordIdeas(
   seed: string,
   opts: KeywordResearchOptions = {},
 ): Promise<SeoKeywordIdea[]> {
-  const suggestions = await fetchKeywordSuggestions(seed, opts);
+  const [suggestionsRaw, relatedRaw] = await Promise.allSettled([
+    fetchKeywordSuggestions(seed, opts),
+    fetchRelatedKeywords(seed, opts),
+  ]);
+  if (suggestionsRaw.status === "rejected") throw suggestionsRaw.reason;
+  if (relatedRaw.status === "rejected") {
+    console.warn(
+      "[seo/keywords] related_keywords gagal (lanjut dengan suggestions)",
+      relatedRaw.reason,
+    );
+  }
+
+  // Gabung + dedupe (suggestions menang karena datanya lebih lengkap).
+  const seen = new Set(
+    suggestionsRaw.value.map((s) => s.keyword.toLowerCase()),
+  );
+  const related =
+    relatedRaw.status === "fulfilled"
+      ? relatedRaw.value.filter((r) => {
+          const key = r.keyword.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+      : [];
+  const suggestions = [...suggestionsRaw.value, ...related].slice(
+    0,
+    clampLimit(opts.limit),
+  );
 
   // Pastikan seed ada di daftar (kadang tidak muncul di suggestions-nya sendiri).
   const seedKw = seed.trim().toLowerCase();

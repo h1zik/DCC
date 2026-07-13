@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { buildScoreGrounding } from "@/lib/seo/content/generator";
+import type { ScoreGrounding } from "@/lib/seo/content/content-score-v2";
 import {
   ContentDraftEditor,
   type DraftDetail,
@@ -17,6 +19,14 @@ export default async function SeoContentDraftPage({
   });
   if (!draft) notFound();
 
+  let grounding: ScoreGrounding | null = null;
+  if (draft.briefId) {
+    const brief = await prisma.seoContentBrief.findUnique({
+      where: { id: draft.briefId },
+    });
+    if (brief) grounding = buildScoreGrounding(brief);
+  }
+
   const detail: DraftDetail = {
     id: draft.id,
     title: draft.title,
@@ -25,7 +35,17 @@ export default async function SeoContentDraftPage({
     score: draft.score,
     analysis: (draft.analysis as DraftDetail["analysis"]) ?? null,
     briefId: draft.briefId,
+    status: draft.status,
+    stepLabel: draft.stepLabel,
+    percent: draft.percent,
+    errorMessage: draft.errorMessage,
+    metaTitle: draft.metaTitle,
+    metaDescription: draft.metaDescription,
+    slug: draft.slug,
+    internalLinks: Array.isArray(draft.internalLinks)
+      ? (draft.internalLinks as DraftDetail["internalLinks"])
+      : [],
   };
 
-  return <ContentDraftEditor draft={detail} />;
+  return <ContentDraftEditor draft={detail} grounding={grounding} />;
 }

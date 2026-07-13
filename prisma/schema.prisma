@@ -131,6 +131,10 @@ enum NotificationType {
    * saat `PROFILE_GAMIFICATION_ENABLED`.
    */
   ACHIEVEMENT_UNLOCKED
+  /**
+   * Alert modul SEO Toolkit (perubahan ranking, isu crawl baru, ringkasan mingguan).
+   */
+  SEO_ALERT
 }
 
 /**
@@ -404,6 +408,11 @@ model User {
   seoMarketplaceAnalysesCreated      SeoMarketplaceAnalysis[]       @relation("SeoMarketplaceAnalysisCreator")
   seoReportsCreated                  SeoReport[]                    @relation("SeoReportCreator")
   seoContentTopicRunsCreated         SeoContentTopicRun[]           @relation("SeoContentTopicRunCreator")
+  seoDomainOverviewsCreated          SeoDomainOverview[]            @relation("SeoDomainOverviewCreator")
+  seoKeywordGapsCreated              SeoKeywordGap[]                @relation("SeoKeywordGapCreator")
+  seoCrawlSchedulesCreated           SeoCrawlSchedule[]             @relation("SeoCrawlScheduleCreator")
+  seoContentAuditsCreated            SeoContentAudit[]              @relation("SeoContentAuditCreator")
+  seoAiVisibilityRunsCreated         SeoAiVisibilityRun[]           @relation("SeoAiVisibilityRunCreator")
   contentStudioIdeaSetsCreated       ContentStudioIdeaSet[]         @relation("ContentStudioIdeaSetCreator")
   // ─── Profile Gamification (additive; hanya aktif saat feature flag on) ───
   progression                        UserProgression?
@@ -4371,6 +4380,10 @@ model SeoRankProject {
    * Domain target, mis. "brandanda.com".
    */
   domain       String
+  /**
+   * Domain kompetitor yang dilacak posisinya dari SERP yang sama (maks 5).
+   */
+  competitors  String[]            @default([])
   locationCode Int                 @default(2360)
   languageCode String              @default("id")
   device       SeoRankDevice       @default(MOBILE)
@@ -4394,6 +4407,10 @@ model SeoTrackedKeyword {
    * URL/path spesifik yang diharapkan ranking; default cocokkan domain proyek.
    */
   targetUrl        String?
+  /**
+   * Volume pencarian bulanan (untuk bobot visibility score) — backfill via Labs.
+   */
+  searchVolume     Int?
   /**
    * Posisi terakhir (null = di luar top 100).
    */
@@ -4424,6 +4441,14 @@ model SeoRankSnapshot {
    * SERP features yang muncul (string[]).
    */
   serpFeatures     Json?
+  /**
+   * Posisi kompetitor pada SERP yang sama: { "domain": posisi | null }.
+   */
+  competitorPositions Json?
+  /**
+   * Semua URL milik sendiri di SERP [{ position, url }] — deteksi cannibalization.
+   */
+  ownMatches       Json?
   capturedAt       DateTime          @default(now())
 
   @@index([trackedKeywordId, capturedAt])
@@ -4511,6 +4536,22 @@ model SeoSiteCrawl {
    * Core Web Vitals (Lighthouse) bila diaktifkan.
    */
   lighthouse        Json?
+  /**
+   * Diisi bila crawl berasal dari jadwal (SeoCrawlSchedule).
+   */
+  scheduleId        String?
+  /**
+   * Crawl READY sebelumnya untuk domain yang sama — dasar diff isu.
+   */
+  previousCrawlId   String?
+  /**
+   * Skor kesehatan 0–100 (berbobot severity, dinormalisasi per halaman).
+   */
+  healthScore       Int?
+  /**
+   * Diff isu vs crawl sebelumnya { new, fixed, persisting, newIssues[], fixedIssues[] }.
+   */
+  issueDiff         Json?
   dataNotice        String?           @db.Text
   errorMessage      String?
   createdById       String
@@ -4652,11 +4693,43 @@ model SeoContentBrief {
   aiSummary       String?           @db.Text
   aiMeta          Json?
   errorMessage    String?
+  /**
+   * Top-10 SERP organik [{ rank, title, url, domain }].
+   */
+  serpData        Json?
+  /**
+   * Pertanyaan People Also Ask dari SERP (string[]).
+   */
+  paaQuestions    Json?
+  /**
+   * Related searches dari SERP (string[]).
+   */
+  relatedSearches Json?
+  /**
+   * Sinyal halaman kompetitor [{ url, domain, title, metaDescription, wordCount, headings, fetchStatus, error? }].
+   */
+  competitors     Json?
+  /**
+   * Istilah semantik hasil analisis kompetitor [{ term, docCount, avgCount, importance, targetMin, targetMax }].
+   */
+  terms           Json?
+  /**
+   * Target dari median kompetitor.
+   */
+  targetWordCount Int?
+  targetHeadings  Int?
+  /**
+   * Progress pipeline (pola SeoJob).
+   */
+  stepLabel       String?
+  percent         Int               @default(0)
+  dataNotice      String?           @db.Text
   createdById     String
   createdBy       User              @relation("SeoContentBriefCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   drafts          SeoContentDraft[]
+  opportunities   SeoContentOpportunity[] @relation("SeoOpportunityBrief")
 
   @@index([createdById])
   @@index([status])
@@ -4681,6 +4754,24 @@ model SeoContentDraft {
   analysis      Json?
   score         Int?
   aiMeta        Json?
+  /**
+   * Status pipeline penulisan AI. Default READY agar draft manual/lama valid.
+   */
+  status        SeoAnalysisStatus @default(READY)
+  stepLabel     String?
+  percent       Int              @default(0)
+  /**
+   * Section yang sudah ditulis [{ id, heading, html, done }] — resumable.
+   */
+  sectionsJson  Json?
+  metaTitle     String?
+  metaDescription String?        @db.Text
+  slug          String?
+  /**
+   * Saran internal link [{ anchorText, url, reason }].
+   */
+  internalLinks Json?
+  errorMessage  String?
   createdById   String
   createdBy     User             @relation("SeoContentDraftCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt     DateTime         @default(now())
@@ -4688,6 +4779,263 @@ model SeoContentDraft {
 
   @@index([createdById])
   @@index([briefId])
+}
+
+/**
+ * Pencatatan biaya panggilan DataForSEO (field `cost` per respons) untuk
+ * widget spend bulanan per kategori API. Fire-and-forget — bukan billing resmi.
+ */
+model SeoApiUsage {
+  id        String   @id @default(cuid())
+  /**
+   * Endpoint API, mis. "serp/google/organic/live/advanced".
+   */
+  endpoint  String
+  /**
+   * Kategori: serp | labs | onpage | backlinks | keywords_data | other.
+   */
+  module    String
+  cost      Float    @default(0)
+  taskCount Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module, createdAt])
+}
+
+enum SeoCrawlFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+/**
+ * Jadwal crawl teknis berulang (site audit terjadwal). Cron `mode=crawls`
+ * menjalankan jadwal yang due lalu memajukan `nextRunAt`.
+ */
+model SeoCrawlSchedule {
+  id                String            @id @default(cuid())
+  domain            String
+  maxPages          Int               @default(100)
+  includeLighthouse Boolean           @default(false)
+  frequency         SeoCrawlFrequency @default(WEEKLY)
+  isActive          Boolean           @default(true)
+  nextRunAt         DateTime
+  lastCrawlId       String?
+  createdById       String
+  createdBy         User              @relation("SeoCrawlScheduleCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([isActive, nextRunAt])
+}
+
+/**
+ * Metrik harian Google Search Console (data first-party): klik/impresi/CTR/
+ * posisi per halaman ATAU per query (kolom `dimension`). Diisi cron `mode=gsc`.
+ */
+model SeoGscDaily {
+  id          String   @id @default(cuid())
+  siteUrl     String
+  date        DateTime
+  /**
+   * "page" | "query".
+   */
+  dimension   String
+  /**
+   * URL halaman atau teks query, sesuai dimension.
+   */
+  key         String
+  clicks      Int      @default(0)
+  impressions Int      @default(0)
+  ctr         Float    @default(0)
+  position    Float?
+
+  @@unique([siteUrl, date, dimension, key])
+  @@index([siteUrl, dimension, date])
+}
+
+/**
+ * Snapshot Content Audit (ala Semrush Organic Traffic Insights): performa
+ * per-halaman dari GSC (28 hari vs 28 hari sebelumnya) → decay/rising/stable.
+ */
+model SeoContentAudit {
+  id           String            @id @default(cuid())
+  siteUrl      String
+  status       SeoAnalysisStatus @default(PENDING)
+  windowDays   Int               @default(28)
+  /**
+   * Baris [{ page, clicks, prevClicks, impressions, deltaPct, status, topQueries }].
+   */
+  rows         Json?
+  /**
+   * Ringkasan { decayed, rising, stable, fresh, totalClicks, prevTotalClicks }.
+   */
+  summary      Json?
+  dataNotice   String?           @db.Text
+  errorMessage String?
+  createdById  String
+  createdBy    User              @relation("SeoContentAuditCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+}
+
+/**
+ * AI Visibility Tracker: apakah brand disebut di jawaban AI (ChatGPT/Perplexity/
+ * Gemini) untuk keyword komersial — DataForSEO AI Optimization API.
+ */
+model SeoAiVisibilityRun {
+  id           String            @id @default(cuid())
+  name         String
+  /**
+   * Istilah brand yang dicari di jawaban (nama brand, domain, produk).
+   */
+  brandTerms   String[]
+  keywords     String[]
+  /**
+   * Platform: chatgpt | perplexity | gemini.
+   */
+  platforms    String[]
+  status       SeoAnalysisStatus @default(PENDING)
+  /**
+   * Hasil [{ keyword, platform, prompt, mentioned, matchedTerms, excerpt, citations }].
+   */
+  results      Json?
+  /**
+   * Ringkasan { mentionRate, byPlatform: { platform: rate } }.
+   */
+  summary      Json?
+  dataNotice   String?           @db.Text
+  errorMessage String?
+  createdById  String
+  createdBy    User              @relation("SeoAiVisibilityRunCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+}
+
+/**
+ * Domain Overview (ala Semrush): estimasi trafik organik, jumlah keyword per
+ * bucket posisi, top keywords, dan auto-discovery kompetitor — DataForSEO Labs.
+ */
+model SeoDomainOverview {
+  id           String            @id @default(cuid())
+  target       String
+  locationCode Int               @default(2360)
+  languageCode String            @default("id")
+  status       SeoAnalysisStatus @default(PENDING)
+  /**
+   * Ringkasan { organicTraffic, organicKeywords, posBuckets, paidKeywords, rank }.
+   */
+  overview     Json?
+  /**
+   * Top keyword organik domain [{ keyword, position, volume, etv, url }].
+   */
+  topKeywords  Json?
+  /**
+   * Kompetitor organik terdeteksi [{ domain, avgPosition, intersections, etv }].
+   */
+  competitors  Json?
+  /**
+   * Tren bulanan [{ month, organicTraffic, organicKeywords }] (≤24 bulan).
+   */
+  history      Json?
+  dataNotice   String?           @db.Text
+  errorMessage String?
+  createdById  String
+  createdBy    User              @relation("SeoDomainOverviewCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+}
+
+/**
+ * Keyword Gap (ala Semrush): keyword organik milik target vs hingga 3
+ * kompetitor → bucket missing/weak/strong/shared/untapped + data venn.
+ */
+model SeoKeywordGap {
+  id           String            @id @default(cuid())
+  name         String
+  target       String
+  competitors  String[]
+  locationCode Int               @default(2360)
+  languageCode String            @default("id")
+  status       SeoAnalysisStatus @default(PENDING)
+  /**
+   * Ringkasan { buckets: {missing,weak,strong,shared,untapped}, overlap venn }.
+   */
+  summary      Json?
+  /**
+   * Baris gabungan (cap ~700) [{ keyword, volume, difficulty, targetPos, competitorPos }].
+   */
+  rows         Json?
+  dataNotice   String?           @db.Text
+  errorMessage String?
+  createdById  String
+  createdBy    User              @relation("SeoKeywordGapCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+}
+
+enum SeoOpportunityType {
+  NEW_ARTICLE
+  OPTIMIZE_EXISTING
+}
+
+enum SeoOpportunityStage {
+  IDEA
+  BRIEFED
+  DRAFTED
+  PUBLISHED
+  DISMISSED
+}
+
+/**
+ * Feed "Content Opportunities" — rekomendasi artikel persisten yang dibangun
+ * dari keyword project + rank tracker (striking distance). Di-refresh manual
+ * atau via cron harian; nol biaya API (baca data lokal saja).
+ */
+model SeoContentOpportunity {
+  id               String              @id @default(cuid())
+  keyword          String              @unique
+  type             SeoOpportunityType
+  stage            SeoOpportunityStage @default(IDEA)
+  searchVolume     Int?
+  difficulty       Int?
+  intent           SeoKeywordIntent    @default(UNKNOWN)
+  opportunityScore Float               @default(0)
+  clusterLabel     String?
+  /**
+   * Untuk OPTIMIZE_EXISTING: posisi sekarang + URL yang ranking.
+   */
+  currentPosition  Int?
+  targetUrl        String?
+  /**
+   * Sumber: keyword_project | rank_tracker | topic_run.
+   */
+  source           String
+  sourceRefId      String?
+  briefId          String?
+  brief            SeoContentBrief?    @relation("SeoOpportunityBrief", fields: [briefId], references: [id], onDelete: SetNull)
+  suggestedTitle   String?
+  angle            String?
+  publishedUrl     String?
+  lastRefreshedAt  DateTime            @default(now())
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([stage, opportunityScore])
+  @@index([clusterLabel])
 }
 
 // ============================================================

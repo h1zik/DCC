@@ -314,3 +314,36 @@ export async function fetchLighthouseLive(
     speedIndex: audits["speed-index"]?.displayValue ?? null,
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/*                      content_parsing (konten via DataForSEO)                 */
+/* -------------------------------------------------------------------------- */
+
+// Parser pure ada di content-parsing-parse.ts (agar bisa di-test tanpa server-only).
+export {
+  parseContentParsingResult,
+  type ParsedPageContent,
+} from "@/lib/seo/dataforseo/content-parsing-parse";
+import {
+  parseContentParsingResult,
+  type DfsContentParsingResult,
+  type ParsedPageContent,
+} from "@/lib/seo/dataforseo/content-parsing-parse";
+
+/**
+ * Ambil konten halaman via DataForSEO (`on_page/content_parsing/live`) —
+ * fallback saat fetch langsung diblokir bot-wall. Di-cache seperti biasa.
+ */
+export async function fetchContentParsing(
+  url: string,
+): Promise<ParsedPageContent | null> {
+  const endpoint = "on_page/content_parsing/live";
+  const payload = { url, enable_javascript: false };
+
+  const result = await withDataForSeoCache(endpoint, payload, async () => {
+    return await dataForSeoLive<DfsContentParsingResult>(endpoint, payload, {
+      maxRetries: 1,
+    });
+  });
+  return parseContentParsingResult(result);
+}

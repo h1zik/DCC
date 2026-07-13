@@ -37,6 +37,40 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-13-seo-gsc-ai-visibility",
+    date: "2026-07-13",
+    title: "SEO: integrasi Search Console, Content Audit, AI Visibility & cek orisinalitas",
+    category: "new",
+    description:
+      "SEO Toolkit kini terhubung ke data nyata Google Search Console: Content Audit menandai halaman yang trafiknya menurun (decay) dan bisa langsung dijadikan opportunity optimasi. Ada juga AI Visibility — cek apakah brand disebut ChatGPT/Gemini/Perplexity untuk keyword komersial — plus cek orisinalitas artikel AI, tren organik bulanan di Domain Overview, bedah halaman vs halaman kompetitor, dan grounding brief yang lebih tembus bot-wall.",
+    highlights: [
+      "Content Audit (GSC): klik 28 hari vs sebelumnya per halaman, deteksi decay → 1-klik ke feed Opportunities",
+      "Kartu GSC di dashboard SEO: klik & impresi organik nyata + query teratas",
+      "AI Visibility: mention rate brand di jawaban ChatGPT/Gemini/Perplexity per keyword",
+      "Cek orisinalitas draft: kalimat sampel dicari sebagai frasa persis di Google",
+      "Riset keyword lebih kaya: related keywords semantik ikut ditarik",
+      "Domain Overview: tren trafik & keyword organik hingga 24 bulan",
+      "Keyword Gap: bedah halaman vs halaman (URL vs URL kompetitor)",
+    ],
+  },
+  {
+    id: "2026-07-13-seo-toolkit-v2",
+    date: "2026-07-13",
+    title: "SEO Toolkit v2: mesin konten AI grounded SERP, Keyword Gap, Domain Overview & Rank Tracker kompetitor",
+    category: "new",
+    description:
+      "Upgrade besar-besaran modul SEO. Brief artikel kini dibangun dari data SERP & halaman kompetitor nyata (istilah penting, People Also Ask, target panjang), AI menulis artikel 1500+ kata section-per-section dengan meta & saran internal link, dan skor konten dihitung real-time ala Surfer saat mengetik. Ada juga feed \"Content Opportunities\" (rekomendasi artikel dari riset keyword + posisi ranking), Keyword Gap vs kompetitor, Domain Overview, pelacakan posisi kompetitor + visibility score, audit teknis terjadwal dengan health score, dan ekspor artikel DOCX/Markdown/HTML siap pakai.",
+    highlights: [
+      "Brief grounded SERP: top-10 nyata, istilah kompetitor, People Also Ask, target kata",
+      "Artikel AI 1500–2500 kata + meta title/description/slug + FAQ + ekspor DOCX/MD/HTML",
+      "Skor konten real-time di editor (cakupan istilah, struktur, pertanyaan, meta, keterbacaan)",
+      "Feed Content Opportunities: pipeline ide → brief → draft → terbit, 1-klik buat brief",
+      "Keyword Gap (missing/weak/untapped) & Domain Overview ala Semrush",
+      "Rank Tracker v2: posisi kompetitor, visibility score, share of voice, ringkasan mingguan",
+      "Audit teknis terjadwal: health score, diff isu antar-crawl, deteksi keyword cannibalization",
+    ],
+  },
+  {
     id: "2026-07-13-gamification-upload-personal-kanban-order",
     date: "2026-07-13",
     title: "Upload background gamifikasi lebih besar & kolom kanban pribadi bisa diurutkan",
