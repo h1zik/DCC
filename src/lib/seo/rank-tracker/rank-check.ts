@@ -1,9 +1,14 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
+import { NotificationType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { sendPushToUser } from "@/lib/push-notify";
-import { fetchSerpLive, findDomainRank } from "@/lib/seo/dataforseo/serp";
+import { notifyUser } from "@/lib/notify";
+import {
+  fetchSerpLive,
+  findAllDomainMatches,
+  findDomainRank,
+  findDomainRanks,
+} from "@/lib/seo/dataforseo/serp";
 import {
   describeRankChange,
   isSignificantRankChange,
@@ -16,8 +21,10 @@ export type RankCheckResult = {
 };
 
 /**
- * Cek posisi SERP untuk satu tracked keyword, simpan snapshot time-series,
- * update posisi terakhir, dan kirim web push bila perubahan signifikan.
+ * Cek posisi SERP untuk satu tracked keyword, simpan snapshot time-series
+ * (termasuk posisi kompetitor & semua URL sendiri dari SERP yang SAMA — tanpa
+ * biaya tambahan), update posisi terakhir, dan kirim notifikasi (in-app + push)
+ * bila perubahan signifikan.
  *
  * Memakai metode SERP live (di-cache 24 jam) — lihat catatan biaya di serp.ts.
  */
@@ -43,6 +50,13 @@ export async function runRankCheck(
   const position = match?.position ?? null;
   const foundUrl = match?.foundUrl ?? null;
 
+  // Data gratis dari SERP yang sama: posisi kompetitor + semua URL sendiri.
+  const competitorPositions =
+    project.competitors.length > 0
+      ? findDomainRanks(lookup.items, project.competitors)
+      : null;
+  const ownMatches = findAllDomainMatches(lookup.items, project.domain);
+
   await prisma.seoRankSnapshot.create({
     data: {
       trackedKeywordId,
@@ -50,6 +64,12 @@ export async function runRankCheck(
       foundUrl,
       serpFeatures: lookup.serpFeatures.length
         ? (lookup.serpFeatures as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+      competitorPositions: competitorPositions
+        ? (competitorPositions as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+      ownMatches: ownMatches.length
+        ? (ownMatches as unknown as Prisma.InputJsonValue)
         : Prisma.JsonNull,
     },
   });
@@ -67,14 +87,13 @@ export async function runRankCheck(
   const changed = !isFirstCheck && isSignificantRankChange(prev, position);
   if (changed) {
     try {
-      await sendPushToUser(project.createdById, {
-        title: "Perubahan Ranking SEO",
-        body: describeRankChange(tk.keyword, prev, position),
-        url: `/seo/rank-tracker/${project.id}`,
-        tag: `seo-rank-${trackedKeywordId}`,
-      });
+      await notifyUser(
+        project.createdById,
+        describeRankChange(tk.keyword, prev, position),
+        NotificationType.SEO_ALERT,
+      );
     } catch (err) {
-      console.error("[seo/rank-check] push gagal", err);
+      console.error("[seo/rank-check] notifikasi gagal", err);
     }
   }
 

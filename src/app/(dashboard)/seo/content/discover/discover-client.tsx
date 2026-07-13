@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SeoAnalysisStatus, SeoKeywordIntent } from "@prisma/client";
-import { Loader2, PenLine, Sparkles, Trash2 } from "lucide-react";
+import { Lightbulb, Loader2, PenLine, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import {
   deleteTopicDiscovery,
 } from "@/actions/seo-content-discovery";
 import { createContentBrief } from "@/actions/seo-content";
+import { saveTopicSuggestionToFeed } from "@/actions/seo-content-opportunities";
 import { cn } from "@/lib/utils";
 
 type Suggestion = {
@@ -89,6 +90,26 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
         router.refresh();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal menghapus."));
+      }
+    });
+  }
+
+  function handleSaveToFeed(s: Suggestion, runId: string) {
+    startTransition(async () => {
+      try {
+        await saveTopicSuggestionToFeed({
+          keyword: s.keyword,
+          suggestedTitle: s.suggestedTitle,
+          angle: s.angle ?? undefined,
+          searchVolume: s.searchVolume,
+          difficulty: s.difficulty,
+          intent: s.intent,
+          opportunityScore: s.opportunityScore,
+          sourceRefId: runId,
+        });
+        toast.success("Disimpan ke feed Opportunities.");
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
       }
     });
   }
@@ -206,19 +227,30 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
                         </p>
                       ) : null}
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={() => handleCreateBrief(s)}
-                      disabled={pending}
-                      className="shrink-0"
-                    >
-                      {creatingKw === s.keyword ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <PenLine />
-                      )}
-                      Buat brief
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSaveToFeed(s, run.id)}
+                        disabled={pending}
+                        title="Simpan ke feed Opportunities"
+                      >
+                        <Lightbulb />
+                        Ke feed
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleCreateBrief(s)}
+                        disabled={pending}
+                      >
+                        {creatingKw === s.keyword ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <PenLine />
+                        )}
+                        Buat brief
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

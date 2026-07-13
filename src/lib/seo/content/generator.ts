@@ -1,18 +1,23 @@
 import "server-only";
 
 import * as cheerio from "cheerio";
-import { Prisma, SeoAnalysisStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   buildResearchAiStep,
   generateResearchJson,
-  generateResearchText,
-  researchAiMetaFromSteps,
+  mergeResearchAiMeta,
 } from "@/lib/research/llm";
 import {
   analyzeContent,
   type ContentAnalysisInput,
 } from "@/lib/seo/content/content-score";
+import {
+  analyzeContentV2,
+  hasUsableGrounding,
+  type ScoreGrounding,
+} from "@/lib/seo/content/content-score-v2";
+import { extractSignalsFromHtml } from "@/lib/seo/content/html-signals-server";
 
 function countOccurrences(haystack: string, needle: string): number {
   if (!needle) return 0;
@@ -63,185 +68,158 @@ export function parseContentHtml(
 
 /* ---------------------------------- brief ---------------------------------- */
 
-export async function generateContentBrief(briefId: string): Promise<void> {
-  const brief = await prisma.seoContentBrief.findUnique({ where: { id: briefId } });
-  if (!brief) throw new Error("Brief tidak ditemukan.");
-
-  await prisma.seoContentBrief.update({
-    where: { id: briefId },
-    data: { status: SeoAnalysisStatus.ANALYZING, errorMessage: null },
-  });
-
-  const prompt = `Kamu adalah content strategist SEO untuk brand kosmetik/skincare Indonesia.
-Buat brief artikel SEO untuk keyword target: "${brief.targetKeyword}".
-Judul kerja: "${brief.title}".
-
-Hasilkan:
-1. related/long-tail keywords yang relevan (8-15).
-2. outline artikel (H2/H3) dengan poin-poin tiap bagian.
-3. angle/sudut pandang singkat agar konten menonjol (Bahasa Indonesia, tone hangat & kredibel).
-
-Balas HANYA JSON valid:
-{
-  "relatedKeywords": ["string"],
-  "outline": [{ "heading": "string", "points": ["string"] }],
-  "angle": "string"
-}`;
-
-  try {
-    const result = await generateResearchJson<{
-      relatedKeywords?: string[];
-      outline?: { heading?: string; points?: string[] }[];
-      angle?: string;
-    }>(prompt, {
-      tier: "pro",
-      validate: (r) => Array.isArray(r.outline) && r.outline.length > 0,
-    });
-
-    const relatedKeywords = Array.isArray(result.relatedKeywords)
-      ? result.relatedKeywords.map((k) => String(k).trim()).filter(Boolean)
-      : [];
-    const outline = Array.isArray(result.outline)
-      ? result.outline
-          .filter((o) => o && typeof o.heading === "string")
-          .map((o) => ({
-            heading: String(o.heading).trim(),
-            points: Array.isArray(o.points)
-              ? o.points.map((p) => String(p).trim()).filter(Boolean)
-              : [],
-          }))
-      : [];
-
-    await prisma.seoContentBrief.update({
-      where: { id: briefId },
-      data: {
-        status: SeoAnalysisStatus.READY,
-        relatedKeywords: relatedKeywords as unknown as Prisma.InputJsonValue,
-        outline: outline as unknown as Prisma.InputJsonValue,
-        aiSummary: result.angle?.trim() || null,
-        aiMeta: researchAiMetaFromSteps([
-          buildResearchAiStep("SEO content brief", "pro"),
-        ]) as object,
-        errorMessage: null,
-      },
-    });
-  } catch (err) {
-    await prisma.seoContentBrief.update({
-      where: { id: briefId },
-      data: {
-        status: SeoAnalysisStatus.FAILED,
-        errorMessage: err instanceof Error ? err.message : "Gagal membuat brief.",
-      },
-    });
-    throw err;
-  }
-}
+// Pipeline brief grounded SERP dipindah ke brief-pipeline.ts; re-export agar
+// import dari actions tetap stabil.
+export { generateContentBrief } from "@/lib/seo/content/brief-pipeline";
 
 /* ---------------------------------- draft ---------------------------------- */
 
-type OutlineSection = { heading: string; points: string[] };
-
-/** Tulis draft artikel HTML dari brief (LLM). Mengembalikan id draft baru. */
-export async function generateDraftFromBrief(briefId: string): Promise<string> {
-  const brief = await prisma.seoContentBrief.findUnique({ where: { id: briefId } });
-  if (!brief) throw new Error("Brief tidak ditemukan.");
-
-  const outline = Array.isArray(brief.outline)
-    ? (brief.outline as OutlineSection[])
-    : [];
-  const related = Array.isArray(brief.relatedKeywords)
-    ? (brief.relatedKeywords as string[])
-    : [];
-
-  const prompt = `Kamu adalah copywriter SEO untuk brand kosmetik/skincare Indonesia.
-Tulis artikel lengkap (Bahasa Indonesia, tone hangat, kredibel, persuasif) untuk:
-- Judul: "${brief.title}"
-- Keyword target: "${brief.targetKeyword}"
-- Related keywords: ${related.join(", ") || "-"}
-
-Outline:
-${outline.map((o) => `- ${o.heading}: ${o.points.join("; ")}`).join("\n") || "- (susun outline yang masuk akal)"}
-
-Aturan penulisan:
-- Mulai dengan satu <h1> judul, lalu paragraf pembuka yang memuat keyword target.
-- Gunakan <h2>/<h3> untuk subjudul, <p> untuk paragraf, <ul><li> bila perlu.
-- Minimal 600 kata, natural (hindari keyword stuffing).
-- Balas HANYA HTML konten (tanpa <html>, <head>, atau <body>; tanpa blok markdown).`;
-
-  const html = await generateResearchText(prompt, { tier: "pro" });
-  const cleaned = html
-    .replace(/^```html\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
-
-  const draft = await prisma.seoContentDraft.create({
-    data: {
-      briefId: brief.id,
-      title: brief.title,
-      targetKeyword: brief.targetKeyword,
-      contentHtml: cleaned,
-      createdById: brief.createdById,
-      aiMeta: researchAiMetaFromSteps([
-        buildResearchAiStep("SEO content draft", "pro"),
-      ]) as object,
-    },
-  });
-  return draft.id;
-}
+// Penulisan draft multi-step (resumable, grounded) ada di draft-writer.ts.
 
 /* --------------------------------- analyze --------------------------------- */
+
+/** Bangun grounding skoring dari row brief (dipakai analyze + editor). */
+export function buildScoreGrounding(brief: {
+  targetKeyword: string;
+  terms: Prisma.JsonValue;
+  paaQuestions: Prisma.JsonValue;
+  targetWordCount: number | null;
+  targetHeadings: number | null;
+  outline: Prisma.JsonValue;
+}): ScoreGrounding {
+  return {
+    targetKeyword: brief.targetKeyword,
+    terms: Array.isArray(brief.terms)
+      ? (brief.terms as unknown as ScoreGrounding["terms"])
+      : [],
+    paaQuestions: Array.isArray(brief.paaQuestions)
+      ? (brief.paaQuestions as string[])
+      : [],
+    targetWordCount: brief.targetWordCount,
+    targetHeadings: brief.targetHeadings,
+    outline: Array.isArray(brief.outline)
+      ? (brief.outline as { heading: string }[]).map((o) => ({
+          heading: String(o.heading ?? ""),
+        }))
+      : [],
+  };
+}
 
 export async function analyzeContentDraft(draftId: string): Promise<void> {
   const draft = await prisma.seoContentDraft.findUnique({ where: { id: draftId } });
   if (!draft) throw new Error("Draft tidak ditemukan.");
 
-  const input = parseContentHtml(
-    draft.contentHtml,
-    draft.title,
-    draft.targetKeyword,
-  );
-  const result = analyzeContent(input);
+  const brief = draft.briefId
+    ? await prisma.seoContentBrief.findUnique({ where: { id: draft.briefId } })
+    : null;
+  const grounding = brief ? buildScoreGrounding(brief) : null;
 
-  // Saran tambahan dari LLM (best-effort).
+  const signals = extractSignalsFromHtml(draft.contentHtml);
+
+  let score: number;
+  let analysis: Record<string, unknown>;
+  let failingLabels: string[];
+  let termGaps: string[] = [];
+
+  if (grounding && hasUsableGrounding(grounding) && draft.targetKeyword) {
+    const v2 = analyzeContentV2(
+      signals,
+      {
+        title: draft.title,
+        metaTitle: draft.metaTitle,
+        metaDescription: draft.metaDescription,
+        slug: draft.slug,
+      },
+      grounding,
+    );
+    score = v2.score;
+    failingLabels = v2.checks.filter((c) => !c.passed).map((c) => c.label);
+    termGaps = v2.termReport
+      .filter((t) => t.status === "missing" || t.status === "under")
+      .slice(0, 12)
+      .map((t) => t.term);
+    analysis = {
+      version: 2,
+      categories: v2.categories,
+      checks: v2.checks,
+      termReport: v2.termReport,
+      density: v2.density,
+      structure: {
+        wordCount: signals.wordCount,
+        h1Count: signals.h1Count,
+        h2Count: signals.h2Count,
+        avgWordsPerSentence: signals.avgWordsPerSentence,
+      },
+      claims: signals.verifyMarkers,
+    };
+  } else {
+    const input = parseContentHtml(
+      draft.contentHtml,
+      draft.title,
+      draft.targetKeyword,
+    );
+    const v1 = analyzeContent(input);
+    score = v1.score;
+    failingLabels = v1.checks.filter((c) => !c.passed).map((c) => c.label);
+    analysis = {
+      version: 1,
+      checks: v1.checks,
+      density: v1.density,
+      structure: {
+        wordCount: input.wordCount,
+        h1Count: input.h1Count,
+        h2Count: input.h2Count,
+        avgWordsPerSentence: input.avgWordsPerSentence,
+      },
+      claims: signals.verifyMarkers,
+    };
+  }
+
+  // Saran + flag klaim berisiko BPOM dari LLM (best-effort).
   let suggestions: string[] = [];
+  let claimWarnings: string[] = [];
   let aiMeta: object | undefined;
   try {
-    const failing = result.checks.filter((c) => !c.passed).map((c) => c.label);
-    const llm = await generateResearchJson<{ suggestions?: string[] }>(
-      `Kamu reviewer SEO konten kosmetik Indonesia. Draft "${draft.title}" (keyword: "${draft.targetKeyword ?? "-"}").
-Skor: ${result.score}/100. Cek yang belum lulus: ${failing.join(", ") || "-"}.
-Kata: ${input.wordCount}, densitas keyword: ${(result.density * 100).toFixed(2)}%.
+    const llm = await generateResearchJson<{
+      suggestions?: string[];
+      claimWarnings?: string[];
+    }>(
+      `Kamu reviewer SEO & kepatuhan klaim kosmetik Indonesia (BPOM). Draft "${draft.title}" (keyword: "${draft.targetKeyword ?? "-"}").
+Skor: ${score}/100. Cek yang belum lulus: ${failingLabels.join(", ") || "-"}.
+${termGaps.length ? `Istilah kompetitor yang belum/kurang terpakai: ${termGaps.join(", ")}.` : ""}
+Kata: ${signals.wordCount}.
 
-Beri 3-6 saran perbaikan spesifik & actionable (Bahasa Indonesia).
-Balas HANYA JSON: { "suggestions": ["string"] }`,
+Cuplikan draft (awal):
+${signals.text.slice(0, 2500)}
+
+Tugas:
+1. Beri 3-6 saran perbaikan spesifik & actionable (Bahasa Indonesia).
+2. Daftar kalimat/klaim yang BERISIKO menurut etika iklan kosmetik BPOM (klaim medis/menyembuhkan/permanen/berlebihan). Kutip singkat kalimatnya. Kosongkan bila aman.
+
+Balas HANYA JSON: { "suggestions": ["string"], "claimWarnings": ["string"] }`,
       { tier: "flash", validate: (r) => Array.isArray(r.suggestions) },
     );
     suggestions = Array.isArray(llm.suggestions)
       ? llm.suggestions.map((s) => String(s).trim()).filter(Boolean)
       : [];
-    aiMeta = researchAiMetaFromSteps([
-      buildResearchAiStep("SEO content suggestions", "flash"),
-    ]) as object;
+    claimWarnings = Array.isArray(llm.claimWarnings)
+      ? llm.claimWarnings.map((s) => String(s).trim()).filter(Boolean)
+      : [];
+    aiMeta = mergeResearchAiMeta(
+      draft.aiMeta,
+      buildResearchAiStep("SEO content review", "flash"),
+    ) as object;
   } catch (err) {
     console.warn("[seo/content] saran LLM gagal (diabaikan)", err);
   }
 
-  const analysis = {
-    checks: result.checks,
-    density: result.density,
-    structure: {
-      wordCount: input.wordCount,
-      h1Count: input.h1Count,
-      h2Count: input.h2Count,
-      avgWordsPerSentence: input.avgWordsPerSentence,
-    },
-    suggestions,
-  };
+  analysis.suggestions = suggestions;
+  analysis.claimWarnings = claimWarnings;
 
   await prisma.seoContentDraft.update({
     where: { id: draftId },
     data: {
-      score: result.score,
+      score,
       analysis: analysis as unknown as Prisma.InputJsonValue,
       aiMeta: aiMeta ?? undefined,
     },

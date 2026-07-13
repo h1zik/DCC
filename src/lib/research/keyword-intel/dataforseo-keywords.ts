@@ -4,6 +4,7 @@ import {
   inferTrendFromTimelineValues,
   type KeywordTrendDirection,
 } from "@/lib/research/keyword-intel/keyword-trend";
+import { recordDataForSeoUsage } from "@/lib/seo/dataforseo/usage";
 
 const API_BASE = "https://api.dataforseo.com/v3";
 const DEFAULT_LOCATION_CODE = 2360; // Indonesia (Google Ads)
@@ -209,6 +210,12 @@ async function fetchKeywordVolumesBatch(
         errorMessage: msg,
       };
     }
+
+    // Catat biaya ke widget spend SEO Toolkit (best-effort).
+    recordDataForSeoUsage(
+      "keywords_data/google_ads/search_volume/live",
+      (json as { cost?: number }).cost,
+    );
 
     const items = task.result ?? [];
     const data: DfsKeywordVolume[] = [];

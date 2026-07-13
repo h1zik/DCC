@@ -10,6 +10,9 @@ import { actionErrorMessage } from "@/lib/action-error-message";
 import { normalizeDomain } from "@/lib/seo/dataforseo/serp";
 import { runRankCheck } from "@/lib/seo/rank-tracker/rank-check";
 import { syncProjectRanks } from "@/lib/seo/rank-tracker/rank-sync";
+import { backfillTrackedKeywordVolumes } from "@/lib/seo/rank-tracker/volume-backfill";
+
+const MAX_COMPETITORS = 5;
 
 const MAX_KEYWORDS_PER_PROJECT = 50;
 
@@ -70,6 +73,9 @@ export async function createSeoRankProject(
   if (keywords.length) {
     after(async () => {
       try {
+        await backfillTrackedKeywordVolumes(project.id).catch((err) =>
+          console.warn("[createSeoRankProject] backfill volume gagal", err),
+        );
         await syncProjectRanks(project.id);
         revalidatePath(`/seo/rank-tracker/${project.id}`);
       } catch (err) {
@@ -111,6 +117,9 @@ export async function addTrackedKeyword(
 
   after(async () => {
     try {
+      await backfillTrackedKeywordVolumes(data.projectId).catch((err) =>
+        console.warn("[addTrackedKeyword] backfill volume gagal", err),
+      );
       await runRankCheck(created.id);
       revalidatePath(`/seo/rank-tracker/${data.projectId}`);
     } catch (err) {
@@ -120,6 +129,42 @@ export async function addTrackedKeyword(
 
   revalidatePath(`/seo/rank-tracker/${data.projectId}`);
   return { id: created.id };
+}
+
+const competitorsSchema = z.object({
+  projectId: z.string().min(1),
+  competitors: z.array(z.string().min(3).max(200)).max(MAX_COMPETITORS),
+});
+
+/** Atur domain kompetitor yang dilacak dari SERP yang sama (maks 5). */
+export async function updateProjectCompetitors(
+  input: z.infer<typeof competitorsSchema>,
+) {
+  await requireSeoAccess();
+  const data = competitorsSchema.parse(input);
+
+  const project = await prisma.seoRankProject.findUnique({
+    where: { id: data.projectId },
+    select: { domain: true },
+  });
+  if (!project) throw new Error("Proyek tidak ditemukan.");
+
+  const seen = new Set<string>();
+  const competitors: string[] = [];
+  for (const raw of data.competitors) {
+    const domain = normalizeDomain(raw);
+    if (!domain || domain === project.domain || seen.has(domain)) continue;
+    seen.add(domain);
+    competitors.push(domain);
+    if (competitors.length >= MAX_COMPETITORS) break;
+  }
+
+  await prisma.seoRankProject.update({
+    where: { id: data.projectId },
+    data: { competitors },
+  });
+  revalidatePath(`/seo/rank-tracker/${data.projectId}`);
+  return { competitors };
 }
 
 export async function removeTrackedKeyword(keywordId: string) {

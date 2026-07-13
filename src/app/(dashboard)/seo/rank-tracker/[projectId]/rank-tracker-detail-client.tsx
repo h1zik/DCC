@@ -43,6 +43,7 @@ import {
   checkRankNow,
   removeTrackedKeyword,
   toggleRankProjectActive,
+  updateProjectCompetitors,
 } from "@/actions/seo-rank-tracker";
 import { cn } from "@/lib/utils";
 
@@ -50,11 +51,13 @@ export type TrackedKeywordRow = {
   id: string;
   keyword: string;
   targetUrl: string | null;
+  searchVolume: number | null;
   lastPosition: number | null;
   previousPosition: number | null;
   lastFoundUrl: string | null;
   lastCheckedAt: string | null;
   features: string[];
+  competitorPositions: Record<string, number | null>;
   points: { t: string; position: number | null }[];
 };
 
@@ -64,6 +67,26 @@ type ProjectInfo = {
   domain: string;
   device: SeoRankDevice;
   isActive: boolean;
+  competitors: string[];
+};
+
+export type RankInsights = {
+  visibilityNow: number;
+  visibilitySeries: { date: string; score: number }[];
+  shareOfVoice: { domain: string; visibility: number }[];
+  distribution: {
+    top3: number;
+    top10: number;
+    top20: number;
+    top100: number;
+    unranked: number;
+  };
+  cannibalization: {
+    keyword: string;
+    urls: string[];
+    severity: "high" | "medium";
+    evidence: string;
+  }[];
 };
 
 const CHART_COLORS = [
@@ -125,15 +148,40 @@ function ChangeCell({
 export function RankTrackerDetailClient({
   project,
   keywords,
+  insights,
 }: {
   project: ProjectInfo;
   keywords: TrackedKeywordRow[];
+  insights: RankInsights;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [newKeyword, setNewKeyword] = useState("");
   const [newTarget, setNewTarget] = useState("");
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [competitorsInput, setCompetitorsInput] = useState(
+    project.competitors.join(", "),
+  );
+
+  const visibilityOption = useMemo<EChartsOption | null>(() => {
+    if (insights.visibilitySeries.length < 2) return null;
+    return {
+      tooltip: { trigger: "axis" },
+      grid: { left: 36, right: 12, top: 12, bottom: 24 },
+      xAxis: { type: "category", data: insights.visibilitySeries.map((p) => p.date) },
+      yAxis: { type: "value", min: 0 },
+      series: [
+        {
+          type: "line",
+          smooth: true,
+          areaStyle: { opacity: 0.15 },
+          showSymbol: false,
+          data: insights.visibilitySeries.map((p) => p.score),
+          itemStyle: { color: "#6366f1" },
+        },
+      ],
+    };
+  }, [insights.visibilitySeries]);
 
   const chartOption = useMemo<EChartsOption | null>(() => {
     const series = keywords
@@ -243,6 +291,29 @@ export function RankTrackerDetailClient({
     });
   }
 
+  function handleSaveCompetitors() {
+    startTransition(async () => {
+      try {
+        const { competitors } = await updateProjectCompetitors({
+          projectId: project.id,
+          competitors: competitorsInput
+            .split(/[,\n]/)
+            .map((s) => s.trim())
+            .filter(Boolean),
+        });
+        setCompetitorsInput(competitors.join(", "));
+        toast.success(
+          competitors.length
+            ? `${competitors.length} kompetitor dilacak mulai cek berikutnya.`
+            : "Daftar kompetitor dikosongkan.",
+        );
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menyimpan kompetitor."));
+      }
+    });
+  }
+
   return (
     <SeoDetailPage
       icon={LineChartIcon}
@@ -281,6 +352,150 @@ export function RankTrackerDetailClient({
         </div>
       }
     >
+      {/* Insight: visibility + distribusi + share of voice */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className={cn(hub.card, "p-4")}>
+          <p className={cn(hub.label, "mb-1")}>Visibility score</p>
+          <p className="text-4xl font-bold tabular-nums">
+            {insights.visibilityNow}
+            <span className="text-muted-foreground text-lg font-normal">%</span>
+          </p>
+          <p className="text-muted-foreground mb-2 text-xs">
+            Estimasi pangsa klik dari semua keyword terlacak (berbobot volume).
+          </p>
+          {visibilityOption ? (
+            <EChart option={visibilityOption} height={120} />
+          ) : (
+            <p className="text-muted-foreground text-xs">
+              Tren muncul setelah beberapa hari pelacakan.
+            </p>
+          )}
+        </div>
+
+        <div className={cn(hub.card, "p-4")}>
+          <p className={cn(hub.label, "mb-2")}>Distribusi posisi</p>
+          <div className="flex flex-col gap-2 text-sm">
+            {(
+              [
+                ["Top 3", insights.distribution.top3],
+                ["Posisi 4–10", insights.distribution.top10],
+                ["Posisi 11–20", insights.distribution.top20],
+                ["Posisi 21–100", insights.distribution.top100],
+                ["Belum ranking", insights.distribution.unranked],
+              ] as const
+            ).map(([label, count]) => {
+              const total = keywords.length || 1;
+              return (
+                <div key={label} className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-28 shrink-0 text-xs">
+                    {label}
+                  </span>
+                  <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
+                    <div
+                      className="bg-primary h-full rounded-full"
+                      style={{ width: `${(count / total) * 100}%` }}
+                    />
+                  </div>
+                  <span className="w-6 shrink-0 text-right text-xs tabular-nums">
+                    {count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className={cn(hub.card, "p-4")}>
+          <p className={cn(hub.label, "mb-2")}>Share of voice</p>
+          {insights.shareOfVoice.length === 0 ? (
+            <p className="text-muted-foreground text-xs">
+              Tambahkan domain kompetitor di bawah — posisinya diambil dari SERP
+              yang sama tanpa biaya ekstra.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2 text-sm">
+              {insights.shareOfVoice.map((s) => {
+                const max = insights.shareOfVoice[0]?.visibility || 1;
+                const isOwn = s.domain === project.domain;
+                return (
+                  <div key={s.domain} className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "w-32 shrink-0 truncate text-xs",
+                        isOwn ? "font-semibold" : "text-muted-foreground",
+                      )}
+                      title={s.domain}
+                    >
+                      {s.domain}
+                      {isOwn ? " (Anda)" : ""}
+                    </span>
+                    <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
+                      <div
+                        className={cn(
+                          "h-full rounded-full",
+                          isOwn ? "bg-primary" : "bg-muted-foreground/50",
+                        )}
+                        style={{ width: `${(s.visibility / max) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-10 shrink-0 text-right text-xs tabular-nums">
+                      {s.visibility}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Cannibalization */}
+      {insights.cannibalization.length > 0 ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <p className="mb-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
+            ⚠️ Kemungkinan keyword cannibalization (
+            {insights.cannibalization.length})
+          </p>
+          <div className="flex flex-col gap-2">
+            {insights.cannibalization.slice(0, 5).map((c) => (
+              <div key={c.keyword} className="text-sm">
+                <span className="font-medium">“{c.keyword}”</span>{" "}
+                <span className="text-muted-foreground text-xs">
+                  {c.evidence}
+                </span>
+                <div className="text-muted-foreground mt-0.5 flex flex-wrap gap-x-3 text-xs">
+                  {c.urls.slice(0, 3).map((u) => (
+                    <span key={u} className="truncate">
+                      {u.replace(/^https?:\/\//, "")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-muted-foreground mt-2 text-xs">
+            Solusi umum: gabungkan konten yang tumpang tindih, atau perjelas
+            fokus keyword tiap halaman + internal link ke halaman utama.
+          </p>
+        </div>
+      ) : null}
+
+      {/* Kompetitor */}
+      <div className={cn(hub.panel, "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end")}>
+        <div className="grid gap-1.5">
+          <Label>Domain kompetitor (maks 5, pisahkan dengan koma)</Label>
+          <Input
+            value={competitorsInput}
+            onChange={(e) => setCompetitorsInput(e.target.value)}
+            placeholder="kompetitor-a.com, kompetitor-b.co.id"
+            disabled={pending}
+          />
+        </div>
+        <Button variant="outline" onClick={handleSaveCompetitors} disabled={pending}>
+          Simpan kompetitor
+        </Button>
+      </div>
+
       {/* Tambah keyword */}
       <div className={cn(hub.panel, "grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end")}>
         <div className="grid gap-1.5">
@@ -331,8 +546,14 @@ export function RankTrackerDetailClient({
             <TableHeader>
               <TableRow>
                 <TableHead>Keyword</TableHead>
+                <TableHead className="text-right">Vol</TableHead>
                 <TableHead className="text-right">Posisi</TableHead>
                 <TableHead className="text-center">Perubahan</TableHead>
+                {project.competitors.map((c) => (
+                  <TableHead key={c} className="text-right" title={c}>
+                    <span className="block max-w-24 truncate">{c}</span>
+                  </TableHead>
+                ))}
                 <TableHead>SERP features</TableHead>
                 <TableHead>Terakhir dicek</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
@@ -348,6 +569,11 @@ export function RankTrackerDetailClient({
                         {k.targetUrl}
                       </span>
                     ) : null}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-right text-xs tabular-nums">
+                    {k.searchVolume != null
+                      ? k.searchVolume.toLocaleString("id-ID")
+                      : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums font-semibold">
                     {k.lastPosition != null ? (
@@ -368,6 +594,25 @@ export function RankTrackerDetailClient({
                       <ChangeCell prev={k.previousPosition} next={k.lastPosition} />
                     </span>
                   </TableCell>
+                  {project.competitors.map((c) => {
+                    const pos = k.competitorPositions[c] ?? null;
+                    const better =
+                      pos != null &&
+                      (k.lastPosition == null || pos < k.lastPosition);
+                    return (
+                      <TableCell
+                        key={c}
+                        className={cn(
+                          "text-right text-xs tabular-nums",
+                          better
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {pos != null ? `#${pos}` : "—"}
+                      </TableCell>
+                    );
+                  })}
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {k.features.length === 0 ? (

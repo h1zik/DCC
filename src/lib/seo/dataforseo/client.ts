@@ -10,6 +10,8 @@ import "server-only";
  * resolusi lokasi/bahasa Indonesia default. Wrapper per-endpoint memakai core ini.
  */
 
+import { recordDataForSeoUsage } from "@/lib/seo/dataforseo/usage";
+
 const API_BASE = "https://api.dataforseo.com/v3";
 const DEFAULT_LOCATION_CODE = 2360; // Indonesia (Google)
 const DEFAULT_LANGUAGE_CODE = "id";
@@ -171,6 +173,7 @@ export async function dataForSeoRequest<T>(
         );
       }
 
+      recordDataForSeoUsage(endpoint, json.cost, body.length);
       return json;
     } catch (err) {
       lastErr = err;
@@ -239,6 +242,7 @@ export async function dataForSeoGet<T>(
           balanceExhausted: isBalanceError(json.status_code, json.status_message),
         });
       }
+      recordDataForSeoUsage(endpoint, json.cost);
       return json;
     } catch (err) {
       lastErr = err;

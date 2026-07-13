@@ -36,6 +36,24 @@ export default async function SeoContentBriefPage({
       ? (brief.outline as BriefDetail["outline"])
       : [],
     errorMessage: brief.errorMessage,
+    dataNotice: brief.dataNotice,
+    stepLabel: brief.stepLabel,
+    percent: brief.percent,
+    serpData: Array.isArray(brief.serpData)
+      ? (brief.serpData as BriefDetail["serpData"])
+      : [],
+    paaQuestions: Array.isArray(brief.paaQuestions)
+      ? (brief.paaQuestions as string[])
+      : [],
+    relatedSearches: Array.isArray(brief.relatedSearches)
+      ? (brief.relatedSearches as string[])
+      : [],
+    competitors: Array.isArray(brief.competitors)
+      ? (brief.competitors as BriefDetail["competitors"])
+      : [],
+    terms: Array.isArray(brief.terms) ? (brief.terms as BriefDetail["terms"]) : [],
+    targetWordCount: brief.targetWordCount,
+    targetHeadings: brief.targetHeadings,
     drafts: brief.drafts.map((d) => ({
       id: d.id,
       title: d.title,

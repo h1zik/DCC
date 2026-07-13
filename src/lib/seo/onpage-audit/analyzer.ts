@@ -19,7 +19,7 @@ import {
 
 /* -------------------------- HTML enrichment (cheerio) -------------------------- */
 
-type HtmlSignals = {
+export type HtmlSignals = {
   title: string | null;
   description: string | null;
   htags: Record<string, string[]>;
@@ -58,7 +58,7 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 
 /** Ambil & parse HTML langsung untuk melengkapi sinyal (best-effort). */
-async function fetchHtmlSignals(
+export async function fetchHtmlSignals(
   url: string,
   targetKeyword: string | null,
 ): Promise<HtmlSignals | null> {

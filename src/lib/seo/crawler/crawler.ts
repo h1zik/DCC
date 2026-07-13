@@ -12,6 +12,13 @@ import {
   type LighthouseMetrics,
 } from "@/lib/seo/dataforseo/onpage";
 import { buildCrawlIssues } from "@/lib/seo/crawler/crawl-rules";
+import {
+  diffCrawlIssues,
+  type DiffableIssue,
+} from "@/lib/seo/crawler/crawl-diff";
+import { computeHealthScore } from "@/lib/seo/crawler/health-score";
+import { notifyUser } from "@/lib/notify";
+import { NotificationType } from "@prisma/client";
 
 /** Batas waktu crawl sebelum dianggap gagal (2 jam). */
 const CRAWL_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -206,23 +213,90 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
     url: null,
   }));
   const pageIssues = buildPageIssueRows(crawlId, pages);
+  const allIssues = [...aggregateIssues, ...pageIssues];
+
+  const pagesCrawled = summary.pagesCrawled ?? pages.length;
+  const healthScore = computeHealthScore(
+    allIssues.map((i) => ({
+      severity: i.severity,
+      count: "count" in i && i.count != null ? i.count : 1,
+    })),
+    pagesCrawled,
+  );
+
+  // Diff vs crawl READY sebelumnya untuk domain + maxPages yang sama.
+  const previous = await prisma.seoSiteCrawl.findFirst({
+    where: {
+      id: { not: crawlId },
+      domain: crawl.domain,
+      maxPages: crawl.maxPages,
+      status: SeoAnalysisStatus.READY,
+    },
+    orderBy: { createdAt: "desc" },
+    include: { issues: true },
+  });
+  const issueDiff = previous
+    ? diffCrawlIssues(
+        previous.issues.map(
+          (i): DiffableIssue => ({
+            type: i.type,
+            url: i.url,
+            severity: i.severity,
+            message: i.message,
+            count: i.count,
+          }),
+        ),
+        allIssues.map(
+          (i): DiffableIssue => ({
+            type: i.type,
+            url: i.url ?? null,
+            severity: i.severity,
+            message: i.message ?? "",
+            count: "count" in i && i.count != null ? i.count : 1,
+          }),
+        ),
+      )
+    : null;
 
   await prisma.$transaction([
     prisma.seoCrawlIssue.deleteMany({ where: { crawlId } }),
-    prisma.seoCrawlIssue.createMany({ data: [...aggregateIssues, ...pageIssues] }),
+    prisma.seoCrawlIssue.createMany({ data: allIssues }),
     prisma.seoSiteCrawl.update({
       where: { id: crawlId },
       data: {
         status: SeoAnalysisStatus.READY,
-        pagesCrawled: summary.pagesCrawled ?? pages.length,
+        pagesCrawled,
         summary: summary as unknown as Prisma.InputJsonValue,
         lighthouse: lighthouse
           ? (lighthouse as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+        healthScore,
+        previousCrawlId: previous?.id ?? null,
+        issueDiff: issueDiff
+          ? (issueDiff as unknown as Prisma.InputJsonValue)
           : Prisma.JsonNull,
         errorMessage: null,
       },
     }),
   ]);
+
+  // Crawl terjadwal + ada isu berat baru → notifikasi pembuat jadwal.
+  if (crawl.scheduleId && issueDiff) {
+    const seriousNew = issueDiff.newIssues.filter(
+      (i) => i.severity === "CRITICAL" || i.severity === "HIGH",
+    );
+    if (seriousNew.length > 0) {
+      try {
+        await notifyUser(
+          crawl.createdById,
+          `Audit terjadwal ${crawl.domain}: ${seriousNew.length} isu berat baru (health ${healthScore}/100). Contoh: ${seriousNew[0].message}`,
+          NotificationType.SEO_ALERT,
+        );
+      } catch (err) {
+        console.error("[seo/crawler] notifikasi isu baru gagal", err);
+      }
+    }
+  }
 }
 
 /** Poll semua crawl yang masih berjalan — dipanggil cron (`mode=crawl-poll`). */

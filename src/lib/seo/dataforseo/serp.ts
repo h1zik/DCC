@@ -27,7 +27,9 @@ import {
 export type { SerpResultItem } from "@/lib/seo/dataforseo/serp-parse";
 export {
   extractSerpFeatures,
+  findAllDomainMatches,
   findDomainRank,
+  findDomainRanks,
   normalizeDomain,
 } from "@/lib/seo/dataforseo/serp-parse";
 

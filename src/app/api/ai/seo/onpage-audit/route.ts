@@ -2,6 +2,7 @@ import { guardAiApiRequest } from "@/lib/ai-api/guard";
 import { aiApiError, aiApiOk } from "@/lib/ai-api/response";
 import { isDataForSeoConfigured } from "@/lib/seo/dataforseo/client";
 import { fetchInstantPage } from "@/lib/seo/dataforseo/onpage";
+import { fetchHtmlSignals } from "@/lib/seo/onpage-audit/analyzer";
 import {
   buildOnPageIssues,
   computeOnPageScore,
@@ -29,6 +30,9 @@ export async function GET(req: Request) {
     const signals = await fetchInstantPage(target);
     if (!signals) return aiApiError("Tidak bisa menganalisis URL.", 502);
 
+    // Lengkapi sinyal dari HTML langsung (best-effort — null bila fetch gagal).
+    const html = await fetchHtmlSignals(target, keyword);
+
     const h1 = Array.isArray(signals.htags.h1) ? signals.htags.h1 : [];
     const kw = keyword?.toLowerCase() ?? null;
     const input: AuditInput = {
@@ -40,12 +44,15 @@ export async function GET(req: Request) {
       hasSchema: signals.hasSchema,
       checks: signals.checks,
       targetKeyword: keyword,
-      keywordInTitle: kw ? (signals.title ?? "").toLowerCase().includes(kw) : null,
-      keywordInDescription: kw
-        ? (signals.description ?? "").toLowerCase().includes(kw)
-        : null,
-      keywordInH1: kw ? h1.some((h) => h.toLowerCase().includes(kw)) : null,
-      imagesWithoutAlt: null,
+      keywordInTitle:
+        html?.keywordInTitle ??
+        (kw ? (signals.title ?? "").toLowerCase().includes(kw) : null),
+      keywordInDescription:
+        html?.keywordInDescription ??
+        (kw ? (signals.description ?? "").toLowerCase().includes(kw) : null),
+      keywordInH1:
+        html?.keywordInH1 ?? (kw ? h1.some((h) => h.toLowerCase().includes(kw)) : null),
+      imagesWithoutAlt: html?.imagesWithoutAlt ?? null,
     };
 
     const issues = sortIssuesBySeverity(buildOnPageIssues(input));

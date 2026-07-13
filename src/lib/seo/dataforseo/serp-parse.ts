@@ -51,6 +51,39 @@ export function extractSerpFeatures(items: SerpResultItem[]): string[] {
  * diberikan). Mengembalikan posisi (rank_group organik) + URL yang ditemukan,
  * atau null bila tidak masuk hasil.
  */
+/** Semua posisi organik milik satu domain (untuk deteksi cannibalization). */
+export function findAllDomainMatches(
+  items: SerpResultItem[],
+  domain: string,
+): { position: number; url: string | null }[] {
+  const target = normalizeDomain(domain);
+  const out: { position: number; url: string | null }[] = [];
+  for (const item of items) {
+    if (item.type !== "organic") continue;
+    const itemDomain = item.domain ? normalizeDomain(item.domain) : "";
+    if (itemDomain !== target && !itemDomain.endsWith(`.${target}`)) continue;
+    const position = item.rank_group ?? item.rank_absolute;
+    if (position == null) continue;
+    out.push({ position, url: item.url ?? null });
+  }
+  return out;
+}
+
+/** Posisi organik terbaik per domain: { domain: posisi | null }. */
+export function findDomainRanks(
+  items: SerpResultItem[],
+  domains: string[],
+): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  for (const domain of domains) {
+    const key = normalizeDomain(domain);
+    if (!key) continue;
+    const match = findDomainRank(items, key);
+    out[key] = match?.position ?? null;
+  }
+  return out;
+}
+
 export function findDomainRank(
   items: SerpResultItem[],
   domain: string,
