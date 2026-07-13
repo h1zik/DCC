@@ -6,10 +6,11 @@ import {
   DataForSeoError,
   isDataForSeoConfigured,
 } from "@/lib/seo/dataforseo/client";
-import { fetchDomainIntersection } from "@/lib/seo/dataforseo/labs-domain";
+import { fetchRankedKeywordsWithMeta } from "@/lib/seo/dataforseo/labs-domain";
 import {
   mergeGapRows,
-  type GapSourceRow,
+  type GapCoverage,
+  type GapDomainRow,
 } from "@/lib/seo/keyword-gap/gap-logic";
 
 function failMessage(err: unknown): string {
@@ -47,26 +48,37 @@ export async function runKeywordGap(gapId: string): Promise<void> {
   });
 
   try {
+    const perDomainLimit = 1000;
     const opts = {
       locationCode: gap.locationCode,
       languageCode: gap.languageCode,
-      limit: 300,
+      limit: perDomainLimit,
     };
 
-    // Satu call intersection per kompetitor (berurutan — hemat concurrent load).
-    const sources: Record<string, GapSourceRow[]> = {};
+    // Ambil ranked keywords setiap domain agar union tidak bergantung pada
+    // arah target1/target2. Berurutan untuk menjaga concurrency akun.
+    const domains = [gap.target, ...gap.competitors];
+    const sources: Record<string, GapDomainRow[]> = {};
+    const coverage: GapCoverage = {
+      fetchedByDomain: {},
+      totalByDomain: {},
+      truncatedDomains: [],
+      perDomainLimit,
+    };
     const notices: string[] = [];
-    for (const competitor of gap.competitors) {
-      const rows = await fetchDomainIntersection(gap.target, competitor, opts);
-      sources[competitor] = rows.map((r) => ({
-        keyword: r.keyword,
-        searchVolume: r.searchVolume,
-        difficulty: r.difficulty,
-        targetPosition: r.targetPosition,
-        competitorPosition: r.competitorPosition,
+    for (const domain of domains) {
+      const result = await fetchRankedKeywordsWithMeta(domain, opts);
+      sources[domain] = result.rows.map((row) => ({
+        keyword: row.keyword,
+        searchVolume: row.searchVolume,
+        difficulty: row.difficulty,
+        position: row.position,
       }));
-      if (rows.length === 0) {
-        notices.push(`Tidak ada data intersection dengan ${competitor}.`);
+      coverage.fetchedByDomain[domain] = result.rows.length;
+      coverage.totalByDomain[domain] = result.totalCount;
+      if (result.truncated) coverage.truncatedDomains.push(domain);
+      if (result.rows.length === 0) {
+        notices.push(`Tidak ada keyword organik terdeteksi untuk ${domain}.`);
       }
     }
 
@@ -75,10 +87,18 @@ export async function runKeywordGap(gapId: string): Promise<void> {
       data: { status: SeoAnalysisStatus.ANALYZING },
     });
 
-    const { rows, summary, truncated } = mergeGapRows(sources);
+    const { rows, summary, truncated } = mergeGapRows(gap.target, sources, {
+      cap: domains.length * perDomainLimit,
+      coverage,
+    });
+    if (coverage.truncatedDomains.length > 0) {
+      notices.push(
+        `Analisis memakai maksimal ${perDomainLimit.toLocaleString("id-ID")} keyword organik teratas per domain; data dipotong untuk ${coverage.truncatedDomains.join(", ")}.`,
+      );
+    }
     if (truncated) {
       notices.push(
-        `Menampilkan ${rows.length} dari ${summary.totalKeywords} keyword (dipotong — persempit dengan kompetitor lebih sedikit bila perlu).`,
+        `Menyimpan ${rows.length} dari ${summary.totalKeywords} keyword dalam union sampel.`,
       );
     }
     if (summary.totalKeywords === 0) {

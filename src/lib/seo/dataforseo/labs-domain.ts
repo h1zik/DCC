@@ -64,7 +64,10 @@ type DfsRankOverviewItem = {
   } | null;
 };
 
-type DfsItemsResult<T> = { items?: T[] | null };
+type DfsItemsResult<T> = {
+  items?: T[] | null;
+  total_count?: number | null;
+};
 
 const sumOrNull = (...vals: (number | null | undefined)[]): number => {
   let total = 0;
@@ -128,6 +131,14 @@ export type RankedKeyword = {
   url: string | null;
 };
 
+export type RankedKeywordsResult = {
+  rows: RankedKeyword[];
+  /** Total keyword organik yang tersedia di database DataForSEO. */
+  totalCount: number;
+  /** True bila respons hanya mengambil sebagian keyword teratas. */
+  truncated: boolean;
+};
+
 type DfsRankedItem = {
   keyword_data?: {
     keyword?: string | null;
@@ -143,26 +154,20 @@ type DfsRankedItem = {
   } | null;
 };
 
-export async function fetchRankedKeywords(
+export function buildRankedKeywordsPayload(
   target: string,
   opts: LabsDomainOptions = {},
-): Promise<RankedKeyword[]> {
-  const endpoint = "dataforseo_labs/google/ranked_keywords/live";
-  const payload = {
+): Record<string, unknown> {
+  return {
     target,
     ...baseParams(opts),
-    limit: Math.min(500, Math.max(10, opts.limit ?? 300)),
+    item_types: ["organic"],
+    limit: Math.min(1000, Math.max(10, opts.limit ?? 300)),
     order_by: ["ranked_serp_element.serp_item.etv,desc"],
   };
+}
 
-  const items = await withDataForSeoCache(endpoint, payload, async () => {
-    const result = await dataForSeoLive<DfsItemsResult<DfsRankedItem>>(
-      endpoint,
-      payload,
-    );
-    return result[0]?.items ?? [];
-  });
-
+function parseRankedKeywords(items: DfsRankedItem[]): RankedKeyword[] {
   return (items ?? [])
     .map((item): RankedKeyword | null => {
       const kw = item.keyword_data?.keyword?.trim();
@@ -180,7 +185,43 @@ export async function fetchRankedKeywords(
         url: serp?.url ?? null,
       };
     })
-    .filter((k): k is RankedKeyword => k != null);
+    .filter((keyword): keyword is RankedKeyword => keyword != null);
+}
+
+export async function fetchRankedKeywordsWithMeta(
+  target: string,
+  opts: LabsDomainOptions = {},
+): Promise<RankedKeywordsResult> {
+  const endpoint = "dataforseo_labs/google/ranked_keywords/live";
+  const payload = buildRankedKeywordsPayload(target, opts);
+
+  const result = await withDataForSeoCache(
+    endpoint,
+    { ...payload, _cacheParserVersion: 2 },
+    async () => {
+      const response = await dataForSeoLive<DfsItemsResult<DfsRankedItem>>(
+        endpoint,
+        payload,
+      );
+      const first = response[0];
+      const items = first?.items ?? [];
+      const totalCount = first?.total_count ?? items.length;
+      return {
+        rows: parseRankedKeywords(items),
+        totalCount,
+        truncated: totalCount > items.length,
+      };
+    },
+  );
+
+  return result;
+}
+
+export async function fetchRankedKeywords(
+  target: string,
+  opts: LabsDomainOptions = {},
+): Promise<RankedKeyword[]> {
+  return (await fetchRankedKeywordsWithMeta(target, opts)).rows;
 }
 
 /* ---------------------------- competitors domain ---------------------------- */
@@ -258,9 +299,9 @@ type DfsIntersectionItem = {
 };
 
 /**
- * Keyword yang di-ranking target dan/atau satu kompetitor
- * (`intersections: false` agar keyword eksklusif kompetitor ikut → bucket
- * missing/untapped bisa dihitung).
+ * Keyword organik yang sama-sama di-ranking target dan satu kompetitor.
+ * Keyword Gap utama memakai ranked_keywords per-domain agar union lengkap
+ * tidak bergantung pada arah `target1`/`target2`.
  */
 export async function fetchDomainIntersection(
   target: string,
@@ -272,7 +313,8 @@ export async function fetchDomainIntersection(
     target1: target,
     target2: competitor,
     ...baseParams(opts),
-    intersections: false,
+    intersections: true,
+    item_types: ["organic"],
     limit: Math.min(500, Math.max(10, opts.limit ?? 300)),
     order_by: ["keyword_data.keyword_info.search_volume,desc"],
   };
@@ -372,9 +414,43 @@ type DfsPageIntersectionItem = {
     keyword?: string | null;
     keyword_info?: { search_volume?: number | null } | null;
   } | null;
-  first_page_intersection?: { rank_group?: number | null }[] | null;
-  second_page_intersection?: { rank_group?: number | null }[] | null;
+  intersection_result?: Record<
+    string,
+    { rank_group?: number | null } | null
+  > | null;
 };
+
+export function buildPageIntersectionPayload(
+  page1: string,
+  page2: string,
+  opts: LabsDomainOptions = {},
+): Record<string, unknown> {
+  return {
+    pages: { "1": page1, "2": page2 },
+    ...baseParams(opts),
+    item_types: ["organic"],
+    intersection_mode: "union",
+    limit: Math.min(300, Math.max(10, opts.limit ?? 200)),
+    order_by: ["keyword_data.keyword_info.search_volume,desc"],
+  };
+}
+
+export function parsePageIntersectionRows(
+  items: DfsPageIntersectionItem[],
+): PageIntersectionRow[] {
+  return (items ?? [])
+    .map((item): PageIntersectionRow | null => {
+      const keyword = item.keyword_data?.keyword?.trim();
+      if (!keyword) return null;
+      return {
+        keyword,
+        searchVolume: item.keyword_data?.keyword_info?.search_volume ?? null,
+        page1Position: item.intersection_result?.["1"]?.rank_group ?? null,
+        page2Position: item.intersection_result?.["2"]?.rank_group ?? null,
+      };
+    })
+    .filter((row): row is PageIntersectionRow => row != null);
+}
 
 /**
  * Keyword yang di-ranking dua URL (halaman vs halaman) —
@@ -387,13 +463,7 @@ export async function fetchPageIntersection(
   opts: LabsDomainOptions = {},
 ): Promise<PageIntersectionRow[]> {
   const endpoint = "dataforseo_labs/google/page_intersection/live";
-  const payload = {
-    pages: { "1": page1, "2": page2 },
-    ...baseParams(opts),
-    intersection_mode: "union",
-    limit: Math.min(300, Math.max(10, opts.limit ?? 200)),
-    order_by: ["keyword_data.keyword_info.search_volume,desc"],
-  };
+  const payload = buildPageIntersectionPayload(page1, page2, opts);
 
   const items = await withDataForSeoCache(endpoint, payload, async () => {
     const result = await dataForSeoLive<DfsItemsResult<DfsPageIntersectionItem>>(
@@ -403,16 +473,5 @@ export async function fetchPageIntersection(
     return result[0]?.items ?? [];
   });
 
-  return (items ?? [])
-    .map((item): PageIntersectionRow | null => {
-      const kw = item.keyword_data?.keyword?.trim();
-      if (!kw) return null;
-      return {
-        keyword: kw,
-        searchVolume: item.keyword_data?.keyword_info?.search_volume ?? null,
-        page1Position: item.first_page_intersection?.[0]?.rank_group ?? null,
-        page2Position: item.second_page_intersection?.[0]?.rank_group ?? null,
-      };
-    })
-    .filter((r): r is PageIntersectionRow => r != null);
+  return parsePageIntersectionRows(items);
 }

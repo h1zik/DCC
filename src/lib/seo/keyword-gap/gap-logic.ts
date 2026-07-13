@@ -1,17 +1,22 @@
 /**
- * Jantung fitur Keyword Gap: gabungkan hasil domain_intersection per
- * kompetitor menjadi baris terpadu + klasifikasi bucket ala Semrush.
- * Pure agar mudah di-test.
+ * Jantung fitur Keyword Gap: gabungkan ranked keywords per-domain menjadi
+ * baris terpadu dan klasifikasi opportunity bucket.
  */
 
-export type GapBucket = "missing" | "weak" | "strong" | "shared" | "untapped";
+export type GapBucket =
+  | "missing"
+  | "weak"
+  | "strong"
+  | "shared"
+  | "untapped"
+  | "unique"
+  | "mixed";
 
-export type GapSourceRow = {
+export type GapDomainRow = {
   keyword: string;
   searchVolume: number | null;
   difficulty: number | null;
-  targetPosition: number | null;
-  competitorPosition: number | null;
+  position: number | null;
 };
 
 export type GapRow = {
@@ -21,60 +26,96 @@ export type GapRow = {
   targetPos: number | null;
   /** Posisi per domain kompetitor (null = tidak ranking). */
   competitorPos: Record<string, number | null>;
+  /** Label Semrush dapat tumpang tindih, mis. shared + weak. */
+  buckets: GapBucket[];
+  /** Label utama untuk badge dan kompatibilitas data lama. */
   bucket: GapBucket;
 };
 
+export type GapCoverage = {
+  /** Jumlah baris yang benar-benar diambil per domain. */
+  fetchedByDomain: Record<string, number>;
+  /** Jumlah keyword yang tersedia menurut DataForSEO per domain. */
+  totalByDomain: Record<string, number>;
+  /** Domain yang datanya dipotong oleh batas API. */
+  truncatedDomains: string[];
+  perDomainLimit: number;
+};
+
 export type GapSummary = {
+  version: 2;
   buckets: Record<GapBucket, number>;
-  /** Jumlah keyword yang di-ranking tiap domain (untuk venn). */
+  /** Jumlah keyword pada sampel yang di-ranking tiap domain (untuk venn). */
   domainCounts: Record<string, number>;
   /** Keyword yang di-ranking target DAN minimal satu kompetitor. */
   sharedWithAnyCompetitor: number;
+  /** Jumlah keyword unik dalam union sampel yang diambil. */
   totalKeywords: number;
+  coverage?: GapCoverage;
 };
 
 /**
- * Klasifikasi bucket Semrush:
- * - missing : semua/ada kompetitor ranking, target tidak.
- * - untapped: hanya SATU kompetitor ranking, target tidak (khusus >1 kompetitor).
- * - weak    : target ranking tapi di bawah SEMUA kompetitor yang ranking.
- * - strong  : target ranking di atas semua kompetitor (atau kompetitor tak ranking).
- * - shared  : target & kompetitor sama-sama ranking, posisi campuran.
+ * Label mengikuti definisi Keyword Gap dan dapat tumpang tindih. `mixed`
+ * menampung kasus target serta sebagian kompetitor ranking dengan posisi
+ * campuran, yang tidak memiliki label intersection khusus.
  */
+export function classifyBuckets(
+  targetPos: number | null,
+  competitorPositions: (number | null)[],
+  competitorCount: number,
+): GapBucket[] {
+  const ranking = competitorPositions.filter((p): p is number => p != null);
+
+  if (targetPos == null) {
+    const labels: GapBucket[] = [];
+    if (ranking.length > 0) labels.push("untapped");
+    if (ranking.length === competitorCount) labels.unshift("missing");
+    return labels;
+  }
+  if (ranking.length === 0) return ["unique"];
+
+  const labels: GapBucket[] = [];
+  const allCompetitorsRank = ranking.length === competitorCount;
+  if (allCompetitorsRank) labels.push("shared");
+  if (allCompetitorsRank && ranking.every((position) => position < targetPos)) {
+    labels.unshift("weak");
+  }
+  if (
+    competitorPositions.every(
+      (position) => position == null || targetPos < position,
+    )
+  ) {
+    labels.unshift("strong");
+  }
+  return labels.length > 0 ? labels : ["mixed"];
+}
+
 export function classifyBucket(
   targetPos: number | null,
   competitorPositions: (number | null)[],
   competitorCount: number,
 ): GapBucket {
-  const ranking = competitorPositions.filter((p): p is number => p != null);
-  if (targetPos == null) {
-    if (competitorCount > 1 && ranking.length === 1) return "untapped";
-    return "missing";
-  }
-  if (ranking.length === 0) return "strong";
-  const betterThanTarget = ranking.filter((p) => p < targetPos).length;
-  if (betterThanTarget === ranking.length) return "weak";
-  if (betterThanTarget === 0) return "strong";
-  return "shared";
+  return (
+    classifyBuckets(targetPos, competitorPositions, competitorCount)[0] ??
+    "mixed"
+  );
 }
 
-/**
- * Merge hasil intersection per kompetitor → baris terpadu.
- * `sources` = map domain kompetitor → baris hasil intersection-nya.
- */
+/** Gabungkan union ranked keywords target dan seluruh kompetitor. */
 export function mergeGapRows(
-  sources: Record<string, GapSourceRow[]>,
-  opts: { cap?: number } = {},
+  targetDomain: string,
+  sources: Record<string, GapDomainRow[]>,
+  opts: { cap?: number; coverage?: GapCoverage } = {},
 ): { rows: GapRow[]; summary: GapSummary; truncated: boolean } {
-  const competitors = Object.keys(sources);
+  const domains = Object.keys(sources);
+  const competitors = domains.filter((domain) => domain !== targetDomain);
   const byKeyword = new Map<
     string,
     {
       keyword: string;
       searchVolume: number | null;
       difficulty: number | null;
-      targetPos: number | null;
-      competitorPos: Record<string, number | null>;
+      positions: Record<string, number | null>;
     }
   >();
 
@@ -86,29 +127,38 @@ export function mergeGapRows(
         keyword: row.keyword.trim(),
         searchVolume: null,
         difficulty: null,
-        targetPos: null,
-        competitorPos: Object.fromEntries(
-          competitors.map((c) => [c, null]),
+        positions: Object.fromEntries(
+          domains.map((sourceDomain) => [sourceDomain, null]),
         ) as Record<string, number | null>,
       };
       existing.searchVolume = existing.searchVolume ?? row.searchVolume;
       existing.difficulty = existing.difficulty ?? row.difficulty;
-      existing.targetPos = existing.targetPos ?? row.targetPosition;
-      existing.competitorPos[domain] = row.competitorPosition;
+      existing.positions[domain] = row.position;
       byKeyword.set(key, existing);
     }
   }
 
-  const allRows: GapRow[] = [...byKeyword.values()].map((r) => ({
-    ...r,
-    bucket: classifyBucket(
-      r.targetPos,
-      Object.values(r.competitorPos),
+  const allRows: GapRow[] = [...byKeyword.values()].map((row) => {
+    const targetPos = row.positions[targetDomain] ?? null;
+    const competitorPos = Object.fromEntries(
+      competitors.map((domain) => [domain, row.positions[domain] ?? null]),
+    ) as Record<string, number | null>;
+    const rowBuckets = classifyBuckets(
+      targetPos,
+      Object.values(competitorPos),
       competitors.length,
-    ),
-  }));
+    );
+    return {
+      keyword: row.keyword,
+      searchVolume: row.searchVolume,
+      difficulty: row.difficulty,
+      targetPos,
+      competitorPos,
+      buckets: rowBuckets,
+      bucket: rowBuckets[0] ?? "mixed",
+    };
+  });
 
-  // Urutkan volume desc (null di akhir).
   allRows.sort((a, b) => (b.searchVolume ?? -1) - (a.searchVolume ?? -1));
 
   const buckets: Record<GapBucket, number> = {
@@ -117,34 +167,37 @@ export function mergeGapRows(
     strong: 0,
     shared: 0,
     untapped: 0,
+    unique: 0,
+    mixed: 0,
   };
   const domainCounts: Record<string, number> = { target: 0 };
-  for (const c of competitors) domainCounts[c] = 0;
+  for (const competitor of competitors) domainCounts[competitor] = 0;
   let sharedWithAnyCompetitor = 0;
 
   for (const row of allRows) {
-    buckets[row.bucket] += 1;
+    for (const bucket of row.buckets) buckets[bucket] += 1;
     if (row.targetPos != null) domainCounts.target += 1;
-    let anyComp = false;
-    for (const c of competitors) {
-      if (row.competitorPos[c] != null) {
-        domainCounts[c] += 1;
-        anyComp = true;
+    let anyCompetitor = false;
+    for (const competitor of competitors) {
+      if (row.competitorPos[competitor] != null) {
+        domainCounts[competitor] += 1;
+        anyCompetitor = true;
       }
     }
-    if (anyComp && row.targetPos != null) sharedWithAnyCompetitor += 1;
+    if (anyCompetitor && row.targetPos != null) sharedWithAnyCompetitor += 1;
   }
 
-  const cap = opts.cap ?? 700;
+  const cap = opts.cap ?? 4000;
   const truncated = allRows.length > cap;
-
   return {
     rows: allRows.slice(0, cap),
     summary: {
+      version: 2,
       buckets,
       domainCounts,
       sharedWithAnyCompetitor,
       totalKeywords: allRows.length,
+      coverage: opts.coverage,
     },
     truncated,
   };

@@ -14,9 +14,9 @@ const createSchema = z.object({
   brandTerms: z.array(z.string().min(2).max(100)).min(1).max(10),
   keywords: z.array(z.string().min(2).max(200)).min(1).max(MAX_KEYWORDS),
   platforms: z
-    .array(z.enum(["chatgpt", "gemini", "perplexity"]))
+    .array(z.enum(["chatgpt", "gemini", "claude", "perplexity"]))
     .min(1)
-    .max(3),
+    .max(4),
 });
 
 export async function createAiVisibilityRun(

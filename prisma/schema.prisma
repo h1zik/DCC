@@ -4958,7 +4958,8 @@ model SeoDomainOverview {
 
 /**
  * Keyword Gap (ala Semrush): keyword organik milik target vs hingga 3
- * kompetitor → bucket missing/weak/strong/shared/untapped + data venn.
+ * kompetitor → kategori yang dapat overlap: missing/weak/strong/shared/
+ * untapped/unique/mixed + data venn.
  */
 model SeoKeywordGap {
   id           String            @id @default(cuid())
@@ -4969,11 +4970,11 @@ model SeoKeywordGap {
   languageCode String            @default("id")
   status       SeoAnalysisStatus @default(PENDING)
   /**
-   * Ringkasan { buckets: {missing,weak,strong,shared,untapped}, overlap venn }.
+   * Ringkasan bucket, overlap venn, dan metadata cakupan per domain.
    */
   summary      Json?
   /**
-   * Baris gabungan (cap ~700) [{ keyword, volume, difficulty, targetPos, competitorPos }].
+   * Baris union (maks 1000/domain) [{ keyword, volume, difficulty, targetPos, competitorPos }].
    */
   rows         Json?
   dataNotice   String?           @db.Text

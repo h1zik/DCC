@@ -64,14 +64,18 @@ const BUCKET_LABELS: Record<GapBucket, string> = {
   strong: "Strong",
   shared: "Shared",
   untapped: "Untapped",
+  unique: "Unique",
+  mixed: "Mixed",
 };
 
 const BUCKET_HINTS: Record<GapBucket, string> = {
-  missing: "Kompetitor ranking, Anda tidak — peluang konten baru.",
+  missing: "Semua kompetitor ranking, Anda tidak — peluang prioritas.",
   weak: "Anda ranking di bawah semua kompetitor — optimasi konten.",
   strong: "Anda unggul dari semua kompetitor.",
-  shared: "Sama-sama ranking, posisi campuran.",
-  untapped: "Baru satu kompetitor yang menggarap — celah cepat.",
+  shared: "Semua domain yang dibandingkan sama-sama ranking.",
+  untapped: "Sebagian kompetitor ranking, Anda belum — peluang baru.",
+  unique: "Hanya domain Anda yang ranking — kekuatan eksklusif.",
+  mixed: "Anda dan sebagian kompetitor ranking dengan posisi campuran.",
 };
 
 const BUCKET_COLORS: Record<GapBucket, string> = {
@@ -80,6 +84,8 @@ const BUCKET_COLORS: Record<GapBucket, string> = {
   strong: "#22c55e",
   shared: "#6366f1",
   untapped: "#06b6d4",
+  unique: "#8b5cf6",
+  mixed: "#64748b",
 };
 
 function num(v: number | null | undefined): string {
@@ -107,7 +113,9 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
     () =>
       bucket === "all"
         ? detail.rows
-        : detail.rows.filter((r) => r.bucket === bucket),
+        : detail.rows.filter((r) =>
+            (r.buckets ?? [r.bucket]).includes(bucket),
+          ),
     [detail.rows, bucket],
   );
 
@@ -207,6 +215,7 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
   }
 
   const summary = detail.summary;
+  const coverage = summary?.coverage;
 
   return (
     <SeoDetailPage
@@ -258,7 +267,7 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
           {summary ? (
             <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
               <div className={cn(hub.card, "p-4")}>
-                <p className="mb-3 font-semibold">Irisan keyword</p>
+                <p className="mb-3 font-semibold">Irisan keyword (ilustrasi)</p>
                 <SeoGapVenn
                   target={detail.target}
                   targetCount={summary.domainCounts.target ?? 0}
@@ -270,7 +279,7 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                 <p className="text-muted-foreground text-xs">
                   {summary.sharedWithAnyCompetitor} keyword sama-sama di-ranking
                   Anda & minimal satu kompetitor (dari {summary.totalKeywords}{" "}
-                  total).
+                  keyword dalam union sampel).
                 </p>
               </div>
               {scatterOption ? (
@@ -279,6 +288,20 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                   <EChart option={scatterOption} height={260} />
                 </div>
               ) : null}
+            </div>
+          ) : null}
+
+          {coverage ? (
+            <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              {[detail.target, ...detail.competitors].map((domain) => (
+                <span key={domain}>
+                  {domain}: {coverage.fetchedByDomain[domain] ?? 0}/
+                  {coverage.totalByDomain[domain] ?? 0} keyword
+                  {coverage.truncatedDomains.includes(domain)
+                    ? " (sampel teratas)"
+                    : ""}
+                </span>
+              ))}
             </div>
           ) : null}
 
@@ -307,6 +330,10 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
               </Button>
             ))}
           </div>
+          <p className="text-muted-foreground text-xs">
+            Kategori dapat tumpang tindih; contohnya keyword Weak juga termasuk
+            Shared karena semua domain sama-sama ranking.
+          </p>
 
           {/* Tabel gap */}
           <div className={cn(hub.card, "overflow-x-auto p-4")}>
@@ -360,17 +387,24 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                       </TableCell>
                     ))}
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className="gap-1.5"
-                        title={BUCKET_HINTS[row.bucket]}
-                      >
-                        <span
-                          className="size-2 rounded-full"
-                          style={{ backgroundColor: BUCKET_COLORS[row.bucket] }}
-                        />
-                        {BUCKET_LABELS[row.bucket]}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1">
+                        {(row.buckets ?? [row.bucket]).map((rowBucket) => (
+                          <Badge
+                            key={rowBucket}
+                            variant="outline"
+                            className="gap-1.5"
+                            title={BUCKET_HINTS[rowBucket]}
+                          >
+                            <span
+                              className="size-2 rounded-full"
+                              style={{
+                                backgroundColor: BUCKET_COLORS[rowBucket],
+                              }}
+                            />
+                            {BUCKET_LABELS[rowBucket]}
+                          </Badge>
+                        ))}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -389,7 +423,8 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
             <p className="mb-1 font-semibold">Bedah halaman vs halaman</p>
             <p className="text-muted-foreground mb-3 text-xs">
               Bandingkan satu URL Anda dengan satu URL kompetitor — lihat
-              keyword yang mereka ranking tapi halaman Anda lewatkan.
+              maksimal 200 keyword organik teratas yang mereka ranking tetapi
+              halaman Anda lewatkan.
             </p>
             <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <div className="grid gap-1.5">
