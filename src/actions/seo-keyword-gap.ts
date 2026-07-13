@@ -94,7 +94,7 @@ const comparePagesSchema = z.object({
 /**
  * Bedah halaman vs halaman (Labs page_intersection): keyword yang di-ranking
  * masing-masing URL. Ephemeral — hasil dikembalikan langsung (tetap ter-cache
- * di DataForSeoCache 7 hari).
+ * di DataForSeoCache; default 24 jam).
  */
 export async function comparePagesAction(
   input: z.infer<typeof comparePagesSchema>,

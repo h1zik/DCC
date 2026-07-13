@@ -34,10 +34,18 @@ export function registerSeoTools(server, deps) {
             .optional()
             .describe("Domain, mis. 'kompetitor.co.id' (kosongkan untuk daftar)"),
     }, async ({ target }) => asText(await dccFetch(`/api/ai/seo/domain-overview${buildQuery({ target })}`)));
-    server.tool("seo_keyword_gap", "Keyword gap vs kompetitor (analisis tersimpan): bucket missing/weak/strong/shared/untapped. Tanpa `gapId` → daftar analisis. Pakai untuk 'keyword yang kompetitor ranking tapi kita tidak'.", {
+    server.tool("seo_keyword_gap", "Keyword gap vs kompetitor (analisis tersimpan): kategori missing/weak/strong/shared/untapped/unique/mixed; satu keyword dapat memiliki beberapa kategori. Tanpa `gapId` → daftar analisis. Pakai untuk 'keyword yang kompetitor ranking tapi kita tidak'.", {
         gapId: z.string().optional().describe("ID analisis gap (kosongkan untuk daftar)"),
         bucket: z
-            .enum(["missing", "weak", "strong", "shared", "untapped"])
+            .enum([
+            "missing",
+            "weak",
+            "strong",
+            "shared",
+            "untapped",
+            "unique",
+            "mixed",
+        ])
             .optional()
             .describe("Filter bucket"),
         limit: limitSchema,

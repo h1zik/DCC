@@ -30,6 +30,7 @@ export type KeywordGapRow = {
   status: SeoAnalysisStatus;
   missing: number | null;
   weak: number | null;
+  needsRefresh: boolean;
   errorMessage: string | null;
   createdAt: string;
 };
@@ -151,7 +152,9 @@ export function KeywordGapClient({
                 <span className="block truncate font-medium">{item.name}</span>
                 <span className="text-muted-foreground block truncate text-xs">
                   {item.target} vs {item.competitors.join(", ")}
-                  {item.missing != null
+                  {item.needsRefresh
+                    ? " · perlu Refresh"
+                    : item.missing != null
                     ? ` · ${item.missing} missing · ${item.weak ?? 0} weak`
                     : ""}
                 </span>

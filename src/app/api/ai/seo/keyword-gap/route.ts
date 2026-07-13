@@ -1,7 +1,10 @@
 import { guardAiApiRequest, parseLimitParam } from "@/lib/ai-api/guard";
 import { aiApiError, aiApiOk } from "@/lib/ai-api/response";
 import { prisma } from "@/lib/prisma";
-import type { GapRow } from "@/lib/seo/keyword-gap/gap-logic";
+import type {
+  GapRow,
+  GapSummary,
+} from "@/lib/seo/keyword-gap/gap-logic";
 
 /**
  * Keyword Gap tersimpan (read-only, untuk MCP). Query: `gapId?`, `bucket?`,
@@ -36,8 +39,21 @@ export async function GET(req: Request) {
     const gap = await prisma.seoKeywordGap.findUnique({ where: { id: gapId } });
     if (!gap) return aiApiError("Keyword gap tidak ditemukan.", 404);
 
-    let rows = Array.isArray(gap.rows) ? (gap.rows as unknown as GapRow[]) : [];
-    if (bucket) rows = rows.filter((r) => r.bucket === bucket);
+    const storedSummary =
+      gap.summary && typeof gap.summary === "object" && !Array.isArray(gap.summary)
+        ? (gap.summary as unknown as GapSummary)
+        : null;
+    const hasStoredRows = Array.isArray(gap.rows) && gap.rows.length > 0;
+    const needsRefresh = hasStoredRows && storedSummary?.version !== 2;
+    let rows =
+      !needsRefresh && Array.isArray(gap.rows)
+        ? (gap.rows as unknown as GapRow[])
+        : [];
+    if (bucket) {
+      rows = rows.filter((r) =>
+        (r.buckets ?? [r.bucket]).includes(bucket as GapRow["bucket"]),
+      );
+    }
 
     return aiApiOk(
       {
@@ -46,9 +62,12 @@ export async function GET(req: Request) {
         target: gap.target,
         competitors: gap.competitors,
         status: gap.status,
-        summary: gap.summary,
+        summary: needsRefresh ? null : storedSummary,
         rows: rows.slice(0, limit),
-        dataNotice: gap.dataNotice,
+        needsRefresh,
+        dataNotice: needsRefresh
+          ? "Hasil dibuat dengan mesin Keyword Gap lama. Refresh analisis sebelum memakai output."
+          : gap.dataNotice,
       },
       guard.ctx.role,
     );

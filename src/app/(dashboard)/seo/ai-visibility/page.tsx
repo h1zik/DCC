@@ -38,7 +38,7 @@ export default async function SeoAiVisibilityPage() {
     <SeoModulePage
       icon={Bot}
       title="AI Visibility"
-      description="Apakah brand Anda disebut saat orang bertanya ke ChatGPT, Gemini, atau Perplexity? Frontier baru SEO (AEO) — pantau mention brand di jawaban AI untuk keyword komersial Anda."
+      description="Apakah brand Anda disebut saat orang bertanya ke ChatGPT, Gemini, Claude, atau Perplexity? Frontier baru SEO (AEO) — pantau mention brand di jawaban AI untuk keyword komersial Anda."
     >
       <AiVisibilityClient items={items} />
     </SeoModulePage>

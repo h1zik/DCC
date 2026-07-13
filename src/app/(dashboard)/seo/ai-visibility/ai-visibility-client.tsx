@@ -53,6 +53,7 @@ export type AiVisibilityRunRow = {
 const PLATFORM_LABELS: Record<string, string> = {
   chatgpt: "ChatGPT",
   gemini: "Gemini",
+  claude: "Claude",
   perplexity: "Perplexity",
 };
 
@@ -91,7 +92,12 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
           name: name.trim() || `Cek AI ${new Date().toLocaleDateString("id-ID")}`,
           brandTerms: brands.slice(0, 10),
           keywords: kws.slice(0, 20),
-          platforms: platforms as ("chatgpt" | "gemini" | "perplexity")[],
+          platforms: platforms as (
+            | "chatgpt"
+            | "gemini"
+            | "claude"
+            | "perplexity"
+          )[],
         });
         setName("");
         setOpenRunId(id);

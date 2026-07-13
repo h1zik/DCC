@@ -87,7 +87,7 @@ export default async function SeoOverviewPage() {
     { href: "/seo/domain-overview", icon: Globe, title: "Domain Overview", desc: "Potret organik domain apa pun: estimasi trafik, top keyword, dan kompetitor terdeteksi otomatis." },
     { href: "/seo/keyword-gap", icon: Swords, title: "Keyword Gap", desc: "Bandingkan keyword Anda vs kompetitor — temukan bucket missing/weak/untapped untuk digarap." },
     { href: "/seo/content-audit", icon: Activity, title: "Content Audit (GSC)", desc: "Data nyata Search Console: halaman yang trafiknya menurun & perlu refresh — langsung jadi opportunity." },
-    { href: "/seo/ai-visibility", icon: Bot, title: "AI Visibility", desc: "Apakah brand Anda disebut ChatGPT/Gemini/Perplexity untuk keyword komersial? Frontier baru SEO (AEO)." },
+    { href: "/seo/ai-visibility", icon: Bot, title: "AI Visibility", desc: "Apakah brand Anda disebut ChatGPT/Gemini/Claude/Perplexity untuk keyword komersial? Frontier baru SEO (AEO)." },
     { href: "/seo/onpage-audit", icon: ListChecks, title: "On-Page SEO Audit", desc: "Audit satu URL: title, meta, heading, alt, schema, readability → skor + rekomendasi actionable." },
     { href: "/seo/crawler", icon: Bug, title: "Technical SEO Crawler", desc: "Crawl domain terjadwal: health score, diff isu antar-crawl, dan Core Web Vitals." },
     { href: "/seo/content", icon: PenLine, title: "Content SEO Optimizer", desc: "Brief grounded SERP → artikel AI 1500+ kata → skor real-time ala Surfer → ekspor DOCX/MD." },

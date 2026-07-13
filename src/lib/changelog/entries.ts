@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-13-seo-ai-visibility-keyword-gap-fixes",
+    date: "2026-07-13",
+    title: "SEO: AI Visibility lebih stabil & Keyword Gap lebih akurat",
+    category: "fixed",
+    description:
+      "AI Visibility kini memakai format model DataForSEO yang benar untuk Gemini dan menyediakan pilihan Claude. Mesin Keyword Gap juga diperbaiki agar membandingkan union keyword organik setiap domain, membaca Page Intersection terbaru, serta menjelaskan cakupan sampel secara transparan.",
+    highlights: [
+      "Gemini tidak lagi gagal karena field model_name dan Claude tersedia sebagai model AI Visibility",
+      "Keyword Gap menghitung keyword organik target dan kompetitor secara utuh, maksimal 1.000 keyword teratas per domain",
+      "Kategori Missing, Weak, Strong, Shared, Untapped, Unique, dan Mixed kini mengikuti posisi setiap domain dan dapat tumpang tindih",
+      "Hasil dari mesin lama ditandai perlu Refresh sebelum digunakan kembali",
+      "Page Intersection dan filter Keyword Gap di UI, API, serta MCP memakai kontrak data yang konsisten",
+    ],
+  },
+  {
     id: "2026-07-13-seo-gsc-ai-visibility",
     date: "2026-07-13",
     title: "SEO: integrasi Search Console, Content Audit, AI Visibility & cek orisinalitas",

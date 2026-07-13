@@ -1,5 +1,6 @@
 import { Swords } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { ensureSeoPage } from "@/lib/seo/auth";
 import { SeoModulePage } from "@/components/seo/seo-module-page";
 import { KeywordGapClient, type KeywordGapRow } from "./keyword-gap-client";
 
@@ -8,6 +9,7 @@ export default async function SeoKeywordGapPage({
 }: {
   searchParams: Promise<{ target?: string; competitor?: string }>;
 }) {
+  await ensureSeoPage();
   const { target, competitor } = await searchParams;
 
   const rows = await prisma.seoKeywordGap.findMany({
@@ -25,10 +27,14 @@ export default async function SeoKeywordGapPage({
   });
 
   const items: KeywordGapRow[] = rows.map((r) => {
-    const summary =
+    const storedSummary =
       r.summary && typeof r.summary === "object" && !Array.isArray(r.summary)
-        ? (r.summary as { buckets?: { missing?: number; weak?: number } })
+        ? (r.summary as {
+            version?: number;
+            buckets?: { missing?: number; weak?: number };
+          })
         : null;
+    const summary = storedSummary?.version === 2 ? storedSummary : null;
     return {
       id: r.id,
       name: r.name,
@@ -37,6 +43,7 @@ export default async function SeoKeywordGapPage({
       status: r.status,
       missing: summary?.buckets?.missing ?? null,
       weak: summary?.buckets?.weak ?? null,
+      needsRefresh: storedSummary != null && storedSummary.version !== 2,
       errorMessage: r.errorMessage,
       createdAt: r.createdAt.toISOString(),
     };
@@ -46,7 +53,7 @@ export default async function SeoKeywordGapPage({
     <SeoModulePage
       icon={Swords}
       title="Keyword Gap"
-      description="Bandingkan keyword organik domain Anda vs hingga 3 kompetitor — temukan keyword yang mereka ranking tapi Anda belum (missing/weak/untapped)."
+      description="Bandingkan keyword organik domain Anda vs hingga 3 kompetitor — temukan missing, weak, untapped, dan kekuatan unik domain Anda."
     >
       <KeywordGapClient
         items={items}
