@@ -768,7 +768,7 @@ function AddBackgroundCard({
                   Pilih file animasi
                 </span>
                 <span className="text-muted-foreground text-[11px]">
-                  WebP, MP4, JSON, .lottie
+                  WebP, MP4, JSON, .lottie · Maks. 20 MB
                 </span>
                 <input
                   type="file"
