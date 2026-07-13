@@ -21,6 +21,7 @@ import {
 } from "@/lib/gamification/equip-rules";
 import { normalizeProfileAccentHex } from "@/lib/profile-appearance";
 import {
+  CUSTOM_BG_MAX_IMAGE_BYTES,
   detectCustomBackgroundKind,
   mediaForUploadKind,
   storedExtensionForKind,
@@ -161,7 +162,7 @@ export async function updateProfileConfig(input: unknown) {
 
 /* ── Admin: katalog background animasi + frame avatar PNG ─────────────────── */
 
-const ADMIN_BG_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const ADMIN_BG_MAX_POSTER_BYTES = 12 * 1024 * 1024;
 const ADMIN_BG_DIR = "gamification/backgrounds";
 const ADMIN_FRAME_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ADMIN_FRAME_DIR = "gamification/avatar-frames";
@@ -281,7 +282,7 @@ async function writeAdminBgFile(
   const dir = await ensureAdminBgDir();
 
   if (prefix === "poster") {
-    if (raw.length > ADMIN_BG_MAX_IMAGE_BYTES) {
+    if (raw.length > ADMIN_BG_MAX_POSTER_BYTES) {
       throw new Error("Poster maksimal 12 MB.");
     }
     let poster: Buffer;
@@ -304,8 +305,8 @@ async function writeAdminBgFile(
   let ext = storedExtensionForKind(kind);
 
   if (kind === "image") {
-    if (raw.length > ADMIN_BG_MAX_IMAGE_BYTES) {
-      throw new Error("File gambar maksimal 12 MB.");
+    if (raw.length > CUSTOM_BG_MAX_IMAGE_BYTES) {
+      throw new Error("File gambar maksimal 20 MB.");
     }
     try {
       await sharp(raw).metadata();
@@ -406,7 +407,7 @@ async function writeAchievementSymbolFile(
 async function posterFromImageSource(file: File): Promise<string | null> {
   try {
     const raw = Buffer.from(await file.arrayBuffer());
-    if (raw.length > ADMIN_BG_MAX_IMAGE_BYTES) return null;
+    if (raw.length > CUSTOM_BG_MAX_IMAGE_BYTES) return null;
     const dir = await ensureAdminBgDir();
     const poster = await sharp(raw)
       .rotate()

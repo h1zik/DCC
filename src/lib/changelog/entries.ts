@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-13-gamification-upload-personal-kanban-order",
+    date: "2026-07-13",
+    title: "Upload background gamifikasi lebih besar & kolom kanban pribadi bisa diurutkan",
+    category: "improved",
+    description:
+      "Admin kini bisa mengunggah background animasi gamifikasi hingga 20 MB. Di Space Pribadi → Papan Tugas, urutan kolom juga bisa diubah langsung dengan drag-and-drop dan tetap tersimpan setelah halaman dimuat ulang.",
+    highlights: [
+      "Batas aset background animasi dinaikkan menjadi 20 MB",
+      "Geser kolom Papan Tugas pribadi lewat pegangan di header kolom",
+      "Urutan baru tersimpan otomatis dan tetap konsisten setelah refresh",
+    ],
+  },
+  {
     id: "2026-07-12-personal-space",
     date: "2026-07-12",
     title: "Space Pribadi baru: catatan, kanban, bookmark & file — 100% privat",

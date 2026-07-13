@@ -70,7 +70,22 @@ export async function updatePersonalColumn(input: {
 
 export async function reorderPersonalColumns(orderedIds: string[]) {
   const ownerId = await requirePersonalOwnerId();
-  const ids = z.array(z.string().cuid()).min(1).parse(orderedIds);
+  const ids = z
+    .array(z.string().cuid())
+    .min(1)
+    .max(100)
+    .refine((value) => new Set(value).size === value.length, {
+      message: "Urutan kolom tidak valid.",
+    })
+    .parse(orderedIds);
+  const ownedColumns = await prisma.personalKanbanColumn.findMany({
+    where: { ownerId },
+    select: { id: true },
+  });
+  const ownedIds = new Set(ownedColumns.map((column) => column.id));
+  if (ids.length !== ownedIds.size || ids.some((id) => !ownedIds.has(id))) {
+    throw new Error("Urutan kolom tidak valid.");
+  }
   await prisma.$transaction(
     ids.map((id, index) =>
       prisma.personalKanbanColumn.updateMany({

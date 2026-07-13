@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CUSTOM_BG_MAX_UPLOAD_BYTES,
   detectCustomBackgroundKind,
   validateDotLottie,
   validateLottieJson,
@@ -56,5 +57,20 @@ describe("custom-background-upload", () => {
     mp4.write("ftyp", 4);
     expect(() => validateMp4(mp4)).not.toThrow();
     expect(() => validateMp4(Buffer.from("not-mp4"))).toThrow(/mp4/i);
+  });
+
+  it("limits every animated background format to 20 MB", () => {
+    expect(CUSTOM_BG_MAX_UPLOAD_BYTES).toBe(20 * 1024 * 1024);
+
+    const oversizedLottie = Buffer.alloc(CUSTOM_BG_MAX_UPLOAD_BYTES + 1);
+    expect(() => validateLottieJson(oversizedLottie)).toThrow(/20 MB/i);
+
+    const oversizedDotLottie = Buffer.alloc(CUSTOM_BG_MAX_UPLOAD_BYTES + 1);
+    oversizedDotLottie.write("PK", 0);
+    expect(() => validateDotLottie(oversizedDotLottie)).toThrow(/20 MB/i);
+
+    const oversizedMp4 = Buffer.alloc(CUSTOM_BG_MAX_UPLOAD_BYTES + 1);
+    oversizedMp4.write("ftyp", 4);
+    expect(() => validateMp4(oversizedMp4)).toThrow(/20 MB/i);
   });
 });

@@ -13,10 +13,11 @@ export const CUSTOM_BG_IMAGE_MIMES = [
 
 export const CUSTOM_BG_VIDEO_MIMES = ["video/mp4"] as const;
 
-export const CUSTOM_BG_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-export const CUSTOM_BG_MAX_LOTTIE_JSON_BYTES = 5 * 1024 * 1024;
-export const CUSTOM_BG_MAX_DOTLOTTIE_BYTES = 8 * 1024 * 1024;
-export const CUSTOM_BG_MAX_VIDEO_BYTES = 15 * 1024 * 1024;
+export const CUSTOM_BG_MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const CUSTOM_BG_MAX_IMAGE_BYTES = CUSTOM_BG_MAX_UPLOAD_BYTES;
+export const CUSTOM_BG_MAX_LOTTIE_JSON_BYTES = CUSTOM_BG_MAX_UPLOAD_BYTES;
+export const CUSTOM_BG_MAX_DOTLOTTIE_BYTES = CUSTOM_BG_MAX_UPLOAD_BYTES;
+export const CUSTOM_BG_MAX_VIDEO_BYTES = CUSTOM_BG_MAX_UPLOAD_BYTES;
 
 export type CustomBackgroundUploadKind =
   | "image"
@@ -53,7 +54,7 @@ export function detectCustomBackgroundKind(file: File): CustomBackgroundUploadKi
 /** Validasi body Lottie JSON; return objek ternormalisasi untuk ditulis ulang. */
 export function validateLottieJson(raw: Buffer): Record<string, unknown> {
   if (raw.length > CUSTOM_BG_MAX_LOTTIE_JSON_BYTES) {
-    throw new Error("Lottie JSON maksimal 5 MB.");
+    throw new Error("Lottie JSON maksimal 20 MB.");
   }
   let parsed: unknown;
   try {
@@ -76,7 +77,7 @@ export function validateLottieJson(raw: Buffer): Record<string, unknown> {
 /** Validasi header ZIP untuk dotLottie (.lottie). */
 export function validateDotLottie(raw: Buffer): void {
   if (raw.length > CUSTOM_BG_MAX_DOTLOTTIE_BYTES) {
-    throw new Error("dotLottie maksimal 8 MB.");
+    throw new Error("dotLottie maksimal 20 MB.");
   }
   if (raw.length < 4 || raw[0] !== 0x50 || raw[1] !== 0x4b) {
     throw new Error("File .lottie tidak valid.");
@@ -86,7 +87,7 @@ export function validateDotLottie(raw: Buffer): void {
 /** Validasi container MP4 (ISO BMFF `ftyp` box). */
 export function validateMp4(raw: Buffer): void {
   if (raw.length > CUSTOM_BG_MAX_VIDEO_BYTES) {
-    throw new Error("MP4 maksimal 15 MB.");
+    throw new Error("MP4 maksimal 20 MB.");
   }
   if (raw.length < 12) {
     throw new Error("File MP4 tidak valid.");

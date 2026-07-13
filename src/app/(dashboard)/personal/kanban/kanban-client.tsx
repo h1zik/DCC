@@ -7,7 +7,6 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -16,6 +15,7 @@ import {
 } from "@dnd-kit/core";
 import {
   arrayMove,
+  horizontalListSortingStrategy,
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
@@ -25,6 +25,7 @@ import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import {
   CalendarDays,
+  GripVertical,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -37,6 +38,7 @@ import {
   deletePersonalCard,
   deletePersonalColumn,
   movePersonalCard,
+  reorderPersonalColumns,
   togglePersonalCardDone,
   updatePersonalColumn,
   upsertPersonalCard,
@@ -166,14 +168,37 @@ function BoardColumn({
   onEditColumn: (column: ColumnItem) => void;
   onDeleteColumn: (column: ColumnItem) => void;
 }) {
-  const { setNodeRef } = useDroppable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: column.id,
     data: { type: "column" },
   });
   const accent = column.colorHex || DEFAULT_COLUMN_COLOR;
   return (
-    <section className="bg-muted/40 flex w-72 shrink-0 flex-col rounded-xl border">
+    <section
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "bg-muted/40 flex w-72 shrink-0 flex-col rounded-xl border",
+        isDragging && "opacity-40",
+      )}
+    >
       <header className="flex items-center gap-2 px-3 py-2.5">
+        <button
+          type="button"
+          aria-label={`Geser kolom ${column.title}`}
+          className="text-muted-foreground hover:text-foreground cursor-grab touch-none rounded-sm active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" aria-hidden />
+        </button>
         <span
           className="size-2 shrink-0 rounded-full"
           style={{ backgroundColor: accent }}
@@ -213,7 +238,6 @@ function BoardColumn({
         strategy={verticalListSortingStrategy}
       >
         <div
-          ref={setNodeRef}
           className="flex min-h-16 flex-1 flex-col gap-2 px-2.5 pb-2"
         >
           {column.cards.map((card) => (
@@ -251,6 +275,7 @@ export function KanbanClient({ columns }: { columns: ColumnItem[] }) {
   }
 
   const [activeCard, setActiveCard] = useState<CardItem | null>(null);
+  const [activeColumn, setActiveColumn] = useState<ColumnItem | null>(null);
   const [cardDialog, setCardDialog] = useState<{
     editing: CardItem | null;
     columnId: string;
@@ -288,11 +313,17 @@ export function KanbanClient({ columns }: { columns: ColumnItem[] }) {
   }
 
   function onDragStart(e: DragStartEvent) {
+    if (e.active.data.current?.type === "column") {
+      setActiveColumn(board.find((column) => column.id === String(e.active.id)) ?? null);
+      setActiveCard(null);
+      return;
+    }
     const entry = cardIndex.get(String(e.active.id));
     setActiveCard(entry?.card ?? null);
   }
 
   function onDragOver(e: DragOverEvent) {
+    if (e.active.data.current?.type === "column") return;
     const { active, over } = e;
     if (!over) return;
     const activeId = String(active.id);
@@ -322,8 +353,33 @@ export function KanbanClient({ columns }: { columns: ColumnItem[] }) {
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     setActiveCard(null);
+    setActiveColumn(null);
     if (!over) return;
     const activeId = String(active.id);
+
+    if (active.data.current?.type === "column") {
+      const overId = findColumnOf(String(over.id));
+      if (!overId) return;
+      const oldIndex = board.findIndex((column) => column.id === activeId);
+      const newIndex = board.findIndex((column) => column.id === overId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+
+      const previousBoard = board;
+      const nextBoard = arrayMove(board, oldIndex, newIndex);
+      setBoard(nextBoard);
+      startTransition(async () => {
+        try {
+          await reorderPersonalColumns(nextBoard.map((column) => column.id));
+          router.refresh();
+        } catch (err) {
+          setBoard(previousBoard);
+          toast.error(actionErrorMessage(err, "Gagal mengatur urutan kolom."));
+          router.refresh();
+        }
+      });
+      return;
+    }
+
     const toCol = findColumnOf(String(over.id));
     if (!toCol) return;
 
@@ -528,21 +584,32 @@ export function KanbanClient({ columns }: { columns: ColumnItem[] }) {
           onDragOver={onDragOver}
           onDragEnd={onDragEnd}
         >
-          <div className="flex items-start gap-3 overflow-x-auto pb-2">
-            {board.map((column) => (
-              <BoardColumn
-                key={column.id}
-                column={column}
-                now={now}
-                onOpenCard={openEditCard}
-                onAddCard={openCreateCard}
-                onEditColumn={openEditColumn}
-                onDeleteColumn={onDeleteColumn}
-              />
-            ))}
-          </div>
+          <SortableContext
+            items={board.map((column) => column.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            <div className="flex items-start gap-3 overflow-x-auto pb-2">
+              {board.map((column) => (
+                <BoardColumn
+                  key={column.id}
+                  column={column}
+                  now={now}
+                  onOpenCard={openEditCard}
+                  onAddCard={openCreateCard}
+                  onEditColumn={openEditColumn}
+                  onDeleteColumn={onDeleteColumn}
+                />
+              ))}
+            </div>
+          </SortableContext>
           <DragOverlay>
-            {activeCard ? <CardView card={activeCard} now={now} dragging /> : null}
+            {activeCard ? (
+              <CardView card={activeCard} now={now} dragging />
+            ) : activeColumn ? (
+              <div className="bg-muted/90 w-72 rounded-xl border px-3 py-3 text-sm font-semibold shadow-lg">
+                {activeColumn.title}
+              </div>
+            ) : null}
           </DragOverlay>
         </DndContext>
       )}
