@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "./app-themes.css";
 @import "./theme-palettes.css";
+@import "./lab-theme.css";
 
 @custom-variant dark (&:is(.dark *));
 

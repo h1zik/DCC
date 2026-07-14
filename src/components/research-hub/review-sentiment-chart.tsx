@@ -9,9 +9,9 @@ import {
 } from "recharts";
 
 const COLORS = {
-  positive: "var(--chart-2, #22c55e)",
-  neutral: "var(--chart-3, #94a3b8)",
-  negative: "var(--chart-1, #ef4444)",
+  positive: "var(--chart-4)",
+  neutral: "var(--muted-foreground)",
+  negative: "var(--destructive)",
 };
 
 export function ReviewSentimentChart({

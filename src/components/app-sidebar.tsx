@@ -15,6 +15,7 @@ import {
   Coins,
   Factory,
   FileBarChart,
+  FlaskConical,
   Focus,
   GitBranch,
   Home,
@@ -33,9 +34,6 @@ import {
   Users,
   WandSparkles,
   Bot,
-  Microscope,
-  Palette,
-  Gauge,
   Trophy,
 } from "lucide-react";
 import { effectiveRoleLabel } from "@/lib/role-labels";
@@ -115,9 +113,28 @@ const navFinance = [
   { href: "/attendance", label: "Attendance", icon: ScanFace },
 ] as const;
 
+/**
+ * Dominatus Lab — launcher untuk 4 modul riset & kreatif (Brand & Creative
+ * Hub, Research Hub, SEO Toolkit, Content Studio). Menggantikan item modul
+ * satuan di sidebar; item ini tetap aktif saat user berada di dalam modulnya.
+ */
+const labItem = {
+  href: "/dominatus-lab",
+  label: "Dominatus Lab",
+  icon: FlaskConical,
+} as const;
+
+const LAB_SECTION_PREFIXES = [
+  "/dominatus-lab",
+  "/brand-hub",
+  "/research-hub",
+  "/seo",
+  "/content-studio",
+] as const;
+
 const navStudio = [
   { href: "/home", label: "Home", icon: Home },
-  { href: "/content-studio", label: "Content Studio", icon: Sparkles },
+  labItem,
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -126,9 +143,7 @@ const navStudio = [
 ] as const;
 
 const navMarketAnalyst = [
-  { href: "/research-hub", label: "Research Hub", icon: Microscope },
-  { href: "/seo", label: "SEO Toolkit", icon: Gauge },
-  { href: "/content-studio", label: "Content Studio", icon: Sparkles },
+  labItem,
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -138,10 +153,7 @@ const navMarketAnalyst = [
 
 const navBrandManager = [
   { href: "/home", label: "Home", icon: Home },
-  { href: "/brand-hub", label: "Brand & Creative Hub", icon: Palette },
-  { href: "/research-hub", label: "Research Hub", icon: Microscope },
-  { href: "/seo", label: "SEO Toolkit", icon: Gauge },
-  { href: "/content-studio", label: "Content Studio", icon: Sparkles },
+  labItem,
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -312,9 +324,15 @@ export function AppSidebar() {
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
-                    : item.href === "/finance" || item.href === "/attendance"
-                      ? pathname === item.href
-                      : pathname.startsWith(item.href);
+                    : item.href === labItem.href
+                      ? LAB_SECTION_PREFIXES.some(
+                          (prefix) =>
+                            pathname === prefix ||
+                            pathname.startsWith(`${prefix}/`),
+                        )
+                      : item.href === "/finance" || item.href === "/attendance"
+                        ? pathname === item.href
+                        : pathname.startsWith(item.href);
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton

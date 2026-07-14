@@ -46,9 +46,9 @@ export function CrossCompareChart({ data }: { data: CompareRow[] }) {
             }
           />
           <Legend />
-          <Bar dataKey="positive" name="Positif" fill="#22c55e" stackId="a" />
-          <Bar dataKey="neutral" name="Netral" fill="#94a3b8" stackId="a" />
-          <Bar dataKey="negative" name="Negatif" fill="#ef4444" stackId="a" />
+          <Bar dataKey="positive" name="Positif" fill="var(--chart-4)" stackId="a" />
+          <Bar dataKey="neutral" name="Netral" fill="var(--muted-foreground)" stackId="a" />
+          <Bar dataKey="negative" name="Negatif" fill="var(--destructive)" stackId="a" />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -129,6 +129,10 @@ export function applyAppThemeToDocument(
 ): void {
   if (typeof document === "undefined") return;
 
+  // Dominatus Lab sedang mengambil alih tema global — jangan timpa.
+  // Jalur restore (LabThemeController) melepas atribut ini lebih dulu.
+  if (document.documentElement.hasAttribute("data-lab-theme-active")) return;
+
   const el = document.documentElement;
 
   if (preset === "custom") {

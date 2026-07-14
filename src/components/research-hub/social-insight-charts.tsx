@@ -2,14 +2,15 @@
 
 import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
-import { EChart, chartPalette } from "@/components/research-hub/echart";
+import { EChart } from "@/components/lab/echart";
 
+// canvas: CSS var tidak didukung — pakai hex tetap yang ramah palet Lab.
 const CLASS_COLOR: Record<string, string> = {
-  PRAISE: "#22c55e",
-  RECOMMENDATION: "#10b981",
-  COMPLAINT: "#ef4444",
-  QUESTION: "#3b82f6",
-  WISHLIST: "#a855f7",
+  PRAISE: "#34d399",
+  RECOMMENDATION: "#06b6d4",
+  COMPLAINT: "#f87171",
+  QUESTION: "#8b5cf6",
+  WISHLIST: "#f472b6",
   NEUTRAL: "#94a3b8",
 };
 
@@ -43,7 +44,8 @@ export function SentimentBreakdownDonut({
           radius: ["45%", "70%"],
           center: ["50%", "44%"],
           avoidLabelOverlap: true,
-          itemStyle: { borderRadius: 4, borderColor: "var(--background)", borderWidth: 2 },
+          // canvas: CSS var tidak didukung — pakai transparent untuk celah antar-slice.
+          itemStyle: { borderRadius: 4, borderColor: "transparent", borderWidth: 2 },
           label: { show: false },
           data: data.map((d) => ({
             name: CLASS_LABEL[d.classification] ?? d.classification,
@@ -79,12 +81,13 @@ export function SentimentTimelineChart({
       },
       yAxis: { type: "value", axisLabel: { fontSize: 10 } },
       series: [
+        // canvas: CSS var tidak didukung — hex semantik ramah palet Lab.
         {
           name: "Positif",
           type: "line",
           smooth: true,
           data: data.map((d) => d.positive),
-          itemStyle: { color: "#22c55e" },
+          itemStyle: { color: "#34d399" },
           areaStyle: { opacity: 0.12 },
         },
         {
@@ -92,7 +95,7 @@ export function SentimentTimelineChart({
           type: "line",
           smooth: true,
           data: data.map((d) => d.negative),
-          itemStyle: { color: "#ef4444" },
+          itemStyle: { color: "#f87171" },
           areaStyle: { opacity: 0.12 },
         },
         {
@@ -122,7 +125,6 @@ export function ShareOfVoiceChart({
 }: {
   data: { platform: string; count: number }[];
 }) {
-  const palette = chartPalette();
   const option = useMemo<EChartsOption>(
     () => ({
       tooltip: {
@@ -139,15 +141,15 @@ export function ShareOfVoiceChart({
           radius: "62%",
           center: ["50%", "44%"],
           label: { show: false },
-          data: data.map((d, i) => ({
+          // Warna slice mengikuti palet tema yang diinjeksi wrapper EChart.
+          data: data.map((d) => ({
             name: d.platform,
             value: d.count,
-            itemStyle: { color: palette[i % palette.length] },
           })),
         },
       ],
     }),
-    [data, palette],
+    [data],
   );
 
   if (data.every((d) => d.count === 0)) {

@@ -1,9 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import {
-  BrandHubPageHeader,
-  BrandHubPageShell,
-} from "@/components/brand-hub/brand-hub-primitives";
+  LabPageHeader,
+  LabPageShell,
+} from "@/components/lab/lab-primitives";
 
 export function BrandHubListPage({
   icon,
@@ -23,8 +23,8 @@ export function BrandHubListPage({
   children: ReactNode;
 }) {
   return (
-    <BrandHubPageShell>
-      <BrandHubPageHeader
+    <LabPageShell>
+      <LabPageHeader
         variant="compact"
         icon={icon}
         eyebrow={eyebrow}
@@ -34,7 +34,7 @@ export function BrandHubListPage({
         footer={footer}
       />
       {children}
-    </BrandHubPageShell>
+    </LabPageShell>
   );
 }
 
@@ -52,8 +52,8 @@ export function BrandHubDetailPage({
   children: ReactNode;
 }) {
   return (
-    <BrandHubPageShell>
-      <BrandHubPageHeader
+    <LabPageShell>
+      <LabPageHeader
         variant="detail"
         icon={icon}
         title={title}
@@ -61,6 +61,6 @@ export function BrandHubDetailPage({
         right={right}
       />
       {children}
-    </BrandHubPageShell>
+    </LabPageShell>
   );
 }

@@ -94,14 +94,14 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
       dest =
         isMarketAnalystAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
-          : "/research-hub";
+          : "/dominatus-lab";
     } else if (isBrandManager(userRole)) {
       dest =
         isBrandHubRoute(callbackUrl) ||
         isStudioWorkspaceRoute(callbackUrl) ||
         isProfileRoute(callbackUrl)
           ? callbackUrl
-          : "/brand-hub";
+          : "/dominatus-lab";
     } else if (isStudioOrProjectManager(userRole)) {
       dest =
         isStudioWorkspaceRoute(callbackUrl) || isProfileRoute(callbackUrl)

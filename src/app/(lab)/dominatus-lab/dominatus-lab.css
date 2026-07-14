@@ -1,0 +1,96 @@
+/*
+ * Dominatus Lab — gaya khusus halaman launcher.
+ *
+ * Warna dasar datang dari palet takeover global (lab-theme.css) lewat token
+ * semantik; aksen per kartu lewat `--lab-accent`/`--lab-accent-2` (inline per
+ * kartu). Latar aurora/grid disediakan LabShell — tidak ada di sini.
+ */
+
+/* ---------- Kartu modul ---------- */
+
+.lab-card {
+  position: relative;
+  border-radius: 1.5rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  box-shadow:
+    0 8px 30px -12px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 var(--lab-highlight);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow: hidden;
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    background-color 0.5s ease;
+}
+
+.lab-card--unlocked:hover {
+  border-color: color-mix(in srgb, var(--lab-accent, var(--primary)) 40%, var(--border));
+  box-shadow:
+    0 24px 60px -16px rgb(0 0 0 / 0.5),
+    inset 0 1px 0 var(--lab-highlight),
+    0 0 70px -24px var(--lab-accent, var(--primary));
+}
+
+/* Glow aksen di sudut kartu, muncul saat hover. */
+.lab-card__glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  background:
+    radial-gradient(420px circle at 0% 0%, var(--lab-accent, var(--primary)), transparent 55%),
+    radial-gradient(420px circle at 100% 100%, var(--lab-accent-2, var(--primary)), transparent 55%);
+}
+
+.lab-card--unlocked:hover .lab-card__glow {
+  opacity: 0.14;
+}
+
+.lab-card--locked {
+  filter: saturate(0.35);
+  opacity: 0.68;
+}
+
+/* ---------- Hero ---------- */
+
+.lab-title-gradient {
+  background: linear-gradient(100deg, #a78bfa 0%, #22d3ee 45%, #f472b6 90%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+html:not(.dark) .lab-title-gradient {
+  background: linear-gradient(100deg, #7c3aed 0%, #0891b2 45%, #db2777 90%);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+/* Cincin conic samar di belakang hero (khas launcher). */
+.lab-halo {
+  background: conic-gradient(
+    from 180deg,
+    transparent 0deg,
+    #7c3aed 90deg,
+    #06b6d4 180deg,
+    #f472b6 270deg,
+    transparent 360deg
+  );
+  filter: blur(60px);
+  opacity: 0.16;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lab-halo {
+    animation: lab-spin 40s linear infinite;
+  }
+}
+
+@keyframes lab-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

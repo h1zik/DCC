@@ -18,7 +18,7 @@ function defaultHomeForRole(role: UserRole | undefined): string {
   if (role === UserRole.CEO) return "/";
   if (role === UserRole.ADMINISTRATOR) return "/home";
   if (role === UserRole.FINANCE) return "/finance";
-  if (isMarketAnalyst(role)) return "/research-hub";
+  if (isMarketAnalyst(role)) return "/dominatus-lab";
   if (isStudioOrProjectManager(role)) return "/home";
   return "/inventory";
 }
@@ -92,10 +92,10 @@ export default auth((req) => {
 
   if (isMarketAnalyst(role)) {
     if (pathname === "/") {
-      return NextResponse.redirect(new URL("/research-hub", req.nextUrl));
+      return NextResponse.redirect(new URL("/dominatus-lab", req.nextUrl));
     }
     if (!isMarketAnalystAppRoute(pathname)) {
-      return NextResponse.redirect(new URL("/research-hub", req.nextUrl));
+      return NextResponse.redirect(new URL("/dominatus-lab", req.nextUrl));
     }
     return NextResponse.next();
   }

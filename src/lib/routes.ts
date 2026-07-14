@@ -80,9 +80,29 @@ export function isContentStudioRoute(pathname: string): boolean {
   );
 }
 
+/** Dominatus Lab — launcher 4 modul riset & kreatif. Studio, PM, & Market Analyst. */
+export function isDominatusLabRoute(pathname: string): boolean {
+  return pathname === "/dominatus-lab" || pathname.startsWith("/dominatus-lab/");
+}
+
+/**
+ * Semua rute di dalam Dominatus Lab (launcher + 4 modul). Dipakai antara lain
+ * untuk theme takeover Lab (forcedTheme next-themes) — bukan untuk otorisasi.
+ */
+export function isLabPathname(pathname: string): boolean {
+  return (
+    isDominatusLabRoute(pathname) ||
+    isBrandHubRoute(pathname) ||
+    isResearchHubRoute(pathname) ||
+    isSeoRoute(pathname) ||
+    isContentStudioRoute(pathname)
+  );
+}
+
 /** Research Hub, SEO Toolkit + studio workspace — Market Analyst. */
 export function isMarketAnalystAppRoute(pathname: string): boolean {
   return (
+    isDominatusLabRoute(pathname) ||
     isResearchHubRoute(pathname) ||
     isSeoRoute(pathname) ||
     isContentStudioRoute(pathname) ||
@@ -118,6 +138,7 @@ export function isWorkspaceDashboardRoute(pathname: string): boolean {
 export function isStudioWorkspaceRoute(pathname: string): boolean {
   return (
     isWorkspaceDashboardRoute(pathname) ||
+    isDominatusLabRoute(pathname) ||
     isBrandHubRoute(pathname) ||
     isResearchHubRoute(pathname) ||
     isSeoRoute(pathname) ||

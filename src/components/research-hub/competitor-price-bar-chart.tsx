@@ -61,7 +61,7 @@ export function CompetitorPriceBarChart({ data }: { data: PriceBarPoint[] }) {
           />
           <Bar
             dataKey="price"
-            fill="#3b82f6"
+            fill="var(--chart-1)"
             radius={[0, 4, 4, 0]}
             maxBarSize={22}
           />

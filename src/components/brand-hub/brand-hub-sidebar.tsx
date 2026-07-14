@@ -10,9 +10,9 @@ import {
   isBrandHubNavActive,
 } from "@/components/brand-hub/brand-hub-module-nav";
 import {
-  ResearchHubSidebarItem,
-  hub,
-} from "@/components/research-hub/research-hub-primitives";
+  LabSidebarItem,
+  lab,
+} from "@/components/lab/lab-primitives";
 import {
   Select,
   SelectContent,
@@ -55,24 +55,24 @@ export function BrandHubModuleSidebar({
   return (
     <aside
       className={cn(
-        "sticky top-0 z-10 hidden h-[calc(100dvh-4rem)] w-56 shrink-0 flex-col gap-4 overflow-y-auto py-1 xl:w-60",
+        "border-border bg-card/40 sticky top-[4.5rem] z-10 hidden h-[calc(100dvh-5.5rem)] w-56 shrink-0 flex-col gap-4 overflow-y-auto rounded-2xl border p-2 backdrop-blur-xl xl:w-60",
         className,
       )}
       aria-label="Navigasi modul Brand & Creative Hub"
     >
-      <div className="flex items-center gap-2 px-2 py-1">
-        <span className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg border border-primary/25">
+      <div className="flex items-center gap-2.5 px-2 py-1">
+        <span className="lab-chip flex size-8 items-center justify-center rounded-lg">
           <Palette className="size-4" aria-hidden />
         </span>
         <div className="min-w-0">
-          <p className={hub.label}>Brand & Creative</p>
+          <p className={lab.label}>Brand & Creative</p>
           <p className="text-foreground truncate text-sm font-semibold">Hub</p>
         </div>
       </div>
 
       {brands.length > 0 ? (
         <div className="flex flex-col gap-1 px-1">
-          <p className={cn(hub.label, "px-2")}>Brand scope</p>
+          <p className={cn(lab.label, "px-2")}>Brand scope</p>
           <Select
             value={brandId ?? "all"}
             items={brandItems}
@@ -94,7 +94,7 @@ export function BrandHubModuleSidebar({
       ) : null}
 
       <nav className="flex flex-col gap-1 px-1">
-        <ResearchHubSidebarItem
+        <LabSidebarItem
           href={hrefWithBrand(BRAND_HUB_OVERVIEW.href, brandId)}
           title={BRAND_HUB_OVERVIEW.label}
           icon={BRAND_HUB_OVERVIEW.icon}
@@ -104,9 +104,9 @@ export function BrandHubModuleSidebar({
 
       {BRAND_HUB_ZONES.map((zone) => (
         <div key={zone.id} className="flex flex-col gap-1 px-1">
-          <p className={cn(hub.label, "px-2 pt-2")}>{zone.label}</p>
+          <p className={cn(lab.label, "px-2 pt-2")}>{zone.label}</p>
           {zone.items.map((item) => (
-            <ResearchHubSidebarItem
+            <LabSidebarItem
               key={item.key}
               href={hrefWithBrand(item.href, brandId)}
               title={item.label}

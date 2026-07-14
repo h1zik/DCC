@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { BrandModuleHealth } from "@/lib/brand-research/dashboard-health";
 import type { DataHealthLevel } from "@/lib/brand-research/dashboard-health";
-import { hub } from "@/components/brand-hub/brand-hub-primitives";
+import { lab } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 
 const HEALTH_META: Record<
@@ -77,8 +77,8 @@ export function BrandModuleHealthPanel({
   ];
 
   return (
-    <aside className={cn(hub.card, "h-fit p-4", className)}>
-      <p className={hub.label}>Kesehatan modul</p>
+    <aside className={cn(lab.card, "h-fit p-4", className)}>
+      <p className={lab.label}>Kesehatan modul</p>
       <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
         Review, keyword, USP, dan trend kategori dikelola di Research Hub — dipakai
         saat generate strategi.

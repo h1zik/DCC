@@ -37,6 +37,35 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-14-dominatus-lab-v2",
+    date: "2026-07-14",
+    title: "Dominatus Lab v2: ruang kerja riset terpisah dengan wajah baru",
+    category: "improved",
+    description:
+      "Dominatus Lab kini terasa seperti aplikasi tersendiri: masuk dari menu Lab akan berpindah ke shell khusus dengan sidebar dan header sendiri, tema laboratorium (gelap/terang terpisah dari tema DCC), serta latar aurora beranimasi. Seluruh halaman Brand & Creative Hub, Research Hub, SEO Toolkit, dan Content Studio didesain ulang mengikuti bahasa visual Lab — kartu kaca, aksen warna khas tiap modul, dan grafik yang mengikuti palet Lab.",
+    highlights: [
+      "Shell Dominatus Lab sendiri: sidebar modul, header bersih, dan tombol Kembali ke DCC",
+      "Tema Lab mengambil alih seluruh tampilan selama di dalam Lab — termasuk dialog, dropdown, dan toast — lalu tema DCC dipulihkan saat keluar",
+      "60+ halaman modul dimigrasikan ke komponen Lab baru dengan aksen per modul (pink, violet, cyan, amber)",
+      "Semua chart kini mengikuti palet Lab (tooltip & axis ikut tema, warna hardcoded dibersihkan)",
+      "URL tidak berubah — semua tautan dan bookmark lama tetap berfungsi",
+    ],
+  },
+  {
+    id: "2026-07-14-dominatus-lab",
+    date: "2026-07-14",
+    title: "Dominatus Lab: satu pintu untuk semua modul riset & kreatif",
+    category: "new",
+    description:
+      "Brand & Creative Hub, Research Hub, SEO Toolkit, dan Content Studio kini diakses lewat satu halaman launcher baru bernama Dominatus Lab — menggantikan empat menu terpisah di sidebar. Halamannya dilengkapi statistik langsung dari tiap modul, pintasan ke tool populer, dan mode terang/gelap sendiri.",
+    highlights: [
+      "Sidebar Project Manager, Market Analyst, dan tim studio kini menampilkan satu menu Dominatus Lab",
+      "Setiap modul tampil sebagai kartu dengan angka live (laporan riset, keyword terlacak, ide konten, dan lainnya)",
+      "Modul di luar akses peran tetap terlihat namun terkunci — hak akses tidak berubah",
+      "Toggle mode terang/gelap khusus halaman Lab, terpisah dari tema aplikasi",
+    ],
+  },
+  {
     id: "2026-07-13-seo-ai-visibility-keyword-gap-fixes",
     date: "2026-07-13",
     title: "SEO: AI Visibility lebih stabil & Keyword Gap lebih akurat",

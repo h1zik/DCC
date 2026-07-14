@@ -6,7 +6,7 @@ import type { EvidenceRef, StrategyFieldRationale } from "@/lib/brand-research/s
 import { brandHubHref } from "@/hooks/use-brand-hub-brand-id";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { hub } from "@/components/brand-hub/brand-hub-primitives";
+import { lab } from "@/components/lab/lab-primitives";
 
 function parseRationales(raw: unknown): StrategyFieldRationale[] {
   if (!Array.isArray(raw)) return [];
@@ -58,9 +58,9 @@ export function BrandStrategyRationalePanel({
   if (items.length === 0) return null;
 
   return (
-    <section className={cn(hub.panel, className)}>
-      <h3 className={hub.sectionTitle}>Alasan & bukti per komponen</h3>
-      <p className={cn(hub.sectionDesc, "mb-4")}>
+    <section className={cn(lab.panel, className)}>
+      <h3 className={lab.sectionTitle}>Alasan & bukti per komponen</h3>
+      <p className={cn(lab.sectionDesc, "mb-4")}>
         Penjelasan detail mengapa AI memilih setiap elemen strategi, beserta kutipan data.
       </p>
 
@@ -96,7 +96,7 @@ export function BrandStrategyRationalePanel({
                       {href ? (
                         <Link
                           href={href}
-                          className="text-primary mt-1 inline-flex items-center gap-0.5 hover:underline"
+                          className="text-[var(--lab-accent,var(--primary))] mt-1 inline-flex items-center gap-0.5 hover:underline"
                         >
                           Lihat sumber
                           <ExternalLink className="size-3" />
