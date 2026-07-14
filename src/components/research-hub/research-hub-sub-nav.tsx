@@ -8,7 +8,7 @@ import {
   RESEARCH_HUB_ZONES,
   isResearchHubNavActive,
 } from "@/components/research-hub/research-hub-module-nav";
-import { hub } from "@/components/research-hub/research-hub-primitives";
+import { lab } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 
 type PillGeom = { left: number; width: number; visible: boolean };
@@ -52,7 +52,7 @@ export function ResearchHubSubNav({ className }: { className?: string }) {
   return (
     <nav
       aria-label="Modul Research Hub"
-      className={cn(hub.stickyToolbar, className)}
+      className={cn(lab.stickyToolbar, className)}
     >
       <div
         ref={trackRef}
@@ -61,7 +61,7 @@ export function ResearchHubSubNav({ className }: { className?: string }) {
         <span
           aria-hidden
           className={cn(
-            "bg-primary/10 ring-primary/20 pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-lg ring-1",
+            "pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-lg bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_10%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--lab-accent,var(--primary))_25%,transparent)]",
             "transition-[left,width,opacity] duration-300 ease-out motion-reduce:transition-none",
             pill.visible ? "opacity-100" : "opacity-0",
           )}
@@ -83,7 +83,7 @@ export function ResearchHubSubNav({ className }: { className?: string }) {
             "transition-[colors,transform] duration-200 ease-out motion-reduce:transition-none",
             "hover:-translate-y-px motion-reduce:hover:translate-y-0",
             isResearchHubNavActive(RESEARCH_HUB_OVERVIEW.href, pathname)
-              ? "text-primary"
+              ? "text-[var(--lab-accent,var(--primary))]"
               : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
           )}
         >

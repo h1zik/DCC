@@ -15,13 +15,13 @@ import type {
 import { ActionCenterList } from "@/components/research-hub/action-plan-panel";
 import { RESEARCH_HUB_ZONES } from "@/components/research-hub/research-hub-module-nav";
 import {
-  ResearchHubEmptyState,
-  ResearchHubPageHeader,
-  ResearchHubPageShell,
-  ResearchHubSection,
-  ResearchHubStatChip,
-  hub,
-} from "@/components/research-hub/research-hub-primitives";
+  LabEmptyState,
+  LabPageHeader,
+  LabPageShell,
+  LabSection,
+  LabStatChip,
+  lab,
+} from "@/components/lab/lab-primitives";
 import { formatRelativeTime } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 
@@ -153,9 +153,9 @@ function ModuleBento({
             href={mod.href}
             style={{ animationDelay: `${delayBase + i * 50}ms` }}
             className={cn(
-              hub.card,
-              hub.cardHover,
-              hub.entrance,
+              lab.card,
+              lab.cardHover,
+              lab.entrance,
               "group flex flex-col gap-3 border-l-[3px] p-5",
               accent,
             )}
@@ -197,7 +197,7 @@ function DataHealthPanel({
 
   return (
     <aside className="flex flex-col gap-4 lg:sticky lg:top-20">
-      <div className={cn(hub.panel)}>
+      <div className={cn(lab.panel)}>
         <h2 className="text-foreground mb-3 flex items-center gap-2 text-sm font-semibold">
           <Sparkles className="text-primary size-4" aria-hidden />
           Kesehatan data
@@ -246,8 +246,8 @@ function DataHealthPanel({
         <Link
           href={`/research-hub/research-reports/${latestReport.id}`}
           className={cn(
-            hub.card,
-            hub.cardHover,
+            lab.card,
+            lab.cardHover,
             "flex items-center gap-3 p-4",
           )}
         >
@@ -281,7 +281,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
     kpis.unreadAlerts > 0
       ? "warning"
       : kpis.reviewInProgress > 0
-        ? "primary"
+        ? "accent"
         : "success";
 
   const statusValue =
@@ -292,32 +292,32 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
         : "Stabil";
 
   return (
-    <ResearchHubPageShell>
-      <ResearchHubPageHeader
+    <LabPageShell>
+      <LabPageHeader
         eyebrow="Command Center"
         title="Research Hub"
         description="Command center riset pasar — review, kompetitor, tren, social listening, USP, konsep produk, hingga laporan dalam satu tempat."
         footer={
           <div className="flex flex-wrap items-center gap-2">
-            <ResearchHubStatChip
+            <LabStatChip
               label="Status"
               value={statusValue}
               tone={statusTone}
             />
-            <ResearchHubStatChip
+            <LabStatChip
               label="Review siap"
               value={kpis.reviewReady}
               tone="success"
             />
-            <ResearchHubStatChip
+            <LabStatChip
               label="Kompetitor aktif"
               value={kpis.competitorsActive}
             />
-            <ResearchHubStatChip
+            <LabStatChip
               label="Tren emerging"
               value={kpis.emergingTrends}
             />
-            <ResearchHubStatChip
+            <LabStatChip
               label="Konsep"
               value={`${kpis.conceptDrafts} draft / ${kpis.conceptReady} siap`}
             />
@@ -328,17 +328,17 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
       <div className="grid gap-6 lg:grid-cols-[1fr_minmax(240px,280px)] lg:gap-8">
         <div className="flex flex-col gap-8">
           <section
-            className={cn(hub.card, hub.cardBody, hub.entrance)}
+            className={cn(lab.card, lab.cardBody, lab.entrance)}
             style={{ animationDelay: "80ms" }}
           >
-            <p className={hub.label}>Alur riset</p>
+            <p className={lab.label}>Alur riset</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-3">
               {WORKFLOW.map((w, i) => (
                 <div
                   key={w.step}
                   className={cn(
                     "relative flex flex-col gap-2",
-                    hub.entrance,
+                    lab.entrance,
                   )}
                   style={{ animationDelay: `${100 + i * 100}ms` }}
                 >
@@ -363,7 +363,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
           <section
             className={cn(
               "rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-primary/5 p-5 shadow-sm sm:p-6",
-              hub.entrance,
+              lab.entrance,
             )}
             style={{ animationDelay: "160ms" }}
           >
@@ -407,14 +407,14 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
             </div>
           ) : null}
 
-          <ResearchHubSection
+          <LabSection
             title="Yang perlu perhatian"
             description="Alert kompetitor & sinyal tren terbaru"
             delayMs={240}
           >
-            <div className={cn(hub.card, hub.cardBody)}>
+            <div className={cn(lab.card, lab.cardBody)}>
               {alerts.length === 0 ? (
-                <ResearchHubEmptyState
+                <LabEmptyState
                   icon={Inbox}
                   title="Belum ada alert atau sinyal tren"
                   description="Tambah kompetitor atau generate digest tren untuk mulai."
@@ -457,10 +457,10 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
                 </ul>
               )}
             </div>
-          </ResearchHubSection>
+          </LabSection>
 
           {RESEARCH_HUB_ZONES.map((zone, zi) => (
-            <ResearchHubSection
+            <LabSection
               key={zone.id}
               title={zone.label}
               delayMs={320 + zi * 80}
@@ -471,7 +471,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
                 healthByKey={healthByKey}
                 delayBase={zi * 50}
               />
-            </ResearchHubSection>
+            </LabSection>
           ))}
         </div>
 
@@ -480,6 +480,6 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
           latestReport={latestReport}
         />
       </div>
-    </ResearchHubPageShell>
+    </LabPageShell>
   );
 }

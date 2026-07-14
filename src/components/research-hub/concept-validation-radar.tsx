@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
-import { EChart } from "@/components/research-hub/echart";
+import { EChart } from "@/components/lab/echart";
 
 export function ConceptValidationRadar({
   marketDemand,
@@ -26,7 +26,8 @@ export function ConceptValidationRadar({
           { name: "Overall", max: 100 },
         ],
         radius: "62%",
-        splitLine: { lineStyle: { color: "var(--border)" } },
+        // canvas: CSS var tidak didukung — garis grid radar pakai netral tetap.
+        splitLine: { lineStyle: { color: "#94a3b8", opacity: 0.35 } },
         splitArea: { areaStyle: { opacity: 0.04 } },
         axisName: { fontSize: 11 },
       },
@@ -44,7 +45,6 @@ export function ConceptValidationRadar({
               name: "Skor Validasi",
               areaStyle: { opacity: 0.18 },
               lineStyle: { width: 2 },
-              itemStyle: { color: "var(--chart-3, #3b82f6)" },
             },
           ],
         },

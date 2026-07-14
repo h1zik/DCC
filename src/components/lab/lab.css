@@ -1,0 +1,207 @@
+/*
+ * Dominatus Lab — kelas dekoratif & identitas bersama (diimpor LabShell).
+ *
+ * Warna dasar datang dari palet takeover (lab-theme.css, token semantik).
+ * Aksen per modul datang dari `--lab-accent` / `--lab-accent-2` yang di-set
+ * layout tiap modul; fallback ke `--primary`.
+ */
+
+/* ---------- Latar dekoratif (satu layer di LabShell) ---------- */
+
+.lab-grid {
+  background-image:
+    linear-gradient(var(--lab-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lab-grid-line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 30%, transparent 100%);
+  --lab-grid-line: rgba(16, 18, 38, 0.045);
+}
+
+html.dark .lab-grid {
+  --lab-grid-line: rgba(255, 255, 255, 0.04);
+}
+
+.lab-aurora {
+  opacity: var(--lab-aurora-opacity, 0.4);
+  filter: blur(110px);
+  will-change: transform;
+  transition: opacity 0.5s ease;
+}
+
+.lab-aurora--violet {
+  background: radial-gradient(circle at center, #7c3aed 0%, transparent 65%);
+}
+.lab-aurora--cyan {
+  background: radial-gradient(circle at center, #06b6d4 0%, transparent 65%);
+}
+.lab-aurora--pink {
+  background: radial-gradient(circle at center, #f472b6 0%, transparent 65%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lab-aurora--violet {
+    animation: lab-drift-a 22s ease-in-out infinite alternate;
+  }
+  .lab-aurora--cyan {
+    animation: lab-drift-b 26s ease-in-out infinite alternate;
+  }
+  .lab-aurora--pink {
+    animation: lab-drift-c 19s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes lab-drift-a {
+  from {
+    transform: translate3d(-8%, -4%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(10%, 8%, 0) scale(1.18);
+  }
+}
+@keyframes lab-drift-b {
+  from {
+    transform: translate3d(6%, 10%, 0) scale(1.1);
+  }
+  to {
+    transform: translate3d(-10%, -6%, 0) scale(0.94);
+  }
+}
+@keyframes lab-drift-c {
+  from {
+    transform: translate3d(4%, -8%, 0) scale(0.95);
+  }
+  to {
+    transform: translate3d(-6%, 6%, 0) scale(1.15);
+  }
+}
+
+/* Titik denyut (badge/status). */
+.lab-pulse {
+  background: #34d399;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lab-pulse::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: inherit;
+    animation: lab-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes lab-ping {
+  75%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* ---------- Identitas aksen modul ---------- */
+
+/* Teks bergradasi duo aksen modul (judul/eyebrow). */
+.lab-text-accent {
+  background: linear-gradient(
+    100deg,
+    var(--lab-accent, var(--primary)) 0%,
+    var(--lab-accent-2, var(--primary)) 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+/* Chip ikon bergradasi aksen modul. */
+.lab-chip {
+  background: linear-gradient(
+    135deg,
+    var(--lab-accent, var(--primary)),
+    var(--lab-accent-2, var(--primary))
+  );
+  box-shadow: 0 8px 22px -8px var(--lab-accent, var(--primary));
+  color: white;
+}
+
+/* Pill link/filter kecil. */
+.lab-pill {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  color: var(--muted-foreground);
+  backdrop-filter: blur(8px);
+  transition:
+    border-color 0.25s ease,
+    color 0.25s ease,
+    transform 0.25s ease;
+}
+
+.lab-pill:hover {
+  border-color: var(--lab-accent, var(--primary));
+  color: var(--foreground);
+  transform: translateY(-2px);
+}
+
+.lab-pill[data-active="true"] {
+  border-color: var(--lab-accent, var(--primary));
+  color: var(--lab-accent, var(--primary));
+  background: color-mix(in srgb, var(--lab-accent, var(--primary)) 10%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-pill:hover {
+    transform: none;
+  }
+}
+
+/* CTA utama bergradasi aksen. */
+.lab-btn-accent {
+  background: linear-gradient(
+    135deg,
+    var(--lab-accent, var(--primary)),
+    var(--lab-accent-2, var(--primary))
+  );
+  color: white;
+  box-shadow: 0 10px 26px -10px var(--lab-accent, var(--primary));
+  transition:
+    filter 0.25s ease,
+    transform 0.25s ease;
+}
+
+.lab-btn-accent:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-btn-accent:hover {
+    transform: none;
+  }
+}
+
+/* Shimmer skeleton Lab. */
+@media (prefers-reduced-motion: no-preference) {
+  .lab-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .lab-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--lab-accent, var(--primary)) 10%, transparent),
+      transparent
+    );
+    animation: lab-shimmer 1.8s ease-in-out infinite;
+  }
+}
+
+@keyframes lab-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}

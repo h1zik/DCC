@@ -48,7 +48,7 @@ export function BrandHubSubNav({
   return (
     <div
       className={cn(
-        "border-border/70 bg-card/80 sticky top-0 z-20 -mt-2 flex items-center gap-2 border-b py-2 backdrop-blur",
+        "border-border/70 bg-background/70 sticky top-14 z-20 -mt-2 flex items-center gap-2 border-b py-2 backdrop-blur-xl",
         className,
       )}
     >
@@ -66,7 +66,7 @@ export function BrandHubSubNav({
               className={cn(
                 "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
                 active
-                  ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                  ? "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_10%,transparent)] text-[var(--lab-accent,var(--primary))] ring-1 ring-[color-mix(in_srgb,var(--lab-accent,var(--primary))_25%,transparent)]"
                   : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
               )}
             >

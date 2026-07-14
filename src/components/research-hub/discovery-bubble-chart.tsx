@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
-import { EChart } from "@/components/research-hub/echart";
+import { EChart } from "@/components/lab/echart";
 
 type BubblePoint = {
   name: string;
@@ -64,14 +64,12 @@ export function DiscoveryBubbleChart({ points }: { points: BubblePoint[] }) {
           formatter: (v: number) => `${Math.round(v / 1000)}k`,
           fontSize: 10,
         },
-        splitLine: { lineStyle: { color: "var(--border)", opacity: 0.4 } },
       },
       yAxis: {
         type: "value",
         name: "Rating",
         min: 0,
         max: 5,
-        splitLine: { lineStyle: { color: "var(--border)", opacity: 0.4 } },
       },
       series: [
         {
@@ -80,10 +78,9 @@ export function DiscoveryBubbleChart({ points }: { points: BubblePoint[] }) {
             const sold = data[2] ?? 0;
             return 8 + (sold / maxSold) * 36;
           },
+          // Warna series dari palet tema EChart (canvas: CSS var tidak didukung).
           itemStyle: {
-            color: "var(--chart-3, #3b82f6)",
             opacity: 0.6,
-            borderColor: "var(--chart-3, #3b82f6)",
           },
           data: points.map((p) => [p.price, p.rating, p.sold, p.name]),
         },

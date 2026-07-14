@@ -2,13 +2,14 @@
 
 import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
-import { EChart } from "@/components/research-hub/echart";
+import { EChart } from "@/components/lab/echart";
 
+// canvas: CSS var tidak didukung — hex semantik ramah tema Lab.
 const PHASE_COLOR: Record<string, string> = {
-  EMERGING: "#22c55e",
-  GROWING: "#3b82f6",
-  PEAK: "#f59e0b",
-  DECLINING: "#94a3b8",
+  EMERGING: "#34d399", // positive/success
+  GROWING: "#06b6d4", // cyan accent
+  PEAK: "#f59e0b", // amber accent
+  DECLINING: "#94a3b8", // neutral
 };
 
 /**
@@ -40,7 +41,6 @@ export function TrendScoreChart({
         type: "value",
         max: 1,
         axisLabel: { formatter: (v: number) => `${Math.round(v * 100)}`, fontSize: 10 },
-        splitLine: { lineStyle: { color: "var(--border)", opacity: 0.4 } },
       },
       yAxis: {
         type: "category",
@@ -52,7 +52,8 @@ export function TrendScoreChart({
           type: "bar",
           data: sorted.map((i) => ({
             value: i.score ?? 0,
-            itemStyle: { color: PHASE_COLOR[i.phase] ?? "#3b82f6" },
+            // canvas: CSS var tidak didukung
+            itemStyle: { color: PHASE_COLOR[i.phase] ?? "#06b6d4" },
           })),
           barWidth: "62%",
           label: {

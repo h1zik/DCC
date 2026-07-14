@@ -18,7 +18,7 @@ import type {
   StrategySourceCatalog,
   StrategySourceKey,
 } from "@/lib/brand-research/strategy/evidence-types";
-import { hub } from "@/components/brand-hub/brand-hub-primitives";
+import { lab } from "@/components/lab/lab-primitives";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -140,7 +140,7 @@ function SourceCard({
       className={cn(
         "overflow-hidden rounded-xl border bg-background/80 transition-colors",
         selection.enabled && !disabled
-          ? "border-primary/30 shadow-sm"
+          ? "border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_30%,transparent)] shadow-sm"
           : "border-border/50",
         disabled && "opacity-55",
       )}
@@ -284,11 +284,11 @@ export function BrandStrategySourcePicker({
   ).length;
 
   return (
-    <section className={cn(hub.panel, className)}>
+    <section className={cn(lab.panel, className)}>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
-          <h3 className={hub.sectionTitle}>Sumber data untuk AI</h3>
-          <p className={hub.sectionDesc}>
+          <h3 className={lab.sectionTitle}>Sumber data untuk AI</h3>
+          <p className={lab.sectionDesc}>
             Pilih modul dan item spesifik yang dibaca AI saat generate. Minimum: Review
             atau Social + Visual (≥5 asset), atau Competitor.
           </p>
@@ -328,7 +328,9 @@ export function BrandStrategySourcePicker({
                 <span
                   className={cn(
                     "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
-                    active ? "bg-primary/15 text-primary" : "bg-muted",
+                    active
+                      ? "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_15%,transparent)] text-[var(--lab-accent,var(--primary))]"
+                      : "bg-muted",
                   )}
                 >
                   {n}

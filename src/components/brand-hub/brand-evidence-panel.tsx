@@ -8,7 +8,7 @@ import type {
   EvidenceRef,
 } from "@/lib/brand-research/strategy/evidence-types";
 import { brandHubHref } from "@/hooks/use-brand-hub-brand-id";
-import { hub } from "@/components/brand-hub/brand-hub-primitives";
+import { lab } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 
 function parseEvidenceRefs(raw: unknown): EvidenceRef[] {
@@ -53,10 +53,10 @@ export function BrandEvidencePanel({
   const refs = parseEvidenceRefs(evidenceRefs);
 
   return (
-    <section className={cn(hub.panel, className)}>
+    <section className={cn(lab.panel, className)}>
       <div className="mb-4">
-        <h3 className={hub.sectionTitle}>Market Evidence</h3>
-        <p className={hub.sectionDesc}>
+        <h3 className={lab.sectionTitle}>Market Evidence</h3>
+        <p className={lab.sectionDesc}>
           Checklist syarat generate & bukti yang dipakai AI.
         </p>
       </div>

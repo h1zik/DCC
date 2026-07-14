@@ -6,7 +6,12 @@
  * Ilustratif (bukan proporsi irisan eksak) — angka pasti ada di ringkasan bucket.
  */
 
-const COLORS = ["#6366f1", "#f59e0b", "#22c55e", "#ec4899"];
+const COLORS = [
+  "var(--chart-1)",
+  "var(--chart-5)",
+  "var(--chart-4)",
+  "var(--chart-3)",
+];
 
 export function SeoGapVenn({
   target,

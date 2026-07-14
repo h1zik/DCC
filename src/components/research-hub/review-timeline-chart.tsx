@@ -56,21 +56,21 @@ export function ReviewTimelineChart({ data }: { data: Bucket[] }) {
           <Line
             type="monotone"
             dataKey="Positif"
-            stroke="#22c55e"
+            stroke="var(--chart-4)"
             strokeWidth={2}
             dot={false}
           />
           <Line
             type="monotone"
             dataKey="Netral"
-            stroke="#94a3b8"
+            stroke="var(--muted-foreground)"
             strokeWidth={2}
             dot={false}
           />
           <Line
             type="monotone"
             dataKey="Negatif"
-            stroke="#ef4444"
+            stroke="var(--destructive)"
             strokeWidth={2}
             dot={false}
           />

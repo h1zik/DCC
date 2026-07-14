@@ -13,17 +13,17 @@ import {
 } from "recharts";
 
 const DONUT_COLORS = [
-  "var(--chart-1, #ef4444)",
-  "var(--chart-2, #22c55e)",
-  "var(--chart-3, #3b82f6)",
-  "var(--chart-4, #f59e0b)",
-  "var(--chart-5, #8b5cf6)",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ];
 
 function severityColor(value: number): string {
-  if (value >= 4) return "var(--chart-1, #ef4444)";
-  if (value >= 3) return "var(--chart-4, #f59e0b)";
-  return "var(--chart-3, #3b82f6)";
+  if (value >= 4) return "var(--destructive)";
+  if (value >= 3) return "var(--chart-5)";
+  return "var(--chart-2)";
 }
 
 export function ComplaintSeverityChart({

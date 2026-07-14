@@ -36,7 +36,13 @@ export function CompetitorPriceChart({
     );
   }
 
-  const colors = ["#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ef4444"];
+  const colors = [
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)",
+  ];
 
   return (
     <div className="h-72 w-full">

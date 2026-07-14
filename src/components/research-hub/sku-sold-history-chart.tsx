@@ -48,7 +48,7 @@ export function SkuSoldHistoryChart({ data }: { data: SoldHistoryPoint[] }) {
             type="monotone"
             dataKey="historicalSold"
             name="Total terjual"
-            stroke="#3b82f6"
+            stroke="var(--chart-1)"
             dot={false}
             strokeWidth={2}
           />
@@ -56,7 +56,7 @@ export function SkuSoldHistoryChart({ data }: { data: SoldHistoryPoint[] }) {
             type="monotone"
             dataKey="monthlySold"
             name="Bulan ini"
-            stroke="#f59e0b"
+            stroke="var(--chart-5)"
             dot={false}
             strokeWidth={2}
           />

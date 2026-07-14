@@ -1,7 +1,7 @@
 "use client";
 
 import type { EChartsOption } from "echarts";
-import { EChart } from "@/components/research-hub/echart";
+import { EChart } from "@/components/lab/echart";
 
 /** Grafik tren posisi rata-rata (sumbu dibalik: posisi kecil = baik). */
 export function SeoRankTrendChart({
@@ -21,7 +21,6 @@ export function SeoRankTrendChart({
         smooth: true,
         showSymbol: false,
         areaStyle: { opacity: 0.12 },
-        itemStyle: { color: "#6366f1" },
         data: points.map((p) => [p.date, p.avgPosition] as [string, number]),
       },
     ],

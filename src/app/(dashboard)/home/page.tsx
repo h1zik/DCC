@@ -15,7 +15,7 @@ export default async function HomePage() {
     if (role === UserRole.CEO) redirect("/");
     if (role === UserRole.FINANCE) redirect("/finance");
     if (role === UserRole.LOGISTICS) redirect("/inventory");
-    if (isMarketAnalyst(role)) redirect("/research-hub");
+    if (isMarketAnalyst(role)) redirect("/dominatus-lab");
     redirect("/login");
   }
 

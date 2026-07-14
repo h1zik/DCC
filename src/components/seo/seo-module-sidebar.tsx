@@ -8,29 +8,29 @@ import {
   isSeoNavActive,
 } from "@/components/seo/seo-module-nav";
 import {
-  ResearchHubSidebarItem,
-  hub,
-} from "@/components/research-hub/research-hub-primitives";
+  LabSidebarItem,
+  lab,
+} from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 
-/** Sidebar modul SEO Toolkit (reuse primitive Research Hub agar konsisten). */
+/** Sidebar modul SEO Toolkit (reuse primitive Dominatus Lab agar konsisten). */
 export function SeoModuleSidebar({ className }: { className?: string }) {
   const pathname = usePathname() ?? "/seo";
 
   return (
     <aside
       className={cn(
-        "sticky top-0 z-10 hidden h-[calc(100dvh-4rem)] w-56 shrink-0 flex-col gap-4 overflow-y-auto py-1 xl:w-60",
+        "border-border bg-card/40 sticky top-[4.5rem] z-10 hidden h-[calc(100dvh-5.5rem)] w-56 shrink-0 flex-col gap-4 overflow-y-auto rounded-2xl border p-2 backdrop-blur-xl xl:w-60",
         className,
       )}
       aria-label="Navigasi modul SEO Toolkit"
     >
-      <div className="flex items-center gap-2 px-2 py-1">
-        <span className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg border border-primary/25">
+      <div className="flex items-center gap-2.5 px-2 py-1">
+        <span className="lab-chip flex size-8 items-center justify-center rounded-lg">
           <Gauge className="size-4" aria-hidden />
         </span>
         <div className="min-w-0">
-          <p className={hub.label}>SEO</p>
+          <p className={lab.label}>SEO</p>
           <p className="text-foreground truncate text-sm font-semibold">
             Toolkit
           </p>
@@ -38,7 +38,7 @@ export function SeoModuleSidebar({ className }: { className?: string }) {
       </div>
 
       <nav className="flex flex-col gap-1 px-1">
-        <ResearchHubSidebarItem
+        <LabSidebarItem
           href={SEO_OVERVIEW.href}
           title={SEO_OVERVIEW.label}
           icon={SEO_OVERVIEW.icon}
@@ -48,9 +48,9 @@ export function SeoModuleSidebar({ className }: { className?: string }) {
 
       {SEO_ZONES.map((zone) => (
         <div key={zone.id} className="flex flex-col gap-1 px-1">
-          <p className={cn(hub.label, "px-2 pt-2")}>{zone.label}</p>
+          <p className={cn(lab.label, "px-2 pt-2")}>{zone.label}</p>
           {zone.items.map((item) => (
-            <ResearchHubSidebarItem
+            <LabSidebarItem
               key={item.key}
               href={item.href}
               title={item.label}
