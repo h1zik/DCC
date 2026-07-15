@@ -29,6 +29,14 @@ import {
   taskProjectContextLabel,
 } from "@/lib/room-simple-hub";
 import {
+  bucketFromLegacyStatus,
+  effectiveTaskStatus,
+} from "@/lib/task-effective-status";
+import {
+  kanbanColumnBucket as columnBucket,
+  taskBoardColumnWhere,
+} from "@/lib/task-kanban-sync";
+import {
   phaseRef,
   taskBelongsToPhase,
   taskPhaseWhere,
@@ -97,23 +105,20 @@ async function resolveColumnIdForTaskStatus(
       project: { select: { roomId: true } },
     },
   });
+  // OVERDUE bukan lajur — kartunya menempel di bucket kerja ("Berjalan").
+  const bucket = bucketFromLegacyStatus(status);
   if (task.kanbanColumnId) {
     const col = await prisma.roomKanbanColumn.findUnique({
       where: { id: task.kanbanColumnId },
       select: { linkedStatus: true, coreRole: true, kind: true },
     });
-    if (col) {
-      const colStatus =
-        col.kind === "CORE" && col.coreRole ? col.coreRole : col.linkedStatus;
-      if (colStatus === status) return task.kanbanColumnId;
-    }
+    if (col && columnBucket(col) === bucket) return task.kanbanColumnId;
   }
   const column = await prisma.roomKanbanColumn.findFirst({
     where: {
       roomId: task.project.roomId,
-      customProcessPhaseId: task.customProcessPhaseId,
-      roomProcess: task.customProcessPhaseId ? null : task.roomProcess,
-      OR: [{ coreRole: status }, { linkedStatus: status }],
+      ...taskBoardColumnWhere(task),
+      OR: [{ coreRole: bucket }, { linkedStatus: bucket }],
     },
     orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
   });
@@ -381,10 +386,7 @@ export async function moveTaskToColumn(
     throw new Error("Kolom tidak valid untuk fase proses ini.");
   }
 
-  const status =
-    column.kind === "CORE" && column.coreRole
-      ? column.coreRole
-      : column.linkedStatus;
+  const bucket = columnBucket(column);
 
   const task = await prisma.task.findUniqueOrThrow({
     where: { id: taskId },
@@ -393,6 +395,7 @@ export async function moveTaskToColumn(
       projectId: true,
       title: true,
       status: true,
+      dueDate: true,
       contentPlanItemId: true,
       contentPlanJenis: true,
       isApprovalRequired: true,
@@ -414,18 +417,23 @@ export async function moveTaskToColumn(
     );
   }
 
-  if (status === TaskStatus.DONE && task.isApprovalRequired && !task.isApproved) {
+  if (bucket === TaskStatus.DONE && task.isApprovalRequired && !task.isApproved) {
     throw new Error(
       "Tugas ini memerlukan persetujuan CEO sebelum ditandai selesai.",
     );
   }
+
+  // Kategori turunan: bucket kolom + overlay telat (badge, bukan lajur).
+  const status = effectiveTaskStatus(bucket, task.dueDate);
+  const markingDone =
+    bucket === TaskStatus.DONE && task.status !== TaskStatus.DONE;
 
   await prisma.task.update({
     where: { id: taskId },
     data: {
       kanbanColumnId: columnId,
       status,
-      ...(status === TaskStatus.DONE && task.status !== TaskStatus.DONE
+      ...(markingDone
         ? {
             completedAt: new Date(),
             whatsappReminder3dSentAt: null,
@@ -436,11 +444,7 @@ export async function moveTaskToColumn(
   });
 
   // Gamifikasi: XP tugas selesai tepat waktu (first close, fire-and-forget).
-  if (
-    (await isProfileGamificationEnabled()) &&
-    status === TaskStatus.DONE &&
-    task.status !== TaskStatus.DONE
-  ) {
+  if ((await isProfileGamificationEnabled()) && markingDone) {
     void onTaskDone(taskId);
   }
 
@@ -458,7 +462,7 @@ export async function moveTaskToColumn(
     );
   }
 
-  if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
+  if (markingDone) {
     await markContentPlanDesignPublishedIfTaskDone({
       roomId: task.project.room.id,
       taskId: task.id,
@@ -468,7 +472,7 @@ export async function moveTaskToColumn(
   }
 
   const notificationJobs: Promise<unknown>[] = [];
-  if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
+  if (markingDone) {
     notificationJobs.push(
       notifyTaskCompletedForCeo(
         task.title,
@@ -497,7 +501,8 @@ export async function moveTaskToColumn(
 
 export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   const session = await requireTasksRoomHubSession();
-  const { taskId, status, orderedTaskIdsInTarget } = moveSchema.parse(input);
+  const { taskId, status: requestedStatus, orderedTaskIdsInTarget } =
+    moveSchema.parse(input);
   const { roomId, phase } = await getTaskRoomContext(taskId);
   await assertRoomMemberHasTaskPhase(roomId, session.user.id, phase);
 
@@ -508,6 +513,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
       projectId: true,
       title: true,
       status: true,
+      dueDate: true,
       contentPlanItemId: true,
       contentPlanJenis: true,
       isApprovalRequired: true,
@@ -529,20 +535,27 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     );
   }
 
-  if (status === TaskStatus.DONE && task.isApprovalRequired && !task.isApproved) {
+  // Status yang diminta diperlakukan sebagai BUCKET tahapan; OVERDUE (legacy)
+  // runtuh ke IN_PROGRESS — telat dihitung ulang dari deadline.
+  const bucket = bucketFromLegacyStatus(requestedStatus);
+
+  if (bucket === TaskStatus.DONE && task.isApprovalRequired && !task.isApproved) {
     throw new Error(
       "Tugas ini memerlukan persetujuan CEO sebelum ditandai selesai.",
     );
   }
 
-  const targetColumnId = await resolveColumnIdForTaskStatus(taskId, status);
+  const targetColumnId = await resolveColumnIdForTaskStatus(taskId, bucket);
+  const status = effectiveTaskStatus(bucket, task.dueDate);
+  const markingDone =
+    bucket === TaskStatus.DONE && task.status !== TaskStatus.DONE;
 
   await prisma.task.update({
     where: { id: taskId },
     data: {
       status,
       kanbanColumnId: targetColumnId,
-      ...(status === TaskStatus.DONE && task.status !== TaskStatus.DONE
+      ...(markingDone
         ? {
             completedAt: new Date(),
             whatsappReminder3dSentAt: null,
@@ -553,11 +566,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   });
 
   // Gamifikasi: XP tugas selesai tepat waktu (first close, fire-and-forget).
-  if (
-    (await isProfileGamificationEnabled()) &&
-    status === TaskStatus.DONE &&
-    task.status !== TaskStatus.DONE
-  ) {
+  if ((await isProfileGamificationEnabled()) && markingDone) {
     void onTaskDone(taskId);
   }
 
@@ -575,7 +584,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     );
   }
 
-  if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
+  if (markingDone) {
     await markContentPlanDesignPublishedIfTaskDone({
       roomId: task.project.room.id,
       taskId: task.id,
@@ -585,7 +594,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   }
 
   const notificationJobs: Promise<unknown>[] = [];
-  if (status === TaskStatus.DONE && task.status !== TaskStatus.DONE) {
+  if (markingDone) {
     notificationJobs.push(
       notifyTaskCompletedForCeo(
         task.title,
@@ -685,6 +694,8 @@ const createSchema = z
     tagIds: z.array(z.string().min(1)).optional(),
     priority: z.nativeEnum(TaskPriority),
     status: z.nativeEnum(TaskStatus).optional(),
+    /** Tahap awal (kolom papan). Diutamakan di atas `status` bila diisi. */
+    kanbanColumnId: z.string().min(1).optional().nullable(),
     dueDate: z.coerce.date().optional().nullable(),
     isApprovalRequired: z.boolean().optional(),
     vendorId: z.string().optional().nullable(),
@@ -798,6 +809,44 @@ export async function createTask(
     _max: { sortOrder: true },
   });
 
+  // ── Tahap awal: kolom eksplisit menang; kalau tidak, cari kolom bucket
+  // status. Status tersimpan = kategori turunan kolom + overlay telat. ──
+  const boardWhere = {
+    roomId,
+    ...(simpleHub
+      ? {
+          customProcessPhaseId: null,
+          roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+        }
+      : { customProcessPhaseId: phaseFields.customProcessPhaseId }),
+  };
+  let kanbanColumnId: string | null = null;
+  let bucket = bucketFromLegacyStatus(data.status ?? TaskStatus.TODO);
+  if (data.kanbanColumnId) {
+    const col = await prisma.roomKanbanColumn.findFirst({
+      where: { id: data.kanbanColumnId, ...boardWhere },
+      select: { id: true, kind: true, coreRole: true, linkedStatus: true },
+    });
+    if (!col) {
+      throw new Error("Kolom Kanban tidak valid untuk papan tugas ini.");
+    }
+    kanbanColumnId = col.id;
+    bucket = columnBucket(col);
+  } else {
+    // Boleh null (papan belum pernah dibuka) — repairOrphanTaskKanbanColumnIds
+    // menautkannya saat papan dirender.
+    const col = await prisma.roomKanbanColumn.findFirst({
+      where: {
+        ...boardWhere,
+        OR: [{ coreRole: bucket }, { linkedStatus: bucket }],
+      },
+      orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+      select: { id: true },
+    });
+    kanbanColumnId = col?.id ?? null;
+  }
+  const initialStatus = effectiveTaskStatus(bucket, data.dueDate ?? null);
+
   const task = await prisma.task.create({
     data: {
       projectId: data.projectId,
@@ -806,7 +855,8 @@ export async function createTask(
       title: data.title,
       description: data.description ?? undefined,
       priority: data.priority,
-      status: data.status ?? TaskStatus.TODO,
+      status: initialStatus,
+      kanbanColumnId: kanbanColumnId ?? undefined,
       dueDate: data.dueDate ?? undefined,
       isApprovalRequired: data.isApprovalRequired ?? false,
       vendorId: data.vendorId || undefined,
@@ -882,6 +932,10 @@ export async function updateTask(
       customProcessPhaseId: true,
       customProcessPhase: { select: { id: true, name: true } },
       status: true,
+      kanbanColumnId: true,
+      kanbanColumn: {
+        select: { kind: true, coreRole: true, linkedStatus: true },
+      },
       contentPlanItemId: true,
       contentPlanJenis: true,
       isApprovalRequired: true,
@@ -895,11 +949,11 @@ export async function updateTask(
   });
   const roomId = prev.project.roomId;
 
-  if (
-    prev.archivedAt &&
-    data.status !== undefined &&
-    data.status !== prev.status
-  ) {
+  const wantsStageChange =
+    (data.status !== undefined && data.status !== prev.status) ||
+    (data.kanbanColumnId != null &&
+      data.kanbanColumnId !== prev.kanbanColumnId);
+  if (prev.archivedAt && wantsStageChange) {
     throw new Error(
       "Tugas diarsipkan. Pulihkan dari Arsip terlebih dahulu untuk mengubah status.",
     );
@@ -911,8 +965,61 @@ export async function updateTask(
   const prevPhase = taskToPhaseRef(prev);
   await assertRoomMemberHasTaskPhase(roomId, session.user.id, prevPhase);
 
+  // ── Tahap (kolom) = sumber posisi; status = kategori turunan kolom.
+  // Prioritas: kolom eksplisit > perubahan status legacy > kolom saat ini. ──
+  const boardWhere = {
+    roomId,
+    ...(simpleHub
+      ? {
+          customProcessPhaseId: null,
+          roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+        }
+      : prev.customProcessPhaseId
+        ? { customProcessPhaseId: prev.customProcessPhaseId }
+        : { customProcessPhaseId: null, roomProcess: prev.roomProcess }),
+  };
+  const bucketFromColumn = prev.kanbanColumn
+    ? columnBucket(prev.kanbanColumn)
+    : null;
+
+  let nextColumnId = prev.kanbanColumnId;
+  let bucket: TaskStatus;
+  if (data.kanbanColumnId && data.kanbanColumnId !== prev.kanbanColumnId) {
+    const col = await prisma.roomKanbanColumn.findFirst({
+      where: { id: data.kanbanColumnId, ...boardWhere },
+      select: { id: true, kind: true, coreRole: true, linkedStatus: true },
+    });
+    if (!col) {
+      throw new Error("Kolom Kanban tidak valid untuk papan tugas ini.");
+    }
+    nextColumnId = col.id;
+    bucket = columnBucket(col);
+  } else if (data.kanbanColumnId && bucketFromColumn) {
+    bucket = bucketFromColumn;
+  } else if (data.status !== undefined && data.status !== prev.status) {
+    // Kompat pemanggil lama yang masih mengirim status sebagai tahapan.
+    bucket = bucketFromLegacyStatus(data.status);
+  } else {
+    bucket = bucketFromColumn ?? bucketFromLegacyStatus(prev.status);
+  }
+
+  // Bucket berubah tanpa kolom eksplisit (atau kolom kosong) → kartu ikut
+  // pindah ke kolom bucket tsb. Menutup bug lama: ubah status via detail
+  // sheet mengubah kategori tapi kartunya tertinggal di kolom lama.
+  if (nextColumnId === prev.kanbanColumnId && bucket !== bucketFromColumn) {
+    const col = await prisma.roomKanbanColumn.findFirst({
+      where: {
+        ...boardWhere,
+        OR: [{ coreRole: bucket }, { linkedStatus: bucket }],
+      },
+      orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+      select: { id: true },
+    });
+    if (col) nextColumnId = col.id;
+  }
+
   if (
-    data.status === TaskStatus.DONE &&
+    bucket === TaskStatus.DONE &&
     prev.isApprovalRequired &&
     !prev.isApproved
   ) {
@@ -967,8 +1074,12 @@ export async function updateTask(
   const prevDue = prev.dueDate;
   const dueDateChanged =
     (prevDue?.getTime() ?? null) !== (nextDue?.getTime() ?? null);
+  // Kategori final: bucket kolom + overlay telat dari deadline BARU — deadline
+  // diundur otomatis melepas OVERDUE, deadline mundur ke masa lalu otomatis
+  // menandai telat, tanpa menunggu cron.
+  const nextStatus = effectiveTaskStatus(bucket, nextDue);
   const markingDone =
-    data.status === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
+    nextStatus === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
 
   const prevAssigneeIds = prev.assignees.map((a) => a.userId);
   const addedAssigneeIds = assigneeIds.filter((id) => !prevAssigneeIds.includes(id));
@@ -995,7 +1106,8 @@ export async function updateTask(
       isApprovalRequired,
       vendorId: data.vendorId || null,
       leadTimeDays: data.leadTimeDays ?? null,
-      ...(data.status !== undefined ? { status: data.status } : {}),
+      status: nextStatus,
+      kanbanColumnId: nextColumnId,
       ...(dueDateChanged || markingDone
         ? {
             whatsappReminder3dSentAt: null,
@@ -1038,7 +1150,7 @@ export async function updateTask(
     );
   }
 
-  if (data.status === TaskStatus.DONE && prev.status !== TaskStatus.DONE) {
+  if (markingDone) {
     // Gamifikasi: XP tugas selesai tepat waktu (first close, fire-and-forget).
     if (await isProfileGamificationEnabled()) void onTaskDone(task.id);
     notificationJobs.push(

@@ -17,10 +17,18 @@ import {
   UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
-import { moveTaskStatus, updateTask, type TaskMutationResult } from "@/actions/tasks";
+import {
+  moveTaskStatus,
+  moveTaskToColumn,
+  updateTask,
+  type TaskMutationResult,
+} from "@/actions/tasks";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { sortTasksForKanbanColumn, sortTasksForKanbanStatus } from "@/lib/kanban-sort";
-import { resolveColumnIdForTask } from "@/lib/room-kanban-columns";
+import {
+  resolveColumnIdForTask,
+  statusForColumn,
+} from "@/lib/room-kanban-columns";
 import { cn } from "@/lib/utils";
 import type { RoomKanbanColumnDTO } from "@/lib/room-kanban-columns";
 import { taskStatusLabel } from "@/lib/task-status-ui";
@@ -159,18 +167,26 @@ function applyTaskMutation(task: TaskRow, updated: TaskMutationResult): TaskRow 
   };
 }
 
-function StatusPicker({
+/**
+ * Picker Tahap: memilih KOLOM papan (termasuk kolom custom seperti "Revisi"),
+ * bukan status enum. Status jadi kategori turunan kolom di server.
+ */
+function StagePicker({
   task,
-  statusOptions,
+  columns,
   readOnly,
-  onStatusChange,
+  onStageChange,
 }: {
   task: TaskRow;
-  statusOptions: { status: TaskStatus; label: string }[];
+  columns: RoomKanbanColumnDTO[];
   readOnly?: boolean;
-  onStatusChange: (task: TaskRow, status: TaskStatus) => void;
+  onStageChange: (task: TaskRow, columnId: string) => void;
 }) {
-  const style = statusGroupStyle(task.status);
+  const currentColumnId = resolveColumnIdForTask(task, columns);
+  const currentColumn = columns.find((c) => c.id === currentColumnId) ?? null;
+  const style = statusGroupStyle(
+    currentColumn ? statusForColumn(currentColumn) : task.status,
+  );
   const StatusIcon = style.icon;
 
   if (readOnly) {
@@ -187,26 +203,26 @@ function StatusPicker({
       <DropdownMenuTrigger
         type="button"
         className="hover:bg-muted/60 inline-flex shrink-0 items-center justify-center rounded p-0.5 transition-colors"
-        aria-label={`Ubah status: ${taskStatusLabel(task.status)}`}
+        aria-label={`Ubah tahap: ${currentColumn?.title ?? taskStatusLabel(task.status)}`}
         onClick={(e) => e.stopPropagation()}
       >
         <StatusIcon className={cn("size-4", style.iconColor)} aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-44">
-        {statusOptions.map(({ status, label }) => {
-          const optStyle = statusGroupStyle(status);
+        {columns.map((column) => {
+          const optStyle = statusGroupStyle(statusForColumn(column));
           const OptIcon = optStyle.icon;
           return (
             <DropdownMenuItem
-              key={status}
+              key={column.id}
               onClick={(e) => {
                 e.stopPropagation();
-                if (status !== task.status) onStatusChange(task, status);
+                if (column.id !== currentColumnId) onStageChange(task, column.id);
               }}
             >
               <OptIcon className={cn("size-4", optStyle.iconColor)} aria-hidden />
-              <span className="flex-1">{label}</span>
-              {task.status === status ? (
+              <span className="flex-1">{column.title}</span>
+              {currentColumnId === column.id ? (
                 <Check className="text-primary size-4" aria-hidden />
               ) : null}
             </DropdownMenuItem>
@@ -436,23 +452,23 @@ function PriorityPicker({
 
 function TaskListRow({
   task,
-  statusOptions,
+  columns,
   users,
   canEditAssignees,
   readOnly,
   onTaskClick,
-  onStatusChange,
+  onStageChange,
   onAssigneesChange,
   onDueDateChange,
   onPriorityChange,
 }: {
   task: TaskRow;
-  statusOptions: { status: TaskStatus; label: string }[];
+  columns: RoomKanbanColumnDTO[];
   users: Pick<User, "id" | "name" | "email">[];
   canEditAssignees: boolean;
   readOnly?: boolean;
   onTaskClick: (task: TaskRow) => void;
-  onStatusChange: (task: TaskRow, status: TaskStatus) => void;
+  onStageChange: (task: TaskRow, columnId: string) => void;
   onAssigneesChange: (task: TaskRow, assigneeIds: string[]) => void;
   onDueDateChange: (task: TaskRow, dueDate: Date | null) => void;
   onPriorityChange: (task: TaskRow, priority: TaskPriority) => void;
@@ -483,11 +499,11 @@ function TaskListRow({
       {/* HP: judul full-width, metadata di baris kedua */}
       <div className="hover:bg-muted/20 flex flex-col gap-2 px-0.5 py-2.5 transition-colors sm:hidden">
         <div className="flex min-w-0 items-start gap-1.5">
-          <StatusPicker
+          <StagePicker
             task={task}
-            statusOptions={statusOptions}
+            columns={columns}
             readOnly={readOnly}
-            onStatusChange={onStatusChange}
+            onStageChange={onStageChange}
           />
           <button
             type="button"
@@ -508,11 +524,11 @@ function TaskListRow({
         )}
       >
         <div className="flex min-w-0 items-center gap-1.5 pl-3">
-          <StatusPicker
+          <StagePicker
             task={task}
-            statusOptions={statusOptions}
+            columns={columns}
             readOnly={readOnly}
-            onStatusChange={onStatusChange}
+            onStageChange={onStageChange}
           />
           <button
             type="button"
@@ -532,13 +548,13 @@ function StatusGroup({
   column,
   tasks,
   collapsed,
-  statusOptions,
+  columns,
   users,
   canEditAssignees,
   onToggle,
   onTaskClick,
   onAddTask,
-  onStatusChange,
+  onStageChange,
   onAssigneesChange,
   onDueDateChange,
   onPriorityChange,
@@ -547,19 +563,19 @@ function StatusGroup({
   column: RoomKanbanColumnDTO;
   tasks: TaskRow[];
   collapsed: boolean;
-  statusOptions: { status: TaskStatus; label: string }[];
+  columns: RoomKanbanColumnDTO[];
   users: Pick<User, "id" | "name" | "email">[];
   canEditAssignees: boolean;
   onToggle: () => void;
   onTaskClick: (task: TaskRow) => void;
-  onAddTask?: (status: TaskStatus) => void;
-  onStatusChange: (task: TaskRow, status: TaskStatus) => void;
+  onAddTask?: (columnId: string) => void;
+  onStageChange: (task: TaskRow, columnId: string) => void;
   onAssigneesChange: (task: TaskRow, assigneeIds: string[]) => void;
   onDueDateChange: (task: TaskRow, dueDate: Date | null) => void;
   onPriorityChange: (task: TaskRow, priority: TaskPriority) => void;
   readOnly?: boolean;
 }) {
-  const style = statusGroupStyle(column.linkedStatus);
+  const style = statusGroupStyle(statusForColumn(column));
   const StatusIcon = style.icon;
 
   return (
@@ -592,7 +608,7 @@ function StatusGroup({
         {onAddTask && !readOnly ? (
           <button
             type="button"
-            onClick={() => onAddTask(column.linkedStatus)}
+            onClick={() => onAddTask(column.id)}
             className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex size-6 shrink-0 items-center justify-center rounded-full transition-colors"
             aria-label={`Tambah tugas ${column.title}`}
           >
@@ -621,12 +637,12 @@ function StatusGroup({
                 <TaskListRow
                   key={task.id}
                   task={task}
-                  statusOptions={statusOptions}
+                  columns={columns}
                   users={users}
                   canEditAssignees={canEditAssignees}
                   readOnly={readOnly}
                   onTaskClick={onTaskClick}
-                  onStatusChange={onStatusChange}
+                  onStageChange={onStageChange}
                   onAssigneesChange={onAssigneesChange}
                   onDueDateChange={onDueDateChange}
                   onPriorityChange={onPriorityChange}
@@ -638,7 +654,7 @@ function StatusGroup({
           {onAddTask && !readOnly ? (
             <button
               type="button"
-              onClick={() => onAddTask(column.linkedStatus)}
+              onClick={() => onAddTask(column.id)}
               className="text-muted-foreground hover:bg-muted/30 hover:text-foreground flex w-full items-center gap-2 rounded-md px-1 py-2 text-sm transition-colors sm:px-0"
             >
               <Plus className="size-4 shrink-0" aria-hidden />
@@ -668,36 +684,18 @@ export function TasksList({
   isRoomManager: boolean;
   onTaskClick: (task: TaskRow) => void;
   onTaskPatched?: (taskId: string, patch: Partial<TaskRow>) => void;
-  onAddTask?: (status: TaskStatus) => void;
+  onAddTask?: (columnId: string) => void;
   readOnly?: boolean;
   empty?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [doneConfirmTaskId, setDoneConfirmTaskId] = useState<string | null>(null);
   const [doneConfirmUnfinished, setDoneConfirmUnfinished] = useState(0);
-  const [doneConfirmPreviousStatus, setDoneConfirmPreviousStatus] =
-    useState<TaskStatus | null>(null);
-
-  const statusOptions = useMemo(() => {
-    const seen = new Set<TaskStatus>();
-    const opts: { status: TaskStatus; label: string }[] = [];
-    for (const col of columns) {
-      if (seen.has(col.linkedStatus)) continue;
-      seen.add(col.linkedStatus);
-      opts.push({ status: col.linkedStatus, label: col.title });
-    }
-    return opts;
-  }, [columns]);
+  const [doneConfirmColumnId, setDoneConfirmColumnId] = useState<string | null>(
+    null,
+  );
 
   const groups = useMemo(() => {
-    const byStatus = new Map<TaskStatus, TaskRow[]>();
-    for (const col of columns) {
-      byStatus.set(col.linkedStatus, []);
-    }
-    for (const task of tasks) {
-      const list = byStatus.get(task.status);
-      if (list) list.push(task);
-    }
     return columns.map((col) => {
       const colTasks = tasks
         .filter(
@@ -706,6 +704,9 @@ export function TasksList({
         )
         .map((task) => ({
           ...task,
+          // Samakan dengan hasil resolusi — task yang jatuh ke kolom ini via
+          // fallback status tidak boleh hilang saat disortir per kolom.
+          kanbanColumnId: col.id,
           kanbanSortKey:
             task.kanbanPositions?.find((p) => p.columnId === col.id)?.sortKey ??
             null,
@@ -717,11 +718,12 @@ export function TasksList({
     });
   }, [tasks, columns]);
 
+  // Grup darurat: hanya untuk task yang benar-benar tak terpetakan ke kolom
+  // mana pun (papan kosong). Dengan kolom inti selalu ada, praktis tak muncul.
   const extraStatuses = useMemo(() => {
-    const known = new Set(columns.map((c) => c.linkedStatus));
     const extras = new Map<TaskStatus, TaskRow[]>();
     for (const task of tasks) {
-      if (known.has(task.status)) continue;
+      if (resolveColumnIdForTask(task, columns) != null) continue;
       const list = extras.get(task.status) ?? [];
       list.push(task);
       extras.set(task.status, list);
@@ -741,47 +743,61 @@ export function TasksList({
 
   const allGroups = [...groups, ...extraStatuses];
 
-  const persistStatusChange = useCallback(
-    async (task: TaskRow, newStatus: TaskStatus) => {
+  const persistStageChange = useCallback(
+    async (task: TaskRow, columnId: string) => {
+      const targetColumn = columns.find((c) => c.id === columnId);
+      if (!targetColumn) return;
+      const bucket = statusForColumn(targetColumn);
       const previousStatus = task.status;
-      onTaskPatched?.(task.id, { status: newStatus });
+      const previousColumnId = task.kanbanColumnId ?? null;
+      onTaskPatched?.(task.id, { status: bucket, kanbanColumnId: columnId });
       try {
-        await moveTaskStatus({ taskId: task.id, status: newStatus });
+        if (columnId.startsWith("fallback-")) {
+          // Papan fallback klien (kolom belum dimuat) — jalur status legacy.
+          await moveTaskStatus({ taskId: task.id, status: bucket });
+        } else {
+          await moveTaskToColumn({ taskId: task.id, columnId });
+        }
         toast.success(
-          newStatus === TaskStatus.DONE
+          bucket === TaskStatus.DONE
             ? "Tugas dipindahkan ke Selesai."
-            : "Status tugas diperbarui.",
+            : `Tugas dipindahkan ke "${targetColumn.title}".`,
         );
       } catch (err) {
-        onTaskPatched?.(task.id, { status: previousStatus });
+        onTaskPatched?.(task.id, {
+          status: previousStatus,
+          kanbanColumnId: previousColumnId,
+        });
         toast.error(
           actionErrorMessage(
             err,
-            newStatus === TaskStatus.DONE
+            bucket === TaskStatus.DONE
               ? "Gagal memindahkan tugas ke Selesai."
               : "Gagal memindahkan tugas.",
           ),
         );
       }
     },
-    [onTaskPatched],
+    [columns, onTaskPatched],
   );
 
-  const handleStatusChange = useCallback(
-    (task: TaskRow, newStatus: TaskStatus) => {
-      if (readOnly || newStatus === task.status) return;
-      if (newStatus === TaskStatus.DONE) {
+  const handleStageChange = useCallback(
+    (task: TaskRow, columnId: string) => {
+      if (readOnly) return;
+      const targetColumn = columns.find((c) => c.id === columnId);
+      if (!targetColumn) return;
+      if (statusForColumn(targetColumn) === TaskStatus.DONE) {
         const unfinished = task.checklistItems.filter((c) => !c.done).length;
         if (unfinished > 0) {
           setDoneConfirmTaskId(task.id);
           setDoneConfirmUnfinished(unfinished);
-          setDoneConfirmPreviousStatus(task.status);
+          setDoneConfirmColumnId(columnId);
           return;
         }
       }
-      void persistStatusChange(task, newStatus);
+      void persistStageChange(task, columnId);
     },
-    [persistStatusChange, readOnly],
+    [columns, persistStageChange, readOnly],
   );
 
   const persistFieldUpdate = useCallback(
@@ -880,7 +896,7 @@ export function TasksList({
             column={column}
             tasks={groupTasks}
             collapsed={collapsed[column.id] ?? false}
-            statusOptions={statusOptions}
+            columns={columns}
             users={users}
             canEditAssignees={isRoomManager}
             onToggle={() =>
@@ -891,7 +907,7 @@ export function TasksList({
             }
             onTaskClick={onTaskClick}
             onAddTask={onAddTask}
-            onStatusChange={handleStatusChange}
+            onStageChange={handleStageChange}
             onAssigneesChange={handleAssigneesChange}
             onDueDateChange={handleDueDateChange}
             onPriorityChange={handlePriorityChange}
@@ -906,7 +922,7 @@ export function TasksList({
           if (!open) {
             setDoneConfirmTaskId(null);
             setDoneConfirmUnfinished(0);
-            setDoneConfirmPreviousStatus(null);
+            setDoneConfirmColumnId(null);
           }
         }}
       >
@@ -925,7 +941,7 @@ export function TasksList({
               onClick={() => {
                 setDoneConfirmTaskId(null);
                 setDoneConfirmUnfinished(0);
-                setDoneConfirmPreviousStatus(null);
+                setDoneConfirmColumnId(null);
               }}
             >
               Batalkan
@@ -933,14 +949,14 @@ export function TasksList({
             <Button
               type="button"
               onClick={() => {
-                if (!doneConfirmTaskId || doneConfirmPreviousStatus === null) return;
+                if (!doneConfirmTaskId || doneConfirmColumnId === null) return;
                 const task = tasks.find((t) => t.id === doneConfirmTaskId);
                 if (!task) return;
-                const previous = doneConfirmPreviousStatus;
+                const targetColumnId = doneConfirmColumnId;
                 setDoneConfirmTaskId(null);
                 setDoneConfirmUnfinished(0);
-                setDoneConfirmPreviousStatus(null);
-                void persistStatusChange(task, TaskStatus.DONE);
+                setDoneConfirmColumnId(null);
+                void persistStageChange(task, targetColumnId);
               }}
             >
               Tetap Selesaikan

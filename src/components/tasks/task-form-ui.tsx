@@ -272,6 +272,9 @@ export function TaskFormPlanning({
   status,
   onStatusChange,
   statusDisabled,
+  stageItems,
+  stageValue,
+  onStageChange,
   priority,
   onPriorityChange,
   dueDate,
@@ -286,6 +289,14 @@ export function TaskFormPlanning({
   status: TaskStatus;
   onStatusChange: (s: TaskStatus) => void;
   statusDisabled?: boolean;
+  /**
+   * Mode Tahap (kolom Kanban): bila diisi, dropdown "Status" digantikan
+   * dropdown "Tahap" berisi kolom papan aktif (termasuk kolom custom seperti
+   * "Revisi"). Status enum menjadi kategori turunan di server.
+   */
+  stageItems?: SelectItemDef[];
+  stageValue?: string;
+  onStageChange?: (columnId: string) => void;
   priority: TaskPriority;
   onPriorityChange: (p: TaskPriority) => void;
   dueDate: string;
@@ -297,6 +308,11 @@ export function TaskFormPlanning({
   approvalId?: string;
   showStatus?: boolean;
 }) {
+  const stageMode = stageItems !== undefined && stageItems.length > 0;
+  const stageLabel =
+    stageMode && stageValue
+      ? stageItems.find((i) => i.value === stageValue)?.label
+      : undefined;
   return (
     <TaskFormSection
       icon={<CalendarDays className="size-4" />}
@@ -306,10 +322,33 @@ export function TaskFormPlanning({
       <div
         className={cn(
           "grid gap-3",
-          showStatus ? "sm:grid-cols-3" : "sm:grid-cols-2",
+          showStatus || stageMode ? "sm:grid-cols-3" : "sm:grid-cols-2",
         )}
       >
-        {showStatus ? (
+        {stageMode ? (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Tahap</Label>
+            <Select
+              value={stageValue}
+              items={stageItems}
+              disabled={statusDisabled}
+              onValueChange={(v) => {
+                if (v) onStageChange?.(v);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {stageItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : showStatus ? (
           <div className="space-y-1.5">
             <Label className="text-xs">Status</Label>
             <Select
@@ -376,7 +415,9 @@ export function TaskFormPlanning({
           <Flag className="size-3" aria-hidden />
           {priorityLabel(priority)}
         </span>
-        {showStatus ? (
+        {stageMode && stageLabel ? (
+          <Badge variant="outline">{stageLabel}</Badge>
+        ) : showStatus && !stageMode ? (
           <Badge variant="outline">{taskStatusLabel(status)}</Badge>
         ) : null}
       </div>

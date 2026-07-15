@@ -39,6 +39,11 @@ import {
   ROOM_TASK_PROCESS_ORDER,
 } from "@/lib/room-task-process";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import {
+  resolveColumnIdForTask,
+  statusForColumn,
+  type RoomKanbanColumnDTO,
+} from "@/lib/room-kanban-columns";
 import { taskStatusLabel } from "@/lib/task-status-ui";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { downloadTaskAttachment } from "@/lib/task-attachment-download-client";
@@ -122,6 +127,11 @@ type Props = {
   /** Ruangan HQ/Team tanpa brand: sembunyikan fase proses alur. */
   simpleHub?: boolean;
   documentFolders?: RoomFolderNode[];
+  /**
+   * Kolom papan Kanban aktif — dropdown "Tahap" (menggantikan Status enum).
+   * Kosong/fallback ⇒ jatuh ke dropdown Status legacy.
+   */
+  kanbanColumns?: RoomKanbanColumnDTO[];
 };
 
 function projectSelectLabel(p: Project & { brand: Brand | null }) {
@@ -148,6 +158,7 @@ export function TaskDetailSheet({
   currentUserId,
   simpleHub = false,
   documentFolders: documentFoldersProp = [],
+  kanbanColumns = [],
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -166,6 +177,8 @@ export function TaskDetailSheet({
   const [newTagColorHex, setNewTagColorHex] = useState("#6B7280");
   const [createTagPending, setCreateTagPending] = useState(false);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
+  /** Tahap (kolom papan) terpilih — sumber posisi; status jadi turunan. */
+  const [stageColumnId, setStageColumnId] = useState<string>("");
   const [dueDate, setDueDate] = useState("");
   const [approval, setApproval] = useState(false);
   const [savePending, setSavePending] = useState(false);
@@ -261,6 +274,7 @@ export function TaskDetailSheet({
     setPriority(task.priority);
     setSelectedTagIds(task.tags.map((t) => t.tagId));
     setStatus(task.status);
+    setStageColumnId(resolveColumnIdForTask(task, kanbanColumns) ?? "");
     setDueDate(task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "");
     setApproval(task.isApprovalRequired);
     setNewCheck("");
@@ -322,6 +336,27 @@ export function TaskDetailSheet({
       })),
     [projects],
   );
+  /** Kolom papan asli (bukan fallback klien) → mode "Tahap" aktif. */
+  const realKanbanColumns = useMemo(
+    () => kanbanColumns.filter((c) => !c.id.startsWith("fallback-")),
+    [kanbanColumns],
+  );
+  const stageSelectItems = useMemo(
+    () =>
+      realKanbanColumns.map((c) => ({
+        value: c.id,
+        label: c.title,
+      })),
+    [realKanbanColumns],
+  );
+  const selectedStageColumn = useMemo(
+    () => realKanbanColumns.find((c) => c.id === stageColumnId) ?? null,
+    [realKanbanColumns, stageColumnId],
+  );
+  /** Bucket kategori dari tahap terpilih (untuk peringatan sub-tugas & badge). */
+  const stageBucket = selectedStageColumn
+    ? statusForColumn(selectedStageColumn)
+    : status;
   const roomProcessSelectItems = useMemo(
     () =>
       ROOM_TASK_PROCESS_ORDER.map((p) => ({
@@ -389,7 +424,11 @@ export function TaskDetailSheet({
         dueDate: due,
         leadTimeDays: task.leadTimeDays,
         isApprovalRequired: approval,
-        status,
+        // Tahap (kolom) = sumber posisi; status dihitung server dari kolom +
+        // deadline. Kirim status legacy hanya bila papan tidak tersedia.
+        ...(selectedStageColumn
+          ? { kanbanColumnId: selectedStageColumn.id }
+          : { status }),
       });
       toast.success("Tugas disimpan.");
       onTaskPatched?.(task.id, updated);
@@ -428,7 +467,8 @@ export function TaskDetailSheet({
   async function onSaveFields() {
     if (!task) return;
     const unfinishedChecklist = task.checklistItems.filter((item) => !item.done).length;
-    const markingDoneNow = task.status !== TaskStatus.DONE && status === TaskStatus.DONE;
+    const markingDoneNow =
+      task.status !== TaskStatus.DONE && stageBucket === TaskStatus.DONE;
     if (markingDoneNow && unfinishedChecklist > 0) {
       setDoneWarningCount(unfinishedChecklist);
       setDoneWarningOpen(true);
@@ -609,7 +649,14 @@ export function TaskDetailSheet({
                   </SheetDescription>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-1.5">
-                  <Badge variant="outline">{taskStatusLabel(status)}</Badge>
+                  <Badge variant="outline">
+                    {selectedStageColumn?.title ?? taskStatusLabel(status)}
+                  </Badge>
+                  {task.status === TaskStatus.OVERDUE ? (
+                    <Badge className="border-transparent bg-rose-500/15 text-rose-700 dark:text-rose-300">
+                      Telat
+                    </Badge>
+                  ) : null}
                   <Badge variant="secondary">{priorityLabel(priority)}</Badge>
                 </div>
               </div>
@@ -726,6 +773,9 @@ export function TaskDetailSheet({
                       status={status}
                       onStatusChange={setStatus}
                       statusDisabled={Boolean(task.archivedAt)}
+                      stageItems={stageSelectItems}
+                      stageValue={stageColumnId}
+                      onStageChange={setStageColumnId}
                       priority={priority}
                       onPriorityChange={setPriority}
                       dueDate={dueDate}

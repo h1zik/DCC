@@ -1,69 +1,23 @@
-import { NotificationType, RoomTaskProcess, TaskStatus } from "@prisma/client";
+import { NotificationType, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import { statusForColumn } from "@/lib/room-kanban-columns";
+import { isTaskLate } from "@/lib/task-effective-status";
 import { notifyPicTaskOverdueViaWhatsApp } from "@/lib/task-whatsapp-notify";
 
-const JAKARTA_TZ = "Asia/Jakarta";
-
-function toJakartaDayKey(date: Date): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: JAKARTA_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const year = parts.find((p) => p.type === "year")?.value ?? "0000";
-  const month = parts.find((p) => p.type === "month")?.value ?? "01";
-  const day = parts.find((p) => p.type === "day")?.value ?? "01";
-  return `${year}-${month}-${day}`;
-}
-
 /**
- * Selesaikan id kolom "Overdue" untuk papan sebuah tugas (ruangan + fase).
- * `kanbanColumnId` WAJIB ikut di-set saat status berubah: papan Kanban
- * menentukan posisi kartu dari `kanbanColumnId`, bukan dari `status` saja.
- * Tanpa ini, status berubah OVERDUE tetapi kartu tetap menempel di kolom lama.
- * Mengembalikan `null` bila papan tidak punya kolom Overdue.
+ * OVERDUE adalah status TURUNAN dua arah — bukan lajur papan:
+ * 1) Task TODO/IN_PROGRESS yang lewat tenggat (hari WIB) → status OVERDUE
+ *    + notifikasi PIC. `kanbanColumnId` TIDAK disentuh: kartu tetap di
+ *    tahapnya, papan menampilkan badge "Telat" dari deadline.
+ * 2) Auto-lepas: task OVERDUE yang tenggatnya diperpanjang/dihapus → status
+ *    kembali ke bucket kolomnya (tanpa notifikasi ulang).
  */
-function makeOverdueColumnResolver() {
-  // Cache per ruangan+fase agar tidak query berulang dalam satu sinkronisasi.
-  const cache = new Map<string, string | null>();
-  return async function resolveOverdueColumnId(task: {
-    roomProcess: RoomTaskProcess;
-    customProcessPhaseId: string | null;
-    project: { roomId: string };
-  }): Promise<string | null> {
-    const phaseKey = task.customProcessPhaseId ?? `proc:${task.roomProcess}`;
-    const cacheKey = `${task.project.roomId}::${phaseKey}`;
-    const cached = cache.get(cacheKey);
-    if (cached !== undefined) return cached;
-    const column = await prisma.roomKanbanColumn.findFirst({
-      where: {
-        roomId: task.project.roomId,
-        customProcessPhaseId: task.customProcessPhaseId,
-        roomProcess: task.customProcessPhaseId ? null : task.roomProcess,
-        OR: [
-          { coreRole: TaskStatus.OVERDUE },
-          { linkedStatus: TaskStatus.OVERDUE },
-        ],
-      },
-      orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
-      select: { id: true },
-    });
-    const id = column?.id ?? null;
-    cache.set(cacheKey, id);
-    return id;
-  };
-}
-
-/** Menandai tugas lewat tenggat sebagai OVERDUE dan mengirim notifikasi ke PIC. */
 export async function syncOverdueTasks() {
   const now = new Date();
-  const todayJakarta = toJakartaDayKey(now);
-  const resolveOverdueColumnId = makeOverdueColumnResolver();
 
-  // ── 1) Tandai tugas yang baru melewati tenggat → OVERDUE + pindah kolom ──
+  // ── 1) Tandai yang baru lewat tenggat ──
   const candidates = await prisma.task.findMany({
     where: {
       status: { in: [TaskStatus.TODO, TaskStatus.IN_PROGRESS] },
@@ -73,44 +27,23 @@ export async function syncOverdueTasks() {
     select: {
       id: true,
       dueDate: true,
-      roomProcess: true,
-      customProcessPhaseId: true,
-      kanbanColumnId: true,
+      title: true,
       assignees: {
         select: { userId: true, user: { select: { name: true, whatsappPhone: true } } },
       },
-      title: true,
       project: { include: { brand: true, room: { select: { name: true } } } },
     },
   });
-  const overdueCandidates = candidates.filter((c) => {
-    if (!c.dueDate) return false;
-    // Aturan bisnis: due 27 Apr baru overdue saat sudah masuk 28 Apr (WIB).
-    return toJakartaDayKey(c.dueDate) < todayJakarta;
-  });
+  const newlyOverdue = candidates.filter((c) => isTaskLate(c.dueDate, now));
 
-  if (overdueCandidates.length > 0) {
-    // Kelompokkan per kolom target → satu updateMany per kolom (hemat query).
-    const taskIdsByTargetColumn = new Map<string | null, string[]>();
-    for (const c of overdueCandidates) {
-      const columnId = await resolveOverdueColumnId(c);
-      const bucket = taskIdsByTargetColumn.get(columnId) ?? [];
-      bucket.push(c.id);
-      taskIdsByTargetColumn.set(columnId, bucket);
-    }
-
-    for (const [columnId, taskIds] of taskIdsByTargetColumn) {
-      await prisma.task.updateMany({
-        where: { id: { in: taskIds } },
-        // columnId === null (papan tanpa kolom Overdue): kosongkan
-        // `kanbanColumnId` agar papan memposisikan ulang via status saat
-        // dibuka (repairOrphanTaskKanbanColumnIds).
-        data: { status: TaskStatus.OVERDUE, kanbanColumnId: columnId },
-      });
-    }
+  if (newlyOverdue.length > 0) {
+    await prisma.task.updateMany({
+      where: { id: { in: newlyOverdue.map((c) => c.id) } },
+      data: { status: TaskStatus.OVERDUE },
+    });
 
     await Promise.all(
-      overdueCandidates
+      newlyOverdue
         .flatMap((c) => c.assignees.map((a) => ({ userId: a.userId, c })))
         .map(({ userId, c }) =>
           notifyUser(
@@ -122,7 +55,7 @@ export async function syncOverdueTasks() {
     );
 
     await Promise.all(
-      overdueCandidates.flatMap((c) =>
+      newlyOverdue.flatMap((c) =>
         c.assignees.map((a) =>
           notifyPicTaskOverdueViaWhatsApp({
             assignee: a.user,
@@ -134,34 +67,45 @@ export async function syncOverdueTasks() {
     );
   }
 
-  // ── 2) Self-heal: tugas yang sudah OVERDUE tetapi kartunya masih menempel di
-  // kolom non-Overdue (akibat bug lama yang hanya mengubah status). Pindahkan
-  // kartu ke kolom Overdue tanpa mengirim notifikasi ulang. ──
-  const alreadyOverdue = await prisma.task.findMany({
+  // ── 2) Auto-lepas: OVERDUE yang tidak lagi telat (deadline diundur/dihapus)
+  // kembali ke bucket kolomnya. Default IN_PROGRESS bila kolom tak terbaca. ──
+  const stillMarked = await prisma.task.findMany({
     where: { status: TaskStatus.OVERDUE, archivedAt: null },
     select: {
       id: true,
-      kanbanColumnId: true,
-      roomProcess: true,
-      customProcessPhaseId: true,
-      project: { select: { roomId: true } },
+      dueDate: true,
+      kanbanColumn: {
+        select: { kind: true, coreRole: true, linkedStatus: true },
+      },
     },
   });
 
-  const fixIdsByColumn = new Map<string, string[]>();
-  for (const t of alreadyOverdue) {
-    const target = await resolveOverdueColumnId(t);
-    // Tidak ada kolom Overdue di papan → biarkan apa adanya.
-    if (!target || t.kanbanColumnId === target) continue;
-    const bucket = fixIdsByColumn.get(target) ?? [];
-    bucket.push(t.id);
-    fixIdsByColumn.set(target, bucket);
+  const releaseIdsByBucket = new Map<TaskStatus, string[]>();
+  for (const t of stillMarked) {
+    if (isTaskLate(t.dueDate, now)) continue;
+    const bucket = t.kanbanColumn
+      ? statusForColumn({
+          ...t.kanbanColumn,
+          // statusForColumn hanya membaca kind/coreRole/linkedStatus.
+          id: "",
+          title: "",
+          sortOrder: 0,
+        })
+      : TaskStatus.IN_PROGRESS;
+    // Jaga-jaga data lama: bucket kolom tak boleh OVERDUE/DONE di jalur lepas.
+    const safeBucket =
+      bucket === TaskStatus.OVERDUE || bucket === TaskStatus.DONE
+        ? TaskStatus.IN_PROGRESS
+        : bucket;
+    const list = releaseIdsByBucket.get(safeBucket) ?? [];
+    list.push(t.id);
+    releaseIdsByBucket.set(safeBucket, list);
   }
 
-  for (const [columnId, taskIds] of fixIdsByColumn) {
+  for (const [bucket, ids] of releaseIdsByBucket) {
     await prisma.task.updateMany({
-      where: { id: { in: taskIds } },
-      data: { kanbanColumnId: columnId },
+      where: { id: { in: ids } },
+      data: { status: bucket },
     });
   }
 }

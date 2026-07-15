@@ -37,6 +37,22 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-15-kanban-stage-category-overdue-badge",
+    date: "2026-07-15",
+    title: "Kanban dirombak: pilih Tahap (kolom) langsung dari tugas, Overdue jadi badge",
+    category: "improved",
+    description:
+      "Kolom papan Kanban kini menjadi \"Tahap\" tugas yang sesungguhnya. Saat mengubah tugas dari detail atau daftar, kamu memilih kolom papan (termasuk kolom custom seperti Revisi) — bukan lagi status generik — dan kartunya benar-benar pindah. Overdue tidak lagi berupa kolom: tugas telat tetap di tahapnya dengan badge \"Telat X hari\", dan otomatis lepas dari status telat begitu deadline diundur.",
+    highlights: [
+      "Dropdown Status di detail tugas & daftar diganti dropdown Tahap berisi kolom papan aktif — kolom custom akhirnya bisa dipilih",
+      "Ubah tahap dari mana pun (detail, daftar, papan) kini selalu memindahkan kartu — tidak ada lagi tugas \"Selesai\" yang nyangkut di kolom To-Do",
+      "Kolom Overdue dihapus dari papan (otomatis dimigrasi): tugas telat ditandai badge merah \"Telat X hari\" di kartunya, di kolom mana pun ia berada",
+      "Deadline diundur → status telat lepas otomatis (langsung, tanpa menunggu cron); deadline lewat → tertanda telat otomatis",
+      "Saat membuat kolom custom, pilih kolom itu \"dihitung sebagai\" Berjalan / Dalam review / Diblokir untuk pelaporan & progres proyek",
+      "Perbaikan: pindah tugas ke kolom custom dari tampilan Daftar sebelumnya selalu gagal di fase bawaan",
+    ],
+  },
+  {
     id: "2026-07-15-dominatus-lab-bento-studio",
     date: "2026-07-15",
     title: "Dominatus Lab v3: satu bahasa desain \"Bento Studio\" + sidebar bisa diciutkan",

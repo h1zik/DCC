@@ -26,7 +26,7 @@ export function sortTasksForKanbanColumn<T extends KanbanSortableTask>(
       const aUpdated = new Date(a.updatedAt).getTime();
       const bUpdated = new Date(b.updatedAt).getTime();
       if (aUpdated !== bUpdated) return bUpdated - aUpdated;
-      return new Date(b.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 }
 
@@ -47,7 +47,7 @@ export function sortTasksForKanbanStatus<T extends KanbanSortableTask>(
       const aUpdated = new Date(a.updatedAt).getTime();
       const bUpdated = new Date(b.updatedAt).getTime();
       if (aUpdated !== bUpdated) return bUpdated - aUpdated;
-      return new Date(b.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 }
 
