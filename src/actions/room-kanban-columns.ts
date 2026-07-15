@@ -188,11 +188,6 @@ export async function addRoomKanbanColumn(input: z.infer<typeof addSchema>) {
   if (isDefaultKanbanLinkedStatus(data.linkedStatus)) {
     throw new Error("Kolom inti sudah ada di papan.");
   }
-  if (data.linkedStatus === TaskStatus.OVERDUE) {
-    throw new Error(
-      "Overdue bukan kolom — tugas telat ditandai otomatis lewat badge di kartunya.",
-    );
-  }
 
   const where = kanbanColumnWhere(data.roomId, phase);
   const existing = await prisma.roomKanbanColumn.findFirst({
@@ -304,11 +299,7 @@ export async function listUnusedKanbanStatuses(input: {
   });
   const used = new Set(cols.map((c) => c.linkedStatus));
   return (Object.values(TaskStatus) as TaskStatus[]).filter(
-    (s) =>
-      !used.has(s) &&
-      !isDefaultKanbanLinkedStatus(s) &&
-      // OVERDUE bukan tahapan — telat = badge turunan deadline.
-      s !== TaskStatus.OVERDUE,
+    (s) => !used.has(s) && !isDefaultKanbanLinkedStatus(s),
   );
 }
 

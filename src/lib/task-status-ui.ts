@@ -21,13 +21,14 @@ export function taskStatusLabel(s: TaskStatus): string {
 
 /**
  * Urutan default kolom saat inisialisasi papan (bukan semua harus ada).
- * OVERDUE sengaja BUKAN kolom — telat adalah overlay turunan dari deadline
- * (badge di kartu), bukan tahap kerja. Kolom Overdue lama dimigrasi otomatis
- * oleh `removeOverdueKanbanColumns` saat papan dibuka.
+ * Kolom OVERDUE adalah LAJUR SISTEM: diisi/dikosongkan otomatis berdasarkan
+ * deadline (cron + edit deadline), bukan tahap kerja yang dipilih manual —
+ * karena itu ia tidak muncul di dropdown "Tahap".
  */
 export const DEFAULT_KANBAN_STATUSES: TaskStatus[] = [
   TaskStatus.TODO,
   TaskStatus.IN_PROGRESS,
+  TaskStatus.OVERDUE,
   TaskStatus.DONE,
 ];
 

@@ -163,59 +163,6 @@ async function seedCoreColumns(
   }
 }
 
-/**
- * Migrasi: kolom "Overdue" bukan lagi lajur papan — telat kini badge turunan
- * dari deadline. Task yang masih menempel di kolom Overdue dipindahkan ke
- * kolom inti "Berjalan" (status OVERDUE-nya DIPERTAHANKAN untuk pelaporan;
- * cron `syncOverdueTasks` yang melepasnya saat deadline berubah), lalu kolom
- * Overdue dihapus. Idempotent — aman dipanggil setiap papan dibuka.
- */
-async function removeOverdueKanbanColumns(boardWhere: {
-  roomId: string;
-  roomProcess?: RoomTaskProcess | null;
-  customProcessPhaseId: string | null;
-}): Promise<void> {
-  const where = {
-    roomId: boardWhere.roomId,
-    customProcessPhaseId: boardWhere.customProcessPhaseId,
-    ...(boardWhere.customProcessPhaseId === null
-      ? { roomProcess: boardWhere.roomProcess ?? undefined }
-      : {}),
-  };
-  const overdueCols = await prisma.roomKanbanColumn.findMany({
-    where: {
-      ...where,
-      OR: [
-        { coreRole: TaskStatus.OVERDUE },
-        { linkedStatus: TaskStatus.OVERDUE },
-      ],
-    },
-    select: { id: true },
-  });
-  if (overdueCols.length === 0) return;
-
-  const target = await prisma.roomKanbanColumn.findFirst({
-    where: {
-      ...where,
-      kind: KanbanColumnKind.CORE,
-      coreRole: TaskStatus.IN_PROGRESS,
-    },
-    select: { id: true },
-  });
-  // Tanpa kolom "Berjalan" (seharusnya selalu ada setelah seed) jangan hapus
-  // apa pun — task masih mereferensikan kolom Overdue (FK Restrict).
-  if (!target) return;
-
-  const overdueIds = overdueCols.map((c) => c.id);
-  await prisma.task.updateMany({
-    where: { kanbanColumnId: { in: overdueIds } },
-    data: { kanbanColumnId: target.id },
-  });
-  await prisma.roomKanbanColumn.deleteMany({
-    where: { id: { in: overdueIds } },
-  });
-}
-
 /** Kolom Kanban ruangan HQ/Team (tanpa fase proses). */
 export async function ensureSimpleHubKanbanColumns(
   roomId: string,
@@ -229,11 +176,6 @@ export async function getSimpleHubKanbanColumns(
 ): Promise<RoomKanbanColumnDTO[]> {
   await ensureSimpleHubKanbanColumns(roomId);
   await repairDuplicateCoreKanbanColumns({
-    roomId,
-    roomProcess: RoomTaskProcess.MARKET_RESEARCH,
-    customProcessPhaseId: null,
-  });
-  await removeOverdueKanbanColumns({
     roomId,
     roomProcess: RoomTaskProcess.MARKET_RESEARCH,
     customProcessPhaseId: null,
@@ -269,10 +211,6 @@ export async function getRoomKanbanColumns(
     roomProcess: phase.legacyProcessKey ?? null,
     customProcessPhaseId: phase.id,
   });
-  await removeOverdueKanbanColumns({
-    roomId,
-    customProcessPhaseId: phase.id,
-  });
 
   const columns = await prisma.roomKanbanColumn.findMany({
     where: { roomId, customProcessPhaseId: phase.id },
@@ -295,14 +233,11 @@ export function resolveColumnIdForTask(
     const onBoard = columns.find((c) => c.id === task.kanbanColumnId);
     if (onBoard) return task.kanbanColumnId;
   }
-  // OVERDUE bukan lajur — kartu telat menempel di bucket kerjanya ("Berjalan").
-  const bucket =
-    task.status === TaskStatus.OVERDUE ? TaskStatus.IN_PROGRESS : task.status;
   const core = columns.find(
-    (c) => c.kind === "CORE" && c.coreRole === bucket,
+    (c) => c.kind === "CORE" && c.coreRole === task.status,
   );
   if (core) return core.id;
-  const byLinked = columns.find((c) => c.linkedStatus === bucket);
+  const byLinked = columns.find((c) => c.linkedStatus === task.status);
   return byLinked?.id ?? columns[0]?.id ?? null;
 }
 

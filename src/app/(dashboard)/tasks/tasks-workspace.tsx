@@ -60,6 +60,7 @@ import {
   mergeKanbanColumns,
   type RoomKanbanColumnDTO,
   resolveColumnIdForTask,
+  statusForColumn,
 } from "@/lib/room-kanban-columns";
 import { DEFAULT_KANBAN_STATUSES, taskStatusLabel } from "@/lib/task-status-ui";
 import { cn } from "@/lib/utils";
@@ -292,7 +293,9 @@ export function TasksWorkspace({
     setDocumentsFolderId(null);
     setPriority(TaskPriority.MEDIUM);
     setStatus(TaskStatus.TODO);
-    setCreateStageColumnId(initialColumnId ?? defaultCreateStageColumnId);
+    // "+" dari kolom Overdue jatuh ke tahap default — lajur itu diisi sistem.
+    const initialCol = pickableStageColumns.find((c) => c.id === initialColumnId);
+    setCreateStageColumnId(initialCol?.id ?? defaultCreateStageColumnId);
     setDueDate("");
     setApproval(false);
     setCreateOpen(true);
@@ -362,7 +365,7 @@ export function TasksWorkspace({
     try {
       const due = dueDate ? new Date(dueDate) : null;
       const createStageColumn =
-        realKanbanColumns.find((c) => c.id === createStageColumnId) ?? null;
+        pickableStageColumns.find((c) => c.id === createStageColumnId) ?? null;
       const payload = {
         projectId,
         title,
@@ -454,13 +457,17 @@ export function TasksWorkspace({
   const realKanbanColumns = localKanbanColumns.filter(
     (c) => !c.id.startsWith("fallback-"),
   );
+  /** Tahap yang bisa dipilih saat buat tugas — lajur Overdue dikelola sistem. */
+  const pickableStageColumns = realKanbanColumns.filter(
+    (c) => statusForColumn(c) !== TaskStatus.OVERDUE,
+  );
   const defaultCreateStageColumnId =
-    realKanbanColumns.find(
+    pickableStageColumns.find(
       (c) => c.kind === "CORE" && c.coreRole === TaskStatus.TODO,
     )?.id ??
-    realKanbanColumns[0]?.id ??
+    pickableStageColumns[0]?.id ??
     "";
-  const stageSelectItems = realKanbanColumns.map((c) => ({
+  const stageSelectItems = pickableStageColumns.map((c) => ({
     value: c.id,
     label: c.title,
   }));

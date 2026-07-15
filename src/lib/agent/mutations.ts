@@ -29,10 +29,7 @@ import {
 } from "@/lib/room-process-phase";
 import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
 import { isSimpleHubRoom } from "@/lib/room-simple-hub";
-import {
-  bucketFromLegacyStatus,
-  effectiveTaskStatus,
-} from "@/lib/task-effective-status";
+import { effectiveTaskStatus } from "@/lib/task-effective-status";
 import {
   kanbanColumnBucket,
   resolveBoardColumnIdForBucket,
@@ -164,16 +161,18 @@ export async function agentCreateTask(
     _max: { sortOrder: true },
   });
 
-  // Tahap awal: kolom bucket status; kategori tersimpan = turunan + overlay telat.
-  const bucket = bucketFromLegacyStatus(input.status ?? TaskStatus.TODO);
+  // Tahap awal mengikuti status final (bucket + overlay telat) — task yang
+  // langsung telat masuk lajur Overdue.
+  const bucket = input.status ?? TaskStatus.TODO;
   const dueDate = input.dueDate ? new Date(input.dueDate) : null;
+  const initialStatus = effectiveTaskStatus(bucket, dueDate);
   const kanbanColumnId = await resolveBoardColumnIdForBucket(
     roomId,
     {
       roomProcess: phaseFields.roomProcess,
       customProcessPhaseId: phaseFields.customProcessPhaseId,
     },
-    bucket,
+    initialStatus,
   );
 
   const task = await prisma.task.create({
@@ -184,7 +183,7 @@ export async function agentCreateTask(
       title: input.title.trim(),
       description: input.description?.trim() || undefined,
       priority: input.priority ?? TaskPriority.MEDIUM,
-      status: effectiveTaskStatus(bucket, dueDate),
+      status: initialStatus,
       kanbanColumnId: kanbanColumnId ?? undefined,
       dueDate: dueDate ?? undefined,
       sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
@@ -381,8 +380,8 @@ export async function agentUpdateTask(
     : null;
   const bucket =
     input.status !== undefined && input.status !== prev.status
-      ? bucketFromLegacyStatus(input.status)
-      : (currentBucket ?? bucketFromLegacyStatus(prev.status));
+      ? input.status
+      : (currentBucket ?? prev.status);
   if (
     bucket === TaskStatus.DONE &&
     prev.isApprovalRequired &&
@@ -446,12 +445,13 @@ export async function agentUpdateTask(
   const dueDateChanged =
     (prevDue?.getTime() ?? null) !== (nextDueDate?.getTime() ?? null);
   // Kategori final = bucket + overlay telat dari deadline BARU (deadline
-  // diundur otomatis melepas OVERDUE tanpa menunggu cron).
+  // diundur otomatis melepas OVERDUE tanpa menunggu cron). Kartu mengikuti
+  // kolom status final, kecuali kolomnya sudah se-bucket.
   const nextStatus = effectiveTaskStatus(bucket, nextDueDate);
   const nextColumnId =
-    currentBucket === bucket
+    currentBucket === nextStatus
       ? prev.kanbanColumnId
-      : ((await resolveBoardColumnIdForBucket(roomId, prev, bucket)) ??
+      : ((await resolveBoardColumnIdForBucket(roomId, prev, nextStatus)) ??
         prev.kanbanColumnId);
   const markingDone =
     nextStatus === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
@@ -715,8 +715,7 @@ export async function agentMoveTaskStatus(
     throw new Error("Tugas diarsipkan. Pulihkan dulu untuk mengubah status.");
   }
 
-  // Status = kategori turunan Tahap (kolom); OVERDUE legacy runtuh ke bucket kerja.
-  const bucket = bucketFromLegacyStatus(input.status);
+  const bucket = input.status;
 
   if (
     bucket === TaskStatus.DONE &&
@@ -729,16 +728,16 @@ export async function agentMoveTaskStatus(
   }
 
   const prevStatus = task.status;
-  // Kartu ikut pindah kolom — kecuali kolomnya sudah se-bucket (mis. kolom
-  // custom "Revisi" ber-bucket Berjalan: tetap di sana).
+  const nextStatus = effectiveTaskStatus(bucket, task.dueDate);
+  // Kartu mengikuti kolom status final — kecuali kolomnya sudah se-bucket
+  // (mis. kolom custom "Revisi" ber-bucket Berjalan: tetap di sana).
   const currentBucket = task.kanbanColumn
     ? kanbanColumnBucket(task.kanbanColumn)
     : null;
   const targetColumnId =
-    currentBucket === bucket
+    currentBucket === nextStatus
       ? task.kanbanColumnId
-      : await resolveBoardColumnIdForBucket(roomId, task, bucket);
-  const nextStatus = effectiveTaskStatus(bucket, task.dueDate);
+      : await resolveBoardColumnIdForBucket(roomId, task, nextStatus);
   const markingDone = bucket === TaskStatus.DONE && prevStatus !== TaskStatus.DONE;
 
   await prisma.task.update({

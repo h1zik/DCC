@@ -28,10 +28,7 @@ import {
   isSimpleHubRoom,
   taskProjectContextLabel,
 } from "@/lib/room-simple-hub";
-import {
-  bucketFromLegacyStatus,
-  effectiveTaskStatus,
-} from "@/lib/task-effective-status";
+import { effectiveTaskStatus } from "@/lib/task-effective-status";
 import {
   kanbanColumnBucket as columnBucket,
   taskBoardColumnWhere,
@@ -105,20 +102,18 @@ async function resolveColumnIdForTaskStatus(
       project: { select: { roomId: true } },
     },
   });
-  // OVERDUE bukan lajur — kartunya menempel di bucket kerja ("Berjalan").
-  const bucket = bucketFromLegacyStatus(status);
   if (task.kanbanColumnId) {
     const col = await prisma.roomKanbanColumn.findUnique({
       where: { id: task.kanbanColumnId },
       select: { linkedStatus: true, coreRole: true, kind: true },
     });
-    if (col && columnBucket(col) === bucket) return task.kanbanColumnId;
+    if (col && columnBucket(col) === status) return task.kanbanColumnId;
   }
   const column = await prisma.roomKanbanColumn.findFirst({
     where: {
       roomId: task.project.roomId,
       ...taskBoardColumnWhere(task),
-      OR: [{ coreRole: bucket }, { linkedStatus: bucket }],
+      OR: [{ coreRole: status }, { linkedStatus: status }],
     },
     orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
   });
@@ -423,8 +418,15 @@ export async function moveTaskToColumn(
     );
   }
 
-  // Kategori turunan: bucket kolom + overlay telat (badge, bukan lajur).
+  // Kategori turunan: bucket kolom + overlay telat dari deadline.
   const status = effectiveTaskStatus(bucket, task.dueDate);
+  // Lajur Overdue dikelola sistem: task ber-deadline masa depan tidak boleh
+  // diparkir manual di sana (status akan langsung dilepas cron — membingungkan).
+  if (bucket === TaskStatus.OVERDUE && status !== TaskStatus.OVERDUE) {
+    throw new Error(
+      "Tugas ini belum telat — deadline-nya masih di masa depan. Kolom Overdue diisi otomatis oleh sistem saat deadline terlewat.",
+    );
+  }
   const markingDone =
     bucket === TaskStatus.DONE && task.status !== TaskStatus.DONE;
 
@@ -535,9 +537,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     );
   }
 
-  // Status yang diminta diperlakukan sebagai BUCKET tahapan; OVERDUE (legacy)
-  // runtuh ke IN_PROGRESS — telat dihitung ulang dari deadline.
-  const bucket = bucketFromLegacyStatus(requestedStatus);
+  const bucket = requestedStatus;
 
   if (bucket === TaskStatus.DONE && task.isApprovalRequired && !task.isApproved) {
     throw new Error(
@@ -545,8 +545,10 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
     );
   }
 
-  const targetColumnId = await resolveColumnIdForTaskStatus(taskId, bucket);
+  // Status final = bucket + overlay telat; kartu mengikuti kolom status final
+  // (mis. minta IN_PROGRESS padahal telat → kartu masuk lajur Overdue).
   const status = effectiveTaskStatus(bucket, task.dueDate);
+  const targetColumnId = await resolveColumnIdForTaskStatus(taskId, status);
   const markingDone =
     bucket === TaskStatus.DONE && task.status !== TaskStatus.DONE;
 
@@ -821,7 +823,7 @@ export async function createTask(
       : { customProcessPhaseId: phaseFields.customProcessPhaseId }),
   };
   let kanbanColumnId: string | null = null;
-  let bucket = bucketFromLegacyStatus(data.status ?? TaskStatus.TODO);
+  let bucket = data.status ?? TaskStatus.TODO;
   if (data.kanbanColumnId) {
     const col = await prisma.roomKanbanColumn.findFirst({
       where: { id: data.kanbanColumnId, ...boardWhere },
@@ -832,20 +834,22 @@ export async function createTask(
     }
     kanbanColumnId = col.id;
     bucket = columnBucket(col);
-  } else {
-    // Boleh null (papan belum pernah dibuka) — repairOrphanTaskKanbanColumnIds
-    // menautkannya saat papan dirender.
+  }
+  const initialStatus = effectiveTaskStatus(bucket, data.dueDate ?? null);
+  // Kartu harus di kolom se-bucket dengan status final (mis. langsung telat →
+  // lajur Overdue). Boleh null bila papan belum pernah dibuka —
+  // repairOrphanTaskKanbanColumnIds menautkannya saat papan dirender.
+  if (!kanbanColumnId || initialStatus !== bucket) {
     const col = await prisma.roomKanbanColumn.findFirst({
       where: {
         ...boardWhere,
-        OR: [{ coreRole: bucket }, { linkedStatus: bucket }],
+        OR: [{ coreRole: initialStatus }, { linkedStatus: initialStatus }],
       },
       orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
       select: { id: true },
     });
-    kanbanColumnId = col?.id ?? null;
+    kanbanColumnId = col?.id ?? kanbanColumnId;
   }
-  const initialStatus = effectiveTaskStatus(bucket, data.dueDate ?? null);
 
   const task = await prisma.task.create({
     data: {
@@ -983,6 +987,7 @@ export async function updateTask(
     : null;
 
   let nextColumnId = prev.kanbanColumnId;
+  let nextColumnBucket = bucketFromColumn;
   let bucket: TaskStatus;
   if (data.kanbanColumnId && data.kanbanColumnId !== prev.kanbanColumnId) {
     const col = await prisma.roomKanbanColumn.findFirst({
@@ -993,29 +998,15 @@ export async function updateTask(
       throw new Error("Kolom Kanban tidak valid untuk papan tugas ini.");
     }
     nextColumnId = col.id;
-    bucket = columnBucket(col);
+    nextColumnBucket = columnBucket(col);
+    bucket = nextColumnBucket;
   } else if (data.kanbanColumnId && bucketFromColumn) {
     bucket = bucketFromColumn;
   } else if (data.status !== undefined && data.status !== prev.status) {
     // Kompat pemanggil lama yang masih mengirim status sebagai tahapan.
-    bucket = bucketFromLegacyStatus(data.status);
+    bucket = data.status;
   } else {
-    bucket = bucketFromColumn ?? bucketFromLegacyStatus(prev.status);
-  }
-
-  // Bucket berubah tanpa kolom eksplisit (atau kolom kosong) → kartu ikut
-  // pindah ke kolom bucket tsb. Menutup bug lama: ubah status via detail
-  // sheet mengubah kategori tapi kartunya tertinggal di kolom lama.
-  if (nextColumnId === prev.kanbanColumnId && bucket !== bucketFromColumn) {
-    const col = await prisma.roomKanbanColumn.findFirst({
-      where: {
-        ...boardWhere,
-        OR: [{ coreRole: bucket }, { linkedStatus: bucket }],
-      },
-      orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
-      select: { id: true },
-    });
-    if (col) nextColumnId = col.id;
+    bucket = bucketFromColumn ?? prev.status;
   }
 
   if (
@@ -1078,6 +1069,21 @@ export async function updateTask(
   // diundur otomatis melepas OVERDUE, deadline mundur ke masa lalu otomatis
   // menandai telat, tanpa menunggu cron.
   const nextStatus = effectiveTaskStatus(bucket, nextDue);
+  // Kartu harus di kolom se-bucket dengan status final. Menutup bug lama
+  // (ubah status via detail sheet → kartu tertinggal di kolom lama) sekaligus
+  // memindahkan kartu masuk/keluar lajur Overdue saat deadline berubah.
+  // Kolom se-bucket (mis. custom "Revisi" saat status IN_PROGRESS) dibiarkan.
+  if (nextColumnBucket !== nextStatus) {
+    const col = await prisma.roomKanbanColumn.findFirst({
+      where: {
+        ...boardWhere,
+        OR: [{ coreRole: nextStatus }, { linkedStatus: nextStatus }],
+      },
+      orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
+      select: { id: true },
+    });
+    if (col) nextColumnId = col.id;
+  }
   const markingDone =
     nextStatus === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
 

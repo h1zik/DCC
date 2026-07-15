@@ -209,7 +209,14 @@ function StagePicker({
         <StatusIcon className={cn("size-4", style.iconColor)} aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-44">
-        {columns.map((column) => {
+        {columns
+          // Lajur Overdue diisi otomatis oleh sistem — bukan tahap pilihan.
+          .filter(
+            (column) =>
+              statusForColumn(column) !== TaskStatus.OVERDUE ||
+              column.id === currentColumnId,
+          )
+          .map((column) => {
           const optStyle = statusGroupStyle(statusForColumn(column));
           const OptIcon = optStyle.icon;
           return (

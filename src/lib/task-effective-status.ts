@@ -26,11 +26,15 @@ export function isTaskLate(
 }
 
 /**
- * `Task.status` adalah KATEGORI TURUNAN, bukan sumber kebenaran posisi:
- * posisi kartu ditentukan `kanbanColumnId`, kategorinya `statusForColumn`
- * (bucket kolom). OVERDUE bukan lajur/tahap — ia overlay berbasis waktu di
- * atas bucket TODO/IN_PROGRESS agar konsumen pelaporan (home, AI API, digest)
- * tetap bisa query `status = OVERDUE`.
+ * `Task.status` adalah KATEGORI TURUNAN: posisi kartu ditentukan
+ * `kanbanColumnId` (Tahap), kategorinya dari bucket kolom (`statusForColumn`).
+ *
+ * Kolom "Overdue" adalah LAJUR SISTEM yang dikelola deadline:
+ * - bucket TODO/IN_PROGRESS + lewat tenggat → OVERDUE (cron/edit memindahkan
+ *   kartunya ke lajur Overdue);
+ * - bucket OVERDUE (kartu di lajur) + tenggat diundur ke masa depan →
+ *   IN_PROGRESS (auto-lepas; kartu kembali ke "Berjalan");
+ * - bucket OVERDUE tanpa tenggat → tetap OVERDUE (penandaan manual dibiarkan).
  *
  * Semua jalur tulis status (moveTaskToColumn, updateTask, agent, cron) wajib
  * lewat fungsi ini supaya status & kolom tidak pernah saling bertentangan.
@@ -46,15 +50,12 @@ export function effectiveTaskStatus(
   ) {
     return TaskStatus.OVERDUE;
   }
-  // OVERDUE tidak boleh jadi bucket tersimpan; kalau bocor dari data lama,
-  // runtuhkan ke IN_PROGRESS kecuali memang masih telat.
   if (bucket === TaskStatus.OVERDUE) {
-    return isTaskLate(dueDate, now) ? TaskStatus.OVERDUE : TaskStatus.IN_PROGRESS;
+    // Auto-lepas hanya bila ada tenggat baru di masa depan; tanpa tenggat,
+    // hormati penempatan di lajur Overdue.
+    return dueDate != null && !isTaskLate(dueDate, now)
+      ? TaskStatus.IN_PROGRESS
+      : TaskStatus.OVERDUE;
   }
   return bucket;
-}
-
-/** Bucket tersimpan (non-OVERDUE) dari status lama — untuk auto-lepas. */
-export function bucketFromLegacyStatus(status: TaskStatus): TaskStatus {
-  return status === TaskStatus.OVERDUE ? TaskStatus.IN_PROGRESS : status;
 }

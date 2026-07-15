@@ -343,11 +343,19 @@ export function TaskDetailSheet({
   );
   const stageSelectItems = useMemo(
     () =>
-      realKanbanColumns.map((c) => ({
-        value: c.id,
-        label: c.title,
-      })),
-    [realKanbanColumns],
+      realKanbanColumns
+        // Lajur Overdue dikelola sistem (deadline) — tidak bisa dipilih
+        // manual, tapi tetap tampil bila memang tahap saat ini.
+        .filter(
+          (c) =>
+            statusForColumn(c) !== TaskStatus.OVERDUE ||
+            c.id === stageColumnId,
+        )
+        .map((c) => ({
+          value: c.id,
+          label: c.title,
+        })),
+    [realKanbanColumns, stageColumnId],
   );
   const selectedStageColumn = useMemo(
     () => realKanbanColumns.find((c) => c.id === stageColumnId) ?? null,
