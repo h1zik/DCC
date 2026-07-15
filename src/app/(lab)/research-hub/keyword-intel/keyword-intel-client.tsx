@@ -29,6 +29,7 @@ import { DEFAULT_CATEGORY_PRESETS } from "@/lib/research/keyword-intel/keyword-s
 import type { KeywordSourceConfig } from "@/lib/research/keyword-intel/keyword-source-config-types";
 import type { KeywordSignalStats } from "@/lib/research/keyword-intel/keyword-signal-types";
 import { lab, LabEmptyState } from "@/components/lab/lab-primitives";
+import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
 import { cn } from "@/lib/utils";
 
 export type KeywordQueryRow = {
@@ -383,11 +384,25 @@ export function KeywordIntelClient({
                         <p className="text-foreground truncate font-bold tracking-tight">
                           {q.category}
                         </p>
-                        <p className="text-muted-foreground truncate text-xs">
-                          {q.seedKeyword ? `Seed: ${q.seedKeyword} · ` : ""}
-                          {q.marketplace
-                            ? MARKETPLACE_LABELS[q.marketplace]
-                            : "Semua marketplace"}
+                        <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                          {q.seedKeyword ? (
+                            <span className="truncate">
+                              Seed: {q.seedKeyword} ·
+                            </span>
+                          ) : null}
+                          {q.marketplace ? (
+                            <>
+                              <MarketplaceLogo
+                                marketplace={q.marketplace}
+                                className="size-3.5"
+                              />
+                              <span className="truncate">
+                                {MARKETPLACE_LABELS[q.marketplace]}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="truncate">Semua marketplace</span>
+                          )}
                         </p>
                       </div>
                     </div>

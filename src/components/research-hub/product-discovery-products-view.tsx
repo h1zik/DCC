@@ -15,6 +15,7 @@ import {
 import { DiscoveryCompetitorTrackerDialog } from "@/components/research-hub/discovery-competitor-tracker-dialog";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
+import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { formatRp } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
@@ -89,9 +90,17 @@ function ProductDiscoveryCard({
           ) : (
             <h3 className="line-clamp-2 text-sm leading-snug font-medium">{row.name}</h3>
           )}
-          <p className="text-muted-foreground line-clamp-1 text-xs">
-            {row.shopName ?? "—"} · {marketplaceLabel}
-            {row.shopLocation ? ` · ${row.shopLocation}` : ""}
+          <p className="text-muted-foreground flex items-center gap-1 text-xs">
+            <span className="truncate">{row.shopName ?? "—"}</span>
+            <span aria-hidden>·</span>
+            <MarketplaceLogo
+              marketplace={row.marketplace}
+              className="size-3.5"
+            />
+            <span className="truncate">
+              {marketplaceLabel}
+              {row.shopLocation ? ` · ${row.shopLocation}` : ""}
+            </span>
           </p>
         </div>
 

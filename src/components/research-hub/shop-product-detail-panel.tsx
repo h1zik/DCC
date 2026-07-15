@@ -7,6 +7,7 @@ import { ShopProductMetricsStrip } from "@/components/research-hub/shop-product-
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
 import { MARKETPLACE_LABELS, formatRp } from "@/lib/research/labels";
 import type { ShopProductMetrics } from "@/lib/research/shop-product-metrics";
 import { formatCompactCount } from "@/lib/research/shop-product-metrics";
@@ -124,7 +125,14 @@ export function ShopProductDetailPanel({
         <div className="flex min-w-0 flex-col gap-4">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary" className="text-[10px] uppercase">
+              <Badge
+                variant="secondary"
+                className="gap-1.5 text-[10px] uppercase"
+              >
+                <MarketplaceLogo
+                  marketplace={product.marketplace}
+                  className="size-3.5"
+                />
                 {marketplaceLabel}
               </Badge>
               {product.isOfficialShop ? (

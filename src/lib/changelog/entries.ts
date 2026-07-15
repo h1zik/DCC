@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-15-research-hub-marketplace-logos",
+    date: "2026-07-15",
+    title: "Research Hub: logo platform di semua tampilan marketplace",
+    category: "improved",
+    description:
+      "Shopee, Tokopedia, Lazada, TikTok Shop, Female Daily, dan Sociolla kini tampil dengan logo berwarna khas masing-masing — bukan lagi sekadar teks — di seluruh Research Hub: pilihan marketplace saat membuat riset, kartu & tabel produk, dropdown, dan halaman detail.",
+    highlights: [
+      "Logo muncul di Product Discovery, Review Intelligence, Competitor Tracker, dan Keyword Intel",
+      "Riset multi-marketplace menampilkan deretan logo ringkas (nama muncul saat disorot)",
+      "Komponen tabel & kartu produk yang sama juga dipakai Brand Hub, jadi logonya ikut konsisten di sana",
+    ],
+  },
+  {
     id: "2026-07-15-seo-crawler-page-inventory",
     date: "2026-07-15",
     title: "SEO Crawler: inventaris semua halaman + hasil crawl tanpa menunggu cron",

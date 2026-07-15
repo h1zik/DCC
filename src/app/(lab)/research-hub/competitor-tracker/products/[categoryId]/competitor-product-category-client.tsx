@@ -43,6 +43,10 @@ import {
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import { CompetitorTrackerModeNav } from "@/components/research-hub/competitor-tracker-mode-nav";
 import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
+import {
+  MarketplaceBadge,
+  MarketplaceLogo,
+} from "@/components/research-hub/marketplace-logo";
 import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
 import { MARKETPLACE_LABELS, formatRp } from "@/lib/research/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
@@ -201,12 +205,12 @@ export function CompetitorProductCategoryClient({
                     }}
                   >
                     <SelectTrigger>
-                      {MARKETPLACE_LABELS[marketplace]}
+                      <MarketplaceBadge marketplace={marketplace} />
                     </SelectTrigger>
                     <SelectContent>
                       {MARKETPLACE_ITEMS.map((item) => (
                         <SelectItem key={item.value} value={item.value}>
-                          {item.label}
+                          <MarketplaceBadge marketplace={item.value} />
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -334,10 +338,16 @@ export function CompetitorProductCategoryClient({
                       <span className="line-clamp-1">{track.name}</span>
                       <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
                     </p>
-                    <p className="text-muted-foreground truncate text-xs">
-                      {MARKETPLACE_LABELS[track.marketplace]}
-                      {track.brand ? ` · ${track.brand}` : ""}
-                      {track.shopName ? ` · ${track.shopName}` : ""}
+                    <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                      <MarketplaceLogo
+                        marketplace={track.marketplace}
+                        className="size-3.5"
+                      />
+                      <span className="truncate">
+                        {MARKETPLACE_LABELS[track.marketplace]}
+                        {track.brand ? ` · ${track.brand}` : ""}
+                        {track.shopName ? ` · ${track.shopName}` : ""}
+                      </span>
                     </p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                       <span className="font-extrabold tabular-nums tracking-tight">

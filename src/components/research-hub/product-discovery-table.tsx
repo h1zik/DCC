@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { formatCompactCount, formatRevenueIdr, resolveShopProductMetrics } from "@/lib/research/shop-product-metrics";
 import { cn } from "@/lib/utils";
@@ -112,7 +113,11 @@ export function ProductDiscoveryTable({
               {row.shopName ?? "—"}
             </TableCell>
             <TableCell>
-              <span className="bg-muted text-muted-foreground inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide">
+              <span className="bg-muted text-muted-foreground inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide">
+                <MarketplaceLogo
+                  marketplace={row.marketplace}
+                  className="size-3.5"
+                />
                 {MARKETPLACE_LABELS[row.marketplace as keyof typeof MARKETPLACE_LABELS] ??
                   row.marketplace}
               </span>

@@ -9,7 +9,6 @@ import {
   Loader2,
   Plus,
   RefreshCw,
-  Store,
   Target,
   Trash2,
   X,
@@ -33,6 +32,10 @@ import {
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { lab, LabEmptyState } from "@/components/lab/lab-primitives";
+import {
+  MarketplaceBadge,
+  MarketplaceLogo,
+} from "@/components/research-hub/marketplace-logo";
 import { CompetitorTrackerModeNav } from "@/components/research-hub/competitor-tracker-mode-nav";
 import { cn } from "@/lib/utils";
 
@@ -272,11 +275,13 @@ export function CompetitorTrackerClient({
                     if (v) setMarketplace(v as ResearchMarketplace);
                   }}
                 >
-                  <SelectTrigger>{MARKETPLACE_LABELS[marketplace]}</SelectTrigger>
+                  <SelectTrigger>
+                    <MarketplaceBadge marketplace={marketplace} />
+                  </SelectTrigger>
                   <SelectContent>
                     {MARKETPLACE_ITEMS.map((item) => (
                       <SelectItem key={item.value} value={item.value}>
-                        {item.label}
+                        <MarketplaceBadge marketplace={item.value} />
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -370,7 +375,10 @@ export function CompetitorTrackerClient({
 
                 <div className="border-border/60 flex items-center justify-between gap-2 border-t px-3 py-2">
                   <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
-                    <Store className="size-3.5" aria-hidden />
+                    <MarketplaceLogo
+                      marketplace={c.marketplace}
+                      className="size-3.5"
+                    />
                     {MARKETPLACE_LABELS[c.marketplace]}
                   </span>
                   <div className="flex items-center gap-1">
