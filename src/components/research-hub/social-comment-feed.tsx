@@ -51,43 +51,45 @@ export function SocialCommentFeed({ rows }: { rows: CommentFeedRow[] }) {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Klasifikasi</TableHead>
-          <TableHead>Komentar</TableHead>
-          <TableHead className="text-right">Likes</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow
-            key={row.id}
-            className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
-          >
-            <TableCell>
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                  classTone(row.classification),
-                )}
-              >
-                {SOCIAL_MENTION_CLASS_LABELS[row.classification]}
-              </span>
-            </TableCell>
-            <TableCell className="max-w-lg">
-              <p className="line-clamp-2 text-sm">{row.text}</p>
-              <p className="text-muted-foreground mt-1 text-xs">
-                {row.author ? `@${row.author}` : "—"} · {row.platform}
-                {row.painPoint ? ` · ${row.painPoint}` : ""}
-              </p>
-            </TableCell>
-            <TableCell className="text-right text-xs tabular-nums">
-              {row.likes.toLocaleString("id-ID")}
-            </TableCell>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Klasifikasi</TableHead>
+            <TableHead>Komentar</TableHead>
+            <TableHead className="text-right">Likes</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.id}
+              className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+            >
+              <TableCell>
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                    classTone(row.classification),
+                  )}
+                >
+                  {SOCIAL_MENTION_CLASS_LABELS[row.classification]}
+                </span>
+              </TableCell>
+              <TableCell className="max-w-lg">
+                <p className="line-clamp-2 text-sm">{row.text}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {row.author ? `@${row.author}` : "—"} · {row.platform}
+                  {row.painPoint ? ` · ${row.painPoint}` : ""}
+                </p>
+              </TableCell>
+              <TableCell className="text-right text-xs font-semibold tabular-nums">
+                {row.likes.toLocaleString("id-ID")}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

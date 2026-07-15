@@ -10,13 +10,8 @@ export default async function SeoLayout({
 }) {
   await ensureSeoPage();
   return (
-    <div
-      className="flex w-full min-w-0 gap-6 lg:gap-8"
-      style={
-        // Duo aksen modul SEO Toolkit (cyan) — dikonsumsi Lab primitives.
-        { "--lab-accent": "#22d3ee", "--lab-accent-2": "#06b6d4" } as React.CSSProperties
-      }
-    >
+    // Skin bento global dari lab-theme/lab-bento; hue teal khusus modul SEO.
+    <div className="lab-hue-teal flex w-full min-w-0 gap-6 lg:gap-8">
       <SeoModuleSidebar className="lg:flex" />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <SeoSubNav className="lg:hidden" />

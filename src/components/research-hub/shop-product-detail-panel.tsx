@@ -163,14 +163,18 @@ export function ShopProductDetailPanel({
             )}
           >
             <div className={hub.nestedPanel}>
-              <p className="text-muted-foreground text-xs">Harga</p>
-              <p className="text-lg font-semibold tabular-nums">
+              <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                Harga
+              </p>
+              <p className="mt-0.5 text-lg font-extrabold tabular-nums tracking-tight">
                 {product.price != null ? formatRp(product.price) : "—"}
               </p>
             </div>
             <div className={hub.nestedPanel}>
-              <p className="text-muted-foreground text-xs">Rating</p>
-              <p className="text-lg font-semibold tabular-nums">
+              <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                Rating
+              </p>
+              <p className="mt-0.5 text-lg font-extrabold tabular-nums tracking-tight">
                 {product.rating != null ? product.rating.toFixed(1) : "—"}
                 {product.reviewCount > 0 ? (
                   <span className="text-muted-foreground ml-1 text-sm font-normal">
@@ -181,8 +185,10 @@ export function ShopProductDetailPanel({
             </div>
             {product.stock != null ? (
               <div className={hub.nestedPanel}>
-                <p className="text-muted-foreground text-xs">Stok</p>
-                <p className="text-lg font-semibold tabular-nums">
+                <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                  Stok
+                </p>
+                <p className="mt-0.5 text-lg font-extrabold tabular-nums tracking-tight">
                   {formatCompactCount(product.stock)}
                 </p>
               </div>

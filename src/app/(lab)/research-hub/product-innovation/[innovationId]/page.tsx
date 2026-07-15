@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import { parseScamperIdeas } from "@/lib/research/product-innovation/types";
 import { parseRiskFactors } from "@/lib/research/concept-lab/types";
 import { parseResearchAiMetaClient } from "@/lib/research/research-module-models";
@@ -41,9 +40,6 @@ export default async function InnovationDetailPage({
     aiMeta: parseResearchAiMetaClient(innovation.aiMeta),
   };
 
-  return (
-    <LabPageShell>
-      <InnovationDetailClient data={data} />
-    </LabPageShell>
-  );
+  // InnovationDetailClient merender ResearchHubDetailPage (sudah termasuk shell).
+  return <InnovationDetailClient data={data} />;
 }

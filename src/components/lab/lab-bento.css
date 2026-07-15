@@ -1,0 +1,127 @@
+/*
+ * Dominatus Lab — primitif & skin "Bento Studio" (global untuk seluruh Lab).
+ *
+ * Promosi dari pilot `.seo-bento` (dulu scoped /seo): tile solid hangat,
+ * tanpa kaca/glow. Semua selektor di-scope `html[data-theme="dominatus-lab"]`
+ * agar tidak bocor ke DCC non-Lab. Aksen modul dari `--lab-accent(-2)` yang
+ * di-set kelas `.lab-hue-*` di layout tiap modul (lihat lab-theme.css).
+ */
+
+/* ---------- Primitif tile bento ----------
+ * Di dalam @layer components agar utility Tailwind (bg-*, justify-*, dll.)
+ * pada elemen yang sama tetap menang. */
+
+@layer components {
+  html[data-theme="dominatus-lab"] .bento-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-radius: 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    background: var(--card);
+    padding: 1rem 1.15rem;
+    box-shadow: 0 1px 2px rgb(30 25 15 / 0.05);
+  }
+
+  html[data-theme="dominatus-lab"] .bento-label {
+    font-size: 11.5px;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    color: var(--muted-foreground);
+  }
+
+  html[data-theme="dominatus-lab"] .bento-value {
+    font-size: 1.9rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Link tile: lift halus tanpa glow. */
+  html[data-theme="dominatus-lab"] a.bento-tile {
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  html[data-theme="dominatus-lab"] a.bento-tile:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--lab-accent) 45%, var(--border));
+    box-shadow: 0 8px 24px -12px rgb(30 25 15 / 0.25);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html[data-theme="dominatus-lab"] a.bento-tile:hover {
+      transform: none;
+    }
+  }
+}
+
+/* ---------- Penyesuaian komponen bersama ----------
+ * Selektor di bawah SENGAJA di luar @layer agar menang atas utility Tailwind
+ * di dalam string kelas primitives (skin bento menimpa skin kaca default). */
+
+/* Kartu & panel kaca → tile bento solid. */
+html[data-theme="dominatus-lab"] .lab-card,
+html[data-theme="dominatus-lab"] .lab-panel,
+html[data-theme="dominatus-lab"] .lab-toolbar {
+  border-radius: 1.25rem;
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgb(30 25 15 / 0.05);
+  backdrop-filter: none;
+}
+
+/* Hover lift kartu interaktif: lembut, tanpa glow neon. */
+html[data-theme="dominatus-lab"] a.lab-card:hover,
+html[data-theme="dominatus-lab"] button.lab-card:hover {
+  border-color: color-mix(in srgb, var(--lab-accent) 45%, var(--border));
+  box-shadow: 0 8px 24px -12px rgb(30 25 15 / 0.25);
+}
+
+html[data-theme="dominatus-lab"] .lab-nested-panel {
+  border-radius: 0.9rem;
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+/* Chip statistik → tile mini bento: tanpa border, angka display tebal. */
+html[data-theme="dominatus-lab"] .lab-stat-chip {
+  border: 0;
+  border-radius: 1rem;
+  padding: 0.6rem 0.95rem;
+  min-width: 6.25rem;
+  backdrop-filter: none;
+}
+
+html[data-theme="dominatus-lab"] .lab-stat-chip > span:last-child {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* Label eyebrow: warm-muted (bukan aksen menyala) ala bento. */
+html[data-theme="dominatus-lab"] .lab-label {
+  color: var(--muted-foreground);
+  letter-spacing: 0.1em;
+}
+
+/* Empty state: garis putus hangat tanpa radial glow. */
+html[data-theme="dominatus-lab"] .lab-empty {
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  backdrop-filter: none;
+}
+
+/* Item nav aktif jadi pill tinta solid (sidebar modul & rail utama). */
+html[data-theme="dominatus-lab"] nav a[aria-current="page"] {
+  background: var(--foreground);
+  color: var(--background);
+  border-left-color: transparent;
+}
+
+html[data-theme="dominatus-lab"] nav a[aria-current="page"] svg {
+  color: inherit;
+}

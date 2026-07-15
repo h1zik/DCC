@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +19,34 @@ export type ConceptFormData = {
   whyItWillWin: string;
 };
 
+/** Blok langkah form ala bento: kartu nested + nomor langkah. */
+function FormStep({
+  step,
+  title,
+  children,
+}: {
+  step: number;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="border-border/60 bg-muted/20 space-y-3 rounded-xl border p-4">
+      <h3 className="flex items-center gap-2.5">
+        <span
+          className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-xs font-bold tabular-nums text-[var(--lab-accent,var(--primary))]"
+          aria-hidden
+        >
+          {step}
+        </span>
+        <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[0.14em]">
+          {title}
+        </span>
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 export function ConceptStepForm({
   data,
   onChange,
@@ -30,9 +59,8 @@ export function ConceptStepForm({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Identitas Produk</h3>
+    <div className="space-y-4">
+      <FormStep step={1} title="Identitas Produk">
         <ConceptNameOptions
           options={data.nameOptions}
           selected={data.selectedName}
@@ -46,10 +74,9 @@ export function ConceptStepForm({
             placeholder="Nama produk"
           />
         </div>
-      </section>
+      </FormStep>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Positioning & Claims</h3>
+      <FormStep step={2} title="Positioning & Claims">
         <div className="space-y-2">
           <Label>Positioning statement</Label>
           <Textarea
@@ -70,10 +97,9 @@ export function ConceptStepForm({
             rows={4}
           />
         </div>
-      </section>
+      </FormStep>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Formulation Direction</h3>
+      <FormStep step={3} title="Formulation Direction">
         <div className="space-y-2">
           <Label>Texture & format</Label>
           <Input
@@ -110,10 +136,9 @@ export function ConceptStepForm({
             rows={2}
           />
         </div>
-      </section>
+      </FormStep>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Business Case</h3>
+      <FormStep step={4} title="Business Case">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>COGS min (Rp)</Label>
@@ -162,7 +187,7 @@ export function ConceptStepForm({
             rows={3}
           />
         </div>
-      </section>
+      </FormStep>
     </div>
   );
 }

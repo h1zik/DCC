@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReviewIntelSourceStatus } from "@prisma/client";
 import {
   ExternalLink,
@@ -10,6 +10,7 @@ import {
   List,
   Loader2,
   MessageSquareText,
+  Search,
 } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import {
@@ -24,6 +25,7 @@ import {
 import { formatRp, SOURCE_STATUS_LABELS } from "@/lib/research/labels";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 export type SkuViewMode = "card" | "list";
@@ -53,7 +55,7 @@ function CompetitorSkuCard({
   return (
     <article
       className={cn(
-        hub.panel,
+        hub.card,
         hub.cardHover,
         "flex flex-col overflow-hidden p-0",
       )}
@@ -61,7 +63,7 @@ function CompetitorSkuCard({
       {detailHref ? (
         <Link
           href={detailHref}
-          className="relative block aspect-[4/3] w-full overflow-hidden border-b border-border/40"
+          className="border-border/40 relative block aspect-[4/3] w-full overflow-hidden border-b"
         >
           <ProductDiscoveryProductThumb
             imageUrl={sku.imageUrl ?? null}
@@ -69,18 +71,18 @@ function CompetitorSkuCard({
             className="size-full"
           />
           {sku.isNew ? (
-            <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase">
+            <span className="absolute top-2 left-2 inline-flex items-center rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-semibold uppercase text-white">
               Baru
             </span>
           ) : null}
           {sku.hasPromo && sku.promoText ? (
-            <span className="bg-amber-500 text-amber-950 absolute top-2 right-2 rounded-md px-2 py-0.5 text-[10px] font-semibold">
+            <span className="absolute top-2 right-2 inline-flex max-w-[70%] items-center truncate rounded-full bg-amber-500 px-2.5 py-1 text-[10px] font-semibold text-amber-950">
               {sku.promoText}
             </span>
           ) : null}
         </Link>
       ) : (
-        <div className="relative aspect-[4/3] w-full overflow-hidden border-b border-border/40">
+        <div className="border-border/40 relative aspect-[4/3] w-full overflow-hidden border-b">
           <ProductDiscoveryProductThumb
             imageUrl={sku.imageUrl ?? null}
             name={sku.name}
@@ -96,38 +98,49 @@ function CompetitorSkuCard({
           ) : (
             <h3 className="line-clamp-2 text-sm leading-snug font-medium">{sku.name}</h3>
           )}
-          {sku.priceDeltaPct != null && sku.priceDirection ? (
-            <p
-              className={cn(
-                "text-xs font-medium tabular-nums",
-                sku.priceDirection === "up"
-                  ? "text-rose-600 dark:text-rose-400"
-                  : "text-emerald-600 dark:text-emerald-400",
-              )}
-            >
-              {sku.priceDirection === "up" ? "▲" : "▼"} {sku.priceDeltaPct}%
-            </p>
-          ) : null}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-center">
-          <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px]">Harga</p>
-            <p className="mt-0.5 text-xs font-semibold tabular-nums">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              Harga
+            </p>
+            <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
               {sku.currentPrice != null ? formatRp(sku.currentPrice) : "—"}
             </p>
           </div>
-          <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px]">Rating</p>
-            <p className="mt-0.5 text-xs font-semibold tabular-nums">
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              Rating
+            </p>
+            <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
               {sku.rating != null ? sku.rating.toFixed(1) : "—"}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              Δ Harga
+            </p>
+            <p
+              className={cn(
+                "mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight",
+                sku.priceDeltaPct != null && sku.priceDirection
+                  ? sku.priceDirection === "up"
+                    ? "text-rose-600 dark:text-rose-400"
+                    : "text-emerald-600 dark:text-emerald-400"
+                  : "text-foreground",
+              )}
+            >
+              {sku.priceDeltaPct != null && sku.priceDirection
+                ? `${sku.priceDirection === "up" ? "▲" : "▼"} ${sku.priceDeltaPct}%`
+                : "—"}
             </p>
           </div>
         </div>
 
         <ShopProductMetricsStrip metrics={sku} compact />
 
-        <div className="flex flex-col gap-2 border-t border-border/40 pt-3">
+        <div className="border-border/40 mt-auto flex flex-col gap-2 border-t pt-3">
           <div className="flex gap-2">
             {detailHref ? (
               <Button
@@ -213,14 +226,18 @@ export function CompetitorSkuProductsView({
   defaultView?: SkuViewMode;
 }) {
   const [view, setView] = useState<SkuViewMode>(defaultView);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-      if (stored === "card" || stored === "list") setView(stored);
-    } catch {
-      /* ignore */
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+        if (stored === "card" || stored === "list") setView(stored);
+      } catch {
+        /* ignore */
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function changeView(next: SkuViewMode) {
@@ -232,6 +249,12 @@ export function CompetitorSkuProductsView({
     }
   }
 
+  const visibleRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((sku) => sku.name.toLowerCase().includes(q));
+  }, [rows, query]);
+
   if (rows.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -242,39 +265,57 @@ export function CompetitorSkuProductsView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
+      {/* Toolbar: hitung + cari + toggle tampilan */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-muted-foreground text-sm tabular-nums">
-          {rows.length} SKU
+          {visibleRows.length === rows.length
+            ? `${rows.length} SKU`
+            : `${visibleRows.length} dari ${rows.length} SKU`}
         </p>
-        <div className="bg-muted inline-flex rounded-lg p-0.5">
-          <Button
-            type="button"
-            size="sm"
-            variant={view === "card" ? "secondary" : "ghost"}
-            className="h-7 gap-1 px-2.5 text-xs"
-            onClick={() => changeView("card")}
-            aria-pressed={view === "card"}
-          >
-            <LayoutGrid className="size-3.5" aria-hidden />
-            Kartu
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={view === "list" ? "secondary" : "ghost"}
-            className="h-7 gap-1 px-2.5 text-xs"
-            onClick={() => changeView("list")}
-            aria-pressed={view === "list"}
-          >
-            <List className="size-3.5" aria-hidden />
-            Daftar
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cari SKU…"
+              className="h-8 w-44 pl-8 text-xs"
+            />
+          </div>
+          <div className="bg-muted inline-flex rounded-lg p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "card" ? "secondary" : "ghost"}
+              className="h-7 gap-1 px-2.5 text-xs"
+              onClick={() => changeView("card")}
+              aria-pressed={view === "card"}
+            >
+              <LayoutGrid className="size-3.5" aria-hidden />
+              Kartu
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "list" ? "secondary" : "ghost"}
+              className="h-7 gap-1 px-2.5 text-xs"
+              onClick={() => changeView("list")}
+              aria-pressed={view === "list"}
+            >
+              <List className="size-3.5" aria-hidden />
+              Daftar
+            </Button>
+          </div>
         </div>
       </div>
 
-      {view === "card" ? (
+      {visibleRows.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          Tidak ada SKU yang cocok dengan pencarian.
+        </p>
+      ) : view === "card" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {rows.map((sku, index) => (
+          {visibleRows.map((sku, index) => (
             <div
               key={sku.id}
               className={hub.entrance}
@@ -296,16 +337,18 @@ export function CompetitorSkuProductsView({
           ))}
         </div>
       ) : (
-        <div className={cn(hub.panel, "p-0 sm:p-1", hub.entrance)}>
-          <CompetitorSkuTable
-            rows={rows}
-            competitorId={competitorId}
-            onReviewIntel={onReviewIntel}
-            reviewSkuId={reviewSkuId}
-            pending={pending}
-            trackerCategoryName={trackerCategoryName}
-            showImages
-          />
+        <div className={cn(hub.card, "p-0", hub.entrance)}>
+          <div className="overflow-x-auto">
+            <CompetitorSkuTable
+              rows={visibleRows}
+              competitorId={competitorId}
+              onReviewIntel={onReviewIntel}
+              reviewSkuId={reviewSkuId}
+              pending={pending}
+              trackerCategoryName={trackerCategoryName}
+              showImages
+            />
+          </div>
         </div>
       )}
     </div>

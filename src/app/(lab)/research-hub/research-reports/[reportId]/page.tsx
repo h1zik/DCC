@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { parseReportSections } from "@/lib/research/reports/types";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import {
   ReportDetailClient,
   type ReportDetailData,
@@ -55,9 +54,6 @@ export default async function ResearchReportDetailPage({
     }),
   };
 
-  return (
-    <LabPageShell>
-      <ReportDetailClient data={data} />
-    </LabPageShell>
-  );
+  // ReportDetailClient merender ResearchHubDetailPage (sudah termasuk shell).
+  return <ReportDetailClient data={data} />;
 }

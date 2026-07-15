@@ -37,7 +37,11 @@ export function KeywordSourceConfigPicker({
         {KEYWORD_INTEL_ACTIVE_SOURCES.map((key) => (
           <label
             key={key}
-            className="flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
+            className={
+              config.enabled[key]
+                ? "flex cursor-pointer items-center gap-2 rounded-xl border border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_45%,var(--border))] bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_8%,transparent)] px-3 py-2 text-xs font-medium transition-colors"
+                : "border-border/70 hover:bg-muted/60 flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition-colors"
+            }
           >
             <input
               type="checkbox"

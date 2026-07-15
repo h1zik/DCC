@@ -17,6 +17,14 @@ export type PriceBarPoint = {
   hasPromo: boolean;
 };
 
+const TOOLTIP_STYLE = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  fontSize: 12,
+  boxShadow: "0 8px 24px -12px rgb(30 25 15 / 0.25)",
+} as const;
+
 export function CompetitorPriceBarChart({ data }: { data: PriceBarPoint[] }) {
   if (data.length === 0) {
     return (
@@ -53,6 +61,9 @@ export function CompetitorPriceBarChart({ data }: { data: PriceBarPoint[] }) {
             stroke="var(--muted-foreground)"
           />
           <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
+            cursor={{ fill: "color-mix(in srgb, var(--muted) 50%, transparent)" }}
             formatter={(value, _name, item) => {
               const promo = (item as { payload?: PriceBarPoint }).payload?.hasPromo;
               const label = typeof value === "number" ? formatRp(value) : "—";
@@ -62,7 +73,7 @@ export function CompetitorPriceBarChart({ data }: { data: PriceBarPoint[] }) {
           <Bar
             dataKey="price"
             fill="var(--chart-1)"
-            radius={[0, 4, 4, 0]}
+            radius={[0, 6, 6, 0]}
             maxBarSize={22}
           />
         </BarChart>

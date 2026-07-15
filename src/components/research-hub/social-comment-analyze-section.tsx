@@ -5,14 +5,9 @@ import { useTransition } from "react";
 import { MessageSquareText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import {
-  hub,
-  ResearchHubSection,
-} from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
 import { SocialCommentFeed, type CommentFeedRow } from "@/components/research-hub/social-comment-feed";
 import { SocialCommentInsightsSection } from "@/components/research-hub/social-comment-insights-section";
-import { cn } from "@/lib/utils";
 
 type CommentInsights = {
   commentAiSummary: string | null;
@@ -83,7 +78,7 @@ export function SocialCommentAnalyzeSection({
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {hasComments || insights.commentAiSummary ? (
         <SocialCommentInsightsSection
           commentAiSummary={insights.commentAiSummary}
@@ -93,38 +88,43 @@ export function SocialCommentAnalyzeSection({
         />
       ) : null}
 
-      <ResearchHubSection
-        title="Analisis Komentar"
-        description="Komentar dari video/post viral — scrape terpisah dari mention awal."
-        action={analyzeActions}
-      >
-        <div className={cn(hub.panel, "flex flex-col gap-4")}>
-          {isAnalyzingComments ? (
-            <p className="text-muted-foreground text-sm">
-              Mengambil komentar dari video teratas via Apify (TikTok/Instagram)…
-              Halaman akan refresh otomatis.
+      <section className="bento-tile justify-start gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="bento-label">Analisis komentar</p>
+            <p className="text-muted-foreground text-xs">
+              Komentar dari video/post viral — scrape terpisah dari mention
+              awal.
             </p>
-          ) : null}
-
-          {!hasComments && !isAnalyzingComments ? (
-            <div className="flex flex-col gap-3">
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                Scrape mention sudah selesai. Klik{" "}
-                <strong>Analisis Komentar</strong> untuk mengambil komentar dari
-                video/post viral (actor terpisah — tidak memperlambat scrape
-                awal).
-              </p>
-              {!hasMentions ? (
-                <p className="text-muted-foreground text-sm">
-                  Belum ada mention — refresh monitor dulu.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {hasComments ? <SocialCommentFeed rows={comments} /> : null}
+          </div>
+          {analyzeActions}
         </div>
-      </ResearchHubSection>
+
+        {isAnalyzingComments ? (
+          <p className="text-muted-foreground text-sm">
+            Mengambil komentar dari video teratas via Apify (TikTok/Instagram)…
+            Halaman akan refresh otomatis.
+          </p>
+        ) : null}
+
+        {!hasComments && !isAnalyzingComments ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Scrape mention sudah selesai. Klik{" "}
+              <strong>Analisis Komentar</strong> untuk mengambil komentar dari
+              video/post viral (actor terpisah — tidak memperlambat scrape
+              awal).
+            </p>
+            {!hasMentions ? (
+              <p className="text-muted-foreground text-sm">
+                Belum ada mention — refresh monitor dulu.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {hasComments ? <SocialCommentFeed rows={comments} /> : null}
+      </section>
     </div>
   );
 }

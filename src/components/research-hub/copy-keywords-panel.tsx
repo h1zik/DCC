@@ -3,7 +3,6 @@
 import { Copy } from "lucide-react";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 
 export type CopyKeywords = {
   listingTitle?: string[];
@@ -20,7 +19,7 @@ function KeywordChips({ items }: { items: string[] }) {
       {items.map((k) => (
         <span
           key={k}
-          className={cn(hub.nestedPanel, "text-foreground px-2.5 py-1 text-xs")}
+          className="bg-muted/60 text-foreground inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium"
         >
           {k}
         </span>

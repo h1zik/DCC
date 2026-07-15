@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandStudioGenerationPoll } from "../use-brand-studio-generation-poll";
 import type { ProductLineStrategy } from "@/lib/brand-research/portfolio/types";
@@ -37,7 +36,6 @@ import type {
 import {
   LabDocumentSidebar,
   LabEmptyState,
-  LabSection,
   lab,
 } from "@/components/lab/lab-primitives";
 import { normalizeStrategyGenerationConfig } from "@/lib/brand-research/strategy/strategy-visual-config";
@@ -115,6 +113,44 @@ function linesJoin(arr: string[] | undefined): string {
   return arr?.join("\n") ?? "";
 }
 
+const DOC_STATUS_META: Record<
+  string,
+  { label: string; pill: string; dot: string }
+> = {
+  READY: {
+    label: "Siap",
+    pill: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+    dot: "bg-emerald-500",
+  },
+  GENERATING: {
+    label: "Generating",
+    pill: "bg-amber-500/12 text-amber-700 dark:text-amber-300",
+    dot: "bg-amber-500 animate-pulse",
+  },
+  DRAFT: {
+    label: "Draft",
+    pill: "bg-muted text-muted-foreground",
+    dot: "bg-muted-foreground/50",
+  },
+  FAILED: {
+    label: "Gagal",
+    pill: "bg-rose-500/12 text-rose-700 dark:text-rose-300",
+    dot: "bg-rose-500",
+  },
+};
+
+function docStatusMeta(status: string) {
+  return DOC_STATUS_META[status] ?? DOC_STATUS_META.DRAFT;
+}
+
+function formatUpdatedAt(iso: string): string {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export function BrandStrategyClient({
   documents,
   evidenceReadiness,
@@ -158,7 +194,11 @@ export function BrandStrategyClient({
   const [pmBrief, setPmBrief] = useState("");
   const [sectionPending, setSectionPending] = useState<StrategySectionField | null>(null);
 
+  // Efek sinkronisasi state form ↔ dokumen terpilih di bawah ini adalah pola
+  // bawaan modul (form editable di-seed dari data server saat seleksi
+  // berubah); dibiarkan apa adanya agar alur data tidak berubah.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setGenerationConfig(defaultGenerationConfig);
   }, [defaultGenerationConfig]);
 
@@ -166,12 +206,14 @@ export function BrandStrategyClient({
     if (!selected?.generationConfig) return;
     const saved = selected.generationConfig as StrategyGenerationConfig;
     if (saved.review) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setGenerationConfig(normalizeStrategyGenerationConfig(saved, sourceCatalog));
     }
   }, [selected?.id, selected?.generationConfig, sourceCatalog]);
 
   useEffect(() => {
     if (!selected) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBrandPurpose(selected.brandPurpose ?? "");
     setBrandEssence(selected.brandEssence ?? "");
     setCoreMessage(selected.coreMessage ?? "");
@@ -195,6 +237,7 @@ export function BrandStrategyClient({
 
   useEffect(() => {
     if (selectedId && !documents.some((d) => d.id === selectedId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedId(null);
       setComposeMode(false);
     }
@@ -332,8 +375,21 @@ export function BrandStrategyClient({
     });
   }
 
+  // Kelengkapan dokumen — dihitung dari field yang sedang diedit (murah, tanpa query).
+  const coreFields = [
+    brandPurpose,
+    brandEssence,
+    coreMessage,
+    brandUsp,
+    stpPositioning,
+    archetype,
+    tonePrinciples,
+  ];
+  const filledCount = coreFields.filter((v) => v.trim().length > 0).length;
+  const isManual = selected ? isManualStrategyDoc(selected) : false;
+
   return (
-    <div className={cn("flex flex-col gap-8 lg:flex-row", lab.entrance)}>
+    <div className={cn("flex flex-col gap-6 lg:flex-row", lab.entrance)}>
       <LabDocumentSidebar
         title="Dokumen"
         action={
@@ -348,32 +404,40 @@ export function BrandStrategyClient({
           </Button>
         }
       >
-        {documents.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            onClick={() => selectDocument(d.id)}
-            className={cn(
-              "flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left text-xs transition-colors",
-              d.id === selectedId && !composeMode
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-            )}
-          >
-            <span className="font-medium line-clamp-2">
-              {d.brandEssence || "Brand Strategy"}
-            </span>
-            <Badge
-              variant="secondary"
-              className={cn(
-                "w-fit text-[10px]",
-                d.id === selectedId && !composeMode && "bg-primary-foreground/15 text-primary-foreground",
-              )}
-            >
-              {d.status}
-            </Badge>
-          </button>
-        ))}
+        {documents.length === 0 ? (
+          <p className="text-muted-foreground px-3 py-2 text-xs">
+            Belum ada dokumen strategi.
+          </p>
+        ) : (
+          documents.map((d) => {
+            const active = d.id === selectedId && !composeMode;
+            const meta = docStatusMeta(d.status);
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => selectDocument(d.id)}
+                className={cn(
+                  "flex w-full flex-col gap-1 rounded-xl border-l-2 border-l-transparent px-3 py-2.5 text-left text-xs transition-colors",
+                  active
+                    ? "border-l-[var(--lab-accent,var(--primary))] bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-foreground"
+                    : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                )}
+              >
+                <span className="line-clamp-2 font-medium">
+                  {d.brandEssence || "Brand Strategy"}
+                </span>
+                <span className="flex items-center gap-1.5 text-[10px]">
+                  <span
+                    className={cn("size-1.5 shrink-0 rounded-full", meta.dot)}
+                    aria-hidden
+                  />
+                  {meta.label} · v{d.version}
+                </span>
+              </button>
+            );
+          })
+        )}
       </LabDocumentSidebar>
 
       <div className="min-w-0 flex-1">
@@ -400,24 +464,28 @@ export function BrandStrategyClient({
             }
           />
         ) : composeMode && !selected ? (
-          <div className={cn("flex flex-col gap-5", lab.entrance)}>
-            <LabSection
-              title="Konteks generate"
-              description="Portfolio brand menjadi fondasi utama. Kategori dan brief PM melengkapi interpretasi evidence."
-            >
-              {brandId ? (
-                <p className="text-muted-foreground mb-3 text-xs">
-                  Pastikan{" "}
-                  <Link
-                    href={`/brand-hub/portfolio?brandId=${encodeURIComponent(brandId)}`}
-                    className="text-[var(--lab-accent,var(--primary))] underline-offset-2 hover:underline"
-                  >
-                    Brand Portfolio
-                  </Link>{" "}
-                  sudah berisi semua lini produk sebelum generate.
+          <div className={cn("flex flex-col gap-4", lab.entrance)}>
+            <section className="bento-tile justify-start gap-4">
+              <div>
+                <span className="bento-label">Konteks generate</span>
+                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                  Portfolio brand menjadi fondasi utama. Kategori dan brief PM
+                  melengkapi interpretasi evidence.
                 </p>
-              ) : null}
-              <div className={cn(lab.panel, "grid gap-4 md:grid-cols-2")}>
+                {brandId ? (
+                  <p className="text-muted-foreground mt-1.5 text-xs">
+                    Pastikan{" "}
+                    <Link
+                      href={`/brand-hub/portfolio?brandId=${encodeURIComponent(brandId)}`}
+                      className="text-[var(--lab-accent,var(--primary))] underline-offset-2 hover:underline"
+                    >
+                      Brand Portfolio
+                    </Link>{" "}
+                    sudah berisi semua lini produk sebelum generate.
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label className="text-xs">Kategori produk</Label>
                   <Input
@@ -436,7 +504,7 @@ export function BrandStrategyClient({
                   />
                 </div>
               </div>
-            </LabSection>
+            </section>
             <BrandStrategySourcePicker
               catalog={sourceCatalog}
               config={generationConfig}
@@ -479,288 +547,389 @@ export function BrandStrategyClient({
             </div>
           </div>
         ) : selected ? (
-          <div className={cn("flex flex-col gap-5", lab.entrance)}>
-            {isManualStrategyDoc(selected) ? (
-              <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
-                <PenLine className="size-3.5 shrink-0" />
-                Dokumen manual — diisi tangan, tanpa AI. Isi field di bawah lalu klik Simpan.
-              </div>
-            ) : (
-              <>
-                <BrandStrategySourcePicker
-                  catalog={sourceCatalog}
-                  config={generationConfig}
-                  onChange={setGenerationConfig}
-                />
-                <BrandEvidencePanel
-                  readiness={evidenceReadiness}
-                  evidenceRefs={selected.evidenceRefs}
-                  brandId={brandId}
-                />
-              </>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              {isGenerating ? (
-                <span className="inline-flex items-center gap-1.5 text-xs text-[var(--lab-accent,var(--primary))]">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Generating…
-                </span>
+          <div className="flex flex-col-reverse gap-6 lg:flex-row">
+            {/* Kolom dokumen — section konten dalam bento tiles */}
+            <div className={cn("flex min-w-0 flex-1 flex-col gap-4", lab.entrance)}>
+              {isManual ? (
+                <div className="border-border/60 bg-muted/20 text-muted-foreground flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs">
+                  <PenLine className="size-3.5 shrink-0" />
+                  Dokumen manual — diisi tangan, tanpa AI. Isi field di bawah lalu
+                  simpan lewat panel ringkasan.
+                </div>
               ) : null}
-              {selected.citationQuality?.totalRefs ? (
-                <Badge
-                  variant={selected.citationQuality.passed ? "secondary" : "outline"}
-                  className="text-[10px]"
-                  title={`${selected.citationQuality.validRefs}/${selected.citationQuality.totalRefs} kutipan tergrounding di teks evidence nyata (bukan sekadar format). Sisanya kemungkinan parafrase bebas / halusinasi — verifikasi manual sebelum dipresentasikan.`}
+
+              {selected.errorMessage ? (
+                <p
+                  className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300"
+                  role="alert"
                 >
-                  Grounding kutipan: {Math.round((selected.citationQuality.score ?? 0) * 100)}%
-                  {selected.citationQuality.passed ? " ✓" : " — perlu review"}
-                </Badge>
+                  {selected.errorMessage}
+                </p>
               ) : null}
-              <Badge variant="outline" className="text-[10px]">
-                v{selected.version}
-              </Badge>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleRegenerate}
-                disabled={pending || isGenerating || !canGenerate}
-                title={canGenerate ? undefined : "Evidence belum cukup"}
-              >
-                <RefreshCw className="size-3.5" />
-                Regenerate
-              </Button>
-              <Button size="sm" onClick={handleSave} disabled={pending || isGenerating}>
-                Simpan
-              </Button>
-              {selected.status === "READY" ? (
-                <BrandPdfExportButton
-                  fileName="brand-strategy"
-                  getHtml={() => exportBrandStrategyPdfHtml(selected.id)}
-                />
+
+              {/* Brand Foundation */}
+              <section className="bento-tile justify-start gap-4">
+                <div>
+                  <span className="bento-label">Brand Foundation</span>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    Purpose, essence, core message, dan USP branding.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field
+                    label="Brand Purpose"
+                    value={brandPurpose}
+                    onChange={setBrandPurpose}
+                    sectionField="brandPurpose"
+                    onRegenSection={handleRegenerateSection}
+                    sectionPending={sectionPending}
+                    regenDisabled={pending || isGenerating}
+                  />
+                  <Field
+                    label="Brand Essence"
+                    value={brandEssence}
+                    onChange={setBrandEssence}
+                    sectionField="brandEssence"
+                    onRegenSection={handleRegenerateSection}
+                    sectionPending={sectionPending}
+                    regenDisabled={pending || isGenerating}
+                  />
+                  <Field
+                    label="Core Message"
+                    value={coreMessage}
+                    onChange={setCoreMessage}
+                    className="md:col-span-2"
+                    sectionField="coreMessage"
+                    onRegenSection={handleRegenerateSection}
+                    sectionPending={sectionPending}
+                    regenDisabled={pending || isGenerating}
+                  />
+                  <Field
+                    label="Brand USP (branding)"
+                    value={brandUsp}
+                    onChange={setBrandUsp}
+                    className="md:col-span-2"
+                    sectionField="brandUsp"
+                    onRegenSection={handleRegenerateSection}
+                    sectionPending={sectionPending}
+                    regenDisabled={pending || isGenerating}
+                  />
+                </div>
+              </section>
+
+              {/* STP */}
+              <section className="bento-tile justify-start gap-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="bento-label">STP</span>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      Segmenting, targeting, dan positioning brand.
+                    </p>
+                  </div>
+                  <SectionRegen
+                    field="stp"
+                    pending={sectionPending}
+                    disabled={pending || isGenerating}
+                    onRegen={handleRegenerateSection}
+                  />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Segment</Label>
+                    <Input value={stpSegment} onChange={(e) => setStpSegment(e.target.value)} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Targeting</Label>
+                    <Input value={stpTargeting} onChange={(e) => setStpTargeting(e.target.value)} />
+                  </div>
+                  <div className="grid gap-1.5 md:col-span-2">
+                    <Label className="text-xs">Positioning Statement</Label>
+                    <Textarea value={stpPositioning} onChange={(e) => setStpPositioning(e.target.value)} rows={2} />
+                  </div>
+                </div>
+              </section>
+
+              {/* Brand Personality */}
+              <section className="bento-tile justify-start gap-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="bento-label">Brand Personality</span>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      Archetype dan karakter brand.
+                    </p>
+                  </div>
+                  <SectionRegen
+                    field="brandPersonality"
+                    pending={sectionPending}
+                    disabled={pending || isGenerating}
+                    onRegen={handleRegenerateSection}
+                  />
+                </div>
+                <div className="grid gap-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Archetype</Label>
+                    <Input value={archetype} onChange={(e) => setArchetype(e.target.value)} />
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Traits (satu per baris)</Label>
+                      <Textarea value={traits} onChange={(e) => setTraits(e.target.value)} rows={3} />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Anti-trait (satu per baris)</Label>
+                      <Textarea value={antiTraits} onChange={(e) => setAntiTraits(e.target.value)} rows={3} />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Tone of Voice */}
+              <section className="bento-tile justify-start gap-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="bento-label">Tone of Voice</span>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      Prinsip bahasa brand beserta contoh do & don&apos;t.
+                    </p>
+                  </div>
+                  <SectionRegen
+                    field="toneOfVoice"
+                    pending={sectionPending}
+                    disabled={pending || isGenerating}
+                    onRegen={handleRegenerateSection}
+                  />
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Principles</Label>
+                    <Textarea value={tonePrinciples} onChange={(e) => setTonePrinciples(e.target.value)} rows={4} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Do examples</Label>
+                    <Textarea value={toneDo} onChange={(e) => setToneDo(e.target.value)} rows={4} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Don&apos;t examples</Label>
+                    <Textarea value={toneDont} onChange={(e) => setToneDont(e.target.value)} rows={4} />
+                  </div>
+                </div>
+              </section>
+
+              {/* Product Line Strategy */}
+              {Array.isArray(selected.productLineStrategy) &&
+              selected.productLineStrategy.length > 0 ? (
+                <section className="bento-tile justify-start gap-4">
+                  <div>
+                    <span className="bento-label">Product Line Strategy</span>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      Arah positioning per lini produk dalam portfolio brand.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {selected.productLineStrategy.map((line, i) => (
+                      <article
+                        key={`${line.lineName}-${i}`}
+                        className="border-border/60 bg-muted/20 flex flex-col gap-2 rounded-xl border p-4 text-sm"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold tracking-tight">{line.lineName}</p>
+                          {line.role ? (
+                            <span className="rounded-full bg-pink-500/12 px-2 py-0.5 text-[10px] font-semibold text-pink-700 dark:text-pink-300">
+                              {line.role}
+                            </span>
+                          ) : null}
+                          {line.category ? (
+                            <span className="text-muted-foreground text-[10px]">
+                              {line.category}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p>
+                          <span className="text-muted-foreground text-xs">Positioning · </span>
+                          {line.positioning}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground text-xs">Key message · </span>
+                          {line.keyMessage}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground text-xs">Differentiator · </span>
+                          {line.differentiator}
+                        </p>
+                        {line.portfolioFit ? (
+                          <p className="text-muted-foreground text-xs">{line.portfolioFit}</p>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                </section>
               ) : null}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleDelete(selected.id)}
-                disabled={pending}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
+
+              {/* Strategic Tensions */}
+              {Array.isArray(selected.strategicTensions) &&
+              selected.strategicTensions.length > 0 ? (
+                <section className="bento-tile justify-start gap-4">
+                  <div>
+                    <span className="bento-label">Strategic Tensions</span>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      Tensi pasar yang brand harus navigasi.
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    {selected.strategicTensions.map((t, i) => (
+                      <div
+                        key={`${t.tension}-${i}`}
+                        className="border-border/60 bg-muted/20 rounded-xl border p-3.5 text-sm"
+                      >
+                        <p className="font-semibold tracking-tight">{t.tension}</p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          {t.poleA} ↔ {t.poleB}
+                        </p>
+                        <p className="mt-2 text-xs leading-relaxed">{t.recommendation}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <ActionPlanPanel
+                plan={selected.actionPlan}
+                title="Rencana Aksi"
+                subtitle="Rekomendasi lintas fungsi berdasarkan evidence strategi."
+              />
+
+              <BrandStrategyRationalePanel
+                rationales={selected.strategyRationales}
+                brandId={brandId}
+              />
+
+              {!isManual ? (
+                <>
+                  <BrandStrategySourcePicker
+                    catalog={sourceCatalog}
+                    config={generationConfig}
+                    onChange={setGenerationConfig}
+                  />
+                  <BrandEvidencePanel
+                    readiness={evidenceReadiness}
+                    evidenceRefs={selected.evidenceRefs}
+                    brandId={brandId}
+                  />
+                </>
+              ) : null}
             </div>
 
-            {selected.errorMessage ? (
-              <p
-                className={cn(
-                  lab.nestedPanel,
-                  "text-destructive text-sm",
-                )}
-                role="alert"
-              >
-                {selected.errorMessage}
-              </p>
-            ) : null}
-
-            <BrandStrategyRationalePanel
-              rationales={selected.strategyRationales}
-              brandId={brandId}
-            />
-
-            {Array.isArray(selected.strategicTensions) &&
-            selected.strategicTensions.length > 0 ? (
-              <LabSection
-                title="Strategic Tensions"
-                description="Tensi pasar yang brand harus navigasi."
-              >
-                <div className={cn(lab.panel, "grid gap-3")}>
-                  {selected.strategicTensions.map((t, i) => (
-                    <div
-                      key={`${t.tension}-${i}`}
-                      className="rounded-lg border border-border/50 bg-muted/10 p-3 text-sm"
-                    >
-                      <p className="font-medium">{t.tension}</p>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        {t.poleA} ↔ {t.poleB}
-                      </p>
-                      <p className="mt-2 text-xs">{t.recommendation}</p>
-                    </div>
-                  ))}
+            {/* Rail ringkasan — sticky di desktop */}
+            <aside className="w-full shrink-0 lg:w-56 xl:w-64">
+              <div className={cn("flex flex-col gap-3 lg:sticky lg:top-20", lab.entrance)}>
+                {/* Hero pink: kelengkapan dokumen */}
+                <div className="bento-tile min-h-[6.75rem] border-transparent bg-pink-600 shadow-md shadow-pink-600/20 dark:bg-pink-500">
+                  <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+                    Kelengkapan dokumen
+                  </span>
+                  <span className="bento-value text-white dark:text-pink-950">
+                    {filledCount}
+                    <span className="text-lg font-bold text-pink-200/80 dark:text-pink-900/60">
+                      /{coreFields.length}
+                    </span>
+                  </span>
+                  <span className="text-[11px] font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+                    komponen inti strategi terisi
+                  </span>
                 </div>
-              </LabSection>
-            ) : null}
 
-            <ActionPlanPanel
-              plan={selected.actionPlan}
-              title="Rencana Aksi"
-              subtitle="Rekomendasi lintas fungsi berdasarkan evidence strategi."
-            />
-
-            <LabSection title="Brand Foundation" description="Purpose, essence, message, dan USP branding.">
-              <div className={cn(lab.panel, "grid gap-4 md:grid-cols-2")}>
-                <Field
-                  label="Brand Purpose"
-                  value={brandPurpose}
-                  onChange={setBrandPurpose}
-                  sectionField="brandPurpose"
-                  onRegenSection={handleRegenerateSection}
-                  sectionPending={sectionPending}
-                  regenDisabled={pending || isGenerating}
-                />
-                <Field
-                  label="Brand Essence"
-                  value={brandEssence}
-                  onChange={setBrandEssence}
-                  sectionField="brandEssence"
-                  onRegenSection={handleRegenerateSection}
-                  sectionPending={sectionPending}
-                  regenDisabled={pending || isGenerating}
-                />
-                <Field
-                  label="Core Message"
-                  value={coreMessage}
-                  onChange={setCoreMessage}
-                  className="md:col-span-2"
-                  sectionField="coreMessage"
-                  onRegenSection={handleRegenerateSection}
-                  sectionPending={sectionPending}
-                  regenDisabled={pending || isGenerating}
-                />
-                <Field
-                  label="Brand USP (branding)"
-                  value={brandUsp}
-                  onChange={setBrandUsp}
-                  className="md:col-span-2"
-                  sectionField="brandUsp"
-                  onRegenSection={handleRegenerateSection}
-                  sectionPending={sectionPending}
-                  regenDisabled={pending || isGenerating}
-                />
-              </div>
-            </LabSection>
-
-            {Array.isArray(selected.productLineStrategy) &&
-            selected.productLineStrategy.length > 0 ? (
-              <LabSection
-                title="Product Line Strategy"
-                description="Arah positioning per lini produk dalam portfolio brand."
-                delayMs={25}
-              >
-                <div className="grid gap-3 md:grid-cols-2">
-                  {selected.productLineStrategy.map((line, i) => (
-                    <article
-                      key={`${line.lineName}-${i}`}
+                {/* Status dokumen */}
+                <div className="bento-tile justify-start gap-2.5">
+                  <span className="bento-label">Status dokumen</span>
+                  <span
+                    className={cn(
+                      "inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                      docStatusMeta(selected.status).pill,
+                    )}
+                  >
+                    <span
                       className={cn(
-                        lab.panel,
-                        "flex flex-col gap-2 p-4 text-sm",
+                        "size-1.5 rounded-full",
+                        docStatusMeta(selected.status).dot,
                       )}
+                      aria-hidden
+                    />
+                    {docStatusMeta(selected.status).label}
+                  </span>
+                  {isGenerating ? (
+                    <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+                      <Loader2 className="size-3.5 animate-spin" />
+                      AI sedang menulis…
+                    </span>
+                  ) : null}
+                  {selected.citationQuality?.totalRefs ? (
+                    <span
+                      className={cn(
+                        "inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                        selected.citationQuality.passed
+                          ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+                          : "bg-amber-500/12 text-amber-700 dark:text-amber-300",
+                      )}
+                      title={`${selected.citationQuality.validRefs}/${selected.citationQuality.totalRefs} kutipan tergrounding di teks evidence nyata (bukan sekadar format). Sisanya kemungkinan parafrase bebas / halusinasi — verifikasi manual sebelum dipresentasikan.`}
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold">{line.lineName}</p>
-                        {line.role ? (
-                          <Badge variant="secondary" className="text-[10px]">
-                            {line.role}
-                          </Badge>
-                        ) : null}
-                        {line.category ? (
-                          <span className="text-muted-foreground text-[10px]">
-                            {line.category}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p>
-                        <span className="text-muted-foreground text-xs">Positioning · </span>
-                        {line.positioning}
-                      </p>
-                      <p>
-                        <span className="text-muted-foreground text-xs">Key message · </span>
-                        {line.keyMessage}
-                      </p>
-                      <p>
-                        <span className="text-muted-foreground text-xs">Differentiator · </span>
-                        {line.differentiator}
-                      </p>
-                      {line.portfolioFit ? (
-                        <p className="text-muted-foreground text-xs">{line.portfolioFit}</p>
-                      ) : null}
-                    </article>
-                  ))}
+                      Grounding {Math.round((selected.citationQuality.score ?? 0) * 100)}%
+                      {selected.citationQuality.passed ? " ✓" : " — perlu review"}
+                    </span>
+                  ) : null}
+                  {isManual ? (
+                    <span className="bg-muted text-muted-foreground inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                      <PenLine className="size-3" />
+                      Manual
+                    </span>
+                  ) : null}
+                  <p className="text-muted-foreground text-[11px]">
+                    v{selected.version} · diperbarui {formatUpdatedAt(selected.updatedAt)}
+                  </p>
                 </div>
-              </LabSection>
-            ) : null}
 
-            <LabSection title="STP" delayMs={50}>
-              <SectionRegen
-                field="stp"
-                pending={sectionPending}
-                disabled={pending || isGenerating}
-                onRegen={handleRegenerateSection}
-              />
-              <div className={lab.panel}>
-                <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <Label className="text-xs">Segment</Label>
-                  <Input value={stpSegment} onChange={(e) => setStpSegment(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs">Targeting</Label>
-                  <Input value={stpTargeting} onChange={(e) => setStpTargeting(e.target.value)} />
-                </div>
-                <div className="md:col-span-2">
-                  <Label className="text-xs">Positioning Statement</Label>
-                  <Textarea value={stpPositioning} onChange={(e) => setStpPositioning(e.target.value)} rows={2} />
-                </div>
+                {/* Aksi */}
+                <div className="bento-tile justify-start gap-2">
+                  <span className="bento-label">Aksi</span>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleSave}
+                    disabled={pending || isGenerating}
+                  >
+                    Simpan perubahan
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleRegenerate}
+                    disabled={pending || isGenerating || !canGenerate}
+                    title={canGenerate ? undefined : "Evidence belum cukup"}
+                  >
+                    <RefreshCw className="size-3.5" />
+                    Regenerate
+                  </Button>
+                  {selected.status === "READY" ? (
+                    <div className="[&_button]:w-full">
+                      <BrandPdfExportButton
+                        fileName="brand-strategy"
+                        getHtml={() => exportBrandStrategyPdfHtml(selected.id)}
+                      />
+                    </div>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive w-full"
+                    onClick={() => handleDelete(selected.id)}
+                    disabled={pending}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Hapus dokumen
+                  </Button>
                 </div>
               </div>
-            </LabSection>
-
-            <LabSection title="Brand Personality" delayMs={100}>
-              <SectionRegen
-                field="brandPersonality"
-                pending={sectionPending}
-                disabled={pending || isGenerating}
-                onRegen={handleRegenerateSection}
-              />
-              <div className={lab.panel}>
-                <div className="grid gap-3">
-                <div>
-                  <Label className="text-xs">Archetype</Label>
-                  <Input value={archetype} onChange={(e) => setArchetype(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-xs">Traits (satu per baris)</Label>
-                  <Textarea value={traits} onChange={(e) => setTraits(e.target.value)} rows={3} />
-                </div>
-                <div>
-                  <Label className="text-xs">Anti-trait (satu per baris)</Label>
-                  <Textarea value={antiTraits} onChange={(e) => setAntiTraits(e.target.value)} rows={3} />
-                </div>
-                </div>
-              </div>
-            </LabSection>
-
-            <LabSection title="Tone of Voice" delayMs={150}>
-              <SectionRegen
-                field="toneOfVoice"
-                pending={sectionPending}
-                disabled={pending || isGenerating}
-                onRegen={handleRegenerateSection}
-              />
-              <div className={lab.panel}>
-                <div className="grid gap-3 md:grid-cols-3">
-                <div>
-                  <Label className="text-xs">Principles</Label>
-                  <Textarea value={tonePrinciples} onChange={(e) => setTonePrinciples(e.target.value)} rows={4} />
-                </div>
-                <div>
-                  <Label className="text-xs">Do examples</Label>
-                  <Textarea value={toneDo} onChange={(e) => setToneDo(e.target.value)} rows={4} />
-                </div>
-                <div>
-                  <Label className="text-xs">Don&apos;t examples</Label>
-                  <Textarea value={toneDont} onChange={(e) => setToneDont(e.target.value)} rows={4} />
-                </div>
-                </div>
-              </div>
-            </LabSection>
+            </aside>
           </div>
         ) : null}
       </div>
@@ -780,23 +949,21 @@ function SectionRegen({
   onRegen: (field: StrategySectionField) => void;
 }) {
   return (
-    <div className="mb-2 flex justify-end">
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="h-7 text-xs"
-        disabled={disabled || pending === field}
-        onClick={() => onRegen(field)}
-      >
-        {pending === field ? (
-          <Loader2 className="size-3 animate-spin" />
-        ) : (
-          <RefreshCw className="size-3" />
-        )}
-        Regenerate section
-      </Button>
-    </div>
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className="h-7 shrink-0 text-xs"
+      disabled={disabled || pending === field}
+      onClick={() => onRegen(field)}
+    >
+      {pending === field ? (
+        <Loader2 className="size-3 animate-spin" />
+      ) : (
+        <RefreshCw className="size-3" />
+      )}
+      Regenerate
+    </Button>
   );
 }
 

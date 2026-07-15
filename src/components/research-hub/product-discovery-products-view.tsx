@@ -97,14 +97,18 @@ function ProductDiscoveryCard({
 
         <div className="grid grid-cols-2 gap-2 text-center">
           <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px]">Harga</p>
-            <p className="mt-0.5 text-xs font-semibold tabular-nums">
+            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              Harga
+            </p>
+            <p className="mt-0.5 text-xs font-extrabold tabular-nums tracking-tight">
               {row.price != null ? formatRp(row.price) : "—"}
             </p>
           </div>
           <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px]">Rating</p>
-            <p className="mt-0.5 flex items-center justify-center gap-1 text-xs font-semibold tabular-nums">
+            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              Rating
+            </p>
+            <p className="mt-0.5 flex items-center justify-center gap-1 text-xs font-extrabold tabular-nums tracking-tight">
               {row.rating != null ? (
                 <>
                   <Star className="size-3 fill-amber-400 text-amber-400" aria-hidden />
@@ -200,12 +204,17 @@ export function ProductDiscoveryProductsView({
   const [view, setView] = useState<ProductViewMode>(defaultView);
 
   useEffect(() => {
+    let stored: string | null = null;
     try {
-      const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-      if (stored === "card" || stored === "list") setView(stored);
+      stored = localStorage.getItem(VIEW_STORAGE_KEY);
     } catch {
       /* ignore */
     }
+    if (stored !== "card" && stored !== "list") return;
+    const next = stored;
+    // Defer agar tidak memicu cascading render sinkron di dalam effect.
+    const id = requestAnimationFrame(() => setView(next));
+    return () => cancelAnimationFrame(id);
   }, []);
 
   function changeView(next: ProductViewMode) {

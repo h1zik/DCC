@@ -22,7 +22,12 @@ export function KeywordGapList({ gaps }: { gaps: GapKeyword[] }) {
           key={g.keyword}
           className={cn(hub.nestedPanel, "flex gap-3")}
         >
-          <Sparkles className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
+          <span
+            className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-[var(--lab-accent,var(--primary))]"
+            aria-hidden
+          >
+            <Sparkles className="size-3.5" />
+          </span>
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-2 font-medium">
               {g.keyword}

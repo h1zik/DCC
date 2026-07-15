@@ -32,7 +32,7 @@ export function BrandPdfExportButton({
 
   return (
     <Button size="sm" variant="outline" onClick={handleDownload} disabled={pending}>
-      <Download className="mr-1.5 size-3.5" />
+      <Download className="size-3.5" />
       {label}
     </Button>
   );

@@ -1,5 +1,4 @@
 import { hub } from "@/components/research-hub/research-hub-primitives";
-import { cn } from "@/lib/utils";
 
 export type WishlistRow = {
   theme: string;
@@ -7,6 +6,10 @@ export type WishlistRow = {
   sampleText?: string;
 };
 
+/**
+ * Daftar wishlist — baris tile mini dengan bar proporsi violet.
+ * Visual-only; dipakai juga brand-hub.
+ */
 export function SocialWishlistList({ items }: { items: WishlistRow[] }) {
   if (items.length === 0) {
     return (
@@ -14,18 +17,25 @@ export function SocialWishlistList({ items }: { items: WishlistRow[] }) {
     );
   }
 
+  const max = Math.max(...items.map((i) => i.count), 1);
+
   return (
-    <ul className="space-y-2">
+    <ul className="flex flex-col gap-1.5">
       {items.map((item, i) => (
         <li
           key={`${item.theme}-${i}`}
-          className={cn(
-            hub.nestedPanel,
-            "flex items-start justify-between gap-3",
-          )}
+          className="bg-muted/40 flex items-center gap-3 rounded-xl px-3 py-2.5"
         >
-          <span className="text-sm leading-snug">{item.theme}</span>
-          <span className="bg-violet-500/10 text-violet-700 dark:text-violet-300 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium leading-snug">{item.theme}</p>
+            <div className="bg-muted mt-1.5 h-1 overflow-hidden rounded-full">
+              <div
+                className="h-full rounded-full bg-violet-500"
+                style={{ width: `${Math.max((item.count / max) * 100, 4)}%` }}
+              />
+            </div>
+          </div>
+          <span className="shrink-0 rounded-lg bg-violet-500/15 px-2 py-0.5 text-xs font-bold tabular-nums text-violet-700 dark:text-violet-300">
             {item.count}
           </span>
         </li>
@@ -44,7 +54,7 @@ export function SocialWishlistCard({
   if (bare) return <SocialWishlistList items={items} />;
   return (
     <div className={hub.panel}>
-      <p className="mb-3 text-sm font-semibold">Top Wishlist</p>
+      <p className="bento-label mb-3">Top Wishlist</p>
       <SocialWishlistList items={items} />
     </div>
   );

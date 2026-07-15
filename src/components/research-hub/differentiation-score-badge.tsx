@@ -9,21 +9,23 @@ export function DifferentiationScoreBadge({
 
   const tone =
     score >= 75
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
       : score >= 50
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-        : "border-border bg-muted text-muted-foreground";
+        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+        : "bg-muted/70 text-muted-foreground";
 
   return (
     <div
       className={cn(
-        "inline-flex flex-col items-center rounded-xl border px-6 py-4",
+        "inline-flex items-baseline gap-2 rounded-xl px-3.5 py-2",
         tone,
       )}
     >
-      <span className="text-3xl font-bold tabular-nums">{Math.round(score)}</span>
-      <span className="text-xs font-semibold uppercase tracking-wide">
-        Differentiation Score
+      <span className="text-2xl font-extrabold tabular-nums tracking-tight">
+        {Math.round(score)}
+      </span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide">
+        Diff. score
       </span>
     </div>
   );

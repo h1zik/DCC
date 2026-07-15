@@ -1,6 +1,6 @@
 "use client";
 
-import { hub } from "@/components/research-hub/research-hub-primitives";
+import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function KeywordQualityBanner(props: {
@@ -13,12 +13,12 @@ export function KeywordQualityBanner(props: {
     <p
       role="alert"
       className={cn(
-        hub.nestedPanel,
-        "border-sky-500/40 bg-sky-500/10 text-sm leading-relaxed text-sky-950 dark:text-sky-100",
+        "flex items-start gap-2.5 rounded-2xl bg-sky-500/10 px-4 py-3 text-sm leading-relaxed text-sky-900 dark:text-sky-200",
         props.className,
       )}
     >
-      {props.dataNotice}
+      <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <span>{props.dataNotice}</span>
     </p>
   );
 }

@@ -1,5 +1,3 @@
-import { hub } from "@/components/research-hub/research-hub-primitives";
-import { cn } from "@/lib/utils";
 import { reportBodyToHtml } from "@/lib/research/reports/report-body-html";
 
 export const REPORT_BODY_HTML_CLASS =
@@ -30,36 +28,29 @@ export function ReportSectionList({ sections }: { sections: ReportSectionRow[] }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-3">
       {sections.map((section, index) => (
         <article
           key={section.id}
-          className={cn(
-            hub.nestedPanel,
-            hub.entrance,
-            "border-b-0",
-          )}
+          className="bento-tile animate-in fade-in slide-in-from-bottom-1 justify-start gap-3 duration-300 motion-reduce:animate-none"
           style={
             index > 0 && index < 8
               ? { animationDelay: `${index * 40}ms` }
               : undefined
           }
         >
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold">{section.title}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-foreground text-base font-bold tracking-tight">
+              {section.title}
+            </h2>
             {section.moduleRef ? (
-              <span
-                className={cn(
-                  hub.nestedPanel,
-                  "text-muted-foreground px-2 py-0.5 text-[10px] font-semibold uppercase",
-                )}
-              >
+              <span className="inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--lab-accent,var(--primary))]">
                 {MODULE_LABELS[section.moduleRef] ?? section.moduleRef}
               </span>
             ) : null}
           </div>
           <div
-            className={cn(REPORT_BODY_HTML_CLASS)}
+            className={REPORT_BODY_HTML_CLASS}
             dangerouslySetInnerHTML={{ __html: reportBodyToHtml(section.body) }}
           />
         </article>

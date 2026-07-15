@@ -49,6 +49,7 @@ function MoodboardThumbnail({
   );
 }
 
+/** Galeri moodboard gaya bento: tile rounded-2xl dengan hover lift + border aksen. */
 export function MoodboardGrid({
   assets,
   onDelete,
@@ -73,7 +74,12 @@ export function MoodboardGrid({
         return (
           <figure
             key={a.id}
-            className="relative overflow-hidden rounded-xl border border-border/60 bg-muted/30"
+            className={cn(
+              "group relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_1px_2px_rgb(30_25_15/0.05)]",
+              "transition-[transform,box-shadow,border-color] duration-200 ease-out motion-reduce:transition-none",
+              "hover:-translate-y-1 hover:border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_50%,var(--border))] hover:shadow-[0_10px_28px_-12px_rgb(30_25_15/0.3)]",
+              "motion-reduce:hover:translate-y-0",
+            )}
             onMouseEnter={() => setHoveredId(a.id)}
             onMouseLeave={() => setHoveredId(null)}
           >
@@ -85,7 +91,7 @@ export function MoodboardGrid({
               />
             </div>
             {a.title ? (
-              <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-t from-black/70 to-transparent p-2 text-[10px] text-white line-clamp-2">
+              <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-t from-black/75 via-black/35 to-transparent p-2.5 pt-6 text-[10px] font-medium leading-snug text-white line-clamp-2">
                 {a.title}
               </figcaption>
             ) : null}
@@ -95,7 +101,7 @@ export function MoodboardGrid({
                 aria-label="Hapus gambar"
                 tabIndex={isHovered ? 0 : -1}
                 className={cn(
-                  "absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-md bg-destructive text-white shadow-md ring-2 ring-black/25 transition-opacity duration-150",
+                  "absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-lg bg-destructive text-white shadow-md ring-2 ring-black/25 transition-opacity duration-150",
                   isHovered
                     ? "pointer-events-auto opacity-100"
                     : "pointer-events-none opacity-0",

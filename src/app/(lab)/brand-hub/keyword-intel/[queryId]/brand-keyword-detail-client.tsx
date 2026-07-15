@@ -26,7 +26,6 @@ import { KeywordMatrixTable } from "@/components/research-hub/keyword-matrix-tab
 import { KeywordOpportunityChart } from "@/components/research-hub/keyword-opportunity-chart";
 import { KeywordQualityBanner } from "@/components/research-hub/keyword-quality-banner";
 import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
-import { KeywordSignalStatsChips } from "@/components/research-hub/keyword-signal-stats-line";
 import { NamingSuggestionsCard } from "@/components/research-hub/naming-suggestions-card";
 import {
   SeasonalKeywordChart,
@@ -54,25 +53,24 @@ import {
   KEYWORD_INTEL_STATUS_LABELS,
   MARKETPLACE_LABELS,
 } from "@/lib/research/labels";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import type {
   GapKeywordRow,
   KeywordMatrixRow,
   KeywordSignalStats,
   SeasonalCurve,
 } from "@/lib/research/keyword-intel/keyword-signal-types";
-import type { SelectItemDef } from "@/lib/select-option-items";
+import { lab } from "@/components/lab/lab-primitives";
+import { BrandHubDetailPage } from "@/components/brand-hub/brand-hub-list-page";
 import {
-  LabPageHeader,
-  LabSection,
-  LabStatChip,
-  lab,
-} from "@/components/lab/lab-primitives";
-import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
+  brandHubHref,
+  useBrandHubBrandId,
+} from "@/hooks/use-brand-hub-brand-id";
 import { useBrandJobProgress } from "../../use-brand-job-progress";
-import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
+import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
 
 export type KeywordDetailData = {
   id: string;
@@ -108,27 +106,85 @@ export type KeywordDetailData = {
   }[];
 };
 
-function statusChipTone(
-  status: KeywordIntelStatus,
-): "neutral" | "success" | "warning" | "primary" {
-  switch (status) {
-    case "READY":
-      return "success";
-    case "FAILED":
-      return "warning";
-    case "COLLECTING":
-    case "ANALYZING":
-    case "PENDING":
-      return "warning";
-    default:
-      return "neutral";
-  }
+function isInProgress(status: KeywordIntelStatus) {
+  return (
+    status === "COLLECTING" ||
+    status === "ANALYZING" ||
+    status === "PENDING"
+  );
+}
+
+/** Pill status tinted: emerald siap, amber berjalan, rose gagal. */
+function StatusPill({ status }: { status: KeywordIntelStatus }) {
+  const tone =
+    status === "READY"
+      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+      : status === "FAILED"
+        ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+        : isInProgress(status)
+          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+          : "bg-muted text-muted-foreground";
+  const dot =
+    status === "READY"
+      ? "bg-emerald-500"
+      : status === "FAILED"
+        ? "bg-rose-500"
+        : isInProgress(status)
+          ? "bg-amber-500"
+          : "bg-muted-foreground/50";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold",
+        tone,
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          dot,
+          isInProgress(status) && "animate-pulse motion-reduce:animate-none",
+        )}
+        aria-hidden
+      />
+      {KEYWORD_INTEL_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+/** Segmen distribusi sinyal per sumber untuk stacked bar hero. */
+const SIGNAL_SEGMENTS = [
+  { key: "shopee", label: "Shopee", dot: "bg-pink-500" },
+  { key: "tokopedia", label: "Tokopedia", dot: "bg-teal-500" },
+  { key: "googleTrends", label: "Google Trends", dot: "bg-amber-400" },
+  { key: "dataforseo", label: "Google volume", dot: "bg-sky-500" },
+  { key: "shopeeSearch", label: "Shopee sample", dot: "bg-violet-400" },
+  { key: "internal", label: "Sinyal internal", dot: "bg-emerald-500" },
+] as const;
+
+function signalCounts(stats: KeywordSignalStats) {
+  const internal =
+    (stats.internal?.competitor ?? 0) +
+    (stats.internal?.reviewIntel ?? 0) +
+    (stats.internal?.socialListening ?? 0);
+  return {
+    shopee: stats.external?.shopee ?? 0,
+    tokopedia: stats.external?.tokopedia ?? 0,
+    googleTrends: stats.external?.googleTrends ?? 0,
+    dataforseo: stats.external?.dataforseo ?? 0,
+    shopeeSearch: stats.external?.shopeeSearch ?? 0,
+    internal,
+  } as Record<(typeof SIGNAL_SEGMENTS)[number]["key"], number>;
 }
 
 const tabContentClass =
   "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
 
-export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) {
+export function BrandKeywordDetailClient({
+  data,
+}: {
+  data: KeywordDetailData;
+}) {
   const router = useRouter();
   const brandId = useBrandHubBrandId();
   const [pending, startTransition] = useTransition();
@@ -139,19 +195,16 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
   const canBrief = data.status === "READY";
 
-  const roomItems = useMemo<SelectItemDef[]>(
-    () =>
+  const roomItems = useMemo(
+    (): SelectItemDef[] =>
       data.rooms.map((r) => ({
         value: r.id,
-        label: `${r.name}${r.brandName ? ` — ${r.brandName}` : ""}`,
+        label: r.brandName ? `${r.name} — ${r.brandName}` : r.name,
       })),
     [data.rooms],
   );
 
-  const isProcessing =
-    data.status === "COLLECTING" ||
-    data.status === "ANALYZING" ||
-    data.status === "PENDING";
+  const isProcessing = isInProgress(data.status);
 
   useBrandJobProgress({ inProgress: isProcessing });
 
@@ -174,6 +227,21 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
       listingSampleCount: m.listingSampleCount ?? 0,
       koiScore: m.koiScore ?? 0,
     }));
+
+  const highConfidenceCount = useMemo(
+    () => data.matrix.filter((m) => m.confidence === "HIGH").length,
+    [data.matrix],
+  );
+
+  const counts = data.signalStats ? signalCounts(data.signalStats) : null;
+  const signalTotal = data.signalStats?.total ?? 0;
+  const signalDenom =
+    counts != null
+      ? Math.max(
+          1,
+          SIGNAL_SEGMENTS.reduce((sum, s) => sum + counts[s.key], 0),
+        )
+      : 1;
 
   const descriptionParts = [
     data.seedKeyword ? `Seed: ${data.seedKeyword}` : null,
@@ -218,120 +286,82 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-6">
-      <Link
-        href={brandHubHref("/brand-hub/keyword-intel", brandId)}
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
-      >
-        <Search className="size-3" aria-hidden />
-        Kembali ke Keyword Intel
-      </Link>
-
-      <LabPageHeader
-        variant="detail"
-        icon={Search}
-        eyebrow="Keyword Intel"
-        title={data.category}
-        description={descriptionParts.join(" · ")}
-        right={
-          <>
-            <ResearchModelBadgeGroup meta={data.aiMeta} />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={pending || isProcessing}
-            >
-              <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
-              Refresh
-            </Button>
-            {data.status === "READY" ? (
-              <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
-                <DialogTrigger
-                  render={
-                    <Button size="sm" disabled={!canBrief}>
-                      <FileText className="mr-1.5 size-3.5" aria-hidden />
-                      Buat Brief
-                    </Button>
-                  }
-                />
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>
-                      Buat Product Brief dari Keyword Intel
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="grid gap-3 py-2">
-                    <div className="grid gap-1.5">
-                      <Label>Room / Brand</Label>
-                      <Select
-                        value={roomId}
-                        items={roomItems}
-                        onValueChange={(v) => setRoomId(v ?? "")}
-                      >
-                        <SelectTrigger>
-                          {selectedRoom
-                            ? `${selectedRoom.name}${selectedRoom.brandName ? ` (${selectedRoom.brandName})` : ""}`
-                            : "Pilih room"}
-                        </SelectTrigger>
-                        <SelectContent>
-                          {data.rooms.map((r) => (
-                            <SelectItem key={r.id} value={r.id}>
-                              {r.name}
-                              {r.brandName ? ` — ${r.brandName}` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label>Nama proyek</Label>
-                      <Input
-                        value={projectName}
-                        onChange={(e) => setProjectName(e.target.value)}
-                      />
-                    </div>
+    <BrandHubDetailPage
+      icon={Search}
+      backHref={brandHubHref("/brand-hub/keyword-intel", brandId)}
+      title={data.category}
+      description={descriptionParts.join(" · ")}
+      right={
+        <>
+          <ResearchModelBadgeGroup meta={data.aiMeta} />
+          <StatusPill status={data.status} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={pending || isProcessing}
+          >
+            <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
+            Refresh
+          </Button>
+          {data.status === "READY" ? (
+            <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
+              <DialogTrigger
+                render={
+                  <Button size="sm" disabled={!canBrief}>
+                    <FileText className="mr-1.5 size-3.5" aria-hidden />
+                    Buat Brief
+                  </Button>
+                }
+              />
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    Buat Product Brief dari Keyword Intel
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-3 py-2">
+                  <div className="grid gap-1.5">
+                    <Label>Room / Brand</Label>
+                    <Select
+                      value={roomId}
+                      items={roomItems}
+                      onValueChange={(v) => setRoomId(v ?? "")}
+                    >
+                      <SelectTrigger>
+                        {selectedRoom
+                          ? `${selectedRoom.name}${selectedRoom.brandName ? ` (${selectedRoom.brandName})` : ""}`
+                          : "Pilih room"}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {data.rooms.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.name}
+                            {r.brandName ? ` — ${r.brandName}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <DialogFooter>
-                    <Button onClick={handleBrief} disabled={pending || !canBrief}>
-                      Buat Brief
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            ) : null}
-          </>
-        }
-        footer={
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <LabStatChip
-                label="Status"
-                value={KEYWORD_INTEL_STATUS_LABELS[data.status]}
-                tone={statusChipTone(data.status)}
-              />
-              <LabStatChip
-                label="Keyword"
-                value={data.matrix.length.toLocaleString("id-ID")}
-                tone="accent"
-              />
-              <LabStatChip
-                label="Gap"
-                value={data.gaps.length.toLocaleString("id-ID")}
-                tone={data.gaps.length > 0 ? "warning" : "neutral"}
-              />
-              {data.namingSuggestions.length > 0 ? (
-                <LabStatChip
-                  label="Naming"
-                  value={data.namingSuggestions.length.toLocaleString("id-ID")}
-                />
-              ) : null}
-            </div>
-            <KeywordSignalStatsChips stats={data.signalStats} />
-          </div>
-        }
-      />
-
+                  <div className="grid gap-1.5">
+                    <Label>Nama proyek</Label>
+                    <Input
+                      value={projectName}
+                      onChange={(e) => setProjectName(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleBrief} disabled={pending || !canBrief}>
+                    Buat Brief
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : null}
+        </>
+      }
+    >
       <KeywordQualityBanner dataNotice={data.dataNotice} />
 
       <DataSourceProvenancePanel entries={data.dataProvenance} />
@@ -340,7 +370,7 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
         <p
           className={cn(
             lab.nestedPanel,
-            "text-rose-800 dark:text-rose-200 text-sm",
+            "text-sm text-rose-800 dark:text-rose-200",
           )}
           role="alert"
         >
@@ -357,212 +387,334 @@ export function BrandKeywordDetailClient({ data }: { data: KeywordDetailData }) 
           />
         </div>
       ) : (
-        <Tabs defaultValue="ringkasan" className="gap-0">
-          <div className={cn(lab.stickyToolbar, "pb-0")}>
-            <TabsList variant="line" className="h-9 w-full justify-start gap-4">
-              <TabsTrigger value="ringkasan" className="px-1">
-                <Sparkles className="size-3.5" aria-hidden />
-                Ringkasan
-              </TabsTrigger>
-              <TabsTrigger value="matrix" className="px-1">
-                <Grid3x3 className="size-3.5" aria-hidden />
-                Matrix
-                {data.matrix.length > 0 ? (
-                  <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
-                    {data.matrix.length}
-                  </span>
-                ) : null}
-              </TabsTrigger>
-              <TabsTrigger value="gap" className="px-1">
-                <Copy className="size-3.5" aria-hidden />
-                Gap & Copy
-                {data.gaps.length > 0 ? (
-                  <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
-                    {data.gaps.length}
-                  </span>
-                ) : null}
-              </TabsTrigger>
-              <TabsTrigger value="musim" className="px-1">
-                <CalendarRange className="size-3.5" aria-hidden />
-                Musim
-              </TabsTrigger>
-            </TabsList>
-          </div>
+        <>
+          {/* Papan hero bento */}
+          {data.matrix.length > 0 || signalTotal > 0 ? (
+            <div
+              className={cn(
+                lab.entrance,
+                "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
+              )}
+            >
+              {/* Keyword — tile hero pink */}
+              <div className="bento-tile col-span-2 row-span-2 border-transparent bg-pink-600 shadow-md shadow-pink-600/20 lg:col-span-1 dark:bg-pink-500">
+                <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+                  Keyword teranalisis
+                </span>
+                <span className="bento-value text-5xl text-white dark:text-pink-950">
+                  {data.matrix.length.toLocaleString("id-ID")}
+                </span>
+                <span className="text-xs font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+                  {highConfidenceCount > 0
+                    ? `${highConfidenceCount} keyword confidence tinggi`
+                    : "dari sinyal multi-sumber terverifikasi"}
+                </span>
+              </div>
 
-          <TabsContent value="ringkasan" className={tabContentClass}>
-            {data.aiSummary ? (
-              <LabSection
-                title="AI Summary"
-                description="Ringkasan peluang keyword dari analisis multi-sumber."
-                delayMs={0}
+              {/* Distribusi sinyal — stacked bar */}
+              <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="bento-label">Sinyal per sumber</span>
+                  <span className="text-muted-foreground text-[11px] tabular-nums">
+                    {signalTotal.toLocaleString("id-ID")} sinyal
+                  </span>
+                </div>
+                {counts ? (
+                  <>
+                    <div className="bg-muted flex h-2.5 overflow-hidden rounded-full">
+                      {SIGNAL_SEGMENTS.map((s) => {
+                        const count = counts[s.key];
+                        if (count === 0) return null;
+                        return (
+                          <div
+                            key={s.key}
+                            className={s.dot}
+                            style={{
+                              width: `${(count / signalDenom) * 100}%`,
+                            }}
+                            title={`${s.label}: ${count}`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {SIGNAL_SEGMENTS.filter((s) => counts[s.key] > 0).map(
+                        (s) => (
+                          <div
+                            key={s.key}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <span
+                              className={cn(
+                                "size-2 shrink-0 rounded-full",
+                                s.dot,
+                              )}
+                              aria-hidden
+                            />
+                            <span className="text-muted-foreground flex-1">
+                              {s.label}
+                            </span>
+                            <span className="font-semibold tabular-nums">
+                              {counts[s.key]}
+                            </span>
+                            <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                              {Math.round((counts[s.key] / signalDenom) * 100)}
+                              %
+                            </span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground m-auto text-sm">
+                    Belum ada statistik sinyal.
+                  </p>
+                )}
+              </div>
+
+              {/* Gap — amber pastel */}
+              <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+                <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+                  Keyword gap
+                </span>
+                <span className="bento-value text-amber-900 dark:text-amber-300">
+                  {data.gaps.length.toLocaleString("id-ID")}
+                </span>
+                <span className="text-[11px] font-medium text-amber-800/70 dark:text-amber-300/70">
+                  peluang belum tergarap
+                </span>
+              </div>
+
+              {/* Naming — pink pastel */}
+              <div className="bento-tile border-transparent bg-[#fde7f1] dark:bg-pink-400/10">
+                <span className="text-[11.5px] font-semibold text-pink-700/70 dark:text-pink-300/70">
+                  Saran naming
+                </span>
+                <span className="bento-value text-pink-900 dark:text-pink-300">
+                  {data.namingSuggestions.length > 0
+                    ? data.namingSuggestions.length.toLocaleString("id-ID")
+                    : "—"}
+                </span>
+                <span className="text-[11px] font-medium text-pink-700/70 dark:text-pink-300/70">
+                  dari pola keyword
+                </span>
+              </div>
+
+              {/* Cluster */}
+              <div className="bento-tile">
+                <span className="bento-label">Cluster tema</span>
+                <span className="bento-value">
+                  {data.clusters.length > 0
+                    ? data.clusters.length.toLocaleString("id-ID")
+                    : "—"}
+                </span>
+              </div>
+
+              {/* Volume source */}
+              <div className="bento-tile">
+                <span className="bento-label">Volume Google</span>
+                <span className="bento-value text-2xl">
+                  {data.hasGoogleVolume ? "Aktif" : "Estimasi"}
+                </span>
+                <span className="text-muted-foreground text-[11px] font-medium">
+                  {data.hasGoogleVolume
+                    ? "volume pencarian terukur"
+                    : "proxy dari rank/listing"}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          <Tabs defaultValue="ringkasan" className="gap-0">
+            <div className={cn(lab.stickyToolbar, "pb-0")}>
+              <TabsList
+                variant="line"
+                className="h-9 w-full justify-start gap-4"
               >
-                <div className={lab.panel}>
+                <TabsTrigger value="ringkasan" className="px-1">
+                  <Sparkles className="size-3.5" aria-hidden />
+                  Ringkasan
+                </TabsTrigger>
+                <TabsTrigger value="matrix" className="px-1">
+                  <Grid3x3 className="size-3.5" aria-hidden />
+                  Matrix
+                  {data.matrix.length > 0 ? (
+                    <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                      {data.matrix.length}
+                    </span>
+                  ) : null}
+                </TabsTrigger>
+                <TabsTrigger value="gap" className="px-1">
+                  <Copy className="size-3.5" aria-hidden />
+                  Gap & Copy
+                  {data.gaps.length > 0 ? (
+                    <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                      {data.gaps.length}
+                    </span>
+                  ) : null}
+                </TabsTrigger>
+                <TabsTrigger value="musim" className="px-1">
+                  <CalendarRange className="size-3.5" aria-hidden />
+                  Musim
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="ringkasan" className={tabContentClass}>
+              {data.aiSummary ? (
+                <div className="bento-tile justify-start gap-3">
+                  <span className="bento-label">AI summary</span>
                   <p className="text-sm leading-relaxed">{data.aiSummary}</p>
                 </div>
-              </LabSection>
-            ) : null}
+              ) : null}
 
-            {data.actionPlan ? (
-              <LabSection
-                title="Rencana Aksi"
-                description="Langkah prioritas dari AI berdasarkan gap & peluang."
-                delayMs={50}
-              >
+              {data.actionPlan ? (
                 <ActionPlanPanel
                   plan={data.actionPlan}
                   title="Rencana Aksi Keyword (AI)"
                 />
-              </LabSection>
-            ) : null}
+              ) : null}
 
-            {opportunityPoints.length > 0 ? (
-              <LabSection
-                title="Peta Peluang"
-                description="Volume vs saturasi listing — area kanan-atas = peluang tinggi."
-                delayMs={100}
-              >
-                <div className={lab.panel}>
+              {opportunityPoints.length > 0 ? (
+                <div className="bento-tile justify-start gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="bento-label">Peta peluang</span>
+                    <span className="text-muted-foreground text-[11px]">
+                      volume vs saturasi listing · kanan-atas = peluang tinggi
+                    </span>
+                  </div>
                   <KeywordOpportunityChart points={opportunityPoints} />
                 </div>
-              </LabSection>
-            ) : null}
+              ) : null}
 
-            <div className="flex flex-wrap gap-2 text-xs">
-              <Link
-                href={brandHubHref("/brand-hub/competitor-tracker", brandId)}
-                className="text-primary hover:underline"
-              >
-                Competitor Tracker
-              </Link>
-              <span className="text-muted-foreground">·</span>
-              <Link
-                href={brandHubHref("/brand-hub/trend-radar", brandId)}
-                className="text-primary hover:underline"
-              >
-                Trend Radar
-              </Link>
-              <span className="text-muted-foreground">·</span>
-              <Link
-                href={brandHubHref("/brand-hub/review-intelligence", brandId)}
-                className="text-primary hover:underline"
-              >
-                Review Intel
-              </Link>
-            </div>
-          </TabsContent>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Link
+                  href={brandHubHref("/brand-hub/competitor-tracker", brandId)}
+                  className="text-primary hover:underline"
+                >
+                  Competitor Tracker
+                </Link>
+                <span className="text-muted-foreground">·</span>
+                <Link
+                  href={brandHubHref("/brand-hub/trend-radar", brandId)}
+                  className="text-primary hover:underline"
+                >
+                  Trend Radar
+                </Link>
+                <span className="text-muted-foreground">·</span>
+                <Link
+                  href={brandHubHref(
+                    "/brand-hub/review-intelligence",
+                    brandId,
+                  )}
+                  className="text-primary hover:underline"
+                >
+                  Review Intel
+                </Link>
+              </div>
+            </TabsContent>
 
-          <TabsContent value="matrix" className={tabContentClass}>
-            <LabSection
-              title="Keyword Matrix"
-              description="Skor KOI, volume, dan sinyal per keyword."
-            >
+            <TabsContent value="matrix" className={tabContentClass}>
               {data.matrix.length > 0 ? (
-                <div className={lab.panel}>
-                  <KeywordMatrixTable
-                    rows={data.matrix}
-                    hasGoogleVolume={data.hasGoogleVolume}
-                  />
+                <div className={cn(lab.card, "p-0")}>
+                  <div className="p-4 pb-0">
+                    <p className="text-foreground font-bold tracking-tight">
+                      Keyword matrix
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Skor KOI, volume, dan sinyal per keyword.
+                    </p>
+                  </div>
+                  <div className="p-4">
+                    <KeywordMatrixTable
+                      rows={data.matrix}
+                      hasGoogleVolume={data.hasGoogleVolume}
+                    />
+                  </div>
                 </div>
               ) : (
                 <p className="text-muted-foreground text-sm">
                   Belum ada data matrix.
                 </p>
               )}
-            </LabSection>
-          </TabsContent>
+            </TabsContent>
 
-          <TabsContent value="gap" className={tabContentClass}>
-            <LabSection
-              title="Keyword Gap"
-              description="Peluang yang belum tersentuh kompetitor atau listing."
-            >
-              {data.gaps.length > 0 ? (
-                <div className={lab.panel}>
-                  <KeywordGapList gaps={data.gaps} />
+            <TabsContent value="gap" className={tabContentClass}>
+              <div className="bento-tile justify-start gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="bento-label">Keyword gap</span>
+                  <span className="text-muted-foreground text-[11px] tabular-nums">
+                    {data.gaps.length} peluang
+                  </span>
                 </div>
-              ) : (
-                <p className="text-muted-foreground text-sm">
-                  Tidak ada gap keyword teridentifikasi.
-                </p>
-              )}
-            </LabSection>
+                {data.gaps.length > 0 ? (
+                  <KeywordGapList gaps={data.gaps} />
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Tidak ada gap keyword teridentifikasi.
+                  </p>
+                )}
+              </div>
 
-            {data.namingSuggestions.length > 0 ? (
-              <LabSection
-                title="Naming Intelligence"
-                description="Saran nama produk dari pola keyword."
-                delayMs={50}
-              >
-                <NamingSuggestionsCard suggestions={data.namingSuggestions} />
-              </LabSection>
-            ) : null}
+              {data.namingSuggestions.length > 0 ? (
+                <div className="bento-tile justify-start gap-3">
+                  <span className="bento-label">Naming intelligence</span>
+                  <NamingSuggestionsCard
+                    suggestions={data.namingSuggestions}
+                    bare
+                  />
+                </div>
+              ) : null}
 
-            <LabSection
-              title="Copywriting Keywords"
-              description="Keyword siap pakai untuk judul, deskripsi, dan sosmed."
-              delayMs={100}
-            >
-              <CopyKeywordsPanel data={data.copyKeywords} bare />
-            </LabSection>
-          </TabsContent>
+              <CopyKeywordsPanel data={data.copyKeywords} />
+            </TabsContent>
 
-          <TabsContent value="musim" className={tabContentClass}>
-            <LabSection
-              title="Seasonal Keyword Calendar"
-              description="Pola musiman volume & momentum keyword."
-            >
-              <div className={lab.panel}>
+            <TabsContent value="musim" className={tabContentClass}>
+              <div className="bento-tile justify-start gap-3">
+                <span className="bento-label">Seasonal keyword calendar</span>
                 <SeasonalKeywordChart
                   data={data.seasonalCalendar}
                   volumeByKeyword={volumeByKeyword}
                   seasonalCurves={data.seasonalCurves}
                 />
               </div>
-            </LabSection>
 
-            {data.clusters.length > 0 ? (
-              <LabSection
-                title="Keyword Clusters"
-                description="Kelompok tema yang sering muncul bersama."
-                delayMs={50}
-              >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {data.clusters.map((c, index) => (
-                    <div
-                      key={c.name}
-                      className={cn(lab.panel, lab.entrance)}
-                      style={
-                        index > 0 && index < 8
-                          ? { animationDelay: `${index * 40}ms` }
-                          : undefined
-                      }
-                    >
-                      <p className="text-sm font-medium">{c.name}</p>
-                      <p className="text-muted-foreground mt-1.5 text-xs leading-relaxed">
-                        {c.keywords.join(", ")}
-                      </p>
-                    </div>
-                  ))}
+              {data.clusters.length > 0 ? (
+                <div className="bento-tile justify-start gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="bento-label">Keyword clusters</span>
+                    <span className="text-muted-foreground text-[11px] tabular-nums">
+                      {data.clusters.length} tema
+                    </span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {data.clusters.map((c) => (
+                      <div key={c.name} className={lab.nestedPanel}>
+                        <p className="text-sm font-semibold">{c.name}</p>
+                        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                          {c.keywords.join(", ")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </LabSection>
-            ) : null}
+              ) : null}
 
-            {data.matrix.some((m) => (m.evidence?.length ?? 0) > 0) ? (
-              <LabSection
-                title="Bukti Sinyal"
-                description="Sumber data untuk keyword teratas."
-                delayMs={100}
-              >
-                <div className={lab.panel}>
-                  <KeywordEvidenceTable
-                    evidence={data.matrix[0]?.evidence ?? []}
-                  />
+              {data.matrix.some((m) => (m.evidence?.length ?? 0) > 0) ? (
+                <div className="bento-tile justify-start gap-3">
+                  <span className="bento-label">Bukti sinyal</span>
+                  <div className="overflow-x-auto">
+                    <KeywordEvidenceTable
+                      evidence={data.matrix[0]?.evidence ?? []}
+                    />
+                  </div>
                 </div>
-              </LabSection>
-            ) : null}
-          </TabsContent>
-        </Tabs>
+              ) : null}
+            </TabsContent>
+          </Tabs>
+        </>
       )}
-    </div>
+    </BrandHubDetailPage>
   );
 }

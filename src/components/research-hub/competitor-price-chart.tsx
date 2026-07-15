@@ -12,6 +12,14 @@ import {
 } from "recharts";
 import { formatRp } from "@/lib/research/labels";
 
+const TOOLTIP_STYLE = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  fontSize: 12,
+  boxShadow: "0 8px 24px -12px rgb(30 25 15 / 0.25)",
+} as const;
+
 export function CompetitorPriceChart({
   data,
   skuNames,
@@ -66,12 +74,14 @@ export function CompetitorPriceChart({
             }
           />
           <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
             formatter={(value, name) => [
               typeof value === "number" ? formatRp(value) : "—",
               String(name ?? ""),
             ]}
           />
-          <Legend />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
           {skuNames.map((name, i) => (
             <Line
               key={name}

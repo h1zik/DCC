@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
+  ArrowUpRight,
   Globe,
   Info,
   Link2,
@@ -37,12 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
-import {
-  lab,
-  LabEmptyState,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandJobProgress } from "../use-brand-job-progress";
 import { cn } from "@/lib/utils";
@@ -78,6 +74,55 @@ function isInProgress(status: SocialListeningStatus | null) {
   );
 }
 
+/** Pill status scrape tinted: emerald siap, amber berjalan, rose gagal. */
+function StatusPill({ status }: { status: SocialListeningStatus | null }) {
+  const running = isInProgress(status);
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        status === "READY" &&
+          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+        status === "FAILED" &&
+          "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+        running && "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+        status == null && "bg-muted text-muted-foreground",
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          status === "READY" && "bg-emerald-500",
+          status === "FAILED" && "bg-rose-500",
+          running && "bg-amber-500 animate-pulse motion-reduce:animate-none",
+          status == null && "bg-muted-foreground/50",
+        )}
+        aria-hidden
+      />
+      {status ? STATUS_LABEL[status] ?? status : "Belum scrape"}
+    </span>
+  );
+}
+
+function CardStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+        {label}
+      </p>
+      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
+        {value}
+      </p>
+    </div>
+  );
+}
+
 export function BrandAdLibraryClient({
   monitors,
 }: {
@@ -96,6 +141,9 @@ export function BrandAdLibraryClient({
   const hasInProgress = monitors.some((m) => isInProgress(m.latestStatus));
   const totalAds = monitors.reduce((sum, m) => sum + m.adCount, 0);
   const readyCount = monitors.filter((m) => m.latestStatus === "READY").length;
+  const runningCount = monitors.filter((m) =>
+    isInProgress(m.latestStatus),
+  ).length;
 
   useBrandJobProgress({ inProgress: hasInProgress });
 
@@ -138,231 +186,278 @@ export function BrandAdLibraryClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          <LabStatChip
-            label="Monitor"
-            value={monitors.length.toLocaleString("id-ID")}
-            tone="accent"
-          />
-          <LabStatChip
-            label="Siap"
-            value={readyCount.toLocaleString("id-ID")}
-            tone="success"
-          />
-          <LabStatChip label="Total iklan" value={totalAds.toLocaleString("id-ID")} />
-        </div>
+      {/* Strip ringkasan bento */}
+      {monitors.length > 0 ? (
+        <div
+          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
+        >
+          {/* Hero pink — total iklan */}
+          <div className="bento-tile border-transparent bg-pink-600 shadow-md shadow-pink-600/20 dark:bg-pink-500">
+            <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+              Total iklan
+            </span>
+            <span className="bento-value text-white dark:text-pink-950">
+              {totalAds.toLocaleString("id-ID")}
+            </span>
+            <span className="text-[11px] font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+              terkumpul dari {monitors.length} monitor Meta Ad Library
+            </span>
+          </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger
-            render={
-              <Button size="sm" className="gap-1.5">
-                <Plus className="size-4" />
+          <div className="bento-tile">
+            <span className="bento-label">Monitor</span>
+            <span className="bento-value">{monitors.length}</span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              keyword & halaman kompetitor
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Siap dianalisis</span>
+            <span className="bento-value">{readyCount}</span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              scrape terakhir selesai
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+            <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+              Berjalan
+            </span>
+            <span className="bento-value text-amber-900 dark:text-amber-300">
+              {runningCount}
+            </span>
+            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+              sedang mengumpulkan iklan
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      <LabSection
+        title="Monitor Iklan"
+        description="Kumpulkan referensi kreatif dari Meta Ad Library untuk tim branding."
+        action={
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger
+              render={
+                <Button size="sm" className="gap-1.5">
+                  <Plus className="size-4" />
+                  Monitor Baru
+                </Button>
+              }
+            />
+            <DialogContent className="max-w-lg">
+              <DialogHeader className="gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-[var(--lab-accent,var(--primary))]">
+                    <Megaphone className="size-5" />
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    <DialogTitle>Monitor Meta Ad Library</DialogTitle>
+                    <DialogDescription>
+                      Kumpulkan iklan aktif kompetitor dari Meta Ad Library lewat
+                      keyword atau URL halaman.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto py-1">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="ad-name">Nama monitor</Label>
+                  <Input
+                    id="ad-name"
+                    placeholder="Mis. Kompetitor Skincare ID"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="ad-keywords" className="flex items-center gap-1.5">
+                    <Search className="text-muted-foreground size-3.5" />
+                    Keyword
+                  </Label>
+                  <Textarea
+                    id="ad-keywords"
+                    placeholder="parfum&#10;body mist&#10;eau de parfum"
+                    value={searchTermsText}
+                    onChange={(e) => setSearchTermsText(e.target.value)}
+                    rows={3}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Pisahkan dengan koma atau baris baru. Kosongkan jika memakai URL.
+                  </p>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="ad-urls" className="flex items-center gap-1.5">
+                    <Link2 className="text-muted-foreground size-3.5" />
+                    URL Ad Library / Page
+                    <span className="text-muted-foreground font-normal">(opsional)</span>
+                  </Label>
+                  <Textarea
+                    id="ad-urls"
+                    placeholder="https://www.facebook.com/ads/library/..."
+                    value={urlsText}
+                    onChange={(e) => setUrlsText(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="ad-country" className="flex items-center gap-1.5">
+                      <Globe className="text-muted-foreground size-3.5" />
+                      Negara
+                    </Label>
+                    <Input
+                      id="ad-country"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value.toUpperCase())}
+                      maxLength={3}
+                      placeholder="ID"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="ad-max" className="flex items-center gap-1.5">
+                      <Target className="text-muted-foreground size-3.5" />
+                      Target iklan
+                    </Label>
+                    <Input
+                      id="ad-max"
+                      type="number"
+                      min={10}
+                      max={200}
+                      value={maxAds}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        setMaxAds(Number.isFinite(n) ? n : 50);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-muted/50 text-muted-foreground flex items-start gap-2 rounded-xl px-3 py-2 text-xs leading-relaxed">
+                  <Info className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    Mengumpulkan <strong className="text-foreground">Image &amp; Video</strong>{" "}
+                    dengan pencocokan keyword luas. Konten dewasa &amp; judi difilter
+                    berdasarkan teks/URL/kategori halaman saja — gambar &amp; video tidak
+                    dipindai, jadi materi sensitif bisa lolos.
+                  </span>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline">Batal</Button>} />
+                <Button
+                  onClick={handleCreate}
+                  disabled={
+                    pending ||
+                    !name.trim() ||
+                    (!searchTermsText.trim() && !urlsText.trim())
+                  }
+                >
+                  {pending ? "Memproses…" : "Buat & Scrape"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        }
+      >
+        {monitors.length === 0 ? (
+          <LabEmptyState
+            icon={Megaphone}
+            title="Belum ada monitor Ad Library"
+            description="Buat monitor untuk mengumpulkan iklan Meta kompetitor — hook, CTA, dan format kreatif."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
                 Monitor Baru
               </Button>
             }
           />
-          <DialogContent className="max-w-lg">
-            <DialogHeader className="gap-3">
-              <div className="flex items-start gap-3">
-                <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
-                  <Megaphone className="size-5" />
-                </span>
-                <div className="flex flex-col gap-1">
-                  <DialogTitle>Monitor Meta Ad Library</DialogTitle>
-                  <DialogDescription>
-                    Kumpulkan iklan aktif kompetitor dari Meta Ad Library lewat
-                    keyword atau URL halaman.
-                  </DialogDescription>
-                </div>
-              </div>
-            </DialogHeader>
-
-            <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto py-1">
-              <div className="grid gap-1.5">
-                <Label htmlFor="ad-name">Nama monitor</Label>
-                <Input
-                  id="ad-name"
-                  placeholder="Mis. Kompetitor Skincare ID"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label htmlFor="ad-keywords" className="flex items-center gap-1.5">
-                  <Search className="text-muted-foreground size-3.5" />
-                  Keyword
-                </Label>
-                <Textarea
-                  id="ad-keywords"
-                  placeholder="parfum&#10;body mist&#10;eau de parfum"
-                  value={searchTermsText}
-                  onChange={(e) => setSearchTermsText(e.target.value)}
-                  rows={3}
-                />
-                <p className="text-muted-foreground text-xs">
-                  Pisahkan dengan koma atau baris baru. Kosongkan jika memakai URL.
-                </p>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label htmlFor="ad-urls" className="flex items-center gap-1.5">
-                  <Link2 className="text-muted-foreground size-3.5" />
-                  URL Ad Library / Page
-                  <span className="text-muted-foreground font-normal">(opsional)</span>
-                </Label>
-                <Textarea
-                  id="ad-urls"
-                  placeholder="https://www.facebook.com/ads/library/..."
-                  value={urlsText}
-                  onChange={(e) => setUrlsText(e.target.value)}
-                  rows={2}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="ad-country" className="flex items-center gap-1.5">
-                    <Globe className="text-muted-foreground size-3.5" />
-                    Negara
-                  </Label>
-                  <Input
-                    id="ad-country"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value.toUpperCase())}
-                    maxLength={3}
-                    placeholder="ID"
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="ad-max" className="flex items-center gap-1.5">
-                    <Target className="text-muted-foreground size-3.5" />
-                    Target iklan
-                  </Label>
-                  <Input
-                    id="ad-max"
-                    type="number"
-                    min={10}
-                    max={200}
-                    value={maxAds}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      setMaxAds(Number.isFinite(n) ? n : 50);
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="bg-muted/50 text-muted-foreground flex items-start gap-2 rounded-lg px-3 py-2 text-xs leading-relaxed">
-                <Info className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  Mengumpulkan <strong className="text-foreground">Image &amp; Video</strong>{" "}
-                  dengan pencocokan keyword luas. Konten dewasa &amp; judi difilter
-                  berdasarkan teks/URL/kategori halaman saja — gambar &amp; video tidak
-                  dipindai, jadi materi sensitif bisa lolos.
-                </span>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <DialogClose render={<Button variant="outline">Batal</Button>} />
-              <Button
-                onClick={handleCreate}
-                disabled={
-                  pending ||
-                  !name.trim() ||
-                  (!searchTermsText.trim() && !urlsText.trim())
-                }
-              >
-                {pending ? "Memproses…" : "Buat & Scrape"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {monitors.length === 0 ? (
-        <LabEmptyState
-          icon={Megaphone}
-          title="Belum ada monitor Ad Library"
-          description="Buat monitor untuk mengumpulkan iklan Meta kompetitor — hook, CTA, dan format kreatif."
-        />
-      ) : (
-        <LabSection
-          title="Monitor iklan"
-          description="Kumpulkan referensi kreatif dari Meta Ad Library untuk tim branding."
-        >
+        ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {monitors.map((monitor) => (
+            {monitors.map((monitor, index) => (
               <div
                 key={monitor.id}
-                className={cn(
-                  lab.panel,
-                  "flex flex-col gap-3 p-4 transition-colors hover:border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_30%,var(--border))]",
-                )}
+                className={cn(lab.card, lab.entrance, "group flex flex-col p-0")}
+                style={
+                  index > 0 && index < 8
+                    ? { animationDelay: `${index * 40}ms` }
+                    : undefined
+                }
               >
                 <Link
                   href={brandHubHref(
                     `/brand-hub/ad-library/${monitor.id}`,
                     brandId,
                   )}
-                  className="min-w-0 flex-1"
+                  className="flex flex-1 flex-col gap-4 p-5 pb-4"
                 >
-                  <h3 className="font-semibold leading-snug hover:text-primary">
-                    {monitor.name}
-                  </h3>
-                  <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                    {monitor.searchTerms.join(", ") ||
-                      monitor.adLibraryUrls[0] ||
-                      "—"}
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-[var(--lab-accent,var(--primary))]"
+                        aria-hidden
+                      >
+                        <Megaphone className="size-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-foreground flex items-center gap-1 truncate font-bold tracking-tight">
+                          <span className="truncate">{monitor.name}</span>
+                          <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
+                        </p>
+                        <p className="text-muted-foreground line-clamp-1 text-xs">
+                          {monitor.searchTerms.join(", ") ||
+                            monitor.adLibraryUrls[0] ||
+                            "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <StatusPill status={monitor.latestStatus} />
+                  </div>
+
+                  {monitor.latestStatus === "FAILED" && monitor.errorMessage ? (
+                    <p className="line-clamp-2 text-xs leading-relaxed text-rose-700 dark:text-rose-300">
+                      {monitor.errorMessage}
+                    </p>
+                  ) : null}
+
                   {monitor.aiSummary ? (
-                    <p className="text-muted-foreground mt-2 line-clamp-2 text-xs">
+                    <p className="text-muted-foreground line-clamp-2 text-xs leading-relaxed">
                       {monitor.aiSummary}
                     </p>
                   ) : null}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <CardStat
+                      label="Iklan"
+                      value={monitor.adCount.toLocaleString("id-ID")}
+                    />
+                    <CardStat label="Negara" value={monitor.country} />
+                    <CardStat
+                      label="Format"
+                      value={scrapeMediaTypeLabel(monitor.mediaType)}
+                    />
+                  </div>
+
+                  {isInProgress(monitor.latestStatus) ? (
+                    <JobProgressBar
+                      title="Mengumpulkan iklan Meta"
+                      percent={35}
+                      stepLabel="Scrape Ad Library berjalan..."
+                    />
+                  ) : null}
                 </Link>
 
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="bg-muted rounded-full px-2 py-0.5 tabular-nums">
-                    {monitor.adCount} iklan
-                  </span>
-                  <span className="bg-muted rounded-full px-2 py-0.5">
-                    {monitor.country}
-                  </span>
-                  <span className="bg-muted rounded-full px-2 py-0.5">
-                    {scrapeMediaTypeLabel(monitor.mediaType)}
-                  </span>
-                  {monitor.latestStatus ? (
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5",
-                        monitor.latestStatus === "READY"
-                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                          : monitor.latestStatus === "FAILED"
-                            ? "bg-destructive/15 text-destructive"
-                            : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-                      )}
-                    >
-                      {STATUS_LABEL[monitor.latestStatus] ?? monitor.latestStatus}
-                    </span>
-                  ) : null}
-                </div>
-
-                {isInProgress(monitor.latestStatus) ? (
-                  <JobProgressBar
-                    title="Mengumpulkan iklan Meta"
-                    percent={35}
-                    stepLabel="Scrape Ad Library berjalan..."
-                  />
-                ) : null}
-
-                <div className="mt-auto flex flex-wrap gap-2">
+                <div className="border-border/60 flex items-center justify-end gap-1 border-t px-3 py-2">
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="gap-1"
+                    variant="ghost"
                     disabled={pending || isInProgress(monitor.latestStatus)}
                     onClick={() =>
                       startTransition(async () => {
@@ -382,10 +477,11 @@ export function BrandAdLibraryClient({
                     Refresh
                   </Button>
                   <Button
-                    size="sm"
+                    size="icon-sm"
                     variant="ghost"
-                    className="text-destructive gap-1"
+                    className="text-destructive hover:text-destructive"
                     disabled={pending}
+                    aria-label="Hapus monitor"
                     onClick={() =>
                       startTransition(async () => {
                         if (
@@ -411,8 +507,8 @@ export function BrandAdLibraryClient({
               </div>
             ))}
           </div>
-        </LabSection>
-      )}
+        )}
+      </LabSection>
     </div>
   );
 }

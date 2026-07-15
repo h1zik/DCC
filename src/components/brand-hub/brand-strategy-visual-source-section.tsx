@@ -156,7 +156,7 @@ export function BrandStrategyVisualSourceSection({
       className={cn(
         "overflow-hidden rounded-xl border bg-background/80 transition-colors",
         visual.enabled && !disabled
-          ? "border-primary/30 shadow-sm"
+          ? "border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_30%,transparent)] shadow-sm"
           : "border-border/50",
         disabled && "opacity-55",
       )}
@@ -280,7 +280,7 @@ export function BrandStrategyVisualSourceSection({
             className={cn(
               "flex items-start gap-3 rounded-lg border p-3",
               visual.analyzeImages
-                ? "border-primary/30 bg-primary/5"
+                ? "border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_30%,transparent)] bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_5%,transparent)]"
                 : "border-border/50 bg-muted/30",
             )}
           >
@@ -298,7 +298,7 @@ export function BrandStrategyVisualSourceSection({
                 className="inline-flex items-center gap-1.5 text-xs font-semibold"
               >
                 {visual.analyzeImages ? (
-                  <Eye className="text-primary size-3.5" />
+                  <Eye className="size-3.5 text-[var(--lab-accent,var(--primary))]" />
                 ) : (
                   <EyeOff className="size-3.5" />
                 )}

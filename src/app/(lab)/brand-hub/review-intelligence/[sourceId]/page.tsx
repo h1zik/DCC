@@ -179,17 +179,15 @@ export default async function ReviewDetailPage({ params }: Props) {
     }));
 
   return (
-    <div className="pb-6">
-      <BrandReviewDetailClient
-        source={detail}
-        compareOptions={compareOptions}
-        rooms={rooms.map((r) => ({
-          id: r.id,
-          name: r.name,
-          brandId: r.brandId,
-          brandName: r.brand?.name ?? null,
-        }))}
-      />
-    </div>
+    <BrandReviewDetailClient
+      source={detail}
+      compareOptions={compareOptions}
+      rooms={rooms.map((r) => ({
+        id: r.id,
+        name: r.name,
+        brandId: r.brandId,
+        brandName: r.brand?.name ?? null,
+      }))}
+    />
   );
 }

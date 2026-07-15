@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 const SOURCE_LABELS: Record<string, string> = {
   google_trends: "Google Trends",
@@ -36,7 +37,8 @@ export function TrendEvidenceTable({
   if (rows.length === 0) return null;
 
   return (
-    <Table>
+    <div className="overflow-x-auto">
+      <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Sumber</TableHead>
@@ -56,29 +58,45 @@ export function TrendEvidenceTable({
             return (
               <TableRow
                 key={row.signalId}
-                className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+                className="hover:bg-muted/40 transition-colors duration-150 motion-reduce:transition-none"
               >
-                <TableCell className="text-xs font-medium">
-                  {SOURCE_LABELS[row.source] ?? row.source}
+                <TableCell className="text-xs">
+                  <span className="bg-muted/70 text-foreground/80 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                    {SOURCE_LABELS[row.source] ?? row.source}
+                  </span>
                 </TableCell>
-                <TableCell className="max-w-[200px] truncate text-xs">
+                <TableCell className="max-w-[200px] truncate text-xs font-medium">
                   {row.term}
                 </TableCell>
                 <TableCell className="text-muted-foreground text-xs">
                   {row.metric}
                 </TableCell>
-                <TableCell className="text-right tabular-nums text-xs">
+                <TableCell className="text-right text-xs font-semibold tabular-nums">
                   {row.value.toLocaleString("id-ID")}
                 </TableCell>
-                <TableCell className="text-right tabular-nums text-xs">
-                  {row.deltaPct != null
-                    ? `${row.deltaPct > 0 ? "+" : ""}${row.deltaPct.toFixed(0)}%`
-                    : "—"}
+                <TableCell className="text-right text-xs tabular-nums">
+                  {row.deltaPct != null ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        row.deltaPct > 0
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                          : row.deltaPct < 0
+                            ? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                            : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {row.deltaPct > 0 ? "+" : ""}
+                      {row.deltaPct.toFixed(0)}%
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-xs">
                   {href ? (
                     href.startsWith("/") ? (
-                      <Link href={href} className="text-primary hover:underline">
+                      <Link href={href} className="text-primary font-medium hover:underline">
                         Buka
                       </Link>
                     ) : (
@@ -86,7 +104,7 @@ export function TrendEvidenceTable({
                         href={href}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-primary hover:underline"
+                        className="text-primary font-medium hover:underline"
                       >
                         Buka
                       </a>
@@ -100,5 +118,6 @@ export function TrendEvidenceTable({
           })}
         </TableBody>
       </Table>
+    </div>
   );
 }

@@ -37,7 +37,6 @@ export function PositioningScatterChart({
         nameGap: 26,
         min: 0,
         max: 100,
-        splitLine: { lineStyle: { color: "var(--border)", opacity: 0.4 } },
         axisLabel: { fontSize: 10 },
       },
       yAxis: {
@@ -47,18 +46,19 @@ export function PositioningScatterChart({
         nameGap: 32,
         min: 0,
         max: 100,
-        splitLine: { lineStyle: { color: "var(--border)", opacity: 0.4 } },
         axisLabel: { fontSize: 10 },
       },
       series: [
         {
           type: "scatter",
           symbolSize: 18,
-          itemStyle: { color: "var(--primary)", opacity: 0.78 },
+          // Warna series ikut palet tema dari wrapper EChart (--chart-1);
+          // canvas tidak bisa membaca CSS var langsung.
+          itemStyle: { opacity: 0.8 },
           markLine: {
             silent: true,
             symbol: "none",
-            lineStyle: { type: "dashed", color: "var(--muted-foreground)", opacity: 0.5 },
+            lineStyle: { type: "dashed", color: "#94a3b8", opacity: 0.5 },
             data: [{ xAxis: 50 }, { yAxis: 50 }],
           },
           label: {

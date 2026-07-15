@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
+  ArrowLeft,
   BarChart3,
   FileText,
   Grid3x3,
   Layers,
   Map,
   RefreshCw,
+  Search,
   Sparkles,
   Target,
 } from "lucide-react";
@@ -24,7 +26,6 @@ import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { ClaimAnalysisPanel } from "@/components/research-hub/claim-analysis-panel";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { UspSourcesUsedPanel } from "@/components/research-hub/usp-sources-used-panel";
-import { DifferentiationScoreBadge } from "@/components/research-hub/differentiation-score-badge";
 import {
   GapMatrixTable,
   type GapMatrixRow,
@@ -56,12 +57,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { USP_GAP_STATUS_LABELS } from "@/lib/research/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import type { ResolvedContextSources } from "@/lib/research/usp-gap/context-types";
-import {
-  LabPageHeader,
-  LabSection,
-  LabStatChip,
-  lab,
-} from "@/components/lab/lab-primitives";
+import { LabPageHeader, LabSection, lab } from "@/components/lab/lab-primitives";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandJobProgress } from "../../use-brand-job-progress";
 import { cn } from "@/lib/utils";
@@ -100,38 +96,39 @@ export type UspDetailData = {
   }[];
 };
 
-const VERDICT_STYLE: Record<
+const VERDICT_META: Record<
   "GO" | "WATCH" | "AVOID",
-  { label: string; tone: string }
+  { label: string; pill: string; dot: string }
 > = {
   GO: {
     label: "GO — Masuk kategori",
-    tone: "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
+    pill: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    dot: "bg-emerald-500",
   },
   WATCH: {
     label: "WATCH — Pantau dulu",
-    tone: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+    pill: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+    dot: "bg-amber-500",
   },
   AVOID: {
     label: "AVOID — Hindari",
-    tone: "border-rose-500/40 bg-rose-500/10 text-rose-800 dark:text-rose-200",
+    pill: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+    dot: "bg-rose-500",
   },
 };
 
-function statusChipTone(
-  status: UspGapStatus,
-): "neutral" | "success" | "warning" | "accent" {
+function statusPillTone(status: UspGapStatus) {
   switch (status) {
     case "READY":
-      return "success";
+      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
     case "FAILED":
-      return "warning";
+      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
     case "GATHERING":
     case "ANALYZING":
     case "PENDING":
-      return "warning";
+      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
     default:
-      return "neutral";
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -146,6 +143,7 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
   const [uspIndex, setUspIndex] = useState(0);
   const [roomId, setRoomId] = useState(data.rooms[0]?.id ?? "");
   const [projectName, setProjectName] = useState(`USP: ${data.category}`);
+  const [gapQuery, setGapQuery] = useState("");
 
   const roomItems = useMemo<SelectItemDef[]>(
     () => data.rooms.map((r) => ({ value: r.id, label: r.name })),
@@ -157,6 +155,32 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
     data.status === "GATHERING" ||
     data.status === "ANALYZING" ||
     data.status === "PENDING";
+
+  /* --------------------------- Gap matrix: filter --------------------------- */
+  const visibleGapRows = useMemo(() => {
+    const q = gapQuery.trim().toLowerCase();
+    if (!q) return data.gapMatrix;
+    return data.gapMatrix.filter(
+      (row) =>
+        row.claim.toLowerCase().includes(q) ||
+        row.opportunity.toLowerCase().includes(q) ||
+        (row.recommendedAction ?? "").toLowerCase().includes(q),
+    );
+  }, [data.gapMatrix, gapQuery]);
+
+  /* --------------------------- Agregasi papan hero --------------------------- */
+  const heroStats = useMemo(() => {
+    const bigGaps = data.gapMatrix.filter((r) => r.gapScore >= 70).length;
+    const p0 = data.gapMatrix.filter((r) => r.priority === "P0").length;
+    const topUsp = data.uspCandidates.reduce<number | null>(
+      (acc, c) =>
+        acc == null || c.differentiationScore > acc
+          ? c.differentiationScore
+          : acc,
+      null,
+    );
+    return { bigGaps, p0, topUsp };
+  }, [data.gapMatrix, data.uspCandidates]);
 
   useBrandJobProgress({ inProgress });
 
@@ -219,13 +243,17 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
     });
   }
 
+  const verdict = data.categoryDecision
+    ? VERDICT_META[data.categoryDecision.verdict]
+    : null;
+
   return (
     <div className="flex flex-col gap-6 pb-6">
       <Link
         href={brandHubHref("/brand-hub/usp-analyzer", brandId)}
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none"
       >
-        <BarChart3 className="size-3" aria-hidden />
+        <ArrowLeft className="size-3.5" aria-hidden />
         Kembali ke USP Analyzer
       </Link>
 
@@ -237,44 +265,20 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
         description="Gap matrix, positioning map, dan kandidat USP dari agregasi modul riset."
         right={
           <>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                statusPillTone(data.status),
+              )}
+            >
+              {USP_GAP_STATUS_LABELS[data.status]}
+            </span>
             <ResearchModelBadgeGroup meta={data.aiMeta} />
-            <DifferentiationScoreBadge score={data.differentiationScore} />
             <Button size="sm" onClick={handleRefresh} disabled={pending || inProgress}>
               <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
               Refresh
             </Button>
           </>
-        }
-        footer={
-          <div className="flex flex-wrap items-center gap-2">
-            <LabStatChip
-              label="Status"
-              value={USP_GAP_STATUS_LABELS[data.status]}
-              tone={statusChipTone(data.status)}
-            />
-            <LabStatChip
-              label="USP"
-              value={data.uspCandidates.length.toLocaleString("id-ID")}
-              tone="accent"
-            />
-            <LabStatChip
-              label="Gap"
-              value={data.gapMatrix.length.toLocaleString("id-ID")}
-            />
-            {data.categoryDecision ? (
-              <LabStatChip
-                label="Verdict"
-                value={data.categoryDecision.verdict}
-                tone={
-                  data.categoryDecision.verdict === "GO"
-                    ? "success"
-                    : data.categoryDecision.verdict === "AVOID"
-                      ? "warning"
-                      : "neutral"
-                }
-              />
-            ) : null}
-          </div>
         }
       />
 
@@ -304,30 +308,118 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
         </p>
       ) : null}
 
-      {data.categoryDecision ? (
-        <div
-          className={cn(
-            lab.nestedPanel,
-            "flex flex-wrap items-center gap-3",
-            VERDICT_STYLE[data.categoryDecision.verdict].tone,
-          )}
-        >
-          <span className="text-sm font-bold uppercase tracking-wide">
-            {VERDICT_STYLE[data.categoryDecision.verdict].label}
+      {/* Papan hero bento */}
+      <div
+        className={cn(
+          lab.entrance,
+          "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
+        )}
+      >
+        {/* Hero pink — differentiation score */}
+        <div className="bento-tile row-span-2 border-transparent bg-pink-600 shadow-md shadow-pink-600/20 dark:bg-pink-500">
+          <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+            Differentiation score
           </span>
-          <span
-            className="text-xs font-medium opacity-80"
-            title="Tingkat keyakinan ini adalah estimasi AI, bukan probabilitas terukur."
-          >
-            Keyakinan AI {Math.round(data.categoryDecision.confidence * 100)}%
+          <span className="bento-value text-5xl text-white dark:text-pink-950">
+            {data.differentiationScore != null
+              ? Math.round(data.differentiationScore)
+              : "—"}
+            {data.differentiationScore != null ? (
+              <span className="text-2xl font-bold text-pink-200/80 dark:text-pink-900/60">
+                /100
+              </span>
+            ) : null}
           </span>
-          {data.categoryDecision.reason ? (
-            <span className="text-foreground/80 w-full text-xs leading-snug sm:w-auto sm:flex-1">
-              {data.categoryDecision.reason}
-            </span>
-          ) : null}
+          <span className="text-xs font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+            seberapa mudah kategori ini dibedakan dari kompetitor
+          </span>
         </div>
-      ) : null}
+
+        {/* Verdict — tile lebar */}
+        <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
+          <span className="bento-label">Keputusan kategori</span>
+          {data.categoryDecision && verdict ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold",
+                    verdict.pill,
+                  )}
+                >
+                  <span
+                    className={cn("size-2 rounded-full", verdict.dot)}
+                    aria-hidden
+                  />
+                  {verdict.label}
+                </span>
+                <span
+                  className="text-muted-foreground text-xs font-medium"
+                  title="Tingkat keyakinan ini adalah estimasi AI, bukan probabilitas terukur."
+                >
+                  Keyakinan {Math.round(data.categoryDecision.confidence * 100)}%
+                  (estimasi AI)
+                </span>
+              </div>
+              {data.categoryDecision.reason ? (
+                <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed">
+                  {data.categoryDecision.reason}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Verdict GO / WATCH / AVOID muncul setelah analisis selesai.
+            </p>
+          )}
+        </div>
+
+        {/* Kandidat USP */}
+        <div className="bento-tile">
+          <span className="bento-label">Kandidat USP</span>
+          <span className="bento-value">
+            {data.uspCandidates.length}
+            {heroStats.topUsp != null ? (
+              <span className="text-muted-foreground/60 text-lg font-bold">
+                {" "}
+                · top {heroStats.topUsp}
+              </span>
+            ) : null}
+          </span>
+        </div>
+
+        {/* Gap besar — amber pastel */}
+        <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            Gap skor ≥ 70
+          </span>
+          <span className="bento-value text-amber-900 dark:text-amber-300">
+            {heroStats.bigGaps}
+            <span className="text-lg font-bold text-amber-800/50 dark:text-amber-300/50">
+              /{data.gapMatrix.length}
+            </span>
+          </span>
+          <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+            {heroStats.p0 > 0 ? `${heroStats.p0} prioritas P0` : "peluang besar"}
+          </span>
+        </div>
+
+        {/* Klaim underserved / overused */}
+        <div className="bento-tile">
+          <span className="bento-label">Klaim underserved</span>
+          <span className="bento-value">
+            {(data.claimAnalysis.underserved ?? []).length}
+          </span>
+        </div>
+        <div className="bento-tile border-transparent bg-[#fde7f1] dark:bg-pink-400/10">
+          <span className="text-[11.5px] font-semibold text-pink-800/70 dark:text-pink-200/60">
+            Klaim overused
+          </span>
+          <span className="bento-value text-pink-900 dark:text-pink-300">
+            {(data.claimAnalysis.overused ?? []).length}
+          </span>
+        </div>
+      </div>
 
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(lab.stickyToolbar, "pb-0")}>
@@ -367,11 +459,10 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
 
         <TabsContent value="ringkasan" className={tabContentClass}>
           {data.aiSummary ? (
-            <LabSection title="AI Summary" delayMs={0}>
-              <div className={cn(lab.panel, "text-sm leading-relaxed")}>
-                {data.aiSummary}
-              </div>
-            </LabSection>
+            <div className="bento-tile justify-start gap-3">
+              <span className="bento-label">Ringkasan AI</span>
+              <p className="text-sm leading-relaxed">{data.aiSummary}</p>
+            </div>
           ) : null}
 
           {data.actionPlan ? (
@@ -398,8 +489,32 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
             title="Gap Matrix"
             description="Skor peluang per klaim/benefit dengan bukti dari modul riset."
           >
-            <div className={lab.panel}>
-              <GapMatrixTable rows={data.gapMatrix} />
+            <div className={cn(lab.card, "p-0")}>
+              {/* Toolbar tabel */}
+              <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-foreground font-bold tracking-tight">
+                    Peluang klaim
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {visibleGapRows.length === data.gapMatrix.length
+                      ? `${data.gapMatrix.length} klaim`
+                      : `${visibleGapRows.length} dari ${data.gapMatrix.length} klaim`}
+                  </p>
+                </div>
+                {data.gapMatrix.length > 5 ? (
+                  <div className="relative">
+                    <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
+                    <Input
+                      value={gapQuery}
+                      onChange={(e) => setGapQuery(e.target.value)}
+                      placeholder="Cari klaim / peluang…"
+                      className="h-9 w-56 pl-8 text-xs"
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <GapMatrixTable rows={visibleGapRows} />
             </div>
           </LabSection>
         </TabsContent>
@@ -409,13 +524,21 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
             title="Positioning Map"
             description={`${data.positioningMap.axisX} × ${data.positioningMap.axisY}`}
           >
-            <div className={lab.panel}>
+            <div className="bento-tile justify-start gap-2">
+              <div className="flex items-center justify-between">
+                <span className="bento-label">
+                  {data.positioningMap.axisX} × {data.positioningMap.axisY}
+                </span>
+                <span className="text-muted-foreground text-[11px] tabular-nums">
+                  {data.positioningMap.points.length} produk
+                </span>
+              </div>
               <PositioningScatterChart
                 axisX={data.positioningMap.axisX}
                 axisY={data.positioningMap.axisY}
                 points={data.positioningMap.points}
               />
-              <AiEstimateNote className="mt-2">
+              <AiEstimateNote>
                 Koordinat ditempatkan oleh AI sebagai ilustrasi posisi relatif — bukan
                 hasil pengukuran pasar. Gunakan untuk diskusi arah, bukan angka pasti.
               </AiEstimateNote>
@@ -428,15 +551,13 @@ export function BrandUspDetailClient({ data }: { data: UspDetailData }) {
             title="USP Generator"
             description="Kandidat USP dengan RTB, skor diferensiasi, dan risiko."
           >
-            <div className={lab.panel}>
-              <UspCandidateCards
-                candidates={data.uspCandidates}
-                onCreateBrief={openBrief}
-                onCreateConcept={handleCreateConcept}
-                briefPending={pending}
-                conceptPending={pending}
-              />
-            </div>
+            <UspCandidateCards
+              candidates={data.uspCandidates}
+              onCreateBrief={openBrief}
+              onCreateConcept={handleCreateConcept}
+              briefPending={pending}
+              conceptPending={pending}
+            />
           </LabSection>
         </TabsContent>
 

@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import type { ReviewIntelSourceStatus } from "@prisma/client";
-import { ExternalLink, Loader2, MessageSquareText } from "lucide-react";
+import { Loader2, MessageSquareText } from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import { CompetitorSkuTrackerDialog } from "@/components/research-hub/competitor-sku-tracker-dialog";
 import { formatRp, SOURCE_STATUS_LABELS } from "@/lib/research/labels";
 import { formatRevenueIdr, formatSoldThreshold } from "@/lib/research/shop-product-metrics";
-import { hub } from "@/components/research-hub/research-hub-primitives";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -81,7 +80,7 @@ export function CompetitorSkuTable({
         {rows.map((sku) => (
           <TableRow
             key={sku.id}
-            className="transition-colors duration-150 motion-reduce:transition-none hover:bg-muted/40"
+            className="hover:bg-muted/40 transition-colors duration-150 motion-reduce:transition-none"
           >
             {showImages ? (
               <TableCell className="py-2">
@@ -96,7 +95,7 @@ export function CompetitorSkuTable({
               {competitorId ? (
                 <Link
                   href={`/research-hub/competitor-tracker/${competitorId}/skus/${sku.id}`}
-                  className="hover:text-primary line-clamp-2 font-medium"
+                  className="line-clamp-2 font-medium hover:text-[var(--lab-accent,var(--primary))]"
                 >
                   {sku.name}
                 </Link>
@@ -105,25 +104,25 @@ export function CompetitorSkuTable({
                   href={sku.productUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-primary line-clamp-2 font-medium"
+                  className="line-clamp-2 font-medium hover:text-[var(--lab-accent,var(--primary))]"
                 >
                   {sku.name}
                 </a>
               )}
               {sku.isNew ? (
-                <span className="bg-primary/15 text-primary ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase">
+                <span className="mt-1 inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
                   Baru
                 </span>
               ) : null}
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              <span>
+              <span className="font-semibold">
                 {sku.currentPrice != null ? formatRp(sku.currentPrice) : "—"}
               </span>
               {sku.priceDeltaPct != null && sku.priceDirection ? (
                 <span
                   className={cn(
-                    "mt-0.5 block text-[10px] font-medium",
+                    "mt-0.5 block text-[10px] font-semibold",
                     sku.priceDirection === "up"
                       ? "text-rose-600 dark:text-rose-400"
                       : "text-emerald-600 dark:text-emerald-400",
@@ -142,16 +141,16 @@ export function CompetitorSkuTable({
             <TableCell className="text-right tabular-nums">
               {formatSoldThreshold(sku.historicalSold)}
             </TableCell>
-            <TableCell className="text-right tabular-nums text-xs">
+            <TableCell className="text-right text-xs tabular-nums">
               {formatRevenueIdr(sku.estimatedRevenue)}
             </TableCell>
             <TableCell>
               {sku.hasPromo ? (
-                <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                <span className="inline-flex max-w-36 items-center truncate rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                   {sku.promoText ?? "Promo"}
                 </span>
               ) : (
-                "—"
+                <span className="text-muted-foreground">—</span>
               )}
             </TableCell>
             <TableCell>

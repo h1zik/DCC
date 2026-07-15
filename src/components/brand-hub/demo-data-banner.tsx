@@ -6,11 +6,18 @@ import { AlertTriangle } from "lucide-react";
  */
 export function DemoDataBanner({ context }: { context?: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+    <div className="flex items-start gap-3 rounded-2xl border border-transparent bg-[#ffedcd] px-4 py-3.5 text-sm text-amber-900 shadow-[0_1px_2px_rgb(30_25_15/0.05)] dark:bg-amber-400/10 dark:text-amber-200">
+      <span
+        className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300"
+        aria-hidden
+      >
+        <AlertTriangle className="size-4" />
+      </span>
       <div>
-        <p className="font-semibold">Data demo — bukan hasil scrape asli</p>
-        <p className="mt-0.5 text-amber-800 dark:text-amber-300/90">
+        <p className="font-bold tracking-tight">
+          Data demo — bukan hasil scrape asli
+        </p>
+        <p className="mt-0.5 text-xs leading-relaxed text-amber-800/80 dark:text-amber-300/90">
           {context ? `${context} ` : ""}
           Scraper belum dikonfigurasi, jadi angka dan konten di halaman ini adalah
           contoh fiktif. Jangan dipakai untuk keputusan. Set kredensial scraper untuk

@@ -8,7 +8,6 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { lab } from "@/components/lab/lab-primitives";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +40,7 @@ function Chips({ items }: { items?: string[] }) {
       {items.map((item, i) => (
         <span
           key={i}
-          className="bg-muted/60 text-foreground rounded-md px-2 py-0.5 text-xs"
+          className="bg-card text-foreground rounded-full px-2.5 py-1 text-xs shadow-sm"
         >
           {item}
         </span>
@@ -50,20 +49,29 @@ function Chips({ items }: { items?: string[] }) {
   );
 }
 
+function SubLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-muted-foreground mb-1 text-[10px] font-semibold uppercase tracking-wide">
+      {children}
+    </p>
+  );
+}
+
+/** Panel dimensi persona — pastel bento per dimensi (senada papan metrik SEO). */
 function Dimension({
   icon: Icon,
   label,
   children,
-  accent,
+  tone,
 }: {
   icon: typeof Target;
   label: string;
   children: React.ReactNode;
-  accent: string;
+  tone: { panel: string; title: string };
 }) {
   return (
-    <div className={cn(lab.nestedPanel, "border-l-2", accent)}>
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
+    <div className={cn("rounded-xl p-3.5", tone.panel)}>
+      <p className={cn("mb-2 flex items-center gap-1.5 text-xs font-bold", tone.title)}>
         <Icon className="size-3.5" aria-hidden />
         {label}
       </p>
@@ -71,6 +79,25 @@ function Dimension({
     </div>
   );
 }
+
+const TONES = {
+  pain: {
+    panel: "bg-[#fbdcd7] dark:bg-rose-400/10",
+    title: "text-rose-900 dark:text-rose-300",
+  },
+  hope: {
+    panel: "bg-emerald-500/10 dark:bg-emerald-400/10",
+    title: "text-emerald-800 dark:text-emerald-300",
+  },
+  motivation: {
+    panel: "bg-[#ffedcd] dark:bg-amber-400/10",
+    title: "text-amber-900 dark:text-amber-300",
+  },
+  habit: {
+    panel: "bg-[#e9e3f9] dark:bg-violet-400/10",
+    title: "text-violet-900 dark:text-violet-300",
+  },
+} as const;
 
 export function BrandAudiencePersonaCard({
   persona,
@@ -81,14 +108,14 @@ export function BrandAudiencePersonaCard({
   const h = persona.habits ?? {};
 
   return (
-    <article className={cn(lab.card, lab.cardBody, "flex flex-col gap-4")}>
+    <article className="bento-tile justify-start gap-4">
       <header className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex items-start gap-3">
-          <span className="bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_10%,transparent)] text-[var(--lab-accent,var(--primary))] flex size-10 shrink-0 items-center justify-center rounded-xl border border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_20%,transparent)]">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-pink-500/12 text-pink-700 dark:text-pink-300">
             <Users className="size-5" aria-hidden />
           </span>
           <div className="min-w-0">
-            <h3 className="text-base font-semibold tracking-tight">
+            <h3 className="text-base font-bold tracking-tight">
               {persona.name}
             </h3>
             {persona.archetype ? (
@@ -118,46 +145,46 @@ export function BrandAudiencePersonaCard({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Dimension icon={Frown} label="Pain Point" accent="border-l-red-500">
+        <Dimension icon={Frown} label="Pain Point" tone={TONES.pain}>
           <Chips items={persona.painPoints} />
         </Dimension>
-        <Dimension icon={Sparkles} label="Harapan" accent="border-l-emerald-500">
+        <Dimension icon={Sparkles} label="Harapan" tone={TONES.hope}>
           <Chips items={persona.hopes} />
         </Dimension>
       </div>
 
-      <Dimension icon={Zap} label="Motivasi" accent="border-l-amber-500">
-        <div className="space-y-2">
+      <Dimension icon={Zap} label="Motivasi" tone={TONES.motivation}>
+        <div className="space-y-2.5">
           <div>
-            <p className={lab.label}>Fungsional</p>
+            <SubLabel>Fungsional</SubLabel>
             <Chips items={m.functional} />
           </div>
           <div>
-            <p className={lab.label}>Emosional</p>
+            <SubLabel>Emosional</SubLabel>
             <Chips items={m.emotional} />
           </div>
           <div>
-            <p className={lab.label}>Sosial</p>
+            <SubLabel>Sosial</SubLabel>
             <Chips items={m.social} />
           </div>
         </div>
       </Dimension>
 
-      <Dimension icon={Target} label="Kebiasaan Beli" accent="border-l-blue-500">
-        <div className="space-y-2">
+      <Dimension icon={Target} label="Kebiasaan Beli" tone={TONES.habit}>
+        <div className="space-y-2.5">
           {h.buyingBehavior ? (
             <p className="text-sm leading-relaxed">{h.buyingBehavior}</p>
           ) : null}
           <div>
-            <p className={lab.label}>Kanal</p>
+            <SubLabel>Kanal</SubLabel>
             <Chips items={h.channels} />
           </div>
           <div>
-            <p className={lab.label}>Pemicu</p>
+            <SubLabel>Pemicu</SubLabel>
             <Chips items={h.triggers} />
           </div>
           <div>
-            <p className={lab.label}>Faktor Keputusan</p>
+            <SubLabel>Faktor Keputusan</SubLabel>
             <Chips items={h.decisionFactors} />
           </div>
         </div>
@@ -165,11 +192,11 @@ export function BrandAudiencePersonaCard({
 
       {persona.representativeQuotes && persona.representativeQuotes.length > 0 ? (
         <div className="space-y-2">
-          <p className={lab.label}>Kutipan Konsumen</p>
+          <SubLabel>Kutipan Konsumen</SubLabel>
           {persona.representativeQuotes.map((q, i) => (
             <blockquote
               key={i}
-              className="border-border/60 text-muted-foreground flex gap-2 border-l-2 pl-3 text-sm italic"
+              className="border-border/60 bg-muted/20 text-muted-foreground flex gap-2 rounded-r-lg border-l-2 py-1.5 pl-3 pr-2 text-sm italic"
             >
               <Quote className="size-3.5 shrink-0 translate-y-0.5" aria-hidden />
               <span>

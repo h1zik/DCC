@@ -1,7 +1,7 @@
 "use client";
 
 import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
-import { ResearchHubStatChip } from "@/components/research-hub/research-hub-primitives";
+import { cn } from "@/lib/utils";
 
 export function TrendSignalStatsLine({
   stats,
@@ -36,6 +36,47 @@ export function TrendSignalStatsLine({
       {stats.total} sinyal
       {parts.length > 0 ? ` (${parts.join(" · ")})` : ""}
     </p>
+  );
+}
+
+/** Chip mini per keluarga sumber sinyal — tile mini gaya bento. */
+function SignalStatTile({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "inline-flex min-w-[6.25rem] flex-col gap-0.5 rounded-2xl px-3.5 py-2.5",
+        accent
+          ? "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)]"
+          : "bg-muted/60",
+      )}
+    >
+      <span
+        className={cn(
+          "text-[10px] font-semibold uppercase tracking-wide",
+          accent
+            ? "text-[var(--lab-accent,var(--primary))]"
+            : "text-muted-foreground",
+        )}
+      >
+        {label}
+      </span>
+      <span
+        className={cn(
+          "text-lg font-extrabold tabular-nums tracking-tight",
+          accent && "text-[var(--lab-accent,var(--primary))]",
+        )}
+      >
+        {value}
+      </span>
+    </div>
   );
 }
 
@@ -74,13 +115,13 @@ export function TrendSignalStatsChips({
 
   return (
     <div className="flex flex-wrap gap-2">
-      <ResearchHubStatChip
+      <SignalStatTile
         label="Total sinyal"
         value={stats.total.toLocaleString("id-ID")}
-        tone="primary"
+        accent
       />
       {chips.map((chip) => (
-        <ResearchHubStatChip
+        <SignalStatTile
           key={chip.label}
           label={chip.label}
           value={chip.value.toLocaleString("id-ID")}

@@ -31,6 +31,7 @@ import {
   ConceptValidationPanel,
   type ConceptValidationData,
 } from "@/components/research-hub/concept-validation-panel";
+import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,12 +52,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PRODUCT_CONCEPT_STATUS_LABELS } from "@/lib/research/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
-import {
-  lab,
-  LabPageHeader,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -84,37 +80,27 @@ export type ConceptDetailData = {
   aiMeta: ResearchAiMetaView | null;
 };
 
-function statusChipTone(
-  status: ProductConceptStatus,
-): "neutral" | "success" | "warning" | "accent" {
+const PILL_CLASS =
+  "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold";
+
+function statusPillTone(status: ProductConceptStatus): string {
   switch (status) {
     case "READY":
-      return "success";
+      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
     case "SENT_TO_RND":
-      return "accent";
+      return "bg-violet-500/15 text-violet-700 dark:text-violet-300";
     case "VALIDATING":
-      return "warning";
-    case "ARCHIVED":
-      return "neutral";
+      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
     default:
-      return "neutral";
+      return "bg-muted text-muted-foreground";
   }
 }
 
-function decisionChipTone(
-  decision?: string,
-): "neutral" | "success" | "warning" | "accent" {
-  switch (decision) {
-    case "GO":
-      return "success";
-    case "NO_GO":
-      return "warning";
-    case "PIVOT":
-      return "accent";
-    default:
-      return "neutral";
-  }
-}
+const DECISION_TONE: Record<string, string> = {
+  GO: "text-emerald-600 dark:text-emerald-400",
+  PIVOT: "text-amber-600 dark:text-amber-400",
+  NO_GO: "text-rose-600 dark:text-rose-400",
+};
 
 const tabContentClass =
   "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
@@ -130,6 +116,10 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
 
   const inProgress = data.status === "VALIDATING";
   const selectedRoom = data.rooms.find((r) => r.id === roomId);
+  const validated = data.validationScores.overall > 0;
+  const highRiskCount = data.riskFactors.filter(
+    (r) => r.severity === "HIGH",
+  ).length;
 
   const roomItems = useMemo(
     (): SelectItemDef[] =>
@@ -221,125 +211,78 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-6">
-      <Link
-        href="/research-hub/concept-lab"
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
-      >
-        <FlaskConical className="size-3" aria-hidden />
-        Kembali ke Concept Lab
-      </Link>
-
-      <LabPageHeader
-        variant="detail"
-        icon={FlaskConical}
-        eyebrow="Product Concept Lab"
-        title={data.title}
-        description={`${data.category}${data.targetMarket ? ` · ${data.targetMarket}` : ""}`}
-        right={
-          <>
-            <ResearchModelBadgeGroup meta={data.aiMeta} />
-            <Button size="sm" variant="outline" onClick={handleSave} disabled={pending}>
-              Simpan
-            </Button>
-            <Button size="sm" onClick={handleValidate} disabled={pending}>
-              Validasi
-            </Button>
-            <ConceptPdfDownloadButton conceptId={data.id} title={data.title} />
-            <Dialog open={rdOpen} onOpenChange={setRdOpen}>
-              <DialogTrigger
-                render={
-                  <Button size="sm" variant="outline">
-                    <Send className="mr-1.5 size-3.5" aria-hidden />
-                    Kirim ke R&D
-                  </Button>
-                }
-              />
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Kirim ke Task R&D</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3 py-2">
-                  <div className="space-y-2">
-                    <Label>Room</Label>
-                    <Select
-                      value={roomId}
-                      items={roomItems}
-                      onValueChange={(v) => v && setRoomId(v)}
-                    >
-                      <SelectTrigger />
-                      <SelectContent>
-                        {data.rooms.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nama proyek</Label>
-                    <Input
-                      value={projectName}
-                      onChange={(e) => setProjectName(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleRd} disabled={pending}>
-                    Buat Task R&D
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </>
-        }
-        footer={
-          <div className="flex flex-wrap items-center gap-2">
-            <LabStatChip
-              label="Status"
-              value={PRODUCT_CONCEPT_STATUS_LABELS[data.status]}
-              tone={statusChipTone(data.status)}
-            />
-            <LabStatChip
-              label="Overall"
-              value={
-                data.validationScores.overall > 0
-                  ? Math.round(data.validationScores.overall).toLocaleString("id-ID")
-                  : "—"
+    <ResearchHubDetailPage
+      icon={FlaskConical}
+      backHref="/research-hub/concept-lab"
+      title={data.title}
+      description={`${data.category}${data.targetMarket ? ` · ${data.targetMarket}` : ""}`}
+      right={
+        <>
+          <ResearchModelBadgeGroup meta={data.aiMeta} />
+          <span className={cn(PILL_CLASS, statusPillTone(data.status))}>
+            {PRODUCT_CONCEPT_STATUS_LABELS[data.status]}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSave}
+            disabled={pending}
+          >
+            Simpan
+          </Button>
+          <Button size="sm" onClick={handleValidate} disabled={pending}>
+            Validasi
+          </Button>
+          <ConceptPdfDownloadButton conceptId={data.id} title={data.title} />
+          <Dialog open={rdOpen} onOpenChange={setRdOpen}>
+            <DialogTrigger
+              render={
+                <Button size="sm" variant="outline">
+                  <Send className="mr-1.5 size-3.5" aria-hidden />
+                  Kirim ke R&D
+                </Button>
               }
-              tone="accent"
             />
-            {data.validationScores.decision ? (
-              <LabStatChip
-                label="Keputusan"
-                value={data.validationScores.decision}
-                tone={decisionChipTone(data.validationScores.decision)}
-              />
-            ) : null}
-            {data.riskFactors.length > 0 ? (
-              <LabStatChip
-                label="Risiko"
-                value={data.riskFactors.length.toLocaleString("id-ID")}
-                tone={
-                  data.riskFactors.some((r) => r.severity === "HIGH")
-                    ? "warning"
-                    : "neutral"
-                }
-              />
-            ) : null}
-            {data.uspGapAnalysisId ? (
-              <Link
-                href={`/research-hub/usp-analyzer/${data.uspGapAnalysisId}`}
-                className="text-primary text-xs hover:underline"
-              >
-                Lihat USP sumber →
-              </Link>
-            ) : null}
-          </div>
-        }
-      />
-
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Kirim ke Task R&D</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="space-y-2">
+                  <Label>Room</Label>
+                  <Select
+                    value={roomId}
+                    items={roomItems}
+                    onValueChange={(v) => v && setRoomId(v)}
+                  >
+                    <SelectTrigger />
+                    <SelectContent>
+                      {data.rooms.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nama proyek</Label>
+                  <Input
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={handleRd} disabled={pending}>
+                  Buat Task R&D
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      }
+    >
       {inProgress ? (
         <div className={lab.entrance}>
           <JobProgressBar
@@ -353,14 +296,136 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
       {needsRevalidate ? (
         <p
           className={cn(
-            lab.nestedPanel,
-            "flex items-start gap-2 border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100 text-sm",
+            lab.entrance,
+            "flex items-start gap-2.5 rounded-2xl bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100",
           )}
           role="alert"
         >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-          Konsep diubah sejak validasi terakhir — jalankan Validasi ulang sebelum export R&D.
+          Konsep diubah sejak validasi terakhir — jalankan Validasi ulang
+          sebelum export R&D.
         </p>
+      ) : null}
+
+      {/* Papan hero bento: skor validasi */}
+      {validated ? (
+        <div
+          className={cn(
+            lab.entrance,
+            "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
+          )}
+        >
+          <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
+            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+              Skor keseluruhan
+            </span>
+            <span className="bento-value text-5xl text-white dark:text-violet-950">
+              {Math.round(data.validationScores.overall)}
+              <span className="text-2xl font-bold text-violet-200/80 dark:text-violet-900/60">
+                /100
+              </span>
+            </span>
+            <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+              gabungan demand, diferensiasi & pricing fit
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Market demand</span>
+            <span className="bento-value">
+              {Math.round(data.validationScores.marketDemand)}
+              <span className="text-muted-foreground/60 text-lg font-bold">
+                /100
+              </span>
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Differentiation</span>
+            <span className="bento-value">
+              {Math.round(data.validationScores.differentiation)}
+              <span className="text-muted-foreground/60 text-lg font-bold">
+                /100
+              </span>
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Pricing fit</span>
+            <span className="bento-value">
+              {Math.round(data.validationScores.pricingFit)}
+              <span className="text-muted-foreground/60 text-lg font-bold">
+                /100
+              </span>
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+              Keputusan
+            </span>
+            <span
+              className={cn(
+                "bento-value",
+                DECISION_TONE[data.validationScores.decision ?? ""] ??
+                  "text-violet-900 dark:text-violet-300",
+              )}
+            >
+              {data.validationScores.decision ?? "—"}
+            </span>
+          </div>
+
+          <div
+            className={cn(
+              "bento-tile",
+              data.riskFactors.length > 0
+                ? "border-transparent bg-[#fbdcd7] dark:bg-rose-400/10"
+                : undefined,
+            )}
+          >
+            <span
+              className={cn(
+                data.riskFactors.length > 0
+                  ? "text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60"
+                  : "bento-label",
+              )}
+            >
+              Faktor risiko
+            </span>
+            <span
+              className={cn(
+                "bento-value",
+                data.riskFactors.length > 0 &&
+                  "text-rose-900 dark:text-rose-300",
+              )}
+            >
+              {data.riskFactors.length}
+            </span>
+            <span
+              className={cn(
+                "text-[11px] font-medium",
+                data.riskFactors.length > 0
+                  ? "text-rose-800/70 dark:text-rose-200/60"
+                  : "text-muted-foreground",
+              )}
+            >
+              {highRiskCount > 0
+                ? `${highRiskCount} keparahan tinggi`
+                : "dari riset pasar"}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {data.uspGapAnalysisId ? (
+        <div className={cn(lab.entrance, "-mt-2")}>
+          <Link
+            href={`/research-hub/usp-analyzer/${data.uspGapAnalysisId}`}
+            className="text-primary text-xs font-semibold hover:underline"
+          >
+            Lihat USP & Gap Analysis sumber →
+          </Link>
+        </div>
       ) : null}
 
       <Tabs defaultValue="validasi" className="gap-0">
@@ -391,53 +456,60 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
         </div>
 
         <TabsContent value="validasi" className={tabContentClass}>
-          <LabSection
-            title="Concept Validator"
-            description="Skor demand, diferensiasi, pricing — disesuaikan dengan data kompetitor & cakupan riset."
-          >
-            <div className={lab.panel}>
-              <ConceptValidationPanel
-                data={data.validationScores}
-                conceptId={data.id}
-              />
+          <div className="bento-tile justify-start gap-3">
+            <div className="flex items-center justify-between">
+              <span className="bento-label">Concept Validator</span>
+              <span className="text-muted-foreground text-[11px]">
+                skor disesuaikan data kompetitor & cakupan riset
+              </span>
             </div>
-          </LabSection>
+            <ConceptValidationPanel
+              data={data.validationScores}
+              conceptId={data.id}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="konsep" className={tabContentClass}>
-          <LabSection
-            title="Concept Builder"
-            description="Edit positioning, ingredients, claims, dan packaging direction."
-          >
-            <div className={lab.panel}>
-              <ConceptStepForm data={formData} onChange={setFormData} />
+          <div className="bento-tile justify-start gap-3">
+            <div className="flex items-center justify-between">
+              <span className="bento-label">Concept Builder</span>
+              <span className="text-muted-foreground text-[11px]">
+                positioning, ingredients, claims & packaging
+              </span>
             </div>
-          </LabSection>
+            <ConceptStepForm data={formData} onChange={setFormData} />
+          </div>
         </TabsContent>
 
         <TabsContent value="risiko" className={tabContentClass}>
-          <LabSection
-            title="Faktor Risiko dari Riset Pasar"
-            description="Risiko terhubung ke modul sumber — bukan tebakan AI semata."
-          >
+          <div className="bento-tile justify-start gap-3">
+            <div className="flex items-center justify-between">
+              <span className="bento-label">
+                Faktor risiko dari riset pasar
+              </span>
+              <span className="text-muted-foreground text-[11px]">
+                terhubung ke modul sumber — bukan tebakan AI semata
+              </span>
+            </div>
             {data.riskFactors.length > 0 ? (
-              <div className={lab.panel}>
-                <ConceptRiskFactorList items={data.riskFactors} />
-              </div>
+              <ConceptRiskFactorList items={data.riskFactors} />
             ) : (
               <p className="text-muted-foreground text-sm">
-                Belum ada faktor risiko — jalankan validasi setelah data review/social tersedia.
+                Belum ada faktor risiko — jalankan validasi setelah data
+                review/social tersedia.
               </p>
             )}
-          </LabSection>
+          </div>
         </TabsContent>
 
         <TabsContent value="bandingkan" className={tabContentClass}>
-          <LabSection
-            title="Bandingkan Konsep"
-            description="Head-to-head dengan konsep lain di Concept Lab."
-          >
-            <div className={cn(lab.panel, "flex flex-wrap items-end gap-2")}>
+          <div className="bento-tile justify-start gap-3">
+            <span className="bento-label">Bandingkan konsep</span>
+            <p className="text-muted-foreground text-sm">
+              Head-to-head dengan konsep lain di Concept Lab.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-[200px] flex-1 space-y-2">
                 <Label>Konsep pembanding</Label>
                 <Select
@@ -458,13 +530,18 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
               <Button size="sm" onClick={handleCompare} disabled={!compareId}>
                 Bandingkan
               </Button>
-              <Button size="sm" variant="ghost" onClick={handleArchive} disabled={pending}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleArchive}
+                disabled={pending}
+              >
                 Arsipkan
               </Button>
             </div>
-          </LabSection>
+          </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </ResearchHubDetailPage>
   );
 }

@@ -1,11 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import {
-  LabPageHeader,
-  LabPageShell,
-} from "@/components/lab/lab-primitives";
+import { LabDetailPage, LabModulePage } from "@/components/lab/lab-module-page";
 
-/** Wrapper halaman modul SEO (list/overview) — memakai shell Dominatus Lab. */
+/** Wrapper halaman modul SEO — delegasi ke LabModulePage (skin bento). */
 export function SeoModulePage({
   icon,
   title,
@@ -20,21 +17,19 @@ export function SeoModulePage({
   children: ReactNode;
 }) {
   return (
-    <LabPageShell>
-      <LabPageHeader
-        variant="compact"
-        eyebrow="SEO Toolkit"
-        icon={icon}
-        title={title}
-        description={description}
-        right={right}
-      />
+    <LabModulePage
+      icon={icon}
+      eyebrow="SEO Toolkit"
+      title={title}
+      description={description}
+      right={right}
+    >
       {children}
-    </LabPageShell>
+    </LabModulePage>
   );
 }
 
-/** Wrapper halaman detail SEO. */
+/** Wrapper halaman detail SEO — delegasi ke LabDetailPage. */
 export function SeoDetailPage({
   icon,
   title,
@@ -51,17 +46,15 @@ export function SeoDetailPage({
   children: ReactNode;
 }) {
   return (
-    <LabPageShell>
-      <LabPageHeader
-        variant="detail"
-        eyebrow="SEO Toolkit"
-        icon={icon}
-        title={title}
-        description={description}
-        right={right}
-        backHref={backHref}
-      />
+    <LabDetailPage
+      icon={icon}
+      eyebrow="SEO Toolkit"
+      title={title}
+      description={description}
+      right={right}
+      backHref={backHref}
+    >
       {children}
-    </LabPageShell>
+    </LabDetailPage>
   );
 }

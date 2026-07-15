@@ -14,6 +14,18 @@ const SEVERITY_STYLE: Record<RiskFactor["severity"], string> = {
   LOW: "border-l-slate-400 bg-muted/40",
 };
 
+const SEVERITY_ICON: Record<RiskFactor["severity"], string> = {
+  HIGH: "text-rose-600 dark:text-rose-400",
+  MED: "text-amber-600 dark:text-amber-400",
+  LOW: "text-muted-foreground",
+};
+
+const SEVERITY_PILL: Record<RiskFactor["severity"], string> = {
+  HIGH: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+  MED: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  LOW: "bg-muted text-muted-foreground",
+};
+
 const SEVERITY_LABEL: Record<RiskFactor["severity"], string> = {
   HIGH: "Tinggi",
   MED: "Sedang",
@@ -38,25 +50,35 @@ export function ConceptRiskFactorList({ items }: { items: RiskFactor[] }) {
           <li
             key={`${risk.label}-${i}`}
             className={cn(
-              "flex items-start gap-3 rounded-lg border border-l-4 p-3",
+              "flex items-start gap-3 rounded-xl border-l-4 p-3.5",
               SEVERITY_STYLE[risk.severity],
             )}
           >
             <AlertTriangle
-              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+              className={cn(
+                "mt-0.5 size-4 shrink-0",
+                SEVERITY_ICON[risk.severity],
+              )}
               aria-hidden
             />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{risk.label}</p>
-              <p className="text-xs text-muted-foreground">
-                Keparahan: {SEVERITY_LABEL[risk.severity]} · Bukti:{" "}
-                {risk.source.label}
+              <p className="text-sm font-medium leading-snug">{risk.label}</p>
+              <p className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    SEVERITY_PILL[risk.severity],
+                  )}
+                >
+                  {SEVERITY_LABEL[risk.severity]}
+                </span>
+                <span>Bukti: {risk.source.label}</span>
               </p>
             </div>
             {href ? (
               <Link
                 href={href}
-                className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs font-semibold transition-colors"
               >
                 Sumber
                 <ArrowUpRight className="size-3" aria-hidden />

@@ -1,7 +1,6 @@
 import { Target } from "lucide-react";
 import { BrandHubListPage } from "@/components/brand-hub/brand-hub-list-page";
 import { listResearchCompetitorsForBrandHub } from "@/lib/brand-research/research-hub-readers";
-import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { ensureBrandHubPage } from "../layout";
 import {
   BrandCompetitorTrackerClient,

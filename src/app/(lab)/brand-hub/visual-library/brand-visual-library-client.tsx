@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { ExternalLink, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -35,7 +35,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { DataSourceProvenancePanel } from "@/components/research-hub/data-source-provenance-panel";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandJobProgress } from "../use-brand-job-progress";
@@ -51,12 +50,72 @@ export type VisualLibraryData = {
   pinterestPinsMax: number;
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  PENDING: "Menunggu",
-  COLLECTING: "Mengumpulkan",
-  READY: "Siap",
-  FAILED: "Gagal",
-};
+const STATUS_META: Record<string, { label: string; pill: string; dot: string }> =
+  {
+    PENDING: {
+      label: "Menunggu",
+      pill: "bg-muted text-muted-foreground",
+      dot: "bg-muted-foreground/50",
+    },
+    COLLECTING: {
+      label: "Mengumpulkan",
+      pill: "bg-amber-500/12 text-amber-800 dark:text-amber-300",
+      dot: "bg-amber-500 animate-pulse",
+    },
+    READY: {
+      label: "Siap",
+      pill: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+      dot: "bg-emerald-500",
+    },
+    FAILED: {
+      label: "Gagal",
+      pill: "bg-rose-500/12 text-rose-700 dark:text-rose-300",
+      dot: "bg-rose-500",
+    },
+  };
+
+function CollectionStatusPill({ status }: { status: string }) {
+  const meta = STATUS_META[status] ?? {
+    label: status,
+    pill: "bg-muted text-muted-foreground",
+    dot: "bg-muted-foreground/50",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        meta.pill,
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", meta.dot)} aria-hidden />
+      {meta.label}
+    </span>
+  );
+}
+
+/** Bar entitas sumber (kompetitor/social/ads) — tile bento dengan link detail. */
+function EntityHeaderBar({ name, href }: { name: string; href: string }) {
+  return (
+    <div className="bento-tile flex-row items-center justify-between gap-3 py-3">
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-pink-500/15 text-sm font-extrabold uppercase text-pink-700 dark:text-pink-300"
+          aria-hidden
+        >
+          {name.trim().charAt(0) || "?"}
+        </span>
+        <span className="truncate text-sm font-bold tracking-tight">{name}</span>
+      </span>
+      <Link
+        href={href}
+        className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs font-semibold transition-colors"
+      >
+        <ExternalLink className="size-3.5" aria-hidden />
+        Detail
+      </Link>
+    </div>
+  );
+}
 
 function countPinterestAssets(groups: VisualLibraryGroups) {
   return groups.pinterest.reduce((n, p) => n + p.assets.length, 0);
@@ -157,20 +216,16 @@ export function BrandVisualLibraryClient({
   );
   useBrandJobProgress({ inProgress: hasCollecting });
 
-  const selectedPinterest = useMemo(
-    () => groups.pinterest.find((p) => p.collection.id === entityId),
-    [groups.pinterest, entityId],
-  );
-
-  useEffect(() => {
-    if (!entityId || !selectedPinterest) return;
-    setPinLimits((prev) => {
-      if (prev[entityId] !== undefined) return prev;
-      const resolved =
-        selectedPinterest.collection.maxPinsPerKeyword ?? data.pinterestMaxPins;
-      return { ...prev, [entityId]: String(resolved) };
-    });
-  }, [entityId, selectedPinterest, data.pinterestMaxPins]);
+  /**
+   * Nilai mentah input limit pin: state user bila ada, jika tidak fallback ke
+   * limit koleksi sendiri lalu default workspace (pengganti seeding effect).
+   */
+  function rawPinLimitFor(id: string): string {
+    const fromState = pinLimits[id];
+    if (fromState !== undefined) return fromState;
+    const col = groups.pinterest.find((p) => p.collection.id === id)?.collection;
+    return String(col?.maxPinsPerKeyword ?? data.pinterestMaxPins);
+  }
 
   function parsePinLimit(raw: string): number | null {
     const n = Number(raw);
@@ -222,17 +277,16 @@ export function BrandVisualLibraryClient({
     [source, groups],
   );
 
+  // Sinkronkan pilihan entitas saat daftar berubah — pola "adjust state
+  // during render" (pengganti effect, perilaku identik).
   const entitiesKey = entities.map((e) => e.id).join(",");
-  const prevEntitiesKey = useRef(entitiesKey);
-
-  useEffect(() => {
-    if (prevEntitiesKey.current !== entitiesKey) {
-      prevEntitiesKey.current = entitiesKey;
-      setEntityId(entities[0]?.id ?? null);
-    } else if (!entityId && entities[0]) {
-      setEntityId(entities[0].id);
-    }
-  }, [entitiesKey, entities, entityId]);
+  const [prevEntitiesKey, setPrevEntitiesKey] = useState(entitiesKey);
+  if (prevEntitiesKey !== entitiesKey) {
+    setPrevEntitiesKey(entitiesKey);
+    setEntityId(entities[0]?.id ?? null);
+  } else if (!entityId && entities[0]) {
+    setEntityId(entities[0].id);
+  }
 
   function handleSourceChange(next: VisualLibrarySourceKey) {
     setSource(next);
@@ -250,6 +304,16 @@ export function BrandVisualLibraryClient({
       groups.manual.length,
     [groups],
   );
+
+  const activeSourceCount = useMemo(
+    () => sources.filter((s) => s.count > 0).length,
+    [sources],
+  );
+  const competitorVisualCount =
+    countCompetitorAssets(groups) +
+    countCompetitorProductAssets(groups) +
+    countAdLibraryAssets(groups);
+  const socialManualCount = countSocialAssets(groups) + groups.manual.length;
 
   function handleCreate() {
     const kw = keywords
@@ -293,7 +357,7 @@ export function BrandVisualLibraryClient({
     id: string,
     opts: { replace: boolean; keywords?: string[] },
   ) {
-    const limit = parsePinLimit(pinLimits[id] ?? String(data.pinterestMaxPins));
+    const limit = parsePinLimit(rawPinLimitFor(id));
     if (limit == null) {
       toast.error(
         `Limit pin harus ${data.pinterestPinsMin}–${data.pinterestPinsMax}.`,
@@ -360,9 +424,7 @@ export function BrandVisualLibraryClient({
     }
     startTransition(async () => {
       try {
-        const limit = parsePinLimit(
-          pinLimits[keywordDialogCollectionId] ?? String(data.pinterestMaxPins),
-        );
+        const limit = parsePinLimit(rawPinLimitFor(keywordDialogCollectionId));
         if (limit == null) {
           toast.error(
             `Limit pin harus ${data.pinterestPinsMin}–${data.pinterestPinsMax}.`,
@@ -498,99 +560,113 @@ export function BrandVisualLibraryClient({
       if (!selected) return null;
 
       const { collection, assets } = selected;
-      const pinLimit = parsePinLimit(
-        pinLimits[collection.id] ?? String(data.pinterestMaxPins),
-      );
+      const pinLimit = parsePinLimit(rawPinLimitFor(collection.id));
       const effectiveLimit =
         pinLimit ?? collection.maxPinsPerKeyword ?? data.pinterestMaxPins;
       const approxTotal = effectiveLimit * collection.keywords.length;
 
       return (
         <div className="flex flex-col gap-4">
-          <div className={cn(lab.panel, "flex flex-wrap items-start justify-between gap-3")}>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm font-semibold">{collection.name}</h3>
-                <Badge
-                  variant={collection.status === "READY" ? "default" : "secondary"}
-                >
-                  {STATUS_LABEL[collection.status] ?? collection.status}
-                </Badge>
-              </div>
-              <p className="text-muted-foreground mt-1 text-xs">
-                {collection.keywords.join(", ")}
-              </p>
-              <div className="mt-3 flex flex-wrap items-end gap-3">
-                <div className="grid gap-1">
-                  <Label htmlFor={`pin-limit-${collection.id}`} className="text-[10px]">
-                    Limit pin / keyword
-                  </Label>
-                  <Input
-                    id={`pin-limit-${collection.id}`}
-                    type="number"
-                    min={data.pinterestPinsMin}
-                    max={data.pinterestPinsMax}
-                    className="h-8 w-28 text-xs"
-                    value={
-                      pinLimits[collection.id] ?? String(effectiveLimit)
-                    }
-                    onChange={(e) =>
-                      setPinLimits((prev) => ({
-                        ...prev,
-                        [collection.id]: e.target.value,
-                      }))
-                    }
-                  />
+          <div className="bento-tile justify-start gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-pink-500/15 text-sm font-extrabold uppercase text-pink-700 dark:text-pink-300"
+                    aria-hidden
+                  >
+                    {collection.name.trim().charAt(0) || "?"}
+                  </span>
+                  <h3 className="text-sm font-bold tracking-tight">
+                    {collection.name}
+                  </h3>
+                  <CollectionStatusPill status={collection.status} />
                 </div>
-                <p className="text-muted-foreground pb-1 text-[10px]">
-                  ≈ {approxTotal} pin max ({collection.keywords.length} keyword)
-                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {collection.keywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="bg-muted/60 text-muted-foreground rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                    >
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+                {collection.errorMessage ? (
+                  <p className="text-destructive mt-2 text-xs">
+                    {collection.errorMessage}
+                  </p>
+                ) : null}
               </div>
-              {collection.errorMessage ? (
-                <p className="text-destructive mt-1 text-xs">
-                  {collection.errorMessage}
-                </p>
-              ) : null}
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => openKeywordDialog(collection.id)}
+                >
+                  <Plus className="size-3.5" />
+                  Keyword
+                </Button>
+                {assets.length === 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => handleRetryScrape(collection.id)}
+                  >
+                    <RefreshCw className="size-3.5" />
+                    Scrape
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => handleRefreshReplace(collection.id)}
+                  >
+                    <RefreshCw className="size-3.5" />
+                    Scrape ulang
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => handleDeleteCollection(collection.id)}
+                  aria-label="Hapus koleksi"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={() => openKeywordDialog(collection.id)}
-              >
-                <Plus className="size-3.5" />
-                Keyword
-              </Button>
-              {assets.length === 0 ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => handleRetryScrape(collection.id)}
+
+            <div className="border-border/60 flex flex-wrap items-end gap-3 border-t pt-3">
+              <div className="grid gap-1">
+                <Label
+                  htmlFor={`pin-limit-${collection.id}`}
+                  className="text-[10px]"
                 >
-                  <RefreshCw className="size-3.5" />
-                  Scrape
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => handleRefreshReplace(collection.id)}
-                >
-                  <RefreshCw className="size-3.5" />
-                  Scrape ulang
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={() => handleDeleteCollection(collection.id)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
+                  Limit pin / keyword
+                </Label>
+                <Input
+                  id={`pin-limit-${collection.id}`}
+                  type="number"
+                  min={data.pinterestPinsMin}
+                  max={data.pinterestPinsMax}
+                  className="h-8 w-28 text-xs"
+                  value={rawPinLimitFor(collection.id)}
+                  onChange={(e) =>
+                    setPinLimits((prev) => ({
+                      ...prev,
+                      [collection.id]: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <p className="text-muted-foreground pb-1 text-[10px]">
+                ≈ {approxTotal} pin max ({collection.keywords.length} keyword)
+              </p>
             </div>
           </div>
 
@@ -607,7 +683,7 @@ export function BrandVisualLibraryClient({
               onDelete={handleDeleteAsset}
             />
           ) : (
-            <p className="text-muted-foreground rounded-lg border border-dashed px-4 py-10 text-center text-xs">
+            <p className="border-border/70 bg-card/40 text-muted-foreground rounded-2xl border border-dashed px-4 py-10 text-center text-xs">
               Belum ada pin — scrape sedang berjalan atau gagal.
             </p>
           )}
@@ -630,19 +706,13 @@ export function BrandVisualLibraryClient({
 
       return (
         <div className="flex flex-col gap-4">
-          <div className={cn(lab.panel, "flex items-center justify-between gap-2 px-3 py-2")}>
-            <span className="text-sm font-medium">{selected.name}</span>
-            <Link
-              href={brandHubHref(
-                `/brand-hub/competitor-tracker/${selected.competitorId}`,
-                brandId,
-              )}
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium"
-            >
-              <ExternalLink className="size-3.5" />
-              Detail
-            </Link>
-          </div>
+          <EntityHeaderBar
+            name={selected.name}
+            href={brandHubHref(
+              `/brand-hub/competitor-tracker/${selected.competitorId}`,
+              brandId,
+            )}
+          />
           <MoodboardGrid
             assets={selected.assets.map((a) => ({
               id: a.id,
@@ -673,19 +743,13 @@ export function BrandVisualLibraryClient({
 
       return (
         <div className="flex flex-col gap-4">
-          <div className={cn(lab.panel, "flex items-center justify-between gap-2 px-3 py-2")}>
-            <span className="text-sm font-medium">{selected.name}</span>
-            <Link
-              href={brandHubHref(
-                `/brand-hub/competitor-tracker/products/${selected.categoryId}`,
-                brandId,
-              )}
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium"
-            >
-              <ExternalLink className="size-3.5" />
-              Detail
-            </Link>
-          </div>
+          <EntityHeaderBar
+            name={selected.name}
+            href={brandHubHref(
+              `/brand-hub/competitor-tracker/products/${selected.categoryId}`,
+              brandId,
+            )}
+          />
           <MoodboardGrid
             assets={selected.assets.map((a) => ({
               id: a.id,
@@ -714,19 +778,13 @@ export function BrandVisualLibraryClient({
 
       return (
         <div className="flex flex-col gap-4">
-          <div className={cn(lab.panel, "flex items-center justify-between gap-2 px-3 py-2")}>
-            <span className="text-sm font-medium">{selected.name}</span>
-            <Link
-              href={brandHubHref(
-                `/brand-hub/social-listening/${selected.monitorId}`,
-                brandId,
-              )}
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium"
-            >
-              <ExternalLink className="size-3.5" />
-              Detail
-            </Link>
-          </div>
+          <EntityHeaderBar
+            name={selected.name}
+            href={brandHubHref(
+              `/brand-hub/social-listening/${selected.monitorId}`,
+              brandId,
+            )}
+          />
           <MoodboardGrid
             assets={selected.assets.map((a) => ({
               id: a.id,
@@ -757,19 +815,13 @@ export function BrandVisualLibraryClient({
 
       return (
         <div className="flex flex-col gap-4">
-          <div className={cn(lab.panel, "flex items-center justify-between gap-2 px-3 py-2")}>
-            <span className="text-sm font-medium">{selected.name}</span>
-            <Link
-              href={brandHubHref(
-                `/brand-hub/ad-library/${selected.monitorId}`,
-                brandId,
-              )}
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium"
-            >
-              <ExternalLink className="size-3.5" />
-              Detail
-            </Link>
-          </div>
+          <EntityHeaderBar
+            name={selected.name}
+            href={brandHubHref(
+              `/brand-hub/ad-library/${selected.monitorId}`,
+              brandId,
+            )}
+          />
           <MoodboardGrid
             assets={selected.assets.map((a) => ({
               id: a.id,
@@ -819,8 +871,60 @@ export function BrandVisualLibraryClient({
   const showEntityPicker = source !== "manual" && entities.length > 0;
 
   return (
-    <div className={lab.entrance}>
-    <>
+    <div className={cn(lab.entrance, "flex flex-col gap-5")}>
+      {/* Papan bento ringkasan library */}
+      {data.totalAssetCount > 0 ? (
+        <div className="grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="bento-tile border-transparent bg-pink-600 shadow-md shadow-pink-600/20 dark:bg-pink-500">
+            <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+              Total asset
+            </span>
+            <span className="bento-value text-white dark:text-pink-950">
+              {data.totalAssetCount}
+            </span>
+            <span className="text-[11px] font-medium text-pink-100/90 dark:text-pink-900/80">
+              dari {activeSourceCount}/{sources.length} sumber aktif
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#fde7f1] dark:bg-pink-400/10">
+            <span className="text-[11.5px] font-semibold text-pink-800/70 dark:text-pink-200/60">
+              Pin Pinterest
+            </span>
+            <span className="bento-value text-pink-900 dark:text-pink-300">
+              {countPinterestAssets(groups)}
+            </span>
+            <span className="text-[11px] font-medium text-pink-800/60 dark:text-pink-200/50">
+              {groups.pinterest.length} koleksi moodboard
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+            <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+              Visual kompetitor
+            </span>
+            <span className="bento-value text-amber-900 dark:text-amber-300">
+              {competitorVisualCount}
+            </span>
+            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+              toko, produk & iklan
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+              Social & manual
+            </span>
+            <span className="bento-value text-violet-950 dark:text-violet-300">
+              {socialManualCount}
+            </span>
+            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/50">
+              monitor social + upload sendiri
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <VisualLibraryShell
         toolbar={
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -997,7 +1101,6 @@ export function BrandVisualLibraryClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 export function ContextQualityBanner({
@@ -21,31 +20,38 @@ export function ContextQualityBanner({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       {notice ? (
-        <p
+        <div
           role="alert"
           className={cn(
-            hub.nestedPanel,
+            "rounded-xl border px-4 py-3 text-sm leading-relaxed",
             isLow
-              ? "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100"
-              : "border-sky-500/40 bg-sky-500/10 text-sky-950 dark:text-sky-100",
-            "text-sm leading-relaxed",
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+              : "border-sky-500/30 bg-sky-500/10 text-sky-950 dark:text-sky-100",
           )}
         >
           {coveragePct != null ? (
-            <span className="mr-2 font-semibold tabular-nums">
-              Cakupan data {coveragePct}%
+            <span className="mb-1.5 flex items-center gap-2.5">
+              <span className="shrink-0 text-xs font-bold tabular-nums">
+                Cakupan data {coveragePct}%
+              </span>
+              <span className="bg-background/50 h-1.5 max-w-40 flex-1 overflow-hidden rounded-full">
+                <span
+                  className={cn(
+                    "block h-full rounded-full",
+                    isLow ? "bg-amber-500" : "bg-sky-500",
+                  )}
+                  style={{ width: `${Math.min(100, Math.max(0, coveragePct))}%` }}
+                />
+              </span>
             </span>
           ) : null}
           {notice}
-        </p>
+        </div>
       ) : null}
       {warnings.map((w) => (
         <p
           key={w}
-          className={cn(
-            hub.nestedPanel,
-            "text-muted-foreground text-xs leading-relaxed",
-          )}
+          className="bg-muted/40 text-muted-foreground rounded-xl px-4 py-2.5 text-xs leading-relaxed"
         >
           {w}
         </p>

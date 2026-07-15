@@ -18,7 +18,6 @@ import type {
   StrategySourceCatalog,
   StrategySourceKey,
 } from "@/lib/brand-research/strategy/evidence-types";
-import { lab } from "@/components/lab/lab-primitives";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -284,16 +283,23 @@ export function BrandStrategySourcePicker({
   ).length;
 
   return (
-    <section className={cn(lab.panel, className)}>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h3 className={lab.sectionTitle}>Sumber data untuk AI</h3>
-          <p className={lab.sectionDesc}>
+    <section className={cn("bento-tile justify-start gap-4", className)}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <span className="bento-label">Sumber data untuk AI</span>
+          <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
             Pilih modul dan item spesifik yang dibaca AI saat generate. Minimum: Review
             atau Social + Visual (≥5 asset), atau Competitor.
           </p>
         </div>
-        <span className="bg-muted text-muted-foreground inline-flex h-8 shrink-0 items-center rounded-lg px-3 text-xs font-medium tabular-nums">
+        <span
+          className={cn(
+            "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold tabular-nums",
+            enabledTotal > 0
+              ? "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-[var(--lab-accent,var(--primary))]"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
           {enabledTotal} modul aktif
         </span>
       </div>
@@ -301,7 +307,7 @@ export function BrandStrategySourcePicker({
       <div
         role="tablist"
         aria-label="Kategori sumber"
-        className="mb-4 flex flex-wrap gap-1 rounded-xl border border-border/50 bg-muted/20 p-1"
+        className="flex flex-wrap gap-1 rounded-xl border border-border/50 bg-muted/20 p-1"
       >
         {(Object.keys(TAB_META) as TabKey[]).map((key) => {
           const meta = TAB_META[key];
@@ -341,7 +347,7 @@ export function BrandStrategySourcePicker({
         })}
       </div>
 
-      <p className="text-muted-foreground mb-3 text-xs">{TAB_META[tab].hint}</p>
+      <p className="text-muted-foreground text-xs">{TAB_META[tab].hint}</p>
 
       <div className="grid gap-3">
         {TAB_SOURCES[tab].map((key) => renderSource(key))}

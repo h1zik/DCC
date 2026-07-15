@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import { parseRiskFactors } from "@/lib/research/concept-lab/types";
 import {
   ConceptDetailClient,
@@ -75,9 +74,6 @@ export default async function ConceptDetailPage({
     aiMeta: parseResearchAiMetaClient(concept.aiMeta),
   };
 
-  return (
-    <LabPageShell>
-      <ConceptDetailClient data={data} />
-    </LabPageShell>
-  );
+  // ConceptDetailClient merender ResearchHubDetailPage (sudah termasuk shell).
+  return <ConceptDetailClient data={data} />;
 }

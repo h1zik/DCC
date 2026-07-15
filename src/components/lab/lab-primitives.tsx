@@ -18,15 +18,17 @@ export const lab = {
   section: "flex flex-col gap-4",
   sectionTitle: "text-base font-semibold tracking-tight text-foreground",
   sectionDesc: "text-muted-foreground text-sm leading-relaxed",
-  card: "relative overflow-hidden rounded-2xl border border-border bg-card/70 shadow-[0_8px_30px_-12px_rgb(0_0_0/0.35),inset_0_1px_0_var(--lab-highlight)] backdrop-blur-xl",
+  // Prefiks `lab-*` di bawah = marker class yang di-reskin lab-bento.css
+  // (skin "Bento Studio" global Lab) — tidak punya style sendiri di luar itu.
+  card: "lab-card relative overflow-hidden rounded-2xl border border-border bg-card/70 shadow-[0_8px_30px_-12px_rgb(0_0_0/0.35),inset_0_1px_0_var(--lab-highlight)] backdrop-blur-xl",
   cardHover:
     "transition-[transform,box-shadow,border-color] duration-300 ease-out motion-reduce:transition-none hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_35%,var(--border))] hover:shadow-[0_20px_50px_-16px_rgb(0_0_0/0.5),0_0_60px_-24px_var(--lab-accent,var(--primary))] motion-reduce:hover:translate-y-0",
   cardBody: "p-5 sm:p-6",
   panel:
-    "rounded-2xl border border-border bg-card/60 p-5 shadow-[inset_0_1px_0_var(--lab-highlight)] backdrop-blur-xl",
-  nestedPanel: "rounded-xl border border-border/60 bg-muted/20 p-4",
+    "lab-panel rounded-2xl border border-border bg-card/60 p-5 shadow-[inset_0_1px_0_var(--lab-highlight)] backdrop-blur-xl",
+  nestedPanel: "lab-nested-panel rounded-xl border border-border/60 bg-muted/20 p-4",
   label:
-    "text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--lab-accent,var(--primary))]",
+    "lab-label text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--lab-accent,var(--primary))]",
   stickyToolbar:
     "border-border/70 bg-background/70 sticky top-14 z-20 -mt-2 border-b backdrop-blur-xl",
   entrance:
@@ -222,7 +224,7 @@ export function LabEmptyState({
   return (
     <div
       className={cn(
-        "border-border/70 relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-2xl border border-dashed bg-card/30 px-8 py-14 text-center backdrop-blur-sm",
+        "lab-empty border-border/70 relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-2xl border border-dashed bg-card/30 px-8 py-14 text-center backdrop-blur-sm",
         "animate-in fade-in duration-500 motion-reduce:animate-none",
         className,
       )}
@@ -271,7 +273,7 @@ export function LabStatChip({
   return (
     <div
       className={cn(
-        "border-border/60 inline-flex flex-col gap-0.5 rounded-xl border px-3 py-2 backdrop-blur-sm",
+        "lab-stat-chip border-border/60 inline-flex flex-col gap-0.5 rounded-xl border px-3 py-2 backdrop-blur-sm",
         tones[tone],
       )}
     >
@@ -298,7 +300,7 @@ export function LabToolbar({
       className={cn(
         sticky
           ? lab.stickyToolbar
-          : "border-border rounded-2xl border bg-card/50 backdrop-blur-xl",
+          : "lab-toolbar border-border rounded-2xl border bg-card/50 backdrop-blur-xl",
         "flex flex-wrap items-center gap-2 p-2",
         className,
       )}

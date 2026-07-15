@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { KeywordIntelStatus, ResearchMarketplace } from "@prisma/client";
-import { Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createKeywordIntelQuery,
@@ -18,14 +18,6 @@ import {
 } from "@/components/research-hub/keyword-source-config-picker";
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -36,12 +28,7 @@ import {
 import { DEFAULT_CATEGORY_PRESETS } from "@/lib/research/keyword-intel/keyword-source-config-types";
 import type { KeywordSourceConfig } from "@/lib/research/keyword-intel/keyword-source-config-types";
 import type { KeywordSignalStats } from "@/lib/research/keyword-intel/keyword-signal-types";
-import {
-  lab,
-  LabEmptyState,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab, LabEmptyState } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 
 export type KeywordQueryRow = {
@@ -58,28 +45,67 @@ export type KeywordQueryRow = {
   errorMessage: string | null;
 };
 
-function statusChipTone(
-  status: KeywordIntelStatus,
-): "neutral" | "success" | "warning" | "accent" {
-  switch (status) {
-    case "READY":
-      return "success";
-    case "FAILED":
-      return "warning";
-    case "COLLECTING":
-    case "ANALYZING":
-    case "PENDING":
-      return "warning";
-    default:
-      return "neutral";
-  }
-}
-
 function isInProgress(status: KeywordIntelStatus) {
   return (
     status === "COLLECTING" ||
     status === "ANALYZING" ||
     status === "PENDING"
+  );
+}
+
+/** Pill status bergaya bento: emerald siap, amber berjalan, rose gagal. */
+function StatusPill({ status }: { status: KeywordIntelStatus }) {
+  const tone =
+    status === "READY"
+      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+      : status === "FAILED"
+        ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+        : isInProgress(status)
+          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+          : "bg-muted text-muted-foreground";
+  const dot =
+    status === "READY"
+      ? "bg-emerald-500"
+      : status === "FAILED"
+        ? "bg-rose-500"
+        : isInProgress(status)
+          ? "bg-amber-500"
+          : "bg-muted-foreground/50";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        tone,
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          dot,
+          isInProgress(status) && "animate-pulse",
+        )}
+      />
+      {KEYWORD_INTEL_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function CardStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+        {label}
+      </p>
+      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -92,7 +118,7 @@ export function KeywordIntelClient({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(queries.length === 0);
   const [category, setCategory] = useState("");
   const [seedKeyword, setSeedKeyword] = useState("");
   const [sourceConfig, setSourceConfig] =
@@ -100,6 +126,7 @@ export function KeywordIntelClient({
 
   const hasInProgress = queries.some((q) => isInProgress(q.status));
   const readyCount = queries.filter((q) => q.status === "READY").length;
+  const runningCount = queries.filter((q) => isInProgress(q.status)).length;
   const totalKeywords = queries.reduce((sum, q) => sum + q.keywordCount, 0);
   const totalGaps = queries.reduce((sum, q) => sum + q.gapCount, 0);
 
@@ -124,7 +151,7 @@ export function KeywordIntelClient({
           sourceConfig: sourceConfig as Record<string, unknown>,
         });
         toast.success("Analisis keyword dimulai.");
-        setDialogOpen(false);
+        setFormOpen(false);
         setCategory("");
         setSeedKeyword("");
         router.push(`/research-hub/keyword-intel/${result.id}`);
@@ -161,89 +188,60 @@ export function KeywordIntelClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          <LabStatChip
-            label="Analisis"
-            value={queries.length.toLocaleString("id-ID")}
-            tone="accent"
-          />
-          <LabStatChip
-            label="Siap"
-            value={readyCount.toLocaleString("id-ID")}
-            tone="success"
-          />
-          <LabStatChip
-            label="Total keyword"
-            value={totalKeywords.toLocaleString("id-ID")}
-          />
-          <LabStatChip
-            label="Gap"
-            value={totalGaps.toLocaleString("id-ID")}
-            tone={totalGaps > 0 ? "warning" : "neutral"}
-          />
-        </div>
+      {/* Strip ringkasan bento */}
+      {queries.length > 0 ? (
+        <div
+          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
+        >
+          <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
+            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+              Total keyword
+            </span>
+            <span className="bento-value text-white dark:text-violet-950">
+              {totalKeywords.toLocaleString("id-ID")}
+            </span>
+            <span className="text-[11px] font-medium text-violet-100/90 dark:text-violet-900/80">
+              dari {queries.length} analisis kategori
+            </span>
+          </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger
-            render={
-              <Button size="sm">
-                <Plus className="mr-1.5 size-3.5" aria-hidden />
-                Analisis Baru
-              </Button>
-            }
-          />
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Analisis Keyword Baru</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-3 py-2">
-              <div className="flex flex-wrap gap-1.5">
-                {DEFAULT_CATEGORY_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    className="bg-muted hover:bg-muted/80 rounded-full px-2.5 py-0.5 text-[10px] transition-colors duration-150 motion-reduce:transition-none"
-                    onClick={() => setCategory(preset)}
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="category">Kategori produk</Label>
-                <Input
-                  id="category"
-                  placeholder="body serum brightening"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="seed">Seed keyword (opsional)</Label>
-                <Input
-                  id="seed"
-                  placeholder="serum pemutih badan"
-                  value={seedKeyword}
-                  onChange={(e) => setSeedKeyword(e.target.value)}
-                />
-              </div>
-              <KeywordSourceConfigPicker
-                config={sourceConfig}
-                onChange={setSourceConfig}
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={handleCreate}
-                disabled={pending || !category.trim()}
-              >
-                {pending ? "Memproses…" : "Mulai Analisis"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+          <div className="bento-tile">
+            <span className="bento-label">Analisis</span>
+            <span className="bento-value">
+              {queries.length.toLocaleString("id-ID")}
+            </span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              {runningCount > 0
+                ? `${runningCount} sedang berjalan`
+                : "semua selesai diproses"}
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+              Siap dianalisis
+            </span>
+            <span className="bento-value text-violet-900 dark:text-violet-300">
+              {readyCount.toLocaleString("id-ID")}
+            </span>
+            <span className="text-[11px] font-medium text-violet-700/70 dark:text-violet-300/70">
+              analisis berstatus siap
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+            <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+              Keyword gap
+            </span>
+            <span className="bento-value text-amber-900 dark:text-amber-300">
+              {totalGaps.toLocaleString("id-ID")}
+            </span>
+            <span className="text-[11px] font-medium text-amber-800/70 dark:text-amber-300/70">
+              peluang belum tergarap
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {hasInProgress ? (
         <div className={lab.entrance}>
@@ -258,86 +256,187 @@ export function KeywordIntelClient({
         </div>
       ) : null}
 
-      <LabSection
-        title="Analisis Keyword"
-        description="Peluang, gap, dan copywriting dari marketplace & sinyal internal."
-      >
-        {queries.length === 0 ? (
+      {/* Daftar analisis + form collapsible */}
+      <section className={cn(lab.section, lab.entrance)}>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className={lab.sectionTitle}>Analisis keyword</h2>
+            <p className={lab.sectionDesc}>
+              {queries.length === 0
+                ? "Mulai dengan kategori produk pertama Anda di bawah."
+                : `${queries.length} analisis · peluang, gap, dan copywriting dari marketplace & sinyal internal.`}
+            </p>
+          </div>
+          {queries.length > 0 ? (
+            <Button
+              variant={formOpen ? "outline" : "default"}
+              onClick={() => setFormOpen((v) => !v)}
+            >
+              {formOpen ? <X /> : <Plus />}
+              {formOpen ? "Tutup" : "Analisis baru"}
+            </Button>
+          ) : null}
+        </div>
+
+        {formOpen ? (
+          <div
+            className={cn(
+              lab.panel,
+              "grid gap-4",
+              "animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none",
+            )}
+          >
+            <div>
+              <p className="text-foreground font-bold tracking-tight">
+                Analisis keyword baru
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Sistem mengumpulkan volume, gap, dan rekomendasi naming dari
+                kategori yang Anda teliti.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {DEFAULT_CATEGORY_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="bg-muted hover:bg-muted/80 rounded-full px-3 py-1 text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none"
+                  onClick={() => setCategory(preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="category">Kategori produk</Label>
+                <Input
+                  id="category"
+                  placeholder="body serum brightening"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  disabled={pending}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="seed">Seed keyword (opsional)</Label>
+                <Input
+                  id="seed"
+                  placeholder="serum pemutih badan"
+                  value={seedKeyword}
+                  onChange={(e) => setSeedKeyword(e.target.value)}
+                  disabled={pending}
+                />
+              </div>
+            </div>
+            <KeywordSourceConfigPicker
+              config={sourceConfig}
+              onChange={setSourceConfig}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-muted-foreground text-xs">
+                Pipeline sinyal & AI berjalan di background setelah dimulai.
+              </p>
+              <Button
+                onClick={handleCreate}
+                disabled={pending || !category.trim()}
+              >
+                {pending ? <RefreshCw className="animate-spin" /> : <Search />}
+                {pending ? "Memproses…" : "Mulai analisis"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {queries.length === 0 && !formOpen ? (
           <LabEmptyState
             icon={Search}
             title="Belum ada analisis keyword"
             description="Mulai dengan kategori produk yang ingin diteliti — sistem akan mengumpulkan volume, gap, dan rekomendasi naming."
             action={
-              <Button size="sm" onClick={() => setDialogOpen(true)}>
+              <Button size="sm" onClick={() => setFormOpen(true)}>
                 <Plus className="size-3.5" aria-hidden />
                 Analisis Baru
               </Button>
             }
           />
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {queries.map((q, index) => (
+        ) : queries.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {queries.map((q) => (
               <div
                 key={q.id}
-                className={cn(lab.panel, lab.cardHover, lab.entrance)}
-                style={
-                  index > 0 && index < 8
-                    ? { animationDelay: `${index * 40}ms` }
-                    : undefined
-                }
+                className={cn(lab.card, "group flex flex-col p-0")}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/research-hub/keyword-intel/${q.id}`}
-                      className="hover:text-primary text-base font-semibold transition-colors duration-150 motion-reduce:transition-none"
-                    >
-                      {q.category}
-                    </Link>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {q.seedKeyword ? `Seed: ${q.seedKeyword} · ` : ""}
-                      {q.marketplace
-                        ? MARKETPLACE_LABELS[q.marketplace]
-                        : "Semua marketplace"}
-                    </p>
+                <Link
+                  href={`/research-hub/keyword-intel/${q.id}`}
+                  className="flex flex-1 flex-col gap-4 p-5 pb-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl"
+                        aria-hidden
+                      >
+                        <Search className="size-4.5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-foreground truncate font-bold tracking-tight">
+                          {q.category}
+                        </p>
+                        <p className="text-muted-foreground truncate text-xs">
+                          {q.seedKeyword ? `Seed: ${q.seedKeyword} · ` : ""}
+                          {q.marketplace
+                            ? MARKETPLACE_LABELS[q.marketplace]
+                            : "Semua marketplace"}
+                        </p>
+                      </div>
+                    </div>
+                    <StatusPill status={q.status} />
                   </div>
-                  <LabStatChip
-                    label="Status"
-                    value={KEYWORD_INTEL_STATUS_LABELS[q.status]}
-                    tone={statusChipTone(q.status)}
-                  />
-                </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <LabStatChip
-                    label="Keyword"
-                    value={
-                      q.keywordCount > 0
-                        ? q.keywordCount.toLocaleString("id-ID")
-                        : "—"
-                    }
-                    tone="accent"
-                  />
-                  {q.gapCount > 0 ? (
-                    <LabStatChip
+                  <div className="grid grid-cols-4 gap-2">
+                    <CardStat
+                      label="Keyword"
+                      value={
+                        q.keywordCount > 0
+                          ? q.keywordCount.toLocaleString("id-ID")
+                          : "—"
+                      }
+                    />
+                    <CardStat
                       label="Gap"
-                      value={q.gapCount.toLocaleString("id-ID")}
-                      tone="warning"
+                      value={
+                        q.gapCount > 0 ? (
+                          <span className="text-amber-700 dark:text-amber-300">
+                            {q.gapCount.toLocaleString("id-ID")}
+                          </span>
+                        ) : (
+                          "—"
+                        )
+                      }
                     />
-                  ) : null}
-                  {q.signalStats ? (
-                    <LabStatChip
+                    <CardStat
                       label="Sinyal"
-                      value={q.signalStats.total.toLocaleString("id-ID")}
+                      value={
+                        q.signalStats
+                          ? q.signalStats.total.toLocaleString("id-ID")
+                          : "—"
+                      }
                     />
-                  ) : null}
-                  <LabStatChip
-                    label="Dibuat"
-                    value={formatRelativeTime(new Date(q.createdAt))}
-                  />
-                </div>
+                    <CardStat
+                      label="Dibuat"
+                      value={formatRelativeTime(new Date(q.createdAt))}
+                    />
+                  </div>
 
-                <div className="mt-3 flex gap-1 border-t border-border/40 pt-3">
+                  {q.status === "FAILED" && q.errorMessage ? (
+                    <p className="text-rose-600 dark:text-rose-400 line-clamp-2 text-xs">
+                      {q.errorMessage}
+                    </p>
+                  ) : null}
+                </Link>
+
+                <div className="border-border/60 flex items-center justify-end gap-1 border-t px-3 py-2">
                   <Button
                     size="sm"
                     variant="ghost"
@@ -361,8 +460,8 @@ export function KeywordIntelClient({
               </div>
             ))}
           </div>
-        )}
-      </LabSection>
+        ) : null}
+      </section>
     </div>
   );
 }

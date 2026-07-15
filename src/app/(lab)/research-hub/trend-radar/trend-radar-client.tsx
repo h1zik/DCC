@@ -6,6 +6,7 @@ import { useEffect, useState, useTransition } from "react";
 import { TrendPhase, TrendRadarStatus } from "@prisma/client";
 import {
   Archive,
+  ArrowUpRight,
   ExternalLink,
   List,
   Pencil,
@@ -50,12 +51,7 @@ import {
 import type { TrendDigestMode } from "@prisma/client";
 import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
 import type { TrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config-types";
-import {
-  lab,
-  LabEmptyState,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 
 export type TrendRadarPageData = {
@@ -110,21 +106,64 @@ export type TrendRadarPageData = {
 
 type DialogMode = "create" | "edit" | "global" | null;
 
-function statusChipTone(
-  status: TrendRadarStatus | null | undefined,
-): "neutral" | "success" | "warning" | "primary" {
-  switch (status) {
-    case "READY":
-      return "success";
-    case "FAILED":
-      return "warning";
-    case "COLLECTING":
-    case "ANALYZING":
-    case "PENDING":
-      return "warning";
-    default:
-      return "neutral";
-  }
+function isRunningStatus(status: TrendRadarStatus | null | undefined) {
+  return (
+    status === "COLLECTING" || status === "ANALYZING" || status === "PENDING"
+  );
+}
+
+/** Pill status digest gaya bento (emerald siap / amber berjalan / rose gagal). */
+function DigestStatusPill({
+  status,
+}: {
+  status: TrendRadarStatus | null | undefined;
+}) {
+  const tone =
+    status === "READY"
+      ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+      : status === "FAILED"
+        ? "bg-rose-500/12 text-rose-700 dark:text-rose-300"
+        : isRunningStatus(status)
+          ? "bg-amber-500/12 text-amber-700 dark:text-amber-300"
+          : "bg-muted text-muted-foreground";
+  const dot =
+    status === "READY"
+      ? "bg-emerald-500"
+      : status === "FAILED"
+        ? "bg-rose-500"
+        : isRunningStatus(status)
+          ? "bg-amber-500"
+          : "bg-muted-foreground/50";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        tone,
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", dot)} />
+      {status ? TREND_RADAR_STATUS_LABELS[status] : "Belum ada digest"}
+    </span>
+  );
+}
+
+function CardStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+        {label}
+      </p>
+      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
+        {value}
+      </p>
+    </div>
+  );
 }
 
 const tabContentClass =
@@ -177,6 +216,19 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
     const id = window.setInterval(() => router.refresh(), 15_000);
     return () => window.clearInterval(id);
   }, [hasInProgress, router]);
+
+  /* ------------------------- Agregasi strip ringkasan ------------------------- */
+  const trendCount = data.latestGlobal?.items.length ?? 0;
+  const totalSignals = data.latestGlobal?.signalStats?.total ?? null;
+  const readyDigests = data.digests.filter((d) => d.status === "READY").length;
+  const runningDigests = data.digests.filter((d) =>
+    isRunningStatus(d.status),
+  ).length;
+  const failedDigests = data.digests.filter(
+    (d) => d.status === "FAILED",
+  ).length;
+  const activeWatchlists = data.watchlists.filter((w) => w.isActive).length;
+  const hasAnyData = data.latestGlobal != null || data.digests.length > 0;
 
   function openCreateDialog() {
     setDialogMode("create");
@@ -306,34 +358,78 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap gap-2">
-        <LabStatChip
-          label="Digest global"
-          value={
-            globalJobStatus
-              ? TREND_RADAR_STATUS_LABELS[globalJobStatus]
-              : data.latestGlobal
-                ? TREND_RADAR_STATUS_LABELS[data.latestGlobal.status]
-                : "Belum ada"
-          }
-          tone={statusChipTone(globalJobStatus ?? data.latestGlobal?.status)}
-        />
-        {data.latestGlobal?.signalStats ? (
-          <LabStatChip
-            label="Sinyal"
-            value={data.latestGlobal.signalStats.total.toLocaleString("id-ID")}
-            tone="accent"
-          />
-        ) : null}
-        <LabStatChip
-          label="Watchlist"
-          value={data.watchlists.length.toLocaleString("id-ID")}
-        />
-        <LabStatChip
-          label="Arsip"
-          value={data.digests.length.toLocaleString("id-ID")}
-        />
-      </div>
+      {/* Strip ringkasan bento */}
+      {hasAnyData ? (
+        <div
+          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
+        >
+          {/* Hero violet */}
+          <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
+            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+              Tren terdeteksi
+            </span>
+            <span className="bento-value text-white dark:text-violet-950">
+              {trendCount}
+            </span>
+            <span className="text-[11px] font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+              {totalSignals != null
+                ? `dari ${totalSignals.toLocaleString("id-ID")} sinyal digest global`
+                : data.latestGlobal?.generatedAt
+                  ? `digest global ${formatRelativeTime(new Date(data.latestGlobal.generatedAt))}`
+                  : "jalankan digest global untuk mulai"}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Digest siap</span>
+            <span className="bento-value">{readyDigests}</span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              dari {data.digests.length} digest di arsip
+            </span>
+          </div>
+
+          {/* Berjalan / gagal — amber atau rose pastel */}
+          {failedDigests > 0 && runningDigests === 0 ? (
+            <div className="bento-tile border-transparent bg-[#fbdcd7] dark:bg-rose-400/10">
+              <span className="text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60">
+                Digest gagal
+              </span>
+              <span className="bento-value text-rose-900 dark:text-rose-300">
+                {failedDigests}
+              </span>
+              <span className="text-[11px] font-medium text-rose-800/60 dark:text-rose-200/50">
+                cek arsip lalu generate ulang
+              </span>
+            </div>
+          ) : (
+            <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+              <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+                Sedang berjalan
+              </span>
+              <span className="bento-value text-amber-900 dark:text-amber-300">
+                {runningDigests}
+              </span>
+              <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+                {failedDigests > 0
+                  ? `${failedDigests} gagal di arsip`
+                  : "digest dalam proses"}
+              </span>
+            </div>
+          )}
+
+          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+              Watchlist
+            </span>
+            <span className="bento-value text-violet-900 dark:text-violet-300">
+              {data.watchlists.length}
+            </span>
+            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/50">
+              {activeWatchlists} aktif dipantau
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {hasInProgress ? (
         <TrendDigestProgressStrip subtitle={progressSubtitle} />
@@ -358,6 +454,11 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
             <TabsTrigger value="archive" className="px-1">
               <Archive className="size-3.5" aria-hidden />
               Arsip
+              {data.digests.length > 0 ? (
+                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                  {data.digests.length}
+                </span>
+              ) : null}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -377,7 +478,9 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
                     size="sm"
                     variant="outline"
                     render={
-                      <Link href={`/research-hub/trend-radar/${data.latestGlobal.id}`} />
+                      <Link
+                        href={`/research-hub/trend-radar/${data.latestGlobal.id}`}
+                      />
                     }
                   >
                     <ExternalLink className="size-3.5" aria-hidden />
@@ -403,11 +506,16 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
                   dataNotice={data.latestGlobal.dataNotice}
                 />
                 {data.latestGlobal.signalStats ? (
-                  <TrendSignalStatsChips stats={data.latestGlobal.signalStats} />
+                  <TrendSignalStatsChips
+                    stats={data.latestGlobal.signalStats}
+                  />
                 ) : null}
                 {data.latestGlobal.narrative ? (
-                  <div className={cn(lab.panel, "text-muted-foreground text-sm leading-relaxed")}>
-                    {data.latestGlobal.narrative}
+                  <div className="bento-tile justify-start gap-3">
+                    <span className="bento-label">Narasi digest</span>
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      {data.latestGlobal.narrative}
+                    </p>
                   </div>
                 ) : null}
                 <TrendPhaseBoard
@@ -421,7 +529,11 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
                 title="Belum ada digest global"
                 description="Klik Refresh Global untuk generate digest mingguan pertama."
                 action={
-                  <Button size="sm" onClick={openGlobalDialog} disabled={pending}>
+                  <Button
+                    size="sm"
+                    onClick={openGlobalDialog}
+                    disabled={pending}
+                  >
                     <RefreshCw className="size-3.5" aria-hidden />
                     Refresh Global
                   </Button>
@@ -449,89 +561,127 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
                 title="Belum ada watchlist"
                 description="Tambahkan kategori atau bahan yang ingin dipantau secara khusus."
                 action={
-                  <Button size="sm" variant="outline" onClick={openCreateDialog}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={openCreateDialog}
+                  >
                     <Plus className="size-3.5" aria-hidden />
                     Tambah Watchlist
                   </Button>
                 }
               />
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {data.watchlists.map((w) => (
-                  <div
-                    key={w.id}
-                    className={cn(lab.panel, lab.cardHover, "flex flex-col gap-3")}
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium">{w.name}</p>
-                      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                        {w.keywords.join(", ")}
-                      </p>
-                    </div>
-                    {w.latestDigest ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <LabStatChip
-                          label="Digest"
-                          value={TREND_RADAR_STATUS_LABELS[w.latestDigest.status]}
-                          tone={statusChipTone(w.latestDigest.status)}
-                        />
-                        {w.latestDigest.generatedAt ? (
-                          <span className="text-muted-foreground text-[10px]">
-                            {formatRelativeTime(new Date(w.latestDigest.generatedAt))}
-                          </span>
-                        ) : null}
-                        {w.latestDigest.status === "READY" ? (
-                          <Button
-                            size="sm"
-                            variant="link"
-                            className="h-auto p-0 text-xs"
-                            render={
-                              <Link
-                                href={`/research-hub/trend-radar/${w.latestDigest.id}`}
-                              />
-                            }
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {data.watchlists.map((w) => {
+                  const digestReady = w.latestDigest?.status === "READY";
+                  const mainContent = (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span
+                            className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold uppercase"
+                            aria-hidden
                           >
-                            Buka digest
-                          </Button>
-                        ) : null}
+                            {w.name.trim().charAt(0) || "?"}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-foreground flex items-center gap-1 truncate font-bold tracking-tight">
+                              <span className="truncate">{w.name}</span>
+                              {digestReady ? (
+                                <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
+                              ) : null}
+                            </p>
+                            <p className="text-muted-foreground truncate text-xs">
+                              {w.keywords.join(", ")}
+                            </p>
+                          </div>
+                        </div>
+                        <DigestStatusPill status={w.latestDigest?.status} />
                       </div>
-                    ) : (
-                      <p className="text-muted-foreground text-xs">
-                        Belum ada digest — klik refresh untuk generate.
-                      </p>
-                    )}
-                    <div className="flex gap-1 border-t border-border/40 pt-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRefreshWatchlist(w.id)}
-                        disabled={pending}
-                      >
-                        <RefreshCw className="size-3.5" aria-hidden />
-                        Generate
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(w)}
-                        disabled={pending}
-                      >
-                        <Pencil className="size-3.5" aria-hidden />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteWatchlist(w.id)}
-                        disabled={pending}
-                        className="text-rose-600 hover:text-rose-700 dark:text-rose-400"
-                      >
-                        <Trash2 className="size-3.5" aria-hidden />
-                        Hapus
-                      </Button>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <CardStat label="Keyword" value={w.keywords.length} />
+                        <CardStat
+                          label="Digest"
+                          value={
+                            w.latestDigest
+                              ? TREND_RADAR_STATUS_LABELS[
+                                  w.latestDigest.status
+                                ]
+                              : "—"
+                          }
+                        />
+                        <CardStat
+                          label="Update"
+                          value={
+                            w.latestDigest?.generatedAt
+                              ? formatRelativeTime(
+                                  new Date(w.latestDigest.generatedAt),
+                                )
+                              : "—"
+                          }
+                        />
+                      </div>
+
+                      {!w.latestDigest ? (
+                        <p className="text-muted-foreground text-xs">
+                          Belum ada digest — klik Generate untuk memulai.
+                        </p>
+                      ) : null}
+                    </>
+                  );
+
+                  return (
+                    <div
+                      key={w.id}
+                      className={cn(lab.card, "group flex flex-col p-0")}
+                    >
+                      {digestReady && w.latestDigest ? (
+                        <Link
+                          href={`/research-hub/trend-radar/${w.latestDigest.id}`}
+                          className="flex flex-1 flex-col gap-4 p-5 pb-4"
+                        >
+                          {mainContent}
+                        </Link>
+                      ) : (
+                        <div className="flex flex-1 flex-col gap-4 p-5 pb-4">
+                          {mainContent}
+                        </div>
+                      )}
+
+                      <div className="border-border/60 flex items-center justify-end gap-1 border-t px-3 py-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRefreshWatchlist(w.id)}
+                          disabled={pending}
+                        >
+                          <RefreshCw className="size-3.5" aria-hidden />
+                          Generate
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditDialog(w)}
+                          disabled={pending}
+                        >
+                          <Pencil className="size-3.5" aria-hidden />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleDeleteWatchlist(w.id)}
+                          disabled={pending}
+                          aria-label="Hapus watchlist"
+                        >
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </LabSection>
@@ -539,7 +689,7 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
 
         <TabsContent value="archive" className={tabContentClass}>
           <LabSection title="Trend Archive" delayMs={160}>
-            <div className={lab.panel}>
+            <div className={cn(lab.card, "p-0")}>
               <TrendArchiveTable digests={data.digests} />
             </div>
           </LabSection>
@@ -597,7 +747,9 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
             </Button>
             <Button
               onClick={
-                dialogMode === "global" ? handleRefreshGlobal : handleSaveWatchlist
+                dialogMode === "global"
+                  ? handleRefreshGlobal
+                  : handleSaveWatchlist
               }
               disabled={pending}
             >

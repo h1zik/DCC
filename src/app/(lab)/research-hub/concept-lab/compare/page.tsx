@@ -1,5 +1,6 @@
+import { GitCompare } from "lucide-react";
 import { compareConcepts } from "@/actions/research-concept-lab";
-import { LabPageShell } from "@/components/lab/lab-primitives";
+import { LabEmptyState, LabPageShell } from "@/components/lab/lab-primitives";
 import {
   ConceptCompareClient,
   type ComparePageData,
@@ -17,9 +18,11 @@ export default async function ConceptComparePage({
   if (conceptIds.length < 2) {
     return (
       <LabPageShell>
-        <div className="text-muted-foreground py-10 text-center text-sm">
-          Pilih minimal 2 konsep dari halaman detail untuk dibandingkan.
-        </div>
+        <LabEmptyState
+          icon={GitCompare}
+          title="Belum ada konsep untuk dibandingkan"
+          description="Pilih minimal 2 konsep dari halaman detail Concept Lab untuk melihat papan perbandingan head-to-head."
+        />
       </LabPageShell>
     );
   }
@@ -32,9 +35,6 @@ export default async function ConceptComparePage({
     aiMeta: parseResearchAiMetaClient(result.aiMeta),
   };
 
-  return (
-    <LabPageShell>
-      <ConceptCompareClient data={data} />
-    </LabPageShell>
-  );
+  // ConceptCompareClient merender ResearchHubDetailPage (sudah termasuk shell).
+  return <ConceptCompareClient data={data} />;
 }

@@ -17,10 +17,8 @@ import {
   healthLevelForModule,
 } from "@/components/brand-hub/brand-module-health";
 import {
-  LabPageHeader,
   LabPageShell,
   LabSection,
-  LabStatChip,
   lab,
 } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
@@ -129,13 +127,6 @@ export function BrandHubCommandCenter({
   const studio = modules.filter((m) => m.zone === "studio");
   const intelligence = modules.filter((m) => m.zone === "intelligence");
 
-  const statusTone =
-    data.activeAlerts > 0
-      ? "warning"
-      : data.pendingJobs > 0
-        ? "accent"
-        : "success";
-
   const statusValue =
     data.activeAlerts > 0
       ? `${data.activeAlerts} alert`
@@ -144,44 +135,96 @@ export function BrandHubCommandCenter({
         : "Stabil";
 
   return (
-    <LabPageShell>
-      <LabPageHeader
-        eyebrow="Command Center"
-        title="Brand & Creative Hub"
-        description="Market Analyst mengisi Research Hub → Brand Manager menyusun strategi & arahan kreatif dari pool data organisasi."
-        footer={
-          <div className="flex flex-wrap items-center gap-2">
-            <LabStatChip label="Status" value={statusValue} tone={statusTone} />
-            <LabStatChip
-              label="Strategi siap"
-              value={`${data.strategyReadyCount} / ${data.strategyCount}`}
-              tone="accent"
-            />
-            <LabStatChip
-              label="Visual assets"
-              value={data.visualAssetCount}
-              tone="accent"
-            />
-            <LabStatChip
-              label="Research pool"
-              value={`${data.reviewSourceReadyCount} review · ${data.trendDigestCount} trend`}
-              tone="accent"
-            />
-            {data.activeAlerts > 0 ? (
-              <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-300">
-                <Bell className="size-3.5" />
-                {data.activeAlerts} alert aktif
-              </span>
-            ) : null}
+    <LabPageShell className="gap-6">
+      {/* Header bento: display besar, tanpa chip/gradient. */}
+      <header className={cn(lab.entrance, "space-y-1.5")}>
+        <h1 className="text-foreground text-3xl font-extrabold tracking-tight sm:text-4xl">
+          Brand &amp; Creative <span className="text-primary">Hub</span>
+        </h1>
+        <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed sm:text-[15px]">
+          Market Analyst mengisi Research Hub → Brand Manager menyusun strategi
+          &amp; arahan kreatif dari pool data organisasi.
+        </p>
+      </header>
+
+      {/* Papan bento metrik */}
+      <div
+        className={cn(
+          lab.entrance,
+          "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 md:grid-cols-4",
+        )}
+      >
+        {/* Status — tile hero pink, dua baris */}
+        <div className="bento-tile row-span-2 border-transparent bg-pink-600 shadow-md shadow-pink-600/20 dark:bg-pink-500">
+          <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+            Status brand hub
+          </span>
+          <span className="bento-value text-4xl text-white dark:text-pink-950">
+            {statusValue}
+          </span>
+          <span className="text-xs font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+            {data.activeAlerts > 0
+              ? "ada alert aktif — tinjau modul intelligence"
+              : data.pendingJobs > 0
+                ? "job kreatif sedang berjalan di background"
+                : "strategi & aset kreatif dalam kondisi sinkron"}
+          </span>
+        </div>
+
+        <div className="bento-tile">
+          <span className="bento-label">Strategi siap</span>
+          <span className="bento-value text-2xl">
+            {data.strategyReadyCount}
+            <span className="text-muted-foreground/60 text-lg font-bold">
+              {" "}
+              / {data.strategyCount}
+            </span>
+          </span>
+        </div>
+
+        <div className="bento-tile">
+          <span className="bento-label">Visual assets</span>
+          <span className="bento-value text-2xl">{data.visualAssetCount}</span>
+        </div>
+
+        <div className="bento-tile col-span-2">
+          <span className="bento-label">Research pool</span>
+          <span className="bento-value text-2xl">
+            {data.reviewSourceReadyCount}
+            <span className="text-muted-foreground text-sm font-semibold">
+              {" "}
+              review
+            </span>{" "}
+            · {data.trendDigestCount}
+            <span className="text-muted-foreground text-sm font-semibold">
+              {" "}
+              trend
+            </span>
+          </span>
+        </div>
+
+        <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            <Bell className="size-3.5" />
+            Alert aktif
+          </span>
+          <span className="bento-value text-2xl text-amber-900 dark:text-amber-300">
+            {data.activeAlerts}
+          </span>
+        </div>
+
+        <div className="bento-tile border-transparent bg-[#fde7f1] dark:bg-pink-400/10">
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-pink-800/70 dark:text-pink-200/60">
             {data.pendingJobs > 0 ? (
-              <span className="inline-flex items-center gap-1.5 rounded-xl bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_10%,transparent)] px-3 py-2 text-xs font-medium text-[var(--lab-accent,var(--primary))]">
-                <Loader2 className="size-3.5 animate-spin" />
-                {data.pendingJobs} job berjalan
-              </span>
+              <Loader2 className="size-3.5 animate-spin" />
             ) : null}
-          </div>
-        }
-      />
+            Job berjalan
+          </span>
+          <span className="bento-value text-2xl text-pink-900 dark:text-pink-300">
+            {data.pendingJobs}
+          </span>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_minmax(260px,320px)]">
         <div className="flex flex-col gap-8">

@@ -30,30 +30,33 @@ export function DataSourceProvenancePanel({
         className,
       )}
     >
-      <div className="flex items-center gap-2">
-        <Database className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
-        <p className="text-foreground text-xs font-medium">Sumber data scrape</p>
-      </div>
-      <ul className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+        <div className="flex shrink-0 items-center gap-2">
+          <Database className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+          <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
+            Sumber data
+          </p>
+        </div>
+        <ul className="flex min-w-0 flex-1 flex-wrap gap-1.5">
         {entries.map((entry) => {
           const tone = providerBadgeTone(entry.provider, entry.isFallback);
           return (
             <li
               key={`${entry.label}-${entry.provider}`}
-              className="border-border/60 bg-background/80 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px]"
+              className="bg-card inline-flex items-center gap-1.5 rounded-full py-1 pl-3 pr-1 text-[11px] shadow-sm"
             >
               <span className="text-muted-foreground">{entry.label}</span>
               <span
                 className={cn(
-                  "rounded-md px-1.5 py-0.5 font-semibold uppercase tracking-wide",
+                  "rounded-full px-2 py-0.5 font-semibold uppercase tracking-wide",
                   tone === "warning" &&
-                    "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200",
+                    "bg-amber-500/15 text-amber-700 dark:text-amber-300",
                   tone === "default" &&
-                    "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200",
+                    "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
                   tone === "muted" &&
                     "bg-muted text-muted-foreground",
                   tone === "danger" &&
-                    "bg-red-100 text-red-900 dark:bg-red-950/60 dark:text-red-200",
+                    "bg-rose-500/15 text-rose-700 dark:text-rose-300",
                 )}
               >
                 {scrapeProviderLabel(entry.provider)}
@@ -61,9 +64,10 @@ export function DataSourceProvenancePanel({
             </li>
           );
         })}
-      </ul>
+        </ul>
+      </div>
       {hasDemo ? (
-        <p className="rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-medium leading-relaxed text-red-800 dark:text-red-200">
+        <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-[11px] font-medium leading-relaxed text-rose-800 dark:text-rose-200">
           DATA DEMO (sintetis) — angka di modul ini bukan hasil scrape nyata dan
           TIDAK boleh dipakai untuk keputusan produk. Konfigurasi scraper
           (VPS/Apify) lalu jalankan refresh untuk data asli.

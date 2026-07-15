@@ -14,13 +14,8 @@ export default async function ContentStudioLayout({
   });
 
   return (
-    <div
-      className="flex w-full min-w-0 gap-6 lg:gap-8"
-      style={
-        // Duo aksen modul Content Studio (amber) — dikonsumsi Lab primitives.
-        { "--lab-accent": "#fbbf24", "--lab-accent-2": "#f59e0b" } as React.CSSProperties
-      }
-    >
+    // Skin bento global dari lab-theme/lab-bento; hue amber khusus Content Studio.
+    <div className="lab-hue-amber flex w-full min-w-0 gap-6 lg:gap-8">
       <ContentStudioSidebar brands={brands} className="lg:flex" />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <div className="animate-in fade-in duration-300 motion-reduce:animate-none">

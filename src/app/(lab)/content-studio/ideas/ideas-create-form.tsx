@@ -2,15 +2,82 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Plus, Sparkles, X } from "lucide-react";
 import { createContentIdeaSet } from "@/actions/content-studio-ideas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { lab } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 
 const PLATFORMS = ["Instagram", "TikTok", "TikTok Shop", "Shopee"] as const;
 type Platform = (typeof PLATFORMS)[number];
+
+/**
+ * Seksi "Riwayat set ide" — header seksi + tombol toggle form generate
+ * (auto-terbuka saat belum ada set) + daftar kartu (server-rendered via
+ * `children`). Pola A ala Rank Tracker.
+ */
+export function IdeasCreateSection({
+  brandId,
+  setCount,
+  totalIdeas,
+  children,
+}: {
+  brandId: string | null;
+  setCount: number;
+  totalIdeas: number;
+  children: React.ReactNode;
+}) {
+  const [formOpen, setFormOpen] = useState(setCount === 0);
+
+  return (
+    <section className={cn(lab.section, lab.entrance)}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className={lab.sectionTitle}>Riwayat set ide</h2>
+          <p className={lab.sectionDesc}>
+            {setCount === 0
+              ? "Mulai dengan set ide pertama Anda di bawah."
+              : `${setCount} set · ${totalIdeas} ide grounded sinyal nyata brand.`}
+          </p>
+        </div>
+        {setCount > 0 ? (
+          <Button
+            variant={formOpen ? "outline" : "default"}
+            onClick={() => setFormOpen((v) => !v)}
+          >
+            {formOpen ? <X /> : <Plus />}
+            {formOpen ? "Tutup" : "Set ide baru"}
+          </Button>
+        ) : null}
+      </div>
+
+      {formOpen ? (
+        <div
+          className={cn(
+            lab.panel,
+            "grid gap-4",
+            "animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none",
+          )}
+        >
+          <div>
+            <p className="text-foreground font-bold tracking-tight">
+              Generate ide baru
+            </p>
+            <p className="text-muted-foreground text-sm">
+              Isi topik/kampanye lalu pilih platform. Ide digenerate di
+              background dan langsung terbuka di halaman detail.
+            </p>
+          </div>
+          <IdeasCreateForm brandId={brandId} />
+        </div>
+      ) : null}
+
+      {children}
+    </section>
+  );
+}
 
 export function IdeasCreateForm({ brandId }: { brandId: string | null }) {
   const router = useRouter();
@@ -97,7 +164,7 @@ export function IdeasCreateForm({ brandId }: { brandId: string | null }) {
                 className={cn(
                   "rounded-full border px-3 py-1 text-sm transition-colors",
                   active
-                    ? "border-primary bg-primary/10 text-primary"
+                    ? "border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-300"
                     : "border-border bg-background text-muted-foreground hover:border-foreground/30",
                 )}
               >
@@ -108,17 +175,18 @@ export function IdeasCreateForm({ brandId }: { brandId: string | null }) {
         </div>
       </div>
 
-      {!brandId ? (
-        <p className="text-muted-foreground text-xs leading-relaxed">
-          Tip: pilih <span className="font-medium">Brand scope</span> di sidebar
-          agar ide digrounding ke data brand (review, iklan kompetitor, tren).
-          Tanpa brand, ide hanya berbasis topik.
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+          {brandId ? (
+            "Ide digrounding ke data brand: review, iklan kompetitor, dan tren."
+          ) : (
+            <>
+              Tip: pilih <span className="font-medium">Brand scope</span> di
+              sidebar agar ide digrounding ke data brand (review, iklan
+              kompetitor, tren). Tanpa brand, ide hanya berbasis topik.
+            </>
+          )}
         </p>
-      ) : null}
-
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-      <div>
         <Button type="submit" disabled={pending}>
           {pending ? (
             <Loader2 className="size-4 animate-spin" />
@@ -128,6 +196,8 @@ export function IdeasCreateForm({ brandId }: { brandId: string | null }) {
           {pending ? "Membuat…" : "Generate ide"}
         </Button>
       </div>
+
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </form>
   );
 }

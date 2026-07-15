@@ -31,18 +31,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  TREND_RADAR_STATUS_LABELS,
-  formatRelativeTime,
-} from "@/lib/research/labels";
+import { formatRelativeTime } from "@/lib/research/labels";
 import type { TrendSourceConfig } from "@/lib/research/trend-radar/trend-source-config-types";
 import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
-import {
-  lab,
-  LabEmptyState,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { cn } from "@/lib/utils";
 import { useBrandJobProgress } from "../use-brand-job-progress";
@@ -85,21 +77,10 @@ export type BrandTrendRadarPageData = {
   tiktokConfigured: boolean;
 };
 
-function statusChipTone(
-  status: TrendRadarStatus | null | undefined,
-): "neutral" | "success" | "warning" | "accent" {
-  switch (status) {
-    case "READY":
-      return "success";
-    case "FAILED":
-      return "warning";
-    case "COLLECTING":
-    case "ANALYZING":
-    case "PENDING":
-      return "warning";
-    default:
-      return "neutral";
-  }
+function isRunningStatus(status: TrendRadarStatus | null | undefined) {
+  return (
+    status === "COLLECTING" || status === "ANALYZING" || status === "PENDING"
+  );
 }
 
 export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData }) {
@@ -140,6 +121,18 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
   })();
 
   useBrandJobProgress({ inProgress: hasInProgress });
+
+  /* ------------------------- Agregasi strip ringkasan ------------------------- */
+  const trendCount = data.latestGlobal?.items.length ?? 0;
+  const totalSignals = data.latestGlobal?.signalStats?.total ?? null;
+  const readyDigests = data.digests.filter((d) => d.status === "READY").length;
+  const runningDigests = data.digests.filter((d) =>
+    isRunningStatus(d.status),
+  ).length;
+  const failedDigests = data.digests.filter(
+    (d) => d.status === "FAILED",
+  ).length;
+  const hasAnyData = data.latestGlobal != null || data.digests.length > 0;
 
   function handleRefreshGlobal() {
     const validationError = validateTrendConfigClient(sourceConfig);
@@ -192,33 +185,81 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap gap-2">
-        <LabStatChip
-          label="Digest global"
-          value={
-            globalJobStatus
-              ? TREND_RADAR_STATUS_LABELS[globalJobStatus]
-              : data.latestGlobal
-                ? TREND_RADAR_STATUS_LABELS[data.latestGlobal.status]
-                : "Belum ada"
-          }
-          tone={statusChipTone(globalJobStatus ?? data.latestGlobal?.status)}
-        />
-        {data.latestGlobal?.signalStats ? (
-          <LabStatChip
-            label="Sinyal"
-            value={data.latestGlobal.signalStats.total.toLocaleString("id-ID")}
-            tone="accent"
-          />
-        ) : null}
-        <LabStatChip
-          label="Arsip"
-          value={data.digests.length.toLocaleString("id-ID")}
-        />
-        {!data.tiktokConfigured ? (
-          <LabStatChip label="TikTok" value="Belum dikonfigurasi" tone="warning" />
-        ) : null}
-      </div>
+      {/* Strip ringkasan bento */}
+      {hasAnyData ? (
+        <div
+          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
+        >
+          {/* Hero pink — tren terdeteksi */}
+          <div className="bento-tile border-transparent bg-pink-600 shadow-md shadow-pink-600/20 dark:bg-pink-500">
+            <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+              Tren terdeteksi
+            </span>
+            <span className="bento-value text-white dark:text-pink-950">
+              {trendCount}
+            </span>
+            <span className="text-[11px] font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+              {totalSignals != null
+                ? `dari ${totalSignals.toLocaleString("id-ID")} sinyal digest global`
+                : data.latestGlobal?.generatedAt
+                  ? `digest global ${formatRelativeTime(new Date(data.latestGlobal.generatedAt))}`
+                  : "buat digest global untuk mulai"}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Digest siap</span>
+            <span className="bento-value">{readyDigests}</span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              dari {data.digests.length} digest di arsip
+            </span>
+          </div>
+
+          {/* Berjalan / gagal — amber atau rose pastel */}
+          {failedDigests > 0 && runningDigests === 0 ? (
+            <div className="bento-tile border-transparent bg-[#fbdcd7] dark:bg-rose-400/10">
+              <span className="text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60">
+                Digest gagal
+              </span>
+              <span className="bento-value text-rose-900 dark:text-rose-300">
+                {failedDigests}
+              </span>
+              <span className="text-[11px] font-medium text-rose-800/60 dark:text-rose-200/50">
+                cek arsip lalu generate ulang
+              </span>
+            </div>
+          ) : (
+            <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+              <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+                Sedang berjalan
+              </span>
+              <span className="bento-value text-amber-900 dark:text-amber-300">
+                {runningDigests}
+              </span>
+              <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+                {failedDigests > 0
+                  ? `${failedDigests} gagal di arsip`
+                  : "digest dalam proses"}
+              </span>
+            </div>
+          )}
+
+          {/* Sinyal — pastel pink */}
+          <div className="bento-tile border-transparent bg-[#fde7f1] dark:bg-pink-400/10">
+            <span className="text-[11.5px] font-semibold text-pink-800/70 dark:text-pink-200/60">
+              Sinyal terkumpul
+            </span>
+            <span className="bento-value text-pink-900 dark:text-pink-300">
+              {totalSignals != null ? totalSignals.toLocaleString("id-ID") : "—"}
+            </span>
+            <span className="text-[11px] font-medium text-pink-800/60 dark:text-pink-200/50">
+              {data.tiktokConfigured
+                ? "search · social · market · consumer"
+                : "TikTok belum dikonfigurasi"}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {hasInProgress ? (
         <TrendDigestProgressStrip subtitle={progressSubtitle} />
@@ -272,13 +313,11 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
               <TrendSignalStatsChips stats={data.latestGlobal.signalStats} />
             ) : null}
             {data.latestGlobal.narrative ? (
-              <div
-                className={cn(
-                  lab.panel,
-                  "text-muted-foreground text-sm leading-relaxed",
-                )}
-              >
-                {data.latestGlobal.narrative}
+              <div className="bento-tile justify-start gap-3">
+                <span className="bento-label">Narasi digest</span>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {data.latestGlobal.narrative}
+                </p>
               </div>
             ) : null}
             <TrendPhaseBoard
@@ -286,7 +325,7 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
               items={data.latestGlobal.items}
               basePath={trendBasePath}
             />
-            <div className="flex gap-1 border-t border-border/40 pt-3">
+            <div className="flex items-center justify-end gap-1">
               <Button
                 size="sm"
                 variant="ghost"
@@ -325,7 +364,7 @@ export function BrandTrendRadarClient({ data }: { data: BrandTrendRadarPageData 
 
       {data.digests.length > 0 ? (
         <LabSection title="Arsip Digest" delayMs={80}>
-          <div className={lab.panel}>
+          <div className={cn(lab.card, "p-0")}>
             <TrendArchiveTable
               digests={data.digests.map((d) => ({
                 id: d.id,

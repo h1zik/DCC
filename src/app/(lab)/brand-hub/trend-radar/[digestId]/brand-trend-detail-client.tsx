@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { TrendDimension, TrendPhase } from "@prisma/client";
-import { FileText, Globe, Layers, Radar, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  Globe,
+  Layers,
+  Radar,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import { createProductBriefFromTrend } from "@/actions/research-brief";
 import { actionErrorMessage } from "@/lib/action-error-message";
@@ -41,12 +48,7 @@ import {
 import type { TrendEvidenceRow } from "@/lib/research/trend-radar/trend-signal-types";
 import type { TrendSignalStats } from "@/lib/research/trend-radar/trend-signal-types";
 import type { TrendConfidence, TrendDigestMode, TrendWowStatus } from "@prisma/client";
-import {
-  LabPageHeader,
-  LabSection,
-  LabStatChip,
-  lab,
-} from "@/components/lab/lab-primitives";
+import { LabPageHeader, LabSection, lab } from "@/components/lab/lab-primitives";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
@@ -92,20 +94,26 @@ export type TrendDetailData = {
   }[];
 };
 
-function statusChipTone(
-  status: string,
-): "neutral" | "success" | "warning" | "accent" {
+/** Segmen distribusi fase — warna selaras TrendPhaseBoard. */
+const PHASE_SEGMENTS: { key: TrendPhase; label: string; dot: string }[] = [
+  { key: TrendPhase.EMERGING, label: "Emerging", dot: "bg-amber-400" },
+  { key: TrendPhase.GROWING, label: "Growing", dot: "bg-emerald-500" },
+  { key: TrendPhase.PEAK, label: "Peak", dot: "bg-sky-500" },
+  { key: TrendPhase.DECLINING, label: "Declining", dot: "bg-rose-500" },
+];
+
+function statusPillTone(status: string) {
   switch (status) {
     case "READY":
-      return "success";
+      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
     case "FAILED":
-      return "warning";
+      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
     case "COLLECTING":
     case "ANALYZING":
     case "PENDING":
-      return "warning";
+      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
     default:
-      return "neutral";
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -132,19 +140,41 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
 
   const descriptionParts = [
     periodLabel,
-    TREND_RADAR_STATUS_LABELS[data.status as keyof typeof TREND_RADAR_STATUS_LABELS] ??
-      data.status,
     data.generatedAt
-      ? formatRelativeTime(new Date(data.generatedAt))
+      ? `update ${formatRelativeTime(new Date(data.generatedAt))}`
+      : null,
+    data.sourceLabels.length > 0
+      ? `sumber: ${data.sourceLabels.join(", ")}`
       : null,
   ].filter(Boolean);
 
+  /* --------------------------- Agregasi papan hero --------------------------- */
+  const heroStats = useMemo(() => {
+    const phaseCounts = new Map<TrendPhase, number>();
+    let highConfidence = 0;
+    let wowRising = 0;
+    for (const item of data.items) {
+      phaseCounts.set(item.phase, (phaseCounts.get(item.phase) ?? 0) + 1);
+      if (item.confidence === "HIGH") highConfidence += 1;
+      if (item.wowStatus === "NEW" || item.wowStatus === "ACCELERATING") {
+        wowRising += 1;
+      }
+    }
+    return { phaseCounts, highConfidence, wowRising };
+  }, [data.items]);
+
+  const distTotal = data.items.length || 1;
+
   useEffect(() => {
     if (!data.highlightItemId) return;
-    setActiveTab("tren");
+    // Aktifkan tab Tren dulu (async, hindari cascading render), lalu scroll
+    // ke item yang di-highlight setelah konten tab ter-render.
     const id = window.requestAnimationFrame(() => {
-      const el = document.getElementById(data.highlightItemId!);
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActiveTab("tren");
+      window.requestAnimationFrame(() => {
+        const el = document.getElementById(data.highlightItemId!);
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     });
     return () => window.cancelAnimationFrame(id);
   }, [data.highlightItemId]);
@@ -191,13 +221,18 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
     wowStatus: i.wowStatus,
   }));
 
+  const statusLabel =
+    TREND_RADAR_STATUS_LABELS[
+      data.status as keyof typeof TREND_RADAR_STATUS_LABELS
+    ] ?? data.status;
+
   return (
     <div className="flex flex-col gap-6 pb-6">
       <Link
         href={brandHubHref("/brand-hub/trend-radar", brandId)}
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
+        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none"
       >
-        <Radar className="size-3" aria-hidden />
+        <ArrowLeft className="size-3.5" aria-hidden />
         Kembali ke Trend Radar
       </Link>
 
@@ -207,35 +242,106 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
         eyebrow="Trend Radar"
         title={data.isGlobal ? "Digest Global" : data.watchlistName ?? "Watchlist"}
         description={descriptionParts.join(" · ")}
-        right={<ResearchModelBadgeGroup meta={data.aiMeta} />}
-        footer={
-          <div className="flex flex-wrap items-center gap-2">
-            <LabStatChip
-              label="Status"
-              value={
-                TREND_RADAR_STATUS_LABELS[
-                  data.status as keyof typeof TREND_RADAR_STATUS_LABELS
-                ] ?? data.status
-              }
-              tone={statusChipTone(data.status)}
-            />
-            {data.signalStats ? (
-              <LabStatChip
-                label="Sinyal"
-                value={data.signalStats.total.toLocaleString("id-ID")}
-                tone="accent"
-              />
-            ) : null}
-            <LabStatChip
-              label="Tren"
-              value={data.items.length.toLocaleString("id-ID")}
-            />
-            {data.sourceLabels.map((label) => (
-              <LabStatChip key={label} label="Sumber" value={label} />
-            ))}
-          </div>
+        right={
+          <>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                statusPillTone(data.status),
+              )}
+            >
+              {statusLabel}
+            </span>
+            <ResearchModelBadgeGroup meta={data.aiMeta} />
+          </>
         }
       />
+
+      {/* Papan hero bento */}
+      <div
+        className={cn(
+          lab.entrance,
+          "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
+        )}
+      >
+        {/* Hero pink — total sinyal */}
+        <div className="bento-tile row-span-2 border-transparent bg-pink-600 shadow-md shadow-pink-600/20 dark:bg-pink-500">
+          <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+            Sinyal terkumpul
+          </span>
+          <span className="bento-value text-5xl text-white dark:text-pink-950">
+            {(data.signalStats?.total ?? 0).toLocaleString("id-ID")}
+          </span>
+          <span className="text-xs font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+            menjadi {data.items.length} tren terdeteksi · periode {periodLabel}
+          </span>
+        </div>
+
+        {/* Distribusi fase — tile lebar */}
+        <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
+          <div className="flex items-center justify-between">
+            <span className="bento-label">Distribusi fase tren</span>
+            <span className="text-muted-foreground text-[11px] tabular-nums">
+              {data.items.length} tren
+            </span>
+          </div>
+          <div className="bg-muted flex h-2.5 overflow-hidden rounded-full">
+            {PHASE_SEGMENTS.map((s) => {
+              const count = heroStats.phaseCounts.get(s.key) ?? 0;
+              if (count === 0) return null;
+              return (
+                <div
+                  key={s.key}
+                  className={s.dot}
+                  style={{ width: `${(count / distTotal) * 100}%` }}
+                  title={`${TREND_PHASE_LABELS[s.key]}: ${count}`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {PHASE_SEGMENTS.map((s) => {
+              const count = heroStats.phaseCounts.get(s.key) ?? 0;
+              return (
+                <div key={s.key} className="flex items-center gap-2 text-xs">
+                  <span
+                    className={cn("size-2 shrink-0 rounded-full", s.dot)}
+                    aria-hidden
+                  />
+                  <span className="text-muted-foreground flex-1">
+                    {TREND_PHASE_LABELS[s.key]}
+                  </span>
+                  <span className="font-semibold tabular-nums">{count}</span>
+                  <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                    {Math.round((count / distTotal) * 100)}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Confidence tinggi */}
+        <div className="bento-tile">
+          <span className="bento-label">Confidence tinggi</span>
+          <span className="bento-value">
+            {heroStats.highConfidence}
+            <span className="text-muted-foreground/60 text-lg font-bold">
+              /{data.items.length}
+            </span>
+          </span>
+        </div>
+
+        {/* WoW naik — amber pastel */}
+        <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            WoW baru / mempercepat
+          </span>
+          <span className="bento-value text-amber-900 dark:text-amber-300">
+            {heroStats.wowRising}
+          </span>
+        </div>
+      </div>
 
       <TrendQualityBanner
         digestMode={data.digestMode}
@@ -267,11 +373,10 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
 
         <TabsContent value="ringkasan" className={tabContentClass}>
           {data.narrative ? (
-            <LabSection title="Narasi Digest" delayMs={0}>
-              <div className={cn(lab.panel, "text-sm leading-relaxed")}>
-                {data.narrative}
-              </div>
-            </LabSection>
+            <div className="bento-tile justify-start gap-3">
+              <span className="bento-label">Narasi digest</span>
+              <p className="text-sm leading-relaxed">{data.narrative}</p>
+            </div>
           ) : null}
 
           {data.actionPlan ? (
@@ -290,7 +395,7 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
               description="Skor momentum tren berdasarkan sinyal yang terkumpul."
               delayMs={100}
             >
-              <div className={lab.panel}>
+              <div className="bento-tile justify-start gap-2">
                 <TrendScoreChart
                   items={data.items.map((i) => ({
                     name: i.name,
@@ -320,23 +425,24 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
             title="Detail Tren"
             description="Bukti sinyal, sumber data, dan produk terkait per tren."
           >
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               {data.items.map((item) => (
                 <div
                   key={item.id}
                   id={item.id}
                   className={cn(
-                    lab.panel,
-                    "scroll-mt-24 space-y-3",
+                    "bento-tile scroll-mt-24 justify-start gap-3",
                     data.highlightItemId === item.id &&
                       "ring-[var(--lab-accent,var(--primary))] animate-in fade-in ring-2 duration-300 motion-reduce:animate-none",
                   )}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold">{item.name}</h3>
+                      <h3 className="text-base font-bold tracking-tight">
+                        {item.name}
+                      </h3>
                       <TrendDimensionBadge dimension={item.dimension} />
-                      <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                      <span className="bg-muted/70 text-muted-foreground inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold">
                         {TREND_PHASE_LABELS[item.phase]}
                       </span>
                       {typeof item.tmiScore === "number" ||
@@ -380,12 +486,16 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
 
                   {item.evidence.length > 0 ? (
                     <div>
-                      <p className="mb-2 text-xs font-medium">Bukti sinyal</p>
+                      <p className="text-muted-foreground mb-2 text-[10px] font-semibold uppercase tracking-wide">
+                        Bukti sinyal
+                      </p>
                       <TrendEvidenceTable evidence={item.evidence} />
                     </div>
                   ) : item.sources.length > 0 ? (
                     <div>
-                      <p className="mb-1 text-xs font-medium">Sumber data</p>
+                      <p className="text-muted-foreground mb-1 text-[10px] font-semibold uppercase tracking-wide">
+                        Sumber data
+                      </p>
                       <ul className="text-muted-foreground space-y-1 text-xs">
                         {item.sources.map((s, idx) => (
                           <li key={idx}>
@@ -412,10 +522,19 @@ export function BrandTrendDetailClient({ data }: { data: TrendDetailData }) {
 
                   {item.relatedProducts.length > 0 ? (
                     <div>
-                      <p className="mb-1 text-xs font-medium">Produk terkait</p>
-                      <p className="text-muted-foreground text-xs">
-                        {item.relatedProducts.join(", ")}
+                      <p className="text-muted-foreground mb-1 text-[10px] font-semibold uppercase tracking-wide">
+                        Produk terkait
                       </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.relatedProducts.map((p) => (
+                          <span
+                            key={p}
+                            className="bg-muted/60 rounded-full px-2.5 py-1 text-xs"
+                          >
+                            {p}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   ) : null}
                 </div>

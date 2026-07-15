@@ -27,13 +27,8 @@ export default async function BrandHubLayout({
   });
 
   return (
-    <div
-      className="flex w-full min-w-0 gap-6 lg:gap-8"
-      style={
-        // Duo aksen modul Brand & Creative Hub (pink) — dikonsumsi Lab primitives.
-        { "--lab-accent": "#f472b6", "--lab-accent-2": "#fb7185" } as React.CSSProperties
-      }
-    >
+    // Skin bento global dari lab-theme/lab-bento; hue pink khusus Brand Hub.
+    <div className="lab-hue-pink flex w-full min-w-0 gap-6 lg:gap-8">
       <BrandHubModuleSidebar brands={brands} className="lg:flex" />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <BrandHubSubNav brands={brands} className="lg:hidden" />

@@ -11,6 +11,15 @@ import {
   YAxis,
 } from "recharts";
 
+/** Tooltip recharts selaras skin bento (kartu solid hangat). */
+const TOOLTIP_STYLE = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  fontSize: 12,
+  color: "var(--foreground)",
+} as const;
+
 type Bucket = {
   month: string;
   positive: number;
@@ -51,8 +60,8 @@ export function ReviewTimelineChart({ data }: { data: Bucket[] }) {
             allowDecimals={false}
             stroke="var(--muted-foreground)"
           />
-          <Tooltip />
-          <Legend />
+          <Tooltip contentStyle={TOOLTIP_STYLE} />
+          <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
           <Line
             type="monotone"
             dataKey="Positif"

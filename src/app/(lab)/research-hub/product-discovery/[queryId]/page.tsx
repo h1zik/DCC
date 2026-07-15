@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import {
   ProductDiscoveryDetailClient,
   type ProductDiscoveryDetailData,
@@ -49,9 +48,5 @@ export default async function ProductDiscoveryDetailPage({
     products: query.products.map((p) => mapDiscoveryProductToRow(p)),
   };
 
-  return (
-    <LabPageShell>
-      <ProductDiscoveryDetailClient data={data} />
-    </LabPageShell>
-  );
+  return <ProductDiscoveryDetailClient data={data} />;
 }

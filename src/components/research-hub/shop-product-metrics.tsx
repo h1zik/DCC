@@ -88,11 +88,13 @@ export function ShopProductMetricsStrip({
     >
       {cells.map((c) => (
         <div key={c.label} className={hub.nestedPanel}>
-          <p className="text-muted-foreground text-[10px]">{c.label}</p>
+          <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            {c.label}
+          </p>
           <p
             className={cn(
-              "mt-0.5 text-xs font-semibold tabular-nums",
-              c.highlight && "text-primary",
+              "mt-0.5 text-sm font-extrabold tabular-nums tracking-tight",
+              c.highlight && "text-[var(--lab-accent,var(--primary))]",
             )}
           >
             {c.value}

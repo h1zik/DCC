@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-15-dominatus-lab-bento-studio",
+    date: "2026-07-15",
+    title: "Dominatus Lab v3: satu bahasa desain \"Bento Studio\" + sidebar bisa diciutkan",
+    category: "improved",
+    description:
+      "Seluruh Dominatus Lab kini memakai bahasa visual yang sama — tile bento hangat, papan metrik, dan kartu kaya statistik — yang sebelumnya hanya ada di SEO Toolkit. Beranda Lab, Research Hub, Brand & Creative Hub, dan Content Studio dirombak halaman demi halaman mengikuti standar itu, dan sidebar navigasi utama sekarang bisa diciutkan jadi rail ikon untuk kerja yang lebih lega.",
+    highlights: [
+      "Skin \"Bento Studio\" (dulu eksklusif SEO Toolkit) kini jadi tampilan baku semua modul Lab, dengan warna aksen khas tiap modul (teal SEO, ungu Research, pink Brand, amber Content)",
+      "70+ halaman didesain ulang: strip ringkasan statistik, form pembuatan yang bisa dilipat, kartu kaya mini-stat, dan tabel dengan pencarian & pengurutan",
+      "Beranda Lab tampil sebagai papan bento dengan pintasan & statistik live per modul",
+      "Sidebar kiri utama bisa diciutkan jadi rail ikon (tombol di footer atau Ctrl/Cmd+B) — pilihan tersimpan otomatis",
+      "Latar animasi aurora lama dihapus demi tampilan yang lebih bersih dan cepat",
+    ],
+  },
+  {
     id: "2026-07-14-dominatus-lab-v2",
     date: "2026-07-14",
     title: "Dominatus Lab v2: ruang kerja riset terpisah dengan wajah baru",
