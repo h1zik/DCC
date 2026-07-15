@@ -4559,6 +4559,7 @@ model SeoSiteCrawl {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   issues            SeoCrawlIssue[]
+  pages             SeoCrawlPage[]
 
   @@index([createdById])
   @@index([status])
@@ -4587,6 +4588,42 @@ model SeoCrawlIssue {
   createdAt DateTime         @default(now())
 
   @@index([crawlId, severity])
+}
+
+/**
+ * Inventaris seluruh halaman yang dikembalikan DataForSEO untuk satu crawl.
+ * Berbeda dari SeoCrawlIssue: halaman sehat tetap disimpan agar coverage,
+ * status HTTP, metadata, internal linking, dan performa dapat diaudit.
+ */
+model SeoCrawlPage {
+  id            String       @id @default(cuid())
+  crawlId       String
+  crawl         SeoSiteCrawl @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  url           String       @db.Text
+  resourceType  String?
+  statusCode    Int?
+  onpageScore   Int?
+  title         String?      @db.Text
+  description   String?      @db.Text
+  h1Count       Int          @default(0)
+  wordCount     Int?
+  internalLinks Int?
+  externalLinks Int?
+  inboundLinks  Int?
+  imagesCount   Int?
+  clickDepth    Int?
+  sizeBytes     Int?
+  loadTimeMs    Int?
+  isRedirect    Boolean      @default(false)
+  isBroken      Boolean      @default(false)
+  fromSitemap   Boolean      @default(false)
+  isHttps       Boolean      @default(false)
+  checks        Json?
+  createdAt     DateTime     @default(now())
+
+  @@unique([crawlId, url])
+  @@index([crawlId, statusCode])
+  @@index([crawlId, onpageScore])
 }
 
 // ============================================================

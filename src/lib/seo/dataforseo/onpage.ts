@@ -45,15 +45,19 @@ export type InstantPageSignals = {
 };
 
 type DfsPageItem = {
+  resource_type?: string | null;
   url?: string;
   status_code?: number;
   onpage_score?: number;
+  click_depth?: number | null;
+  size?: number | null;
   meta?: {
     title?: string | null;
     description?: string | null;
     htags?: Record<string, string[]> | null;
     internal_links_count?: number | null;
     external_links_count?: number | null;
+    inbound_links_count?: number | null;
     images_count?: number | null;
     content?: {
       plain_text_word_count?: number | null;
@@ -241,11 +245,24 @@ export async function fetchOnPageSummary(
 
 export type CrawlPageRow = {
   url: string | null;
+  resourceType: string | null;
   statusCode: number | null;
   onpageScore: number | null;
   title: string | null;
   description: string | null;
   h1Count: number;
+  wordCount: number | null;
+  internalLinks: number | null;
+  externalLinks: number | null;
+  inboundLinks: number | null;
+  imagesCount: number | null;
+  clickDepth: number | null;
+  sizeBytes: number | null;
+  loadTimeMs: number | null;
+  isRedirect: boolean;
+  isBroken: boolean;
+  fromSitemap: boolean;
+  isHttps: boolean;
   checks: Record<string, boolean>;
 };
 
@@ -260,14 +277,32 @@ export async function fetchOnPagePages(
   const items = result[0]?.items ?? [];
   return items.map((item) => {
     const meta = item.meta ?? {};
+    const content = meta.content ?? {};
+    const checks = item.checks ?? {};
     return {
       url: item.url ?? null,
+      resourceType: item.resource_type ?? null,
       statusCode: item.status_code ?? null,
       onpageScore: item.onpage_score != null ? Math.round(item.onpage_score) : null,
       title: meta.title?.trim() || null,
       description: meta.description?.trim() || null,
       h1Count: Array.isArray(meta.htags?.h1) ? meta.htags!.h1.length : 0,
-      checks: item.checks ?? {},
+      wordCount: content.plain_text_word_count ?? null,
+      internalLinks: meta.internal_links_count ?? null,
+      externalLinks: meta.external_links_count ?? null,
+      inboundLinks: meta.inbound_links_count ?? null,
+      imagesCount: meta.images_count ?? null,
+      clickDepth: item.click_depth ?? null,
+      sizeBytes: item.size ?? null,
+      loadTimeMs:
+        typeof item.page_timing?.duration_time === "number"
+          ? Math.round(item.page_timing.duration_time)
+          : null,
+      isRedirect: checks.is_redirect === true,
+      isBroken: checks.is_broken === true,
+      fromSitemap: checks.from_sitemap === true,
+      isHttps: checks.is_https === true,
+      checks,
     };
   });
 }

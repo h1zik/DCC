@@ -37,6 +37,27 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-15-seo-crawler-page-inventory",
+    date: "2026-07-15",
+    title: "SEO Crawler: inventaris semua halaman + hasil crawl tanpa menunggu cron",
+    category: "improved",
+    description:
+      "Halaman detail crawl kini menyimpan dan menampilkan SEMUA halaman yang ditemukan — bukan hanya yang bermasalah — lengkap dengan status HTTP, skor on-page, metadata, jumlah link internal/eksternal, kedalaman klik, dan waktu muat. Selain itu, selama halaman crawler terbuka hasil crawl diambil otomatis begitu selesai; cron kini hanya cadangan.",
+    highlights: [
+      "Tab inventaris halaman baru di detail crawl: filter status (2xx/3xx/4xx/5xx), pencarian URL/judul, dan kolom skor on-page",
+      "Halaman sehat ikut tersimpan sehingga cakupan crawl bisa diaudit, bukan cuma daftar masalah",
+      "Crawl yang sedang berjalan dipantau langsung dari halaman (polling) — selesai lebih cepat tanpa menunggu jadwal cron",
+    ],
+  },
+  {
+    id: "2026-07-15-seo-keyword-competition-fix",
+    date: "2026-07-15",
+    title: "Perbaikan skala angka kompetisi keyword dari DataForSEO Labs",
+    category: "fixed",
+    description:
+      "Angka kompetisi keyword dari DataForSEO Labs ternyata sudah berskala 0–1 tetapi sempat dibagi 100 lagi, sehingga nilai kompetisi tampil jauh lebih kecil dari seharusnya. Perhitungan diperbaiki dan data lama dikoreksi otomatis lewat migrasi.",
+  },
+  {
     id: "2026-07-15-kanban-stage-picker-overdue-lane",
     date: "2026-07-15",
     title: "Kanban dirombak: pilih Tahap (kolom) langsung dari tugas, kolom Overdue kini otomatis dua arah",

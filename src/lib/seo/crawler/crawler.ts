@@ -23,7 +23,32 @@ import { NotificationType } from "@prisma/client";
 /** Batas waktu crawl sebelum dianggap gagal (2 jam). */
 const CRAWL_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 /** Maksimum baris isu per-halaman yang disimpan. */
-const MAX_PAGE_ISSUES = 200;
+const MAX_PAGE_ISSUES = 5_000;
+
+const PAGE_CHECK_RULES: Array<{
+  key: string;
+  severity: SeoIssueSeverity;
+  message: string;
+}> = [
+  { key: "is_broken", severity: SeoIssueSeverity.HIGH, message: "Halaman tidak dapat diakses." },
+  { key: "canonical_to_broken", severity: SeoIssueSeverity.HIGH, message: "Canonical mengarah ke halaman rusak." },
+  { key: "no_title", severity: SeoIssueSeverity.HIGH, message: "Halaman tanpa title tag." },
+  { key: "no_description", severity: SeoIssueSeverity.MEDIUM, message: "Halaman tanpa meta description." },
+  { key: "no_h1_tag", severity: SeoIssueSeverity.MEDIUM, message: "Halaman tanpa heading H1." },
+  { key: "high_loading_time", severity: SeoIssueSeverity.MEDIUM, message: "Waktu muat halaman tinggi." },
+  { key: "recursive_canonical", severity: SeoIssueSeverity.MEDIUM, message: "Canonical rekursif/berantai." },
+  { key: "canonical_chain", severity: SeoIssueSeverity.MEDIUM, message: "Canonical melewati rantai URL." },
+  { key: "canonical_to_redirect", severity: SeoIssueSeverity.MEDIUM, message: "Canonical mengarah ke redirect." },
+  { key: "title_too_long", severity: SeoIssueSeverity.LOW, message: "Title terlalu panjang." },
+  { key: "title_too_short", severity: SeoIssueSeverity.LOW, message: "Title terlalu pendek." },
+  { key: "no_image_alt", severity: SeoIssueSeverity.LOW, message: "Ada gambar tanpa alt text." },
+  { key: "low_content_rate", severity: SeoIssueSeverity.LOW, message: "Rasio konten teks rendah." },
+  { key: "large_page_size", severity: SeoIssueSeverity.LOW, message: "Ukuran halaman terlalu besar." },
+  { key: "has_render_blocking_resources", severity: SeoIssueSeverity.LOW, message: "Ada resource yang memblok render." },
+  { key: "has_links_to_redirects", severity: SeoIssueSeverity.LOW, message: "Halaman menautkan ke URL redirect." },
+  { key: "is_orphan_page", severity: SeoIssueSeverity.LOW, message: "Halaman orphan tanpa internal link masuk." },
+  { key: "no_content_encoding", severity: SeoIssueSeverity.LOW, message: "Respons tidak memakai kompresi konten." },
+];
 
 /** Mulai crawl: posting task DataForSEO On-Page. Dipanggil via after() saat create. */
 export async function startSiteCrawl(crawlId: string): Promise<void> {
@@ -105,7 +130,19 @@ function buildPageIssueRows(
         message: status.message,
       });
     }
-    if (page.checks.no_title || !page.title) {
+    for (const rule of PAGE_CHECK_RULES) {
+      if (page.checks[rule.key] !== true) continue;
+      rows.push({
+        crawlId,
+        type: rule.key,
+        severity: rule.severity,
+        url: page.url,
+        message: rule.message,
+      });
+    }
+
+    // Fallback defensif bila API tidak mengirim check boolean tertentu.
+    if (!page.title && !page.checks.no_title) {
       rows.push({
         crawlId,
         type: "no_title",
@@ -114,23 +151,16 @@ function buildPageIssueRows(
         message: "Halaman tanpa title tag.",
       });
     }
-    if (page.h1Count === 0) {
-      rows.push({
-        crawlId,
-        type: "no_h1_tag",
-        severity: SeoIssueSeverity.MEDIUM,
-        url: page.url,
-        message: "Halaman tanpa heading H1.",
-      });
+    if (page.h1Count === 0 && !page.checks.no_h1_tag) {
+      rows.push({ crawlId, type: "no_h1_tag", severity: SeoIssueSeverity.MEDIUM, url: page.url, message: "Halaman tanpa heading H1." });
+    } else if (page.h1Count > 1) {
+      rows.push({ crawlId, type: "multiple_h1", severity: SeoIssueSeverity.LOW, url: page.url, message: `Halaman memiliki ${page.h1Count} heading H1.` });
     }
-    if (!page.description) {
-      rows.push({
-        crawlId,
-        type: "no_description",
-        severity: SeoIssueSeverity.MEDIUM,
-        url: page.url,
-        message: "Halaman tanpa meta description.",
-      });
+    if (!page.description && !page.checks.no_description) {
+      rows.push({ crawlId, type: "no_description", severity: SeoIssueSeverity.MEDIUM, url: page.url, message: "Halaman tanpa meta description." });
+    }
+    if (page.onpageScore != null && page.onpageScore < 50) {
+      rows.push({ crawlId, type: "low_onpage_score", severity: SeoIssueSeverity.MEDIUM, url: page.url, message: `On-page score rendah (${page.onpageScore}/100).` });
     }
   }
   // Prioritaskan severity tinggi saat memotong.
@@ -145,22 +175,43 @@ function buildPageIssueRows(
   return rows.slice(0, MAX_PAGE_ISSUES);
 }
 
+function buildCrawlPageRows(
+  crawlId: string,
+  pages: CrawlPageRow[],
+): Prisma.SeoCrawlPageCreateManyInput[] {
+  return pages.flatMap((page) =>
+    page.url
+      ? [{
+          crawlId,
+          url: page.url,
+          resourceType: page.resourceType,
+          statusCode: page.statusCode,
+          onpageScore: page.onpageScore,
+          title: page.title,
+          description: page.description,
+          h1Count: page.h1Count,
+          wordCount: page.wordCount,
+          internalLinks: page.internalLinks,
+          externalLinks: page.externalLinks,
+          inboundLinks: page.inboundLinks,
+          imagesCount: page.imagesCount,
+          clickDepth: page.clickDepth,
+          sizeBytes: page.sizeBytes,
+          loadTimeMs: page.loadTimeMs,
+          isRedirect: page.isRedirect,
+          isBroken: page.isBroken,
+          fromSitemap: page.fromSitemap,
+          isHttps: page.isHttps,
+          checks: page.checks as Prisma.InputJsonValue,
+        }]
+      : [],
+  );
+}
+
 /** Ambil hasil crawl bila sudah selesai; update isu, summary, dan Lighthouse. */
 export async function collectCrawlResults(crawlId: string): Promise<void> {
   const crawl = await prisma.seoSiteCrawl.findUnique({ where: { id: crawlId } });
   if (!crawl || !crawl.dataforseoTaskId) return;
-
-  // Timeout: crawl menggantung terlalu lama.
-  if (Date.now() - crawl.createdAt.getTime() > CRAWL_TIMEOUT_MS) {
-    await prisma.seoSiteCrawl.update({
-      where: { id: crawlId },
-      data: {
-        status: SeoAnalysisStatus.FAILED,
-        errorMessage: "Crawl melebihi batas waktu (timeout).",
-      },
-    });
-    return;
-  }
 
   let summary;
   try {
@@ -171,8 +222,23 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
   }
   if (!summary) return;
 
-  // Update progress meski belum selesai.
+  // Periksa hasil lebih dulu: task yang sudah selesai tetap harus dikumpulkan
+  // walaupun cron/polling sempat mati lebih dari batas timeout.
   if (summary.crawlProgress !== "finished") {
+    // updatedAt bergerak saat task dimulai/di-refresh atau progress bertambah,
+    // sehingga refresh crawl lama tidak langsung timeout berdasarkan createdAt.
+    if (Date.now() - crawl.updatedAt.getTime() > CRAWL_TIMEOUT_MS) {
+      await prisma.seoSiteCrawl.update({
+        where: { id: crawlId },
+        data: {
+          status: SeoAnalysisStatus.FAILED,
+          errorMessage: "Crawl melebihi batas waktu (timeout).",
+        },
+      });
+      return;
+    }
+
+    // Update progress meski belum selesai.
     if (summary.pagesCrawled != null && summary.pagesCrawled !== crawl.pagesCrawled) {
       await prisma.seoSiteCrawl.update({
         where: { id: crawlId },
@@ -189,8 +255,10 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
   });
 
   let pages: CrawlPageRow[] = [];
+  let pagesFetched = false;
   try {
     pages = await fetchOnPagePages(crawl.dataforseoTaskId, crawl.maxPages);
+    pagesFetched = true;
   } catch (err) {
     console.warn("[seo/crawler] pages gagal (lanjut dengan agregat)", err);
   }
@@ -214,10 +282,14 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
   }));
   const pageIssues = buildPageIssueRows(crawlId, pages);
   const allIssues = [...aggregateIssues, ...pageIssues];
+  const pageRows = buildCrawlPageRows(crawlId, pages);
 
   const pagesCrawled = summary.pagesCrawled ?? pages.length;
+  // Agregat DataForSEO sudah menghitung dampak per halaman. Jangan menghukum
+  // health score dua kali dengan isu agregat + salinan isu URL yang sama.
+  const scoreIssues = aggregateIssues.length > 0 ? aggregateIssues : pageIssues;
   const healthScore = computeHealthScore(
-    allIssues.map((i) => ({
+    scoreIssues.map((i) => ({
       severity: i.severity,
       count: "count" in i && i.count != null ? i.count : 1,
     })),
@@ -258,9 +330,19 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
       )
     : null;
 
-  await prisma.$transaction([
+  const mutations: Prisma.PrismaPromise<unknown>[] = [
     prisma.seoCrawlIssue.deleteMany({ where: { crawlId } }),
     prisma.seoCrawlIssue.createMany({ data: allIssues }),
+  ];
+  if (pagesFetched) {
+    mutations.push(prisma.seoCrawlPage.deleteMany({ where: { crawlId } }));
+    if (pageRows.length > 0) {
+      mutations.push(
+        prisma.seoCrawlPage.createMany({ data: pageRows, skipDuplicates: true }),
+      );
+    }
+  }
+  mutations.push(
     prisma.seoSiteCrawl.update({
       where: { id: crawlId },
       data: {
@@ -278,7 +360,8 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
         errorMessage: null,
       },
     }),
-  ]);
+  );
+  await prisma.$transaction(mutations);
 
   // Crawl terjadwal + ada isu berat baru → notifikasi pembuat jadwal.
   if (crawl.scheduleId && issueDiff) {
