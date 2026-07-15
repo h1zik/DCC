@@ -254,7 +254,16 @@ function formatDueDateChip(
   );
 
   let label: string;
-  if (diffDays === 0) label = "Hari ini";
+  if (!isDone && diffDays < 0) {
+    // Badge telat — Overdue bukan lagi kolom; kartu tetap di tahapnya.
+    label =
+      diffDays >= -7
+        ? `Telat ${Math.abs(diffDays)} hari`
+        : `Telat sejak ${due.toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+          })}`;
+  } else if (diffDays === 0) label = "Hari ini";
   else if (diffDays === 1) label = "Besok";
   else if (diffDays === -1) label = "Kemarin";
   else if (diffDays > 1 && diffDays <= 7) label = `${diffDays} hari lagi`;
@@ -984,7 +993,7 @@ function KanbanColumnShell({
   column: RoomKanbanColumnDTO;
   children: React.ReactNode;
   count: number;
-  onAddTask?: (status: TaskStatus) => void;
+  onAddTask?: (columnId: string) => void;
   readOnly?: boolean;
   isRoomManager?: boolean;
   roomId?: string | null;
@@ -1076,7 +1085,6 @@ function KanbanColumnShell({
     }
   }
 
-  const bucketStatus = statusForColumn(column);
   const stretchColumns = stretch ?? false;
 
   return (
@@ -1135,7 +1143,7 @@ function KanbanColumnShell({
               type="button"
               size="icon-xs"
               variant="ghost"
-              onClick={() => onAddTask(bucketStatus)}
+              onClick={() => onAddTask(column.id)}
               aria-label={`Tambah tugas ${column.title}`}
             >
               <Plus className="size-3.5" />
@@ -1266,7 +1274,7 @@ export function TasksKanban({
   roomTaskTags: RoomTaskTag[];
   roomId?: string | null;
   onTaskClick?: (taskId: string) => void;
-  onAddTask?: (status: TaskStatus) => void;
+  onAddTask?: (columnId: string) => void;
   onTaskPatched?: (taskId: string, patch: Partial<KanbanTask>) => void;
   onTagCreated?: (tag: RoomTaskTag & { roomId: string }) => void;
   kanbanReadOnly?: boolean;
@@ -1293,6 +1301,10 @@ export function TasksKanban({
   const [newColumnColorHex, setNewColumnColorHex] = useState<string>(
     DEFAULT_KANBAN_COLUMN_COLOR,
   );
+  /** Kategori pelaporan kolom baru: task di kolom ini dihitung sebagai apa. */
+  const [newColumnBucket, setNewColumnBucket] = useState<
+    typeof TaskStatus.IN_PROGRESS | typeof TaskStatus.IN_REVIEW | typeof TaskStatus.BLOCKED
+  >(TaskStatus.IN_PROGRESS);
   const [addColumnPending, setAddColumnPending] = useState(false);
   const [doneConfirmTaskId, setDoneConfirmTaskId] = useState<string | null>(null);
   const [doneConfirmUnfinished, setDoneConfirmUnfinished] = useState(0);
@@ -1489,13 +1501,14 @@ export function TasksKanban({
             roomId,
             title: newColumnTitle.trim(),
             colorHex: newColumnColorHex,
+            workflowBucket: newColumnBucket,
           })
         : await addCustomKanbanColumn({
             roomId,
             processKey,
             title: newColumnTitle.trim(),
             colorHex: newColumnColorHex,
-            workflowBucket: TaskStatus.IN_PROGRESS,
+            workflowBucket: newColumnBucket,
           });
       const added: RoomKanbanColumnDTO = {
         id: col.id,
@@ -1510,6 +1523,7 @@ export function TasksKanban({
       onKanbanColumnAdded?.(added);
       setNewColumnTitle("");
       setNewColumnColorHex(DEFAULT_KANBAN_COLUMN_COLOR);
+      setNewColumnBucket(TaskStatus.IN_PROGRESS);
       setAddColumnOpen(false);
       onColumnsChange?.();
       toast.success("Kolom ditambahkan.");
@@ -1897,6 +1911,7 @@ export function TasksKanban({
           if (!open) {
             setNewColumnTitle("");
             setNewColumnColorHex(DEFAULT_KANBAN_COLUMN_COLOR);
+            setNewColumnBucket(TaskStatus.IN_PROGRESS);
           }
         }}
       >
@@ -1926,6 +1941,37 @@ export function TasksKanban({
               onChange={setNewColumnColorHex}
               disabled={addColumnPending}
             />
+            <div className="space-y-2">
+              <Label>Dihitung sebagai</Label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(
+                  [
+                    { value: TaskStatus.IN_PROGRESS, label: "Berjalan" },
+                    { value: TaskStatus.IN_REVIEW, label: "Dalam review" },
+                    { value: TaskStatus.BLOCKED, label: "Diblokir" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={addColumnPending}
+                    onClick={() => setNewColumnBucket(opt.value)}
+                    className={cn(
+                      "rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
+                      newColumnBucket === opt.value
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-muted/40",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Kategori pelaporan untuk tugas di kolom ini (progres proyek,
+                ringkasan, AI). Posisi kartu tetap mengikuti kolom.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SeoAnalysisStatus } from "@prisma/client";
@@ -23,6 +23,7 @@ import {
   deleteSeoSiteCrawl,
 } from "@/actions/seo-crawler";
 import { cn } from "@/lib/utils";
+import { useSeoCrawlPolling } from "@/hooks/use-seo-crawl-polling";
 
 export type CrawlRow = {
   id: string;
@@ -123,12 +124,10 @@ export function CrawlerClient({
   const [maxPages, setMaxPages] = useState("100");
   const [lighthouse, setLighthouse] = useState(false);
 
-  const hasBusy = crawls.some((c) => isSeoStatusBusy(c.status));
-  useEffect(() => {
-    if (!hasBusy) return;
-    const timer = setInterval(() => router.refresh(), 6000);
-    return () => clearInterval(timer);
-  }, [hasBusy, router]);
+  const busyCrawlIds = crawls
+    .filter((crawl) => isSeoStatusBusy(crawl.status))
+    .map((crawl) => crawl.id);
+  useSeoCrawlPolling(busyCrawlIds);
 
   function handleCreate() {
     if (!name.trim() || !domain.trim()) {

@@ -6,6 +6,7 @@ import {
   type CrawlDetail,
   type CrawlIssueRow,
 } from "./crawler-detail-client";
+import type { CrawlPageInventoryRow } from "./crawl-page-inventory";
 
 const SEVERITY_ORDER: Record<SeoIssueSeverity, number> = {
   CRITICAL: 0,
@@ -24,7 +25,34 @@ export default async function SeoCrawlerDetailPage({
 
   const crawl = await prisma.seoSiteCrawl.findUnique({
     where: { id: crawlId },
-    include: { issues: true },
+    include: {
+      issues: true,
+      pages: {
+        orderBy: { url: "asc" },
+        select: {
+          id: true,
+          url: true,
+          resourceType: true,
+          statusCode: true,
+          onpageScore: true,
+          title: true,
+          description: true,
+          h1Count: true,
+          wordCount: true,
+          internalLinks: true,
+          externalLinks: true,
+          inboundLinks: true,
+          imagesCount: true,
+          clickDepth: true,
+          sizeBytes: true,
+          loadTimeMs: true,
+          isRedirect: true,
+          isBroken: true,
+          fromSitemap: true,
+          isHttps: true,
+        },
+      },
+    },
   });
   if (!crawl) notFound();
 
@@ -71,6 +99,7 @@ export default async function SeoCrawlerDetailPage({
     dataNotice: crawl.dataNotice,
     errorMessage: crawl.errorMessage,
     issues,
+    pages: crawl.pages as CrawlPageInventoryRow[],
   };
 
   return <CrawlerDetailClient crawl={detail} />;

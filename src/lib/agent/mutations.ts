@@ -29,6 +29,11 @@ import {
 } from "@/lib/room-process-phase";
 import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
 import { isSimpleHubRoom } from "@/lib/room-simple-hub";
+import { effectiveTaskStatus } from "@/lib/task-effective-status";
+import {
+  kanbanColumnBucket,
+  resolveBoardColumnIdForBucket,
+} from "@/lib/task-kanban-sync";
 import { syncContentPlanRowFromCompletedKanbanTask } from "@/actions/room-content-planning";
 import {
   assertAgentRoomAccess,
@@ -156,6 +161,20 @@ export async function agentCreateTask(
     _max: { sortOrder: true },
   });
 
+  // Tahap awal mengikuti status final (bucket + overlay telat) — task yang
+  // langsung telat masuk lajur Overdue.
+  const bucket = input.status ?? TaskStatus.TODO;
+  const dueDate = input.dueDate ? new Date(input.dueDate) : null;
+  const initialStatus = effectiveTaskStatus(bucket, dueDate);
+  const kanbanColumnId = await resolveBoardColumnIdForBucket(
+    roomId,
+    {
+      roomProcess: phaseFields.roomProcess,
+      customProcessPhaseId: phaseFields.customProcessPhaseId,
+    },
+    initialStatus,
+  );
+
   const task = await prisma.task.create({
     data: {
       projectId: input.projectId,
@@ -164,8 +183,9 @@ export async function agentCreateTask(
       title: input.title.trim(),
       description: input.description?.trim() || undefined,
       priority: input.priority ?? TaskPriority.MEDIUM,
-      status: input.status ?? TaskStatus.TODO,
-      dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+      status: initialStatus,
+      kanbanColumnId: kanbanColumnId ?? undefined,
+      dueDate: dueDate ?? undefined,
       sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
       assignees:
         assigneeIds.length > 0
@@ -327,6 +347,10 @@ export async function agentUpdateTask(
       projectId: true,
       roomProcess: true,
       customProcessPhaseId: true,
+      kanbanColumnId: true,
+      kanbanColumn: {
+        select: { kind: true, coreRole: true, linkedStatus: true },
+      },
       customProcessPhase: { select: { id: true, name: true, legacyProcessKey: true } },
       isApprovalRequired: true,
       isApproved: true,
@@ -350,9 +374,16 @@ export async function agentUpdateTask(
     throw new Error("Tugas diarsipkan. Pulihkan dulu sebelum mengedit.");
   }
 
-  const nextStatus = input.status ?? prev.status;
+  // Bucket tahapan: perubahan status eksplisit menang; selain itu ikut kolom.
+  const currentBucket = prev.kanbanColumn
+    ? kanbanColumnBucket(prev.kanbanColumn)
+    : null;
+  const bucket =
+    input.status !== undefined && input.status !== prev.status
+      ? input.status
+      : (currentBucket ?? prev.status);
   if (
-    nextStatus === TaskStatus.DONE &&
+    bucket === TaskStatus.DONE &&
     prev.isApprovalRequired &&
     !prev.isApproved
   ) {
@@ -413,6 +444,15 @@ export async function agentUpdateTask(
   const prevDue = prev.dueDate;
   const dueDateChanged =
     (prevDue?.getTime() ?? null) !== (nextDueDate?.getTime() ?? null);
+  // Kategori final = bucket + overlay telat dari deadline BARU (deadline
+  // diundur otomatis melepas OVERDUE tanpa menunggu cron). Kartu mengikuti
+  // kolom status final, kecuali kolomnya sudah se-bucket.
+  const nextStatus = effectiveTaskStatus(bucket, nextDueDate);
+  const nextColumnId =
+    currentBucket === nextStatus
+      ? prev.kanbanColumnId
+      : ((await resolveBoardColumnIdForBucket(roomId, prev, nextStatus)) ??
+        prev.kanbanColumnId);
   const markingDone =
     nextStatus === TaskStatus.DONE && prev.status !== TaskStatus.DONE;
   const prevAssigneeIds = prev.assignees.map((a) => a.userId);
@@ -431,6 +471,7 @@ export async function agentUpdateTask(
       description: nextDescription,
       priority: nextPriority,
       status: nextStatus,
+      kanbanColumnId: nextColumnId,
       dueDate: nextDueDate,
       ...(dueDateChanged || markingDone
         ? {
@@ -648,6 +689,13 @@ export async function agentMoveTaskStatus(
       projectId: true,
       title: true,
       status: true,
+      dueDate: true,
+      roomProcess: true,
+      customProcessPhaseId: true,
+      kanbanColumnId: true,
+      kanbanColumn: {
+        select: { kind: true, coreRole: true, linkedStatus: true },
+      },
       contentPlanItemId: true,
       contentPlanJenis: true,
       isApprovalRequired: true,
@@ -667,8 +715,10 @@ export async function agentMoveTaskStatus(
     throw new Error("Tugas diarsipkan. Pulihkan dulu untuk mengubah status.");
   }
 
+  const bucket = input.status;
+
   if (
-    input.status === TaskStatus.DONE &&
+    bucket === TaskStatus.DONE &&
     task.isApprovalRequired &&
     !task.isApproved
   ) {
@@ -678,12 +728,24 @@ export async function agentMoveTaskStatus(
   }
 
   const prevStatus = task.status;
+  const nextStatus = effectiveTaskStatus(bucket, task.dueDate);
+  // Kartu mengikuti kolom status final — kecuali kolomnya sudah se-bucket
+  // (mis. kolom custom "Revisi" ber-bucket Berjalan: tetap di sana).
+  const currentBucket = task.kanbanColumn
+    ? kanbanColumnBucket(task.kanbanColumn)
+    : null;
+  const targetColumnId =
+    currentBucket === nextStatus
+      ? task.kanbanColumnId
+      : await resolveBoardColumnIdForBucket(roomId, task, nextStatus);
+  const markingDone = bucket === TaskStatus.DONE && prevStatus !== TaskStatus.DONE;
 
   await prisma.task.update({
     where: { id: input.taskId },
     data: {
-      status: input.status,
-      ...(input.status === TaskStatus.DONE && prevStatus !== TaskStatus.DONE
+      status: nextStatus,
+      ...(targetColumnId ? { kanbanColumnId: targetColumnId } : {}),
+      ...(markingDone
         ? {
             whatsappReminder3dSentAt: null,
             whatsappReminder1dSentAt: null,
@@ -692,7 +754,7 @@ export async function agentMoveTaskStatus(
     },
   });
 
-  if (input.status === TaskStatus.DONE && prevStatus !== TaskStatus.DONE) {
+  if (markingDone) {
     if (task.contentPlanItemId && task.contentPlanJenis) {
       await syncContentPlanRowFromCompletedKanbanTask({
         roomId: task.project.room.id,
@@ -715,7 +777,7 @@ export async function agentMoveTaskStatus(
     });
   }
 
-  if (prevStatus !== input.status) {
+  if (prevStatus !== nextStatus) {
     void recomputeProjectProgress(task.projectId);
   }
 
@@ -723,8 +785,8 @@ export async function agentMoveTaskStatus(
     taskId: task.id,
     title: task.title,
     previousStatus: prevStatus,
-    newStatus: input.status,
-    message: `Tugas "${task.title}" dipindahkan ke status ${input.status}.`,
+    newStatus: nextStatus,
+    message: `Tugas "${task.title}" dipindahkan ke status ${nextStatus}.`,
   };
 }
 

@@ -60,6 +60,7 @@ import {
   mergeKanbanColumns,
   type RoomKanbanColumnDTO,
   resolveColumnIdForTask,
+  statusForColumn,
 } from "@/lib/room-kanban-columns";
 import { DEFAULT_KANBAN_STATUSES, taskStatusLabel } from "@/lib/task-status-ui";
 import { cn } from "@/lib/utils";
@@ -222,6 +223,8 @@ export function TasksWorkspace({
   const [documentsFolderId, setDocumentsFolderId] = useState<string | null>(null);
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
+  /** Tahap awal tugas baru (kolom papan) — menggantikan pilihan status enum. */
+  const [createStageColumnId, setCreateStageColumnId] = useState<string>("");
   const [dueDate, setDueDate] = useState("");
   const [approval, setApproval] = useState(false);
   const [pending, setPending] = useState(false);
@@ -265,7 +268,7 @@ export function TasksWorkspace({
     }
   }, [localTasks, detailId]);
 
-  function openCreate(initialStatus: TaskStatus = TaskStatus.TODO) {
+  function openCreate(initialColumnId?: string) {
     if (projects.length === 0) {
       toast.error(
         simpleHub
@@ -289,7 +292,10 @@ export function TasksWorkspace({
     setAlsoSaveToDocuments(false);
     setDocumentsFolderId(null);
     setPriority(TaskPriority.MEDIUM);
-    setStatus(initialStatus);
+    setStatus(TaskStatus.TODO);
+    // "+" dari kolom Overdue jatuh ke tahap default — lajur itu diisi sistem.
+    const initialCol = pickableStageColumns.find((c) => c.id === initialColumnId);
+    setCreateStageColumnId(initialCol?.id ?? defaultCreateStageColumnId);
     setDueDate("");
     setApproval(false);
     setCreateOpen(true);
@@ -358,6 +364,8 @@ export function TasksWorkspace({
     setPending(true);
     try {
       const due = dueDate ? new Date(dueDate) : null;
+      const createStageColumn =
+        pickableStageColumns.find((c) => c.id === createStageColumnId) ?? null;
       const payload = {
         projectId,
         title,
@@ -365,7 +373,10 @@ export function TasksWorkspace({
         assigneeIds: isRoomManager ? assigneeIds : [],
         tagIds,
         priority,
-        status,
+        // Tahap (kolom) diutamakan; status legacy hanya saat papan fallback.
+        ...(createStageColumn
+          ? { kanbanColumnId: createStageColumn.id }
+          : { status }),
         dueDate: due,
         isApprovalRequired: approval,
         ...(activePhase ? { customProcessPhaseId: activePhase.id } : {}),
@@ -441,6 +452,25 @@ export function TasksWorkspace({
   );
 
   const resolvedKanbanColumns = localKanbanColumns;
+  /** Kolom papan asli (bukan fallback klien) — bahan dropdown "Tahap".
+   * Tanpa useMemo — React Compiler yang meng-memo turunan ini. */
+  const realKanbanColumns = localKanbanColumns.filter(
+    (c) => !c.id.startsWith("fallback-"),
+  );
+  /** Tahap yang bisa dipilih saat buat tugas — lajur Overdue dikelola sistem. */
+  const pickableStageColumns = realKanbanColumns.filter(
+    (c) => statusForColumn(c) !== TaskStatus.OVERDUE,
+  );
+  const defaultCreateStageColumnId =
+    pickableStageColumns.find(
+      (c) => c.kind === "CORE" && c.coreRole === TaskStatus.TODO,
+    )?.id ??
+    pickableStageColumns[0]?.id ??
+    "";
+  const stageSelectItems = pickableStageColumns.map((c) => ({
+    value: c.id,
+    label: c.title,
+  }));
 
   const boardPath =
     roomId != null
@@ -623,6 +653,7 @@ export function TasksWorkspace({
         currentUserId={currentUserId}
         simpleHub={simpleHub}
         documentFolders={documentFolders}
+        kanbanColumns={resolvedKanbanColumns}
       />
 
       {roomTitle && isRoomManager && projects.length === 0 && !simpleHub ? (
@@ -924,7 +955,7 @@ export function TasksWorkspace({
             }}
             onAddTask={
               isRoomManager && !showArchived
-                ? (taskStatus) => openCreate(taskStatus)
+                ? (columnId) => openCreate(columnId)
                 : undefined
             }
           />
@@ -950,7 +981,7 @@ export function TasksWorkspace({
             }}
             onAddTask={
               isRoomManager && !showArchived
-                ? (taskStatus) => openCreate(taskStatus)
+                ? (columnId) => openCreate(columnId)
                 : undefined
             }
             readOnly={showArchived}
@@ -1012,6 +1043,9 @@ export function TasksWorkspace({
             <TaskFormPlanning
               status={status}
               onStatusChange={setStatus}
+              stageItems={stageSelectItems}
+              stageValue={createStageColumnId}
+              onStageChange={setCreateStageColumnId}
               priority={priority}
               onPriorityChange={setPriority}
               dueDate={dueDate}

@@ -37,6 +37,56 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-15-research-hub-marketplace-logos",
+    date: "2026-07-15",
+    title: "Research Hub: logo platform di semua tampilan marketplace",
+    category: "improved",
+    description:
+      "Shopee, Tokopedia, Lazada, TikTok Shop, Female Daily, dan Sociolla kini tampil dengan logo berwarna khas masing-masing — bukan lagi sekadar teks — di seluruh Research Hub: pilihan marketplace saat membuat riset, kartu & tabel produk, dropdown, dan halaman detail.",
+    highlights: [
+      "Logo muncul di Product Discovery, Review Intelligence, Competitor Tracker, dan Keyword Intel",
+      "Riset multi-marketplace menampilkan deretan logo ringkas (nama muncul saat disorot)",
+      "Komponen tabel & kartu produk yang sama juga dipakai Brand Hub, jadi logonya ikut konsisten di sana",
+    ],
+  },
+  {
+    id: "2026-07-15-seo-crawler-page-inventory",
+    date: "2026-07-15",
+    title: "SEO Crawler: inventaris semua halaman + hasil crawl tanpa menunggu cron",
+    category: "improved",
+    description:
+      "Halaman detail crawl kini menyimpan dan menampilkan SEMUA halaman yang ditemukan — bukan hanya yang bermasalah — lengkap dengan status HTTP, skor on-page, metadata, jumlah link internal/eksternal, kedalaman klik, dan waktu muat. Selain itu, selama halaman crawler terbuka hasil crawl diambil otomatis begitu selesai; cron kini hanya cadangan.",
+    highlights: [
+      "Tab inventaris halaman baru di detail crawl: filter status (2xx/3xx/4xx/5xx), pencarian URL/judul, dan kolom skor on-page",
+      "Halaman sehat ikut tersimpan sehingga cakupan crawl bisa diaudit, bukan cuma daftar masalah",
+      "Crawl yang sedang berjalan dipantau langsung dari halaman (polling) — selesai lebih cepat tanpa menunggu jadwal cron",
+    ],
+  },
+  {
+    id: "2026-07-15-seo-keyword-competition-fix",
+    date: "2026-07-15",
+    title: "Perbaikan skala angka kompetisi keyword dari DataForSEO Labs",
+    category: "fixed",
+    description:
+      "Angka kompetisi keyword dari DataForSEO Labs ternyata sudah berskala 0–1 tetapi sempat dibagi 100 lagi, sehingga nilai kompetisi tampil jauh lebih kecil dari seharusnya. Perhitungan diperbaiki dan data lama dikoreksi otomatis lewat migrasi.",
+  },
+  {
+    id: "2026-07-15-kanban-stage-picker-overdue-lane",
+    date: "2026-07-15",
+    title: "Kanban dirombak: pilih Tahap (kolom) langsung dari tugas, kolom Overdue kini otomatis dua arah",
+    category: "improved",
+    description:
+      "Kolom papan Kanban kini menjadi \"Tahap\" tugas yang sesungguhnya. Saat mengubah tugas dari detail atau daftar, kamu memilih kolom papan (termasuk kolom custom seperti Revisi) — bukan lagi status generik — dan kartunya benar-benar pindah. Kolom Overdue tetap ada tapi kini dikelola sistem dua arah: tugas yang lewat deadline masuk otomatis, dan begitu deadline-nya diundur kartunya keluar sendiri kembali ke Berjalan (dulu nyangkut selamanya).",
+    highlights: [
+      "Dropdown Status di detail tugas & daftar diganti dropdown Tahap berisi kolom papan aktif — kolom custom akhirnya bisa dipilih",
+      "Ubah tahap dari mana pun (detail, daftar, papan) kini selalu memindahkan kartu — tidak ada lagi tugas \"Selesai\" yang nyangkut di kolom To-Do",
+      "Kolom Overdue jadi lajur otomatis: deadline lewat → kartu masuk; deadline diundur → kartu keluar sendiri (langsung saat disimpan, tanpa menunggu cron)",
+      "Kartu telat diberi label merah \"Telat X hari\" agar terlihat berapa lama tertunggak",
+      "Saat membuat kolom custom, pilih kolom itu \"dihitung sebagai\" Berjalan / Dalam review / Diblokir untuk pelaporan & progres proyek",
+      "Perbaikan: pindah tugas ke kolom custom dari tampilan Daftar sebelumnya selalu gagal di fase bawaan",
+    ],
+  },
+  {
     id: "2026-07-15-dominatus-lab-bento-studio",
     date: "2026-07-15",
     title: "Dominatus Lab v3: satu bahasa desain \"Bento Studio\" + sidebar bisa diciutkan",

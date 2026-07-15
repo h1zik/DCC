@@ -41,6 +41,7 @@ import {
   formatRp,
 } from "@/lib/research/labels";
 import { lab } from "@/components/lab/lab-primitives";
+import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
 import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
 import { cn } from "@/lib/utils";
 import { useProductDiscoveryPolling } from "../use-product-discovery-polling";
@@ -354,6 +355,7 @@ export function ProductDiscoveryDetailClient({
                     )}
                     aria-hidden
                   />
+                  <MarketplaceLogo marketplace={mp} className="size-3.5" />
                   <span className="text-muted-foreground flex-1">
                     {MARKETPLACE_LABELS[mp]}
                   </span>

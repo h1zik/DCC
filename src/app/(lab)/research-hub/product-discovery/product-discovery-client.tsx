@@ -30,6 +30,10 @@ import {
   formatRelativeTime,
 } from "@/lib/research/labels";
 import { lab, LabEmptyState } from "@/components/lab/lab-primitives";
+import {
+  MarketplaceLogo,
+  MarketplaceLogoStrip,
+} from "@/components/research-hub/marketplace-logo";
 import { cn } from "@/lib/utils";
 import { useProductDiscoveryPolling } from "./use-product-discovery-polling";
 
@@ -342,6 +346,7 @@ export function ProductDiscoveryClient({
                       checked={marketplaces.includes(mp)}
                       onCheckedChange={() => toggleMarketplace(mp)}
                     />
+                    <MarketplaceLogo marketplace={mp} className="size-4" />
                     {MARKETPLACE_LABELS[mp]}
                   </label>
                 ))}
@@ -399,10 +404,16 @@ export function ProductDiscoveryClient({
                         <p className="text-foreground truncate font-bold tracking-tight">
                           {q.keyword}
                         </p>
-                        <p className="text-muted-foreground truncate text-xs">
-                          {q.marketplaces
-                            .map((mp) => MARKETPLACE_LABELS[mp])
-                            .join(", ")}
+                        <p className="text-muted-foreground flex items-center gap-1.5 truncate text-xs">
+                          <MarketplaceLogoStrip
+                            marketplaces={q.marketplaces}
+                            iconClassName="size-3.5"
+                          />
+                          <span className="truncate">
+                            {q.marketplaces
+                              .map((mp) => MARKETPLACE_LABELS[mp])
+                              .join(", ")}
+                          </span>
                         </p>
                       </div>
                     </div>

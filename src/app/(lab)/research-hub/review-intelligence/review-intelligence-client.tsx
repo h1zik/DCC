@@ -42,6 +42,10 @@ import {
 import { SOURCE_STATUS_LABELS } from "@/lib/research/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { RelativeTime } from "@/components/research-hub/relative-time";
+import {
+  MarketplaceLogo,
+  resolveMarketplace,
+} from "@/components/research-hub/marketplace-logo";
 import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 import { useReviewIntelPolling } from "./use-review-intel-polling";
@@ -406,14 +410,26 @@ export function ReviewIntelligenceClient({
                     }}
                   >
                     <SelectTrigger>
-                      {selectedPlatform?.label ?? platformKey}
+                      <span className="inline-flex items-center gap-1.5">
+                        <MarketplaceLogo
+                          marketplace={platformKey}
+                          className="size-4"
+                        />
+                        {selectedPlatform?.label ?? platformKey}
+                      </span>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
                         <SelectLabel>Marketplace</SelectLabel>
                         {reviewPlatformsByCategory("marketplace").map((p) => (
                           <SelectItem key={p.key} value={p.key}>
-                            {p.label}
+                            <span className="inline-flex items-center gap-1.5">
+                              <MarketplaceLogo
+                                marketplace={p.key}
+                                className="size-4"
+                              />
+                              {p.label}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -421,7 +437,13 @@ export function ReviewIntelligenceClient({
                         <SelectLabel>Komunitas</SelectLabel>
                         {reviewPlatformsByCategory("community").map((p) => (
                           <SelectItem key={p.key} value={p.key}>
-                            {p.label}
+                            <span className="inline-flex items-center gap-1.5">
+                              <MarketplaceLogo
+                                marketplace={p.key}
+                                className="size-4"
+                              />
+                              {p.label}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -543,9 +565,18 @@ export function ReviewIntelligenceClient({
                             <span className="truncate">{s.productName}</span>
                             <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
                           </p>
-                          <p className="text-muted-foreground truncate text-xs">
-                            {s.competitorBrand} ·{" "}
-                            {getReviewPlatformLabel(s.platformKey)}
+                          <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                            <span className="truncate">
+                              {s.competitorBrand}
+                            </span>
+                            <span aria-hidden>·</span>
+                            <MarketplaceLogo
+                              marketplace={s.platformKey}
+                              className="size-3.5"
+                            />
+                            <span className="truncate">
+                              {getReviewPlatformLabel(s.platformKey)}
+                            </span>
                           </p>
                         </div>
                       </div>
@@ -590,7 +621,14 @@ export function ReviewIntelligenceClient({
 
                   <div className="border-border/60 flex items-center justify-between gap-2 border-t px-3 py-2">
                     <span className="text-muted-foreground inline-flex items-center gap-1.5 truncate text-xs">
-                      <Star className="size-3.5 shrink-0" aria-hidden />
+                      {resolveMarketplace(s.platformKey) ? (
+                        <MarketplaceLogo
+                          marketplace={s.platformKey}
+                          className="size-3.5"
+                        />
+                      ) : (
+                        <Star className="size-3.5 shrink-0" aria-hidden />
+                      )}
                       {getReviewPlatformLabel(s.platformKey)}
                     </span>
                     <div className="flex items-center gap-1">

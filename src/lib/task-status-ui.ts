@@ -19,7 +19,12 @@ export function taskStatusLabel(s: TaskStatus): string {
   }
 }
 
-/** Urutan default kolom saat inisialisasi papan (bukan semua harus ada). */
+/**
+ * Urutan default kolom saat inisialisasi papan (bukan semua harus ada).
+ * Kolom OVERDUE adalah LAJUR SISTEM: diisi/dikosongkan otomatis berdasarkan
+ * deadline (cron + edit deadline), bukan tahap kerja yang dipilih manual —
+ * karena itu ia tidak muncul di dropdown "Tahap".
+ */
 export const DEFAULT_KANBAN_STATUSES: TaskStatus[] = [
   TaskStatus.TODO,
   TaskStatus.IN_PROGRESS,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SeoAnalysisStatus, SeoIssueSeverity } from "@prisma/client";
@@ -37,7 +37,12 @@ import {
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { refreshSeoSiteCrawl } from "@/actions/seo-crawler";
+import { useSeoCrawlPolling } from "@/hooks/use-seo-crawl-polling";
 import { cn } from "@/lib/utils";
+import {
+  CrawlPageInventory,
+  type CrawlPageInventoryRow,
+} from "./crawl-page-inventory";
 
 export type CrawlIssueRow = {
   id: string;
@@ -77,6 +82,7 @@ export type CrawlDetail = {
   dataNotice: string | null;
   errorMessage: string | null;
   issues: CrawlIssueRow[];
+  pages: CrawlPageInventoryRow[];
 };
 
 function metric(obj: unknown, key: string): number | null {
@@ -166,11 +172,7 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
   const [sortBy, setSortBy] = useState<PerPageSort>("severity");
 
   const busy = isSeoStatusBusy(crawl.status);
-  useEffect(() => {
-    if (!busy) return;
-    const timer = setInterval(() => router.refresh(), 6000);
-    return () => clearInterval(timer);
-  }, [busy, router]);
+  useSeoCrawlPolling(busy ? [crawl.id] : []);
 
   const pm = (crawl.summary?.pageMetrics as Record<string, unknown> | undefined) ?? null;
 
@@ -522,6 +524,12 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
             </div>
           ) : null}
 
+          <CrawlPageInventory
+            pages={crawl.pages}
+            issues={crawl.issues}
+            domain={crawl.domain}
+          />
+
           {/* Isu agregat (prioritas) */}
           <div className="bento-tile justify-start gap-3">
             <div className="flex items-center justify-between">
@@ -556,7 +564,7 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
 
           {/* Isu per-URL */}
           {perPage.length > 0 ? (
-            <div className={cn(lab.card, "p-0")}>
+            <div id="page-issues" className={cn(lab.card, "scroll-mt-4 p-0")}>
               <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-foreground font-bold tracking-tight">

@@ -3,11 +3,14 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { SeoCrawlFrequency } from "@prisma/client";
+import { SeoAnalysisStatus, SeoCrawlFrequency } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSeoAccess } from "@/lib/seo/auth";
 import { normalizeDomain } from "@/lib/seo/dataforseo/serp";
-import { startSiteCrawl } from "@/lib/seo/crawler/crawler";
+import {
+  collectCrawlResults,
+  startSiteCrawl,
+} from "@/lib/seo/crawler/crawler";
 
 const createSchema = z.object({
   name: z.string().min(1).max(120),
@@ -87,6 +90,37 @@ export async function deleteSeoSiteCrawl(crawlId: string) {
 
   await prisma.seoSiteCrawl.delete({ where: { id: crawlId } });
   revalidatePath("/seo/crawler");
+}
+
+/**
+ * Ambil hasil crawl yang masih berjalan saat halaman crawler sedang dibuka.
+ * Cron tetap menjadi fallback untuk crawl yang berjalan tanpa ada pengguna
+ * membuka halaman, tetapi penyelesaian crawl tidak lagi bergantung pada cron.
+ */
+export async function pollSeoSiteCrawls(crawlIds: string[]) {
+  await requireSeoAccess();
+  const ids = [
+    ...new Set(z.array(z.string().min(1)).max(20).parse(crawlIds)),
+  ];
+  if (ids.length === 0) return { checked: 0 };
+
+  const running = await prisma.seoSiteCrawl.findMany({
+    where: {
+      id: { in: ids },
+      status: {
+        in: [SeoAnalysisStatus.COLLECTING, SeoAnalysisStatus.ANALYZING],
+      },
+      dataforseoTaskId: { not: null },
+    },
+    select: { id: true },
+  });
+
+  for (const crawl of running) {
+    await collectCrawlResults(crawl.id);
+    revalidatePath(`/seo/crawler/${crawl.id}`);
+  }
+  revalidatePath("/seo/crawler");
+  return { checked: running.length };
 }
 
 /* --------------------------- jadwal crawl berulang --------------------------- */

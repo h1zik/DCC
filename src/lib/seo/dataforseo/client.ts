@@ -78,12 +78,17 @@ export function getDataForSeoLanguageCode(): string {
   return process.env.DATAFORSEO_LANGUAGE_CODE?.trim() || DEFAULT_LANGUAGE_CODE;
 }
 
-/** Normalisasi competition_index Google Ads (0–100) ke 0–1. */
+/**
+ * Validasi rasio `keyword_info.competition` DataForSEO (sudah berskala 0–1).
+ *
+ * Jangan samakan field ini dengan `competition_index` dari Keywords Data yang
+ * berskala 0–100 dan memang perlu dibagi 100.
+ */
 export function normalizeCompetition(
-  index: number | null | undefined,
+  value: number | null | undefined,
 ): number | null {
-  if (index == null || !Number.isFinite(index)) return null;
-  return Math.min(1, Math.max(0, index / 100));
+  if (value == null || !Number.isFinite(value)) return null;
+  return Math.min(1, Math.max(0, value));
 }
 
 function isBalanceError(statusCode?: number, message?: string): boolean {
