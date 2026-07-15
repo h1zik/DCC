@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { resumeStuckResearchJobs } from "@/lib/research/run-apify-job";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import {
   buildCurrentPriceBarData,
   buildPriceChartData,
@@ -205,9 +204,5 @@ export default async function CompetitorDetailPage({ params }: Props) {
     shareOfReview: buildShareOfReviewData(competitor.skus),
   };
 
-  return (
-    <LabPageShell>
-      <CompetitorDetailClient competitor={detail} />
-    </LabPageShell>
-  );
+  return <CompetitorDetailClient competitor={detail} />;
 }

@@ -38,6 +38,7 @@ export default async function ContentIdeaSetPage({
         aiSummary: set.aiSummary,
         errorMessage: set.errorMessage,
         brandName: set.ownerBrand?.name ?? null,
+        createdAt: set.createdAt.toISOString(),
       }}
       ideas={ideas.map((i) => ({
         id: i.id,

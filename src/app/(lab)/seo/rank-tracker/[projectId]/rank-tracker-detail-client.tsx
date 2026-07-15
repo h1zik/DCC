@@ -1,25 +1,31 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { EChartsOption } from "echarts";
 import { SeoRankDevice } from "@prisma/client";
 import {
-  ArrowLeft,
   ArrowDownRight,
   ArrowUpRight,
   Minus,
   Plus,
   RefreshCw,
   LineChart as LineChartIcon,
+  Search,
+  ShieldCheck,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -30,12 +36,11 @@ import {
 } from "@/components/ui/table";
 import { EChart } from "@/components/lab/echart";
 import { SeoDetailPage } from "@/components/seo/seo-module-page";
-import {
-  LabEmptyState,
-  lab,
-} from "@/components/lab/lab-primitives";
+import { SeoSparkline } from "@/components/seo/seo-sparkline";
+import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
 import { SEO_DEVICE_LABELS, formatRankPosition } from "@/lib/seo/labels";
 import { rankChangeKind } from "@/lib/seo/rank-tracker/rank-change";
+import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   addTrackedKeyword,
@@ -89,6 +94,23 @@ export type RankInsights = {
   }[];
 };
 
+type SortKey = "position" | "change" | "volume" | "keyword";
+
+const SORT_ITEMS: SelectItemDef[] = [
+  { value: "position", label: "Posisi terbaik" },
+  { value: "change", label: "Perubahan terbesar" },
+  { value: "volume", label: "Volume tertinggi" },
+  { value: "keyword", label: "Abjad" },
+];
+
+const DIST_SEGMENTS = [
+  { key: "top3", label: "Top 3", dot: "bg-emerald-500" },
+  { key: "top10", label: "Posisi 4–10", dot: "bg-teal-500" },
+  { key: "top20", label: "Posisi 11–20", dot: "bg-amber-400" },
+  { key: "top100", label: "Posisi 21–100", dot: "bg-slate-400 dark:bg-slate-500" },
+  { key: "unranked", label: "Belum ranking", dot: "bg-muted-foreground/25" },
+] as const;
+
 function prettyFeature(type: string): string {
   return type.replace(/_/g, " ");
 }
@@ -103,6 +125,45 @@ function formatDateTime(iso: string | null): string {
   });
 }
 
+/** Badge posisi dengan tone per jenjang (top 3 → hijau, hal. 1 → teal, dst.). */
+function PositionBadge({
+  position,
+  checked,
+}: {
+  position: number | null;
+  checked: boolean;
+}) {
+  if (position == null) {
+    if (!checked) return <span className="text-muted-foreground">—</span>;
+    return (
+      <span
+        className="bg-muted/70 text-muted-foreground inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-xs font-semibold tabular-nums"
+        title="Di luar top 100"
+      >
+        100+
+      </span>
+    );
+  }
+  const tone =
+    position <= 3
+      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+      : position <= 10
+        ? "bg-teal-500/15 text-teal-700 dark:text-teal-300"
+        : position <= 20
+          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+          : "bg-muted/70 text-foreground/80";
+  return (
+    <span
+      className={cn(
+        "inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums",
+        tone,
+      )}
+    >
+      #{position}
+    </span>
+  );
+}
+
 function ChangeCell({
   prev,
   next,
@@ -111,25 +172,49 @@ function ChangeCell({
   next: number | null;
 }) {
   const kind = rankChangeKind(prev, next);
+  const pill =
+    "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums";
   if (kind === "up")
     return (
-      <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
-        <ArrowUpRight className="size-3.5" />
+      <span
+        className={cn(
+          pill,
+          "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        )}
+      >
+        <ArrowUpRight className="size-3" />
         {Math.abs((next ?? 0) - (prev ?? 0))}
       </span>
     );
   if (kind === "down")
     return (
-      <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400">
-        <ArrowDownRight className="size-3.5" />
+      <span
+        className={cn(pill, "bg-rose-500/10 text-rose-700 dark:text-rose-300")}
+      >
+        <ArrowDownRight className="size-3" />
         {Math.abs((next ?? 0) - (prev ?? 0))}
       </span>
     );
   if (kind === "entered")
-    return <span className="text-emerald-600 dark:text-emerald-400">baru</span>;
+    return (
+      <span
+        className={cn(
+          pill,
+          "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        )}
+      >
+        baru
+      </span>
+    );
   if (kind === "dropped")
-    return <span className="text-red-600 dark:text-red-400">keluar</span>;
-  return <Minus className="size-3.5 text-muted-foreground" />;
+    return (
+      <span
+        className={cn(pill, "bg-rose-500/10 text-rose-700 dark:text-rose-300")}
+      >
+        keluar
+      </span>
+    );
+  return <Minus className="text-muted-foreground size-3.5" />;
 }
 
 export function RankTrackerDetailClient({
@@ -149,25 +234,66 @@ export function RankTrackerDetailClient({
   const [competitorsInput, setCompetitorsInput] = useState(
     project.competitors.join(", "),
   );
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("position");
 
-  const visibilityOption = useMemo<EChartsOption | null>(() => {
-    if (insights.visibilitySeries.length < 2) return null;
-    return {
-      tooltip: { trigger: "axis" },
-      grid: { left: 36, right: 12, top: 12, bottom: 24 },
-      xAxis: { type: "category", data: insights.visibilitySeries.map((p) => p.date) },
-      yAxis: { type: "value", min: 0 },
-      series: [
-        {
-          type: "line",
-          smooth: true,
-          areaStyle: { opacity: 0.15 },
-          showSymbol: false,
-          data: insights.visibilitySeries.map((p) => p.score),
-        },
-      ],
-    };
-  }, [insights.visibilitySeries]);
+  /* -------------------------------- Statistik hero ------------------------------- */
+  const stats = useMemo(() => {
+    const ranked = keywords
+      .map((k) => k.lastPosition)
+      .filter((x): x is number => x != null);
+    const avgPosition = ranked.length
+      ? Math.round((ranked.reduce((a, b) => a + b, 0) / ranked.length) * 10) /
+        10
+      : null;
+    let up = 0;
+    let down = 0;
+    for (const k of keywords) {
+      const kind = rankChangeKind(k.previousPosition, k.lastPosition);
+      if (kind === "up" || kind === "entered") up += 1;
+      else if (kind === "down" || kind === "dropped") down += 1;
+    }
+    const lastChecked = keywords.reduce<string | null>(
+      (acc, k) =>
+        k.lastCheckedAt && (!acc || k.lastCheckedAt > acc)
+          ? k.lastCheckedAt
+          : acc,
+      null,
+    );
+    return { avgPosition, up, down, lastChecked };
+  }, [keywords]);
+
+  const distTotal = keywords.length || 1;
+
+  /* --------------------------- Tabel: filter + sortir --------------------------- */
+  const visibleKeywords = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = keywords.filter(
+      (k) =>
+        !q ||
+        k.keyword.toLowerCase().includes(q) ||
+        (k.targetUrl ?? "").toLowerCase().includes(q),
+    );
+    const pos = (k: TrackedKeywordRow) => k.lastPosition ?? 101;
+    const delta = (k: TrackedKeywordRow) =>
+      (k.previousPosition ?? 101) - (k.lastPosition ?? 101);
+    const sorted = [...list];
+    switch (sortBy) {
+      case "position":
+        sorted.sort((a, b) => pos(a) - pos(b));
+        break;
+      case "change":
+        sorted.sort((a, b) => Math.abs(delta(b)) - Math.abs(delta(a)));
+        break;
+      case "volume":
+        sorted.sort((a, b) => (b.searchVolume ?? -1) - (a.searchVolume ?? -1));
+        break;
+      case "keyword":
+        sorted.sort((a, b) => a.keyword.localeCompare(b.keyword, "id"));
+        break;
+    }
+    return sorted;
+  }, [keywords, query, sortBy]);
 
   const chartOption = useMemo<EChartsOption | null>(() => {
     const series = keywords
@@ -200,6 +326,7 @@ export function RankTrackerDetailClient({
     };
   }, [keywords]);
 
+  /* ---------------------------------- Handlers ---------------------------------- */
   function handleAdd() {
     if (!newKeyword.trim()) {
       toast.error("Keyword wajib diisi.");
@@ -302,24 +429,29 @@ export function RankTrackerDetailClient({
   return (
     <SeoDetailPage
       icon={LineChartIcon}
+      backHref="/seo/rank-tracker"
       title={project.name}
-      description={`${project.domain} · ${SEO_DEVICE_LABELS[project.device]} · ${keywords.length} keyword`}
+      description={`${project.domain} · ${SEO_DEVICE_LABELS[project.device]} · ${keywords.length} keyword · Terakhir dicek ${formatDateTime(stats.lastChecked)}`}
       right={
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={project.isActive ? "secondary" : "outline"}>
-            {project.isActive ? "Aktif" : "Nonaktif"}
-          </Badge>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold",
+              project.isActive
+                ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                project.isActive ? "bg-emerald-500" : "bg-muted-foreground/50",
+              )}
+            />
+            {project.isActive ? "Pelacakan aktif" : "Nonaktif"}
+          </span>
           <Button
             variant="outline"
-            size="sm"
-            onClick={handleCheckAll}
-            disabled={pending || keywords.length === 0}
-          >
-            <RefreshCw />
-            Cek semua
-          </Button>
-          <Button
-            variant="ghost"
             size="sm"
             onClick={handleToggleActive}
             disabled={pending}
@@ -327,62 +459,79 @@ export function RankTrackerDetailClient({
             {project.isActive ? "Nonaktifkan" : "Aktifkan"}
           </Button>
           <Button
-            variant="ghost"
             size="sm"
-            render={<Link href="/seo/rank-tracker" />}
+            onClick={handleCheckAll}
+            disabled={pending || keywords.length === 0}
           >
-            <ArrowLeft />
-            Kembali
+            <RefreshCw />
+            Cek semua
           </Button>
         </div>
       }
     >
-      {/* Insight: visibility + distribusi + share of voice */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className={cn(lab.card, "p-4")}>
-          <p className={cn(lab.label, "mb-1")}>Visibility score</p>
-          <p className="text-4xl font-bold tabular-nums">
+      {/* Papan bento: visibility, distribusi, stat */}
+      <div className="grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* Visibility — tile hero teal */}
+        <div className="bento-tile col-span-2 row-span-2 border-transparent bg-teal-600 shadow-md shadow-teal-600/20 lg:col-span-1 dark:bg-teal-500">
+          <span className="text-[11.5px] font-semibold text-teal-100 dark:text-teal-950/70">
+            Visibility score
+          </span>
+          <span className="bento-value text-5xl text-white dark:text-teal-950">
             {insights.visibilityNow}
-            <span className="text-muted-foreground text-lg font-normal">%</span>
-          </p>
-          <p className="text-muted-foreground mb-2 text-xs">
-            Estimasi pangsa klik dari semua keyword terlacak (berbobot volume).
-          </p>
-          {visibilityOption ? (
-            <EChart option={visibilityOption} height={120} />
-          ) : (
-            <p className="text-muted-foreground text-xs">
-              Tren muncul setelah beberapa hari pelacakan.
-            </p>
-          )}
+            <span className="text-2xl font-bold text-teal-200/80 dark:text-teal-900/60">
+              %
+            </span>
+          </span>
+          {insights.visibilitySeries.length >= 2 ? (
+            <div className="text-white/90 dark:text-teal-950/70">
+              <SeoSparkline
+                values={insights.visibilitySeries.map((p) => p.score)}
+                className="h-9"
+              />
+            </div>
+          ) : null}
+          <span className="text-[11px] font-medium leading-snug text-teal-100/90 dark:text-teal-900/80">
+            estimasi pangsa klik, berbobot volume · 30 hari
+          </span>
         </div>
 
-        <div className={cn(lab.card, "p-4")}>
-          <p className={cn(lab.label, "mb-2")}>Distribusi posisi</p>
-          <div className="flex flex-col gap-2 text-sm">
-            {(
-              [
-                ["Top 3", insights.distribution.top3],
-                ["Posisi 4–10", insights.distribution.top10],
-                ["Posisi 11–20", insights.distribution.top20],
-                ["Posisi 21–100", insights.distribution.top100],
-                ["Belum ranking", insights.distribution.unranked],
-              ] as const
-            ).map(([label, count]) => {
-              const total = keywords.length || 1;
+        {/* Distribusi posisi */}
+        <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
+          <div className="flex items-center justify-between">
+            <span className="bento-label">Distribusi posisi</span>
+            <span className="text-muted-foreground text-[11px] tabular-nums">
+              {keywords.length} keyword
+            </span>
+          </div>
+          <div className="bg-muted flex h-2.5 overflow-hidden rounded-full">
+            {DIST_SEGMENTS.map((s) => {
+              const count = insights.distribution[s.key];
+              if (count === 0) return null;
               return (
-                <div key={label} className="flex items-center gap-2">
-                  <span className="text-muted-foreground w-28 shrink-0 text-xs">
-                    {label}
+                <div
+                  key={s.key}
+                  className={s.dot}
+                  style={{ width: `${(count / distTotal) * 100}%` }}
+                  title={`${s.label}: ${count}`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {DIST_SEGMENTS.map((s) => {
+              const count = insights.distribution[s.key];
+              return (
+                <div key={s.key} className="flex items-center gap-2 text-xs">
+                  <span
+                    className={cn("size-2 shrink-0 rounded-full", s.dot)}
+                    aria-hidden
+                  />
+                  <span className="text-muted-foreground flex-1">
+                    {s.label}
                   </span>
-                  <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
-                    <div
-                      className="bg-primary h-full rounded-full"
-                      style={{ width: `${(count / total) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-6 shrink-0 text-right text-xs tabular-nums">
-                    {count}
+                  <span className="font-semibold tabular-nums">{count}</span>
+                  <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                    {Math.round((count / distTotal) * 100)}%
                   </span>
                 </div>
               );
@@ -390,12 +539,43 @@ export function RankTrackerDetailClient({
           </div>
         </div>
 
-        <div className={cn(lab.card, "p-4")}>
-          <p className={cn(lab.label, "mb-2")}>Share of voice</p>
+        {/* Posisi rata-rata */}
+        <div className="bento-tile">
+          <span className="bento-label">Posisi rata-rata</span>
+          <span className="bento-value">
+            {stats.avgPosition != null
+              ? formatRankPosition(Math.round(stats.avgPosition))
+              : "—"}
+          </span>
+        </div>
+
+        {/* Perubahan */}
+        <div className="bento-tile">
+          <span className="bento-label">Perubahan terakhir</span>
+          <span className="flex items-baseline gap-3">
+            <span className="bento-value text-2xl text-emerald-600 dark:text-emerald-400">
+              ▲{stats.up}
+            </span>
+            <span className="bento-value text-2xl text-rose-600 dark:text-rose-400">
+              ▼{stats.down}
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {/* Share of voice + cannibalization */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="bento-tile justify-start gap-3">
+          <div className="flex items-center justify-between">
+            <span className="bento-label">Share of voice</span>
+            <span className="text-muted-foreground text-[11px]">
+              dari SERP yang sama, tanpa biaya ekstra
+            </span>
+          </div>
           {insights.shareOfVoice.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
-              Tambahkan domain kompetitor di bawah — posisinya diambil dari SERP
-              yang sama tanpa biaya ekstra.
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Tambahkan domain kompetitor di bawah — posisinya ikut terekam
+              setiap kali cek ranking berjalan.
             </p>
           ) : (
             <div className="flex flex-col gap-2 text-sm">
@@ -406,7 +586,7 @@ export function RankTrackerDetailClient({
                   <div key={s.domain} className="flex items-center gap-2">
                     <span
                       className={cn(
-                        "w-32 shrink-0 truncate text-xs",
+                        "w-36 shrink-0 truncate text-xs",
                         isOwn ? "font-semibold" : "text-muted-foreground",
                       )}
                       title={s.domain}
@@ -418,12 +598,12 @@ export function RankTrackerDetailClient({
                       <div
                         className={cn(
                           "h-full rounded-full",
-                          isOwn ? "bg-primary" : "bg-muted-foreground/50",
+                          isOwn ? "bg-primary" : "bg-muted-foreground/40",
                         )}
                         style={{ width: `${(s.visibility / max) * 100}%` }}
                       />
                     </div>
-                    <span className="w-10 shrink-0 text-right text-xs tabular-nums">
+                    <span className="w-10 shrink-0 text-right text-xs font-semibold tabular-nums">
                       {s.visibility}%
                     </span>
                   </div>
@@ -431,90 +611,80 @@ export function RankTrackerDetailClient({
               })}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Cannibalization */}
-      {insights.cannibalization.length > 0 ? (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
-          <p className="mb-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
-            ⚠️ Kemungkinan keyword cannibalization (
-            {insights.cannibalization.length})
-          </p>
-          <div className="flex flex-col gap-2">
-            {insights.cannibalization.slice(0, 5).map((c) => (
-              <div key={c.keyword} className="text-sm">
-                <span className="font-medium">“{c.keyword}”</span>{" "}
-                <span className="text-muted-foreground text-xs">
-                  {c.evidence}
-                </span>
-                <div className="text-muted-foreground mt-0.5 flex flex-wrap gap-x-3 text-xs">
-                  {c.urls.slice(0, 3).map((u) => (
-                    <span key={u} className="truncate">
-                      {u.replace(/^https?:\/\//, "")}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
+          <div className="border-border/60 mt-auto flex flex-col gap-2 border-t pt-3 sm:flex-row">
+            <Input
+              value={competitorsInput}
+              onChange={(e) => setCompetitorsInput(e.target.value)}
+              placeholder="kompetitor-a.com, kompetitor-b.co.id (maks 5)"
+              className="h-9 flex-1 text-xs"
+              disabled={pending}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveCompetitors}
+              disabled={pending}
+            >
+              Simpan kompetitor
+            </Button>
           </div>
-          <p className="text-muted-foreground mt-2 text-xs">
-            Solusi umum: gabungkan konten yang tumpang tindih, atau perjelas
-            fokus keyword tiap halaman + internal link ke halaman utama.
-          </p>
         </div>
-      ) : null}
 
-      {/* Kompetitor */}
-      <div className={cn(lab.panel, "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end")}>
-        <div className="grid gap-1.5">
-          <Label>Domain kompetitor (maks 5, pisahkan dengan koma)</Label>
-          <Input
-            value={competitorsInput}
-            onChange={(e) => setCompetitorsInput(e.target.value)}
-            placeholder="kompetitor-a.com, kompetitor-b.co.id"
-            disabled={pending}
-          />
-        </div>
-        <Button variant="outline" onClick={handleSaveCompetitors} disabled={pending}>
-          Simpan kompetitor
-        </Button>
-      </div>
-
-      {/* Tambah keyword */}
-      <div className={cn(lab.panel, "grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end")}>
-        <div className="grid gap-1.5">
-          <Label>Tambah keyword</Label>
-          <Input
-            value={newKeyword}
-            onChange={(e) => setNewKeyword(e.target.value)}
-            placeholder="mis. serum vitamin c"
-            disabled={pending}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label>Target URL (opsional)</Label>
-          <Input
-            value={newTarget}
-            onChange={(e) => setNewTarget(e.target.value)}
-            placeholder="/produk/serum-vitamin-c"
-            disabled={pending}
-          />
-        </div>
-        <Button onClick={handleAdd} disabled={pending}>
-          <Plus />
-          Tambah
-        </Button>
+        {insights.cannibalization.length > 0 ? (
+          <div className="flex flex-col gap-2.5 rounded-[1.25rem] border border-amber-500/30 bg-amber-500/5 p-4">
+            <p className="inline-flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
+              <TriangleAlert className="size-4" />
+              Kemungkinan keyword cannibalization (
+              {insights.cannibalization.length})
+            </p>
+            <div className="flex flex-col gap-2">
+              {insights.cannibalization.slice(0, 4).map((c) => (
+                <div key={c.keyword} className="text-sm">
+                  <span className="font-medium">“{c.keyword}”</span>{" "}
+                  <span className="text-muted-foreground text-xs">
+                    {c.evidence}
+                  </span>
+                  <div className="text-muted-foreground mt-0.5 flex flex-wrap gap-x-3 text-xs">
+                    {c.urls.slice(0, 3).map((u) => (
+                      <span key={u} className="truncate">
+                        {u.replace(/^https?:\/\//, "")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground mt-auto text-xs">
+              Solusi umum: gabungkan konten yang tumpang tindih, atau perjelas
+              fokus keyword tiap halaman + internal link ke halaman utama.
+            </p>
+          </div>
+        ) : (
+          <div className="bento-tile justify-start gap-3">
+            <span className="bento-label">Keyword cannibalization</span>
+            <div className="flex items-center gap-2.5 text-sm text-emerald-700 dark:text-emerald-300">
+              <ShieldCheck className="size-4.5 shrink-0" />
+              Tidak ada indikasi — tiap keyword konsisten dilayani satu URL.
+            </div>
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Kami memantau URL yang muncul di SERP per keyword; jika satu
+              keyword dilayani beberapa URL bergantian, peringatan muncul di
+              sini.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Grafik tren posisi */}
       {chartOption ? (
-        <div className={lab.panel}>
-          <p className={cn(lab.label, "mb-2")}>Tren posisi (90 hari)</p>
+        <div className="bento-tile justify-start gap-2">
+          <div className="flex items-center justify-between">
+            <span className="bento-label">Tren posisi · 90 hari</span>
+            <span className="text-muted-foreground text-[11px]">
+              posisi lebih kecil = lebih baik (sumbu dibalik)
+            </span>
+          </div>
           <EChart option={chartOption} height={320} />
-          <p className="text-muted-foreground mt-1 text-[11px]">
-            Posisi lebih kecil = lebih baik (sumbu dibalik).
-          </p>
         </div>
       ) : null}
 
@@ -523,125 +693,241 @@ export function RankTrackerDetailClient({
         <LabEmptyState
           icon={LineChartIcon}
           title="Belum ada keyword"
-          description="Tambah keyword di atas untuk mulai melacak posisinya."
+          description="Tambahkan keyword pertama untuk mulai melacak posisinya di Google."
+          action={
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={newKeyword}
+                onChange={(e) => setNewKeyword(e.target.value)}
+                placeholder="mis. serum vitamin c"
+                className="h-9 sm:w-64"
+                disabled={pending}
+              />
+              <Button size="sm" onClick={handleAdd} disabled={pending}>
+                <Plus />
+                Tambah keyword
+              </Button>
+            </div>
+          }
         />
       ) : (
-        <div className={cn(lab.card, "overflow-x-auto p-4")}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Keyword</TableHead>
-                <TableHead className="text-right">Vol</TableHead>
-                <TableHead className="text-right">Posisi</TableHead>
-                <TableHead className="text-center">Perubahan</TableHead>
-                {project.competitors.map((c) => (
-                  <TableHead key={c} className="text-right" title={c}>
-                    <span className="block max-w-24 truncate">{c}</span>
-                  </TableHead>
-                ))}
-                <TableHead>SERP features</TableHead>
-                <TableHead>Terakhir dicek</TableHead>
-                <TableHead className="text-right">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {keywords.map((k) => (
-                <TableRow key={k.id}>
-                  <TableCell className="font-medium">
-                    {k.keyword}
-                    {k.targetUrl ? (
-                      <span className="text-muted-foreground block text-xs">
-                        {k.targetUrl}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-right text-xs tabular-nums">
-                    {k.searchVolume != null
-                      ? k.searchVolume.toLocaleString("id-ID")
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums font-semibold">
-                    {k.lastPosition != null ? (
-                      formatRankPosition(k.lastPosition)
-                    ) : k.lastCheckedAt ? (
-                      <span
-                        className="text-muted-foreground font-normal"
-                        title="Di luar top 100"
-                      >
-                        100+
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span className="inline-flex justify-center tabular-nums">
-                      <ChangeCell prev={k.previousPosition} next={k.lastPosition} />
-                    </span>
-                  </TableCell>
-                  {project.competitors.map((c) => {
-                    const pos = k.competitorPositions[c] ?? null;
-                    const better =
-                      pos != null &&
-                      (k.lastPosition == null || pos < k.lastPosition);
-                    return (
-                      <TableCell
-                        key={c}
-                        className={cn(
-                          "text-right text-xs tabular-nums",
-                          better
-                            ? "text-red-600 dark:text-red-400"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {pos != null ? `#${pos}` : "—"}
-                      </TableCell>
-                    );
-                  })}
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {k.features.length === 0 ? (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      ) : (
-                        k.features.slice(0, 4).map((f) => (
-                          <Badge key={f} variant="outline" className="text-[10px]">
-                            {prettyFeature(f)}
-                          </Badge>
-                        ))
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {formatDateTime(k.lastCheckedAt)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleCheckOne(k.id)}
-                        disabled={pending}
-                      >
-                        <RefreshCw
-                          className={cn(checkingId === k.id && "animate-spin")}
-                        />
-                        Cek
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleRemove(k.id)}
-                        disabled={pending}
-                        aria-label="Hapus keyword"
-                      >
-                        <Trash2 className="text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <div className={cn(lab.card, "p-0")}>
+          {/* Toolbar tabel */}
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-foreground font-bold tracking-tight">
+                Keyword terlacak
+              </p>
+              <p className="text-muted-foreground text-xs">
+                {visibleKeywords.length === keywords.length
+                  ? `${keywords.length} keyword`
+                  : `${visibleKeywords.length} dari ${keywords.length} keyword`}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Cari keyword…"
+                  className="h-9 w-48 pl-8 text-xs"
+                />
+              </div>
+              <Select
+                value={sortBy}
+                items={SORT_ITEMS}
+                onValueChange={(v) => {
+                  if (v) setSortBy(v as SortKey);
+                }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  Urutkan:{" "}
+                  {SORT_ITEMS.find((i) => i.value === sortBy)?.label ?? ""}
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_ITEMS.map((i) => (
+                    <SelectItem key={i.value} value={i.value}>
+                      {i.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Keyword</TableHead>
+                  <TableHead className="text-right">Posisi</TableHead>
+                  <TableHead className="text-center">Perubahan</TableHead>
+                  <TableHead>Tren 90 hari</TableHead>
+                  <TableHead className="text-right">Vol</TableHead>
+                  {project.competitors.map((c) => (
+                    <TableHead key={c} className="text-right" title={c}>
+                      <span className="block max-w-24 truncate">{c}</span>
+                    </TableHead>
+                  ))}
+                  <TableHead>SERP features</TableHead>
+                  <TableHead>Terakhir dicek</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {visibleKeywords.map((k) => (
+                  <TableRow key={k.id}>
+                    <TableCell className="font-medium">
+                      {k.keyword}
+                      {k.targetUrl ? (
+                        <span className="text-muted-foreground block max-w-52 truncate text-xs">
+                          {k.targetUrl}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <PositionBadge
+                        position={k.lastPosition}
+                        checked={k.lastCheckedAt != null}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <ChangeCell
+                        prev={k.previousPosition}
+                        next={k.lastPosition}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-primary w-24">
+                        <SeoSparkline
+                          values={k.points.map((p) => p.position)}
+                          invert
+                          showArea={false}
+                          className="h-7"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-right text-xs tabular-nums">
+                      {k.searchVolume != null
+                        ? k.searchVolume.toLocaleString("id-ID")
+                        : "—"}
+                    </TableCell>
+                    {project.competitors.map((c) => {
+                      const pos = k.competitorPositions[c] ?? null;
+                      const better =
+                        pos != null &&
+                        (k.lastPosition == null || pos < k.lastPosition);
+                      return (
+                        <TableCell
+                          key={c}
+                          className={cn(
+                            "text-right text-xs tabular-nums",
+                            better
+                              ? "font-semibold text-rose-600 dark:text-rose-400"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {pos != null ? `#${pos}` : "—"}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {k.features.length === 0 ? (
+                          <span className="text-muted-foreground text-xs">
+                            —
+                          </span>
+                        ) : (
+                          <>
+                            {k.features.slice(0, 3).map((f) => (
+                              <Badge
+                                key={f}
+                                variant="outline"
+                                className="text-[10px]"
+                              >
+                                {prettyFeature(f)}
+                              </Badge>
+                            ))}
+                            {k.features.length > 3 ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px]"
+                                title={k.features
+                                  .slice(3)
+                                  .map(prettyFeature)
+                                  .join(", ")}
+                              >
+                                +{k.features.length - 3}
+                              </Badge>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
+                      {formatDateTime(k.lastCheckedAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleCheckOne(k.id)}
+                          disabled={pending}
+                        >
+                          <RefreshCw
+                            className={cn(
+                              checkingId === k.id && "animate-spin",
+                            )}
+                          />
+                          Cek
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleRemove(k.id)}
+                          disabled={pending}
+                          aria-label="Hapus keyword"
+                        >
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Tambah keyword inline */}
+          <div className="border-border/60 flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center">
+            <Plus className="text-muted-foreground hidden size-4 shrink-0 sm:block" />
+            <Input
+              value={newKeyword}
+              onChange={(e) => setNewKeyword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAdd();
+              }}
+              placeholder="Tambah keyword… (mis. serum vitamin c)"
+              className="h-9 flex-1 text-sm"
+              disabled={pending}
+            />
+            <Input
+              value={newTarget}
+              onChange={(e) => setNewTarget(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAdd();
+              }}
+              placeholder="Target URL (opsional)"
+              className="h-9 flex-1 text-sm"
+              disabled={pending}
+            />
+            <Button size="sm" onClick={handleAdd} disabled={pending}>
+              <Plus />
+              Tambah
+            </Button>
+          </div>
         </div>
       )}
     </SeoDetailPage>

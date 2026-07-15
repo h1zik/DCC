@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ResearchMarketplace } from "@prisma/client";
 import {
+  ArrowUpRight,
   Bell,
-  ChevronLeft,
   ExternalLink,
+  Package,
   Plus,
   RefreshCw,
   Trash2,
@@ -41,12 +42,8 @@ import {
 } from "@/components/ui/select";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import { CompetitorTrackerModeNav } from "@/components/research-hub/competitor-tracker-mode-nav";
-import {
-  lab,
-  LabEmptyState,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
+import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
 import { MARKETPLACE_LABELS, formatRp } from "@/lib/research/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { cn } from "@/lib/utils";
@@ -104,6 +101,28 @@ export function CompetitorProductCategoryClient({
 
   const unreadAlerts = category.alerts.filter((a) => !a.isRead).length;
 
+  /* --------------------------- Statistik papan hero --------------------------- */
+  const stats = useMemo(() => {
+    const prices = category.tracks
+      .map((t) => t.currentPrice)
+      .filter((p): p is number => p != null);
+    const ratings = category.tracks
+      .map((t) => t.rating)
+      .filter((r): r is number => r != null);
+    return {
+      avgPrice: prices.length
+        ? prices.reduce((a, b) => a + b, 0) / prices.length
+        : null,
+      minPrice: prices.length ? Math.min(...prices) : null,
+      maxPrice: prices.length ? Math.max(...prices) : null,
+      avgRating: ratings.length
+        ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+        : null,
+      promoCount: category.tracks.filter((t) => t.hasPromo).length,
+      errorCount: category.tracks.filter((t) => t.scrapeError).length,
+    };
+  }, [category.tracks]);
+
   function handleAddProduct() {
     startTransition(async () => {
       try {
@@ -125,33 +144,16 @@ export function CompetitorProductCategoryClient({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <CompetitorTrackerModeNav />
-
-      <Button
-        size="sm"
-        variant="ghost"
-        className="w-fit gap-1 px-0"
-        render={
-          <Link href="/research-hub/competitor-tracker/products" />
-        }
-      >
-        <ChevronLeft className="size-4" />
-        Semua kategori
-      </Button>
-
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {category.name}
-          </h1>
-          {category.description ? (
-            <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-              {category.description}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <ResearchHubDetailPage
+      icon={Package}
+      backHref="/research-hub/competitor-tracker/products"
+      title={category.name}
+      description={
+        category.description ??
+        "Pantau URL produk kompetitor spesifik — harga, rating, promo."
+      }
+      right={
+        <>
           <Button
             size="sm"
             variant="outline"
@@ -230,26 +232,80 @@ export function CompetitorProductCategoryClient({
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
+        </>
+      }
+    >
+      <CompetitorTrackerModeNav />
 
-      <div className="flex flex-wrap gap-2">
-        <LabStatChip
-          label="Produk"
-          value={category.tracks.length.toLocaleString("id-ID")}
-          tone="accent"
-        />
-        <LabStatChip
-          label="Alert"
-          value={unreadAlerts.toLocaleString("id-ID")}
-          tone={unreadAlerts > 0 ? "warning" : "neutral"}
-        />
-      </div>
+      {/* Papan hero bento */}
+      {category.tracks.length > 0 ? (
+        <div className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}>
+          <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
+            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+              Produk dipantau
+            </span>
+            <span className="bento-value text-white dark:text-violet-950">
+              {category.tracks.length.toLocaleString("id-ID")}
+            </span>
+            <span className="text-[11px] font-medium text-violet-100/90 dark:text-violet-900/80">
+              {stats.errorCount > 0
+                ? `${stats.errorCount} gagal scrape — cek daftar di bawah`
+                : "semua ter-scrape tanpa error"}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Harga rata-rata</span>
+            <span className="bento-value text-2xl">
+              {stats.avgPrice != null ? formatRp(Math.round(stats.avgPrice)) : "—"}
+            </span>
+            {stats.minPrice != null && stats.maxPrice != null ? (
+              <span className="text-muted-foreground text-[11px] font-medium">
+                rentang {Math.round(stats.minPrice / 1000)}–
+                {Math.round(stats.maxPrice / 1000)}rb
+              </span>
+            ) : null}
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+              Rating rata-rata
+            </span>
+            <span className="bento-value text-violet-900 dark:text-violet-300">
+              {stats.avgRating != null ? stats.avgRating.toFixed(1) : "—"}
+            </span>
+            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/60">
+              {stats.promoCount > 0
+                ? `${stats.promoCount} produk sedang promo`
+                : "tidak ada promo aktif"}
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+            <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+              Alert belum dibaca
+            </span>
+            <span className="bento-value text-amber-900 dark:text-amber-300">
+              {unreadAlerts.toLocaleString("id-ID")}
+            </span>
+            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-300/60">
+              harga, rating, dan promo
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {category.tracks.length === 0 ? (
         <LabEmptyState
+          icon={Package}
           title="Belum ada produk"
           description="Tambahkan URL produk kompetitor (Shopee, Tokopedia, Lazada, TikTok Shop) ke kategori ini."
+          action={
+            <Button size="sm" onClick={() => setDialogOpen(true)}>
+              <Plus className="size-3.5" aria-hidden />
+              Tambah Produk
+            </Button>
+          }
         />
       ) : (
         <LabSection
@@ -260,53 +316,63 @@ export function CompetitorProductCategoryClient({
             {category.tracks.map((track) => (
               <div
                 key={track.id}
-                className={cn(
-                  lab.panel,
-                  "flex flex-col gap-3 p-4 sm:flex-row sm:items-center",
-                )}
+                className={cn(lab.card, "group flex flex-col p-0")}
               >
                 <Link
                   href={`/research-hub/competitor-tracker/products/${category.id}/tracks/${track.id}`}
-                  className="flex min-w-0 flex-1 items-center gap-3"
+                  className="flex min-w-0 flex-1 items-center gap-4 p-4"
                 >
-                  <div className="size-14 shrink-0 overflow-hidden rounded-lg border border-border/50 bg-muted/20">
+                  <div className="border-border/50 bg-muted/20 size-14 shrink-0 overflow-hidden rounded-xl border">
                     <ProductDiscoveryProductThumb
                       imageUrl={track.imageUrl}
                       name={track.name}
                       className="size-full"
                     />
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-medium leading-snug">{track.name}</p>
-                    <p className="text-muted-foreground text-xs">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-foreground flex items-center gap-1 font-bold leading-snug tracking-tight">
+                      <span className="line-clamp-1">{track.name}</span>
+                      <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
+                    </p>
+                    <p className="text-muted-foreground truncate text-xs">
                       {MARKETPLACE_LABELS[track.marketplace]}
                       {track.brand ? ` · ${track.brand}` : ""}
                       {track.shopName ? ` · ${track.shopName}` : ""}
                     </p>
-                    <p className="mt-1 text-sm tabular-nums">
-                      {track.currentPrice != null
-                        ? formatRp(track.currentPrice)
-                        : "—"}
-                      {track.rating != null
-                        ? ` · ★ ${track.rating.toFixed(1)}`
-                        : ""}
-                      {track.reviewCount > 0
-                        ? ` · ${track.reviewCount.toLocaleString("id-ID")} review`
-                        : ""}
-                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                      <span className="font-extrabold tabular-nums tracking-tight">
+                        {track.currentPrice != null
+                          ? formatRp(track.currentPrice)
+                          : "—"}
+                      </span>
+                      {track.rating != null ? (
+                        <span className="text-muted-foreground text-xs tabular-nums">
+                          ★ {track.rating.toFixed(1)}
+                        </span>
+                      ) : null}
+                      {track.reviewCount > 0 ? (
+                        <span className="text-muted-foreground text-xs tabular-nums">
+                          {track.reviewCount.toLocaleString("id-ID")} review
+                        </span>
+                      ) : null}
+                      {track.hasPromo ? (
+                        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                          {track.promoText ?? "Promo"}
+                        </span>
+                      ) : null}
+                    </div>
                     {track.scrapeError ? (
-                      <p className="text-destructive mt-1 text-xs">
+                      <p className="mt-1 inline-flex items-center rounded-full bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
                         {track.scrapeError}
                       </p>
                     ) : null}
                   </div>
                 </Link>
 
-                <div className="flex shrink-0 flex-wrap gap-2">
+                <div className="border-border/60 flex items-center justify-end gap-1 border-t px-3 py-2">
                   <Button
                     size="sm"
-                    variant="outline"
-                    className="gap-1"
+                    variant="ghost"
                     disabled={pending}
                     onClick={() =>
                       startTransition(async () => {
@@ -320,21 +386,29 @@ export function CompetitorProductCategoryClient({
                       })
                     }
                   >
-                    <RefreshCw className="size-3.5" />
+                    <RefreshCw className="size-3.5" aria-hidden />
                     Refresh
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
-                    render={<a href={track.productUrl} target="_blank" rel="noreferrer" />}
+                    render={
+                      <a
+                        href={track.productUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Buka ${track.name} di marketplace`}
+                      />
+                    }
                   >
-                    <ExternalLink className="size-3.5" />
+                    <ExternalLink className="size-3.5" aria-hidden />
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
                     className="text-destructive"
                     disabled={pending}
+                    aria-label="Hapus produk"
                     onClick={() =>
                       startTransition(async () => {
                         if (!confirm(`Hapus "${track.name}" dari kategori?`)) {
@@ -350,7 +424,7 @@ export function CompetitorProductCategoryClient({
                       })
                     }
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" aria-hidden />
                   </Button>
                 </div>
               </div>
@@ -387,9 +461,9 @@ export function CompetitorProductCategoryClient({
                 key={alert.id}
                 type="button"
                 className={cn(
-                  lab.panel,
-                  "flex w-full items-start gap-3 p-3 text-left text-sm",
-                  !alert.isRead && "border-amber-500/30 bg-amber-500/5",
+                  lab.card,
+                  "flex w-full items-start gap-3 p-4 text-left text-sm",
+                  alert.isRead && "opacity-60",
                 )}
                 onClick={() =>
                   startTransition(async () => {
@@ -400,13 +474,33 @@ export function CompetitorProductCategoryClient({
                   })
                 }
               >
-                <Bell className="text-muted-foreground mt-0.5 size-4 shrink-0" />
-                <span>{alert.message}</span>
+                <span
+                  className={cn(
+                    "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg",
+                    alert.isRead
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+                  )}
+                  aria-hidden
+                >
+                  <Bell className="size-3.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block">{alert.message}</span>
+                  <span className="text-muted-foreground mt-0.5 block text-[10px]">
+                    {new Date(alert.createdAt).toLocaleString("id-ID")}
+                  </span>
+                </span>
+                {!alert.isRead ? (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                    Baru
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
         </LabSection>
       ) : null}
-    </div>
+    </ResearchHubDetailPage>
   );
 }

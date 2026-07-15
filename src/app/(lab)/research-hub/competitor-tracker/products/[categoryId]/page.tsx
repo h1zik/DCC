@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import {
   CompetitorProductCategoryClient,
   type CompetitorProductCategoryDetail,
@@ -53,9 +52,5 @@ export default async function CompetitorProductCategoryPage({
     })),
   };
 
-  return (
-    <LabPageShell>
-      <CompetitorProductCategoryClient category={detail} />
-    </LabPageShell>
-  );
+  return <CompetitorProductCategoryClient category={detail} />;
 }

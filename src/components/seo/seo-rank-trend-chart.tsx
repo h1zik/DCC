@@ -6,8 +6,10 @@ import { EChart } from "@/components/lab/echart";
 /** Grafik tren posisi rata-rata (sumbu dibalik: posisi kecil = baik). */
 export function SeoRankTrendChart({
   points,
+  height = 240,
 }: {
   points: { date: string; avgPosition: number }[];
+  height?: number;
 }) {
   const option: EChartsOption = {
     tooltip: { trigger: "axis" },
@@ -25,5 +27,5 @@ export function SeoRankTrendChart({
       },
     ],
   };
-  return <EChart option={option} height={240} />;
+  return <EChart option={option} height={height} />;
 }

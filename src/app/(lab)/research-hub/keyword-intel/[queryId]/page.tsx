@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import {
   KeywordDetailClient,
   type KeywordDetailData,
@@ -115,9 +114,5 @@ export default async function KeywordDetailPage({ params }: Props) {
     })),
   };
 
-  return (
-    <LabPageShell>
-      <KeywordDetailClient data={data} />
-    </LabPageShell>
-  );
+  return <KeywordDetailClient data={data} />;
 }

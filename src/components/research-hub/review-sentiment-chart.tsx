@@ -14,6 +14,15 @@ const COLORS = {
   negative: "var(--destructive)",
 };
 
+/** Tooltip recharts selaras skin bento (kartu solid hangat). */
+const TOOLTIP_STYLE = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  fontSize: 12,
+  color: "var(--foreground)",
+} as const;
+
 export function ReviewSentimentChart({
   positivePct,
   neutralPct,
@@ -54,6 +63,7 @@ export function ReviewSentimentChart({
             ))}
           </Pie>
           <Tooltip
+            contentStyle={TOOLTIP_STYLE}
             formatter={(value, name) => [
               typeof value === "number" ? `${value.toFixed(1)}%` : "—",
               String(name ?? ""),

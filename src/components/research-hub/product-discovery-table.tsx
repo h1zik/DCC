@@ -103,7 +103,7 @@ export function ProductDiscoveryTable({
             <TableCell className="max-w-[240px]">
               <p className="line-clamp-2 font-medium">{row.name}</p>
               {row.hasPromo && row.promoText ? (
-                <span className="text-primary mt-0.5 inline-block text-[10px] font-medium">
+                <span className="mt-1 inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[var(--lab-accent,var(--primary))]">
                   {row.promoText}
                 </span>
               ) : null}
@@ -112,12 +112,12 @@ export function ProductDiscoveryTable({
               {row.shopName ?? "—"}
             </TableCell>
             <TableCell>
-              <span className="text-xs font-medium uppercase">
+              <span className="bg-muted text-muted-foreground inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide">
                 {MARKETPLACE_LABELS[row.marketplace as keyof typeof MARKETPLACE_LABELS] ??
                   row.marketplace}
               </span>
             </TableCell>
-            <TableCell className="text-right tabular-nums">
+            <TableCell className="text-right font-semibold tabular-nums">
               {row.price != null
                 ? `Rp ${row.price.toLocaleString("id-ID")}`
                 : "—"}

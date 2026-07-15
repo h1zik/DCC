@@ -1,4 +1,4 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Eye, Heart } from "lucide-react";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,10 @@ export type ViralContentRow = {
   likes: number;
 };
 
+/**
+ * Kartu konten viral — tile amber hangat dengan metrik ikon.
+ * Visual-only; dipakai juga brand-hub.
+ */
 export function SocialViralCards({ items }: { items: ViralContentRow[] }) {
   if (items.length === 0) {
     return (
@@ -24,38 +28,39 @@ export function SocialViralCards({ items }: { items: ViralContentRow[] }) {
         <div
           key={`${item.platform}-${i}`}
           className={cn(
-            hub.nestedPanel,
             hub.entrance,
-            "border-amber-500/30 bg-amber-500/5",
+            "flex flex-col rounded-xl bg-amber-500/8 p-3.5 ring-1 ring-inset ring-amber-500/20 dark:bg-amber-400/10",
           )}
           style={
             i > 0 && i < 8 ? { animationDelay: `${i * 40}ms` } : undefined
           }
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-medium">
+            <span className="truncate text-sm font-bold tracking-tight">
               {item.author ? `@${item.author}` : "Anonim"}
             </span>
-            <span className="text-muted-foreground text-[10px] font-semibold uppercase">
+            <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:text-amber-300">
               {item.platform}
             </span>
           </div>
-          <p className="text-muted-foreground mt-2 line-clamp-3 text-sm leading-relaxed">
+          <p className="text-muted-foreground mt-2 line-clamp-3 flex-1 text-sm leading-relaxed">
             {item.text}
           </p>
           <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-3 text-xs">
-            <span className="tabular-nums">
-              {item.views.toLocaleString("id-ID")} views
+            <span className="inline-flex items-center gap-1 font-semibold tabular-nums">
+              <Eye className="size-3.5" aria-hidden />
+              {item.views.toLocaleString("id-ID")}
             </span>
-            <span className="tabular-nums">
-              {item.likes.toLocaleString("id-ID")} likes
+            <span className="inline-flex items-center gap-1 font-semibold tabular-nums">
+              <Heart className="size-3.5" aria-hidden />
+              {item.likes.toLocaleString("id-ID")}
             </span>
             {item.url ? (
               <a
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary inline-flex items-center gap-1 hover:underline"
+                className="text-primary ml-auto inline-flex items-center gap-1 font-semibold hover:underline"
               >
                 Buka <ExternalLink className="size-3" aria-hidden />
               </a>

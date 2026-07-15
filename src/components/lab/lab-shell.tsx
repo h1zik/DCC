@@ -1,7 +1,9 @@
 "use client";
 
 import "./lab.css";
+import "./lab-bento.css";
 
+import { useCallback, useEffect, useState } from "react";
 import { LabHeader } from "@/components/lab/lab-header";
 import { LabSidebar } from "@/components/lab/lab-sidebar";
 import { LabThemeController } from "@/components/lab/lab-theme-controller";
@@ -25,25 +27,52 @@ export type LabAccess = {
 export function LabShell({
   access,
   user,
+  defaultSidebarCollapsed = false,
   children,
 }: {
   access: LabAccess;
   user: LabUser;
+  defaultSidebarCollapsed?: boolean;
   children: React.ReactNode;
 }) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    defaultSidebarCollapsed,
+  );
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      // Persist ke cookie agar SSR berikutnya langsung render lebar benar.
+      document.cookie = `lab_sidebar_state=${next ? "collapsed" : "expanded"}; path=/; max-age=31536000; samesite=lax`;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleSidebar]);
+
   return (
     <div className="flex min-h-svh w-full">
       <LabThemeController />
 
-      {/* Latar dekoratif tunggal untuk seluruh halaman Lab. */}
+      {/* Latar dekoratif tunggal untuk seluruh halaman Lab (grid halus). */}
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
         <div className="lab-grid absolute inset-0" />
-        <div className="lab-aurora lab-aurora--violet absolute -top-48 left-[8%] size-[34rem] rounded-full" />
-        <div className="lab-aurora lab-aurora--cyan absolute top-[22%] right-[-12%] size-[30rem] rounded-full" />
-        <div className="lab-aurora lab-aurora--pink absolute bottom-[-28%] left-[38%] size-[32rem] rounded-full" />
       </div>
 
-      <LabSidebar access={access} />
+      <LabSidebar
+        access={access}
+        collapsed={sidebarCollapsed}
+        onToggle={toggleSidebar}
+      />
 
       <div className="relative z-10 flex min-h-svh min-w-0 flex-1 flex-col">
         <LabHeader access={access} user={user} />

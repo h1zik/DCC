@@ -32,7 +32,7 @@ export function AdPosterImage({
       alt={alt}
       referrerPolicy="no-referrer"
       decoding="async"
-      className="absolute inset-0 h-full w-full object-cover"
+      className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
       onError={onError}
     />
   );
@@ -52,6 +52,7 @@ export function VideoFramePoster({
   const [frameReady, setFrameReady] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset frame preview saat sumber video berganti
     setFrameReady(false);
   }, [videoUrl]);
 
@@ -106,6 +107,7 @@ export function AdCreativeMedia({ ad, alt = "Ad creative", className }: AdCreati
   const showPosterImage = Boolean(poster) && !posterFailed;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset state playback saat kreatif berganti
     setPlaying(false);
     setVideoFailed(false);
     setPosterFailed(false);
@@ -129,11 +131,11 @@ export function AdCreativeMedia({ ad, alt = "Ad creative", className }: AdCreati
         )}
         <button
           type="button"
-          className="absolute inset-0 z-10 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/30"
+          className="absolute inset-0 z-10 flex items-center justify-center bg-gradient-to-t from-black/40 via-black/10 to-transparent transition-colors hover:from-black/50 hover:via-black/20 motion-reduce:transition-none"
           aria-label="Putar video iklan"
           onClick={() => setPlaying(true)}
         >
-          <span className="flex size-12 items-center justify-center rounded-full bg-black/55 text-white shadow-lg backdrop-blur-sm">
+          <span className="flex size-12 items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-1 ring-white/25 backdrop-blur-sm transition-transform duration-200 hover:scale-105 motion-reduce:transition-none motion-reduce:hover:scale-100">
             <Play className="size-6 fill-current" />
           </span>
         </button>

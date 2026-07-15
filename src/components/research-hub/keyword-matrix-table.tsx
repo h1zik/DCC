@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Download, Minus } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Minus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KeywordConfidenceBadge } from "@/components/research-hub/keyword-confidence-badge";
@@ -124,28 +124,38 @@ export function KeywordMatrixTable({
   return (
     <div className="flex flex-col gap-2">
       {!hasGoogleVolume ? (
-        <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
           DataForSEO tidak aktif — semua angka volume adalah estimasi proxy dari
-          rank/listing marketplace (ditandai <span className="font-medium">est.</span>),
+          rank/listing marketplace (ditandai <span className="font-semibold">est.</span>),
           bukan volume pencarian Google terukur.
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Filter keyword…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="h-8 max-w-xs text-sm"
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => exportCsv(sorted)}
-        >
-          <Download className="size-3.5" aria-hidden />
-          CSV
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted-foreground text-xs tabular-nums">
+          {sorted.length === rows.length
+            ? `${rows.length} keyword`
+            : `${sorted.length} dari ${rows.length} keyword`}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
+            <Input
+              placeholder="Cari keyword…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="h-8 w-44 pl-8 text-xs"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => exportCsv(sorted)}
+          >
+            <Download className="size-3.5" aria-hidden />
+            CSV
+          </Button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <Table>
@@ -198,7 +208,7 @@ export function KeywordMatrixTable({
                         {row.volume.toLocaleString("id-ID")}
                         {volEstimated ? (
                           <span
-                            className="rounded bg-amber-100 px-1 text-[9px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                            className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300"
                             title="Estimasi proxy dari rank/listing marketplace — bukan volume pencarian Google terukur."
                           >
                             est.
@@ -228,9 +238,9 @@ export function KeywordMatrixTable({
                   <TableCell>
                     <span
                       className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold",
                         row.intent === "transactional"
-                          ? "bg-primary/10 text-primary"
+                          ? "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-[var(--lab-accent,var(--primary))]"
                           : "bg-muted text-muted-foreground",
                       )}
                     >

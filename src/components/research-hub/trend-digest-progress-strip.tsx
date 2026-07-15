@@ -1,7 +1,6 @@
 "use client";
 
 import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
-import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
 export function TrendDigestProgressStrip({
@@ -10,7 +9,12 @@ export function TrendDigestProgressStrip({
   subtitle?: string | null;
 }) {
   return (
-    <div className={cn("flex flex-col gap-1.5", hub.entrance)}>
+    <div
+      className={cn(
+        "flex flex-col gap-1.5",
+        "animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none",
+      )}
+    >
       <JobProgressBar
         percent={45}
         title="Digest tren sedang di-generate"

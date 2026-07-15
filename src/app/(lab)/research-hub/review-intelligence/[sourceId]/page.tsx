@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { resumeStuckResearchJobs } from "@/lib/research/run-apify-job";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import {
   ReviewDetailClient,
   type ReviewDetailData,
@@ -181,17 +180,15 @@ export default async function ReviewDetailPage({ params }: Props) {
     }));
 
   return (
-    <LabPageShell>
-      <ReviewDetailClient
-        source={detail}
-        compareOptions={compareOptions}
-        rooms={rooms.map((r) => ({
-          id: r.id,
-          name: r.name,
-          brandId: r.brandId,
-          brandName: r.brand?.name ?? null,
-        }))}
-      />
-    </LabPageShell>
+    <ReviewDetailClient
+      source={detail}
+      compareOptions={compareOptions}
+      rooms={rooms.map((r) => ({
+        id: r.id,
+        name: r.name,
+        brandId: r.brandId,
+        brandName: r.brand?.name ?? null,
+      }))}
+    />
   );
 }

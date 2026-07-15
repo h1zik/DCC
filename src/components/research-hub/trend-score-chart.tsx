@@ -5,11 +5,12 @@ import type { EChartsOption } from "echarts";
 import { EChart } from "@/components/lab/echart";
 
 // canvas: CSS var tidak didukung — hex semantik ramah tema Lab.
+// Selaras dengan warna fase di TrendPhaseBoard (amber/emerald/sky/rose).
 const PHASE_COLOR: Record<string, string> = {
-  EMERGING: "#34d399", // positive/success
-  GROWING: "#06b6d4", // cyan accent
-  PEAK: "#f59e0b", // amber accent
-  DECLINING: "#94a3b8", // neutral
+  EMERGING: "#f59e0b", // amber — baru muncul
+  GROWING: "#10b981", // emerald — naik
+  PEAK: "#0ea5e9", // sky — puncak
+  DECLINING: "#f43f5e", // rose — menurun
 };
 
 /**
@@ -53,7 +54,7 @@ export function TrendScoreChart({
           data: sorted.map((i) => ({
             value: i.score ?? 0,
             // canvas: CSS var tidak didukung
-            itemStyle: { color: PHASE_COLOR[i.phase] ?? "#06b6d4" },
+            itemStyle: { color: PHASE_COLOR[i.phase] ?? "#94a3b8" },
           })),
           barWidth: "62%",
           label: {

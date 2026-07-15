@@ -11,6 +11,15 @@ import {
   YAxis,
 } from "recharts";
 
+/** Tooltip recharts selaras skin bento (kartu solid hangat). */
+const TOOLTIP_STYLE = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  fontSize: 12,
+  color: "var(--foreground)",
+} as const;
+
 type CompareRow = {
   label: string;
   positive: number;
@@ -41,14 +50,16 @@ export function CrossCompareChart({ data }: { data: CompareRow[] }) {
             unit="%"
           />
           <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            cursor={{ fill: "var(--muted)", opacity: 0.4 }}
             formatter={(v) =>
               typeof v === "number" ? `${v.toFixed(1)}%` : "—"
             }
           />
-          <Legend />
-          <Bar dataKey="positive" name="Positif" fill="var(--chart-4)" stackId="a" />
+          <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="positive" name="Positif" fill="var(--chart-4)" stackId="a" radius={[0, 0, 0, 0]} />
           <Bar dataKey="neutral" name="Netral" fill="var(--muted-foreground)" stackId="a" />
-          <Bar dataKey="negative" name="Negatif" fill="var(--destructive)" stackId="a" />
+          <Bar dataKey="negative" name="Negatif" fill="var(--destructive)" stackId="a" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

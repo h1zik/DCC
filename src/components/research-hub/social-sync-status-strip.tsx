@@ -25,6 +25,19 @@ function platformDotTone(status: string | null) {
   }
 }
 
+function platformStatusTone(status: string | null) {
+  switch (status) {
+    case "READY":
+      return "text-emerald-700 dark:text-emerald-300";
+    case "FAILED":
+      return "text-rose-700 dark:text-rose-300";
+    case "COLLECTING":
+      return "text-amber-700 dark:text-amber-300";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
 export function SocialSyncStatusStrip({
   showProgress,
   progressPercent,
@@ -67,10 +80,7 @@ export function SocialSyncStatusStrip({
           {platformProgress.map(({ platform, status, message }) => (
             <div
               key={platform}
-              className={cn(
-                hub.nestedPanel,
-                "inline-flex min-w-0 max-w-full flex-col gap-0.5 px-3 py-2",
-              )}
+              className="bg-muted/40 inline-flex min-w-0 max-w-full flex-col gap-0.5 rounded-xl px-3.5 py-2.5"
               title={message ?? undefined}
             >
               <div className="flex items-center gap-2">
@@ -81,10 +91,15 @@ export function SocialSyncStatusStrip({
                   )}
                   aria-hidden
                 />
-                <span className="text-xs font-medium">
+                <span className="text-xs font-bold tracking-tight">
                   {SOCIAL_LISTENING_PLATFORM_LABELS[platform]}
                 </span>
-                <span className="text-muted-foreground text-[10px] font-semibold uppercase">
+                <span
+                  className={cn(
+                    "text-[10px] font-semibold uppercase",
+                    platformStatusTone(status),
+                  )}
+                >
                   {status ?? "—"}
                 </span>
               </div>

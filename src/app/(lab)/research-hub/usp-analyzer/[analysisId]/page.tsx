@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { parseStoredContextModules } from "@/lib/research/usp-gap/list-context-sources";
 import { normalizePositioningMap } from "@/lib/research/usp-gap/positioning-chart";
-import { LabPageShell } from "@/components/lab/lab-primitives";
 import {
   UspDetailClient,
   type UspDetailData,
@@ -77,9 +76,5 @@ export default async function UspAnalyzerDetailPage({
     })),
   };
 
-  return (
-    <LabPageShell>
-      <UspDetailClient data={data} />
-    </LabPageShell>
-  );
+  return <UspDetailClient data={data} />;
 }

@@ -1,9 +1,9 @@
 "use client";
 
-import { hub } from "@/components/research-hub/research-hub-primitives";
 import type { EngagementInsights } from "@/lib/research/social-listening/social-comment-types";
 import { cn } from "@/lib/utils";
 
+/** Tile mini bento untuk satu metrik engagement. */
 function Stat({
   label,
   value,
@@ -14,10 +14,16 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className={cn(hub.nestedPanel)}>
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-      {hint ? <p className="text-muted-foreground mt-0.5 text-[10px]">{hint}</p> : null}
+    <div className="bg-muted/40 flex flex-col rounded-xl px-3.5 py-3">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+        {label}
+      </p>
+      <p className="text-foreground mt-1 text-xl font-extrabold tabular-nums tracking-tight">
+        {value}
+      </p>
+      {hint ? (
+        <p className="text-muted-foreground mt-0.5 text-[10px]">{hint}</p>
+      ) : null}
     </div>
   );
 }
@@ -32,7 +38,7 @@ export function SocialEngagementInsights({
   if (!insights || insights.totalMentions === 0) return null;
 
   return (
-    <div className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", className)}>
+    <div className={cn("grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4", className)}>
       <Stat
         label="Rata-rata likes"
         value={insights.avgLikes.toLocaleString("id-ID")}

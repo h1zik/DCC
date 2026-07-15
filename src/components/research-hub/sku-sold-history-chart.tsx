@@ -13,6 +13,14 @@ import {
 import { formatRevenueIdr } from "@/lib/research/shop-product-metrics";
 import type { SoldHistoryPoint } from "@/lib/research/shop-product-mappers";
 
+const TOOLTIP_STYLE = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  fontSize: 12,
+  boxShadow: "0 8px 24px -12px rgb(30 25 15 / 0.25)",
+} as const;
+
 export function SkuSoldHistoryChart({ data }: { data: SoldHistoryPoint[] }) {
   if (data.length === 0) {
     return (
@@ -26,11 +34,23 @@ export function SkuSoldHistoryChart({ data }: { data: SoldHistoryPoint[] }) {
 
   if (!hasTrend) {
     const point = data[0]!;
+    const single = [
+      { label: "Total terjual", value: point.historicalSold?.toLocaleString("id-ID") ?? "—" },
+      { label: "Bulan ini", value: point.monthlySold?.toLocaleString("id-ID") ?? "—" },
+      { label: "Revenue", value: formatRevenueIdr(point.estimatedRevenue) },
+    ];
     return (
-      <div className="text-muted-foreground grid gap-2 text-sm sm:grid-cols-2">
-        <p>Total terjual: {point.historicalSold?.toLocaleString("id-ID") ?? "—"}</p>
-        <p>Bulan ini: {point.monthlySold?.toLocaleString("id-ID") ?? "—"}</p>
-        <p>Revenue: {formatRevenueIdr(point.estimatedRevenue)}</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {single.map((s) => (
+          <div key={s.label} className="bg-muted/50 rounded-xl px-3.5 py-3">
+            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              {s.label}
+            </p>
+            <p className="text-foreground mt-0.5 truncate text-lg font-extrabold tabular-nums tracking-tight">
+              {s.value}
+            </p>
+          </div>
+        ))}
       </div>
     );
   }
@@ -40,10 +60,24 @@ export function SkuSoldHistoryChart({ data }: { data: SoldHistoryPoint[] }) {
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} />
-          <YAxis fontSize={10} tickLine={false} axisLine={false} />
-          <Tooltip />
-          <Legend />
+          <XAxis
+            dataKey="date"
+            fontSize={10}
+            tickLine={false}
+            axisLine={false}
+            stroke="var(--muted-foreground)"
+          />
+          <YAxis
+            fontSize={10}
+            tickLine={false}
+            axisLine={false}
+            stroke="var(--muted-foreground)"
+          />
+          <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
+          />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
           <Line
             type="monotone"
             dataKey="historicalSold"

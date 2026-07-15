@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { useMemo, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
 import {
   Bell,
   ExternalLink,
@@ -43,12 +42,8 @@ import {
   formatCompactCount,
   formatRevenueIdr,
 } from "@/lib/research/shop-product-metrics";
-import {
-  lab,
-  LabPageHeader,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab, LabSection } from "@/components/lab/lab-primitives";
+import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
@@ -102,6 +97,33 @@ type CompetitorAiInsights = {
 const tabContentClass =
   "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
 
+/** Pill severity alert — warning amber, critical rose, sisanya muted. */
+function SeverityPill({ severity }: { severity: string }) {
+  const s = severity.toLowerCase();
+  const tone =
+    s === "critical" || s === "high"
+      ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+      : s === "warning"
+        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+        : "bg-muted text-muted-foreground";
+  const label =
+    s === "critical" || s === "high"
+      ? "Kritis"
+      : s === "warning"
+        ? "Perhatian"
+        : "Info";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        tone,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function CompetitorDetailClient({
   competitor,
 }: {
@@ -121,9 +143,9 @@ export function CompetitorDetailClient({
   useEffect(() => {
     if (!awaitingScrape) return;
     if (competitor.isScraping) return;
-    if (competitor.skus.length > 0) {
-      setAwaitingScrape(false);
-    }
+    if (competitor.skus.length === 0) return;
+    const timer = window.setTimeout(() => setAwaitingScrape(false), 0);
+    return () => window.clearTimeout(timer);
   }, [awaitingScrape, competitor.isScraping, competitor.skus.length]);
 
   useEffect(() => {
@@ -134,6 +156,34 @@ export function CompetitorDetailClient({
 
   const ai = (competitor.aiInsights as CompetitorAiInsights | null) ?? null;
   const unreadAlerts = competitor.alerts.filter((a) => !a.isRead).length;
+
+  /* ------------------------ Distribusi pergerakan harga ------------------------ */
+  const priceMove = useMemo(() => {
+    let up = 0;
+    let down = 0;
+    for (const s of competitor.skus) {
+      if (s.priceDirection === "up") up += 1;
+      else if (s.priceDirection === "down") down += 1;
+    }
+    return { up, down, flat: competitor.skus.length - up - down };
+  }, [competitor.skus]);
+
+  const moveTotal = competitor.skus.length || 1;
+  const moveSegments = [
+    { key: "up", label: "Harga naik", count: priceMove.up, dot: "bg-rose-500" },
+    {
+      key: "down",
+      label: "Harga turun",
+      count: priceMove.down,
+      dot: "bg-emerald-500",
+    },
+    {
+      key: "flat",
+      label: "Stabil / belum ada trend",
+      count: priceMove.flat,
+      dot: "bg-muted-foreground/25",
+    },
+  ] as const;
 
   const priceChart =
     priceDays === 30
@@ -193,109 +243,41 @@ export function CompetitorDetailClient({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <Link
-        href="/research-hub/competitor-tracker"
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
-      >
-        <Target className="size-3" aria-hidden />
-        Kembali ke Competitor Tracker
-      </Link>
-
-      <LabPageHeader
-        variant="detail"
-        icon={Target}
-        eyebrow="Competitor Tracker"
-        title={competitor.name}
-        description={`${competitor.brand} · ${competitor.category} · ${MARKETPLACE_LABELS[competitor.marketplace]}`}
-        right={
-          <>
-            <ResearchModelBadgeGroup meta={competitor.aiMeta} />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              render={
-                <a
-                  href={competitor.shopUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                />
-              }
-            >
-              <ExternalLink className="mr-1.5 size-3.5" />
-              Buka Toko
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={pending || competitor.isScraping || awaitingScrape}
-            >
-              <RefreshCw className="mr-1.5 size-3.5" />
-              Refresh
-            </Button>
-          </>
-        }
-        footer={
-          <div className="flex flex-wrap items-center gap-2">
-            <LabStatChip
-              label="SKU"
-              value={competitor.skus.length.toLocaleString("id-ID")}
-              tone="accent"
-            />
-            {competitor.shopMetrics.totalHistoricalSold != null ? (
-              <LabStatChip
-                label="Total terjual"
-                value={formatCompactCount(competitor.shopMetrics.totalHistoricalSold)}
-                tone="accent"
+    <ResearchHubDetailPage
+      icon={Target}
+      backHref="/research-hub/competitor-tracker"
+      title={competitor.name}
+      description={`${competitor.brand} · ${competitor.category} · ${MARKETPLACE_LABELS[competitor.marketplace]}`}
+      right={
+        <>
+          <ResearchModelBadgeGroup meta={competitor.aiMeta} />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            render={
+              <a
+                href={competitor.shopUrl}
+                target="_blank"
+                rel="noopener noreferrer"
               />
-            ) : null}
-            {competitor.shopMetrics.totalMonthlySold != null ? (
-              <LabStatChip
-                label="Bulan ini"
-                value={formatCompactCount(competitor.shopMetrics.totalMonthlySold)}
-              />
-            ) : null}
-            {competitor.shopMetrics.totalEstimatedRevenue != null ? (
-              <LabStatChip
-                label="Est. revenue"
-                value={formatRevenueIdr(competitor.shopMetrics.totalEstimatedRevenue)}
-              />
-            ) : null}
-            {competitor.shopMetrics.totalStock != null ? (
-              <LabStatChip
-                label="Total stok"
-                value={formatCompactCount(competitor.shopMetrics.totalStock)}
-              />
-            ) : null}
-            <LabStatChip
-              label="Alert"
-              value={unreadAlerts.toLocaleString("id-ID")}
-              tone={unreadAlerts > 0 ? "warning" : "neutral"}
-            />
-            {ai?.shareOfCategoryPct != null ? (
-              <LabStatChip
-                label="Share kategori"
-                value={`${ai.shareOfCategoryPct.toFixed(1)}%`}
-              />
-            ) : null}
-            {ai?.discountDepthPct != null ? (
-              <LabStatChip
-                label="Kedalaman diskon"
-                value={`~${ai.discountDepthPct.toFixed(0)}%`}
-              />
-            ) : null}
-            {ai?.promoSkuCount != null ? (
-              <LabStatChip
-                label="SKU promo"
-                value={ai.promoSkuCount.toLocaleString("id-ID")}
-              />
-            ) : null}
-          </div>
-        }
-      />
-
+            }
+          >
+            <ExternalLink className="mr-1.5 size-3.5" />
+            Buka Toko
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={pending || competitor.isScraping || awaitingScrape}
+          >
+            <RefreshCw className="mr-1.5 size-3.5" />
+            Refresh
+          </Button>
+        </>
+      }
+    >
       {competitor.isScraping || awaitingScrape ? (
         <div className={lab.entrance}>
           <JobProgressBar
@@ -306,13 +288,144 @@ export function CompetitorDetailClient({
         </div>
       ) : null}
 
-      <DataSourceProvenancePanel entries={competitor.dataProvenance} />
+      {/* Papan hero bento */}
+      <div
+        className={cn(
+          lab.entrance,
+          "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
+        )}
+      >
+        {/* SKU dipantau — hero violet */}
+        <div className="bento-tile col-span-2 row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 lg:col-span-1 dark:bg-violet-500">
+          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            SKU dipantau
+          </span>
+          <span className="bento-value text-5xl text-white dark:text-violet-950">
+            {competitor.skus.length.toLocaleString("id-ID")}
+          </span>
+          <span className="text-[11px] font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+            sampel ±100 SKU teratas sesuai urutan listing marketplace
+          </span>
+        </div>
 
-      <p className="text-muted-foreground text-[11px]">
-        Cakupan scrape: maksimal ±100 SKU teratas per toko sesuai urutan
-        listing marketplace — metrik share/harga adalah estimasi dari sampel
-        ini, bukan seluruh katalog toko.
-      </p>
+        {/* Distribusi pergerakan harga */}
+        <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
+          <div className="flex items-center justify-between">
+            <span className="bento-label">Pergerakan harga</span>
+            <span className="text-muted-foreground text-[11px] tabular-nums">
+              vs snapshot sebelumnya
+            </span>
+          </div>
+          <div className="bg-muted flex h-2.5 overflow-hidden rounded-full">
+            {moveSegments.map((s) => {
+              if (s.count === 0) return null;
+              return (
+                <div
+                  key={s.key}
+                  className={s.dot}
+                  style={{ width: `${(s.count / moveTotal) * 100}%` }}
+                  title={`${s.label}: ${s.count}`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {moveSegments.map((s) => (
+              <div key={s.key} className="flex items-center gap-2 text-xs">
+                <span
+                  className={cn("size-2 shrink-0 rounded-full", s.dot)}
+                  aria-hidden
+                />
+                <span className="text-muted-foreground flex-1">{s.label}</span>
+                <span className="font-semibold tabular-nums">{s.count}</span>
+                <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                  {Math.round((s.count / moveTotal) * 100)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Total terjual */}
+        <div className="bento-tile">
+          <span className="bento-label">Total terjual</span>
+          <span className="bento-value">
+            {competitor.shopMetrics.totalHistoricalSold != null
+              ? formatCompactCount(competitor.shopMetrics.totalHistoricalSold)
+              : "—"}
+          </span>
+        </div>
+
+        {/* Est. revenue */}
+        <div className="bento-tile">
+          <span className="bento-label">Est. revenue</span>
+          <span className="bento-value text-2xl">
+            {competitor.shopMetrics.totalEstimatedRevenue != null
+              ? formatRevenueIdr(competitor.shopMetrics.totalEstimatedRevenue)
+              : "—"}
+          </span>
+        </div>
+
+        {/* Terjual bulan ini */}
+        <div className="bento-tile">
+          <span className="bento-label">Terjual bulan ini</span>
+          <span className="bento-value">
+            {competitor.shopMetrics.totalMonthlySold != null
+              ? formatCompactCount(competitor.shopMetrics.totalMonthlySold)
+              : "—"}
+          </span>
+        </div>
+
+        {/* Total stok */}
+        <div className="bento-tile">
+          <span className="bento-label">Total stok</span>
+          <span className="bento-value">
+            {competitor.shopMetrics.totalStock != null
+              ? formatCompactCount(competitor.shopMetrics.totalStock)
+              : "—"}
+          </span>
+        </div>
+
+        {/* SKU promo — lavender */}
+        <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+          <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            SKU promo
+          </span>
+          <span className="bento-value text-violet-900 dark:text-violet-300">
+            {(ai?.promoSkuCount ?? competitor.insights.promoCount).toLocaleString(
+              "id-ID",
+            )}
+            {competitor.insights.skuCount > 0 ? (
+              <span className="text-lg font-bold text-violet-800/50 dark:text-violet-300/50">
+                {" "}
+                · {competitor.insights.promoPct}%
+              </span>
+            ) : null}
+          </span>
+          {ai?.discountDepthPct != null ? (
+            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/60">
+              kedalaman diskon ~{ai.discountDepthPct.toFixed(0)}%
+            </span>
+          ) : null}
+        </div>
+
+        {/* Alert — amber */}
+        <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            Alert belum dibaca
+          </span>
+          <span className="bento-value text-amber-900 dark:text-amber-300">
+            {unreadAlerts.toLocaleString("id-ID")}
+          </span>
+          {ai?.shareOfCategoryPct != null ? (
+            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-300/60">
+              share kategori {ai.shareOfCategoryPct.toFixed(1)}%
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <DataSourceProvenancePanel entries={competitor.dataProvenance} />
 
       <Tabs defaultValue="ringkasan" className="gap-0">
         <div className={cn(lab.stickyToolbar, "pb-0")}>
@@ -361,35 +474,32 @@ export function CompetitorDetailClient({
             </LabSection>
           ) : null}
 
-          <LabSection
-            title="Performa Penjualan Toko"
-            description="Agregat historis terjual, volume bulanan, estimasi revenue, dan stok dari seluruh SKU kompetitor."
-            delayMs={25}
-          >
-            <div className={lab.panel}>
-              <CompetitorShopMetricsPanel
-                metrics={competitor.shopMetrics}
-                skuCount={competitor.skus.length}
-              />
+          <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
+            <div className="flex items-center justify-between">
+              <span className="bento-label">Performa penjualan toko</span>
+              <span className="text-muted-foreground text-[11px]">
+                agregat seluruh SKU kompetitor
+              </span>
             </div>
-          </LabSection>
+            <CompetitorShopMetricsPanel
+              metrics={competitor.shopMetrics}
+              skuCount={competitor.skus.length}
+            />
+          </div>
 
-          <LabSection
-            title="Ringkasan & Kesimpulan"
-            delayMs={50}
-          >
+          <LabSection title="Ringkasan & Kesimpulan" delayMs={50}>
             <CompetitorInsightsPanel insights={competitor.insights} bare />
           </LabSection>
 
-          <LabSection
-            title="Harga Saat Ini (Top SKU)"
-            description="Perbandingan harga hero SKU berdasarkan snapshot terakhir."
-            delayMs={100}
-          >
-            <div className={lab.panel}>
-              <CompetitorPriceBarChart data={competitor.currentPriceBar} />
+          <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
+            <div className="flex items-center justify-between">
+              <span className="bento-label">Harga saat ini (top SKU)</span>
+              <span className="text-muted-foreground text-[11px]">
+                snapshot terakhir per hero SKU
+              </span>
             </div>
-          </LabSection>
+            <CompetitorPriceBarChart data={competitor.currentPriceBar} />
+          </div>
         </TabsContent>
 
         <TabsContent value="sku" className={tabContentClass}>
@@ -409,10 +519,14 @@ export function CompetitorDetailClient({
         </TabsContent>
 
         <TabsContent value="analitik" className={tabContentClass}>
-          <LabSection
-            title="Trend Harga"
-            description="Pergerakan harga per hari (butuh refresh harian / cron)."
-            action={
+          <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span className="bento-label">Trend harga</span>
+                <p className="text-muted-foreground text-[11px]">
+                  pergerakan harga per hari (butuh refresh harian / cron)
+                </p>
+              </div>
               <Tabs
                 value={String(priceDays)}
                 onValueChange={(v) => v && setPriceDays(Number(v) as 30 | 60 | 90)}
@@ -429,22 +543,23 @@ export function CompetitorDetailClient({
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-            }
-          >
-            <div className={lab.panel}>
-              <CompetitorPriceChart
-                data={priceChart.data}
-                skuNames={priceChart.skuNames}
-                hasTrend={priceChart.hasTrend}
-              />
             </div>
-          </LabSection>
+            <CompetitorPriceChart
+              data={priceChart.data}
+              skuNames={priceChart.skuNames}
+              hasTrend={priceChart.hasTrend}
+            />
+          </div>
 
-          <LabSection title="Share of Review">
-            <div className={lab.panel}>
-              <ShareOfReviewChart data={competitor.shareOfReview} />
+          <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
+            <div className="flex items-center justify-between">
+              <span className="bento-label">Share of review</span>
+              <span className="text-muted-foreground text-[11px]">
+                proporsi review antar SKU teratas
+              </span>
             </div>
-          </LabSection>
+            <ShareOfReviewChart data={competitor.shareOfReview} />
+          </div>
         </TabsContent>
 
         <TabsContent value="alert" className={tabContentClass}>
@@ -484,12 +599,10 @@ export function CompetitorDetailClient({
                   <li
                     key={alert.id}
                     className={cn(
-                      lab.nestedPanel,
+                      lab.card,
                       lab.entrance,
-                      "text-sm",
-                      alert.isRead
-                        ? "opacity-60"
-                        : "border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_20%,transparent)] bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_5%,transparent)]",
+                      "flex flex-col gap-2 p-4 text-sm",
+                      alert.isRead && "opacity-60",
                     )}
                     style={
                       index > 0 && index < 8
@@ -497,8 +610,11 @@ export function CompetitorDetailClient({
                         : undefined
                     }
                   >
-                    <p>{alert.message}</p>
-                    <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="min-w-0 flex-1">{alert.message}</p>
+                      <SeverityPill severity={alert.severity} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-muted-foreground text-[10px]">
                         {new Date(alert.createdAt).toLocaleString("id-ID")}
                       </span>
@@ -535,6 +651,6 @@ export function CompetitorDetailClient({
           </LabSection>
         </TabsContent>
       </Tabs>
-    </div>
+    </ResearchHubDetailPage>
   );
 }

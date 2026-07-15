@@ -1,8 +1,13 @@
 import { Swords } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureSeoPage } from "@/lib/seo/auth";
+import { isSeoStatusBusy } from "@/lib/seo/labels";
 import { SeoModulePage } from "@/components/seo/seo-module-page";
-import { KeywordGapClient, type KeywordGapRow } from "./keyword-gap-client";
+import {
+  KeywordGapClient,
+  type KeywordGapListSummary,
+  type KeywordGapRow,
+} from "./keyword-gap-client";
 
 export default async function SeoKeywordGapPage({
   searchParams,
@@ -49,6 +54,17 @@ export default async function SeoKeywordGapPage({
     };
   });
 
+  // Agregat ringkasan — dihitung dari rows yang sudah diambil (tanpa query baru).
+  const summary: KeywordGapListSummary = {
+    total: items.length,
+    ready: items.filter((i) => i.status === "READY").length,
+    busy: items.filter((i) => isSeoStatusBusy(i.status)).length,
+    failed: items.filter((i) => i.status === "FAILED").length,
+    missing: items.reduce((acc, i) => acc + (i.missing ?? 0), 0),
+    weak: items.reduce((acc, i) => acc + (i.weak ?? 0), 0),
+    lastCreatedAt: items[0]?.createdAt ?? null,
+  };
+
   return (
     <SeoModulePage
       icon={Swords}
@@ -57,6 +73,7 @@ export default async function SeoKeywordGapPage({
     >
       <KeywordGapClient
         items={items}
+        summary={summary}
         prefillTarget={target ?? ""}
         prefillCompetitor={competitor ?? ""}
       />

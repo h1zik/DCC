@@ -4,7 +4,6 @@ import {
   Bell,
   FileText,
   Inbox,
-  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import type {
@@ -14,14 +13,7 @@ import type {
 } from "@/lib/research/dashboard/get-dashboard-data";
 import { ActionCenterList } from "@/components/research-hub/action-plan-panel";
 import { RESEARCH_HUB_ZONES } from "@/components/research-hub/research-hub-module-nav";
-import {
-  LabEmptyState,
-  LabPageHeader,
-  LabPageShell,
-  LabSection,
-  LabStatChip,
-  lab,
-} from "@/components/lab/lab-primitives";
+import { LabPageShell, lab } from "@/components/lab/lab-primitives";
 import { formatRelativeTime } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
 
@@ -44,27 +36,27 @@ const MODULE_DESCRIPTIONS: Record<string, string> = {
 
 const HEALTH_META: Record<
   DataHealthLevel,
-  { label: string; tone: string; dot: string }
+  { label: string; text: string; dot: string }
 > = {
   live: {
     label: "Live",
-    tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    text: "text-emerald-600 dark:text-emerald-400",
     dot: "bg-emerald-500",
   },
   partial: {
     label: "Parsial",
-    tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+    text: "text-amber-600 dark:text-amber-400",
     dot: "bg-amber-500",
   },
   demo: {
     label: "Demo",
-    tone: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+    text: "text-orange-600 dark:text-orange-400",
     dot: "bg-orange-500",
   },
   idle: {
     label: "Kosong",
-    tone: "bg-muted text-muted-foreground",
-    dot: "bg-muted-foreground/50",
+    text: "text-muted-foreground/70",
+    dot: "bg-muted-foreground/40",
   },
 };
 
@@ -114,36 +106,26 @@ function HealthBadge({ level }: { level: DataHealthLevel }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-        meta.tone,
+        "inline-flex shrink-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide",
+        meta.text,
       )}
     >
+      <span className={cn("size-1.5 rounded-full", meta.dot)} aria-hidden />
       {meta.label}
     </span>
   );
 }
 
-function ModuleBento({
-  zoneId,
+function ModuleGrid({
   items,
   healthByKey,
-  delayBase,
 }: {
-  zoneId: string;
   items: (typeof RESEARCH_HUB_ZONES)[number]["items"];
   healthByKey: Map<string, ModuleHealth>;
-  delayBase: number;
 }) {
-  const accent =
-    zoneId === "discover"
-      ? "border-l-primary/50"
-      : zoneId === "intelligence"
-        ? "border-l-sky-500/40"
-        : "border-l-violet-500/40";
-
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {items.map((mod, i) => {
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {items.map((mod) => {
         const h = healthByKey.get(mod.key);
         const level = h?.level ?? "idle";
         const Icon = mod.icon;
@@ -151,34 +133,28 @@ function ModuleBento({
           <Link
             key={mod.key}
             href={mod.href}
-            style={{ animationDelay: `${delayBase + i * 50}ms` }}
-            className={cn(
-              lab.card,
-              lab.cardHover,
-              lab.entrance,
-              "group flex flex-col gap-3 border-l-[3px] p-5",
-              accent,
-            )}
+            className="bento-tile group justify-start gap-1.5"
           >
-            <div className="flex items-start justify-between gap-3">
-              <span className="bg-primary/10 text-primary flex size-10 items-center justify-center rounded-xl transition-transform duration-200 ease-out motion-reduce:transition-none group-hover:scale-105">
-                <Icon className="size-5" aria-hidden />
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-2">
+                <Icon
+                  className="text-muted-foreground group-hover:text-primary size-3.5 shrink-0 transition-colors"
+                  aria-hidden
+                />
+                <span className="truncate text-[13px] font-semibold">
+                  {mod.label}
+                </span>
               </span>
               <HealthBadge level={level} />
             </div>
-            <div>
-              <p className="group-hover:text-primary text-sm font-semibold transition-colors">
-                {mod.label}
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              {MODULE_DESCRIPTIONS[mod.key] ?? ""}
+            </p>
+            {h?.detail ? (
+              <p className="text-muted-foreground/70 text-[11px] tabular-nums">
+                {h.detail}
               </p>
-              <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                {MODULE_DESCRIPTIONS[mod.key] ?? ""}
-              </p>
-              {h?.detail ? (
-                <p className="text-muted-foreground/80 mt-1.5 text-[11px]">
-                  {h.detail}
-                </p>
-              ) : null}
-            </div>
+            ) : null}
           </Link>
         );
       })}
@@ -196,45 +172,23 @@ function DataHealthPanel({
   const allModules = RESEARCH_HUB_ZONES.flatMap((z) => z.items);
 
   return (
-    <aside className="flex flex-col gap-4 lg:sticky lg:top-20">
-      <div className={cn(lab.panel)}>
-        <h2 className="text-foreground mb-3 flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="text-primary size-4" aria-hidden />
-          Kesehatan data
-        </h2>
-        <ul className="space-y-1">
+    <aside className="flex flex-col gap-3 lg:sticky lg:top-20">
+      <div className="bento-tile justify-start p-3.5">
+        <h2 className="bento-label mb-2.5 block">Kesehatan data</h2>
+        <ul className="divide-border/70 divide-y">
           {allModules.map((mod) => {
             const h = healthByKey.get(mod.key);
-            const meta = HEALTH_META[h?.level ?? "idle"];
             return (
               <li key={mod.key}>
                 <Link
                   href={mod.href}
-                  className="hover:bg-muted/50 flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 transition-colors"
+                  className="hover:bg-muted/50 -mx-1.5 flex items-center justify-between gap-2 rounded-md px-1.5 py-1.5 transition-colors"
+                  title={h?.detail}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        "size-2 shrink-0 rounded-full",
-                        meta.dot,
-                        (h?.level === "live" || h?.level === "partial") &&
-                          "animate-pulse motion-reduce:animate-none",
-                      )}
-                      aria-hidden
-                    />
-                    <span className="text-foreground truncate text-sm">
-                      {mod.label}
-                    </span>
+                  <span className="text-foreground truncate text-[13px]">
+                    {mod.label}
                   </span>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                      meta.tone,
-                    )}
-                    title={h?.detail}
-                  >
-                    {meta.label}
-                  </span>
+                  <HealthBadge level={h?.level ?? "idle"} />
                 </Link>
               </li>
             );
@@ -245,24 +199,19 @@ function DataHealthPanel({
       {latestReport ? (
         <Link
           href={`/research-hub/research-reports/${latestReport.id}`}
-          className={cn(
-            lab.card,
-            lab.cardHover,
-            "flex items-center gap-3 p-4",
-          )}
+          className="bento-tile hover:border-primary/40 flex-row items-center gap-3 p-3.5"
         >
-          <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
-            <FileText className="size-4" aria-hidden />
-          </span>
+          <FileText className="text-primary size-4 shrink-0" aria-hidden />
           <div className="min-w-0">
-            <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
-              Laporan terbaru
-            </p>
-            <p className="text-foreground truncate text-sm font-medium">
+            <p className="bento-label">Laporan terbaru</p>
+            <p className="text-foreground truncate text-[13px] font-medium">
               {latestReport.title}
             </p>
           </div>
-          <ArrowRight className="text-muted-foreground size-4 shrink-0" />
+          <ArrowRight
+            className="text-muted-foreground ml-auto size-3.5 shrink-0"
+            aria-hidden
+          />
         </Link>
       ) : null}
     </aside>
@@ -277,12 +226,12 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
     health.map((h) => [h.key, h]),
   );
 
-  const statusTone =
+  const statusText =
     kpis.unreadAlerts > 0
-      ? "warning"
+      ? "text-amber-600 dark:text-amber-400"
       : kpis.reviewInProgress > 0
-        ? "accent"
-        : "success";
+        ? "text-primary"
+        : "text-emerald-600 dark:text-emerald-400";
 
   const statusValue =
     kpis.unreadAlerts > 0
@@ -291,94 +240,110 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
         ? `${kpis.reviewInProgress} job`
         : "Stabil";
 
-  return (
-    <LabPageShell>
-      <LabPageHeader
-        eyebrow="Command Center"
-        title="Research Hub"
-        description="Command center riset pasar — review, kompetitor, tren, social listening, USP, konsep produk, hingga laporan dalam satu tempat."
-        footer={
-          <div className="flex flex-wrap items-center gap-2">
-            <LabStatChip
-              label="Status"
-              value={statusValue}
-              tone={statusTone}
-            />
-            <LabStatChip
-              label="Review siap"
-              value={kpis.reviewReady}
-              tone="success"
-            />
-            <LabStatChip
-              label="Kompetitor aktif"
-              value={kpis.competitorsActive}
-            />
-            <LabStatChip
-              label="Tren emerging"
-              value={kpis.emergingTrends}
-            />
-            <LabStatChip
-              label="Konsep"
-              value={`${kpis.conceptDrafts} draft / ${kpis.conceptReady} siap`}
-            />
-          </div>
-        }
-      />
+  const kpiCells = [
+    { label: "Status", value: statusValue, valueClass: statusText },
+    { label: "Review siap", value: kpis.reviewReady },
+    { label: "Kompetitor aktif", value: kpis.competitorsActive },
+    { label: "Tren emerging", value: kpis.emergingTrends },
+    {
+      label: "Konsep",
+      value: `${kpis.conceptDrafts} draft / ${kpis.conceptReady} siap`,
+    },
+  ] as const;
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_minmax(240px,280px)] lg:gap-8">
-        <div className="flex flex-col gap-8">
-          <section
-            className={cn(lab.card, lab.cardBody, lab.entrance)}
-            style={{ animationDelay: "80ms" }}
-          >
-            <p className={lab.label}>Alur riset</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-3">
-              {WORKFLOW.map((w, i) => (
-                <div
-                  key={w.step}
-                  className={cn(
-                    "relative flex flex-col gap-2",
-                    lab.entrance,
-                  )}
-                  style={{ animationDelay: `${100 + i * 100}ms` }}
-                >
-                  <span className="text-primary text-xs font-bold tabular-nums">
+  return (
+    <LabPageShell className="gap-6">
+      {/* Header bento: display besar, tanpa chip/gradient. */}
+      <header className={cn(lab.entrance, "space-y-1.5")}>
+        <h1 className="text-foreground text-3xl font-extrabold tracking-tight sm:text-4xl">
+          Research <span className="text-primary">Hub</span>
+        </h1>
+        <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed sm:text-[15px]">
+          Riset pasar dalam satu tempat — review, kompetitor, tren, social
+          listening, USP, konsep produk, hingga laporan.
+        </p>
+      </header>
+
+      {/* Papan bento metrik */}
+      <div
+        className={cn(
+          lab.entrance,
+          "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 md:grid-cols-4",
+        )}
+      >
+        {/* Status — tile hero violet, dua baris */}
+        <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
+          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            Status riset
+          </span>
+          <span className="bento-value text-4xl text-white dark:text-violet-950">
+            {statusValue}
+          </span>
+          <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+            {kpis.unreadAlerts > 0
+              ? "ada sinyal yang perlu ditinjau — cek daftar di bawah"
+              : kpis.reviewInProgress > 0
+                ? "analisis sedang berjalan di background"
+                : "semua modul sinkron, tidak ada alert tertunda"}
+          </span>
+        </div>
+
+        {kpiCells
+          .filter((cell) => cell.label !== "Status")
+          .map((cell) => (
+            <div key={cell.label} className="bento-tile">
+              <span className="bento-label">{cell.label}</span>
+              <span className="bento-value text-2xl">{cell.value}</span>
+            </div>
+          ))}
+
+        <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+          <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            Alert belum dibaca
+          </span>
+          <span className="bento-value text-2xl text-violet-950 dark:text-violet-200">
+            {kpis.unreadAlerts}
+          </span>
+        </div>
+        <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
+          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            Job berjalan
+          </span>
+          <span className="bento-value text-2xl text-amber-900 dark:text-amber-300">
+            {kpis.reviewInProgress}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_minmax(240px,280px)]">
+        <div className="flex flex-col gap-6">
+          {/* Alur riset */}
+          <section className="bento-tile justify-start p-4">
+            <p className="bento-label">Alur riset</p>
+            <div className="divide-border/70 mt-3 grid gap-4 sm:grid-cols-3 sm:gap-0 sm:divide-x">
+              {WORKFLOW.map((w) => (
+                <div key={w.step} className="sm:px-4 sm:first:pl-0 sm:last:pr-0">
+                  <p className="text-primary text-xs font-bold tabular-nums">
                     {w.step}
-                  </span>
-                  <p className="text-sm font-semibold">{w.title}</p>
-                  <p className="text-muted-foreground text-xs leading-relaxed">
+                  </p>
+                  <p className="mt-1 text-[13px] font-semibold">{w.title}</p>
+                  <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                     {w.desc}
                   </p>
-                  {i < WORKFLOW.length - 1 ? (
-                    <ArrowRight
-                      className="text-muted-foreground/40 absolute top-1 -right-2 hidden size-4 sm:block"
-                      aria-hidden
-                    />
-                  ) : null}
                 </div>
               ))}
             </div>
           </section>
 
-          <section
-            className={cn(
-              "rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-primary/5 p-5 shadow-sm sm:p-6",
-              lab.entrance,
-            )}
-            style={{ animationDelay: "160ms" }}
-          >
-            <header className="mb-4 flex flex-wrap items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="text-primary size-5" aria-hidden />
-                <div>
-                  <h2 className="text-base font-semibold">
-                    Action Center
-                  </h2>
-                  <p className="text-muted-foreground text-xs">
-                    Rekomendasi preskriptif lintas-modul — prioritas tertinggi
-                  </p>
-                </div>
-              </div>
+          {/* Action Center */}
+          <section className="bento-tile justify-start p-4">
+            <header className="mb-3">
+              <h2 className="text-[13px] font-semibold">
+                Action Center
+                <span className="text-primary ml-2 text-[11px] font-medium">
+                  rekomendasi lintas-modul
+                </span>
+              </h2>
             </header>
             <ActionCenterList
               recommendations={asActionCenterItems(recommendations)}
@@ -386,8 +351,8 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
           </section>
 
           {staleCrons.length > 0 ? (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-              <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+            <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 px-4 py-3">
+              <p className="text-[13px] font-medium text-amber-900 dark:text-amber-200">
                 Refresh terjadwal tidak berjalan — data bisa jadi basi
               </p>
               <ul className="mt-1.5 space-y-0.5 text-xs text-amber-800 dark:text-amber-300">
@@ -407,25 +372,32 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
             </div>
           ) : null}
 
-          <LabSection
-            title="Yang perlu perhatian"
-            description="Alert kompetitor & sinyal tren terbaru"
-            delayMs={240}
-          >
-            <div className={cn(lab.card, lab.cardBody)}>
+          {/* Alert & sinyal */}
+          <section>
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <p className="bento-label">Yang perlu perhatian</p>
+              <p className="text-muted-foreground text-[11px]">
+                Alert kompetitor & sinyal tren terbaru
+              </p>
+            </div>
+            <div className="bento-tile justify-start gap-0 overflow-hidden p-0">
               {alerts.length === 0 ? (
-                <LabEmptyState
-                  icon={Inbox}
-                  title="Belum ada alert atau sinyal tren"
-                  description="Tambah kompetitor atau generate digest tren untuk mulai."
-                />
+                <div className="text-muted-foreground flex flex-col items-center gap-2 px-6 py-10 text-center">
+                  <Inbox className="size-5" aria-hidden />
+                  <p className="text-[13px] font-medium">
+                    Belum ada alert atau sinyal tren
+                  </p>
+                  <p className="text-xs">
+                    Tambah kompetitor atau generate digest tren untuk mulai.
+                  </p>
+                </div>
               ) : (
-                <ul className="divide-border/60 -my-1 divide-y">
+                <ul className="divide-border/70 divide-y">
                   {alerts.map((a) => (
                     <li key={`${a.kind}-${a.id}`}>
                       <Link
                         href={a.href}
-                        className="hover:bg-muted/50 -mx-2 flex items-start gap-3 rounded-lg px-2 py-2.5 transition-[colors,transform] duration-200 ease-out motion-reduce:transition-none hover:translate-x-0.5 motion-reduce:hover:translate-x-0"
+                        className="hover:bg-muted/50 flex items-start gap-3 px-4 py-2.5 transition-colors"
                       >
                         <span
                           className={cn(
@@ -441,14 +413,14 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
                           )}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="text-foreground block truncate text-sm font-medium">
+                          <span className="text-foreground block truncate text-[13px] font-medium">
                             {a.title}
                           </span>
                           <span className="text-muted-foreground block truncate text-xs">
                             {a.subtitle}
                           </span>
                         </span>
-                        <span className="text-muted-foreground shrink-0 text-xs">
+                        <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
                           {formatRelativeTime(new Date(a.createdAt))}
                         </span>
                       </Link>
@@ -457,21 +429,14 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
                 </ul>
               )}
             </div>
-          </LabSection>
+          </section>
 
-          {RESEARCH_HUB_ZONES.map((zone, zi) => (
-            <LabSection
-              key={zone.id}
-              title={zone.label}
-              delayMs={320 + zi * 80}
-            >
-              <ModuleBento
-                zoneId={zone.id}
-                items={zone.items}
-                healthByKey={healthByKey}
-                delayBase={zi * 50}
-              />
-            </LabSection>
+          {/* Zona modul */}
+          {RESEARCH_HUB_ZONES.map((zone) => (
+            <section key={zone.id}>
+              <p className="bento-label mb-2 block">{zone.label}</p>
+              <ModuleGrid items={zone.items} healthByKey={healthByKey} />
+            </section>
           ))}
         </div>
 

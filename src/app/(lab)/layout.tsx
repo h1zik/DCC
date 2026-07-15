@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { LabShell } from "@/components/lab/lab-shell";
@@ -22,6 +23,11 @@ export default async function LabLayout({
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
+  // State sidebar dibaca server-side agar SSR langsung render lebar yang
+  // benar — tanpa flash saat reload.
+  const sidebarCollapsed =
+    (await cookies()).get("lab_sidebar_state")?.value === "collapsed";
+
   const role = session.user.role;
   if (!isMarketAnalystOrStudio(role)) redirect("/home");
 
@@ -39,6 +45,7 @@ export default async function LabLayout({
       <PwaPushRegistrar />
       <LabShell
         access={access}
+        defaultSidebarCollapsed={sidebarCollapsed}
         user={{
           name: session.user.name ?? null,
           image: session.user.image ?? null,

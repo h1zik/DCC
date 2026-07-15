@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SeoAnalysisStatus, SeoKeywordIntent } from "@prisma/client";
 import { Lightbulb, Loader2, PenLine, Sparkles, Trash2 } from "lucide-react";
@@ -13,9 +13,9 @@ import {
   LabSection,
   lab,
 } from "@/components/lab/lab-primitives";
-import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
 import {
   SEO_INTENT_LABELS,
+  SEO_STATUS_LABELS,
   isSeoStatusBusy,
   scoreToneClass,
 } from "@/lib/seo/labels";
@@ -53,6 +53,52 @@ function num(v: number | null): string {
   return v == null ? "—" : v.toLocaleString("id-ID");
 }
 
+/** Pill status run (emerald siap, amber berdenyut saat proses, rose gagal). */
+function StatusPill({ status }: { status: SeoAnalysisStatus }) {
+  const tone =
+    status === SeoAnalysisStatus.READY
+      ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+      : status === SeoAnalysisStatus.FAILED
+        ? "bg-rose-500/12 text-rose-700 dark:text-rose-300"
+        : "bg-amber-500/12 text-amber-700 dark:text-amber-300";
+  const dot =
+    status === SeoAnalysisStatus.READY
+      ? "bg-emerald-500"
+      : status === SeoAnalysisStatus.FAILED
+        ? "bg-rose-500"
+        : "bg-amber-500 animate-pulse";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        tone,
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", dot)} />
+      {SEO_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function CardStat({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+        {label}
+      </p>
+      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
+        {value}
+      </p>
+    </div>
+  );
+}
+
 export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -65,6 +111,26 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
     const timer = setInterval(() => router.refresh(), 4000);
     return () => clearInterval(timer);
   }, [hasBusy, router]);
+
+  /* ------------------------------ Ringkasan strip ------------------------------ */
+  const summary = useMemo(() => {
+    const all = runs.flatMap((r) => r.suggestions);
+    const best = all.length
+      ? all.reduce((a, b) => (b.opportunityScore > a.opportunityScore ? b : a))
+      : null;
+    const avgScore = all.length
+      ? Math.round(
+          all.reduce((acc, s) => acc + s.opportunityScore, 0) / all.length,
+        )
+      : null;
+    return {
+      totalSuggestions: all.length,
+      totalRuns: runs.length,
+      busyRuns: runs.filter((r) => isSeoStatusBusy(r.status)).length,
+      best,
+      avgScore,
+    };
+  }, [runs]);
 
   function handleDiscover() {
     if (!seed.trim()) {
@@ -133,11 +199,64 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Ringkasan discovery */}
+      {runs.length > 0 ? (
+        <div
+          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
+        >
+          <div className="bento-tile border-transparent bg-teal-600 shadow-md shadow-teal-600/20 dark:bg-teal-500">
+            <span className="text-[11.5px] font-semibold text-teal-100 dark:text-teal-950/70">
+              Topik diusulkan
+            </span>
+            <span className="bento-value text-white dark:text-teal-950">
+              {summary.totalSuggestions}
+            </span>
+            <span className="text-[11px] font-medium text-teal-100/90 dark:text-teal-900/80">
+              dari {summary.totalRuns} discovery
+              {summary.busyRuns > 0 ? ` · ${summary.busyRuns} diproses` : ""}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Skor opportunity rata-rata</span>
+            <span className="bento-value">{summary.avgScore ?? "—"}</span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              winnable + worth it, 0–100
+            </span>
+          </div>
+
+          <div className="bento-tile col-span-2">
+            <span className="bento-label">Peluang terbaik</span>
+            {summary.best ? (
+              <>
+                <span className="truncate text-lg font-extrabold tracking-tight">
+                  “{summary.best.keyword}”
+                </span>
+                <span className="text-muted-foreground truncate text-[11px] font-medium">
+                  skor {summary.best.opportunityScore} · vol{" "}
+                  {num(summary.best.searchVolume)} ·{" "}
+                  {SEO_INTENT_LABELS[summary.best.intent]}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground text-sm">
+                Menunggu hasil discovery pertama…
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <LabSection
         title="Temukan topik dari data"
         description="Cukup masukkan kategori/seed. Kami tarik keyword + metrik nyata, skor opportunity, dan usulkan judul yang grounding ke SERP."
       >
-        <div className={cn(lab.panel, "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end")}>
+        <div
+          className={cn(
+            lab.panel,
+            "grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end",
+          )}
+        >
           <div className="grid gap-1.5">
             <Label>Seed / kategori</Label>
             <Input
@@ -161,102 +280,147 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
           description="Masukkan satu kategori di atas untuk melihat keyword + judul ter-ranking."
         />
       ) : (
-        runs.map((run) => (
-          <div key={run.id} className={cn(lab.card, "p-4")}>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">“{run.seed}”</span>
-                <SeoStatusBadge status={run.status} />
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => handleDelete(run.id)}
-                disabled={pending}
-                aria-label="Hapus"
-              >
-                <Trash2 className="text-destructive" />
-              </Button>
-            </div>
-
-            {run.status === SeoAnalysisStatus.FAILED && run.errorMessage ? (
-              <p className="text-destructive text-sm">{run.errorMessage}</p>
-            ) : null}
-            {run.dataNotice ? (
-              <p className="text-muted-foreground text-sm">{run.dataNotice}</p>
-            ) : null}
-
-            {isSeoStatusBusy(run.status) ? (
-              <p className="text-muted-foreground flex items-center gap-2 text-sm">
-                <Loader2 className="size-4 animate-spin" />
-                Menarik keyword, skor opportunity, & grounding SERP…
-              </p>
-            ) : run.suggestions.length === 0 && !run.dataNotice ? (
-              <p className="text-muted-foreground text-sm">Tidak ada saran.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {run.suggestions.map((s) => (
-                  <div
-                    key={s.keyword}
-                    className={cn(lab.nestedPanel, "flex flex-col gap-2 sm:flex-row sm:items-center")}
+        <div className="flex flex-col gap-4">
+          {runs.map((run) => (
+            <div key={run.id} className={cn(lab.card, lab.entrance, "p-0")}>
+              {/* Header run */}
+              <div className="border-border/60 flex items-center justify-between gap-2 border-b px-5 py-3.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className="bg-primary/12 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg"
+                    aria-hidden
                   >
-                    <div
-                      className={cn(
-                        "flex size-11 shrink-0 flex-col items-center justify-center rounded-xl border text-base font-bold tabular-nums",
-                        scoreToneClass(s.opportunityScore),
-                      )}
-                      title="Opportunity score"
-                    >
-                      {s.opportunityScore}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-foreground font-medium">{s.suggestedTitle}</p>
-                      <p className="text-muted-foreground text-xs">
-                        <span className="font-medium">{s.keyword}</span> · vol{" "}
-                        {num(s.searchVolume)} · difficulty {s.difficulty ?? "—"} ·{" "}
-                        {SEO_INTENT_LABELS[s.intent]}
-                      </p>
-                      {s.angle ? (
-                        <p className="text-muted-foreground mt-0.5 text-xs italic">
-                          {s.angle}
-                        </p>
-                      ) : null}
-                      {s.competingTitles.length > 0 ? (
-                        <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
-                          Saingan: {s.competingTitles.slice(0, 2).join(" · ")}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSaveToFeed(s, run.id)}
-                        disabled={pending}
-                        title="Simpan ke feed Opportunities"
-                      >
-                        <Lightbulb />
-                        Ke feed
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleCreateBrief(s)}
-                        disabled={pending}
-                      >
-                        {creatingKw === s.keyword ? (
-                          <Loader2 className="animate-spin" />
-                        ) : (
-                          <PenLine />
-                        )}
-                        Buat brief
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                    <Sparkles className="size-4" />
+                  </span>
+                  <p className="text-foreground truncate font-bold tracking-tight">
+                    “{run.seed}”
+                  </p>
+                  <StatusPill status={run.status} />
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {run.suggestions.length > 0 ? (
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {run.suggestions.length} topik
+                    </span>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => handleDelete(run.id)}
+                    disabled={pending}
+                    aria-label="Hapus"
+                  >
+                    <Trash2 className="text-destructive" />
+                  </Button>
+                </div>
               </div>
-            )}
-          </div>
-        ))
+
+              <div className="flex flex-col gap-2 p-4">
+                {run.status === SeoAnalysisStatus.FAILED && run.errorMessage ? (
+                  <p className="text-destructive text-sm">{run.errorMessage}</p>
+                ) : null}
+                {run.dataNotice ? (
+                  <p className="text-muted-foreground text-sm">
+                    {run.dataNotice}
+                  </p>
+                ) : null}
+
+                {isSeoStatusBusy(run.status) ? (
+                  <p className="text-muted-foreground flex items-center gap-2 text-sm">
+                    <Loader2 className="size-4 animate-spin" />
+                    Menarik keyword, skor opportunity, & grounding SERP…
+                  </p>
+                ) : run.suggestions.length === 0 && !run.dataNotice ? (
+                  <p className="text-muted-foreground text-sm">
+                    Tidak ada saran.
+                  </p>
+                ) : (
+                  run.suggestions.map((s) => (
+                    <div
+                      key={s.keyword}
+                      className={cn(
+                        lab.nestedPanel,
+                        "flex flex-col gap-3 lg:flex-row lg:items-center",
+                      )}
+                    >
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div
+                          className={cn(
+                            "flex size-11 shrink-0 flex-col items-center justify-center rounded-xl border text-base font-bold tabular-nums",
+                            scoreToneClass(s.opportunityScore),
+                          )}
+                          title="Opportunity score"
+                        >
+                          {s.opportunityScore}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-foreground font-bold tracking-tight">
+                            {s.suggestedTitle}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            <span className="text-foreground font-medium">
+                              {s.keyword}
+                            </span>
+                            {s.angle ? (
+                              <span className="italic"> — {s.angle}</span>
+                            ) : null}
+                          </p>
+                          {s.competingTitles.length > 0 ? (
+                            <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
+                              Saingan:{" "}
+                              {s.competingTitles.slice(0, 2).join(" · ")}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="grid shrink-0 grid-cols-3 gap-x-4 gap-y-2 lg:w-56">
+                        <CardStat label="Volume" value={num(s.searchVolume)} />
+                        <CardStat
+                          label="Difficulty"
+                          value={s.difficulty ?? "—"}
+                        />
+                        <CardStat
+                          label="Intent"
+                          value={
+                            <span className="text-xs font-bold">
+                              {SEO_INTENT_LABELS[s.intent]}
+                            </span>
+                          }
+                        />
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSaveToFeed(s, run.id)}
+                          disabled={pending}
+                          title="Simpan ke feed Opportunities"
+                        >
+                          <Lightbulb />
+                          Ke feed
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleCreateBrief(s)}
+                          disabled={pending}
+                        >
+                          {creatingKw === s.keyword ? (
+                            <Loader2 className="animate-spin" />
+                          ) : (
+                            <PenLine />
+                          )}
+                          Buat brief
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

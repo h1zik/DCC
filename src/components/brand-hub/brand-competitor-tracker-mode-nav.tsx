@@ -24,12 +24,13 @@ const TABS = [
   },
 ] as const;
 
+/** Segmented control mode tracker — pill tinta solid untuk tab aktif. */
 export function BrandCompetitorTrackerModeNav() {
   const pathname = usePathname();
   const brandId = useBrandHubBrandId();
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="bg-muted/60 inline-flex w-fit flex-wrap items-center gap-1 rounded-full p-1">
       {TABS.map((tab) => {
         const active = tab.match(pathname);
         const Icon = tab.icon;
@@ -38,13 +39,13 @@ export function BrandCompetitorTrackerModeNav() {
             key={tab.href}
             href={brandHubHref(tab.href, brandId)}
             className={cn(
-              "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+              "inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors duration-150 motion-reduce:transition-none",
               active
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <Icon className="size-4" />
+            <Icon className="size-4" aria-hidden />
             {tab.label}
           </Link>
         );

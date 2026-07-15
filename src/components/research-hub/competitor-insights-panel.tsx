@@ -5,6 +5,7 @@ import type { CompetitorInsights } from "@/lib/research/competitor-insights";
 import { hub } from "@/components/research-hub/research-hub-primitives";
 import { cn } from "@/lib/utils";
 
+/** Tile mini bento untuk satu KPI ringkasan. */
 function KpiCard({
   label,
   value,
@@ -15,15 +16,17 @@ function KpiCard({
   sub?: string;
 }) {
   return (
-    <div className={hub.nestedPanel}>
-      <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+    <div className="bg-muted/50 rounded-xl px-3.5 py-3">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
         {label}
       </p>
-      <p className="text-foreground mt-0.5 text-lg font-semibold tabular-nums">
+      <p className="text-foreground mt-0.5 truncate text-lg font-extrabold tabular-nums tracking-tight">
         {value}
       </p>
       {sub ? (
-        <p className="text-muted-foreground mt-0.5 text-[10px]">{sub}</p>
+        <p className="text-muted-foreground mt-0.5 text-[10px] font-medium">
+          {sub}
+        </p>
       ) : null}
     </div>
   );
@@ -79,13 +82,15 @@ export function CompetitorInsightsPanel({
 
       <div
         className={cn(
-          hub.nestedPanel,
+          "rounded-xl border p-4",
           insights.promoPct >= 50
             ? "border-amber-500/30 bg-amber-500/10"
-            : "border-primary/20 bg-primary/5",
+            : "border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_20%,transparent)] bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_6%,transparent)]",
         )}
       >
-        <p className="text-foreground text-sm font-medium">{insights.headline}</p>
+        <p className="text-foreground text-sm font-semibold">
+          {insights.headline}
+        </p>
         <ul className="text-muted-foreground mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed">
           {insights.bullets.map((b) => (
             <li key={b}>{b}</li>

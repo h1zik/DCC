@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { hub } from "@/components/research-hub/research-hub-primitives";
 import type { TrendDigestMode } from "@prisma/client";
 
 export function TrendQualityBanner({
@@ -22,17 +21,20 @@ export function TrendQualityBanner({
     <p
       role="alert"
       className={cn(
-        hub.nestedPanel,
-        "text-sm leading-relaxed",
+        "rounded-xl border px-4 py-3 text-sm leading-relaxed",
         isFailed &&
-          "border-rose-500/40 bg-rose-500/10 text-rose-800 dark:text-rose-200",
+          "border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-200",
         isPartial &&
-          "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100",
-        !isFailed && !isPartial && "border-sky-500/40 bg-sky-500/10",
+          "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-100",
+        !isFailed &&
+          !isPartial &&
+          "border-sky-500/30 bg-sky-500/10 text-sky-950 dark:text-sky-100",
         className,
       )}
     >
-      {isFailed ? "Digest gagal — " : isPartial ? "Data parsial — " : ""}
+      <span className="font-semibold">
+        {isFailed ? "Digest gagal — " : isPartial ? "Data parsial — " : ""}
+      </span>
       {dataNotice ?? "Kualitas data digest perlu diperhatikan."}
     </p>
   );

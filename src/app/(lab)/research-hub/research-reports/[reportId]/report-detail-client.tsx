@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useTransition } from "react";
+import { useEffect, useMemo, useTransition } from "react";
 import {
   FileText,
   GitBranch,
   ListChecks,
   RefreshCw,
   Sparkles,
+  TriangleAlert,
 } from "lucide-react";
 import { ResearchReportStatus } from "@prisma/client";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ import {
   type ReportSectionRow,
 } from "@/components/research-hub/report-section-list";
 import { ReportShareLinkButton } from "@/components/research-hub/report-share-link-button";
+import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
 import { reportBodyToHtml } from "@/lib/research/reports/report-body-html";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,12 +35,7 @@ import {
   RESEARCH_REPORT_STATUS_LABELS,
   RESEARCH_REPORT_TYPE_LABELS,
 } from "@/lib/research/labels";
-import {
-  lab,
-  LabPageHeader,
-  LabSection,
-  LabStatChip,
-} from "@/components/lab/lab-primitives";
+import { lab } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -91,19 +88,27 @@ const PRIORITY_TONE: Record<string, string> = {
   P2: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
 };
 
-function statusChipTone(
-  status: ResearchReportStatus,
-): "neutral" | "success" | "warning" | "primary" {
+const METRIC_ROWS: { key: keyof ReportActivityMetrics; label: string }[] = [
+  { key: "reviewSourcesReady", label: "Review siap" },
+  { key: "competitorsTracked", label: "Kompetitor" },
+  { key: "trendDigests", label: "Trend digest" },
+  { key: "keywordQueries", label: "Keyword query" },
+  { key: "socialBatches", label: "Social batch" },
+  { key: "uspAnalyses", label: "USP analisis" },
+  { key: "productConcepts", label: "Konsep" },
+];
+
+function statusPillTone(status: ResearchReportStatus): string {
   switch (status) {
     case "READY":
-      return "success";
+      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
     case "FAILED":
-      return "warning";
+      return "bg-rose-500/15 text-rose-700 dark:text-rose-300";
     case "GENERATING":
     case "PENDING":
-      return "warning";
+      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
     default:
-      return "neutral";
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -139,65 +144,52 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
       ? `${data.periodStart.slice(0, 10)} – ${data.periodEnd.slice(0, 10)}`
       : null;
 
+  const maxMetric = useMemo(
+    () =>
+      data.metrics
+        ? Math.max(...METRIC_ROWS.map((r) => data.metrics![r.key]), 1)
+        : 1,
+    [data.metrics],
+  );
+
+  const showHeroBoard =
+    !inProgress &&
+    (data.sections.length > 0 ||
+      data.actionItems.length > 0 ||
+      data.metrics != null);
+
   return (
-    <div className="flex flex-col gap-6 pb-6">
-      <Link
-        href="/research-hub/research-reports"
-        className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none"
-      >
-        <FileText className="size-3" aria-hidden />
-        Kembali ke Research Reports
-      </Link>
-
-      <LabPageHeader
-        variant="detail"
-        icon={FileText}
-        eyebrow="Research Reports"
-        title={data.title}
-        description={`${RESEARCH_REPORT_TYPE_LABELS[data.type as keyof typeof RESEARCH_REPORT_TYPE_LABELS] ?? data.type}${periodLabel ? ` · ${periodLabel}` : ""}`}
-        right={
-          <>
-            <ResearchModelBadgeGroup meta={data.aiMeta} />
-            <ReportShareLinkButton path={data.sharePath} />
-            {data.status === "READY" ? (
-              <ReportPdfDownloadButton reportId={data.id} title={data.title} />
-            ) : null}
-            <Button size="sm" onClick={handleRefresh} disabled={pending || inProgress}>
-              <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
-              Refresh
-            </Button>
-          </>
-        }
-        footer={
-          <div className="flex flex-wrap items-center gap-2">
-            <LabStatChip
-              label="Status"
-              value={RESEARCH_REPORT_STATUS_LABELS[data.status]}
-              tone={statusChipTone(data.status)}
-            />
-            <LabStatChip
-              label="Versi"
-              value={`v${data.version}${data.revisionCount > 0 ? ` (${data.revisionCount} arsip)` : ""}`}
-            />
-            <LabStatChip
-              label="Section"
-              value={data.sections.length.toLocaleString("id-ID")}
-              tone="accent"
-            />
-            <LabStatChip
-              label="Aksi"
-              value={data.actionItems.length.toLocaleString("id-ID")}
-            />
-            {data.metrics ? (
-              <LabStatChip
-                label="Sinyal review"
-                value={data.metrics.reviewSourcesReady.toLocaleString("id-ID")}
-              />
-            ) : null}
-          </div>
-        }
-      />
-
+    <ResearchHubDetailPage
+      icon={FileText}
+      backHref="/research-hub/research-reports"
+      title={data.title}
+      description={`${RESEARCH_REPORT_TYPE_LABELS[data.type as keyof typeof RESEARCH_REPORT_TYPE_LABELS] ?? data.type}${periodLabel ? ` · ${periodLabel}` : ""}`}
+      right={
+        <>
+          <ResearchModelBadgeGroup meta={data.aiMeta} />
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+              statusPillTone(data.status),
+            )}
+          >
+            {RESEARCH_REPORT_STATUS_LABELS[data.status]}
+          </span>
+          <ReportShareLinkButton path={data.sharePath} />
+          {data.status === "READY" ? (
+            <ReportPdfDownloadButton reportId={data.id} title={data.title} />
+          ) : null}
+          <Button
+            size="sm"
+            onClick={handleRefresh}
+            disabled={pending || inProgress}
+          >
+            <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
+            Refresh
+          </Button>
+        </>
+      }
+    >
       {inProgress ? (
         <div className={lab.entrance}>
           <JobProgressBar
@@ -205,6 +197,103 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
             percent={50}
             stepLabel="Mengagregasi modul riset & menulis section — halaman refresh otomatis."
           />
+        </div>
+      ) : null}
+
+      {data.status === "FAILED" && data.errorMessage ? (
+        <p
+          className={cn(
+            lab.entrance,
+            "flex items-start gap-2.5 rounded-2xl bg-rose-500/10 p-4 text-sm text-rose-800 dark:text-rose-200",
+          )}
+          role="alert"
+        >
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          {data.errorMessage}
+        </p>
+      ) : null}
+
+      {/* Papan hero bento */}
+      {showHeroBoard ? (
+        <div
+          className={cn(
+            lab.entrance,
+            "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
+          )}
+        >
+          <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
+            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+              Rekomendasi aksi
+            </span>
+            <span className="bento-value text-5xl text-white dark:text-violet-950">
+              {data.actionItems.length}
+            </span>
+            <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+              lintas-modul, deterministik dari pipeline riset
+            </span>
+          </div>
+
+          {/* Aktivitas modul — tile lebar */}
+          {data.metrics ? (
+            <div className="bento-tile col-span-2 row-span-2 justify-start gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="bento-label">Aktivitas modul</span>
+                <span className="text-muted-foreground text-[11px]">
+                  volume sinyal dalam periode laporan
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {METRIC_ROWS.map((row) => {
+                  const value = data.metrics![row.key];
+                  return (
+                    <div
+                      key={row.key}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      <span className="text-muted-foreground w-24 shrink-0 truncate">
+                        {row.label}
+                      </span>
+                      <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
+                        <div
+                          className="h-full rounded-full bg-violet-500/70 dark:bg-violet-400/70"
+                          style={{ width: `${(value / maxMetric) * 100}%` }}
+                        />
+                      </div>
+                      <span className="w-8 shrink-0 text-right font-semibold tabular-nums">
+                        {value.toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
+              <span className="bento-label">Aktivitas modul</span>
+              <p className="text-muted-foreground m-auto max-w-60 text-center text-sm">
+                Metrik aktivitas modul belum tersedia untuk laporan ini.
+              </p>
+            </div>
+          )}
+
+          <div className="bento-tile">
+            <span className="bento-label">Section laporan</span>
+            <span className="bento-value">{data.sections.length}</span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
+            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+              Versi
+            </span>
+            <span className="bento-value text-violet-900 dark:text-violet-300">
+              v{data.version}
+            </span>
+            <span className="text-[11px] font-medium text-violet-700/70 dark:text-violet-300/70">
+              {data.revisionCount > 0
+                ? `${data.revisionCount} versi diarsip`
+                : "belum ada arsip revisi"}
+            </span>
+          </div>
         </div>
       ) : null}
 
@@ -242,136 +331,103 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
 
         <TabsContent value="ringkasan" className={tabContentClass}>
           {data.aiSummary ? (
-            <LabSection title="Executive Summary" delayMs={0}>
+            <div className="bento-tile justify-start gap-3">
+              <span className="bento-label">Executive summary</span>
               <div
-                className={cn(lab.panel, REPORT_BODY_HTML_CLASS)}
+                className={REPORT_BODY_HTML_CLASS}
                 dangerouslySetInnerHTML={{
                   __html: reportBodyToHtml(data.aiSummary),
                 }}
               />
-            </LabSection>
-          ) : null}
-
-          {data.metrics ? (
-            <LabSection
-              title="Aktivitas Modul"
-              description="Volume sinyal riset dalam periode laporan."
-              delayMs={50}
-            >
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <LabStatChip
-                  label="Review siap"
-                  value={data.metrics.reviewSourcesReady.toLocaleString("id-ID")}
-                  tone="accent"
-                />
-                <LabStatChip
-                  label="Kompetitor"
-                  value={data.metrics.competitorsTracked.toLocaleString("id-ID")}
-                />
-                <LabStatChip
-                  label="Trend digest"
-                  value={data.metrics.trendDigests.toLocaleString("id-ID")}
-                />
-                <LabStatChip
-                  label="Keyword query"
-                  value={data.metrics.keywordQueries.toLocaleString("id-ID")}
-                />
-                <LabStatChip
-                  label="Social batch"
-                  value={data.metrics.socialBatches.toLocaleString("id-ID")}
-                />
-                <LabStatChip
-                  label="USP analisis"
-                  value={data.metrics.uspAnalyses.toLocaleString("id-ID")}
-                />
-                <LabStatChip
-                  label="Konsep"
-                  value={data.metrics.productConcepts.toLocaleString("id-ID")}
-                />
-              </div>
-            </LabSection>
-          ) : null}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Executive summary belum tersedia.
+            </p>
+          )}
         </TabsContent>
 
         <TabsContent value="aksi" className={tabContentClass}>
-          <LabSection
-            title="Rekomendasi Aksi Lintas-Modul"
-            description="Item deterministik dari pipeline riset — klik untuk buka sumber."
-          >
-            {data.actionItems.length > 0 ? (
-              <div className="space-y-2">
-                {data.actionItems.map((item, i) => {
-                  const body = (
-                    <div
+          {data.actionItems.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {data.actionItems.map((item, i) => {
+                const body = (
+                  <div
+                    className={cn(
+                      lab.card,
+                      "flex items-start gap-3 p-4 transition-colors duration-150 motion-reduce:transition-none",
+                      item.href && "hover:bg-muted/30",
+                    )}
+                  >
+                    <span
                       className={cn(
-                        lab.panel,
-                        "flex items-start gap-3 transition-colors duration-150 motion-reduce:transition-none",
-                        item.href && "hover:bg-muted/30",
+                        "mt-0.5 inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold",
+                        PRIORITY_TONE[item.priority] ??
+                          "bg-muted text-muted-foreground",
                       )}
                     >
-                      <span
-                        className={cn(
-                          "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold",
-                          PRIORITY_TONE[item.priority] ??
-                            "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {item.priority}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{item.action}</p>
-                        <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
-                          {item.rationale}
-                        </p>
-                        {item.evidence && item.evidence.length > 0 ? (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {item.evidence.map((e, j) => (
-                              <span
-                                key={j}
-                                className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-[10px]"
-                              >
-                                {e.label}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                        <p className="text-muted-foreground mt-1 text-[10px] uppercase tracking-wide">
-                          {item.owner}
-                          {item.sourceLabel ? ` · ${item.sourceLabel}` : ""}
-                          {typeof item.confidence === "number"
-                            ? ` · estimasi AI ${Math.round(item.confidence * 100)}%`
-                            : ""}
-                        </p>
-                      </div>
+                      {item.priority}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold tracking-tight">
+                        {item.action}
+                      </p>
+                      <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
+                        {item.rationale}
+                      </p>
+                      {item.evidence && item.evidence.length > 0 ? (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {item.evidence.map((e, j) => (
+                            <span
+                              key={j}
+                              className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px]"
+                            >
+                              {e.label}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <p className="text-muted-foreground mt-1.5 text-[10px] font-semibold uppercase tracking-wide">
+                        {item.owner}
+                        {item.sourceLabel ? ` · ${item.sourceLabel}` : ""}
+                        {typeof item.confidence === "number"
+                          ? ` · estimasi AI ${Math.round(item.confidence * 100)}%`
+                          : ""}
+                      </p>
                     </div>
-                  );
-                  return item.href ? (
-                    <Link key={i} href={item.href} className="block">
-                      {body}
-                    </Link>
-                  ) : (
-                    <div key={i}>{body}</div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-muted-foreground text-sm">
-                Belum ada rekomendasi aksi.
-              </p>
-            )}
-          </LabSection>
+                  </div>
+                );
+                return item.href ? (
+                  <Link key={i} href={item.href} className="block">
+                    {body}
+                  </Link>
+                ) : (
+                  <div key={i}>{body}</div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Belum ada rekomendasi aksi.
+            </p>
+          )}
         </TabsContent>
 
         <TabsContent value="alur" className={tabContentClass}>
           {data.feedbackLoop ? (
-            <LabSection
-              title="Volume Aktivitas Riset"
-              description="Jumlah record nyata per modul dalam periode laporan (bukan lineage per-item). Hanya link USP → Konsep yang merupakan relasi langsung."
-            >
-              <div className={lab.panel}>
-                <ReportFeedbackSankey data={data.feedbackLoop} />
+            <div className="bento-tile justify-start gap-3">
+              <div className="flex items-center justify-between">
+                <span className="bento-label">Volume aktivitas riset</span>
+                <span className="text-muted-foreground text-[11px]">
+                  record nyata per modul dalam periode laporan
+                </span>
               </div>
-            </LabSection>
+              <ReportFeedbackSankey data={data.feedbackLoop} />
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                Bukan lineage per-item — hanya link USP → Konsep yang merupakan
+                relasi langsung.
+              </p>
+            </div>
           ) : (
             <p className="text-muted-foreground text-sm">
               Data alur riset belum tersedia.
@@ -380,16 +436,9 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
         </TabsContent>
 
         <TabsContent value="isi" className={tabContentClass}>
-          <LabSection
-            title="Isi Laporan"
-            description="Section per modul dengan referensi sumber."
-          >
-            <div className={lab.panel}>
-              <ReportSectionList sections={data.sections} />
-            </div>
-          </LabSection>
+          <ReportSectionList sections={data.sections} />
         </TabsContent>
       </Tabs>
-    </div>
+    </ResearchHubDetailPage>
   );
 }

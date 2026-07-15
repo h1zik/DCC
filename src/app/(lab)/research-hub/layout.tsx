@@ -12,13 +12,8 @@ export default async function ResearchHubLayout({
 }) {
   await ensureResearchHubPage();
   return (
-    <div
-      className="flex w-full min-w-0 gap-6 lg:gap-8"
-      style={
-        // Duo aksen modul Research Hub (violet) — dikonsumsi Lab primitives.
-        { "--lab-accent": "#a78bfa", "--lab-accent-2": "#8b5cf6" } as React.CSSProperties
-      }
-    >
+    // Skin bento global dari lab-theme/lab-bento; hue violet khusus Research Hub.
+    <div className="lab-hue-violet flex w-full min-w-0 gap-6 lg:gap-8">
       <ResearchHubModuleSidebar className="lg:flex" />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <ResearchHubSubNav className="lg:hidden" />

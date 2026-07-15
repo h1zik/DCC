@@ -150,9 +150,5 @@ export default async function BrandCompetitorDetailPage({ params }: Props) {
     harvestableImageCount: competitor.skus.filter((s) => s.imageUrl).length,
   };
 
-  return (
-    <div className="pb-6">
-      <BrandCompetitorDetailClient competitor={detail} />
-    </div>
-  );
+  return <BrandCompetitorDetailClient competitor={detail} />;
 }

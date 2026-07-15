@@ -64,6 +64,8 @@ export function CompetitorTrackerDialog({
 
   useEffect(() => {
     if (!open) return;
+    // Reset state form saat dialog dibuka — pola seed-on-open bawaan modul.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNewCategoryName(defaultCategoryName);
     setLoadingCategories(true);
     listCompetitorProductCategories()

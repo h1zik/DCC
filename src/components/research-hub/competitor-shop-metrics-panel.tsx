@@ -6,8 +6,8 @@ import {
   formatSoldThreshold,
 } from "@/lib/research/shop-product-metrics";
 import type { CompetitorShopMetrics } from "@/lib/research/competitor-shop-metrics";
-import { hub } from "@/components/research-hub/research-hub-primitives";
 
+/** Tile mini bento untuk satu KPI performa toko. */
 function KpiCard({
   label,
   value,
@@ -18,15 +18,17 @@ function KpiCard({
   sub?: string;
 }) {
   return (
-    <div className={hub.nestedPanel}>
-      <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+    <div className="bg-muted/50 rounded-xl px-3.5 py-3">
+      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
         {label}
       </p>
-      <p className="text-foreground mt-0.5 text-lg font-semibold tabular-nums">
+      <p className="text-foreground mt-0.5 truncate text-lg font-extrabold tabular-nums tracking-tight">
         {value}
       </p>
       {sub ? (
-        <p className="text-muted-foreground mt-0.5 text-[10px]">{sub}</p>
+        <p className="text-muted-foreground mt-0.5 text-[10px] font-medium">
+          {sub}
+        </p>
       ) : null}
     </div>
   );

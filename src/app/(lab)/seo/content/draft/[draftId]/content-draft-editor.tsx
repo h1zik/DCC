@@ -485,7 +485,7 @@ export function ContentDraftEditor({
               />
             </div>
           </div>
-          <div className={cn(lab.card, "p-4")}>
+          <div className="bento-tile justify-start p-4">
             <RichTextEditor
               initialContent={draft.contentHtml}
               onUpdate={onUpdate}
@@ -494,8 +494,8 @@ export function ContentDraftEditor({
           </div>
 
           {/* Meta panel */}
-          <div className={cn(lab.card, "p-4")}>
-            <p className="mb-3 font-semibold">Meta & slug (siap pakai)</p>
+          <div className="bento-tile justify-start gap-3">
+            <span className="bento-label">Meta & slug (siap pakai)</span>
             <div className="grid gap-3">
               <div className="grid gap-1.5">
                 <div className="flex items-center justify-between">
@@ -580,11 +580,11 @@ export function ContentDraftEditor({
           </div>
 
           {draft.internalLinks.length > 0 ? (
-            <div className={cn(lab.card, "p-4")}>
-              <p className="mb-1 flex items-center gap-2 font-semibold">
-                <Link2 className="size-4" /> Saran internal link
-              </p>
-              <p className="text-muted-foreground mb-3 text-xs">
+            <div className="bento-tile justify-start gap-1">
+              <span className="bento-label flex items-center gap-2">
+                <Link2 className="size-3.5" /> Saran internal link
+              </span>
+              <p className="text-muted-foreground mb-2 text-xs">
                 Dari halaman Anda yang sudah ranking/teraudit — sisipkan manual
                 di teks yang relevan.
               </p>
@@ -622,13 +622,13 @@ export function ContentDraftEditor({
 
         {/* Panel skor */}
         <div className="flex flex-col gap-4">
-          <div className={cn(lab.card, "flex flex-col items-center gap-1 p-5")}>
-            <span className="text-muted-foreground text-xs uppercase tracking-wide">
+          <div className="bento-tile items-center justify-start gap-1 p-5">
+            <span className="bento-label">
               Skor SEO {live ? "(live)" : ""}
             </span>
             <span
               className={cn(
-                "text-5xl font-bold tabular-nums",
+                "bento-value text-5xl",
                 scoreToneClass(score),
               )}
             >
@@ -670,7 +670,7 @@ export function ContentDraftEditor({
               </TabsList>
 
               <TabsContent value="terms">
-                <div className={cn(lab.card, "p-4")}>
+                <div className="bento-tile justify-start gap-3 p-4">
                   {termReport.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       Mulai mengetik — skor istilah ter-update otomatis.
@@ -707,7 +707,7 @@ export function ContentDraftEditor({
               </TabsContent>
 
               <TabsContent value="questions">
-                <div className={cn(lab.card, "p-4")}>
+                <div className="bento-tile justify-start gap-3 p-4">
                   {usableGrounding.paaQuestions.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       Tidak ada data People Also Ask untuk keyword ini.
@@ -725,13 +725,13 @@ export function ContentDraftEditor({
               </TabsContent>
 
               <TabsContent value="checks">
-                <div className={cn(lab.card, "p-4")}>
+                <div className="bento-tile justify-start gap-3 p-4">
                   <ChecksList checks={checks} />
                 </div>
               </TabsContent>
 
               <TabsContent value="ai">
-                <div className={cn(lab.card, "p-4")}>
+                <div className="bento-tile justify-start gap-3 p-4">
                   {suggestions.length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       Klik “Analisis AI” untuk saran reviewer + cek klaim BPOM.
@@ -748,7 +748,7 @@ export function ContentDraftEditor({
             </Tabs>
           ) : (
             <>
-              <div className={cn(lab.card, "p-4")}>
+              <div className="bento-tile justify-start gap-3 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <Gauge className="size-4 text-primary" />
                   <p className="font-semibold">Checklist</p>

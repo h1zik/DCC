@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import type { ReactNode } from "react";
+import { ArrowUpRight, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -58,7 +59,7 @@ export function VisualLibrarySourceTabs({
             aria-selected={selected}
             onClick={() => onChange(s.key)}
             className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors duration-150",
               selected
                 ? "bg-foreground text-background shadow-sm"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -67,7 +68,7 @@ export function VisualLibrarySourceTabs({
             {s.label}
             <span
               className={cn(
-                "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
+                "rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
                 selected
                   ? "bg-background/20 text-background"
                   : "bg-muted text-muted-foreground",
@@ -137,7 +138,7 @@ export function VisualLibraryEntityPicker({
         </p>
         <nav
           aria-label="Pilih entitas"
-          className="flex max-h-[min(420px,50vh)] flex-col gap-0.5 overflow-y-auto pr-1"
+          className="flex max-h-[min(420px,50vh)] flex-col gap-1 overflow-y-auto pr-1"
         >
           {entities.map((e) => {
             const selected = e.id === active?.id;
@@ -147,18 +148,20 @@ export function VisualLibraryEntityPicker({
                 type="button"
                 onClick={() => onChange(e.id)}
                 className={cn(
-                  "flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors",
+                  "flex w-full flex-col gap-0.5 rounded-xl px-3 py-2 text-left text-xs transition-colors duration-150",
                   selected
-                    ? "bg-foreground text-background"
+                    ? "bg-foreground text-background shadow-sm"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <span className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">{e.name}</span>
+                  <span className="truncate font-semibold">{e.name}</span>
                   <span
                     className={cn(
-                      "shrink-0 tabular-nums",
-                      selected ? "text-background/80" : "text-muted-foreground",
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                      selected
+                        ? "bg-background/20 text-background"
+                        : "bg-muted text-muted-foreground",
                     )}
                   >
                     {e.count}
@@ -193,14 +196,23 @@ export function VisualLibraryEmptyPanel({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-10 text-center">
-      <p className="text-muted-foreground max-w-sm text-sm">{hint}</p>
+    <div className="border-border/70 bg-card/40 flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed px-6 py-10 text-center">
+      <span
+        className="flex size-11 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-[var(--lab-accent,var(--primary))]"
+        aria-hidden
+      >
+        <ImageIcon className="size-5" />
+      </span>
+      <p className="text-muted-foreground max-w-sm text-sm leading-relaxed">
+        {hint}
+      </p>
       {href ? (
         <Link
           href={href}
-          className="text-primary text-xs font-medium hover:underline"
+          className="text-primary inline-flex items-center gap-1 text-xs font-semibold hover:underline"
         >
           Buka modul sumber
+          <ArrowUpRight className="size-3.5" aria-hidden />
         </Link>
       ) : null}
       {action}

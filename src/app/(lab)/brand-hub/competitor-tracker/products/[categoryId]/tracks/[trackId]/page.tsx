@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { LabSection, lab } from "@/components/lab/lab-primitives";
+import { lab, LabPageShell } from "@/components/lab/lab-primitives";
 import {
   ShopProductDetailPanel,
   type ShopProductDetailData,
@@ -16,6 +16,12 @@ import {
   parseShopProductRatingDistribution,
   parseShopProductVariations,
 } from "@/lib/research/shop-product-detail-parse";
+import { formatRp } from "@/lib/research/labels";
+import {
+  formatCompactCount,
+  formatRevenueIdr,
+  formatSoldThreshold,
+} from "@/lib/research/shop-product-metrics";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ensureBrandHubPage } from "../../../../../layout";
@@ -95,44 +101,124 @@ export default async function BrandCompetitorProductTrackDetailPage({
   }));
 
   return (
-    <div className="flex flex-col gap-8">
-      <ShopProductDetailPanel
-        product={product}
-        breadcrumbs={
-          <Button
-            size="sm"
-            variant="ghost"
-            className="w-fit gap-1 px-0"
-            render={<Link href={backHref} />}
-          >
-            <ChevronLeft className="size-4" />
-            Kembali ke {track.category.name}
-          </Button>
-        }
-      />
+    <LabPageShell>
+      <div className="flex flex-col gap-6">
+        <ShopProductDetailPanel
+          product={product}
+          breadcrumbs={
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-fit gap-1 px-0"
+              render={<Link href={backHref} />}
+            >
+              <ChevronLeft className="size-4" />
+              Kembali ke {track.category.name}
+            </Button>
+          }
+        />
 
-      {soldHistory.length > 0 ? (
-        <LabSection
-          title="Riwayat Penjualan"
-          description="Snapshot per refresh — total terjual dan estimasi revenue."
+        {/* Papan hero bento metrik produk */}
+        <div
+          className={cn(
+            lab.entrance,
+            "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
+          )}
         >
-          <div className={cn(lab.panel)}>
+          <div className="bento-tile col-span-2 row-span-2 border-transparent bg-pink-600 shadow-md shadow-pink-600/20 lg:col-span-1 dark:bg-pink-500">
+            <span className="text-[11.5px] font-semibold text-pink-100 dark:text-pink-950/70">
+              Harga saat ini
+            </span>
+            <span className="bento-value text-4xl text-white dark:text-pink-950">
+              {track.currentPrice != null ? formatRp(track.currentPrice) : "—"}
+            </span>
+            <span className="text-[11px] font-medium leading-snug text-pink-100/90 dark:text-pink-900/80">
+              {track.hasPromo
+                ? (track.promoText ?? "Sedang promo")
+                : "snapshot terakhir dari marketplace"}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Rating</span>
+            <span className="bento-value">
+              {track.rating != null ? track.rating.toFixed(1) : "—"}
+              {track.rating != null ? (
+                <span className="text-muted-foreground/60 text-lg font-bold">
+                  /5
+                </span>
+              ) : null}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Review</span>
+            <span className="bento-value">
+              {track.reviewCount.toLocaleString("id-ID")}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Total terjual</span>
+            <span className="bento-value">
+              {formatSoldThreshold(track.historicalSold)}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Terjual bulan ini</span>
+            <span className="bento-value">
+              {track.monthlySold != null
+                ? formatCompactCount(track.monthlySold)
+                : "—"}
+            </span>
+          </div>
+
+          <div className="bento-tile border-transparent bg-[#fde7f1] dark:bg-pink-400/10">
+            <span className="text-[11.5px] font-semibold text-pink-700/70 dark:text-pink-300/70">
+              Est. revenue
+            </span>
+            <span className="bento-value text-2xl text-pink-900 dark:text-pink-300">
+              {formatRevenueIdr(track.estimatedRevenue)}
+            </span>
+          </div>
+
+          <div className="bento-tile">
+            <span className="bento-label">Stok</span>
+            <span className="bento-value">
+              {track.stock != null ? formatCompactCount(track.stock) : "—"}
+            </span>
+          </div>
+        </div>
+
+        {soldHistory.length > 0 ? (
+          <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
+            <div className="flex items-center justify-between">
+              <span className="bento-label">Riwayat penjualan</span>
+              <span className="text-muted-foreground text-[11px]">
+                snapshot per refresh — total terjual dan estimasi revenue
+              </span>
+            </div>
             <SkuSoldHistoryChart data={soldHistory} />
           </div>
-        </LabSection>
-      ) : null}
+        ) : null}
 
-      {priceHistory.some((p) => p.Harga != null) ? (
-        <LabSection title="Riwayat Harga" description="Pergerakan harga dari snapshot.">
-          <div className={cn(lab.panel)}>
+        {priceHistory.some((p) => p.Harga != null) ? (
+          <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
+            <div className="flex items-center justify-between">
+              <span className="bento-label">Riwayat harga</span>
+              <span className="text-muted-foreground text-[11px]">
+                pergerakan harga dari snapshot
+              </span>
+            </div>
             <CompetitorPriceChart
               data={priceHistory}
               skuNames={["Harga"]}
               hasTrend={priceHistory.length >= 2}
             />
           </div>
-        </LabSection>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
+    </LabPageShell>
   );
 }

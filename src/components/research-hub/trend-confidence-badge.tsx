@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 
 const CONFIDENCE_STYLES: Record<TrendConfidence, string> = {
   HIGH: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-  MED: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-  LOW: "bg-amber-500/15 text-amber-800 dark:text-amber-200",
+  MED: "bg-teal-500/15 text-teal-700 dark:text-teal-300",
+  LOW: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
 };
 
 const CONFIDENCE_LABELS: Record<TrendConfidence, string> = {

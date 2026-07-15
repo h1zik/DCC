@@ -14,65 +14,11 @@
     linear-gradient(90deg, var(--lab-grid-line) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 30%, transparent 100%);
-  --lab-grid-line: rgba(16, 18, 38, 0.045);
+  --lab-grid-line: rgba(60, 50, 20, 0.05);
 }
 
 html.dark .lab-grid {
-  --lab-grid-line: rgba(255, 255, 255, 0.04);
-}
-
-.lab-aurora {
-  opacity: var(--lab-aurora-opacity, 0.4);
-  filter: blur(110px);
-  will-change: transform;
-  transition: opacity 0.5s ease;
-}
-
-.lab-aurora--violet {
-  background: radial-gradient(circle at center, #7c3aed 0%, transparent 65%);
-}
-.lab-aurora--cyan {
-  background: radial-gradient(circle at center, #06b6d4 0%, transparent 65%);
-}
-.lab-aurora--pink {
-  background: radial-gradient(circle at center, #f472b6 0%, transparent 65%);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .lab-aurora--violet {
-    animation: lab-drift-a 22s ease-in-out infinite alternate;
-  }
-  .lab-aurora--cyan {
-    animation: lab-drift-b 26s ease-in-out infinite alternate;
-  }
-  .lab-aurora--pink {
-    animation: lab-drift-c 19s ease-in-out infinite alternate;
-  }
-}
-
-@keyframes lab-drift-a {
-  from {
-    transform: translate3d(-8%, -4%, 0) scale(1);
-  }
-  to {
-    transform: translate3d(10%, 8%, 0) scale(1.18);
-  }
-}
-@keyframes lab-drift-b {
-  from {
-    transform: translate3d(6%, 10%, 0) scale(1.1);
-  }
-  to {
-    transform: translate3d(-10%, -6%, 0) scale(0.94);
-  }
-}
-@keyframes lab-drift-c {
-  from {
-    transform: translate3d(4%, -8%, 0) scale(0.95);
-  }
-  to {
-    transform: translate3d(-6%, 6%, 0) scale(1.15);
-  }
+  --lab-grid-line: rgba(255, 255, 255, 0.035);
 }
 
 /* Titik denyut (badge/status). */
@@ -120,7 +66,7 @@ html.dark .lab-grid {
     var(--lab-accent, var(--primary)),
     var(--lab-accent-2, var(--primary))
   );
-  box-shadow: 0 8px 22px -8px var(--lab-accent, var(--primary));
+  box-shadow: 0 4px 14px -6px var(--lab-accent, var(--primary));
   color: white;
 }
 

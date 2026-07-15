@@ -12,7 +12,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   ContextMatchQuality,
   ResolvedContextSources,
@@ -86,15 +85,15 @@ export function UspSourcesUsedPanel({
   }, 0);
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="border-border/60 bg-muted/20 border-b pb-3">
+    <div className="bento-tile justify-start gap-0 overflow-hidden p-0">
+      <div className="border-border/60 flex flex-col gap-1.5 border-b px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <span className="border-primary/30 bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg border">
+          <p className="text-foreground flex items-center gap-2.5 font-bold tracking-tight">
+            <span className="bg-primary/12 text-primary flex size-8 items-center justify-center rounded-lg">
               <BarChart3 className="size-4" aria-hidden />
             </span>
             Sumber data yang dipakai
-          </CardTitle>
+          </p>
           <Badge variant="secondary" className="tabular-nums">
             {totalRefs} sumber · {sections.length} modul
           </Badge>
@@ -102,8 +101,8 @@ export function UspSourcesUsedPanel({
         <p className="text-muted-foreground text-xs leading-relaxed">
           Jejak audit — klik sumber untuk melihat data mentah di modul asal.
         </p>
-      </CardHeader>
-      <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
+      </div>
+      <div className="grid gap-3 p-4 sm:grid-cols-2">
         {sections.map((key) => {
           const meta = SECTION_META[key];
           const Icon = meta.icon;
@@ -118,7 +117,7 @@ export function UspSourcesUsedPanel({
             <section
               key={key}
               className={cn(
-                "border-border/70 bg-card overflow-hidden rounded-xl border border-l-[3px] shadow-sm",
+                "border-border/60 bg-muted/20 overflow-hidden rounded-xl border border-l-[3px]",
                 meta.accent,
               )}
             >
@@ -150,8 +149,8 @@ export function UspSourcesUsedPanel({
             </section>
           );
         })}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

@@ -12,6 +12,15 @@ import {
   YAxis,
 } from "recharts";
 
+/** Tooltip recharts selaras skin bento (kartu solid hangat). */
+const TOOLTIP_STYLE = {
+  background: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  fontSize: 12,
+  color: "var(--foreground)",
+} as const;
+
 const DONUT_COLORS = [
   "var(--chart-1)",
   "var(--chart-2)",
@@ -67,13 +76,15 @@ export function ComplaintSeverityChart({
             stroke="var(--border)"
           />
           <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            cursor={{ fill: "var(--muted)", opacity: 0.4 }}
             formatter={(value, name) =>
               name === "severity"
                 ? [`${value} / 5`, "Keparahan"]
                 : [value, name]
             }
           />
-          <Bar dataKey="severity" radius={[0, 4, 4, 0]}>
+          <Bar dataKey="severity" radius={[0, 6, 6, 0]}>
             {data.map((d) => (
               <Cell key={d.theme} fill={severityColor(d.severity)} />
             ))}
@@ -130,7 +141,7 @@ export function DemographicDonut({
                 <Cell key={entry.name} fill={entry.fill} />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
           </PieChart>
         </ResponsiveContainer>
       </div>

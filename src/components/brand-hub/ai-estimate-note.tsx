@@ -14,10 +14,10 @@ export function AiEstimateNote({
 }) {
   return (
     <p
-      className={`inline-flex items-center gap-1 text-[11px] text-muted-foreground ${className}`}
+      className={`text-muted-foreground bg-muted/50 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] leading-relaxed ${className}`}
     >
       <Sparkles className="size-3 shrink-0" aria-hidden />
-      {children}
+      <span>{children}</span>
     </p>
   );
 }
