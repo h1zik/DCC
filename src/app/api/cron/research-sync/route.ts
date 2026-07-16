@@ -6,6 +6,7 @@ import { syncWeeklyReports } from "@/lib/research/reports/weekly-report-sync";
 import { syncActiveMonitors } from "@/lib/research/social-listening/social-sync";
 import { pollRunningResearchJobs } from "@/lib/research/sync-jobs";
 import { syncWeeklyTrends } from "@/lib/research/trend-radar/trend-sync";
+import { pollBrandAdLibraryBatchesLight } from "@/lib/brand-research/scrape-meta-ads";
 
 /**
  * Cron Research Hub: poll job Apify yang masih berjalan + scrape harian kompetitor.
@@ -91,7 +92,10 @@ export async function GET(request: Request) {
 
   if (mode === "full") {
     return runLogged(mode, async () => {
-      await pollRunningResearchJobs();
+      await Promise.all([
+        pollRunningResearchJobs(),
+        pollBrandAdLibraryBatchesLight(),
+      ]);
       const [competitors, brandCompetitors, competitorProducts, trends, social, reports] =
         await Promise.all([
           syncActiveCompetitors(),
@@ -113,7 +117,10 @@ export async function GET(request: Request) {
   }
 
   return runLogged("poll", async () => {
-    await pollRunningResearchJobs();
+    await Promise.all([
+      pollRunningResearchJobs(),
+      pollBrandAdLibraryBatchesLight(),
+    ]);
     return { polled: true };
   });
 }

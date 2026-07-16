@@ -16,7 +16,6 @@ import {
   ImageIcon,
   Layers,
   Lock,
-  LockKeyhole,
   Pencil,
   Plus,
   RotateCcw,
@@ -578,15 +577,9 @@ function BackgroundCard({
             <p className="text-foreground truncate text-sm font-semibold">
               {item.name}
             </p>
-            <p className="text-muted-foreground truncate font-mono text-[11px]">
-              {item.key}
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <UnlockChip item={item} achievements={achievements} />
-            <span className="text-muted-foreground text-[11px]">
-              · urutan {item.sortOrder}
-            </span>
           </div>
         </div>
 
@@ -839,31 +832,19 @@ export function BackgroundAdminPanel({
   const activeCount = animatedBackgrounds.filter((b) => b.isActive).length;
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--chart-1)]">
-            Katalog kosmetik
-          </span>
           <h2 className="text-foreground text-lg font-semibold tracking-tight">
-            Background animasi
+            Background
           </h2>
           <p className="text-muted-foreground max-w-xl text-sm">
-            Reward background untuk edit profile—kunci berdasarkan level atau
-            achievement agar user termotivasi mengejarnya.
+            Kelola background reward yang tersedia untuk profil tim.
           </p>
         </div>
-        <div className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
-          <span className="text-foreground font-semibold tabular-nums">
-            {animatedBackgrounds.length}
-          </span>
-          <span>di katalog</span>
-          <span aria-hidden>·</span>
-          <span className="text-foreground font-semibold tabular-nums">
-            {activeCount}
-          </span>
-          <span>aktif</span>
-        </div>
+        <span className="w-fit rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          {activeCount} dari {animatedBackgrounds.length} aktif
+        </span>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -872,11 +853,6 @@ export function BackgroundAdminPanel({
           <BackgroundCard key={item.id} item={item} achievements={achievements} />
         ))}
       </div>
-
-      <p className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
-        <LockKeyhole className="size-3.5" aria-hidden />
-        Background terkunci otomatis di editor user sampai syarat unlock terpenuhi.
-      </p>
     </section>
   );
 }

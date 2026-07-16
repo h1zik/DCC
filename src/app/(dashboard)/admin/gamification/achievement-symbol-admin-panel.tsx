@@ -229,9 +229,6 @@ function AchievementSymbolCard({ item }: { item: AdminAchievementSymbolItem }) {
             <p className="text-foreground truncate text-sm font-semibold">
               {item.name}
             </p>
-            <p className="text-muted-foreground truncate font-mono text-[11px]">
-              {item.key}
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <MediaChip item={item} />
@@ -355,31 +352,19 @@ export function AchievementSymbolAdminPanel({
   const customCount = achievements.filter((a) => a.symbolSrc).length;
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--chart-1)]">
-            Katalog achievement
-          </span>
           <h2 className="text-foreground text-lg font-semibold tracking-tight">
             Simbol achievement
           </h2>
           <p className="text-muted-foreground max-w-xl text-sm">
-            Ganti simbol dasar dengan gambar, video pendek, Lottie, atau file
-            pendukung yang tampil di profile showcase user.
+            Atur visual achievement yang tampil di profil.
           </p>
         </div>
-        <div className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
-          <span className="text-foreground font-semibold tabular-nums">
-            {achievements.length}
-          </span>
-          <span>achievement</span>
-          <span aria-hidden>.</span>
-          <span className="text-foreground font-semibold tabular-nums">
-            {customCount}
-          </span>
-          <span>custom</span>
-        </div>
+        <span className="w-fit rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          {customCount} dari {achievements.length} memakai simbol custom
+        </span>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
