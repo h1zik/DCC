@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-16-research-team-mcp",
+    date: "2026-07-16",
+    title: "Research Hub: akses AI khusus Team yang lebih aman",
+    category: "new",
+    description:
+      "Team kini dapat memakai MCP khusus Research Hub untuk menganalisis kompetitor, harga, review, tren, keyword, konsep produk, dan laporan riset tanpa membuka akses ke data sensitif DCC lainnya. Koneksi ini memakai token dan endpoint terpisah yang dibatasi hanya untuk Research Hub.",
+    highlights: [
+      "25 tool Research Hub tersedia melalui koneksi MCP khusus Team",
+      "Tidak menyediakan akses ke finance, tugas, pengguna, ruangan, dokumen, inventori, absensi, atau approval",
+      "Token Research ditolak otomatis bila digunakan ke endpoint DCC di luar Research Hub",
+    ],
+  },
+  {
     id: "2026-07-15-research-hub-marketplace-logos",
     date: "2026-07-15",
     title: "Research Hub: logo platform di semua tampilan marketplace",

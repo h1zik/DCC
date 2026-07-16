@@ -18,6 +18,8 @@
 
  *        DCC_AI_ROLE=CEO
 
+ *        MCP_TOOLSET=full              # full (default) atau research
+
  *        # opsional (HTTP transport):
 
  *        MCP_HTTP_PORT=3000            # default 3000
@@ -46,6 +48,13 @@ import { z } from "zod";
 const DCC_AI_API_URL = (process.env.DCC_AI_API_URL ?? "").replace(/\/$/, "");
 const DCC_AI_READ_API_TOKEN = process.env.DCC_AI_READ_API_TOKEN ?? "";
 const DCC_AI_ROLE = (process.env.DCC_AI_ROLE ?? "CEO").toUpperCase();
+function resolveToolset() {
+    const value = (process.env.MCP_TOOLSET ?? "full").trim().toLowerCase();
+    if (value === "full" || value === "research")
+        return value;
+    throw new Error("MCP_TOOLSET harus bernilai 'full' atau 'research'.");
+}
+const MCP_TOOLSET = resolveToolset();
 function requireConfig() {
     if (!DCC_AI_API_URL) {
         throw new Error("DCC_AI_API_URL belum diset.");
@@ -55,12 +64,16 @@ function requireConfig() {
     }
 }
 async function dccFetch(path) {
+    const headers = {
+        Authorization: `Bearer ${DCC_AI_READ_API_TOKEN}`,
+        Accept: "application/json",
+    };
+    // Profil Research memakai role yang terikat pada AI_RESEARCH_API_TOKEN di
+    // server DCC. Jangan kirim header role yang dapat membingungkan audit log.
+    if (MCP_TOOLSET === "full")
+        headers["x-dcc-role"] = DCC_AI_ROLE;
     const res = await fetch(`${DCC_AI_API_URL}${path}`, {
-        headers: {
-            Authorization: `Bearer ${DCC_AI_READ_API_TOKEN}`,
-            "x-dcc-role": DCC_AI_ROLE,
-            Accept: "application/json",
-        },
+        headers,
     });
     const body = (await res.json().catch(() => ({})));
     if (!res.ok) {
@@ -97,9 +110,21 @@ const roomNameSchema = z
     .describe('Nama atau ID ruangan, mis. "Room Archipelago"');
 async function buildServer() {
     const server = new McpServer({
-        name: "dcc-read-api",
+        name: MCP_TOOLSET === "research"
+            ? "dcc-research-team"
+            : "dcc-read-api",
         version: "3.3.0",
     });
+    if (MCP_TOOLSET === "research") {
+        const { registerResearchTools } = await import("./register-research-tools.js");
+        registerResearchTools(server, {
+            dccFetch,
+            buildQuery,
+            asText,
+            limitSchema,
+        });
+        return server;
+    }
     server.tool("get_kpi_overview", "Ringkasan KPI operasional Dominatus Control Center: tugas overdue, stok kritis, persetujuan pending.", {}, async () => asText(await dccFetch("/api/ai/kpi-overview")));
     server.tool("get_overdue_tasks", "Daftar tugas yang sudah melewati tenggat (overdue) beserta assignee dan konteks proyek/ruangan.", {
         limit: limitSchema.describe("Default 20, maks 50"),
@@ -417,6 +442,7 @@ function main() {
     });
     httpServer.listen(HTTP_PORT, HTTP_HOST, () => {
         console.error(`[dcc-mcp] Streamable HTTP transport listening di http://${HTTP_HOST}:${HTTP_PORT}${HTTP_PATH}` +
+            ` toolset=${MCP_TOOLSET}` +
             (HTTP_AUTH_TOKEN ? " (bearer auth aktif)" : " (tanpa auth)"));
     });
 }

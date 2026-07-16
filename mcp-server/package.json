@@ -3,11 +3,12 @@
   "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "MCP read-only bridge: Odysseus -> DCC Railway AI API",
+  "description": "MCP read-only bridge for full DCC or Research Hub-only access",
   "scripts": {
     "start": "node dist/index.js",
     "build": "node ./node_modules/typescript/bin/tsc",
-    "dev": "npm run build && node dist/index.js"
+    "dev": "npm run build && node dist/index.js",
+    "verify:research": "npm run build && node scripts/verify-research-toolset.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
