@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-16-changelog-page-redesign",
+    date: "2026-07-16",
+    title: "Changelog baru: lebih mudah mencari dan memindai pembaruan",
+    category: "improved",
+    description:
+      "Halaman Apa yang Baru kini memiliki tampilan timeline yang lebih terstruktur, pencarian cepat, dan filter kategori. Setiap rilis juga menampilkan detail dengan hierarki yang lebih jelas agar perubahan penting lebih mudah ditemukan di desktop maupun perangkat mobile.",
+    highlights: [
+      "Cari pembaruan berdasarkan fitur, modul, deskripsi, atau poin penting",
+      "Filter cepat untuk fitur baru, peningkatan, dan perbaikan",
+      "Timeline dikelompokkan per tanggal dengan tampilan responsif dan ramah tema",
+    ],
+  },
+  {
     id: "2026-07-16-gamification-admin-tabs",
     date: "2026-07-16",
     title: "Admin gamifikasi kini lebih ringkas dan mudah dinavigasi",
