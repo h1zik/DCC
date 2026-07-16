@@ -10,9 +10,9 @@ import {
 } from "@/lib/apify/actors";
 import {
   fetchApifyDataset,
+  getApifyRunStatus,
   isApifyConfigured,
   startApifyActor,
-  waitForApifyRun,
 } from "@/lib/apify/client";
 import {
   generateDemoMetaAds,
@@ -31,8 +31,10 @@ import { assertDemoDataAllowed } from "@/lib/demo-data-policy";
 import { generateResearchJson } from "@/lib/research/gemini-client";
 import { filterAdsForMonitorView } from "@/lib/brand-research/ad-library-safety";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
+import { getAdLibraryApifyOutcome } from "@/lib/brand-research/ad-library-apify-status";
 
 const activeBatchIds = new Set<string>();
+const ORPHANED_START_GRACE_MS = 2 * 60_000;
 
 async function patchBatch(
   batchId: string,
@@ -212,26 +214,33 @@ Balas JSON:
 export async function executeBrandAdLibraryBatch(batchId: string): Promise<void> {
   if (activeBatchIds.has(batchId)) return;
 
-  const claimed = await prisma.brandAdLibraryBatch.updateMany({
-    where: {
-      id: batchId,
-      status: SocialListeningStatus.PENDING,
-    },
-    data: {
-      status: SocialListeningStatus.COLLECTING,
-      errorMessage: null,
-    },
-  });
-  if (claimed.count === 0) return;
-
   activeBatchIds.add(batchId);
 
   try {
-    const batch = await prisma.brandAdLibraryBatch.findUnique({
+    let batch = await prisma.brandAdLibraryBatch.findUnique({
       where: { id: batchId },
       include: { monitor: true },
     });
     if (!batch?.monitor) return;
+
+    let claimedPendingBatch = false;
+    if (batch.status === SocialListeningStatus.PENDING) {
+      const claimed = await prisma.brandAdLibraryBatch.updateMany({
+        where: {
+          id: batchId,
+          status: SocialListeningStatus.PENDING,
+        },
+        data: {
+          status: SocialListeningStatus.COLLECTING,
+          errorMessage: null,
+        },
+      });
+      if (claimed.count === 0) return;
+      claimedPendingBatch = true;
+      batch = { ...batch, status: SocialListeningStatus.COLLECTING };
+    } else if (batch.status !== SocialListeningStatus.COLLECTING) {
+      return;
+    }
 
     const monitor = batch.monitor;
     const scrapeMedia = (monitor.mediaType ?? "all") as ScrapeMediaType;
@@ -246,16 +255,52 @@ export async function executeBrandAdLibraryBatch(batchId: string): Promise<void>
         throw new Error(metaAdLibraryActorEnvHint());
       }
 
-      const input = buildMetaAdLibraryActorInput(monitor);
-      const { runId } = await startApifyActor(actorId, input);
-      await patchBatch(batchId, { apifyRunId: runId });
+      let runId = batch.apifyRunId;
+      if (!runId) {
+        // Biasanya hanya batch yang baru diklaim yang masuk ke sini. Grace
+        // period memungkinkan recovery bila proses mati setelah status berubah
+        // ke COLLECTING tetapi sebelum runId sempat disimpan, tanpa mudah
+        // membuat duplicate actor run saat ada polling paralel.
+        const oldEnoughToRecover =
+          Date.now() - batch.createdAt.getTime() >= ORPHANED_START_GRACE_MS;
+        if (!claimedPendingBatch && !oldEnoughToRecover) return;
 
-      const { status, datasetId } = await waitForApifyRun(runId);
-      if (status !== "SUCCEEDED") {
+        const input = buildMetaAdLibraryActorInput(monitor);
+        const started = await startApifyActor(actorId, input);
+        runId = started.runId;
+        await patchBatch(batchId, { apifyRunId: runId });
+
+        // Jangan menunggu actor di request/callback ini. Poll berikutnya akan
+        // mengecek status dan mengambil dataset setelah Apify selesai.
+        return;
+      }
+
+      let run: Awaited<ReturnType<typeof getApifyRunStatus>>;
+      try {
+        run = await getApifyRunStatus(runId);
+      } catch (err) {
+        // Gangguan sementara saat membaca status Apify bukan kegagalan scrape.
+        // Biarkan COLLECTING agar polling berikutnya dapat mencoba lagi.
+        console.warn("[brand/ad-library/poll-status]", batchId, err);
+        return;
+      }
+
+      const outcome = getAdLibraryApifyOutcome(run.status);
+      if (outcome === "waiting") return;
+      if (outcome === "failed") {
+        const status = run.status;
         throw new Error(`Apify run status: ${status}`);
       }
 
-      const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+      let items: Record<string, unknown>[];
+      try {
+        items = await fetchApifyDataset<Record<string, unknown>>(run.datasetId);
+      } catch (err) {
+        // Run sudah sukses tetapi dataset mungkin belum sesaat tersedia atau
+        // request sedang terganggu. Retry pada polling berikutnya.
+        console.warn("[brand/ad-library/fetch-dataset]", batchId, err);
+        return;
+      }
       ads = normalizeMetaAds(items);
     }
 
@@ -361,9 +406,11 @@ export async function enqueueBrandAdLibraryScrape(
 export async function pollBrandAdLibraryBatchesLight(): Promise<void> {
   const batches = await prisma.brandAdLibraryBatch.findMany({
     where: {
-      status: SocialListeningStatus.PENDING,
+      status: {
+        in: [SocialListeningStatus.PENDING, SocialListeningStatus.COLLECTING],
+      },
     },
-    take: 3,
+    take: 10,
     orderBy: { createdAt: "asc" },
   });
 

@@ -37,6 +37,32 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-16-gamification-admin-tabs",
+    date: "2026-07-16",
+    title: "Admin gamifikasi kini lebih ringkas dan mudah dinavigasi",
+    category: "improved",
+    description:
+      "Halaman admin gamifikasi kini memisahkan ringkasan, background, frame avatar, dan achievement ke dalam tab khusus. Informasi katalog juga diringkas agar status item aktif dan visual custom lebih cepat dipantau.",
+    highlights: [
+      "Navigasi tab baru menjaga setiap katalog tetap fokus tanpa halaman yang terlalu panjang",
+      "Ringkasan performa 28 hari dan master switch tampil lebih sederhana",
+      "Kartu katalog mengutamakan nama, status unlock, dan media yang relevan",
+    ],
+  },
+  {
+    id: "2026-07-16-meta-ad-library-background-polling",
+    date: "2026-07-16",
+    title: "Meta Ad Library tidak lagi berhenti karena batas waktu request",
+    category: "fixed",
+    description:
+      "Proses pengambilan iklan Meta kini berjalan bertahap di background dan dilanjutkan oleh polling Research Hub. Batch yang masih berjalan atau sempat terputus dapat dipulihkan otomatis tanpa salah ditandai gagal saat Apify belum selesai.",
+    highlights: [
+      "Request tidak lagi menunggu actor Apify hingga sepuluh menit",
+      "Status sementara dan gangguan fetch singkat akan dicoba lagi pada polling berikutnya",
+      "Cron Research Hub ikut melanjutkan batch Meta Ad Library yang tertunda",
+    ],
+  },
+  {
     id: "2026-07-16-research-team-mcp",
     date: "2026-07-16",
     title: "Research Hub: akses AI khusus Team yang lebih aman",

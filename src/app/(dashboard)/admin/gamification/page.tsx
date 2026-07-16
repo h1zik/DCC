@@ -9,7 +9,6 @@ import {
   Sparkles,
   Target,
   TrendingUp,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import { auth } from "@/lib/auth";
@@ -31,6 +30,7 @@ import {
   AchievementSymbolAdminPanel,
   type AdminAchievementSymbolItem,
 } from "./achievement-symbol-admin-panel";
+import { GamificationAdminTabs } from "./gamification-admin-tabs";
 
 /**
  * Pengaturan + pemantau gamifikasi profil (khusus admin). Toggle on/off runtime
@@ -121,41 +121,42 @@ export default async function GamificationAdminPage() {
         : null;
 
   return (
-    <div className="flex w-full flex-col gap-8">
+    <div className="flex w-full flex-col gap-6">
       <ControlCenterHero
         effective={effective}
         dbEnabled={dbEnabled}
         envOverride={envOverride}
       />
 
-      {effective ? (
-        <MetricsSection />
-      ) : (
-        <DisabledState />
-      )}
-
-      <BackgroundAdminPanel
+      <GamificationAdminTabs
+        overview={effective ? <MetricsSection /> : <DisabledState />}
         backgrounds={
-          backgrounds.map((b) => ({
-            ...b,
-            styleConfig: (b.styleConfig ?? {}) as Record<string, unknown>,
-          })) as AdminBackgroundItem[]
+          <BackgroundAdminPanel
+            backgrounds={
+              backgrounds.map((b) => ({
+                ...b,
+                styleConfig: (b.styleConfig ?? {}) as Record<string, unknown>,
+              })) as AdminBackgroundItem[]
+            }
+            achievements={achievements as AdminAchievementOption[]}
+          />
         }
-        achievements={achievements as AdminAchievementOption[]}
-      />
-
-      <AvatarFrameAdminPanel
-        frames={
-          avatarFrames.map((f) => ({
-            ...f,
-            styleConfig: (f.styleConfig ?? {}) as Record<string, unknown>,
-          })) as AdminAvatarFrameItem[]
+        avatarFrames={
+          <AvatarFrameAdminPanel
+            frames={
+              avatarFrames.map((f) => ({
+                ...f,
+                styleConfig: (f.styleConfig ?? {}) as Record<string, unknown>,
+              })) as AdminAvatarFrameItem[]
+            }
+            achievements={achievements as AdminAchievementOption[]}
+          />
         }
-        achievements={achievements as AdminAchievementOption[]}
-      />
-
-      <AchievementSymbolAdminPanel
-        achievements={achievementSymbols as AdminAchievementSymbolItem[]}
+        achievements={
+          <AchievementSymbolAdminPanel
+            achievements={achievementSymbols as AdminAchievementSymbolItem[]}
+          />
+        }
       />
     </div>
   );
@@ -173,62 +174,33 @@ function ControlCenterHero({
   envOverride: boolean | null;
 }) {
   return (
-    <section className="border-border/70 relative overflow-hidden rounded-3xl border bg-card shadow-sm">
-      {/* Cahaya dekoratif aksen — halus, tidak mengganggu keterbacaan. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full blur-3xl"
-        style={{
-          background:
-            "radial-gradient(circle, color-mix(in oklab, var(--chart-1) 26%, transparent), transparent 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-28 -left-20 size-72 rounded-full blur-3xl"
-        style={{
-          background:
-            "radial-gradient(circle, color-mix(in oklab, var(--chart-3) 18%, transparent), transparent 70%)",
-        }}
-      />
-
-      <div className="relative flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-start gap-4">
+    <section className="border-border/70 overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3.5">
           <span
-            className="text-[color:var(--chart-1)] inline-flex size-12 shrink-0 items-center justify-center rounded-2xl"
+            className="text-[color:var(--chart-1)] inline-flex size-10 shrink-0 items-center justify-center rounded-xl"
             style={{
               background: "color-mix(in oklab, var(--chart-1) 14%, transparent)",
-              boxShadow:
-                "inset 0 0 0 1px color-mix(in oklab, var(--chart-1) 24%, transparent)",
             }}
             aria-hidden
           >
-            <Sparkles className="size-6" />
+            <Sparkles className="size-5" />
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-foreground text-2xl font-bold tracking-tight">
-                Gamifikasi Profil
+              <h1 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
+                Gamifikasi
               </h1>
               <StatusPill active={effective} />
             </div>
-            <p className="text-muted-foreground mt-1.5 max-w-xl text-sm">
-              Level, XP, achievement, dan kosmetik untuk semua user. Saat mati,
-              profil kembali tampil seperti semula—tanpa jejak fitur.
+            <p className="text-muted-foreground mt-1 max-w-xl text-sm">
+              Pantau progres dan kelola reward profil tim.
             </p>
           </div>
         </div>
 
-        {/* Panel master toggle */}
-        <div className="border-border/70 bg-background/60 flex shrink-0 items-center gap-4 rounded-2xl border p-4 backdrop-blur-sm">
-          <div className="min-w-[7.5rem]">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Master switch
-            </p>
-            <p className="text-foreground text-sm font-semibold">
-              {effective ? "Aktif untuk semua" : "Dinonaktifkan"}
-            </p>
-          </div>
+        <div className="border-border/70 bg-muted/30 flex shrink-0 items-center justify-between gap-6 rounded-xl border px-4 py-3 lg:min-w-64">
+          <p className="text-foreground text-sm font-medium">Aktifkan untuk tim</p>
           <GamificationFlagToggle
             enabled={dbEnabled}
             locked={envOverride !== null}
@@ -237,14 +209,13 @@ function ControlCenterHero({
       </div>
 
       {envOverride !== null ? (
-        <div className="border-border/70 text-muted-foreground relative flex items-center gap-2 border-t bg-muted/40 px-6 py-3 text-xs sm:px-8">
+        <div className="border-border/70 text-muted-foreground flex items-center gap-2 border-t bg-muted/40 px-5 py-3 text-xs sm:px-6">
           <Lock className="size-3.5 shrink-0" aria-hidden />
           <span>
-            Dikunci oleh environment{" "}
+            Pengaturan dikunci oleh{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono">
               PROFILE_GAMIFICATION_ENABLED={String(envOverride)}
             </code>
-            . Hapus variabel tersebut untuk mengontrol dari sini.
           </span>
         </div>
       ) : null}
@@ -304,21 +275,18 @@ async function MetricsSection() {
       value: m.achievementsUnlocked.toLocaleString("id-ID"),
       sub: "total lintas seluruh user",
     },
-    {
-      icon: Users,
-      label: "Total employee",
-      value: m.employees.toLocaleString("id-ID"),
-      sub: "basis perhitungan adopsi",
-    },
   ];
 
   return (
-    <section className="space-y-4">
-      <SectionHeading
-        eyebrow="Kesehatan program"
-        title="Apakah gamifikasi menggerakkan perilaku?"
-        description="Definisi sukses: adopsi absensi 30% → 70% dalam 4 minggu, dan % task tepat waktu naik."
-      />
+    <section className="space-y-5">
+      <div>
+        <h2 className="text-foreground text-lg font-semibold tracking-tight">
+          Performa 28 hari
+        </h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Dampak gamifikasi pada kebiasaan kerja tim.
+        </p>
+      </div>
 
       {/* Dua kartu unggulan dengan meter */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -355,19 +323,11 @@ async function MetricsSection() {
       </div>
 
       {/* Tile pendukung */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {tiles.map((t) => (
           <StatTile key={t.label} {...t} />
         ))}
       </div>
-
-      <p className="text-muted-foreground text-xs">
-        Bila metrik tak bergerak dalam 1–2 minggu, tuning nilai XP di{" "}
-        <code className="rounded bg-muted px-1 py-0.5 font-mono">
-          src/lib/gamification/constants.ts
-        </code>
-        .
-      </p>
     </section>
   );
 }
@@ -394,7 +354,7 @@ function FeaturedMetric({
   momentum: { label: string; value: string };
 }) {
   return (
-    <div className="border-border/70 group relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
+    <div className="border-border/70 relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-card p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span
@@ -492,9 +452,9 @@ function StatTile({
   sub: string;
 }) {
   return (
-    <div className="border-border/70 flex items-center gap-4 rounded-2xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
+    <div className="border-border/70 flex items-center gap-3 rounded-xl border bg-card p-4 shadow-sm">
       <span
-        className="text-[color:var(--chart-1)] inline-flex size-11 shrink-0 items-center justify-center rounded-xl"
+        className="text-[color:var(--chart-1)] inline-flex size-10 shrink-0 items-center justify-center rounded-lg"
         style={{
           background: "color-mix(in oklab, var(--chart-1) 12%, transparent)",
         }}
@@ -503,7 +463,7 @@ function StatTile({
         <Icon className="size-5" />
       </span>
       <div className="min-w-0">
-        <p className="text-foreground text-2xl font-bold tabular-nums leading-none">
+        <p className="text-foreground text-xl font-bold tabular-nums leading-none">
           {value}
         </p>
         <p className="text-foreground mt-1 text-sm font-medium">{label}</p>
@@ -515,7 +475,7 @@ function StatTile({
 
 function DisabledState() {
   return (
-    <div className="border-border/70 flex flex-col items-center gap-3 rounded-3xl border border-dashed bg-card px-6 py-12 text-center">
+    <div className="border-border/70 flex flex-col items-center gap-3 rounded-2xl border border-dashed bg-card px-6 py-12 text-center">
       <span
         className="text-muted-foreground inline-flex size-12 items-center justify-center rounded-2xl bg-muted"
         aria-hidden
@@ -524,35 +484,12 @@ function DisabledState() {
       </span>
       <div>
         <p className="text-foreground text-sm font-semibold">
-          Metrik adopsi tersembunyi
+          Gamifikasi belum aktif
         </p>
         <p className="text-muted-foreground mx-auto mt-1 max-w-sm text-sm">
-          Nyalakan master switch di atas untuk mulai mengumpulkan dan memantau
-          dampak gamifikasi terhadap absensi & ketepatan task.
+          Aktifkan fitur untuk mulai memantau progres tim.
         </p>
       </div>
-    </div>
-  );
-}
-
-function SectionHeading({
-  eyebrow,
-  title,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-[color:var(--chart-1)]">
-        {eyebrow}
-      </span>
-      <h2 className="text-foreground text-lg font-semibold tracking-tight">
-        {title}
-      </h2>
-      <p className="text-muted-foreground text-sm">{description}</p>
     </div>
   );
 }
