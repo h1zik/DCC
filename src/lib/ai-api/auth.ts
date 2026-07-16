@@ -8,11 +8,21 @@ export type AiApiRole =
   | "LOGISTICS"
   | "FINANCE"
   | "STUDIO"
+  | "MARKET_ANALYST"
   | "ALL";
+
+export type AiApiScope = "all" | "research";
+
+export type AiApiCredential = {
+  /** Nama aman untuk audit log; tidak pernah berisi token. */
+  keyId: "primary" | "research-team";
+  role: AiApiRole | null;
+  scope: AiApiScope;
+};
 
 const ROLE_HEADER = "x-dcc-role";
 
-const VALID_ROLES = new Set<AiApiRole>([
+const VALID_PRIMARY_ROLES = new Set<AiApiRole>([
   "CEO",
   "ADMINISTRATOR",
   "LOGISTICS",
@@ -34,13 +44,13 @@ const VALID_ROLES = new Set<AiApiRole>([
 export function resolveAiApiRole(req: Request): AiApiRole | null {
   const configured = process.env.AI_READ_API_ROLE?.trim().toUpperCase();
   const base: AiApiRole | null =
-    configured && VALID_ROLES.has(configured as AiApiRole)
+    configured && VALID_PRIMARY_ROLES.has(configured as AiApiRole)
       ? (configured as AiApiRole)
       : null;
 
   if (process.env.AI_READ_API_ALLOW_ROLE_HEADER === "true") {
     const raw = req.headers.get(ROLE_HEADER)?.trim().toUpperCase();
-    if (raw && VALID_ROLES.has(raw as AiApiRole)) {
+    if (raw && VALID_PRIMARY_ROLES.has(raw as AiApiRole)) {
       return raw as AiApiRole;
     }
   }
@@ -56,12 +66,58 @@ function secretEquals(a: string, b: string): boolean {
 }
 
 export function isAiApiAuthorized(req: Request): boolean {
-  const token = process.env.AI_READ_API_TOKEN?.trim();
-  if (!token) return false;
+  return resolveAiApiCredential(req) !== null;
+}
 
+export function hasAiApiCredentialConfig(): boolean {
+  return Boolean(
+    process.env.AI_READ_API_TOKEN?.trim() ||
+      process.env.AI_RESEARCH_API_TOKEN?.trim(),
+  );
+}
+
+/**
+ * Autentikasi token sekaligus mengikat scope di server.
+ *
+ * Token Research Team sengaja dicek lebih dulu. Jika operator tidak sengaja
+ * mengisi kedua env dengan nilai yang sama, kredensial tersebut tetap jatuh ke
+ * scope paling sempit (research), bukan memperoleh akses primary.
+ */
+export function resolveAiApiCredential(req: Request): AiApiCredential | null {
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  return bearer.length > 0 && secretEquals(bearer, token);
+  if (!bearer) return null;
+
+  const researchToken = process.env.AI_RESEARCH_API_TOKEN?.trim();
+  if (researchToken && secretEquals(bearer, researchToken)) {
+    return {
+      keyId: "research-team",
+      role: "MARKET_ANALYST",
+      scope: "research",
+    };
+  }
+
+  const primaryToken = process.env.AI_READ_API_TOKEN?.trim();
+  if (primaryToken && secretEquals(bearer, primaryToken)) {
+    return {
+      keyId: "primary",
+      role: resolveAiApiRole(req),
+      scope: "all",
+    };
+  }
+
+  return null;
+}
+
+export function isAiApiPathAllowed(
+  scope: AiApiScope,
+  pathname: string,
+): boolean {
+  if (scope === "all") return true;
+  return (
+    pathname === "/api/ai/research" ||
+    pathname.startsWith("/api/ai/research/")
+  );
 }
 
 export function canViewTasks(role: AiApiRole): boolean {
@@ -126,7 +182,12 @@ export function canViewOrgUsers(role: AiApiRole): boolean {
 }
 
 export function canViewResearch(role: AiApiRole): boolean {
-  return role === "ALL" || role === "CEO" || role === "ADMINISTRATOR";
+  return (
+    role === "ALL" ||
+    role === "CEO" ||
+    role === "ADMINISTRATOR" ||
+    role === "MARKET_ANALYST"
+  );
 }
 
 /** Akses baca Research Hub — MCP (AiApiRole) + AI Agent in-app (UserRole). */

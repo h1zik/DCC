@@ -1,14 +1,18 @@
 import {
   aiRoleLabel,
-  isAiApiAuthorized,
-  resolveAiApiRole,
+  hasAiApiCredentialConfig,
+  isAiApiPathAllowed,
+  resolveAiApiCredential,
   type AiApiRole,
+  type AiApiScope,
 } from "./auth";
 import { checkAiApiRateLimit } from "./rate-limit";
 import { aiApiError } from "./response";
 
 export type AiApiContext = {
   role: AiApiRole;
+  scope: AiApiScope;
+  keyId: "primary" | "research-team";
 };
 
 function clientKey(req: Request): string {
@@ -19,20 +23,29 @@ function clientKey(req: Request): string {
 export function guardAiApiRequest(req: Request):
   | { ok: true; ctx: AiApiContext }
   | { ok: false; response: Response } {
-  if (!process.env.AI_READ_API_TOKEN?.trim()) {
+  if (!hasAiApiCredentialConfig()) {
     return {
       ok: false,
       response: aiApiError(
-        "AI_READ_API_TOKEN belum diset di environment Railway.",
+        "AI_READ_API_TOKEN atau AI_RESEARCH_API_TOKEN belum diset di environment Railway.",
         503,
       ),
     };
   }
 
-  if (!isAiApiAuthorized(req)) {
+  const credential = resolveAiApiCredential(req);
+  if (!credential) {
     return {
       ok: false,
       response: aiApiError("Unauthorized", 401),
+    };
+  }
+
+  const pathname = new URL(req.url).pathname;
+  if (!isAiApiPathAllowed(credential.scope, pathname)) {
+    return {
+      ok: false,
+      response: aiApiError("Forbidden: token tidak memiliki scope endpoint ini.", 403),
     };
   }
 
@@ -46,7 +59,7 @@ export function guardAiApiRequest(req: Request):
     };
   }
 
-  const role = resolveAiApiRole(req);
+  const role = credential.role;
   if (!role) {
     return {
       ok: false,
@@ -59,10 +72,13 @@ export function guardAiApiRequest(req: Request):
     };
   }
   console.info(
-    `[ai-api] ${req.method} ${new URL(req.url).pathname} role=${aiRoleLabel(role)}`,
+    `[ai-api] ${req.method} ${pathname} key=${credential.keyId} scope=${credential.scope} role=${aiRoleLabel(role)}`,
   );
 
-  return { ok: true, ctx: { role } };
+  return {
+    ok: true,
+    ctx: { role, scope: credential.scope, keyId: credential.keyId },
+  };
 }
 
 export function parseLimitParam(
