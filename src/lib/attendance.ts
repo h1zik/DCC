@@ -1,9 +1,15 @@
 import { UserRole } from "@prisma/client";
-import { format } from "date-fns";
 
-/** Tanggal hari ini sebagai string "YYYY-MM-DD" (waktu lokal server). */
-export function getTodayDateString(): string {
-  return format(new Date(), "yyyy-MM-dd");
+const JAKARTA_DATE = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jakarta",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** Tanggal hari ini sebagai string "YYYY-MM-DD" dalam zona Asia/Jakarta. */
+export function getTodayDateString(now = new Date()): string {
+  return JAKARTA_DATE.format(now);
 }
 
 /**

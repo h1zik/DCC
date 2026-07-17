@@ -19,6 +19,7 @@ import {
 } from "@/lib/agent/queries";
 import { matchAgentRoom } from "@/lib/agent/room-match";
 import { getTodayDateString } from "@/lib/attendance";
+import { getLatestAttendanceSession } from "@/lib/attendance-state";
 import { loadFinanceDashboard } from "@/lib/finance-dashboard";
 import { formatIdr } from "@/lib/finance-money";
 import { PIPELINE_LABELS } from "@/lib/pipeline";
@@ -469,10 +470,12 @@ export async function aiGetAttendanceSummary(role: AiApiRole, date?: string) {
     {
       name: string;
       role: string;
-      checkIn: string | null;
-      checkOut: string | null;
       sick: boolean;
       permission: boolean;
+      events: {
+        type: "CHECK_IN" | "CHECK_OUT" | "SICK" | "PERMISSION";
+        timestamp: Date;
+      }[];
     }
   >();
 
@@ -481,25 +484,35 @@ export async function aiGetAttendanceSummary(role: AiApiRole, date?: string) {
     const existing = byUser.get(key) ?? {
       name: r.user.name?.trim() || r.user.email || "—",
       role: r.user.role,
-      checkIn: null,
-      checkOut: null,
       sick: false,
       permission: false,
+      events: [],
     };
-    const time = format(r.timestamp, "HH:mm");
-    if (r.type === "CHECK_IN") existing.checkIn = time;
-    if (r.type === "CHECK_OUT") existing.checkOut = time;
     if (r.type === "SICK") existing.sick = true;
     if (r.type === "PERMISSION") existing.permission = true;
+    existing.events.push(r);
     byUser.set(key, existing);
   }
 
   const statuses = [...byUser.values()].map((u) => {
+    const attendanceSession = getLatestAttendanceSession(u.events);
     let status: "PRESENT" | "DONE" | "SICK" | "PERMISSION" = "PRESENT";
     if (u.sick) status = "SICK";
     else if (u.permission) status = "PERMISSION";
-    else if (u.checkOut) status = "DONE";
-    return { ...u, status };
+    else if (attendanceSession.state === "CHECKED_OUT") status = "DONE";
+    return {
+      name: u.name,
+      role: u.role,
+      checkIn: attendanceSession.checkIn
+        ? format(attendanceSession.checkIn.timestamp, "HH:mm")
+        : null,
+      checkOut: attendanceSession.checkOut
+        ? format(attendanceSession.checkOut.timestamp, "HH:mm")
+        : null,
+      sick: u.sick,
+      permission: u.permission,
+      status,
+    };
   });
 
   const checkInCount = statuses.filter((s) => s.checkIn).length;

@@ -7,6 +7,8 @@ import {
   isAttendanceAdmin,
   isValidAttendanceType,
 } from "@/lib/attendance";
+import { getLatestAttendanceSession } from "@/lib/attendance-state";
+import { normalizeAttendanceDetails } from "@/lib/attendance-details";
 import {
   evaluateAchievements,
   isProfileGamificationEnabled,
@@ -107,6 +109,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const normalizedTodoList = normalizeAttendanceDetails(todoList ?? []);
+  const normalizedCompletedTasks = normalizeAttendanceDetails(
+    completedTasks ?? [],
+  );
+  if (!normalizedTodoList.ok) {
+    return NextResponse.json(
+      { error: normalizedTodoList.error },
+      { status: 400 },
+    );
+  }
+  if (!normalizedCompletedTasks.ok) {
+    return NextResponse.json(
+      { error: normalizedCompletedTasks.error },
+      { status: 400 },
+    );
+  }
+
   const userId = session.user.id;
   const today = getTodayDateString();
 
@@ -131,10 +150,8 @@ export async function POST(request: NextRequest) {
 
   // 2) State-machine masuk/pulang. Status saat ini ditentukan oleh event
   //    CHECK_IN / CHECK_OUT paling akhir hari ini.
-  const lastInOut = todayRecords.find(
-    (r) => r.type === "CHECK_IN" || r.type === "CHECK_OUT",
-  );
-  const currentlyCheckedIn = lastInOut?.type === "CHECK_IN";
+  const attendanceSession = getLatestAttendanceSession(todayRecords);
+  const currentlyCheckedIn = attendanceSession.state === "CHECKED_IN";
 
   if (type === "CHECK_IN" && currentlyCheckedIn) {
     return NextResponse.json(
@@ -143,7 +160,7 @@ export async function POST(request: NextRequest) {
     );
   }
   if (type === "CHECK_OUT") {
-    if (!lastInOut) {
+    if (attendanceSession.state === "NOT_STARTED") {
       return NextResponse.json(
         { error: "Anda belum check-in hari ini." },
         { status: 409 },
@@ -168,12 +185,12 @@ export async function POST(request: NextRequest) {
       confidence: isAbsence ? 0 : Number(confidence) || 0,
       reason: isAbsence ? (reason as string).trim() : null,
       todoList:
-        Array.isArray(todoList) && todoList.length > 0
-          ? JSON.stringify(todoList)
+        type === "CHECK_IN" && normalizedTodoList.items.length > 0
+          ? JSON.stringify(normalizedTodoList.items)
           : null,
       completedTasks:
-        Array.isArray(completedTasks) && completedTasks.length > 0
-          ? JSON.stringify(completedTasks)
+        type === "CHECK_OUT" && normalizedCompletedTasks.items.length > 0
+          ? JSON.stringify(normalizedCompletedTasks.items)
           : null,
     },
     include: { user: { select: userSelect } },
@@ -199,6 +216,60 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(created, { status: 201 });
+}
+
+/** PATCH /api/attendance — mengubah keterangan absensi sendiri untuk hari ini. */
+export async function PATCH(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Belum masuk." }, { status: 401 });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
+  }
+
+  const recordId = typeof body.id === "string" ? body.id.trim() : "";
+  if (!recordId) {
+    return NextResponse.json({ error: "Catatan tidak valid." }, { status: 400 });
+  }
+
+  const normalized = normalizeAttendanceDetails(body.items);
+  if (!normalized.ok) {
+    return NextResponse.json({ error: normalized.error }, { status: 400 });
+  }
+
+  const record = await prisma.attendance.findFirst({
+    where: {
+      id: recordId,
+      userId: session.user.id,
+      date: getTodayDateString(),
+      type: { in: [AttendanceType.CHECK_IN, AttendanceType.CHECK_OUT] },
+    },
+    select: { id: true, type: true },
+  });
+  if (!record) {
+    return NextResponse.json(
+      { error: "Catatan tidak ditemukan atau sudah tidak dapat diubah." },
+      { status: 404 },
+    );
+  }
+
+  const serialized = normalized.items.length
+    ? JSON.stringify(normalized.items)
+    : null;
+  const updated = await prisma.attendance.update({
+    where: { id: record.id },
+    data:
+      record.type === AttendanceType.CHECK_IN
+        ? { todoList: serialized }
+        : { completedTasks: serialized },
+  });
+
+  return NextResponse.json(updated);
 }
 
 /**
