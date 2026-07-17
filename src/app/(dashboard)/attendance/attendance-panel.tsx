@@ -17,6 +17,9 @@ import {
   Send,
   UserCheck,
   ShieldCheck,
+  Pencil,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { PageHero, PageHeroChip } from "@/components/page-hero";
 import {
@@ -28,8 +31,17 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -40,6 +52,11 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { ATTENDANCE_TYPE_LABELS } from "@/lib/attendance-constants";
+import { getLatestAttendanceSession } from "@/lib/attendance-state";
+import {
+  MAX_ATTENDANCE_DETAIL_ITEMS,
+  MAX_ATTENDANCE_DETAIL_LENGTH,
+} from "@/lib/attendance-details";
 import { FaceEnroll } from "@/components/attendance/face-enroll";
 import { FaceCheck } from "@/components/attendance/face-check";
 import type { AttendanceClientProps } from "./attendance-client";
@@ -69,6 +86,7 @@ function fmtDate(date: string) {
 export function AttendancePanel({
   hasFace,
   userName,
+  todayDate,
   todayRows,
   historyRows,
 }: AttendanceClientProps) {
@@ -81,9 +99,8 @@ export function AttendancePanel({
     setView("home");
   };
 
-  // Status hari ini (todayRows terurut terbaru lebih dulu).
-  const checkIn = todayRows.find((r) => r.type === "CHECK_IN");
-  const checkOut = todayRows.find((r) => r.type === "CHECK_OUT");
+  const attendanceSession = getLatestAttendanceSession(todayRows);
+  const { checkIn, checkOut } = attendanceSession;
   const sick = todayRows.find((r) => r.type === "SICK");
   const permission = todayRows.find((r) => r.type === "PERMISSION");
 
@@ -122,9 +139,10 @@ export function AttendancePanel({
       {view === "home" && (
         <HomeView
           hasFace={hasFace}
-          checkedIn={!!checkIn}
-          checkedOut={!!checkOut}
+          currentlyCheckedIn={attendanceSession.state === "CHECKED_IN"}
           onAction={(v) => setView(v)}
+          todayDate={todayDate}
+          onHistoryUpdated={refreshHome}
           historyRows={historyRows}
         />
       )}
@@ -180,21 +198,19 @@ export function AttendancePanel({
 
 function HomeView({
   hasFace,
-  checkedIn,
-  checkedOut,
+  currentlyCheckedIn,
   onAction,
+  todayDate,
+  onHistoryUpdated,
   historyRows,
 }: {
   hasFace: boolean;
-  checkedIn: boolean;
-  checkedOut: boolean;
+  currentlyCheckedIn: boolean;
   onAction: (v: View) => void;
+  todayDate: string;
+  onHistoryUpdated: () => void;
   historyRows: AttendanceRow[];
 }) {
-  // Sudah check-in tapi belum check-out → tampilkan tombol Check Out saja.
-  // Selain itu (belum check-in, atau sudah pulang) → tampilkan Check In saja.
-  const showCheckOut = checkedIn && !checkedOut;
-
   return (
     <div className="flex flex-col gap-6">
       {!hasFace ? (
@@ -231,7 +247,7 @@ function HomeView({
               {/* Check In hanya muncul saat belum check-in (atau sudah pulang),
                   Check Out hanya saat sudah check-in tapi belum pulang — supaya
                   tidak terjadi salah input / kepencet dua kali. */}
-              {showCheckOut ? (
+              {currentlyCheckedIn ? (
                 <ActionButton
                   icon={LogOut}
                   label="Check Out"
@@ -281,7 +297,11 @@ function HomeView({
         </Card>
       )}
 
-      <HistoryCard rows={historyRows} />
+      <HistoryCard
+        rows={historyRows}
+        todayDate={todayDate}
+        onUpdated={onHistoryUpdated}
+      />
     </div>
   );
 }
@@ -328,8 +348,17 @@ function ActionButton({
 /*                                History card                               */
 /* -------------------------------------------------------------------------- */
 
-function HistoryCard({ rows }: { rows: AttendanceRow[] }) {
+function HistoryCard({
+  rows,
+  todayDate,
+  onUpdated,
+}: {
+  rows: AttendanceRow[];
+  todayDate: string;
+  onUpdated: () => void;
+}) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<AttendanceRow | null>(null);
 
   const toggle = (recordId: string) =>
     setExpanded((prev) => {
@@ -340,19 +369,20 @@ function HistoryCard({ rows }: { rows: AttendanceRow[] }) {
     });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Riwayat Absensi Saya</CardTitle>
-        <CardDescription>{rows.length} catatan terakhir.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {rows.length === 0 ? (
-          <p className="text-muted-foreground py-8 text-center text-sm">
-            Belum ada catatan absensi.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Riwayat Absensi Saya</CardTitle>
+          <CardDescription>{rows.length} catatan terakhir.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rows.length === 0 ? (
+            <p className="text-muted-foreground py-8 text-center text-sm">
+              Belum ada catatan absensi.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Tanggal</TableHead>
@@ -366,6 +396,9 @@ function HistoryCard({ rows }: { rows: AttendanceRow[] }) {
                 {rows.map((r) => {
                   const detail = recordDetail(r);
                   const isOpen = expanded.has(r.id);
+                  const canEdit =
+                    r.date === todayDate &&
+                    (r.type === "CHECK_IN" || r.type === "CHECK_OUT");
                   return (
                     <TableRow key={r.id}>
                       <TableCell className="text-sm">
@@ -387,21 +420,35 @@ function HistoryCard({ rows }: { rows: AttendanceRow[] }) {
                         )}
                       </TableCell>
                       <TableCell>
-                        {detail ? (
-                          <div>
-                            <button
-                              type="button"
-                              onClick={() => toggle(r.id)}
-                              className="text-primary flex cursor-pointer items-center gap-1 text-sm hover:underline"
-                            >
-                              {isOpen ? (
-                                <ChevronUp className="size-3.5" />
-                              ) : (
-                                <ChevronDown className="size-3.5" />
-                              )}
-                              {isOpen ? "Tutup" : "Lihat"}
-                            </button>
-                            {isOpen ? (
+                        {detail || canEdit ? (
+                          <div className="flex flex-col items-start gap-2">
+                            <div className="flex items-center gap-3">
+                              {detail ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggle(r.id)}
+                                  className="text-primary flex cursor-pointer items-center gap-1 text-sm hover:underline"
+                                >
+                                  {isOpen ? (
+                                    <ChevronUp className="size-3.5" />
+                                  ) : (
+                                    <ChevronDown className="size-3.5" />
+                                  )}
+                                  {isOpen ? "Tutup" : "Lihat"}
+                                </button>
+                              ) : null}
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditing(r)}
+                                  className="text-primary flex cursor-pointer items-center gap-1 text-sm hover:underline"
+                                >
+                                  <Pencil className="size-3.5" />
+                                  {detail ? "Ubah" : "Tambah"}
+                                </button>
+                              ) : null}
+                            </div>
+                            {isOpen && detail ? (
                               <div className="bg-muted/50 mt-2 rounded-lg p-3">
                                 <p className="text-muted-foreground mb-1 text-xs font-semibold">
                                   {detail.label}
@@ -433,11 +480,145 @@ function HistoryCard({ rows }: { rows: AttendanceRow[] }) {
                   );
                 })}
               </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      {editing ? (
+        <AttendanceDetailDialog
+          key={editing.id}
+          record={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            onUpdated();
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function AttendanceDetailDialog({
+  record,
+  onClose,
+  onSaved,
+}: {
+  record: AttendanceRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const existing = parseList(
+    record.type === "CHECK_IN" ? record.todoList : record.completedTasks,
+  );
+  const [items, setItems] = useState(existing?.length ? existing : [""]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const isCheckIn = record.type === "CHECK_IN";
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/attendance", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: record.id, items }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Gagal menyimpan keterangan.");
+        return;
+      }
+      toast.success("Keterangan absensi berhasil diperbarui");
+      onSaved();
+    } catch {
+      setError("Gagal terhubung ke server.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {existing ? "Ubah" : "Tambah"}{" "}
+            {isCheckIn ? "Rencana Kerja" : "Tugas Selesai"}
+          </DialogTitle>
+          <DialogDescription>
+            Hanya keterangan yang diperbarui. Waktu dan status absensi tidak
+            berubah.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto py-1">
+          {items.map((item, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <span className="text-muted-foreground w-5 text-sm">
+                {index + 1}.
+              </span>
+              <Input
+                value={item}
+                maxLength={MAX_ATTENDANCE_DETAIL_LENGTH}
+                onChange={(event) =>
+                  setItems((current) =>
+                    current.map((value, itemIndex) =>
+                      itemIndex === index ? event.target.value : value,
+                    ),
+                  )
+                }
+                placeholder={
+                  isCheckIn
+                    ? "Tulis rencana kerja…"
+                    : "Tulis tugas yang selesai…"
+                }
+              />
+              {items.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() =>
+                    setItems((current) =>
+                      current.filter((_, itemIndex) => itemIndex !== index),
+                    )
+                  }
+                  aria-label="Hapus item"
+                >
+                  <Trash2 />
+                </Button>
+              ) : null}
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="self-start"
+            disabled={items.length >= MAX_ATTENDANCE_DETAIL_ITEMS}
+            onClick={() => setItems((current) => [...current, ""])}
+          >
+            <Plus />
+            Tambah item
+          </Button>
+        </div>
+
+        {error ? <p className="text-destructive text-sm">{error}</p> : null}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Batal
+          </Button>
+          <Button onClick={submit} disabled={submitting}>
+            {submitting ? <Loader2 className="animate-spin" /> : <Send />}
+            Simpan Keterangan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

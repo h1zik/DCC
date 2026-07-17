@@ -3,6 +3,7 @@ import { id as idLocale } from "date-fns/locale";
 import { prisma } from "@/lib/prisma";
 import { effectiveRoleLabel } from "@/lib/role-labels";
 import { getTodayDateString } from "@/lib/attendance";
+import { getLatestAttendanceSession } from "@/lib/attendance-state";
 
 export type EmployeeStatus =
   | "PRESENT"
@@ -165,16 +166,16 @@ export async function getAttendanceAdminData(): Promise<{
   const statuses = users
     .map((u) => {
       const recs = todayRecords.filter((r) => r.userId === u.id);
-      const checkIn = recs.find((r) => r.type === "CHECK_IN");
-      const checkOut = recs.find((r) => r.type === "CHECK_OUT");
+      const attendanceSession = getLatestAttendanceSession(recs);
+      const { checkIn, checkOut } = attendanceSession;
       const sick = recs.find((r) => r.type === "SICK");
       const permission = recs.find((r) => r.type === "PERMISSION");
 
       let status: EmployeeStatus = "ABSENT";
       if (sick) status = "SICK";
       else if (permission) status = "PERMISSION";
-      else if (checkOut) status = "DONE";
-      else if (checkIn) status = "PRESENT";
+      else if (attendanceSession.state === "CHECKED_OUT") status = "DONE";
+      else if (attendanceSession.state === "CHECKED_IN") status = "PRESENT";
 
       return {
         name: nameOf(u),

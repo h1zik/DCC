@@ -31,6 +31,7 @@ const AttendancePanel = dynamic(
 export interface AttendanceClientProps {
   hasFace: boolean;
   userName: string;
+  todayDate: string;
   todayRows: AttendanceRow[];
   historyRows: AttendanceRow[];
 }

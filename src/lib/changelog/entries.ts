@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-17-attendance-multiple-sessions-details",
+    date: "2026-07-17",
+    title: "Absensi multi-sesi dan koreksi keterangan kini lebih akurat",
+    category: "fixed",
+    description:
+      "Menu Absensi kini selalu menentukan Check In atau Check Out dari aktivitas terbaru, termasuk saat bekerja dalam beberapa sesi pada hari yang sama. Rencana kerja dan tugas selesai yang terlupa juga dapat ditambahkan atau diperbarui dari riwayat absensi hari ini tanpa mengubah waktu maupun status kehadiran.",
+    highlights: [
+      "Urutan Check In, Check Out, lalu Check In kembali kini menampilkan aksi Check Out yang benar",
+      "Rencana kerja dan tugas selesai hari ini dapat ditambah, diubah, atau dikosongkan",
+      "Status pengguna, rekap admin, dan ringkasan AI memakai sesi absensi terbaru secara konsisten",
+      "Pergantian hari absensi mengikuti zona waktu Asia/Jakarta",
+    ],
+  },
+  {
     id: "2026-07-16-changelog-page-redesign",
     date: "2026-07-16",
     title: "Changelog baru: lebih mudah mencari dan memindai pembaruan",

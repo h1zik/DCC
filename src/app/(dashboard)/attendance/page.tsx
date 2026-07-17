@@ -54,6 +54,7 @@ export default async function AttendancePage() {
       <AttendanceClient
         hasFace={faceCount > 0}
         userName={session.user.name?.trim() || session.user.email || "Anda"}
+        todayDate={today}
         todayRows={todayRows}
         historyRows={historyRows}
       />
