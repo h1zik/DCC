@@ -37,6 +37,34 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-18-room-voice-channels",
+    date: "2026-07-18",
+    title: "Voice channel: group call ala Discord langsung di dalam Room",
+    category: "new",
+    description:
+      "Setiap Room kini bisa memiliki voice channel untuk group call bersama tim — bicara lewat mikrofon, nyalakan kamera, dan share screen tanpa keluar dari DCC. Panggilan tetap tersambung saat berpindah halaman: jendela kecil melayang menampilkan video dan kontrol, dan bisa digeser ke posisi mana pun.",
+    highlights: [
+      "Buat channel bertipe Voice dari sidebar Team Chat (toggle # menjadi ikon suara)",
+      "Kontrol lengkap: mute mic, kamera, share screen, mode tuli, dan keluar panggilan",
+      "Sidebar menampilkan siapa saja yang sedang tersambung di tiap voice channel",
+      "Panggilan tetap aktif di seluruh aplikasi — jendela mini melayang bisa digeser dan diperbesar kembali",
+      "Tampilan panggilan mengikuti tema DCC, termasuk tema kustom dan mode terang/gelap",
+    ],
+  },
+  {
+    id: "2026-07-18-team-chat-polish",
+    date: "2026-07-18",
+    title: "Team Chat: navigasi riwayat dan indikator yang lebih nyaman",
+    category: "improved",
+    description:
+      "Membaca riwayat chat kini lebih nyaman: tombol “Ke pesan terbaru” muncul saat menggulir ke atas dan berubah menjadi penanda jumlah pesan baru yang masuk. Indikator mengetik, tampilan channel kosong, dan penanda channel aktif juga diperhalus.",
+    highlights: [
+      "Tombol lompat ke pesan terbaru dengan hitungan pesan baru saat sedang membaca riwayat",
+      "Indikator “sedang mengetik” dengan animasi titik dan nama pengirim yang jelas",
+      "Channel yang sedang dibuka ditandai garis aksen di sisi kiri, ala Discord",
+    ],
+  },
+  {
     id: "2026-07-17-attendance-multiple-sessions-details",
     date: "2026-07-17",
     title: "Absensi multi-sesi dan koreksi keterangan kini lebih akurat",

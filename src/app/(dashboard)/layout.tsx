@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { VoiceProvider } from "@/components/voice/voice-provider";
 import { auth } from "@/lib/auth";
 import { getNavRooms } from "@/lib/room-nav-data";
 
@@ -18,5 +19,9 @@ export default async function DashboardLayout({
     ? await getNavRooms(session.user.id, session.user.role)
     : [];
 
-  return <DashboardShell navRooms={navRooms}>{children}</DashboardShell>;
+  return (
+    <VoiceProvider>
+      <DashboardShell navRooms={navRooms}>{children}</DashboardShell>
+    </VoiceProvider>
+  );
 }

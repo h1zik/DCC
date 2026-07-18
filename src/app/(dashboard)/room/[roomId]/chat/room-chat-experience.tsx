@@ -45,9 +45,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
+  ChevronDown,
   Clapperboard,
   Download,
   FileText,
+  MessagesSquare,
   Paperclip,
   Pencil,
   Reply,
@@ -247,6 +249,9 @@ export function RoomChatExperience({
     body: string;
   } | null>(null);
   const [pending, startTransition] = useTransition();
+  /** Tombol "ke pesan terbaru" saat user scroll jauh ke atas + hitung pesan baru. */
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [unseenCount, setUnseenCount] = useState(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const scheduleComposerFocus = useChatComposerFocus(taRef, pending);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -400,6 +405,8 @@ export function RoomChatExperience({
     if (!el) return;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     nearBottomRef.current = gap < 120;
+    setShowJumpToLatest(gap > 200);
+    if (gap < 120) setUnseenCount(0);
   }, []);
 
   useLayoutEffect(() => {
@@ -526,13 +533,20 @@ export function RoomChatExperience({
     return () => window.clearTimeout(id);
   }, [body, roomId]);
 
+  const prevMessageCountRef = useRef(messages.length);
   useEffect(() => {
+    const added = messages.length - prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
     const last = messages[messages.length - 1];
     const own = last?.author.id === currentUserId;
     if (own || nearBottomRef.current) {
+      setUnseenCount(0);
       requestAnimationFrame(() => {
         scrollToBottom(own ? "smooth" : "auto");
       });
+    } else if (added > 0 && !shouldScrollToEndRef.current) {
+      // User sedang membaca riwayat — tandai ada pesan baru di bawah.
+      setUnseenCount((n) => n + added);
     }
   }, [messages, currentUserId, scrollToBottom]);
 
@@ -754,16 +768,27 @@ export function RoomChatExperience({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="relative min-h-0 flex-1 basis-0">
       <div
         ref={scrollRef}
         onScroll={onScrollList}
-        className="min-h-0 flex-1 basis-0 overflow-y-auto overscroll-contain px-2 py-3 sm:px-3"
+        className="h-full overflow-y-auto overscroll-contain px-2 py-3 sm:px-3"
       >
         <div className="flex flex-col">
           {messages.length === 0 ? (
-            <p className="text-muted-foreground px-2 py-8 text-center text-sm">
-              Belum ada pesan. Mulai percakapan di bawah.
-            </p>
+            <div className="flex flex-col items-center gap-3 px-2 py-16 text-center">
+              <span className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-2xl">
+                <MessagesSquare className="size-7" aria-hidden />
+              </span>
+              <div>
+                <p className="text-foreground text-sm font-semibold">
+                  Belum ada pesan
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  Jadilah yang pertama menyapa di channel ini 👋
+                </p>
+              </div>
+            </div>
           ) : (
             messages.map((m, idx) => {
               const own = m.author.id === currentUserId;
@@ -1000,6 +1025,30 @@ export function RoomChatExperience({
         </div>
       </div>
 
+      {showJumpToLatest ? (
+        <button
+          type="button"
+          onClick={() => {
+            setUnseenCount(0);
+            nearBottomRef.current = true;
+            scrollToBottom("smooth");
+          }}
+          className={cn(
+            "border-border absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur transition-colors",
+            "animate-in fade-in slide-in-from-bottom-2",
+            unseenCount > 0
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-card/95 text-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
+        >
+          <ChevronDown className="size-3.5" aria-hidden />
+          {unseenCount > 0
+            ? `${unseenCount > 99 ? "99+" : unseenCount} pesan baru`
+            : "Ke pesan terbaru"}
+        </button>
+      ) : null}
+      </div>
+
       <div className="border-border bg-card shrink-0 space-y-2 border-t p-3">
         {editingMessage ? (
           <div className="bg-primary/10 flex items-center justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5 text-xs">
@@ -1083,10 +1132,21 @@ export function RoomChatExperience({
           </ul>
         ) : null}
         {typingUsers.length > 0 ? (
-          <p className="text-muted-foreground text-xs">
-            {typingUsers[0]} sedang mengetik
-            {typingUsers.length > 1 ? ` +${typingUsers.length - 1} lainnya` : ""}
-          </p>
+          <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <span className="flex items-center gap-0.5" aria-hidden>
+              <span className="bg-muted-foreground/70 size-1 animate-bounce rounded-full" />
+              <span className="bg-muted-foreground/70 size-1 animate-bounce rounded-full [animation-delay:150ms]" />
+              <span className="bg-muted-foreground/70 size-1 animate-bounce rounded-full [animation-delay:300ms]" />
+            </span>
+            <span>
+              <span className="text-foreground font-medium">{typingUsers[0]}</span>{" "}
+              sedang mengetik
+              {typingUsers.length > 1
+                ? ` +${typingUsers.length - 1} lainnya`
+                : ""}
+              …
+            </span>
+          </div>
         ) : null}
         {pushState !== "ready" ? (
           <div className="bg-muted/60 flex items-center justify-between gap-2 rounded-lg border border-dashed px-2 py-1.5 text-xs">

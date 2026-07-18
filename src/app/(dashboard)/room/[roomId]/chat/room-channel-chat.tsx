@@ -11,6 +11,7 @@ import {
   Plus,
   Trash2,
   Users,
+  Volume2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -53,6 +54,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { RoomChatExperience } from "./room-chat-experience";
+import { useVoice } from "@/components/voice/voice-provider";
+import { useVoiceParticipants } from "@/components/voice/use-voice-participants";
+import { VoiceChannelList } from "@/components/voice/voice-channel-list";
+import { VoiceCallPanel } from "@/components/voice/voice-call-panel";
 
 type MentionableUser = { id: string; name: string | null; email: string };
 
@@ -60,6 +65,59 @@ function unreadLabel(count: number): string {
   return count > ROOM_CHANNEL_UNREAD_CAP
     ? `${ROOM_CHANNEL_UNREAD_CAP}+`
     : String(count);
+}
+
+function ChannelManageMenu({
+  channel,
+  onRename,
+  onToggleLock,
+  onDelete,
+}: {
+  channel: RoomChannelView;
+  onRename: (channel: RoomChannelView) => void;
+  onToggleLock: (channel: RoomChannelView) => void;
+  onDelete: (channel: RoomChannelView) => void;
+}) {
+  const protectedChannel = isRoomChannelProtected(channel);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-md"
+        aria-label={`Kelola #${channel.name}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MoreVertical className="size-3.5" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onRename(channel)}>
+          <Pencil className="size-3.5" aria-hidden />
+          Ubah nama
+        </DropdownMenuItem>
+        {!channel.isDefault ? (
+          <DropdownMenuItem onClick={() => onToggleLock(channel)}>
+            {channel.isLocked ? (
+              <LockOpen className="size-3.5" aria-hidden />
+            ) : (
+              <Lock className="size-3.5" aria-hidden />
+            )}
+            {channel.isLocked ? "Buka kunci" : "Kunci channel"}
+          </DropdownMenuItem>
+        ) : null}
+        {!protectedChannel ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onDelete(channel)}
+            >
+              <Trash2 className="size-3.5" aria-hidden />
+              Hapus channel
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export function RoomChannelChat({
@@ -87,11 +145,22 @@ export function RoomChannelChat({
   loadedMessages: number;
   hasMoreHistory: boolean;
 }) {
+  const voice = useVoice();
+  const participantsByChannel = useVoiceParticipants(roomId);
   const [channels, setChannels] = useState<RoomChannelView[]>(initialChannels);
   const [activeChannelId, setActiveChannelId] = useState(initialChannelId);
+  /**
+   * Voice channel yang sedang dibuka di panel utama (bukan chat). Bila user
+   * datang ke halaman ini saat sudah tersambung ke voice ruangan ini, langsung
+   * tampilkan panel call-nya.
+   */
+  const [voiceViewId, setVoiceViewId] = useState<string | null>(() =>
+    voice.activeCall?.roomId === roomId ? voice.activeCall.channelId : null,
+  );
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [createLocked, setCreateLocked] = useState(false);
+  const [createVoice, setCreateVoice] = useState(false);
   const [renameTarget, setRenameTarget] = useState<RoomChannelView | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<RoomChannelView | null>(null);
@@ -103,8 +172,14 @@ export function RoomChannelChat({
     activeChannelIdRef.current = activeChannelId;
   }, [activeChannelId]);
 
+  const textChannels = channels.filter((c) => c.type !== "VOICE");
+  const voiceChannels = channels.filter((c) => c.type === "VOICE");
   const activeChannel =
-    channels.find((c) => c.id === activeChannelId) ?? channels[0] ?? null;
+    textChannels.find((c) => c.id === activeChannelId) ??
+    textChannels[0] ??
+    null;
+  const viewedVoiceChannel =
+    voiceChannels.find((c) => c.id === voiceViewId) ?? null;
 
   /** Refresh daftar channel + unread; channel aktif selalu dianggap terbaca. */
   const refreshChannels = useCallback(async () => {
@@ -132,6 +207,7 @@ export function RoomChannelChat({
 
   const selectChannel = useCallback(
     (channelId: string) => {
+      setVoiceViewId(null);
       if (channelId === activeChannelIdRef.current) return;
       setActiveChannelId(channelId);
       setChannels((prev) =>
@@ -153,6 +229,7 @@ export function RoomChannelChat({
         const created = await createRoomChannel({
           roomId,
           name,
+          type: createVoice ? "VOICE" : "TEXT",
           isLocked: createLocked,
         });
         setChannels((prev) =>
@@ -160,8 +237,13 @@ export function RoomChannelChat({
         );
         setNewName("");
         setCreateLocked(false);
+        setCreateVoice(false);
         setCreating(false);
-        selectChannel(created.id);
+        if (created.type === "VOICE") {
+          setVoiceViewId(created.id);
+        } else {
+          selectChannel(created.id);
+        }
       } catch (e) {
         toast.error(actionErrorMessage(e, "Gagal membuat channel."));
       }
@@ -200,6 +282,10 @@ export function RoomChannelChat({
         const fallbackId = await deleteRoomChannel(channel.id);
         setDeleteTarget(null);
         setChannels((prev) => prev.filter((c) => c.id !== channel.id));
+        if (voice.activeCall?.channelId === channel.id) {
+          void voice.leave();
+        }
+        setVoiceViewId((prev) => (prev === channel.id ? null : prev));
         if (activeChannelIdRef.current === channel.id) {
           selectChannel(fallbackId);
         }
@@ -233,48 +319,14 @@ export function RoomChannelChat({
     });
   }
 
-  function ChannelManageMenu({ channel }: { channel: RoomChannelView }) {
-    const protectedChannel = isRoomChannelProtected(channel);
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-md"
-          aria-label={`Kelola #${channel.name}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <MoreVertical className="size-3.5" aria-hidden />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => openRenameDialog(channel)}>
-            <Pencil className="size-3.5" aria-hidden />
-            Ubah nama
-          </DropdownMenuItem>
-          {!channel.isDefault ? (
-            <DropdownMenuItem onClick={() => toggleChannelLock(channel)}>
-              {channel.isLocked ? (
-                <LockOpen className="size-3.5" aria-hidden />
-              ) : (
-                <Lock className="size-3.5" aria-hidden />
-              )}
-              {channel.isLocked ? "Buka kunci" : "Kunci channel"}
-            </DropdownMenuItem>
-          ) : null}
-          {!protectedChannel ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => setDeleteTarget(channel)}
-              >
-                <Trash2 className="size-3.5" aria-hidden />
-                Hapus channel
-              </DropdownMenuItem>
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  }
+  const manageMenuFor = (channel: RoomChannelView) => (
+    <ChannelManageMenu
+      channel={channel}
+      onRename={openRenameDialog}
+      onToggleLock={toggleChannelLock}
+      onDelete={setDeleteTarget}
+    />
+  );
 
   return (
     <div className="bg-card flex min-h-0 flex-1 overflow-hidden max-md:flex-col">
@@ -298,8 +350,8 @@ export function RoomChannelChat({
           ) : null}
         </div>
 
-        {channels.map((channel) => {
-          const active = channel.id === activeChannelId;
+        {textChannels.map((channel) => {
+          const active = channel.id === activeChannelId && !viewedVoiceChannel;
           const hasUnread = channel.unreadCount > 0 && !active;
           return (
             <div
@@ -311,6 +363,12 @@ export function RoomChannelChat({
                   : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
               )}
             >
+              {active ? (
+                <span
+                  className="bg-primary absolute top-1/2 left-0 h-5 w-1 -translate-y-1/2 rounded-r-full"
+                  aria-hidden
+                />
+              ) : null}
               <button
                 type="button"
                 onClick={() => selectChannel(channel.id)}
@@ -347,9 +405,7 @@ export function RoomChannelChat({
                 </span>
               ) : null}
               {canManage ? (
-                <span className="mr-1 shrink-0">
-                  <ChannelManageMenu channel={channel} />
-                </span>
+                <span className="mr-1 shrink-0">{manageMenuFor(channel)}</span>
               ) : null}
             </div>
           );
@@ -361,7 +417,7 @@ export function RoomChannelChat({
               ref={createInputRef}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="nama-channel"
+              placeholder={createVoice ? "nama-voice" : "nama-channel"}
               className="h-8 text-sm"
               disabled={pending}
               onKeyDown={(e) => {
@@ -373,9 +429,31 @@ export function RoomChannelChat({
                   setCreating(false);
                   setNewName("");
                   setCreateLocked(false);
+                  setCreateVoice(false);
                 }
               }}
             />
+            <Button
+              type="button"
+              size="icon-sm"
+              variant={createVoice ? "secondary" : "ghost"}
+              className={cn(createVoice && "text-primary")}
+              aria-label={createVoice ? "Channel voice" : "Channel teks"}
+              aria-pressed={createVoice}
+              title={
+                createVoice
+                  ? "Channel voice (group call)"
+                  : "Jadikan channel voice"
+              }
+              disabled={pending}
+              onClick={() => setCreateVoice((prev) => !prev)}
+            >
+              {createVoice ? (
+                <Volume2 className="size-4" aria-hidden />
+              ) : (
+                <Hash className="size-4" aria-hidden />
+              )}
+            </Button>
             <Button
               type="button"
               size="icon-sm"
@@ -413,12 +491,28 @@ export function RoomChannelChat({
                 setCreating(false);
                 setNewName("");
                 setCreateLocked(false);
+                setCreateVoice(false);
               }}
             >
               <X className="size-4" aria-hidden />
             </Button>
           </div>
         ) : null}
+
+        <VoiceChannelList
+          channels={voiceChannels}
+          participantsByChannel={participantsByChannel}
+          viewedChannelId={viewedVoiceChannel?.id ?? null}
+          onOpen={(channel) => {
+            setVoiceViewId(channel.id);
+            void voice.join({
+              roomId,
+              channelId: channel.id,
+              channelName: channel.name,
+            });
+          }}
+          renderManageMenu={canManage ? manageMenuFor : undefined}
+        />
 
         {canManage && !creating ? (
           <button
@@ -436,7 +530,33 @@ export function RoomChannelChat({
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {activeChannel ? (
+        {viewedVoiceChannel ? (
+          <>
+            <header className="border-border flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5">
+              <Volume2
+                className="text-muted-foreground size-5 shrink-0"
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-foreground truncate text-sm font-semibold leading-tight">
+                  {viewedVoiceChannel.name}
+                </p>
+                {viewedVoiceChannel.topic ? (
+                  <p className="text-muted-foreground truncate text-xs leading-tight">
+                    {viewedVoiceChannel.topic}
+                  </p>
+                ) : null}
+              </div>
+              {canManage ? manageMenuFor(viewedVoiceChannel) : null}
+            </header>
+            <VoiceCallPanel
+              roomId={roomId}
+              channel={viewedVoiceChannel}
+              participants={participantsByChannel[viewedVoiceChannel.id] ?? []}
+            />
+          </>
+        ) : null}
+        {!viewedVoiceChannel && activeChannel ? (
           <header className="border-border flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5">
             <Hash className="text-muted-foreground size-5 shrink-0" aria-hidden />
             <div className="min-w-0 flex-1">
@@ -468,7 +588,7 @@ export function RoomChannelChat({
                 {memberCount}
               </span>
             </span>
-            {canManage ? <ChannelManageMenu channel={activeChannel} /> : null}
+            {canManage ? manageMenuFor(activeChannel) : null}
             <Popover>
               <PopoverTrigger
                 render={
@@ -515,7 +635,7 @@ export function RoomChannelChat({
             </Popover>
           </header>
         ) : null}
-        {activeChannel ? (
+        {!viewedVoiceChannel && activeChannel ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <RoomChatExperience
               key={activeChannel.id}

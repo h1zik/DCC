@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
+export type RoomChannelKind = "TEXT" | "VOICE";
+
 export type RoomChannelView = {
   id: string;
   name: string;
   topic: string | null;
+  type: RoomChannelKind;
   isDefault: boolean;
   isLocked: boolean;
   sortOrder: number;
@@ -84,8 +87,9 @@ export async function resolveRoomChannelId(
 ): Promise<string> {
   const trimmed = channelId?.trim();
   if (trimmed) {
+    // Channel VOICE bukan target chat — jatuhkan ke channel default.
     const channel = await prisma.roomChannel.findFirst({
-      where: { id: trimmed, roomId },
+      where: { id: trimmed, roomId, type: "TEXT" },
       select: { id: true },
     });
     if (channel) return channel.id;
@@ -108,6 +112,7 @@ export async function listRoomChannelsForUser(
       id: true,
       name: true,
       topic: true,
+      type: true,
       isDefault: true,
       isLocked: true,
       sortOrder: true,
@@ -126,6 +131,8 @@ export async function listRoomChannelsForUser(
 
   const unreadCounts = await Promise.all(
     channels.map((c) => {
+      // Channel VOICE tidak punya pesan/unread.
+      if (c.type === "VOICE") return Promise.resolve(0);
       const lastReadAt = lastReadByChannel.get(c.id) ?? null;
       return prisma.roomMessage.count({
         where: {
@@ -142,6 +149,7 @@ export async function listRoomChannelsForUser(
     id: c.id,
     name: c.name,
     topic: c.topic,
+    type: c.type,
     isDefault: c.isDefault,
     isLocked: c.isLocked,
     sortOrder: c.sortOrder,
