@@ -781,3 +781,33 @@
 .textLayer span::selection {
   background: color-mix(in srgb, var(--color-primary), transparent 70%);
 }
+
+/* ─────────────────────────────────────────────
+   Voice channel (LiveKit) — selaraskan komponen LiveKit dengan tema aktif DCC.
+   Spesifisitas .voice-stage[data-lk-theme] sengaja lebih tinggi dari
+   [data-lk-theme=default] milik @livekit/components-styles agar token tema
+   (termasuk tema kustom via [data-theme]) selalu menang.
+   ───────────────────────────────────────────── */
+.voice-stage[data-lk-theme] {
+  --lk-font-family: var(--font-sans);
+  --lk-bg: var(--background);
+  --lk-bg2: color-mix(in oklab, var(--background), var(--foreground) 4%);
+  --lk-bg3: color-mix(in oklab, var(--background), var(--foreground) 8%);
+  --lk-bg4: color-mix(in oklab, var(--background), var(--foreground) 12%);
+  --lk-bg5: color-mix(in oklab, var(--background), var(--foreground) 16%);
+  --lk-fg: var(--foreground);
+  --lk-fg2: color-mix(in oklab, var(--foreground), var(--background) 12%);
+  --lk-fg3: color-mix(in oklab, var(--foreground), var(--background) 24%);
+  --lk-fg4: color-mix(in oklab, var(--foreground), var(--background) 36%);
+  --lk-fg5: color-mix(in oklab, var(--foreground), var(--background) 48%);
+  --lk-accent-bg: var(--primary);
+  --lk-accent-fg: var(--primary-foreground);
+  --lk-danger: var(--destructive);
+  --lk-control-bg: var(--muted);
+  --lk-control-fg: var(--foreground);
+  --lk-control-hover-bg: var(--accent);
+  --lk-control-active-bg: var(--primary);
+  --lk-control-active-hover-bg: color-mix(in oklab, var(--primary), var(--foreground) 12%);
+  --lk-border-color: var(--border);
+  --lk-border-radius: var(--radius);
+}

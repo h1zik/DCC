@@ -962,9 +962,18 @@ model RoomMessage {
 }
 
 /**
+ * Jenis channel ruangan: TEXT untuk chat, VOICE untuk group call (LiveKit).
+ */
+enum RoomChannelType {
+  TEXT
+  VOICE
+}
+
+/**
  * Channel chat (ala Discord) di dalam sebuah ruangan. Satu ruangan punya satu
  * channel default `#umum` (`isDefault`, tidak dapat dihapus) + channel tambahan
- * yang dibuat manager ruangan.
+ * yang dibuat manager ruangan. Channel VOICE tidak menyimpan pesan/unread —
+ * hanya menjadi anchor group call (media ditangani LiveKit).
  */
 model RoomChannel {
   id        String            @id @default(cuid())
@@ -972,6 +981,7 @@ model RoomChannel {
   room      Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
   name      String            @db.VarChar(80)
   topic     String?           @db.VarChar(200)
+  type      RoomChannelType   @default(TEXT)
   sortOrder Int               @default(0)
   isDefault Boolean           @default(false)
   /**

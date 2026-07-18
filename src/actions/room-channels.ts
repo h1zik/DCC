@@ -17,6 +17,7 @@ const createChannelSchema = z.object({
   roomId: z.string().min(1),
   name: z.string().min(1).max(80),
   topic: z.string().max(200).optional(),
+  type: z.enum(["TEXT", "VOICE"]).optional(),
   isLocked: z.boolean().optional(),
 });
 
@@ -70,7 +71,10 @@ export async function createRoomChannel(
       roomId: data.roomId,
       name,
       topic,
+      type: data.type ?? "TEXT",
       sortOrder,
+      // Channel default selalu TEXT — channel baru (termasuk VOICE) tidak
+      // pernah menjadi default.
       isDefault: false,
       isLocked: data.isLocked === true,
     },
@@ -78,6 +82,7 @@ export async function createRoomChannel(
       id: true,
       name: true,
       topic: true,
+      type: true,
       isDefault: true,
       isLocked: true,
       sortOrder: true,
