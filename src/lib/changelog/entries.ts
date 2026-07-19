@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-19-voice-audio-settings",
+    date: "2026-07-19",
+    title: "Voice call: pengaturan suara — atur volume per orang dan pilih perangkat audio",
+    category: "new",
+    description:
+      "Group call kini punya tombol Pengaturan suara di deret kontrol panggilan. Kecilkan atau senyapkan suara peserta tertentu tanpa memengaruhi yang lain, pilih mikrofon dan output suara yang dipakai, serta atur peredam bising, pembatalan gema, dan penguatan otomatis. Semua preferensi diingat untuk panggilan berikutnya di perangkat yang sama.",
+    highlights: [
+      "Volume per peserta 0–100% — peserta yang dikecilkan tetap dikecilkan di panggilan berikutnya",
+      "Pilih perangkat mikrofon dan output suara langsung di tengah panggilan",
+      "Toggle peredam bising, pembatalan gema, dan penguatan otomatis berlaku tanpa perlu keluar-masuk panggilan",
+      "Mode tuli tetap menyenyapkan semua audio; saat dibuka, volume per peserta kembali seperti semula",
+      "Tersedia di panel panggilan maupun jendela mini melayang",
+    ],
+  },
+  {
     id: "2026-07-18-room-voice-channels",
     date: "2026-07-18",
     title: "Voice channel: group call ala Discord langsung di dalam Room",

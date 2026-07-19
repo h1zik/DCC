@@ -14,11 +14,37 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useVoice } from "./voice-provider";
+import { micCaptureOptions, readVoiceSettings } from "./use-voice-settings";
+import { VoiceSettingsMenu } from "./voice-settings-menu";
 
 function supportsScreenShare(): boolean {
   return (
     typeof navigator !== "undefined" &&
     typeof navigator.mediaDevices?.getDisplayMedia === "function"
+  );
+}
+
+/**
+ * Kelas tombol bundar kontrol call — dipakai ControlButton di sini dan
+ * PopoverTrigger di voice-settings-menu agar gayanya identik.
+ */
+export function controlButtonClassName({
+  active,
+  danger,
+  compact,
+}: {
+  active?: boolean;
+  danger?: boolean;
+  compact?: boolean;
+}): string {
+  return cn(
+    "focus-visible:ring-ring inline-flex shrink-0 items-center justify-center rounded-full transition-all duration-150 focus-visible:ring-2 focus-visible:outline-none active:scale-95 disabled:opacity-50",
+    compact ? "size-8 [&_svg]:size-3.5" : "size-10 [&_svg]:size-4.5",
+    danger
+      ? "bg-destructive shadow-destructive/30 text-white shadow-md hover:opacity-90"
+      : active
+        ? "bg-primary text-primary-foreground shadow-primary/25 shadow-md hover:opacity-90"
+        : "bg-muted text-foreground hover:bg-accent hover:text-accent-foreground",
   );
 }
 
@@ -49,15 +75,7 @@ function ControlButton({
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={cn(
-        "focus-visible:ring-ring inline-flex shrink-0 items-center justify-center rounded-full transition-all duration-150 focus-visible:ring-2 focus-visible:outline-none active:scale-95 disabled:opacity-50",
-        compact ? "size-8 [&_svg]:size-3.5" : "size-10 [&_svg]:size-4.5",
-        danger
-          ? "bg-destructive shadow-destructive/30 text-white shadow-md hover:opacity-90"
-          : active
-            ? "bg-primary text-primary-foreground shadow-primary/25 shadow-md hover:opacity-90"
-            : "bg-muted text-foreground hover:bg-accent hover:text-accent-foreground",
-      )}
+      className={controlButtonClassName({ active, danger, compact })}
     >
       {children}
     </button>
@@ -114,7 +132,15 @@ export function VoiceControlButtons({
         disabled={busy}
         onClick={() =>
           void run(
-            () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled),
+            // Saat menyalakan, bawa opsi capture segar supaya toggle yang
+            // diubah ketika mic mati tetap berlaku tanpa rejoin.
+            () =>
+              localParticipant.setMicrophoneEnabled(
+                !isMicrophoneEnabled,
+                isMicrophoneEnabled
+                  ? undefined
+                  : micCaptureOptions(readVoiceSettings()),
+              ),
             "Gagal mengubah status mic.",
           )
         }
@@ -160,6 +186,7 @@ export function VoiceControlButtons({
       >
         <Headphones aria-hidden />
       </ControlButton>
+      <VoiceSettingsMenu compact={compact} />
       <ControlButton
         label="Keluar dari voice"
         danger
