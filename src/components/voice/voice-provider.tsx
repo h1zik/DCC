@@ -11,9 +11,18 @@ import {
   useState,
 } from "react";
 import { DisconnectReason, Room, RoomEvent, VideoPresets } from "livekit-client";
-import { RoomAudioRenderer, RoomContext } from "@livekit/components-react";
+import {
+  RoomAudioRenderer,
+  RoomContext,
+  useRemoteParticipants,
+} from "@livekit/components-react";
 import { toast } from "sonner";
 import { VoiceFloatingOverlay } from "./voice-floating-overlay";
+import {
+  micCaptureOptions,
+  readVoiceSettings,
+  useVoiceSettings,
+} from "./use-voice-settings";
 
 export type VoiceConnectionState = "disconnected" | "connecting" | "connected";
 
@@ -120,10 +129,20 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           serverUrl: string;
         };
 
+        // Preferensi audio tersimpan (device + pemrosesan mic). DeviceId basi
+        // aman: constraint non-exact, browser fallback ke default.
+        const settings = readVoiceSettings();
+        const canSetSink =
+          typeof HTMLAudioElement !== "undefined" &&
+          "setSinkId" in HTMLAudioElement.prototype;
         const nextRoom = new Room({
           adaptiveStream: true,
           dynacast: true,
           videoCaptureDefaults: { resolution: VideoPresets.h720.resolution },
+          audioCaptureDefaults: micCaptureOptions(settings),
+          ...(canSetSink && settings.speakerDeviceId
+            ? { audioOutput: { deviceId: settings.speakerDeviceId } }
+            : {}),
         });
         nextRoom.on(RoomEvent.Disconnected, (reason) => {
           if (roomRef.current !== nextRoom) return;
@@ -210,9 +229,26 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       {room ? (
         <RoomContext.Provider value={room}>
           <RoomAudioRenderer muted={deafened} />
+          <VoiceVolumeApplier />
           {!panelMounted ? <VoiceFloatingOverlay /> : null}
         </RoomContext.Provider>
       ) : null}
     </VoiceContext.Provider>
   );
+}
+
+/**
+ * Menerapkan volume per-partisipan dari settings ke LiveKit. `setVolume`
+ * tersimpan di volumeMap internal — aman dipanggil sebelum track audio tiba,
+ * dan diterapkan ulang tiap (re)subscribe. Satu-satunya jalur tulis volume.
+ */
+function VoiceVolumeApplier() {
+  const { settings } = useVoiceSettings();
+  const participants = useRemoteParticipants();
+  useEffect(() => {
+    for (const p of participants) {
+      p.setVolume(settings.volumes[p.identity] ?? 1);
+    }
+  }, [participants, settings.volumes]);
+  return null;
 }
