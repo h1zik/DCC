@@ -83,6 +83,7 @@ import {
   getDescendantFolderIds,
 } from "@/lib/room-document-folders";
 import {
+  DOCUMENT_ITEMS_DRAG_TYPE,
   DriveBreadcrumb,
   DriveFolderChip,
   DriveFolderGridCard,
@@ -226,7 +227,61 @@ type DestructiveTarget =
  */
 const FOLDER_COLLAPSE_LIMIT = 8;
 const ROOT_FOLDER_VALUE = "__root__";
-const DOCUMENT_ITEMS_DRAG_TYPE = "application/x-dcc-document-items";
+
+/** Ghost yang sedang terpasang — dilepas di dragend atau saat drag berikutnya. */
+let activeDragGhost: HTMLElement | null = null;
+
+function removeDragGhost() {
+  activeDragGhost?.remove();
+  activeDragGhost = null;
+}
+
+/**
+ * Pasang chip kecil (ikon + nama item) sebagai gambar seret.
+ *
+ * Tanpa ini browser memakai snapshot elemen yang diseret. Baris daftar memakai
+ * `content-visibility:auto` dan kartu grid punya lapisan komposit sendiri —
+ * snapshot bawaan Chrome untuk elemen semacam itu keluar salah: yang terlihat
+ * potongan besar halaman, bukan kartunya.
+ */
+function mountDragGhost(
+  label: string,
+  kind: "document" | "folder",
+  extra: number,
+): HTMLElement {
+  removeDragGhost();
+
+  const ghost = document.createElement("div");
+  ghost.className =
+    "border-border bg-card text-foreground pointer-events-none fixed top-0 left-0 z-[9999] flex max-w-[280px] items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-lg";
+  // Di luar viewport supaya tidak sempat terlihat, tapi tetap dirender.
+  ghost.style.transform = "translate(-9999px, -9999px)";
+
+  const icon = document.createElement("span");
+  icon.className =
+    kind === "folder"
+      ? "bg-amber-500/15 text-amber-600 flex size-6 shrink-0 items-center justify-center rounded-md text-xs"
+      : "bg-primary/10 text-primary flex size-6 shrink-0 items-center justify-center rounded-md text-xs";
+  icon.textContent = kind === "folder" ? "📁" : "📄";
+  ghost.append(icon);
+
+  const text = document.createElement("span");
+  text.className = "truncate";
+  text.textContent = label;
+  ghost.append(text);
+
+  if (extra > 0) {
+    const badge = document.createElement("span");
+    badge.className =
+      "bg-primary text-primary-foreground shrink-0 rounded-full px-2 py-0.5 text-[11px] tabular-nums";
+    badge.textContent = `+${extra}`;
+    ghost.append(badge);
+  }
+
+  document.body.append(ghost);
+  activeDragGhost = ghost;
+  return ghost;
+}
 
 function formatFileSize(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -1132,7 +1187,7 @@ export function RoomDocumentsWorkspace({
 
   function startItemDrag(
     event: React.DragEvent,
-    item: { kind: "document" | "folder"; id: string },
+    item: { kind: "document" | "folder"; id: string; label: string },
   ) {
     const isSelected =
       item.kind === "document"
@@ -1152,6 +1207,10 @@ export function RoomDocumentsWorkspace({
     };
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(DOCUMENT_ITEMS_DRAG_TYPE, JSON.stringify(payload));
+
+    const total = payload.documentIds.length + payload.folderIds.length;
+    const ghost = mountDragGhost(item.label, item.kind, Math.max(0, total - 1));
+    event.dataTransfer.setDragImage(ghost, 16, 16);
   }
 
   async function dropItemsIntoFolder(
@@ -1925,7 +1984,8 @@ export function RoomDocumentsWorkspace({
                         selected={selectedFolderIds.has(f.id)}
                         selectionActive={selectionActive}
                         onToggleSelect={isRoomManager || f.canEdit ? () => toggleFolderSelection(f.id) : undefined}
-                        onItemDragStart={isRoomManager || f.canEdit ? (event) => startItemDrag(event, { kind: "folder", id: f.id }) : undefined}
+                        onItemDragStart={isRoomManager || f.canEdit ? (event) => startItemDrag(event, { kind: "folder", id: f.id, label: f.name }) : undefined}
+                        onItemDragEnd={removeDragGhost}
                         onItemsDrop={(event) => void dropItemsIntoFolder(event, f.id)}
                         onDelete={() => void onDeleteFolder(f)}
                         onDownload={() => void onDownloadFolder(f)}
@@ -1985,7 +2045,8 @@ export function RoomDocumentsWorkspace({
                         onFavorite={(d) => void onToggleFavorite("document", d.id)}
                         onShare={(d) => setShareTarget({ kind: "document", id: d.id, name: d.title || d.fileName })}
                         onVersions={(d) => setVersionTarget({ id: d.id, name: d.title || d.fileName, currentVersion: d.currentVersion, canManage: d.canEdit || isRoomManager })}
-                        onItemDragStart={(event) => startItemDrag(event, { kind: "document", id: d.id })}
+                        onItemDragStart={(event) => startItemDrag(event, { kind: "document", id: d.id, label: d.title?.trim() || d.fileName })}
+                        onItemDragEnd={removeDragGhost}
                         // 4 ubin pertama (1 baris di breakpoint 2xl) berada di
                         // atas fold — beri `priority` agar Next.js set
                         // `loading="eager"` + `fetchPriority="high"`.
@@ -2020,8 +2081,9 @@ export function RoomDocumentsWorkspace({
               allDocsSelected={allDocsSelected}
               onToggleSelect={toggleDocSelection}
               onToggleFolderSelect={toggleFolderSelection}
-              onDocumentDragStart={(event, document) => startItemDrag(event, { kind: "document", id: document.id })}
-              onFolderDragStart={(event, folder) => startItemDrag(event, { kind: "folder", id: folder.id })}
+              onDocumentDragStart={(event, document) => startItemDrag(event, { kind: "document", id: document.id, label: document.title?.trim() || document.fileName })}
+              onFolderDragStart={(event, folder) => startItemDrag(event, { kind: "folder", id: folder.id, label: folder.name })}
+              onItemDragEnd={removeDragGhost}
               onFolderDrop={(event, folder) => void dropItemsIntoFolder(event, folder.id)}
               onSelectAll={selectAllVisibleDocs}
               onClearSelection={clearDocSelection}
@@ -2654,6 +2716,7 @@ const DocCard = memo(function DocCard({
   onShare,
   onVersions,
   onItemDragStart,
+  onItemDragEnd,
   compact = false,
   priority = false,
 }: {
@@ -2673,6 +2736,7 @@ const DocCard = memo(function DocCard({
   onShare: (d: RoomDocumentRow) => void;
   onVersions: (d: RoomDocumentRow) => void;
   onItemDragStart: React.DragEventHandler<HTMLLIElement>;
+  onItemDragEnd: React.DragEventHandler<HTMLLIElement>;
   /** Kartu padat (kolom banyak): sembunyikan metadata & footer, aksi via hover. */
   compact?: boolean;
   /** Hint LCP — tile pertama yang berada di atas fold harus eager. */
@@ -2688,6 +2752,7 @@ const DocCard = memo(function DocCard({
     <li
       draggable
       onDragStart={onItemDragStart}
+      onDragEnd={onItemDragEnd}
       className={cn(
         "doc-grid-card border-border bg-card hover:border-primary/40 hover:shadow-md relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-all",
         "sm:[&:hover_.doc-grid-card-select]:opacity-100 sm:[&:focus-within_.doc-grid-card-select]:opacity-100",
@@ -2939,6 +3004,7 @@ const DocListRow = memo(function DocListRow({
   onShare,
   onVersions,
   onItemDragStart,
+  onItemDragEnd,
 }: {
   doc: RoomDocumentRow;
   folders: RoomDocumentFolderRow[];
@@ -2955,6 +3021,7 @@ const DocListRow = memo(function DocListRow({
   onShare: (d: RoomDocumentRow) => void;
   onVersions: (d: RoomDocumentRow) => void;
   onItemDragStart: React.DragEventHandler<HTMLLIElement>;
+  onItemDragEnd: React.DragEventHandler<HTMLLIElement>;
 }) {
   const meta = fileTypeMeta(doc.mimeType);
   const Icon = meta.icon;
@@ -2965,8 +3032,11 @@ const DocListRow = memo(function DocListRow({
     <li
       draggable
       onDragStart={onItemDragStart}
+      onDragEnd={onItemDragEnd}
       className={cn(
         "hover:bg-muted/40 flex flex-row flex-wrap items-center gap-2 px-3 py-2 transition-colors md:flex-nowrap md:gap-3",
+        // `content-visibility` bikin snapshot seret bawaan browser rusak; aman
+        // karena startItemDrag selalu memasang gambar seret sendiri.
         "[content-visibility:auto] [contain-intrinsic-block-size:72px]",
         selected && "bg-primary/5",
       )}
@@ -3150,6 +3220,7 @@ function DocList({
   onDocumentDragStart,
   onFolderDragStart,
   onFolderDrop,
+  onItemDragEnd,
   onSelectAll,
   onClearSelection,
   onPreview,
@@ -3182,6 +3253,7 @@ function DocList({
   onDocumentDragStart: (event: React.DragEvent<HTMLLIElement>, document: RoomDocumentRow) => void;
   onFolderDragStart: (event: React.DragEvent<HTMLDivElement>, folder: RoomDocumentFolderRow) => void;
   onFolderDrop: (event: React.DragEvent<HTMLDivElement>, folder: RoomDocumentFolderRow) => void;
+  onItemDragEnd: () => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
   onPreview: (d: RoomDocumentRow) => void;
@@ -3227,6 +3299,7 @@ function DocList({
             selectionActive={selectionActive}
             onToggleSelect={isRoomManager || f.canEdit ? () => onToggleFolderSelect(f.id) : undefined}
             onItemDragStart={isRoomManager || f.canEdit ? (event) => onFolderDragStart(event, f) : undefined}
+            onItemDragEnd={onItemDragEnd}
             onItemsDrop={(event) => onFolderDrop(event, f)}
             onDelete={() => onDeleteFolder(f)}
             onDownload={() => onDownloadFolder(f)}
@@ -3250,6 +3323,7 @@ function DocList({
             onShare={onShareDocument}
             onVersions={onVersionsDocument}
             onItemDragStart={(event) => onDocumentDragStart(event, d)}
+            onItemDragEnd={onItemDragEnd}
           />
         ))}
       </ul>

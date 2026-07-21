@@ -40,6 +40,41 @@ function folderDocumentCount(folder: DriveFolderRow) {
   return folder._count.recursiveDocuments ?? folder._count.documents;
 }
 
+/** MIME kustom untuk seret item dokumen/folder di dalam halaman Documents. */
+export const DOCUMENT_ITEMS_DRAG_TYPE = "application/x-dcc-document-items";
+
+/**
+ * Handler drop kartu folder + status tersorot saat item melayang di atasnya.
+ *
+ * Cek tipe penting: tanpa itu kartu folder ikut jadi target valid untuk seretan
+ * file dari OS, sehingga zona unggah di belakangnya tidak pernah tersorot.
+ */
+function useFolderDropTarget(
+  onItemsDrop: React.DragEventHandler<HTMLDivElement> | undefined,
+) {
+  const [isOver, setIsOver] = useState(false);
+  if (!onItemsDrop) return { isOver: false, dropProps: {} as const };
+  return {
+    isOver,
+    dropProps: {
+      onDragOver: (event: React.DragEvent<HTMLDivElement>) => {
+        if (!event.dataTransfer.types.includes(DOCUMENT_ITEMS_DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        if (!isOver) setIsOver(true);
+      },
+      onDragLeave: (event: React.DragEvent<HTMLDivElement>) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setIsOver(false);
+      },
+      onDrop: (event: React.DragEvent<HTMLDivElement>) => {
+        setIsOver(false);
+        onItemsDrop(event);
+      },
+    },
+  };
+}
+
 export function DriveBreadcrumb({
   currentFolderId,
   folders,
@@ -324,6 +359,7 @@ export function DriveFolderChip({
   selectionActive = false,
   onToggleSelect,
   onItemDragStart,
+  onItemDragEnd,
   onItemsDrop,
   onDelete,
   onDownload,
@@ -339,18 +375,23 @@ export function DriveFolderChip({
   selectionActive?: boolean;
   onToggleSelect?: () => void;
   onItemDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onItemDragEnd?: React.DragEventHandler<HTMLDivElement>;
   onItemsDrop?: React.DragEventHandler<HTMLDivElement>;
   onDelete: () => void;
   onDownload: () => void;
 }) {
+  const { isOver, dropProps } = useFolderDropTarget(onItemsDrop);
   return (
     <li>
       <div
-        className="group border-border bg-card hover:border-primary/40 hover:bg-muted/40 relative flex items-center gap-3 rounded-xl border p-2.5 shadow-sm transition-colors"
+        className={cn(
+          "group border-border bg-card hover:border-primary/40 hover:bg-muted/40 relative flex items-center gap-3 rounded-xl border p-2.5 shadow-sm transition-colors",
+          isOver && "border-primary bg-primary/5 ring-primary/40 ring-2",
+        )}
         draggable={Boolean(onItemDragStart)}
         onDragStart={onItemDragStart}
-        onDragOver={(event) => { if (onItemsDrop) event.preventDefault(); }}
-        onDrop={onItemsDrop}
+        onDragEnd={onItemDragEnd}
+        {...dropProps}
       >
         {onToggleSelect ? (
           <Checkbox
@@ -438,6 +479,7 @@ export function DriveFolderGridCard({
   selectionActive = false,
   onToggleSelect,
   onItemDragStart,
+  onItemDragEnd,
   onItemsDrop,
   onDelete,
   onDownload,
@@ -455,14 +497,25 @@ export function DriveFolderGridCard({
   selectionActive?: boolean;
   onToggleSelect?: () => void;
   onItemDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onItemDragEnd?: React.DragEventHandler<HTMLDivElement>;
   onItemsDrop?: React.DragEventHandler<HTMLDivElement>;
   onDelete: () => void;
   onDownload: () => void;
 }) {
+  const { isOver, dropProps } = useFolderDropTarget(onItemsDrop);
   if (view === "list") {
     return (
       <li>
-        <div className="hover:bg-muted/40 flex items-center gap-3 px-3 py-2 transition-colors" draggable={Boolean(onItemDragStart)} onDragStart={onItemDragStart} onDragOver={(event) => { if (onItemsDrop) event.preventDefault(); }} onDrop={onItemsDrop}>
+        <div
+          className={cn(
+            "hover:bg-muted/40 flex items-center gap-3 px-3 py-2 transition-colors",
+            isOver && "bg-primary/10 ring-primary/40 ring-2 ring-inset",
+          )}
+          draggable={Boolean(onItemDragStart)}
+          onDragStart={onItemDragStart}
+          onDragEnd={onItemDragEnd}
+          {...dropProps}
+        >
           {onToggleSelect ? <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label={`Pilih folder ${folder.name}`} /> : null}
           <button
             type="button"
@@ -527,11 +580,12 @@ export function DriveFolderGridCard({
         className={cn(
           "folder-grid-card border-border bg-card relative overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md",
           "sm:[&:hover_.folder-grid-card-actions]:opacity-100 sm:[&:focus-within_.folder-grid-card-actions]:opacity-100",
+          isOver && "border-primary ring-primary/40 ring-2",
         )}
         draggable={Boolean(onItemDragStart)}
         onDragStart={onItemDragStart}
-        onDragOver={(event) => { if (onItemsDrop) event.preventDefault(); }}
-        onDrop={onItemsDrop}
+        onDragEnd={onItemDragEnd}
+        {...dropProps}
       >
         {onToggleSelect ? (
           <div className="absolute top-2 left-2 z-20">
