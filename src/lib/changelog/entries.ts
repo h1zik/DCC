@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-21-documents-drag-drop-visual-fix",
+    date: "2026-07-21",
+    title: "Documents: tampilan seret-lepas file/folder tidak lagi berantakan",
+    category: "fixed",
+    description:
+      "Saat menyeret file atau folder untuk dipindahkan, yang ikut tertarik terlihat seperti potongan besar halaman, bukan item yang Anda seret. Sekarang muncul label kecil berisi ikon dan nama item yang sedang diseret, dan folder tujuan tersorot saat item melayang di atasnya sehingga jelas ke mana item akan jatuh.",
+    highlights: [
+      "Label seret menampilkan nama item; bila memilih beberapa item sekaligus, jumlah sisanya ditandai +N",
+      "Folder tujuan tersorot saat item berada di atasnya, baik di tampilan grid maupun daftar",
+      "Menyeret file dari komputer ke area Documents kembali memunculkan panel unggah walau melewati kartu folder",
+    ],
+  },
+  {
     id: "2026-07-21-documents-pindah-folder-fix",
     date: "2026-07-21",
     title: "Documents: memindahkan folder lewat tombol Pindahkan tidak lagi ditolak",
