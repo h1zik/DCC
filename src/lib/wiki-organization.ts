@@ -54,6 +54,28 @@ export function searchWikiPages<T extends WikiOrganizationPage>(pages: T[], quer
   });
 }
 
+/**
+ * Cuplikan teks di sekitar kata pertama yang cocok, untuk daftar hasil pencarian.
+ * `query` dipecah per kata seperti `searchWikiPages` agar keduanya konsisten.
+ */
+export function wikiSearchSnippet(html: string, query: string, radius = 60): string {
+  const text = htmlToWikiText(html).replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const terms = query.trim().toLocaleLowerCase("id-ID").split(/\s+/).filter(Boolean);
+  const lower = text.toLocaleLowerCase("id-ID");
+  let index = -1;
+  for (const term of terms) {
+    const found = lower.indexOf(term);
+    if (found !== -1 && (index === -1 || found < index)) index = found;
+  }
+  if (index === -1) return text.slice(0, radius * 2) + (text.length > radius * 2 ? "…" : "");
+  const start = Math.max(0, index - radius);
+  const end = Math.min(text.length, index + radius);
+  return (
+    (start > 0 ? "…" : "") + text.slice(start, end).trim() + (end < text.length ? "…" : "")
+  );
+}
+
 export function findWikiBacklinks<T extends WikiOrganizationPage>(pages: T[], targetId: string): T[] {
   const encodedId = targetId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`href=["']#wiki-page-${encodedId}["']`, "i");

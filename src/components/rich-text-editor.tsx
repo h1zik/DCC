@@ -10,6 +10,7 @@ import { TableKit } from "@tiptap/extension-table";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { TextStyle } from "@tiptap/extension-text-style";
+import TextAlign from "@tiptap/extension-text-align";
 import Youtube from "@tiptap/extension-youtube";
 import { common, createLowlight } from "lowlight";
 import {
@@ -19,12 +20,9 @@ import {
   AlignRight,
   Bold,
   Braces,
+  ChevronDown,
   Code,
-  Columns3,
   FileUp,
-  Heading1,
-  Heading2,
-  Heading3,
   Image as ImageIcon,
   Italic,
   Link as LinkIcon,
@@ -79,6 +77,18 @@ import {
   ResizableWikiImage,
   type WikiImageAlignment,
 } from "@/lib/tiptap-image-layout";
+import {
+  moveActiveTableColumn,
+  moveActiveTableRow,
+  TableMoveHandles,
+} from "@/lib/tiptap-table-move";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const lowlight = createLowlight(common);
 
@@ -141,6 +151,7 @@ export function RichTextEditor({
       CodeBlockLowlight.configure({ lowlight }),
       TextStyle,
       FontSize,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
       Link.configure({
         openOnClick: false,
         autolink: true,
@@ -165,6 +176,7 @@ export function RichTextEditor({
       }),
       ResizableTableRow,
       TableRowResize,
+      TableMoveHandles,
       ResizableWikiImage.configure({
         allowBase64: false,
         resize: {
@@ -843,7 +855,7 @@ function TableDimensionControls({
         onReset={() => applyColumnWidth(null)}
       />
       <span className="text-muted-foreground hidden text-[11px] xl:inline">
-        Atau drag tepi row/kolom
+        Drag tepi cell untuk resize · drag grip di kiri/atas untuk memindahkan
       </span>
     </>
   );
@@ -993,24 +1005,7 @@ function Toolbar({
       aria-label="Format teks"
       className="border-border bg-card sticky top-14 z-10 flex flex-wrap items-center gap-0.5 rounded-lg border px-1.5 py-1 shadow-sm"
     >
-      {btn(
-        editor.isActive("heading", { level: 1 }),
-        "Heading 1",
-        () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
-        <Heading1 className="size-4" aria-hidden />,
-      )}
-      {btn(
-        editor.isActive("heading", { level: 2 }),
-        "Heading 2",
-        () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
-        <Heading2 className="size-4" aria-hidden />,
-      )}
-      {btn(
-        editor.isActive("heading", { level: 3 }),
-        "Heading 3",
-        () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
-        <Heading3 className="size-4" aria-hidden />,
-      )}
+      <ParagraphStyleMenu editor={editor} />
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       <div className="flex items-center gap-1">
         <Type className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
@@ -1057,6 +1052,31 @@ function Toolbar({
         : null}
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       {btn(
+        editor.isActive({ textAlign: "left" }),
+        "Rata kiri (Ctrl+Shift+L)",
+        () => editor.chain().focus().toggleTextAlign("left").run(),
+        <AlignLeft className="size-4" aria-hidden />,
+      )}
+      {btn(
+        editor.isActive({ textAlign: "center" }),
+        "Rata tengah (Ctrl+Shift+E)",
+        () => editor.chain().focus().toggleTextAlign("center").run(),
+        <AlignCenter className="size-4" aria-hidden />,
+      )}
+      {btn(
+        editor.isActive({ textAlign: "right" }),
+        "Rata kanan (Ctrl+Shift+R)",
+        () => editor.chain().focus().toggleTextAlign("right").run(),
+        <AlignRight className="size-4" aria-hidden />,
+      )}
+      {btn(
+        editor.isActive({ textAlign: "justify" }),
+        "Rata kiri-kanan (Ctrl+Shift+J)",
+        () => editor.chain().focus().toggleTextAlign("justify").run(),
+        <AlignJustify className="size-4" aria-hidden />,
+      )}
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      {btn(
         editor.isActive("bulletList"),
         "Daftar berpoin",
         () => editor.chain().focus().toggleBulletList().run(),
@@ -1088,19 +1108,16 @@ function Toolbar({
         <Code className="size-4" aria-hidden />,
       )}
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
-      {btn(
-        false,
-        "Sisipkan tabel",
-        () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
-        <Table2 className="size-4" aria-hidden />,
-      )}
       {editor.isActive("table") ? (
-        <>
-          {btn(false, "Tambah baris", () => editor.chain().focus().addRowAfter().run(), <Plus className="size-4" aria-hidden />)}
-          {btn(false, "Tambah kolom", () => editor.chain().focus().addColumnAfter().run(), <Columns3 className="size-4" aria-hidden />)}
-          {btn(false, "Hapus tabel", () => editor.chain().focus().deleteTable().run(), <TrashTableIcon />)}
-        </>
-      ) : null}
+        <TableMenu editor={editor} />
+      ) : (
+        btn(
+          false,
+          "Sisipkan tabel",
+          () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+          <Table2 className="size-4" aria-hidden />,
+        )
+      )}
       {btn(
         false,
         "Garis pemisah",
@@ -1148,11 +1165,99 @@ function Toolbar({
   );
 }
 
-function TrashTableIcon() {
+const PARAGRAPH_STYLES = [
+  { level: null, label: "Teks normal" },
+  { level: 1, label: "Judul 1" },
+  { level: 2, label: "Judul 2" },
+  { level: 3, label: "Judul 3" },
+] as const;
+
+/** Dropdown gaya paragraf ala Google Docs — menggantikan deretan tombol heading. */
+function ParagraphStyleMenu({ editor }: { editor: Editor }) {
+  const active =
+    PARAGRAPH_STYLES.find(
+      (style) => style.level != null && editor.isActive("heading", { level: style.level }),
+    ) ?? PARAGRAPH_STYLES[0];
   return (
-    <span className="relative inline-flex size-4 items-center justify-center" aria-hidden>
-      <Table2 className="size-4" />
-      <span className="bg-destructive absolute h-px w-5 rotate-45" />
-    </span>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        title="Gaya paragraf"
+        aria-label="Gaya paragraf"
+        className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-8 min-w-28 items-center justify-between gap-1 rounded-md px-2 text-xs font-medium transition-colors"
+      >
+        <span className="truncate">{active.label}</span>
+        <ChevronDown className="size-3.5 shrink-0" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-44">
+        {PARAGRAPH_STYLES.map((style) => (
+          <DropdownMenuItem
+            key={style.label}
+            onClick={() => {
+              const chain = editor.chain().focus();
+              if (style.level == null) chain.setParagraph().run();
+              else chain.setHeading({ level: style.level }).run();
+            }}
+            className={cn(
+              active.label === style.label && "bg-primary/10 text-foreground",
+              style.level === 1 && "text-lg font-semibold",
+              style.level === 2 && "text-base font-semibold",
+              style.level === 3 && "text-sm font-semibold",
+            )}
+          >
+            {style.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
+
+/** Operasi tabel lengkap saat kursor berada di dalam tabel. */
+function TableMenu({ editor }: { editor: Editor }) {
+  const canMerge = editor.can().mergeCells();
+  const canSplit = editor.can().splitCell();
+  const item = (label: string, onClick: () => void, disabled = false) => (
+    <DropdownMenuItem disabled={disabled} onClick={onClick}>
+      {label}
+    </DropdownMenuItem>
+  );
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        title="Menu tabel"
+        aria-label="Menu tabel"
+        className="text-primary bg-primary/10 hover:bg-primary/15 inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors"
+      >
+        <Table2 className="size-4" aria-hidden />
+        Tabel
+        <ChevronDown className="size-3.5" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        {item("Tambah baris di bawah", () => editor.chain().focus().addRowAfter().run())}
+        {item("Tambah baris di atas", () => editor.chain().focus().addRowBefore().run())}
+        {item("Hapus baris", () => editor.chain().focus().deleteRow().run())}
+        <DropdownMenuSeparator />
+        {item("Tambah kolom di kanan", () => editor.chain().focus().addColumnAfter().run())}
+        {item("Tambah kolom di kiri", () => editor.chain().focus().addColumnBefore().run())}
+        {item("Hapus kolom", () => editor.chain().focus().deleteColumn().run())}
+        <DropdownMenuSeparator />
+        {item("Pindahkan baris ke atas", () => moveActiveTableRow(editor, -1))}
+        {item("Pindahkan baris ke bawah", () => moveActiveTableRow(editor, 1))}
+        {item("Pindahkan kolom ke kiri", () => moveActiveTableColumn(editor, -1))}
+        {item("Pindahkan kolom ke kanan", () => moveActiveTableColumn(editor, 1))}
+        <DropdownMenuSeparator />
+        {item("Header baris on/off", () => editor.chain().focus().toggleHeaderRow().run())}
+        {item("Gabungkan cell terpilih", () => editor.chain().focus().mergeCells().run(), !canMerge)}
+        {item("Pisahkan cell", () => editor.chain().focus().splitCell().run(), !canSplit)}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={() => editor.chain().focus().deleteTable().run()}
+        >
+          Hapus tabel
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+

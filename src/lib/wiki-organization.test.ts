@@ -4,6 +4,7 @@ import {
   findWikiBacklinks,
   normalizeWikiTags,
   searchWikiPages,
+  wikiSearchSnippet,
 } from "@/lib/wiki-organization";
 
 const pages = [
@@ -26,6 +27,20 @@ describe("Wiki organization", () => {
 
   it("menemukan backlink internal stabil", () => {
     expect(findWikiBacklinks(pages, "root").map((page) => page.id)).toEqual(["child"]);
+  });
+
+  it("membuat cuplikan di sekitar kata yang cocok", () => {
+    const html = `<p>${"awal ".repeat(30)}kata kunci penting ${"akhir ".repeat(30)}</p>`;
+    const snippet = wikiSearchSnippet(html, "kunci", 20);
+    expect(snippet).toContain("kunci");
+    expect(snippet.startsWith("…")).toBe(true);
+    expect(snippet.endsWith("…")).toBe(true);
+    expect(snippet.length).toBeLessThan(60);
+  });
+
+  it("cuplikan jatuh ke awal teks bila tidak ada kata yang cocok", () => {
+    expect(wikiSearchSnippet("<p>Halo dunia</p>", "zzz")).toBe("Halo dunia");
+    expect(wikiSearchSnippet("", "apa")).toBe("");
   });
 
   it("menormalisasi dan membatasi tag", () => {

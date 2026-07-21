@@ -244,6 +244,37 @@ export async function updateRoomWikiPageOrganization(
   revalidatePath(`/room/${roomId}/view/${page.viewId}`);
 }
 
+const reorderSchema = z.object({
+  viewId: z.string().min(1),
+  parentId: z.string().min(1).nullable(),
+  orderedPageIds: z.array(z.string().min(1)).min(1).max(500),
+});
+
+/** Simpan urutan sibling hasil drag di sidebar (sortOrder = index). */
+export async function reorderRoomWikiPages(input: z.infer<typeof reorderSchema>) {
+  const session = await requireTasksRoomHubSession();
+  const data = reorderSchema.parse(input);
+  const roomId = await ensureWikiMember(data.viewId, session.user.id);
+  const siblings = await prisma.roomWikiPage.findMany({
+    where: { viewId: data.viewId, parentId: data.parentId },
+    select: { id: true },
+  });
+  const siblingIds = new Set(siblings.map((page) => page.id));
+  const uniqueOrdered = [...new Set(data.orderedPageIds)];
+  if (
+    uniqueOrdered.length !== siblingIds.size ||
+    uniqueOrdered.some((id) => !siblingIds.has(id))
+  ) {
+    throw new Error("Urutan halaman tidak sinkron. Muat ulang lalu coba lagi.");
+  }
+  await prisma.$transaction(
+    uniqueOrdered.map((id, index) =>
+      prisma.roomWikiPage.update({ where: { id }, data: { sortOrder: index } }),
+    ),
+  );
+  revalidatePath(`/room/${roomId}/view/${data.viewId}`);
+}
+
 export async function listRoomWikiPageVersions(pageId: string) {
   const session = await requireTasksRoomHubSession();
   const page = await prisma.roomWikiPage.findUniqueOrThrow({
@@ -442,7 +473,10 @@ async function readRoomWikiCollaborationState(pageId: string, viewerUserId: stri
   };
 }
 
-export async function heartbeatRoomWikiPage(pageId: string) {
+export async function heartbeatRoomWikiPage(
+  pageId: string,
+  opts?: { requestLock?: boolean },
+) {
   const session = await requireTasksRoomHubSession();
   const page = await prisma.roomWikiPage.findUniqueOrThrow({
     where: { id: pageId },
@@ -451,26 +485,48 @@ export async function heartbeatRoomWikiPage(pageId: string) {
   await ensureWikiMember(page.viewId, session.user.id);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + WIKI_LOCK_TTL_MS);
-  await prisma.$transaction([
-    prisma.roomWikiPage.updateMany({
-      where: {
-        id: pageId,
-        OR: [
-          { editLockedById: null },
-          { editLockedById: session.user.id },
-          { editLockExpiresAt: null },
-          { editLockExpiresAt: { lt: now } },
-        ],
-      },
-      data: { editLockedById: session.user.id, editLockExpiresAt: expiresAt },
-    }),
-    prisma.roomWikiPresence.upsert({
-      where: { pageId_userId: { pageId, userId: session.user.id } },
-      create: { pageId, userId: session.user.id, lastSeenAt: now },
-      update: { lastSeenAt: now },
-    }),
-  ]);
+  const presenceUpsert = prisma.roomWikiPresence.upsert({
+    where: { pageId_userId: { pageId, userId: session.user.id } },
+    create: { pageId, userId: session.user.id, lastSeenAt: now },
+    update: { lastSeenAt: now },
+  });
+  // Lock hanya diambil/diperpanjang saat pengguna benar-benar mengedit; pembaca
+  // cukup tercatat sebagai presence dan tidak memblokir siapa pun.
+  if (opts?.requestLock) {
+    await prisma.$transaction([
+      prisma.roomWikiPage.updateMany({
+        where: {
+          id: pageId,
+          OR: [
+            { editLockedById: null },
+            { editLockedById: session.user.id },
+            { editLockExpiresAt: null },
+            { editLockExpiresAt: { lt: now } },
+          ],
+        },
+        data: { editLockedById: session.user.id, editLockExpiresAt: expiresAt },
+      }),
+      presenceUpsert,
+    ]);
+  } else {
+    await presenceUpsert;
+  }
   return readRoomWikiCollaborationState(pageId, session.user.id);
+}
+
+/** Lepas lock milik sendiri tanpa menghapus presence (keluar dari mode edit). */
+export async function releaseRoomWikiLock(pageId: string) {
+  const session = await requireTasksRoomHubSession();
+  const page = await prisma.roomWikiPage.findUnique({
+    where: { id: pageId },
+    select: { viewId: true },
+  });
+  if (!page) return;
+  await ensureWikiMember(page.viewId, session.user.id);
+  await prisma.roomWikiPage.updateMany({
+    where: { id: pageId, editLockedById: session.user.id },
+    data: { editLockedById: null, editLockExpiresAt: null },
+  });
 }
 
 export async function releaseRoomWikiPage(pageId: string) {

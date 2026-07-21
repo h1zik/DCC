@@ -37,6 +37,24 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-21-wiki-usability-overhaul",
+    date: "2026-07-21",
+    title: "Wiki: mode baca yang nyaman, tampilan ala dokumen, dan editor lebih lengkap",
+    category: "improved",
+    description:
+      "Halaman Wiki kini terbuka dalam mode baca yang rapi seperti dokumen — tidak lagi mengunci halaman hanya karena dibuka. Tekan Edit untuk mulai menulis; selama Anda mengedit, anggota lain melihat siapa yang memegang halaman. Link halaman kini bisa dibagikan dan tahan refresh, komentar pindah ke panel samping, dan editor mendapat perataan teks serta tabel yang bisa diatur seperti Google Docs.",
+    highlights: [
+      "Mode baca dulu: membuka halaman tidak memblokir anggota lain; lock hanya saat menekan Edit",
+      "Alamat halaman ikut di URL — refresh tetap di halaman sama dan link bisa dibagikan",
+      "Konten tampil sebagai lembar dokumen di tengah, dengan daftar isi otomatis di sisi kanan",
+      "Perataan teks kiri/tengah/kanan/justify dan dropdown gaya paragraf di toolbar",
+      "Tabel: seret grip untuk memindahkan baris/kolom, plus menu hapus baris/kolom, header, dan gabung cell",
+      "Sidebar: seret untuk mengurutkan halaman, hasil pencarian menampilkan cuplikan isi",
+      "Konflik edit dan pulihkan versi kini punya tombol pemulihan yang jelas — draft tidak hilang",
+      "Hapus halaman memakai dialog konfirmasi yang menyebut jumlah sub-halaman terdampak",
+    ],
+  },
+  {
     id: "2026-07-21-documents-drag-drop-visual-fix",
     date: "2026-07-21",
     title: "Documents: tampilan seret-lepas file/folder tidak lagi berantakan",

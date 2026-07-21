@@ -43,7 +43,8 @@ export function WikiVersionHistory({
   currentTitle: string;
   currentContent: string;
   restoreDisabled?: boolean;
-  onRestored: () => void;
+  /** Konten versi yang dipulihkan agar editor bisa langsung sinkron tanpa reload. */
+  onRestored: (restored: { title: string; content: string; revision: number }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -71,10 +72,14 @@ export function WikiVersionHistory({
     if (!confirm(`Pulihkan versi “${selected.title}” dari ${formatVersionDate(selected.createdAt)}?`)) return;
     startTransition(async () => {
       try {
-        await restoreRoomWikiPageVersion(pageId, selected.id);
+        const result = await restoreRoomWikiPageVersion(pageId, selected.id);
         toast.success("Versi lama berhasil dipulihkan.");
         setOpen(false);
-        onRestored();
+        onRestored({
+          title: selected.title,
+          content: selected.content,
+          revision: result.revision,
+        });
       } catch (error) {
         toast.error(actionErrorMessage(error, "Gagal memulihkan versi."));
       }

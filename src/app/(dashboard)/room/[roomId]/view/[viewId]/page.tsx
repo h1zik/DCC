@@ -105,6 +105,19 @@ async function renderViewBody(
         }),
         getRoomHubMemberUsers(roomId),
       ]);
+      // `updatedById` tidak punya relasi di schema; ambil nama editor terakhir terpisah.
+      const updaterIds = [
+        ...new Set(pages.map((p) => p.updatedById).filter((id): id is string => Boolean(id))),
+      ];
+      const updaters = updaterIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: updaterIds } },
+            select: { id: true, name: true, email: true },
+          })
+        : [];
+      const updaterNameById = new Map(
+        updaters.map((user) => [user.id, user.name || user.email]),
+      );
       return (
         <WikiViewClient
           roomId={roomId}
@@ -119,6 +132,7 @@ async function renderViewBody(
             tags: p.tags ?? [],
             revision: p.revision,
             updatedAt: p.updatedAt.toISOString(),
+            updatedByName: (p.updatedById && updaterNameById.get(p.updatedById)) || null,
           }))}
         />
       );

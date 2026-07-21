@@ -727,6 +727,59 @@
 .tiptap:focus-visible {
   outline: none;
 }
+/* Klik daftar isi men-scroll heading; beri ruang untuk toolbar/header sticky. */
+.tiptap h1,
+.tiptap h2,
+.tiptap h3 {
+  scroll-margin-top: 8rem;
+}
+
+/* Grip drag baris/kolom tabel ala Google Docs (dibuat oleh TableMoveHandles). */
+.wiki-table-grip {
+  position: fixed;
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  cursor: grab;
+}
+.wiki-table-grip:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+.wiki-table-grip:active {
+  cursor: grabbing;
+}
+.wiki-table-grip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  /* Enam titik grip: dua kolom untuk axis row, dua baris untuk axis column. */
+  background-image: radial-gradient(currentColor 1px, transparent 1.5px);
+  background-size: 4px 4px;
+}
+.wiki-table-grip[data-axis="column"]::before {
+  transform: rotate(90deg);
+}
+.wiki-table-drop-indicator {
+  position: fixed;
+  z-index: 55;
+  display: none;
+  pointer-events: none;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  outline: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);
+  outline-offset: -2px;
+}
 
 /* Label menu sidebar: fade + geser halus saat mode ikon */
 [data-slot="sidebar"] [data-sidebar="menu-button"] .sidebar-nav-label,
