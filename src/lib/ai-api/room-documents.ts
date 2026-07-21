@@ -112,7 +112,11 @@ export async function aiListRoomDocuments(
 
   const limit = Math.min(Math.max(params?.limit ?? 30, 1), 60);
   const docs = await prisma.roomDocument.findMany({
-    where: room.roomId ? { roomId: room.roomId } : {},
+    where: {
+      ...(room.roomId ? { roomId: room.roomId } : {}),
+      trashedAt: null,
+      OR: [{ folderId: null }, { folder: { trashedAt: null } }],
+    },
     select: DOCUMENT_SELECT,
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -151,10 +155,15 @@ export async function aiSearchDocuments(
   const docs = await prisma.roomDocument.findMany({
     where: {
       ...(room.roomId ? { roomId: room.roomId } : {}),
-      OR: [
-        { title: { contains: q, mode: "insensitive" } },
-        { fileName: { contains: q, mode: "insensitive" } },
-        { tags: { has: q } },
+      trashedAt: null,
+      AND: [
+        { OR: [{ folderId: null }, { folder: { trashedAt: null } }] },
+        { OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { fileName: { contains: q, mode: "insensitive" } },
+          { searchText: { contains: q, mode: "insensitive" } },
+          { tags: { has: q.toLowerCase() } },
+        ] },
       ],
     },
     select: DOCUMENT_SELECT,
@@ -180,8 +189,8 @@ export async function aiGetRoomDocumentContent(
     return accessDenied("Akses dokumen ruangan tidak tersedia untuk peran ini.");
   }
 
-  const doc = await prisma.roomDocument.findUnique({
-    where: { id: documentId },
+  const doc = await prisma.roomDocument.findFirst({
+    where: { id: documentId, trashedAt: null, OR: [{ folderId: null }, { folder: { trashedAt: null } }] },
     select: DOCUMENT_SELECT,
   });
 

@@ -9,5 +9,10 @@ export type RoomDocumentRow = {
   createdAt: Date;
   folderId: string | null;
   tags: string[];
+  updatedAt: Date;
+  trashedAt: Date | null;
+  currentVersion: number;
+  isFavorite: boolean;
+  canEdit: boolean;
   uploadedBy: { id: string; name: string | null; email: string };
 };

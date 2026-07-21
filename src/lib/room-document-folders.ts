@@ -47,6 +47,30 @@ export function getChildFolders<T extends RoomFolderNode>(
     );
 }
 
+/** Semua turunan sebuah folder, dari anak langsung hingga level terdalam. */
+export function getDescendantFolderIds(
+  folders: RoomFolderNode[],
+  folderId: string,
+): Set<string> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const folder of folders) {
+    if (!folder.parentId) continue;
+    const siblings = childrenByParent.get(folder.parentId) ?? [];
+    siblings.push(folder.id);
+    childrenByParent.set(folder.parentId, siblings);
+  }
+
+  const descendants = new Set<string>();
+  const queue = [...(childrenByParent.get(folderId) ?? [])];
+  for (let index = 0; index < queue.length; index += 1) {
+    const id = queue[index]!;
+    if (id === folderId || descendants.has(id)) continue;
+    descendants.add(id);
+    queue.push(...(childrenByParent.get(id) ?? []));
+  }
+  return descendants;
+}
+
 /** Label jalur penuh, mis. `Semua file / Legal / Kontrak`. */
 export function formatFolderPath(
   folderId: string | null,

@@ -346,6 +346,16 @@ model User {
   taskAttachmentCommentsAssigned     TaskAttachmentComment[]        @relation("TaskAttachmentCommentAssignee")
   roomDocumentCommentsAuthored       RoomDocumentComment[]          @relation("RoomDocumentCommentAuthor")
   roomDocumentCommentsAssigned       RoomDocumentComment[]          @relation("RoomDocumentCommentAssignee")
+  roomDocumentsTrashed               RoomDocument[]                 @relation("RoomDocumentTrashedBy")
+  roomDocumentFoldersTrashed         RoomDocumentFolder[]           @relation("RoomDocumentFolderTrashedBy")
+  roomDocumentVersionsUploaded       RoomDocumentVersion[]          @relation("RoomDocumentVersionUploader")
+  roomDocumentFavorites              RoomDocumentFavorite[]
+  roomDocumentFolderFavorites        RoomDocumentFolderFavorite[]
+  roomDocumentActivities             RoomDocumentActivity[]         @relation("RoomDocumentActivityActor")
+  roomDocumentSharesCreated          RoomDocumentShare[]            @relation("RoomDocumentShareCreator")
+  roomDocumentSharesReceived         RoomDocumentShare[]            @relation("RoomDocumentShareRecipient")
+  roomDocumentFolderSharesCreated    RoomDocumentFolderShare[]      @relation("RoomDocumentFolderShareCreator")
+  roomDocumentFolderSharesReceived   RoomDocumentFolderShare[]      @relation("RoomDocumentFolderShareRecipient")
   roomMessages                       RoomMessage[]
   roomChannelReads                   RoomChannelRead[]
   directConversationMembers          DirectConversationMember[]
@@ -543,6 +553,9 @@ model Room {
   channels            RoomChannel[]
   documents           RoomDocument[]
   documentFolders     RoomDocumentFolder[]
+  documentActivities  RoomDocumentActivity[]
+  documentShares      RoomDocumentShare[]
+  documentFolderShares RoomDocumentFolderShare[]
   members             RoomMember[]
   contentPlanItems    RoomContentPlanItem[]
   /**
@@ -898,6 +911,11 @@ model RoomContentPlanItem {
   deadlineCopywriting  DateTime?
   deadlineDesign       DateTime?
   tanggalPosting       DateTime?
+  /**
+   * Jam posting lokal (WIB), format "HH:mm". Terpisah dari `tanggalPosting`
+   * agar baris date-only (tanpa jam) tetap tak ambigu.
+   */
+  jamPosting           String?
   catatan              String?
   sortOrder            Int                    @default(0)
   createdById          String
@@ -1103,10 +1121,18 @@ model RoomDocumentFolder {
   name      String
   sortOrder Int                  @default(0)
   createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  trashedAt DateTime?
+  trashedById String?
+  trashedBy User?                @relation("RoomDocumentFolderTrashedBy", fields: [trashedById], references: [id], onDelete: SetNull)
   documents RoomDocument[]
+  favorites RoomDocumentFolderFavorite[]
+  shares    RoomDocumentFolderShare[]
+  activities RoomDocumentActivity[]
 
   @@unique([roomId, parentId, name])
   @@index([roomId, parentId, sortOrder])
+  @@index([roomId, trashedAt])
 }
 
 model RoomDocument {
@@ -1135,8 +1161,18 @@ model RoomDocument {
    * Tag bebas (mis. footage, draft, approved) — dinormalisasi di aplikasi.
    */
   tags         String[]              @default([])
+  searchText   String?               @db.Text
+  currentVersion Int                 @default(1)
+  trashedAt    DateTime?
+  trashedById  String?
+  trashedBy    User?                 @relation("RoomDocumentTrashedBy", fields: [trashedById], references: [id], onDelete: SetNull)
   createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
   comments     RoomDocumentComment[]
+  versions     RoomDocumentVersion[]
+  favorites    RoomDocumentFavorite[]
+  shares       RoomDocumentShare[]
+  activities   RoomDocumentActivity[]
 
   @@index([roomId, folderId])
   /**
@@ -1149,6 +1185,106 @@ model RoomDocument {
    * sort terbaru), composite ini mempercepat pemilihan halaman.
    */
   @@index([roomId, folderId, createdAt(sort: Desc)])
+  @@index([roomId, trashedAt, createdAt(sort: Desc)])
+}
+
+model RoomDocumentVersion {
+  id           String       @id @default(cuid())
+  documentId   String
+  document     RoomDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version      Int
+  fileName     String
+  mimeType     String
+  size         Int
+  publicPath   String
+  thumbPath    String?
+  uploadedById String
+  uploadedBy   User         @relation("RoomDocumentVersionUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  note         String?      @db.VarChar(240)
+  createdAt    DateTime     @default(now())
+
+  @@unique([documentId, version])
+  @@index([documentId, createdAt(sort: Desc)])
+}
+
+model RoomDocumentFavorite {
+  documentId String
+  document   RoomDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+
+  @@id([documentId, userId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model RoomDocumentFolderFavorite {
+  folderId  String
+  folder    RoomDocumentFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime           @default(now())
+
+  @@id([folderId, userId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model RoomDocumentActivity {
+  id         String              @id @default(cuid())
+  roomId     String
+  room       Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  documentId String?
+  document   RoomDocument?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  folderId   String?
+  folder     RoomDocumentFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  actorId    String
+  actor      User                @relation("RoomDocumentActivityActor", fields: [actorId], references: [id], onDelete: Restrict)
+  action     String              @db.VarChar(40)
+  targetName String              @db.VarChar(240)
+  detail     Json?
+  createdAt  DateTime            @default(now())
+
+  @@index([roomId, createdAt(sort: Desc)])
+  @@index([documentId, createdAt(sort: Desc)])
+  @@index([folderId, createdAt(sort: Desc)])
+}
+
+model RoomDocumentShare {
+  id          String       @id @default(cuid())
+  roomId      String
+  room        Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  documentId  String
+  document    RoomDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  recipientId String?
+  recipient   User?        @relation("RoomDocumentShareRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  token       String?      @unique
+  role        String       @default("VIEWER") @db.VarChar(16)
+  expiresAt   DateTime?
+  createdById String
+  createdBy   User         @relation("RoomDocumentShareCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime     @default(now())
+
+  @@unique([documentId, recipientId])
+  @@index([roomId, recipientId])
+}
+
+model RoomDocumentFolderShare {
+  id          String             @id @default(cuid())
+  roomId      String
+  room        Room               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  folderId    String
+  folder      RoomDocumentFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  recipientId String?
+  recipient   User?              @relation("RoomDocumentFolderShareRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  token       String?            @unique
+  role        String             @default("VIEWER") @db.VarChar(16)
+  expiresAt   DateTime?
+  createdById String
+  createdBy   User               @relation("RoomDocumentFolderShareCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime           @default(now())
+
+  @@unique([folderId, recipientId])
+  @@index([roomId, recipientId])
 }
 
 model RoomDocumentComment {

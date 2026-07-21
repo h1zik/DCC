@@ -6,12 +6,16 @@ import {
   ChevronRight,
   Download,
   Folder,
+  FolderInput,
   FolderOpen,
   MoreVertical,
   Pencil,
+  Star,
+  Share2,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,8 +30,15 @@ import {
 } from "@/lib/room-document-folders";
 
 export type DriveFolderRow = RoomFolderNode & {
-  _count: { documents: number };
+  _count: { documents: number; recursiveDocuments?: number };
+  isFavorite?: boolean;
+  canEdit?: boolean;
+  trashedAt?: Date | string | null;
 };
+
+function folderDocumentCount(folder: DriveFolderRow) {
+  return folder._count.recursiveDocuments ?? folder._count.documents;
+}
 
 export function DriveBreadcrumb({
   currentFolderId,
@@ -80,6 +91,9 @@ function DriveFolderTreeNode({
   isRoomManager,
   onNavigate,
   onRename,
+  onMove,
+  onFavorite,
+  onShare,
   onDelete,
   onDownload,
 }: {
@@ -90,6 +104,9 @@ function DriveFolderTreeNode({
   isRoomManager: boolean;
   onNavigate: (folderId: string | null) => void;
   onRename: (folder: DriveFolderRow) => void;
+  onMove: (folder: DriveFolderRow) => void;
+  onFavorite: (folder: DriveFolderRow) => void;
+  onShare: (folder: DriveFolderRow) => void;
   onDelete: (folder: DriveFolderRow) => void;
   onDownload: (folder: DriveFolderRow) => void;
 }) {
@@ -139,7 +156,7 @@ function DriveFolderTreeNode({
                 : "bg-muted text-muted-foreground",
             )}
           >
-            {folder._count.documents}
+            {folderDocumentCount(folder)}
           </span>
         </button>
         <DropdownMenu>
@@ -157,12 +174,23 @@ function DriveFolderTreeNode({
             <MoreVertical className="size-3.5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={4}>
+            <DropdownMenuItem onClick={() => onFavorite(folder)}>
+              <Star className={cn("size-3.5", folder.isFavorite && "fill-current text-amber-500")} />
+              {folder.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onShare(folder)}>
+              <Share2 className="size-3.5" /> Bagikan
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onDownload(folder)}>
               <Download className="size-3.5" />
               Unduh sebagai ZIP
             </DropdownMenuItem>
-            {isRoomManager ? (
+            {isRoomManager || folder.canEdit ? (
               <>
+                <DropdownMenuItem onClick={() => onMove(folder)}>
+                  <FolderInput className="size-3.5" />
+                  Pindahkan
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onRename(folder)}>
                   <Pencil className="size-3.5" />
                   Ganti nama
@@ -190,6 +218,9 @@ function DriveFolderTreeNode({
               isRoomManager={isRoomManager}
               onNavigate={onNavigate}
               onRename={onRename}
+              onMove={onMove}
+              onFavorite={onFavorite}
+              onShare={onShare}
               onDelete={onDelete}
               onDownload={onDownload}
             />
@@ -206,6 +237,9 @@ export function DriveFolderTree({
   isRoomManager,
   onNavigate,
   onRename,
+  onMove,
+  onFavorite,
+  onShare,
   onDelete,
   onDownload,
 }: {
@@ -215,6 +249,9 @@ export function DriveFolderTree({
   isRoomManager: boolean;
   onNavigate: (folderId: string | null) => void;
   onRename: (folder: DriveFolderRow) => void;
+  onMove: (folder: DriveFolderRow) => void;
+  onFavorite: (folder: DriveFolderRow) => void;
+  onShare: (folder: DriveFolderRow) => void;
   onDelete: (folder: DriveFolderRow) => void;
   onDownload: (folder: DriveFolderRow) => void;
 }) {
@@ -260,6 +297,9 @@ export function DriveFolderTree({
           isRoomManager={isRoomManager}
           onNavigate={onNavigate}
           onRename={onRename}
+          onMove={onMove}
+          onFavorite={onFavorite}
+          onShare={onShare}
           onDelete={onDelete}
           onDownload={onDownload}
         />
@@ -277,6 +317,14 @@ export function DriveFolderChip({
   isRoomManager,
   onOpen,
   onRename,
+  onMove,
+  onFavorite,
+  onShare,
+  selected = false,
+  selectionActive = false,
+  onToggleSelect,
+  onItemDragStart,
+  onItemsDrop,
   onDelete,
   onDownload,
 }: {
@@ -284,12 +332,34 @@ export function DriveFolderChip({
   isRoomManager: boolean;
   onOpen: () => void;
   onRename: () => void;
+  onMove: () => void;
+  onFavorite: () => void;
+  onShare: () => void;
+  selected?: boolean;
+  selectionActive?: boolean;
+  onToggleSelect?: () => void;
+  onItemDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onItemsDrop?: React.DragEventHandler<HTMLDivElement>;
   onDelete: () => void;
   onDownload: () => void;
 }) {
   return (
     <li>
-      <div className="group border-border bg-card hover:border-primary/40 hover:bg-muted/40 relative flex items-center gap-3 rounded-xl border p-2.5 shadow-sm transition-colors">
+      <div
+        className="group border-border bg-card hover:border-primary/40 hover:bg-muted/40 relative flex items-center gap-3 rounded-xl border p-2.5 shadow-sm transition-colors"
+        draggable={Boolean(onItemDragStart)}
+        onDragStart={onItemDragStart}
+        onDragOver={(event) => { if (onItemsDrop) event.preventDefault(); }}
+        onDrop={onItemsDrop}
+      >
+        {onToggleSelect ? (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggleSelect}
+            aria-label={`Pilih folder ${folder.name}`}
+            className={cn(!selectionActive && !selected && "sm:opacity-0 sm:group-hover:opacity-100")}
+          />
+        ) : null}
         <button
           type="button"
           onClick={onOpen}
@@ -303,7 +373,7 @@ export function DriveFolderChip({
               {folder.name}
             </span>
             <span className="text-muted-foreground block text-[11px] tabular-nums">
-              {folder._count.documents} file
+              {folderDocumentCount(folder)} file
             </span>
           </span>
         </button>
@@ -322,12 +392,21 @@ export function DriveFolderChip({
             <MoreVertical className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onFavorite}>
+              <Star className={cn("size-3.5", folder.isFavorite && "fill-current text-amber-500")} />
+              {folder.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onShare}><Share2 className="size-3.5" /> Bagikan</DropdownMenuItem>
             <DropdownMenuItem onClick={onDownload}>
               <Download className="size-3.5" />
               Unduh ZIP
             </DropdownMenuItem>
-            {isRoomManager ? (
+            {isRoomManager || folder.canEdit ? (
               <>
+                <DropdownMenuItem onClick={onMove}>
+                  <FolderInput className="size-3.5" />
+                  Pindahkan
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onRename}>
                   <Pencil className="size-3.5" />
                   Ganti nama
@@ -352,6 +431,14 @@ export function DriveFolderGridCard({
   isRoomManager,
   onOpen,
   onRename,
+  onMove,
+  onFavorite,
+  onShare,
+  selected = false,
+  selectionActive = false,
+  onToggleSelect,
+  onItemDragStart,
+  onItemsDrop,
   onDelete,
   onDownload,
 }: {
@@ -361,13 +448,22 @@ export function DriveFolderGridCard({
   isRoomManager: boolean;
   onOpen: () => void;
   onRename: () => void;
+  onMove: () => void;
+  onFavorite: () => void;
+  onShare: () => void;
+  selected?: boolean;
+  selectionActive?: boolean;
+  onToggleSelect?: () => void;
+  onItemDragStart?: React.DragEventHandler<HTMLDivElement>;
+  onItemsDrop?: React.DragEventHandler<HTMLDivElement>;
   onDelete: () => void;
   onDownload: () => void;
 }) {
   if (view === "list") {
     return (
       <li>
-        <div className="hover:bg-muted/40 flex items-center gap-3 px-3 py-2 transition-colors">
+        <div className="hover:bg-muted/40 flex items-center gap-3 px-3 py-2 transition-colors" draggable={Boolean(onItemDragStart)} onDragStart={onItemDragStart} onDragOver={(event) => { if (onItemsDrop) event.preventDefault(); }} onDrop={onItemsDrop}>
+          {onToggleSelect ? <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label={`Pilih folder ${folder.name}`} /> : null}
           <button
             type="button"
             onClick={onOpen}
@@ -382,7 +478,7 @@ export function DriveFolderGridCard({
             </div>
           </button>
           <span className="text-muted-foreground text-[11px] tabular-nums">
-            {folder._count.documents} file
+            {folderDocumentCount(folder)} file
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -393,12 +489,21 @@ export function DriveFolderGridCard({
               <MoreVertical className="size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onFavorite}>
+                <Star className={cn("size-3.5", folder.isFavorite && "fill-current text-amber-500")} />
+                {folder.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onShare}><Share2 className="size-3.5" /> Bagikan</DropdownMenuItem>
               <DropdownMenuItem onClick={onDownload}>
                 <Download className="size-3.5" />
                 Unduh ZIP
               </DropdownMenuItem>
-              {isRoomManager ? (
+              {isRoomManager || folder.canEdit ? (
                 <>
+                  <DropdownMenuItem onClick={onMove}>
+                    <FolderInput className="size-3.5" />
+                    Pindahkan
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={onRename}>
                     <Pencil className="size-3.5" />
                     Ganti nama
@@ -423,7 +528,16 @@ export function DriveFolderGridCard({
           "folder-grid-card border-border bg-card relative overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md",
           "sm:[&:hover_.folder-grid-card-actions]:opacity-100 sm:[&:focus-within_.folder-grid-card-actions]:opacity-100",
         )}
+        draggable={Boolean(onItemDragStart)}
+        onDragStart={onItemDragStart}
+        onDragOver={(event) => { if (onItemsDrop) event.preventDefault(); }}
+        onDrop={onItemsDrop}
       >
+        {onToggleSelect ? (
+          <div className="absolute top-2 left-2 z-20">
+            <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label={`Pilih folder ${folder.name}`} className={cn("bg-background/90", !selectionActive && !selected && "sm:opacity-0 sm:group-hover:opacity-100")} />
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={onOpen}
@@ -453,8 +567,8 @@ export function DriveFolderGridCard({
               )}
             >
               {compact
-                ? `${folder._count.documents} file`
-                : `Folder · ${folder._count.documents} file`}
+                ? `${folderDocumentCount(folder)} file`
+                : `Folder · ${folderDocumentCount(folder)} file`}
             </p>
           </div>
         </button>
@@ -473,7 +587,7 @@ export function DriveFolderGridCard({
           >
             <Download className="size-4" />
           </Button>
-          {isRoomManager ? (
+          {isRoomManager || folder.canEdit ? (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -489,6 +603,15 @@ export function DriveFolderGridCard({
                 <MoreVertical className="size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onFavorite}>
+                  <Star className={cn("size-3.5", folder.isFavorite && "fill-current text-amber-500")} />
+                  {folder.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onShare}><Share2 className="size-3.5" /> Bagikan</DropdownMenuItem>
+                <DropdownMenuItem onClick={onMove}>
+                  <FolderInput className="size-3.5" />
+                  Pindahkan
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onRename}>
                   <Pencil className="size-3.5" />
                   Ganti nama

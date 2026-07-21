@@ -28,7 +28,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const { documentIds } = bodySchema.parse(json);
 
     const documents = await prisma.roomDocument.findMany({
-      where: { roomId, id: { in: documentIds } },
+      where: { roomId, id: { in: documentIds }, trashedAt: null, OR: [{ folderId: null }, { folder: { trashedAt: null } }] },
       select: { id: true, folderId: true, fileName: true, publicPath: true },
     });
     if (documents.length === 0) {

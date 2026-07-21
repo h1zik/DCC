@@ -48,8 +48,8 @@ const resolveSchema = z.object({
 });
 
 async function documentContextOrThrow(documentId: string) {
-  const row = await prisma.roomDocument.findUniqueOrThrow({
-    where: { id: documentId },
+  const row = await prisma.roomDocument.findFirstOrThrow({
+    where: { id: documentId, trashedAt: null },
     select: {
       id: true,
       roomId: true,
@@ -76,8 +76,8 @@ export async function loadRoomDocumentDetail(documentId: string) {
   const ctx = await documentContextOrThrow(documentId);
   await assertRoomMember(ctx.roomId, session.user.id);
 
-  const document = await prisma.roomDocument.findUniqueOrThrow({
-    where: { id: documentId },
+  const document = await prisma.roomDocument.findFirstOrThrow({
+    where: { id: documentId, trashedAt: null },
     select: {
       id: true,
       roomId: true,

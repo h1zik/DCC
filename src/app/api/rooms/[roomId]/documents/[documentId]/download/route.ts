@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: Ctx) {
     await assertRoomMember(roomId, session.user.id);
 
     const doc = await prisma.roomDocument.findFirst({
-      where: { id: documentId, roomId },
+      where: { id: documentId, roomId, trashedAt: null, OR: [{ folderId: null }, { folder: { trashedAt: null } }] },
       select: { id: true, folderId: true, fileName: true, publicPath: true },
     });
     if (!doc) {
