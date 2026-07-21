@@ -37,6 +37,18 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-21-documents-pindah-folder-fix",
+    date: "2026-07-21",
+    title: "Documents: memindahkan folder lewat tombol Pindahkan tidak lagi ditolak",
+    category: "fixed",
+    description:
+      "Saat memilih satu atau beberapa folder lalu menekan tombol Pindahkan, aplikasi selalu menolak dengan pesan “Anda tidak dapat memindahkan satu atau lebih file terpilih”, padahal folder tersebut memang milik Anda. Pengecekan izinnya keliru karena hanya menghitung file terpilih dan mengabaikan folder. Sekarang folder, file, maupun campuran keduanya bisa dipindahkan seperti biasa.",
+    highlights: [
+      "Pilih folder saja lalu Pindahkan kini berfungsi — isi folder ikut berpindah otomatis",
+      "Tombol Pindahkan hanya muncul bila semua item terpilih memang boleh Anda pindahkan",
+    ],
+  },
+  {
     id: "2026-07-21-content-plan-jam-posting",
     date: "2026-07-21",
     title: "Content Planning: jam posting dan saran jam efektif dari AI",

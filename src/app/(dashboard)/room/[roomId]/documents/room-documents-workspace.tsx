@@ -676,11 +676,25 @@ export function RoomDocumentsWorkspace({
     [documentRows, selectedDocIds],
   );
 
+  const selectedFolderRows = useMemo(
+    () => folders.filter((f) => selectedFolderIds.has(f.id)),
+    [folders, selectedFolderIds],
+  );
+
   const canManageAllSelected =
     selectedDocs.length > 0 &&
     selectedDocs.every(
       (d) => d.canEdit || isRoomManager,
     );
+
+  /**
+   * Pindah boleh berisi folder saja, file saja, atau campuran — jadi izinnya
+   * dihitung terpisah dari `canManageAllSelected` (yang khusus file).
+   */
+  const canMoveAllSelected =
+    selectedDocs.length + selectedFolderRows.length > 0 &&
+    selectedDocs.every((d) => d.canEdit || isRoomManager) &&
+    selectedFolderRows.every((f) => f.canEdit !== false || isRoomManager);
 
   const toggleDocSelection = useCallback((docId: string, next?: boolean) => {
     setSelectedDocIds((prev) => {
@@ -1077,8 +1091,8 @@ export function RoomDocumentsWorkspace({
       const ids = Array.from(selectedDocIds);
       const folderIds = Array.from(selectedFolderIds);
       if (!ids.length && !folderIds.length) return;
-      if (!canManageAllSelected) {
-        toast.error("Anda tidak dapat memindahkan satu atau lebih file terpilih.");
+      if (!canMoveAllSelected) {
+        toast.error("Anda tidak dapat memindahkan satu atau lebih item terpilih.");
         return;
       }
       setBulkBusy(true);
@@ -1109,7 +1123,7 @@ export function RoomDocumentsWorkspace({
     [
       selectedDocIds,
       selectedFolderIds,
-      canManageAllSelected,
+      canMoveAllSelected,
       folders,
       clearDocSelection,
       refreshDocuments,
@@ -1752,7 +1766,7 @@ export function RoomDocumentsWorkspace({
                 <Download className="size-3.5" />
                 Unduh
               </Button>
-              {canManageAllSelected || selectedFolderIds.size > 0 ? (
+              {canMoveAllSelected ? (
                 <>
                   <BulkMoveFolderMenu
                     folders={folders}
