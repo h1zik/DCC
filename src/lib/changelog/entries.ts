@@ -37,6 +37,65 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-21-content-plan-jam-posting",
+    date: "2026-07-21",
+    title: "Content Planning: jam posting dan saran jam efektif dari AI",
+    category: "new",
+    description:
+      "Setiap konten kini bisa diberi jam posting, bukan cuma tanggal — penting saat ada lebih dari satu postingan di hari yang sama supaya pembagiannya efektif. Tombol Saran Jam AI menganalisis seluruh konten terjadwal dan mengusulkan jam yang efektif untuk audiens Indonesia, lengkap dengan alasannya, dan Anda tinggal memilih mana yang ingin diterapkan.",
+    highlights: [
+      "Kolom Posting menampilkan tanggal beserta jam, dan urutan tabel mengikuti jam dalam hari yang sama",
+      "Penanda otomatis pada hari yang berisi lebih dari satu konten — berwarna kuning bila masih ada jam yang kosong atau bentrok",
+      "Saran Jam AI menyebar konten di hari yang sama minimal berjarak tiga jam dan mempertahankan jam yang sudah Anda isi kecuali bentrok",
+      "Hasil saran ditampilkan per tanggal dengan alasan singkat; centang yang ingin dipakai lalu terapkan sekaligus",
+      "Jam posting ikut tampil di kartu content planning halaman Untuk Saya",
+    ],
+  },
+  {
+    id: "2026-07-21-content-plan-fixes",
+    date: "2026-07-21",
+    title: "Content Planning: video Reels bisa diunggah, slide carousel tidak lagi hilang diam-diam",
+    category: "fixed",
+    description:
+      "Beberapa perbaikan penting di halaman Content Planning: file video kini muncul saat memilih file design untuk Reels dan Single Feed, mengubah jenis konten dari Carousel meminta konfirmasi lebih dulu karena slide selain yang pertama akan dihapus permanen, dan dua baris dengan nama konten sama tidak lagi ada yang terlewat saat ditambahkan ke Kanban.",
+    highlights: [
+      "Pemilih file design untuk Reels dan Single Feed kini menampilkan file video — sebelumnya hanya gambar dan dokumen",
+      "Konfirmasi sebelum mengubah jenis dari Carousel bila ada lebih dari satu slide, karena slide sisanya dihapus permanen",
+      "Tanggal tidak lagi bergeser satu hari antara tampilan tabel dan form edit",
+      "Tambahkan ke Kanban tidak lagi melewati baris kedua yang judul kontennya kebetulan sama",
+    ],
+  },
+  {
+    id: "2026-07-21-room-documents-drive",
+    date: "2026-07-21",
+    title: "Documents: riwayat versi, berbagi tautan, sampah, dan favorit ala Google Drive",
+    category: "new",
+    description:
+      "Documents di setiap Room naik kelas menjadi penyimpanan tim yang lengkap. File kini punya riwayat versi, bisa dibagikan ke anggota tertentu atau lewat tautan publik, dan file yang dihapus masuk ke Sampah dulu sehingga masih bisa dipulihkan. Sidebar baru menyediakan tampilan Semua file, Favorit, Terbaru, dan Sampah beserta ringkasan penyimpanan.",
+    highlights: [
+      "Riwayat versi: unggah versi baru dengan catatan, unduh versi lama, atau pulihkan versi lama tanpa kehilangan riwayat",
+      "Sampah: hapus tidak langsung permanen — ada tombol Urungkan, bisa dipulihkan, dan baru benar-benar terhapus saat Hapus permanen",
+      "Berbagi: beri anggota ruangan akses Viewer atau Editor, atau buat tautan publik hanya-baca yang bisa dibuka tanpa login (folder terunduh sebagai ZIP)",
+      "Favorit dan tampilan Terbaru untuk menemukan kembali file yang sering dipakai",
+      "Riwayat aktivitas: siapa mengunggah, mengganti nama, memindahkan, membagikan, atau menghapus apa dan kapan",
+    ],
+  },
+  {
+    id: "2026-07-21-room-documents-search-move",
+    date: "2026-07-21",
+    title: "Documents: pencarian sampai ke isi file, filter lengkap, dan pindah folder",
+    category: "improved",
+    description:
+      "Mencari dan merapikan dokumen jadi jauh lebih cepat. Pencarian kini menjangkau teks di dalam dokumen, bukan hanya nama file dan tag, dan berlaku ke seluruh ruangan. Folder kini bisa dipindahkan beserta seluruh isinya, termasuk dengan menyeret item ke folder tujuan.",
+    highlights: [
+      "Cari berdasarkan kata di dalam dokumen, dengan filter tipe file, waktu unggah, pengunggah, dan tag",
+      "Urutkan menurut nama, ukuran, tipe, pengunggah, atau waktu; pilih tampilan grid atau daftar dan ukuran kartu",
+      "Pindahkan folder beserta isinya, pilih file dan folder sekaligus, atau seret ke folder tujuan di kartu, sidebar, maupun breadcrumb",
+      "Anggota dengan akses Editor kini bisa mengganti nama, memindahkan, dan menghapus — tidak lagi khusus manager ruangan",
+      "Daftar dimuat bertahap sehingga folder berisi ratusan file tetap ringan dibuka",
+    ],
+  },
+  {
     id: "2026-07-19-voice-audio-settings",
     date: "2026-07-19",
     title: "Voice call: pengaturan suara — atur volume per orang dan pilih perangkat audio",

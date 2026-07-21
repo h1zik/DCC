@@ -797,6 +797,7 @@ export async function aiGetContentPlanStatus(
       statusCopywriting: true,
       statusDesign: true,
       tanggalPosting: true,
+      jamPosting: true,
       deadlineCopywriting: true,
       deadlineDesign: true,
       room: { select: { id: true, name: true } },
@@ -847,6 +848,7 @@ export async function aiGetContentPlanStatus(
       statusCopywriting: i.statusCopywriting,
       statusDesign: i.statusDesign,
       tanggalPosting: i.tanggalPosting?.toISOString() ?? null,
+      jamPosting: i.jamPosting,
     })),
   };
 }

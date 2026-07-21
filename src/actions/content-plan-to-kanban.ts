@@ -112,17 +112,7 @@ export async function createKanbanTasksFromContentPlanDesign(params: {
         : [];
 
     const existing = await prisma.task.findFirst({
-      where: {
-        OR: [
-          { contentPlanItemId: row.id },
-          {
-            projectId: params.projectId,
-            roomProcess,
-            title,
-            ...(due != null ? { dueDate: due } : { dueDate: null }),
-          },
-        ],
-      },
+      where: { contentPlanItemId: row.id },
       select: { id: true },
     });
     if (existing) {
