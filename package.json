@@ -26,6 +26,7 @@
     "db:seed": "npx tsx prisma/scripts/guard-destructive.ts && prisma db seed",
     "db:seed-gamification": "npx tsx prisma/scripts/seed-gamification.ts",
     "cosmetics:generate": "npx tsx prisma/scripts/generate-cosmetic-assets.ts",
+    "documents:backfill-search": "npx tsx scripts/backfill-room-document-search.ts",
     "db:backfill-gamification": "npx tsx prisma/scripts/backfill-gamification.ts",
     "db:studio": "prisma studio",
     "eval:research": "tsx scripts/eval-review-analysis.ts"

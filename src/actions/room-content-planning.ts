@@ -119,6 +119,11 @@ const upsertSchema = z.object({
   deadlineCopywriting: z.coerce.date().optional().nullable(),
   deadlineDesign: z.coerce.date().optional().nullable(),
   tanggalPosting: z.coerce.date().optional().nullable(),
+  jamPosting: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Format jam posting harus HH:mm.")
+    .optional()
+    .nullable(),
   catatan: z.string().optional().nullable(),
 });
 
@@ -165,6 +170,7 @@ export async function upsertRoomContentPlanItem(
         deadlineCopywriting: data.deadlineCopywriting ?? null,
         deadlineDesign: data.deadlineDesign ?? null,
         tanggalPosting: data.tanggalPosting ?? null,
+        jamPosting: data.jamPosting ?? null,
         catatan: data.catatan?.trim() || null,
       },
     });
@@ -193,6 +199,7 @@ export async function upsertRoomContentPlanItem(
       deadlineCopywriting: data.deadlineCopywriting ?? null,
       deadlineDesign: data.deadlineDesign ?? null,
       tanggalPosting: data.tanggalPosting ?? null,
+      jamPosting: data.jamPosting ?? null,
       catatan: data.catatan?.trim() || null,
       sortOrder: (max._max.sortOrder ?? 0) + 1,
       createdById: session.user.id,

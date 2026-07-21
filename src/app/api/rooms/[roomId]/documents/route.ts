@@ -37,7 +37,7 @@ export async function POST(req: Request, { params }: Ctx) {
     if (typeof folderIdRaw === "string" && folderIdRaw.trim()) {
       const fid = folderIdRaw.trim();
       const f = await prisma.roomDocumentFolder.findFirst({
-        where: { id: fid, roomId },
+        where: { id: fid, roomId, trashedAt: null },
       });
       if (!f) {
         return NextResponse.json(

@@ -37,6 +37,10 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
+  if (pathname.startsWith("/shared/documents/")) {
+    return NextResponse.next();
+  }
+
   if (!isLoggedIn) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";

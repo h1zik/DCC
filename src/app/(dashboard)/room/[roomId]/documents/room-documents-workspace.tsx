@@ -18,11 +18,21 @@ import {
   deleteRoomDocument,
   deleteRoomDocumentFolder,
   deleteRoomDocuments,
+  moveRoomDocumentFolder,
+  moveRoomDocumentItems,
   moveRoomDocumentToFolder,
   moveRoomDocumentsToFolder,
   renameRoomDocument,
   renameRoomDocumentFolder,
 } from "@/actions/room-documents";
+import { listRoomDocumentLibrary } from "@/actions/room-document-library";
+import {
+  purgeRoomDocumentFolder,
+  purgeRoomDocuments,
+  restoreRoomDocumentFolder,
+  restoreRoomDocuments,
+  toggleRoomDocumentFavorite,
+} from "@/actions/room-document-lifecycle";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
@@ -42,6 +52,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -67,6 +80,7 @@ import {
   flattenFoldersForPicker,
   formatFolderPath,
   getChildFolders,
+  getDescendantFolderIds,
 } from "@/lib/room-document-folders";
 import {
   DriveBreadcrumb,
@@ -76,6 +90,15 @@ import {
   type DriveFolderRow,
 } from "./room-documents-drive-nav";
 import { RoomDocumentPreviewDialog } from "@/components/documents/room-document-preview-dialog";
+import {
+  RoomDocumentShareDialog,
+  type DocumentShareTarget,
+} from "@/components/documents/room-document-share-dialog";
+import { RoomDocumentActivityDialog } from "@/components/documents/room-document-activity-dialog";
+import {
+  RoomDocumentVersionsDialog,
+  type DocumentVersionTarget,
+} from "@/components/documents/room-document-versions-dialog";
 import {
   ArrowDownAZ,
   ArrowLeft,
@@ -104,10 +127,15 @@ import {
   LayoutGrid,
   LayoutList,
   Loader2,
+  EllipsisVertical,
   Music,
   Pencil,
   Play,
+  Clock3,
+  RotateCcw,
   Search,
+  Share2,
+  Star,
   SlidersHorizontal,
   Tag,
   Trash2,
@@ -122,6 +150,9 @@ import type { RoomDocumentRow } from "./room-document-types";
 export type RoomDocumentFolderRow = DriveFolderRow;
 
 type ViewMode = "grid" | "list";
+type LibraryScope = "browse" | "favorites" | "recent" | "trash";
+type TypeFilter = "all" | "image" | "video" | "audio" | "pdf" | "document" | "archive";
+type DateFilter = "all" | "today" | "week" | "month";
 type SortKey =
   | "newest"
   | "oldest"
@@ -179,8 +210,14 @@ type UploadJob = {
   error?: string;
 };
 
+type DestructiveTarget =
+  | { mode: "trash"; kind: "folder"; folder: RoomDocumentFolderRow }
+  | { mode: "trash"; kind: "document"; document: RoomDocumentRow }
+  | { mode: "trash"; kind: "documents"; documentIds: string[] }
+  | { mode: "purge"; kind: "folder"; folder: RoomDocumentFolderRow }
+  | { mode: "purge"; kind: "document"; document: RoomDocumentRow };
+
 /** Batasi DOM sekaligus — daftar besar jadi ringan; preview tetap penuh. */
-const DOCS_PAGE_SIZE = 40;
 
 /**
  * Folder yang tampil sebelum di-ciutkan (± 2 baris di grid lebar). Kalau lebih
@@ -188,6 +225,8 @@ const DOCS_PAGE_SIZE = 40;
  * tetap mudah dijangkau di lokasi yang folder-heavy.
  */
 const FOLDER_COLLAPSE_LIMIT = 8;
+const ROOT_FOLDER_VALUE = "__root__";
+const DOCUMENT_ITEMS_DRAG_TYPE = "application/x-dcc-document-items";
 
 function formatFileSize(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -253,13 +292,21 @@ function fileTypeMeta(mimeType: string): {
 export function RoomDocumentsWorkspace({
   roomId,
   folders,
+  trashFolders,
   documents,
+  initialDocumentTotal,
+  storageSummary,
+  documentMembers,
   currentUserId,
   isRoomManager,
 }: {
   roomId: string;
   folders: RoomDocumentFolderRow[];
+  trashFolders: RoomDocumentFolderRow[];
   documents: RoomDocumentRow[];
+  initialDocumentTotal: number;
+  storageSummary: { fileCount: number; rootFileCount: number; totalSize: number };
+  documentMembers: Array<{ id: string; name: string | null; email: string }>;
   currentUserId: string;
   isRoomManager: boolean;
 }) {
@@ -280,9 +327,7 @@ export function RoomDocumentsWorkspace({
   /** Riwayat folder untuk tombol kembali (folder sebelumnya yang dikunjungi). */
   const [folderBackStack, setFolderBackStack] = useState<(string | null)[]>([]);
   const currentFolderIdRef = useRef(currentFolderId);
-  currentFolderIdRef.current = currentFolderId;
   const folderBackStackRef = useRef<(string | null)[]>([]);
-  folderBackStackRef.current = folderBackStack;
   const [title, setTitle] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
@@ -295,9 +340,38 @@ export function RoomDocumentsWorkspace({
   >(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
+  const [moveFolderTarget, setMoveFolderTarget] =
+    useState<RoomDocumentFolderRow | null>(null);
+  const [moveFolderDestination, setMoveFolderDestination] =
+    useState(ROOT_FOLDER_VALUE);
+  const [moveFolderBusy, setMoveFolderBusy] = useState(false);
+  const [documentRows, setDocumentRows] = useState(documents);
+  const [documentTotal, setDocumentTotal] = useState(initialDocumentTotal);
+  const [nextDocumentOffset, setNextDocumentOffset] = useState<number | null>(
+    documents.length < initialDocumentTotal ? documents.length : null,
+  );
+  const [libraryScope, setLibraryScope] = useState<LibraryScope>("browse");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [uploaderFilter, setUploaderFilter] = useState("");
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryRevision, setLibraryRevision] = useState(0);
+  const [matchedFolderIds, setMatchedFolderIds] = useState<string[]>([]);
+  const libraryRequestRef = useRef(0);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
-  const [density, setDensity] = useState<GridDensity>("besar");
+  const [density, setDensity] = useState<GridDensity>(() => {
+    if (typeof window === "undefined") return "besar";
+    try {
+      const saved = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+      if (saved === "besar" || saved === "sedang" || saved === "kecil") {
+        return saved;
+      }
+    } catch {
+      // localStorage bisa tidak tersedia pada mode privasi tertentu.
+    }
+    return "besar";
+  });
   const [showAllFolders, setShowAllFolders] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("newest");
   const [showHelp, setShowHelp] = useState(false);
@@ -307,14 +381,28 @@ export function RoomDocumentsWorkspace({
   const [uploadPanelExpanded, setUploadPanelExpanded] = useState(true);
   const [uploadTagsInput, setUploadTagsInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string>("__all__");
-  const [docDisplayLimit, setDocDisplayLimit] = useState(DOCS_PAGE_SIZE);
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [destructiveTarget, setDestructiveTarget] =
+    useState<DestructiveTarget | null>(null);
+  const [shareTarget, setShareTarget] = useState<DocumentShareTarget | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [versionTarget, setVersionTarget] = useState<
+    (DocumentVersionTarget & { canManage: boolean }) | null
+  >(null);
 
   const deferredSearch = useDeferredValue(search);
-  const selectionActive = selectedDocIds.size > 0;
+  const selectionActive = selectedDocIds.size + selectedFolderIds.size > 0;
+
+  const refreshDocuments = useCallback(() => {
+    setLibraryRevision((revision) => revision + 1);
+    router.refresh();
+  }, [router]);
 
   const uploadBusy = uploadJobs.some(
     (j) => j.status === "queued" || j.status === "uploading",
@@ -369,45 +457,129 @@ export function RoomDocumentsWorkspace({
 
   const isSearchActive = deferredSearch.trim().length > 0;
 
-  const childFolders = useMemo(
-    () =>
-      isSearchActive
-        ? []
-        : (getChildFolders(folders, currentFolderId) as RoomDocumentFolderRow[]),
-    [folders, currentFolderId, isSearchActive],
+  useEffect(() => {
+    currentFolderIdRef.current = currentFolderId;
+  }, [currentFolderId]);
+
+  useEffect(() => {
+    folderBackStackRef.current = folderBackStack;
+  }, [folderBackStack]);
+
+  const loadLibrary = useCallback(
+    async (options?: { append?: boolean; offset?: number }) => {
+      const requestId = ++libraryRequestRef.current;
+      const offset = options?.append ? options.offset : 0;
+      if (options?.append && offset == null) return;
+      setLibraryLoading(true);
+      try {
+        const result = await listRoomDocumentLibrary({
+          roomId,
+          folderId: libraryScope === "browse" ? currentFolderId : undefined,
+          search: deferredSearch,
+          tag: tagFilter,
+          type: typeFilter,
+          uploaderId: uploaderFilter || undefined,
+          date: dateFilter,
+          scope: libraryScope,
+          sort: sortKey,
+          offset,
+        });
+        if (requestId !== libraryRequestRef.current) return;
+        setDocumentRows((previous) =>
+          options?.append ? [...previous, ...result.documents] : result.documents,
+        );
+        setDocumentTotal(result.total);
+        setNextDocumentOffset(result.nextOffset);
+        setMatchedFolderIds(result.matchedFolderIds);
+      } catch (error) {
+        if (requestId === libraryRequestRef.current) {
+          toast.error(actionErrorMessage(error, "Gagal memuat dokumen."));
+        }
+      } finally {
+        if (requestId === libraryRequestRef.current) setLibraryLoading(false);
+      }
+    },
+    [
+      currentFolderId,
+      dateFilter,
+      deferredSearch,
+      libraryScope,
+      roomId,
+      sortKey,
+      tagFilter,
+      typeFilter,
+      uploaderFilter,
+    ],
   );
 
-  const rootFileCount = useMemo(
-    () => documents.filter((d) => d.folderId == null).length,
-    [documents],
+  const changeLibraryScope = useCallback(
+    (scope: LibraryScope) => {
+      setLibraryScope(scope);
+      setSelectedDocIds(new Set());
+      setSelectedFolderIds(new Set());
+      if (scope !== "browse") {
+        setCurrentFolderId(null);
+        currentFolderIdRef.current = null;
+        applyFolderToUrl(null);
+      }
+    },
+    [applyFolderToUrl],
   );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadLibrary(), 0);
+    return () => window.clearTimeout(timer);
+  }, [libraryRevision, loadLibrary]);
+
+  const childFolders = useMemo(
+    () => {
+      if (libraryScope === "trash") return trashFolders;
+      if (libraryScope === "recent") return [];
+      if (libraryScope === "favorites" || isSearchActive) {
+        const matched = new Set(matchedFolderIds);
+        return folders.filter((folder) => matched.has(folder.id));
+      }
+      return getChildFolders(folders, currentFolderId) as RoomDocumentFolderRow[];
+    },
+    [
+      folders,
+      currentFolderId,
+      isSearchActive,
+      libraryScope,
+      matchedFolderIds,
+      trashFolders,
+    ],
+  );
+
+  const rootFileCount = storageSummary.rootFileCount;
 
   const allTagsInRoom = useMemo(() => {
     const s = new Set<string>();
-    for (const d of documents) {
+    for (const d of documentRows) {
       for (const t of d.tags ?? []) s.add(t);
     }
     return Array.from(s).sort((a, b) => a.localeCompare(b, "id"));
-  }, [documents]);
+  }, [documentRows]);
+
+  const folderMoveChoices = useMemo(() => {
+    if (!moveFolderTarget) return [];
+    const excluded = getDescendantFolderIds(folders, moveFolderTarget.id);
+    excluded.add(moveFolderTarget.id);
+    return flattenFoldersForPicker(
+      folders.filter((folder) => !excluded.has(folder.id)),
+    );
+  }, [folders, moveFolderTarget]);
 
   useEffect(() => {
-    setDocDisplayLimit(DOCS_PAGE_SIZE);
-    setSelectedDocIds(new Set());
-    setShowAllFolders(false);
+    const timer = window.setTimeout(() => {
+      setSelectedDocIds(new Set());
+      setSelectedFolderIds(new Set());
+      setShowAllFolders(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [currentFolderId, tagFilter, sortKey, deferredSearch]);
 
   // Muat & simpan preferensi kepadatan grid (per-perangkat).
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(DENSITY_STORAGE_KEY);
-      if (saved === "besar" || saved === "sedang" || saved === "kecil") {
-        setDensity(saved);
-      }
-    } catch {
-      /* localStorage tak tersedia — abaikan */
-    }
-  }, []);
-
   useEffect(() => {
     try {
       window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
@@ -416,28 +588,10 @@ export function RoomDocumentsWorkspace({
     }
   }, [density]);
 
-  const totalSize = useMemo(
-    () => documents.reduce((acc, d) => acc + (d.size ?? 0), 0),
-    [documents],
-  );
+  const totalSize = storageSummary.totalSize;
 
   const visibleDocuments = useMemo(() => {
-    let rows = documents;
-    if (!isSearchActive) {
-      rows = rows.filter((d) => d.folderId === currentFolderId);
-    }
-    const qSearch = deferredSearch.trim().toLowerCase();
-    if (qSearch) {
-      rows = rows.filter((d) => {
-        const t = (d.title ?? "").toLowerCase();
-        const n = d.fileName.toLowerCase();
-        const tagHay = (d.tags ?? []).join(" ").toLowerCase();
-        return t.includes(qSearch) || n.includes(qSearch) || tagHay.includes(qSearch);
-      });
-    }
-    if (tagFilter && tagFilter !== "__all__") {
-      rows = rows.filter((d) => (d.tags ?? []).includes(tagFilter));
-    }
+    const rows = documentRows;
     const sorted = [...rows];
     switch (sortKey) {
       case "newest":
@@ -497,11 +651,11 @@ export function RoomDocumentsWorkspace({
         break;
     }
     return sorted;
-  }, [documents, currentFolderId, deferredSearch, sortKey, tagFilter, isSearchActive]);
+  }, [documentRows, sortKey]);
 
   const pagedVisibleDocuments = useMemo(
-    () => visibleDocuments.slice(0, docDisplayLimit),
-    [visibleDocuments, docDisplayLimit],
+    () => visibleDocuments,
+    [visibleDocuments],
   );
 
   const selectableDocIds = useMemo(
@@ -518,14 +672,14 @@ export function RoomDocumentsWorkspace({
   );
 
   const selectedDocs = useMemo(
-    () => documents.filter((d) => selectedDocIds.has(d.id)),
-    [documents, selectedDocIds],
+    () => documentRows.filter((d) => selectedDocIds.has(d.id)),
+    [documentRows, selectedDocIds],
   );
 
   const canManageAllSelected =
     selectedDocs.length > 0 &&
     selectedDocs.every(
-      (d) => d.uploadedBy.id === currentUserId || isRoomManager,
+      (d) => d.canEdit || isRoomManager,
     );
 
   const toggleDocSelection = useCallback((docId: string, next?: boolean) => {
@@ -544,6 +698,16 @@ export function RoomDocumentsWorkspace({
 
   const clearDocSelection = useCallback(() => {
     setSelectedDocIds(new Set());
+    setSelectedFolderIds(new Set());
+  }, []);
+
+  const toggleFolderSelection = useCallback((folderId: string) => {
+    setSelectedFolderIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
   }, []);
 
   function updateJob(id: string, patch: Partial<UploadJob>) {
@@ -609,7 +773,7 @@ export function RoomDocumentsWorkspace({
             ? "File diunggah."
             : `${ok} file diunggah.`,
       );
-      router.refresh();
+      refreshDocuments();
     } else if (fail > 0) {
       toast.error("Semua unggah gagal. Lihat panel di bawah.");
     }
@@ -639,7 +803,7 @@ export function RoomDocumentsWorkspace({
       setCreateFolderOpen(false);
       toast.success("Folder dibuat.");
       navigateToFolder(id);
-      router.refresh();
+      refreshDocuments();
     } catch (err) {
       toast.error(actionErrorMessage(err, "Gagal membuat folder."));
     } finally {
@@ -679,7 +843,7 @@ export function RoomDocumentsWorkspace({
         toast.success("Nama file diperbarui.");
       }
       setRenameTarget(null);
-      router.refresh();
+      refreshDocuments();
     } catch (err) {
       toast.error(actionErrorMessage(err, "Gagal menyimpan."));
     } finally {
@@ -687,45 +851,47 @@ export function RoomDocumentsWorkspace({
     }
   }
 
-  async function onDeleteFolder(folder: RoomDocumentFolderRow) {
-    const childCount = folders.filter((f) => f.parentId === folder.id).length;
-    const n = folder._count.documents;
-    const parts: string[] = [`Hapus folder "${folder.name}"?`];
-    if (childCount > 0) {
-      parts.push(`${childCount} subfolder juga akan dihapus.`);
-    }
-    if (n > 0) {
-      parts.push(`${n} file di folder ini akan dipindah ke folder induk.`);
-    }
-    if (!confirm(parts.join(" "))) return;
-    setPending(true);
+  function onDeleteFolder(folder: RoomDocumentFolderRow) {
+    setDestructiveTarget({ mode: "trash", kind: "folder", folder });
+  }
+
+  function openMoveFolder(folder: RoomDocumentFolderRow) {
+    setMoveFolderTarget(folder);
+    setMoveFolderDestination(folder.parentId ?? ROOT_FOLDER_VALUE);
+  }
+
+  async function onConfirmMoveFolder() {
+    if (!moveFolderTarget) return;
+    const parentId =
+      moveFolderDestination === ROOT_FOLDER_VALUE
+        ? null
+        : moveFolderDestination;
+    if (parentId === moveFolderTarget.parentId) return;
+
+    setMoveFolderBusy(true);
     try {
-      await deleteRoomDocumentFolder(folder.id);
-      toast.success("Folder dihapus.");
-      if (currentFolderId === folder.id) {
-        navigateToFolder(folder.parentId, { skipHistory: true });
-      }
-      router.refresh();
+      await moveRoomDocumentFolder({
+        folderId: moveFolderTarget.id,
+        parentId,
+      });
+      const targetName = parentId
+        ? formatFolderPath(parentId, folders)
+        : "Semua file (root)";
+      toast.success(
+        `Folder "${moveFolderTarget.name}" beserta isinya dipindahkan ke ${targetName}.`,
+      );
+      setMoveFolderTarget(null);
+      refreshDocuments();
     } catch (err) {
-      toast.error(actionErrorMessage(err, "Gagal menghapus folder."));
+      toast.error(actionErrorMessage(err, "Gagal memindahkan folder."));
     } finally {
-      setPending(false);
+      setMoveFolderBusy(false);
     }
   }
 
-  const onDeleteDoc = useCallback(
-    async (d: RoomDocumentRow) => {
-      if (!confirm("Hapus dokumen ini?")) return;
-      try {
-        await deleteRoomDocument(d.id);
-        toast.success("Dokumen dihapus.");
-        router.refresh();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal."));
-      }
-    },
-    [router],
-  );
+  const onDeleteDoc = useCallback((document: RoomDocumentRow) => {
+    setDestructiveTarget({ mode: "trash", kind: "document", document });
+  }, []);
 
   const onMoveDoc = useCallback(
     async (d: RoomDocumentRow, folderId: string | null) => {
@@ -736,17 +902,29 @@ export function RoomDocumentsWorkspace({
           ? formatFolderPath(folderId, folders)
           : "Semua file (root)";
         toast.success(`Dipindahkan ke ${targetName}.`);
-        router.refresh();
+        refreshDocuments();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal memindahkan."));
       }
     },
-    [router, folders],
+    [folders, refreshDocuments],
   );
 
   const onPreviewDoc = useCallback((d: RoomDocumentRow) => {
     setPreviewDoc(d);
   }, []);
+
+  const onToggleFavorite = useCallback(
+    async (kind: "document" | "folder", id: string) => {
+      try {
+        await toggleRoomDocumentFavorite({ kind, id });
+        refreshDocuments();
+      } catch (error) {
+        toast.error(actionErrorMessage(error, "Gagal memperbarui favorit."));
+      }
+    },
+    [refreshDocuments],
+  );
 
   const onDownloadFolder = useCallback(
     async (folder: RoomDocumentFolderRow) => {
@@ -781,7 +959,7 @@ export function RoomDocumentsWorkspace({
     setBulkBusy(true);
     try {
       if (ids.length === 1) {
-        const doc = documents.find((d) => d.id === ids[0]);
+        const doc = documentRows.find((d) => d.id === ids[0]);
         if (doc) await downloadSingleRoomDocument(roomId, doc.id, doc.fileName);
         else throw new Error("File tidak ditemukan.");
       } else {
@@ -795,51 +973,133 @@ export function RoomDocumentsWorkspace({
     } finally {
       setBulkBusy(false);
     }
-  }, [documents, roomId, selectedDocIds]);
+  }, [documentRows, roomId, selectedDocIds]);
 
-  const onBulkDelete = useCallback(async () => {
+  const onBulkDelete = useCallback(() => {
     const ids = Array.from(selectedDocIds);
     if (!ids.length) return;
     if (!canManageAllSelected) {
       toast.error("Anda tidak dapat menghapus satu atau lebih file terpilih.");
       return;
     }
-    if (!confirm(`Hapus ${ids.length} file terpilih?`)) return;
-    setBulkBusy(true);
-    try {
-      await deleteRoomDocuments(ids);
-      toast.success(`${ids.length} file dihapus.`);
-      clearDocSelection();
-      router.refresh();
-    } catch (err) {
-      toast.error(actionErrorMessage(err, "Gagal menghapus."));
-    } finally {
-      setBulkBusy(false);
-    }
+    setDestructiveTarget({ mode: "trash", kind: "documents", documentIds: ids });
   }, [
     selectedDocIds,
     canManageAllSelected,
-    clearDocSelection,
-    router,
   ]);
+
+  async function onConfirmDestructive() {
+    const target = destructiveTarget;
+    if (!target) return;
+    setBulkBusy(true);
+    try {
+      if (target.mode === "trash" && target.kind === "folder") {
+        await deleteRoomDocumentFolder(target.folder.id);
+        toast.success(`Folder "${target.folder.name}" dipindahkan ke Sampah.`, {
+          action: {
+            label: "Urungkan",
+            onClick: async () => {
+              await restoreRoomDocumentFolder(target.folder.id);
+              refreshDocuments();
+            },
+          },
+        });
+        if (currentFolderId === target.folder.id) {
+          navigateToFolder(target.folder.parentId, { skipHistory: true });
+        }
+      } else if (target.mode === "trash" && target.kind === "document") {
+        await deleteRoomDocument(target.document.id);
+        toast.success("File dipindahkan ke Sampah.", {
+          action: {
+            label: "Urungkan",
+            onClick: async () => {
+              await restoreRoomDocuments([target.document.id]);
+              refreshDocuments();
+            },
+          },
+        });
+      } else if (target.mode === "trash" && target.kind === "documents") {
+        await deleteRoomDocuments(target.documentIds);
+        clearDocSelection();
+        toast.success(`${target.documentIds.length} file dipindahkan ke Sampah.`, {
+          action: {
+            label: "Urungkan",
+            onClick: async () => {
+              await restoreRoomDocuments(target.documentIds);
+              refreshDocuments();
+            },
+          },
+        });
+      } else if (target.mode === "purge" && target.kind === "folder") {
+        await purgeRoomDocumentFolder(target.folder.id);
+        toast.success("Folder dan seluruh isinya dihapus permanen.");
+      } else if (target.mode === "purge" && target.kind === "document") {
+        await purgeRoomDocuments([target.document.id]);
+        toast.success("File dihapus permanen.");
+      }
+      setDestructiveTarget(null);
+      refreshDocuments();
+    } catch (error) {
+      toast.error(actionErrorMessage(error, "Operasi gagal."));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function onRestoreTrashFolder(folder: RoomDocumentFolderRow) {
+    setBulkBusy(true);
+    try {
+      await restoreRoomDocumentFolder(folder.id);
+      toast.success(`Folder "${folder.name}" dipulihkan.`);
+      refreshDocuments();
+    } catch (error) {
+      toast.error(actionErrorMessage(error, "Gagal memulihkan folder."));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function onRestoreTrashDocument(document: RoomDocumentRow) {
+    setBulkBusy(true);
+    try {
+      await restoreRoomDocuments([document.id]);
+      toast.success("File dipulihkan.");
+      refreshDocuments();
+    } catch (error) {
+      toast.error(actionErrorMessage(error, "Gagal memulihkan file."));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   const onBulkMove = useCallback(
     async (folderId: string | null) => {
       const ids = Array.from(selectedDocIds);
-      if (!ids.length) return;
+      const folderIds = Array.from(selectedFolderIds);
+      if (!ids.length && !folderIds.length) return;
       if (!canManageAllSelected) {
         toast.error("Anda tidak dapat memindahkan satu atau lebih file terpilih.");
         return;
       }
       setBulkBusy(true);
       try {
-        await moveRoomDocumentsToFolder({ documentIds: ids, folderId });
+        if (folderIds.length > 0) {
+          await moveRoomDocumentItems({
+            documentIds: ids,
+            folderIds,
+            targetFolderId: folderId,
+          });
+        } else {
+          await moveRoomDocumentsToFolder({ documentIds: ids, folderId });
+        }
         const targetName = folderId
           ? formatFolderPath(folderId, folders)
           : "Semua file (root)";
-        toast.success(`${ids.length} file dipindahkan ke ${targetName}.`);
+        toast.success(
+          `${ids.length + folderIds.length} item dipindahkan ke ${targetName}.`,
+        );
         clearDocSelection();
-        router.refresh();
+        refreshDocuments();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal memindahkan."));
       } finally {
@@ -848,17 +1108,72 @@ export function RoomDocumentsWorkspace({
     },
     [
       selectedDocIds,
+      selectedFolderIds,
       canManageAllSelected,
       folders,
       clearDocSelection,
-      router,
+      refreshDocuments,
     ],
   );
+
+  function startItemDrag(
+    event: React.DragEvent,
+    item: { kind: "document" | "folder"; id: string },
+  ) {
+    const isSelected =
+      item.kind === "document"
+        ? selectedDocIds.has(item.id)
+        : selectedFolderIds.has(item.id);
+    const payload = {
+      documentIds: isSelected
+        ? Array.from(selectedDocIds)
+        : item.kind === "document"
+          ? [item.id]
+          : [],
+      folderIds: isSelected
+        ? Array.from(selectedFolderIds)
+        : item.kind === "folder"
+          ? [item.id]
+          : [],
+    };
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(DOCUMENT_ITEMS_DRAG_TYPE, JSON.stringify(payload));
+  }
+
+  async function dropItemsIntoFolder(
+    event: React.DragEvent,
+    targetFolderId: string | null,
+  ) {
+    const raw = event.dataTransfer.getData(DOCUMENT_ITEMS_DRAG_TYPE);
+    if (!raw) return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      const payload = JSON.parse(raw) as {
+        documentIds: string[];
+        folderIds: string[];
+      };
+      setBulkBusy(true);
+      const result = await moveRoomDocumentItems({
+        ...payload,
+        targetFolderId,
+      });
+      toast.success(
+        `${result.movedDocuments + result.movedFolders} item dipindahkan.`,
+      );
+      clearDocSelection();
+      refreshDocuments();
+    } catch (error) {
+      toast.error(actionErrorMessage(error, "Gagal memindahkan item."));
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(false);
-    if (pending || uploadBusy) return;
+    if (pending || uploadBusy || libraryScope !== "browse") return;
     const files = Array.from(e.dataTransfer.files ?? []);
     if (files.length) void handleUploadFiles(files);
   }
@@ -870,7 +1185,7 @@ export function RoomDocumentsWorkspace({
     !isSearchActive &&
     childFolders.length === 0 &&
     visibleDocuments.length === 0;
-  const totalDocs = documents.length;
+  const totalDocs = storageSummary.fileCount;
 
   /** Urutan file untuk prev/next di dialog pratinjau (folder / filter saat ini). */
   const previewPlaylist = useMemo(() => visibleDocuments, [visibleDocuments]);
@@ -906,6 +1221,40 @@ export function RoomDocumentsWorkspace({
             </div>
           </div>
 
+          <nav aria-label="Tampilan pustaka" className="grid grid-cols-2 gap-1 lg:grid-cols-1">
+            {([
+              ["browse", "Semua file", HardDrive],
+              ["favorites", "Favorit", Star],
+              ["recent", "Terbaru", Clock3],
+              ["trash", "Sampah", Trash2],
+            ] as const).map(([scope, label, Icon]) => (
+              <button
+                key={scope}
+                type="button"
+                onClick={() => changeLibraryScope(scope)}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                  libraryScope === scope
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <Icon className="size-4 shrink-0" />
+                <span className="flex-1">{label}</span>
+                {scope === "trash" && trashFolders.length > 0 ? (
+                  <span className="bg-muted rounded px-1.5 text-[10px] tabular-nums">
+                    {trashFolders.length}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </nav>
+          <Button type="button" size="sm" variant="outline" className="w-full justify-start" onClick={() => setActivityOpen(true)}>
+            <Clock3 className="size-4" /> Riwayat aktivitas
+          </Button>
+
+          {libraryScope === "browse" ? (
+            <>
           <div className="flex items-center justify-between gap-2">
             <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Folder
@@ -926,6 +1275,8 @@ export function RoomDocumentsWorkspace({
               Navigasi seperti Google Drive: buka folder di panel ini atau lewat
               kartu folder. File diunggah ke folder yang sedang dibuka. Saat
               mencari, hasil mencakup seluruh ruangan beserta jalur foldernya.
+              Manager dapat memindahkan folder beserta seluruh isinya dari menu
+              aksi folder.
             </p>
           ) : null}
 
@@ -936,19 +1287,27 @@ export function RoomDocumentsWorkspace({
             isRoomManager={isRoomManager}
             onNavigate={navigateToFolder}
             onRename={openRename}
+            onMove={openMoveFolder}
+            onFavorite={(folder) => void onToggleFavorite("folder", folder.id)}
+            onShare={(folder) => setShareTarget({ kind: "folder", id: folder.id, name: folder.name })}
             onDelete={(f) => void onDeleteFolder(f)}
             onDownload={(f) => void onDownloadFolder(f)}
           />
+
+            </>
+          ) : null}
 
         </aside>
 
         {/* Main — area konten sekaligus zona tarik-lepas seluruh panel */}
         <div
           onDragOver={(e) => {
+            if (!Array.from(e.dataTransfer.types).includes("Files")) return;
             e.preventDefault();
             if (!isDragging) setIsDragging(true);
           }}
           onDragEnter={(e) => {
+            if (!Array.from(e.dataTransfer.types).includes("Files")) return;
             e.preventDefault();
             if (!isDragging) setIsDragging(true);
           }}
@@ -973,12 +1332,19 @@ export function RoomDocumentsWorkspace({
 
           {/* Toolbar */}
           <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-xl border p-2">
-            <div className="flex min-w-0 items-center gap-1">
+            <div
+              className="flex min-w-0 items-center gap-1"
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes(DOCUMENT_ITEMS_DRAG_TYPE)) event.preventDefault();
+              }}
+              onDrop={(event) => void dropItemsIntoFolder(event, currentFolderId)}
+              title="Lepaskan item di breadcrumb untuk memindahkan ke lokasi ini"
+            >
               <Button
                 type="button"
                 size="icon-sm"
                 variant="ghost"
-                disabled={!canGoBackFolder}
+                disabled={!canGoBackFolder || libraryScope !== "browse"}
                 onClick={goBackToPreviousFolder}
                 aria-label={
                   previousFolderLabel
@@ -995,16 +1361,26 @@ export function RoomDocumentsWorkspace({
                 <ArrowLeft className="size-4" />
               </Button>
               <div className="bg-border hidden h-5 w-px sm:block" aria-hidden />
-              <DriveBreadcrumb
-                currentFolderId={currentFolderId}
-                folders={folders}
-                onNavigate={navigateToFolder}
-              />
+              {libraryScope === "browse" ? (
+                <DriveBreadcrumb
+                  currentFolderId={currentFolderId}
+                  folders={folders}
+                  onNavigate={navigateToFolder}
+                />
+              ) : (
+                <span className="text-sm font-medium">
+                  {libraryScope === "favorites"
+                    ? "Favorit"
+                    : libraryScope === "recent"
+                      ? "Terbaru"
+                      : "Sampah"}
+                </span>
+              )}
             </div>
             <div className="ml-auto flex flex-wrap items-center gap-2">
             {isSearchActive ? (
               <span className="text-muted-foreground text-xs tabular-nums">
-                {visibleDocuments.length} hasil · semua folder
+                {documentTotal + childFolders.length} hasil · metadata & isi file
               </span>
             ) : (
               <span className="text-muted-foreground hidden text-xs tabular-nums sm:inline">
@@ -1017,7 +1393,7 @@ export function RoomDocumentsWorkspace({
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari nama / judul / tag…"
+                placeholder="Cari folder, file, atau isi…"
                 className="placeholder:text-muted-foreground h-8 w-44 bg-transparent text-sm outline-none"
               />
               {search ? (
@@ -1077,7 +1453,11 @@ export function RoomDocumentsWorkspace({
                   >
                     <SlidersHorizontal className="size-3.5" />
                     <span className="hidden sm:inline">Tampilan</span>
-                    {tagFilter !== "__all__" || sortKey !== "newest" ? (
+                    {tagFilter !== "__all__" ||
+                    sortKey !== "newest" ||
+                    typeFilter !== "all" ||
+                    dateFilter !== "all" ||
+                    uploaderFilter ? (
                       <span
                         className="bg-primary size-1.5 rounded-full"
                         aria-hidden
@@ -1122,6 +1502,59 @@ export function RoomDocumentsWorkspace({
                     <DropdownMenuRadioItem value="uploader">
                       <User className="size-3.5" /> {SORT_LABEL.uploader}
                     </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Filter tipe</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={typeFilter}
+                    onValueChange={(value) => setTypeFilter(value as TypeFilter)}
+                  >
+                    {([
+                      ["all", "Semua tipe"],
+                      ["image", "Gambar"],
+                      ["video", "Video"],
+                      ["audio", "Audio"],
+                      ["pdf", "PDF"],
+                      ["document", "Dokumen"],
+                      ["archive", "Arsip"],
+                    ] as const).map(([value, label]) => (
+                      <DropdownMenuRadioItem key={value} value={value}>
+                        <FileIcon className="size-3.5" /> {label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Waktu unggah</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={dateFilter}
+                    onValueChange={(value) => setDateFilter(value as DateFilter)}
+                  >
+                    <DropdownMenuRadioItem value="all"><Calendar className="size-3.5" /> Semua waktu</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="today"><Calendar className="size-3.5" /> Hari ini</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="week"><Calendar className="size-3.5" /> 7 hari</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="month"><Calendar className="size-3.5" /> 30 hari</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Pengunggah</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={uploaderFilter || "__all__"}
+                    onValueChange={(value) => setUploaderFilter(value === "__all__" ? "" : value)}
+                  >
+                    <DropdownMenuRadioItem value="__all__"><User className="size-3.5" /> Semua orang</DropdownMenuRadioItem>
+                    {documentMembers.map((member) => (
+                      <DropdownMenuRadioItem key={member.id} value={member.id}>
+                        <User className="size-3.5" /> {member.name || member.email}
+                      </DropdownMenuRadioItem>
+                    ))}
                   </DropdownMenuRadioGroup>
                 </DropdownMenuGroup>
 
@@ -1193,7 +1626,7 @@ export function RoomDocumentsWorkspace({
               size="sm"
               variant="outline"
               onClick={() => setCreateFolderOpen(true)}
-              disabled={pending}
+              disabled={pending || libraryScope !== "browse"}
             >
               <FolderPlus className="size-4" />
               <span className="hidden sm:inline">Folder baru</span>
@@ -1205,7 +1638,7 @@ export function RoomDocumentsWorkspace({
                 type="button"
                 size="sm"
                 className="rounded-r-none"
-                disabled={pending || uploadBusy}
+                disabled={pending || uploadBusy || libraryScope !== "browse"}
                 onClick={() => fileInputRef.current?.click()}
               >
                 {pending || uploadBusy ? (
@@ -1292,7 +1725,7 @@ export function RoomDocumentsWorkspace({
                 aria-label="Pilih semua file di tampilan"
               />
               <span className="text-sm font-medium tabular-nums">
-                {selectedDocIds.size} dipilih
+                {selectedDocIds.size + selectedFolderIds.size} dipilih
               </span>
               <Button
                 type="button"
@@ -1313,13 +1746,13 @@ export function RoomDocumentsWorkspace({
                 size="sm"
                 variant="secondary"
                 className="h-8"
-                disabled={bulkBusy}
+                disabled={bulkBusy || selectedDocIds.size === 0 || selectedFolderIds.size > 0}
                 onClick={() => void onBulkDownload()}
               >
                 <Download className="size-3.5" />
                 Unduh
               </Button>
-              {canManageAllSelected ? (
+              {canManageAllSelected || selectedFolderIds.size > 0 ? (
                 <>
                   <BulkMoveFolderMenu
                     folders={folders}
@@ -1343,7 +1776,7 @@ export function RoomDocumentsWorkspace({
                     size="sm"
                     variant="destructive"
                     className="h-8"
-                    disabled={bulkBusy}
+                    disabled={bulkBusy || selectedFolderIds.size > 0 || selectedDocIds.size === 0}
                     onClick={() => void onBulkDelete()}
                   >
                     <Trash2 className="size-3.5" />
@@ -1366,7 +1799,63 @@ export function RoomDocumentsWorkspace({
           ) : null}
 
           {/* Folder + file */}
-          {folderEmpty ? (
+          {libraryScope === "trash" ? (
+            childFolders.length === 0 && documentRows.length === 0 ? (
+              <EmptyState
+                icon={Trash2}
+                title="Sampah kosong"
+                description="File dan folder yang dihapus akan muncul di sini sebelum dihapus permanen."
+                className="p-12"
+              />
+            ) : (
+              <div className="border-border bg-card overflow-hidden rounded-xl border">
+                <div className="border-border bg-muted/30 flex items-center justify-between border-b px-4 py-3">
+                  <div>
+                    <h2 className="text-sm font-semibold">Sampah</h2>
+                    <p className="text-muted-foreground text-xs">Pulihkan item atau hapus permanen.</p>
+                  </div>
+                </div>
+                <ul className="divide-border divide-y">
+                  {childFolders.map((folder) => (
+                    <li key={folder.id} className="flex items-center gap-3 px-4 py-3">
+                      <span className="bg-amber-500/10 text-amber-600 flex size-9 items-center justify-center rounded-lg">
+                        <Folder className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{folder.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          Folder · {folder._count.recursiveDocuments ?? folder._count.documents} file
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onRestoreTrashFolder(folder)}>
+                        <RotateCcw className="size-3.5" /> Pulihkan
+                      </Button>
+                      <Button size="icon-sm" variant="ghost" disabled={bulkBusy} aria-label="Hapus folder permanen" onClick={() => setDestructiveTarget({ mode: "purge", kind: "folder", folder })}>
+                        <Trash2 className="text-destructive size-4" />
+                      </Button>
+                    </li>
+                  ))}
+                  {documentRows.map((document) => (
+                    <li key={document.id} className="flex items-center gap-3 px-4 py-3">
+                      <span className="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-lg">
+                        <FileIcon className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{document.title || document.fileName}</p>
+                        <p className="text-muted-foreground truncate text-xs">{document.fileName} · {formatFileSize(document.size)}</p>
+                      </div>
+                      <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onRestoreTrashDocument(document)}>
+                        <RotateCcw className="size-3.5" /> Pulihkan
+                      </Button>
+                      <Button size="icon-sm" variant="ghost" disabled={bulkBusy} aria-label="Hapus file permanen" onClick={() => setDestructiveTarget({ mode: "purge", kind: "document", document })}>
+                        <Trash2 className="text-destructive size-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          ) : folderEmpty ? (
             <EmptyState
               icon={isSearchActive ? Search : FolderOpen}
               title={
@@ -1416,6 +1905,14 @@ export function RoomDocumentsWorkspace({
                         isRoomManager={isRoomManager}
                         onOpen={() => navigateToFolder(f.id)}
                         onRename={() => openRename(f)}
+                        onMove={() => openMoveFolder(f)}
+                        onFavorite={() => void onToggleFavorite("folder", f.id)}
+                        onShare={() => setShareTarget({ kind: "folder", id: f.id, name: f.name })}
+                        selected={selectedFolderIds.has(f.id)}
+                        selectionActive={selectionActive}
+                        onToggleSelect={isRoomManager || f.canEdit ? () => toggleFolderSelection(f.id) : undefined}
+                        onItemDragStart={isRoomManager || f.canEdit ? (event) => startItemDrag(event, { kind: "folder", id: f.id }) : undefined}
+                        onItemsDrop={(event) => void dropItemsIntoFolder(event, f.id)}
                         onDelete={() => void onDeleteFolder(f)}
                         onDownload={() => void onDownloadFolder(f)}
                       />
@@ -1462,7 +1959,7 @@ export function RoomDocumentsWorkspace({
                         folders={folders}
                         showFolderHint={isSearchActive}
                         compact={density !== "besar"}
-                        canManage={d.uploadedBy.id === currentUserId || isRoomManager}
+                        canManage={d.canEdit || isRoomManager}
                         selected={selectedDocIds.has(d.id)}
                         selectionActive={selectionActive}
                         onToggleSelect={() => toggleDocSelection(d.id)}
@@ -1471,6 +1968,10 @@ export function RoomDocumentsWorkspace({
                         onMove={onMoveDoc}
                         onRename={openRenameDoc}
                         onDownload={(d) => void onDownloadDocument(d)}
+                        onFavorite={(d) => void onToggleFavorite("document", d.id)}
+                        onShare={(d) => setShareTarget({ kind: "document", id: d.id, name: d.title || d.fileName })}
+                        onVersions={(d) => setVersionTarget({ id: d.id, name: d.title || d.fileName, currentVersion: d.currentVersion, canManage: d.canEdit || isRoomManager })}
+                        onItemDragStart={(event) => startItemDrag(event, { kind: "document", id: d.id })}
                         // 4 ubin pertama (1 baris di breakpoint 2xl) berada di
                         // atas fold — beri `priority` agar Next.js set
                         // `loading="eager"` + `fetchPriority="high"`.
@@ -1494,12 +1995,20 @@ export function RoomDocumentsWorkspace({
               isRoomManager={isRoomManager}
               onOpenFolder={(id) => navigateToFolder(id)}
               onRenameFolder={openRename}
+              onMoveFolder={openMoveFolder}
+              onFavoriteFolder={(folder) => void onToggleFavorite("folder", folder.id)}
+              onShareFolder={(folder) => setShareTarget({ kind: "folder", id: folder.id, name: folder.name })}
               onDeleteFolder={(f) => void onDeleteFolder(f)}
               onDownloadFolder={(f) => void onDownloadFolder(f)}
-              currentUserId={currentUserId}
               selectedDocIds={selectedDocIds}
+              selectedFolderIds={selectedFolderIds}
+              selectionActive={selectionActive}
               allDocsSelected={allDocsSelected}
               onToggleSelect={toggleDocSelection}
+              onToggleFolderSelect={toggleFolderSelection}
+              onDocumentDragStart={(event, document) => startItemDrag(event, { kind: "document", id: document.id })}
+              onFolderDragStart={(event, folder) => startItemDrag(event, { kind: "folder", id: folder.id })}
+              onFolderDrop={(event, folder) => void dropItemsIntoFolder(event, folder.id)}
               onSelectAll={selectAllVisibleDocs}
               onClearSelection={clearDocSelection}
               onPreview={onPreviewDoc}
@@ -1507,30 +2016,31 @@ export function RoomDocumentsWorkspace({
               onMove={onMoveDoc}
               onRenameDocument={openRenameDoc}
               onDownloadDocument={(d) => void onDownloadDocument(d)}
+              onFavoriteDocument={(d) => void onToggleFavorite("document", d.id)}
+              onShareDocument={(d) => setShareTarget({ kind: "document", id: d.id, name: d.title || d.fileName })}
+              onVersionsDocument={(d) => setVersionTarget({ id: d.id, name: d.title || d.fileName, currentVersion: d.currentVersion, canManage: d.canEdit || isRoomManager })}
             />
           )}
-          {(visibleDocuments.length > 0 || childFolders.length > 0) &&
-          docDisplayLimit < visibleDocuments.length ? (
+          {nextDocumentOffset != null ? (
             <div className="flex flex-col items-center gap-2 pt-3">
               <p className="text-muted-foreground text-center text-xs tabular-nums">
                 Menampilkan {pagedVisibleDocuments.length} dari{" "}
-                {visibleDocuments.length} file · ketuk untuk memuat lebih banyak
+                {documentTotal} file · ketuk untuk memuat lebih banyak
               </p>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  setDocDisplayLimit((n) =>
-                    Math.min(
-                      n + DOCS_PAGE_SIZE,
-                      visibleDocuments.length,
-                    ),
-                  )
-                }
+                disabled={libraryLoading}
+                  onClick={() =>
+                    void loadLibrary({
+                      append: true,
+                      offset: nextDocumentOffset ?? undefined,
+                    })
+                  }
               >
-                Muat {Math.min(DOCS_PAGE_SIZE, visibleDocuments.length - docDisplayLimit)}{" "}
-                lagi
+                {libraryLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+                Muat lebih banyak
               </Button>
             </div>
           ) : null}
@@ -1642,13 +2152,77 @@ export function RoomDocumentsWorkspace({
         onDownload={(d) => void onDownloadDocument(d)}
         canManageTags={
           previewDoc
-            ? previewDoc.uploadedBy.id === currentUserId || isRoomManager
+            ? previewDoc.canEdit || isRoomManager
             : false
         }
         onClose={() => setPreviewDoc(null)}
         currentUserId={currentUserId}
         isRoomManager={isRoomManager}
       />
+
+      <RoomDocumentShareDialog
+        target={shareTarget}
+        onClose={() => setShareTarget(null)}
+      />
+      <RoomDocumentActivityDialog roomId={roomId} open={activityOpen} onClose={() => setActivityOpen(false)} />
+      <RoomDocumentVersionsDialog
+        roomId={roomId}
+        target={versionTarget}
+        canManage={versionTarget?.canManage ?? false}
+        onClose={() => setVersionTarget(null)}
+        onUpdated={refreshDocuments}
+      />
+
+      <Dialog
+        open={destructiveTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !bulkBusy) setDestructiveTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {destructiveTarget?.mode === "purge"
+                ? "Hapus permanen?"
+                : "Pindahkan ke Sampah?"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="text-muted-foreground space-y-2 text-sm leading-relaxed">
+            {destructiveTarget?.mode === "purge" ? (
+              <p>Tindakan ini tidak dapat diurungkan dan file fisik akan dihapus dari penyimpanan.</p>
+            ) : (
+              <p>Item dapat dipulihkan dari Sampah. Setelah tindakan selesai, opsi Urungkan juga akan tersedia.</p>
+            )}
+            {destructiveTarget?.kind === "folder" ? (
+              <p className="text-foreground font-medium">
+                Folder “{destructiveTarget.folder.name}” beserta seluruh subfolder dan file di dalamnya.
+              </p>
+            ) : destructiveTarget?.kind === "document" ? (
+              <p className="text-foreground font-medium">
+                {destructiveTarget.document.title || destructiveTarget.document.fileName}
+              </p>
+            ) : destructiveTarget?.kind === "documents" ? (
+              <p className="text-foreground font-medium">
+                {destructiveTarget.documentIds.length} file terpilih
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" disabled={bulkBusy} onClick={() => setDestructiveTarget(null)}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={bulkBusy}
+              onClick={() => void onConfirmDestructive()}
+            >
+              {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              {destructiveTarget?.mode === "purge" ? "Hapus permanen" : "Pindahkan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create folder dialog */}
       <Dialog
@@ -1698,6 +2272,89 @@ export function RoomDocumentsWorkspace({
             >
               {pending ? <Loader2 className="size-4 animate-spin" /> : null}
               Buat folder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move folder dialog */}
+      <Dialog
+        open={moveFolderTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !moveFolderBusy) setMoveFolderTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pindahkan folder</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted/50 flex items-start gap-3 rounded-lg p-3">
+              <FolderInput className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {moveFolderTarget?.name}
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+                  Semua subfolder dan file di dalamnya akan ikut dipindahkan.
+                </p>
+                <p className="text-muted-foreground mt-1 truncate text-[11px]">
+                  Lokasi saat ini: {formatFolderPath(
+                    moveFolderTarget?.parentId ?? null,
+                    folders,
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="move-folder-destination">Folder tujuan</Label>
+              <select
+                id="move-folder-destination"
+                value={moveFolderDestination}
+                onChange={(event) =>
+                  setMoveFolderDestination(event.target.value)
+                }
+                disabled={moveFolderBusy}
+                className="border-input bg-background ring-offset-background focus-visible:ring-ring h-10 w-full min-w-0 truncate rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value={ROOT_FOLDER_VALUE}>Semua file (root)</option>
+                {folderMoveChoices.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {formatFolderPath(folder.id, folders)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-xs">
+                Folder ini dan seluruh turunannya tidak ditampilkan sebagai
+                tujuan.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setMoveFolderTarget(null)}
+              disabled={moveFolderBusy}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                moveFolderBusy ||
+                (moveFolderDestination === ROOT_FOLDER_VALUE
+                  ? moveFolderTarget?.parentId == null
+                  : moveFolderDestination === moveFolderTarget?.parentId)
+              }
+              onClick={() => void onConfirmMoveFolder()}
+            >
+              {moveFolderBusy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FolderInput className="size-4" />
+              )}
+              Pindahkan
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1979,6 +2636,10 @@ const DocCard = memo(function DocCard({
   onMove,
   onRename,
   onDownload,
+  onFavorite,
+  onShare,
+  onVersions,
+  onItemDragStart,
   compact = false,
   priority = false,
 }: {
@@ -1994,6 +2655,10 @@ const DocCard = memo(function DocCard({
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
   onRename: (d: RoomDocumentRow) => void;
   onDownload: (d: RoomDocumentRow) => void | Promise<void>;
+  onFavorite: (d: RoomDocumentRow) => void | Promise<void>;
+  onShare: (d: RoomDocumentRow) => void;
+  onVersions: (d: RoomDocumentRow) => void;
+  onItemDragStart: React.DragEventHandler<HTMLLIElement>;
   /** Kartu padat (kolom banyak): sembunyikan metadata & footer, aksi via hover. */
   compact?: boolean;
   /** Hint LCP — tile pertama yang berada di atas fold harus eager. */
@@ -2007,6 +2672,8 @@ const DocCard = memo(function DocCard({
 
   return (
     <li
+      draggable
+      onDragStart={onItemDragStart}
       className={cn(
         "doc-grid-card border-border bg-card hover:border-primary/40 hover:shadow-md relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-all",
         "sm:[&:hover_.doc-grid-card-select]:opacity-100 sm:[&:focus-within_.doc-grid-card-select]:opacity-100",
@@ -2085,64 +2752,94 @@ const DocCard = memo(function DocCard({
       {/* Aksi (unduh / pindah / hapus) — tersembunyi, muncul saat hover;
           selalu tampil di layar sentuh yang tak punya hover. */}
       <div
-        className="doc-grid-card-actions absolute top-2 right-2 z-20 flex gap-1 opacity-100 transition-opacity sm:opacity-0"
-        onClick={(e) => e.stopPropagation()}
+        className="doc-grid-card-actions absolute top-2 right-2 z-20 opacity-100 transition-opacity sm:opacity-0"
+        onClick={(event) => event.stopPropagation()}
       >
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="secondary"
-            className="size-7 shadow-sm"
-            aria-label={`Unduh ${doc.fileName}`}
-            title="Unduh"
-            onClick={() => void onDownload(doc)}
-          >
-            <Download className="size-3.5" />
-          </Button>
-          {canManage ? (
-            <>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
               <Button
                 type="button"
                 size="icon-xs"
                 variant="secondary"
-                className="size-7 shadow-sm"
-                aria-label={`Ganti nama ${doc.fileName}`}
-                title="Ganti nama"
-                onClick={() => onRename(doc)}
+                className="size-8 shadow-sm"
+                aria-label={`Buka menu aksi ${doc.fileName}`}
+                title="Aksi lainnya"
               >
-                <Pencil className="size-3.5" />
+                <EllipsisVertical className="size-4" />
               </Button>
-              <MoveFolderMenu
-                doc={doc}
-                folders={folders}
-                onMove={onMove}
-                trigger={
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="secondary"
-                    className="size-7 shadow-sm"
-                    aria-label={`Pindahkan ${doc.fileName}`}
-                    title="Pindah folder"
-                  >
-                    <FolderInput className="size-3.5" />
-                  </Button>
-                }
+            }
+          />
+          <DropdownMenuContent align="end" sideOffset={4} className="min-w-52">
+            <DropdownMenuItem onClick={() => onPreview(doc)}>
+              <Eye className="size-4" /> Pratinjau
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onVersions(doc)}>
+              <Clock3 className="size-4" /> Riwayat versi
+              <span className="text-muted-foreground ml-auto text-xs">
+                v{doc.currentVersion}
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onShare(doc)}>
+              <Share2 className="size-4" /> Bagikan
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void onFavorite(doc)}>
+              <Star
+                className={cn(
+                  "size-4",
+                  doc.isFavorite && "fill-current text-amber-500",
+                )}
               />
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="secondary"
-                className="text-destructive hover:text-destructive size-7 shadow-sm"
-                aria-label={`Hapus ${doc.fileName}`}
-                title="Hapus"
-                onClick={() => void onDelete(doc)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </>
-          ) : null}
-        </div>
+              {doc.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void onDownload(doc)}>
+              <Download className="size-4" /> Unduh
+            </DropdownMenuItem>
+            {canManage ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onRename(doc)}>
+                  <Pencil className="size-4" /> Ganti nama
+                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FolderInput className="size-4" /> Pindahkan
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-72 min-w-56 overflow-y-auto">
+                    <FolderChoiceItem
+                      icon={<Folder className="size-3.5 opacity-70" />}
+                      label="Semua file (root)"
+                      active={doc.folderId == null}
+                      onSelect={() => void onMove(doc, null)}
+                    />
+                    {folders.length > 0 ? <DropdownMenuSeparator /> : null}
+                    {flattenFoldersForPicker(folders).map((folder) => (
+                      <FolderChoiceItem
+                        key={folder.id}
+                        icon={<Folder className="size-3.5 opacity-70" />}
+                        label={
+                          folder.depth > 0
+                            ? `${"  ".repeat(folder.depth)}${folder.label}`
+                            : folder.label
+                        }
+                        active={doc.folderId === folder.id}
+                        onSelect={() => void onMove(doc, folder.id)}
+                      />
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => void onDelete(doc)}
+                >
+                  <Trash2 className="size-4" /> Pindahkan ke Sampah
+                </DropdownMenuItem>
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <div
         className={cn(
@@ -2224,6 +2921,10 @@ const DocListRow = memo(function DocListRow({
   onMove,
   onRename,
   onDownload,
+  onFavorite,
+  onShare,
+  onVersions,
+  onItemDragStart,
 }: {
   doc: RoomDocumentRow;
   folders: RoomDocumentFolderRow[];
@@ -2236,6 +2937,10 @@ const DocListRow = memo(function DocListRow({
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
   onRename: (d: RoomDocumentRow) => void;
   onDownload: (d: RoomDocumentRow) => void | Promise<void>;
+  onFavorite: (d: RoomDocumentRow) => void | Promise<void>;
+  onShare: (d: RoomDocumentRow) => void;
+  onVersions: (d: RoomDocumentRow) => void;
+  onItemDragStart: React.DragEventHandler<HTMLLIElement>;
 }) {
   const meta = fileTypeMeta(doc.mimeType);
   const Icon = meta.icon;
@@ -2244,6 +2949,8 @@ const DocListRow = memo(function DocListRow({
 
   return (
     <li
+      draggable
+      onDragStart={onItemDragStart}
       className={cn(
         "hover:bg-muted/40 flex flex-row flex-wrap items-center gap-2 px-3 py-2 transition-colors md:flex-nowrap md:gap-3",
         "[content-visibility:auto] [contain-intrinsic-block-size:72px]",
@@ -2308,6 +3015,36 @@ const DocListRow = memo(function DocListRow({
         {formatDate(doc.createdAt)}
       </span>
       <div className="ml-auto flex items-center gap-1 md:ml-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Riwayat versi ${doc.fileName}`}
+          title={`Riwayat versi (v${doc.currentVersion})`}
+          onClick={() => onVersions(doc)}
+        >
+          <Clock3 className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Bagikan ${doc.fileName}`}
+          title="Bagikan"
+          onClick={() => onShare(doc)}
+        >
+          <Share2 className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={doc.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+          title={doc.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+          onClick={() => void onFavorite(doc)}
+        >
+          <Star className={cn("size-4", doc.isFavorite && "fill-current text-amber-500")} />
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -2382,15 +3119,23 @@ function DocList({
   docs,
   folders,
   showFolderHint,
-  currentUserId,
   isRoomManager,
   onOpenFolder,
   onRenameFolder,
+  onMoveFolder,
+  onFavoriteFolder,
+  onShareFolder,
   onDeleteFolder,
   onDownloadFolder,
   selectedDocIds,
+  selectedFolderIds,
+  selectionActive,
   allDocsSelected,
   onToggleSelect,
+  onToggleFolderSelect,
+  onDocumentDragStart,
+  onFolderDragStart,
+  onFolderDrop,
   onSelectAll,
   onClearSelection,
   onPreview,
@@ -2398,20 +3143,31 @@ function DocList({
   onMove,
   onRenameDocument,
   onDownloadDocument,
+  onFavoriteDocument,
+  onShareDocument,
+  onVersionsDocument,
 }: {
   childFolders: RoomDocumentFolderRow[];
   docs: RoomDocumentRow[];
   folders: RoomDocumentFolderRow[];
   showFolderHint: boolean;
-  currentUserId: string;
   isRoomManager: boolean;
   onOpenFolder: (folderId: string) => void;
   onRenameFolder: (folder: RoomDocumentFolderRow) => void;
+  onMoveFolder: (folder: RoomDocumentFolderRow) => void;
+  onFavoriteFolder: (folder: RoomDocumentFolderRow) => void;
+  onShareFolder: (folder: RoomDocumentFolderRow) => void;
   onDeleteFolder: (folder: RoomDocumentFolderRow) => void;
   onDownloadFolder: (folder: RoomDocumentFolderRow) => void;
   selectedDocIds: Set<string>;
+  selectedFolderIds: Set<string>;
+  selectionActive: boolean;
   allDocsSelected: boolean;
   onToggleSelect: (docId: string) => void;
+  onToggleFolderSelect: (folderId: string) => void;
+  onDocumentDragStart: (event: React.DragEvent<HTMLLIElement>, document: RoomDocumentRow) => void;
+  onFolderDragStart: (event: React.DragEvent<HTMLDivElement>, folder: RoomDocumentFolderRow) => void;
+  onFolderDrop: (event: React.DragEvent<HTMLDivElement>, folder: RoomDocumentFolderRow) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
   onPreview: (d: RoomDocumentRow) => void;
@@ -2419,6 +3175,9 @@ function DocList({
   onMove: (d: RoomDocumentRow, folderId: string | null) => void | Promise<void>;
   onRenameDocument: (d: RoomDocumentRow) => void;
   onDownloadDocument: (d: RoomDocumentRow) => void | Promise<void>;
+  onFavoriteDocument: (d: RoomDocumentRow) => void | Promise<void>;
+  onShareDocument: (d: RoomDocumentRow) => void;
+  onVersionsDocument: (d: RoomDocumentRow) => void;
 }) {
   return (
     <div className="border-border bg-card overflow-hidden rounded-xl border">
@@ -2447,6 +3206,14 @@ function DocList({
             isRoomManager={isRoomManager}
             onOpen={() => onOpenFolder(f.id)}
             onRename={() => onRenameFolder(f)}
+            onMove={() => onMoveFolder(f)}
+            onFavorite={() => onFavoriteFolder(f)}
+            onShare={() => onShareFolder(f)}
+            selected={selectedFolderIds.has(f.id)}
+            selectionActive={selectionActive}
+            onToggleSelect={isRoomManager || f.canEdit ? () => onToggleFolderSelect(f.id) : undefined}
+            onItemDragStart={isRoomManager || f.canEdit ? (event) => onFolderDragStart(event, f) : undefined}
+            onItemsDrop={(event) => onFolderDrop(event, f)}
             onDelete={() => onDeleteFolder(f)}
             onDownload={() => onDownloadFolder(f)}
           />
@@ -2457,7 +3224,7 @@ function DocList({
             doc={d}
             folders={folders}
             showFolderHint={showFolderHint}
-            canManage={d.uploadedBy.id === currentUserId || isRoomManager}
+            canManage={d.canEdit || isRoomManager}
             selected={selectedDocIds.has(d.id)}
             onToggleSelect={() => onToggleSelect(d.id)}
             onPreview={onPreview}
@@ -2465,6 +3232,10 @@ function DocList({
             onMove={onMove}
             onRename={onRenameDocument}
             onDownload={onDownloadDocument}
+            onFavorite={onFavoriteDocument}
+            onShare={onShareDocument}
+            onVersions={onVersionsDocument}
+            onItemDragStart={(event) => onDocumentDragStart(event, d)}
           />
         ))}
       </ul>

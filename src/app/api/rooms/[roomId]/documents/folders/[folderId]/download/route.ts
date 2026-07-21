@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: Ctx) {
     await assertRoomMember(roomId, session.user.id);
 
     const folder = await prisma.roomDocumentFolder.findFirst({
-      where: { id: folderId, roomId },
+      where: { id: folderId, roomId, trashedAt: null },
       select: { id: true, name: true },
     });
     if (!folder) {
@@ -29,11 +29,11 @@ export async function GET(_req: Request, { params }: Ctx) {
 
     const [folders, documents] = await Promise.all([
       prisma.roomDocumentFolder.findMany({
-        where: { roomId },
+        where: { roomId, trashedAt: null },
         select: { id: true, name: true, parentId: true, sortOrder: true },
       }),
       prisma.roomDocument.findMany({
-        where: { roomId },
+        where: { roomId, trashedAt: null, OR: [{ folderId: null }, { folder: { trashedAt: null } }] },
         select: { id: true, folderId: true, fileName: true, publicPath: true },
       }),
     ]);

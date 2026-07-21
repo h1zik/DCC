@@ -114,6 +114,7 @@ export default async function MyTasksPage() {
         konten: true,
         jenisKonten: true,
         tanggalPosting: true,
+        jamPosting: true,
         statusCopywriting: true,
         statusDesign: true,
         room: {
@@ -278,7 +279,7 @@ export default async function MyTasksPage() {
                     <span className="bg-border h-px flex-1" aria-hidden />
                     <span className="text-muted-foreground text-[10px]">
                       {item.tanggalPosting
-                        ? formatShortDate(item.tanggalPosting)
+                        ? `${formatShortDate(item.tanggalPosting)}${item.jamPosting ? ` • ${item.jamPosting}` : ""}`
                         : "TBD"}
                     </span>
                   </div>

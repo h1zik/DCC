@@ -13,6 +13,11 @@ import {
 import { toast } from "sonner";
 import { createKanbanTasksFromContentPlanDesign } from "@/actions/content-plan-to-kanban";
 import {
+  applyContentPlanPostingTimes,
+  suggestContentPlanPostingTimes,
+} from "@/actions/content-plan-posting-times";
+import type { PostingTimeSuggestion } from "@/lib/content-plan-posting-suggest";
+import {
   clearContentPlanCopywritingFile,
   clearContentPlanDesignFiles,
   deleteRoomContentPlanItem,
@@ -67,6 +72,7 @@ import {
   CalendarDays,
   Camera,
   ChevronDown,
+  Clock,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -143,24 +149,6 @@ function isInlineSelectUserPick(details?: InlineSelectChangeDetails): boolean {
   return details?.reason === "item-press" && !details?.isCanceled;
 }
 
-function contentPlanRowSignature(r: ContentPlanTableRow): string {
-  const picIds = r.picUserIds?.length
-    ? r.picUserIds
-    : r.picUserId
-      ? [r.picUserId]
-      : [];
-  return [
-    r.id,
-    r.usage,
-    r.jenisKonten,
-    r.konten,
-    r.statusCopywriting,
-    r.statusDesign,
-    picIds.join(","),
-    (r.pics ?? []).map((p) => p.id).join(","),
-  ].join("|");
-}
-
 /** Select inline di tabel: tanpa kotak border agar mirip spreadsheet. */
 const INLINE_SELECT_TRIGGER =
   "h-auto min-h-8 w-full max-w-full min-w-0 justify-start whitespace-normal border-0 bg-transparent shadow-none px-0.5 hover:bg-muted/40 dark:bg-transparent dark:hover:bg-muted/40 focus-visible:border-transparent focus-visible:ring-0 aria-invalid:ring-0";
@@ -206,6 +194,7 @@ export type ContentPlanTableRow = {
   deadlineCopywriting: Date | string | null;
   deadlineDesign: Date | string | null;
   tanggalPosting: Date | string | null;
+  jamPosting: string | null;
   catatan: string | null;
   pic: Pick<User, "id" | "name" | "email" | "image"> | null;
   pics?: Pick<User, "id" | "name" | "email" | "image">[];
@@ -214,10 +203,36 @@ export type ContentPlanTableRow = {
 
 type PicOption = Pick<User, "id" | "name" | "email" | "image">;
 
+/** Pakai komponen tanggal lokal agar konsisten dengan formatDateShort (bukan UTC). */
 function toDateInput(v: Date | string | null | undefined): string {
   if (!v) return "";
   const d = typeof v === "string" ? new Date(v) : v;
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return "";
+  const yyyy = String(d.getFullYear()).padStart(4, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Kunci hari lokal (YYYY-MM-DD) untuk mengelompokkan tanggal posting. */
+function cpPostingDayKey(v: Date | string | null | undefined): string | null {
+  const s = toDateInput(v);
+  return s || null;
+}
+
+/** Label dd/mm/yy dari kunci hari "YYYY-MM-DD" (tanpa lewat Date agar bebas timezone). */
+function formatDayKeyLabel(key: string): string {
+  const [y, m, d] = key.split("-");
+  if (!y || !m || !d) return key;
+  return `${d}/${m}/${y.slice(-2)}`;
+}
+
+/** Menit sejak 00:00 dari string "HH:mm" (untuk sorting dalam satu hari). */
+function jamPostingMinutes(jam: string | null | undefined): number {
+  if (!jam) return 0;
+  const m = /^(\d{2}):(\d{2})$/.exec(jam);
+  if (!m) return 0;
+  return Number(m[1]) * 60 + Number(m[2]);
 }
 
 function formatDateShort(v: Date | string | null | undefined): string {
@@ -1113,9 +1128,16 @@ export function ContentPlanningClient({
   const [deadlineCopywriting, setDeadlineCopywriting] = useState("");
   const [deadlineDesign, setDeadlineDesign] = useState("");
   const [tanggalPosting, setTanggalPosting] = useState("");
+  const [jamPosting, setJamPosting] = useState("");
   const [catatan, setCatatan] = useState("");
   const [pending, setPending] = useState(false);
   const [kanbanPending, startKanban] = useTransition();
+  const [aiSuggestPending, startAiSuggest] = useTransition();
+  const [aiApplyPending, startAiApply] = useTransition();
+  const [aiSuggestions, setAiSuggestions] = useState<PostingTimeSuggestion[] | null>(
+    null,
+  );
+  const [aiSelectedIds, setAiSelectedIds] = useState<Set<string>>(new Set());
 
   const picUserById = useMemo(() => {
     return new Map(picUserOptions.map((u) => [u.id, u]));
@@ -1243,6 +1265,37 @@ export function ContentPlanningClient({
     return { total, published, inProgress, fresh };
   }, [tableRows]);
 
+  /** Info per hari posting: jumlah konten + apakah pembagian jamnya masih bermasalah. */
+  const postingDayInfo = useMemo(() => {
+    const map = new Map<string, { count: number; missingJam: number; dupJam: boolean }>();
+    for (const row of tableRows) {
+      const key = cpPostingDayKey(row.tanggalPosting);
+      if (!key) continue;
+      const info = map.get(key) ?? { count: 0, missingJam: 0, dupJam: false };
+      info.count += 1;
+      if (!row.jamPosting) info.missingJam += 1;
+      map.set(key, info);
+    }
+    const seenJam = new Map<string, Set<string>>();
+    for (const row of tableRows) {
+      const key = cpPostingDayKey(row.tanggalPosting);
+      if (!key || !row.jamPosting) continue;
+      const set = seenJam.get(key) ?? new Set<string>();
+      if (set.has(row.jamPosting)) {
+        const info = map.get(key);
+        if (info) info.dupJam = true;
+      }
+      set.add(row.jamPosting);
+      seenJam.set(key, set);
+    }
+    return map;
+  }, [tableRows]);
+
+  const hasScheduledPosting = useMemo(
+    () => tableRows.some((r) => cpDateSortValue(r.tanggalPosting) !== null),
+    [tableRows],
+  );
+
   useEffect(() => {
     setTableRows(serverRows);
   }, [serverRows]);
@@ -1322,6 +1375,7 @@ export function ContentPlanningClient({
     setDeadlineCopywriting("");
     setDeadlineDesign("");
     setTanggalPosting("");
+    setJamPosting("");
     setCatatan("");
     setQueuedDesignFiles([]);
     if (copyFileRef.current) copyFileRef.current.value = "";
@@ -1347,6 +1401,7 @@ export function ContentPlanningClient({
     setDeadlineCopywriting(toDateInput(row.deadlineCopywriting));
     setDeadlineDesign(toDateInput(row.deadlineDesign));
     setTanggalPosting(toDateInput(row.tanggalPosting));
+    setJamPosting(row.jamPosting ?? "");
     setCatatan(row.catatan ?? "");
     if (copyFileRef.current) copyFileRef.current.value = "";
     if (designFileRef.current) designFileRef.current.value = "";
@@ -1369,6 +1424,21 @@ export function ContentPlanningClient({
 
   async function onSave() {
     if (!konten.trim()) return;
+    if (
+      editing &&
+      editing.jenisKonten === ContentPlanJenis.CAROUSEL &&
+      jenisKonten !== ContentPlanJenis.CAROUSEL &&
+      editing.designFilePaths.length > 1
+    ) {
+      const extra = editing.designFilePaths.length - 1;
+      if (
+        !confirm(
+          `Mengubah jenis dari Carousel akan menghapus ${extra} slide design secara permanen (hanya slide pertama disimpan). Lanjutkan?`,
+        )
+      ) {
+        return;
+      }
+    }
     setPending(true);
     try {
       const dc = deadlineCopywriting.trim()
@@ -1392,6 +1462,7 @@ export function ContentPlanningClient({
         deadlineCopywriting: dc,
         deadlineDesign: dd,
         tanggalPosting: tp,
+        jamPosting: jamPosting.trim() || null,
         catatan: catatan.trim() || null,
       });
 
@@ -1445,6 +1516,7 @@ export function ContentPlanningClient({
         : null,
       deadlineDesign: row.deadlineDesign ? new Date(row.deadlineDesign) : null,
       tanggalPosting: row.tanggalPosting ? new Date(row.tanggalPosting) : null,
+      jamPosting: row.jamPosting ?? null,
       catatan: row.catatan ?? null,
     };
   }, [roomId]);
@@ -1480,6 +1552,59 @@ export function ContentPlanningClient({
     },
     [buildUpsertPayload, withResolvedPics],
   );
+
+  const onAiSuggest = useCallback(() => {
+    startAiSuggest(async () => {
+      try {
+        const res = await suggestContentPlanPostingTimes(roomId);
+        if (res.suggestions.length === 0) {
+          toast.info(
+            res.scheduledCount === 0
+              ? "Belum ada konten dengan tanggal posting hari ini atau ke depan."
+              : "AI tidak menghasilkan saran jam yang valid — coba lagi.",
+          );
+          return;
+        }
+        setAiSuggestions(res.suggestions);
+        setAiSelectedIds(new Set(res.suggestions.map((s) => s.itemId)));
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal meminta saran jam dari AI."));
+      }
+    });
+  }, [roomId]);
+
+  const onAiApply = useCallback(() => {
+    if (!aiSuggestions) return;
+    const entries = aiSuggestions
+      .filter((s) => aiSelectedIds.has(s.itemId))
+      .map((s) => ({ itemId: s.itemId, jam: s.jam }));
+    if (entries.length === 0) return;
+    startAiApply(async () => {
+      try {
+        const { updated } = await applyContentPlanPostingTimes({ roomId, entries });
+        toast.success(`Jam posting diterapkan ke ${updated} konten.`);
+        setAiSuggestions(null);
+        setAiSelectedIds(new Set());
+        router.refresh();
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal menerapkan jam posting."));
+      }
+    });
+  }, [aiSuggestions, aiSelectedIds, roomId, router]);
+
+  /** Saran AI dikelompokkan per tanggal (WIB) untuk ditampilkan di dialog. */
+  const aiGroups = useMemo(() => {
+    if (!aiSuggestions) return [];
+    const map = new Map<string, PostingTimeSuggestion[]>();
+    for (const s of aiSuggestions) {
+      const list = map.get(s.dateKey) ?? [];
+      list.push(s);
+      map.set(s.dateKey, list);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [aiSuggestions]);
+
+  const aiSelectedCount = aiSelectedIds.size;
 
   const columns = useMemo<ColumnDef<ContentPlanTableRow>[]>(
     () => [
@@ -1575,6 +1700,20 @@ export function ContentPlanningClient({
                 onValueChange={(v, details) => {
                   if (!isInlineSelectUserPick(details)) return;
                   if (!v || v === row.original.jenisKonten) return;
+                  if (
+                    row.original.jenisKonten === ContentPlanJenis.CAROUSEL &&
+                    v !== ContentPlanJenis.CAROUSEL &&
+                    row.original.designFilePaths.length > 1
+                  ) {
+                    const extra = row.original.designFilePaths.length - 1;
+                    if (
+                      !confirm(
+                        `Mengubah jenis dari Carousel akan menghapus ${extra} slide design secara permanen (hanya slide pertama disimpan). Lanjutkan?`,
+                      )
+                    ) {
+                      return;
+                    }
+                  }
                   void saveInlineRow(
                     row.original.id,
                     { jenisKonten: v as ContentPlanJenis },
@@ -1880,16 +2019,51 @@ export function ContentPlanningClient({
       },
       {
         id: "post",
-        accessorFn: (row) => cpDateSortValue(row.tanggalPosting),
+        accessorFn: (row) => {
+          const base = cpDateSortValue(row.tanggalPosting);
+          if (base === null) return null;
+          return base + jamPostingMinutes(row.jamPosting) * 60_000;
+        },
         sortUndefined: "last",
         header: ({ column }) => (
           <CpColumnHeader column={column}>
-            <span title="Tanggal postingan">Posting</span>
+            <span title="Tanggal & jam postingan">Posting</span>
           </CpColumnHeader>
         ),
-        cell: ({ row }) => (
-          <span className="text-muted-foreground text-xs">{formatDateShort(row.original.tanggalPosting)}</span>
-        ),
+        cell: ({ row }) => {
+          const dayKey = cpPostingDayKey(row.original.tanggalPosting);
+          const info = dayKey ? postingDayInfo.get(dayKey) : undefined;
+          const crowded = (info?.count ?? 0) > 1;
+          const problem = crowded && ((info?.missingJam ?? 0) > 0 || info?.dupJam);
+          return (
+            <div className="flex min-w-0 flex-col gap-0.5 text-xs">
+              <span className="text-muted-foreground whitespace-nowrap">
+                {formatDateShort(row.original.tanggalPosting)}
+                {row.original.jamPosting ? (
+                  <span className="text-foreground/80"> • {row.original.jamPosting}</span>
+                ) : null}
+              </span>
+              {crowded ? (
+                <span
+                  className={cn(
+                    "inline-flex w-fit items-center gap-0.5 rounded-full border px-1.5 py-px text-[9px] font-semibold tabular-nums",
+                    problem
+                      ? "border-amber-500/40 bg-amber-500/12 text-amber-700 dark:text-amber-300"
+                      : "border-border bg-muted/40 text-muted-foreground",
+                  )}
+                  title={
+                    problem
+                      ? `${info!.count} konten di hari yang sama — ada jam yang kosong/bentrok, atur jam agar pembagiannya efektif.`
+                      : `${info!.count} konten di hari yang sama — jam sudah terbagi.`
+                  }
+                >
+                  <Clock className="size-2.5" aria-hidden />
+                  {info!.count}×
+                </span>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         id: "catatan",
@@ -1954,6 +2128,7 @@ export function ContentPlanningClient({
       kanbanSet,
       onDelete,
       openEdit,
+      postingDayInfo,
       roomId,
       saveInlineRow,
       statusKerjaSelectItems,
@@ -2041,6 +2216,21 @@ export function ContentPlanningClient({
           </span>
         ) : null}
         <span className="ml-auto" />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={aiSuggestPending || !hasScheduledPosting}
+          title={
+            hasScheduledPosting
+              ? "Minta AI menyarankan jam posting efektif (WIB) untuk konten terjadwal — terutama hari dengan lebih dari satu postingan."
+              : "Isi tanggal posting minimal satu baris dulu untuk meminta saran jam."
+          }
+          onClick={onAiSuggest}
+        >
+          <Sparkles className="size-4" />
+          {aiSuggestPending ? "Menganalisis…" : "Saran Jam AI"}
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -2375,7 +2565,11 @@ export function ContentPlanningClient({
                         ref={designFileRef}
                         type="file"
                         multiple={isCarousel}
-                        accept="image/*,.pdf,.doc,.docx,application/pdf"
+                        accept={
+                          isCarousel
+                            ? "image/*,.pdf,.doc,.docx,application/pdf"
+                            : "image/*,video/*,.pdf,.doc,.docx,application/pdf"
+                        }
                         className="text-muted-foreground cursor-pointer text-xs file:mr-3 file:rounded-md file:border-0 file:bg-accent/30 file:px-2 file:py-1 file:text-xs file:font-medium"
                         onChange={(e) => {
                           const picked = Array.from(e.target.files ?? []);
@@ -2511,7 +2705,7 @@ export function ContentPlanningClient({
                       onChange={(e) => setDeadlineDesign(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-2 sm:col-span-2">
+                  <div className="space-y-2">
                     <Label htmlFor="cp-post">Tanggal postingan</Label>
                     <Input
                       id="cp-post"
@@ -2519,6 +2713,21 @@ export function ContentPlanningClient({
                       value={tanggalPosting}
                       onChange={(e) => setTanggalPosting(e.target.value)}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cp-post-jam" className="inline-flex items-center gap-1.5">
+                      <Clock className="size-3.5 opacity-70" />
+                      Jam posting (WIB)
+                    </Label>
+                    <Input
+                      id="cp-post-jam"
+                      type="time"
+                      value={jamPosting}
+                      onChange={(e) => setJamPosting(e.target.value)}
+                    />
+                    <p className="text-muted-foreground text-[11px]">
+                      Opsional — penting bila ada beberapa konten di hari yang sama.
+                    </p>
                   </div>
                 </div>
               </Card>
@@ -2768,7 +2977,10 @@ export function ContentPlanningClient({
                     </div>
                     <div>
                       <p className="text-muted-foreground">Posting</p>
-                      <p>{formatDateShort(row.tanggalPosting)}</p>
+                      <p>
+                        {formatDateShort(row.tanggalPosting)}
+                        {row.jamPosting ? ` • ${row.jamPosting}` : ""}
+                      </p>
                     </div>
                   </div>
 
@@ -2857,6 +3069,106 @@ export function ContentPlanningClient({
             index={previewIndex}
             onIndexChange={setPreviewIndex}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={aiSuggestions !== null}
+        onOpenChange={(openState) => {
+          if (!openState) {
+            setAiSuggestions(null);
+            setAiSelectedIds(new Set());
+          }
+        }}
+      >
+        <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-3">
+          <DialogHeader className="pb-0">
+            <DialogTitle className="inline-flex items-center gap-2">
+              <Sparkles className="text-accent-foreground size-4" />
+              Saran Jam Posting (AI)
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-muted-foreground text-xs">
+            Jam dalam WIB. Konten di hari yang sama disebar agar tidak saling memakan
+            reach. Hilangkan centang pada saran yang tidak ingin diterapkan.
+          </p>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            {aiGroups.map(([dateKey, group]) => (
+              <div key={dateKey} className="space-y-1.5">
+                <p className="text-muted-foreground inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.04em] uppercase">
+                  <CalendarDays className="size-3.5" aria-hidden />
+                  {formatDayKeyLabel(dateKey)}
+                  <span className="tabular-nums">({group.length} konten)</span>
+                </p>
+                <div className="space-y-1.5">
+                  {group.map((s) => {
+                    const checked = aiSelectedIds.has(s.itemId);
+                    return (
+                      <label
+                        key={s.itemId}
+                        className="border-border hover:bg-muted/40 flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          className="mt-0.5"
+                          onCheckedChange={(v) => {
+                            setAiSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (v) next.add(s.itemId);
+                              else next.delete(s.itemId);
+                              return next;
+                            });
+                          }}
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="min-w-0 break-words text-sm font-medium leading-snug">
+                              {s.konten || "(Tanpa judul)"}
+                            </span>
+                            <JenisBadge jenis={s.jenisKonten} />
+                          </div>
+                          <p className="text-xs tabular-nums">
+                            <span className="text-muted-foreground">
+                              {s.currentJam ?? "belum ada jam"}
+                            </span>{" "}
+                            <span aria-hidden>→</span>{" "}
+                            <span className="font-semibold">{s.jam} WIB</span>
+                          </p>
+                          <p className="text-muted-foreground text-xs leading-snug">
+                            {s.alasan}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+            <span className="text-muted-foreground mr-auto text-xs tabular-nums">
+              {aiSelectedCount} dari {aiSuggestions?.length ?? 0} dipilih
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setAiSuggestions(null);
+                setAiSelectedIds(new Set());
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              disabled={aiApplyPending || aiSelectedCount === 0}
+              onClick={onAiApply}
+            >
+              {aiApplyPending
+                ? "Menerapkan…"
+                : `Terapkan${aiSelectedCount ? ` (${aiSelectedCount})` : ""}`}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
