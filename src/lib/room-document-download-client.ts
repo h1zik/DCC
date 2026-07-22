@@ -50,16 +50,19 @@ export async function downloadRoomFolderZip(
   triggerBlobDownload(blob, name);
 }
 
-/** Unduh banyak file terpilih (zip bila >1). */
-export async function downloadRoomDocumentsZip(
+/** Unduh banyak item terpilih — file dan/atau folder (zip bila >1 file). */
+export async function downloadRoomItemsZip(
   roomId: string,
-  documentIds: string[],
+  items: { documentIds?: string[]; folderIds?: string[] },
 ): Promise<void> {
   const res = await fetch(roomDocumentsBulkDownloadApiPath(roomId), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ documentIds }),
+    body: JSON.stringify({
+      documentIds: items.documentIds ?? [],
+      folderIds: items.folderIds ?? [],
+    }),
   });
   if (!res.ok) {
     const text = await res.text();

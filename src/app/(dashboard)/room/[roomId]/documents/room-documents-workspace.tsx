@@ -72,7 +72,7 @@ import {
 } from "@/lib/room-document-upload-xhr";
 import { normalizeRoomDocumentTags } from "@/lib/room-document-tags";
 import {
-  downloadRoomDocumentsZip,
+  downloadRoomItemsZip,
   downloadRoomFolderZip,
   downloadSingleRoomDocument,
 } from "@/lib/room-document-download-client";
@@ -1023,26 +1023,32 @@ export function RoomDocumentsWorkspace({
   );
 
   const onBulkDownload = useCallback(async () => {
-    const ids = Array.from(selectedDocIds);
-    if (!ids.length) return;
+    const docIds = Array.from(selectedDocIds);
+    const folderIds = Array.from(selectedFolderIds);
+    const total = docIds.length + folderIds.length;
+    if (!total) return;
     setBulkBusy(true);
     try {
-      if (ids.length === 1) {
-        const doc = documentRows.find((d) => d.id === ids[0]);
+      // Kasus paling umum: satu file saja → unduh langsung dengan nama aslinya.
+      if (docIds.length === 1 && folderIds.length === 0) {
+        const doc = documentRows.find((d) => d.id === docIds[0]);
         if (doc) await downloadSingleRoomDocument(roomId, doc.id, doc.fileName);
         else throw new Error("File tidak ditemukan.");
+        toast.success("File diunduh.");
       } else {
-        await downloadRoomDocumentsZip(roomId, ids);
+        // File dan/atau folder digabung jadi satu ZIP oleh server.
+        await downloadRoomItemsZip(roomId, {
+          documentIds: docIds,
+          folderIds,
+        });
+        toast.success(`${total} item diunduh (ZIP).`);
       }
-      toast.success(
-        ids.length === 1 ? "File diunduh." : `${ids.length} file diunduh (ZIP).`,
-      );
     } catch (err) {
       toast.error(actionErrorMessage(err, "Gagal mengunduh."));
     } finally {
       setBulkBusy(false);
     }
-  }, [documentRows, roomId, selectedDocIds]);
+  }, [documentRows, roomId, selectedDocIds, selectedFolderIds]);
 
   const onBulkDelete = useCallback(() => {
     const ids = Array.from(selectedDocIds);
@@ -1244,6 +1250,9 @@ export function RoomDocumentsWorkspace({
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    // Seret item internal (pindah folder) tak boleh diperlakukan sebagai unggah,
+    // meski browser ikut menyelipkan "Files" ke dataTransfer.
+    if (e.dataTransfer.types.includes(DOCUMENT_ITEMS_DRAG_TYPE)) return;
     e.preventDefault();
     setIsDragging(false);
     if (pending || uploadBusy || libraryScope !== "browse") return;
@@ -1375,12 +1384,17 @@ export function RoomDocumentsWorkspace({
         {/* Main — area konten sekaligus zona tarik-lepas seluruh panel */}
         <div
           onDragOver={(e) => {
-            if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+            const types = Array.from(e.dataTransfer.types);
+            // Abaikan seret item internal — itu pindah folder, bukan unggah.
+            if (types.includes(DOCUMENT_ITEMS_DRAG_TYPE)) return;
+            if (!types.includes("Files")) return;
             e.preventDefault();
             if (!isDragging) setIsDragging(true);
           }}
           onDragEnter={(e) => {
-            if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+            const types = Array.from(e.dataTransfer.types);
+            if (types.includes(DOCUMENT_ITEMS_DRAG_TYPE)) return;
+            if (!types.includes("Files")) return;
             e.preventDefault();
             if (!isDragging) setIsDragging(true);
           }}
@@ -1819,7 +1833,7 @@ export function RoomDocumentsWorkspace({
                 size="sm"
                 variant="secondary"
                 className="h-8"
-                disabled={bulkBusy || selectedDocIds.size === 0 || selectedFolderIds.size > 0}
+                disabled={bulkBusy || (selectedDocIds.size === 0 && selectedFolderIds.size === 0)}
                 onClick={() => void onBulkDownload()}
               >
                 <Download className="size-3.5" />
@@ -2634,6 +2648,10 @@ function VideoTilePlaceholder({
           fill
           unoptimized
           priority={priority}
+          // Cegah drag gambar bawaan browser: tanpa ini, menyeret thumbnail
+          // memicu drag "file" native (types berisi "Files") sehingga panel
+          // dikira unggah — seret harus selalu berasal dari <li> (pindah item).
+          draggable={false}
           className="object-cover"
           sizes={sizes ?? "(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"}
         />
@@ -2794,6 +2812,9 @@ const DocCard = memo(function DocCard({
             fill
             unoptimized
             priority={priority}
+            // Lihat catatan di VideoTilePlaceholder: thumbnail tak boleh jadi
+            // sumber drag native, agar seret selalu = pindah item, bukan unggah.
+            draggable={false}
             className="doc-grid-card-thumb object-cover transition-transform [.doc-grid-card:hover_&]:scale-[1.02]"
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
           />
@@ -3057,6 +3078,8 @@ const DocListRow = memo(function DocListRow({
               alt=""
               fill
               unoptimized
+              // Lihat catatan di VideoTilePlaceholder: cegah drag gambar native.
+              draggable={false}
               className="object-cover"
               sizes="36px"
             />
