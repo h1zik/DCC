@@ -31,7 +31,7 @@ export async function saveDirectChatAttachmentFile(params: {
     throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = params.file.type || "application/octet-stream";
-  if (!isDirectChatAllowedMime(mime)) {
+  if (!isDirectChatAllowedMime(mime, params.file.name)) {
     throw new Error(
       "Tipe file tidak diizinkan (gambar, PDF, dokumen Office, zip, video/audio, teks).",
     );
