@@ -1,6 +1,7 @@
 "use client";
 
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { CREATIVE_ACCEPT_EXTENSIONS } from "@/lib/creative-file-formats";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
@@ -1103,7 +1104,7 @@ export function DirectChatExperience({
                   type="file"
                   multiple
                   className="sr-only"
-                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv"
+                  accept={`image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv,${CREATIVE_ACCEPT_EXTENSIONS}`}
                   disabled={pending || Boolean(editingMessage)}
                   onChange={(e) => {
                     const input = e.target;

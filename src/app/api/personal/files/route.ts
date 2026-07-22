@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     });
   }
   const mimeType = file.type || "application/octet-stream";
-  if (!isAllowedRoomDocumentMime(mimeType)) {
+  if (!isAllowedRoomDocumentMime(mimeType, file.name)) {
     return new NextResponse("Tipe file tidak diizinkan.", { status: 415 });
   }
 

@@ -20,6 +20,7 @@ import {
 } from "@/lib/room-access";
 import { saveRoomDocumentToStorageAndDb } from "@/lib/room-document-upload";
 import { resolveUploadFolderId } from "@/actions/room-documents";
+import { isCreativeFile } from "@/lib/creative-file-formats";
 
 const ALLOWED_PREFIXES = [
   "image/",
@@ -38,10 +39,11 @@ const ALLOWED_PREFIXES = [
   "audio/",
 ];
 
-function isAllowedMime(mime: string): boolean {
+function isAllowedMime(mime: string, fileName?: string): boolean {
   const m = (mime || "application/octet-stream").toLowerCase();
   if (m === "application/octet-stream") return true;
   if (m.startsWith("text/")) return true;
+  if (isCreativeFile(m, fileName)) return true;
   return ALLOWED_PREFIXES.some((p) => m.startsWith(p));
 }
 
@@ -133,7 +135,7 @@ export async function uploadTaskAttachment(taskId: string, formData: FormData) {
     throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = file.type || "application/octet-stream";
-  if (!isAllowedMime(mime)) {
+  if (!isAllowedMime(mime, file.name)) {
     throw new Error("Tipe file tidak diizinkan (gambar, PDF, dokumen Office, zip, teks).");
   }
 

@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-22-upload-creative-file-formats",
+    date: "2026-07-22",
+    title: "Unggah: dukung file desain (AI, PSD, Premiere, After Effects, Blender, dll.)",
+    category: "improved",
+    description:
+      "Sesuai masukan tim kreatif, unggahan kini menerima berkas sumber desain — Adobe Illustrator (.ai), Photoshop (.psd/.psb), Premiere Pro (.prproj), After Effects (.aep), Blender (.blend), serta banyak format 3D, video, audio, dan alat desain lain. Sebelumnya sebagian format ini bisa ditolak “Tipe file tidak diizinkan” tergantung komputer, dan di kolom chat malah tak bisa dipilih di jendela file. Berlaku di Documents, File Pribadi, lampiran tugas, dan chat.",
+    highlights: [
+      "Adobe: .ai, .eps, .psd, .psb, .indd, .idml, .xd, .prproj, .aep, .aepx",
+      "3D & motion: .blend, .c4d, .fbx, .obj, .ma/.mb, .max, .stl, .glb/.gltf",
+      "Alat desain lain: Figma, Sketch, Affinity, CorelDRAW, Procreate, Krita, GIMP",
+      "Format dikenali dari ekstensi file sehingga tak lagi tergantung tebakan tipe oleh browser",
+    ],
+  },
+  {
     id: "2026-07-22-documents-bulk-download-folders",
     date: "2026-07-22",
     title: "Documents: tombol Unduh kini aktif saat memilih folder",
