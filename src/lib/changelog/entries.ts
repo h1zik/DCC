@@ -37,6 +37,30 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-22-documents-bulk-download-folders",
+    date: "2026-07-22",
+    title: "Documents: tombol Unduh kini aktif saat memilih folder",
+    category: "fixed",
+    description:
+      "Saat memilih satu atau beberapa folder (atau campuran folder dan file), tombol Unduh di bar aksi mati dan tak bisa ditekan — unduhan massal dulu hanya mendukung file. Sekarang folder, file, maupun campuran keduanya bisa diunduh sekaligus sebagai satu berkas ZIP; isi tiap folder tersusun rapi di bawah nama foldernya.",
+    highlights: [
+      "Pilih beberapa folder lalu Unduh kini menghasilkan satu ZIP berisi semua folder beserta isinya",
+      "Bisa mencampur folder dan file dalam satu kali unduh",
+    ],
+  },
+  {
+    id: "2026-07-22-documents-drag-move-not-upload",
+    date: "2026-07-22",
+    title: "Documents: menyeret file untuk memindahkan tidak lagi dikira unggah",
+    category: "fixed",
+    description:
+      "Saat menyeret file di dalam folder untuk memindahkannya ke folder lain, aplikasi kadang salah mengira Anda sedang mengunggah dari komputer — panel “Lepas untuk mengunggah” muncul dan saat dilepas file malah terunggah ulang. Penyebabnya: menyeret dari thumbnail gambar memicu seret gambar bawaan browser. Sekarang seret selalu diperlakukan sebagai pemindahan item.",
+    highlights: [
+      "Menyeret file lewat gambar pratinjaunya kini memindahkan, bukan mengunggah ulang",
+      "Panel unggah hanya muncul untuk file yang benar-benar diseret dari komputer",
+    ],
+  },
+  {
     id: "2026-07-21-documents-drag-drop-visual-fix",
     date: "2026-07-21",
     title: "Documents: tampilan seret-lepas file/folder tidak lagi berantakan",
