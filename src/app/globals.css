@@ -811,3 +811,26 @@
   --lk-border-color: var(--border);
   --lk-border-radius: var(--radius);
 }
+
+/* Layout fix: .lk-focus-layout bawaan LiveKit tidak punya height:100% dan baris
+   grid-nya auto-size, sehingga kolom carousel melar mengikuti jumlah tile
+   (overflow terpotong, tidak pernah scroll) dan tile fokus ikut kepotong. */
+.voice-stage .lk-focus-layout {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+}
+.voice-stage .lk-carousel {
+  min-height: 0;
+  min-width: 0;
+}
+.voice-stage .lk-carousel .lk-participant-tile {
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  /* LiveKit mobile: fokus di atas, carousel di bawah. Selector kita (2 kelas)
+     mengalahkan rule media query LiveKit (1 kelas), jadi baris mobile harus
+     dideklarasi ulang di sini. */
+  .voice-stage .lk-focus-layout {
+    grid-template-rows: 5fr minmax(0, 1fr);
+  }
+}
