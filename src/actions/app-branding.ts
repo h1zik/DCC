@@ -3,18 +3,21 @@
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import {
   requireAdministrator,
   requireCeoOrAdministrator,
 } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import {
+  BRANDING_CACHE_TAG,
+  BRANDING_ID,
+  ensureAppBrandingRow,
+} from "@/lib/app-branding";
+import {
   absolutePathFromStoredPublicPath,
   getUploadPublicDir,
 } from "@/lib/upload-storage";
-
-const BRANDING_ID = "default";
 
 async function removeIfOwned(publicPath: string | null) {
   if (!publicPath || !publicPath.startsWith("/uploads/branding/")) return;
@@ -54,12 +57,7 @@ export async function updateAppBranding(formData: FormData) {
       ? navSubtitleRaw.trim().slice(0, 70)
       : "Control Center";
 
-  const current = await prisma.appBranding.upsert({
-    where: { id: BRANDING_ID },
-    update: {},
-    create: { id: BRANDING_ID },
-    select: { logoImagePath: true, faviconPath: true, pushIconPath: true },
-  });
+  const current = await ensureAppBrandingRow();
 
   let nextLogoPath = current.logoImagePath;
   let nextFaviconPath = current.faviconPath;
@@ -113,6 +111,7 @@ export async function updateAppBranding(formData: FormData) {
     },
   });
 
+  updateTag(BRANDING_CACHE_TAG);
   revalidatePath("/", "layout");
   revalidatePath("/admin/branding");
 }
@@ -128,6 +127,7 @@ export async function setProfileGamificationEnabled(enabled: boolean) {
     update: { profileGamificationEnabled: enabled },
     create: { id: BRANDING_ID, profileGamificationEnabled: enabled },
   });
+  updateTag(BRANDING_CACHE_TAG);
   revalidatePath("/", "layout");
   revalidatePath("/admin/gamification");
   revalidatePath("/profile");

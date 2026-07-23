@@ -1,10 +1,14 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // pg_trgm: index GIN trigram agar pencarian `ILIKE '%q%'` (wiki/dokumen)
+  // tidak full-table-scan. CREATE EXTENSION butuh privilege superuser di PG.
+  extensions = [pg_trgm]
 }
 
 enum StockLogType {
@@ -698,6 +702,9 @@ model RoomWikiPage {
 
   @@index([viewId, sortOrder])
   @@index([viewId, parentId, sortOrder])
+  // Pencarian wiki `contains` (ILIKE '%q%') — GIN trigram, bukan btree.
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([content(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model RoomWikiComment {
@@ -1186,6 +1193,10 @@ model RoomDocument {
    */
   @@index([roomId, folderId, createdAt(sort: Desc)])
   @@index([roomId, trashedAt, createdAt(sort: Desc)])
+  // Feed aktivitas lintas modul memfilter window `createdAt >= since`.
+  @@index([createdAt])
+  // Pencarian dokumen `contains` (ILIKE '%q%') — GIN trigram, bukan btree.
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model RoomDocumentVersion {
@@ -1421,6 +1432,9 @@ model Task {
   @@index([projectId, customProcessPhaseId, archivedAt, sortOrder])
   @@index([projectId, archivedAt, status])
   @@index([projectId, createdAt])
+  // Feed aktivitas lintas modul memfilter window `createdAt >= since` tanpa
+  // projectId — index komposit di atas tidak terpakai untuk pola itu.
+  @@index([createdAt])
   @@index([contentPlanItemId])
   @@index([kanbanColumnId])
 }
@@ -1688,6 +1702,9 @@ model StockLog {
   @@index([type, createdAt(sort: Desc)])
   @@index([productId, createdAt(sort: Desc)])
   @@index([vendorId])
+  // Feed aktivitas memfilter `createdAt >= since` TANPA `type` — komposit
+  // [type, createdAt] tidak terpakai untuk pola itu.
+  @@index([createdAt])
 }
 
 /**
@@ -1711,6 +1728,8 @@ model ScheduleEvent {
 
   @@index([startsAt])
   @@index([seriesId, startsAt])
+  // Feed aktivitas lintas modul memfilter window `createdAt >= since`.
+  @@index([createdAt])
 }
 
 model ScheduleEventParticipant {
@@ -1889,6 +1908,8 @@ model FinanceJournalEntry {
 
   @@index([entryDate])
   @@index([status])
+  // Feed aktivitas lintas modul memfilter window `createdAt >= since`.
+  @@index([createdAt])
 }
 
 /**
@@ -1979,6 +2000,8 @@ model FinanceJournalLine {
 
   @@index([accountId])
   @@index([entryId])
+  // P&L per brand (finance dashboard + endpoint AI) group-by brandId.
+  @@index([brandId])
 }
 
 /**

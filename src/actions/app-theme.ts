@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { appThemeSchema, resolveAppThemePreset } from "@/lib/app-themes";
 import { themeLibrarySchema, type ThemeLibrary } from "@/lib/theme-generator";
+import { userThemeTag } from "@/lib/user-app-theme";
 import { prisma } from "@/lib/prisma";
 
 export async function updateAppTheme(
@@ -27,6 +28,7 @@ export async function updateAppTheme(
 
   await prisma.user.update({ where: { id: session.user.id }, data });
 
+  updateTag(userThemeTag(session.user.id));
   revalidatePath("/", "layout");
   revalidatePath("/profile");
 }

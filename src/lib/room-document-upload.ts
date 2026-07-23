@@ -12,6 +12,7 @@ import { getUploadPublicDir } from "@/lib/upload-storage";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import { readRoomDocumentText } from "@/lib/room-document-text";
 import { logRoomDocumentActivity } from "@/lib/room-document-activity";
+import { isCreativeFile } from "@/lib/creative-file-formats";
 
 const ALLOWED_PREFIXES = [
   "image/",
@@ -30,10 +31,14 @@ const ALLOWED_PREFIXES = [
   "audio/",
 ];
 
-export function isAllowedRoomDocumentMime(mime: string): boolean {
+export function isAllowedRoomDocumentMime(
+  mime: string,
+  fileName?: string,
+): boolean {
   const m = (mime || "application/octet-stream").toLowerCase();
   if (m === "application/octet-stream") return true;
   if (m.startsWith("text/")) return true;
+  if (isCreativeFile(m, fileName)) return true;
   return ALLOWED_PREFIXES.some((p) => m.startsWith(p));
 }
 
@@ -71,7 +76,7 @@ export async function saveRoomDocumentToStorageAndDb(
     throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = params.mimeType || "application/octet-stream";
-  if (!isAllowedRoomDocumentMime(mime)) {
+  if (!isAllowedRoomDocumentMime(mime, params.fileName)) {
     throw new Error("Tipe file tidak diizinkan.");
   }
 
@@ -200,7 +205,8 @@ export async function saveRoomDocumentVersionToStorageAndDb(
     throw new Error(`Ukuran file maksimal ${MAX_UPLOAD_LABEL}.`);
   }
   const mime = params.mimeType || "application/octet-stream";
-  if (!isAllowedRoomDocumentMime(mime)) throw new Error("Tipe file tidak diizinkan.");
+  if (!isAllowedRoomDocumentMime(mime, params.fileName))
+    throw new Error("Tipe file tidak diizinkan.");
   const stored = `${randomUUID()}-${sanitizeRoomDocumentBaseName(params.fileName)}`;
   const absDir = path.join(getUploadPublicDir(), "rooms", params.roomId);
   await mkdir(absDir, { recursive: true });

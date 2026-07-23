@@ -17,15 +17,25 @@ import {
   Check,
   ChevronRight,
   CloudOff,
+  CornerDownRight,
   FileText,
   Link2,
   Loader2,
+  MessageSquare,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
   Tag,
   Trash2,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   deleteRoomWikiPage,
   uploadRoomWikiAttachment,
@@ -35,10 +45,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { RichTextEditor } from "@/components/rich-text-editor";
+import { RichTextEditorLazy as RichTextEditor } from "@/components/rich-text-editor-lazy";
 import { WikiPageDownloadMenu } from "@/components/wiki-page-download-menu";
 import { WikiVersionHistory } from "@/components/wiki-version-history";
 import { WikiCollaborationPanel } from "@/components/wiki-collaboration-panel";
+import { WikiCommentsSheet } from "@/components/wiki-comments-sheet";
 import type { RoomMemberAvatarUser } from "@/components/room-member-avatar-stack";
 import { cn } from "@/lib/utils";
 import {
@@ -565,6 +576,8 @@ function PageEditor({
   const [tagsDraft, setTagsDraft] = useState((page.tags ?? []).join(", "));
   const [organizationPending, startOrganizationTransition] = useTransition();
   const [canEdit, setCanEdit] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -602,177 +615,219 @@ function PageEditor({
   }
 
   return (
-    <Card>
-      <CardContent className="space-y-4 p-4 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <Input
-              value={titleDraft}
-              disabled={!canEdit}
-              onChange={(e) => {
-                const v = e.target.value;
-                setTitleDraft(v);
-                onTitleChange(v);
-              }}
-              maxLength={160}
-              placeholder="Judul halaman"
-              aria-label="Judul halaman"
-              className="!h-auto border-0 bg-transparent px-0 py-1 text-2xl font-semibold tracking-tight shadow-none ring-0 focus-visible:ring-0 sm:text-3xl"
-            />
-            <p className="text-muted-foreground mt-0.5 text-xs">
-              Diperbarui {fmt(page.updatedAt)}
-            </p>
-          </div>
+    <Card className="hover:!translate-y-0">
+      <CardContent className="p-0">
+        {/* Chrome atas: satu baris tipis — status simpan di kiri, presence + aksi di kanan */}
+        <div className="flex items-center justify-between gap-2 px-4 pt-3 sm:px-8">
+          <SaveBadge status={saveStatus} />
           <div className="flex shrink-0 items-center gap-2">
-            <WikiVersionHistory
-              pageId={page.id}
-              currentTitle={titleDraft}
-              currentContent={contentDraft}
-              restoreDisabled={!canEdit || saveStatus === "dirty" || saveStatus === "saving"}
-              onRestored={onRestored}
-            />
-            <WikiPageDownloadMenu
-              roomId={roomId}
-              viewId={viewId}
-              pageId={page.id}
-              title={titleDraft}
-              contentHtml={contentDraft}
-            />
-            <SaveBadge status={saveStatus} />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Hapus halaman"
-              onClick={onDelete}
-              disabled={!canEdit}
-            >
-              <Trash2 className="size-3.5" aria-hidden />
-            </Button>
-          </div>
-        </div>
-
-        <div className="border-border flex flex-wrap items-center gap-2 border-y py-2">
-          <div className="relative min-w-48 flex-1">
-            <Tag className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" aria-hidden />
-            <Input
-              value={tagsDraft}
-              onChange={(event) => setTagsDraft(event.target.value)}
-              onBlur={saveTags}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  saveTags();
-                  event.currentTarget.blur();
-                }
-              }}
-              placeholder="tag-satu, tag-dua"
-              aria-label="Tag halaman Wiki"
-              className="h-8 pl-8 text-xs"
-              disabled={organizationPending || !canEdit}
-            />
-          </div>
-          <select
-            value={page.parentId ?? ""}
-            onChange={(event) => moveToParent(event.target.value || null)}
-            disabled={organizationPending || !canEdit}
-            aria-label="Halaman induk"
-            className="border-input bg-background h-8 max-w-56 rounded-md border px-2 text-xs"
-          >
-            <option value="">Root Wiki</option>
-            {pages.filter((candidate) => candidate.id !== page.id).map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.title || "Tanpa judul"}
-              </option>
-            ))}
-          </select>
-          <Button type="button" size="sm" variant="ghost" onClick={onCreateChild} disabled={!canEdit}>
-            <Plus className="size-3.5" /> Subhalaman
-          </Button>
-        </div>
-
-        {recoveryCandidate ? (
-          <div className="border-amber-500/30 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
-            <div>
-              <p className="font-medium">Draft lokal yang belum tersimpan ditemukan</p>
-              <p className="text-muted-foreground text-xs">
-                Disimpan {fmt(recoveryCandidate.savedAt)}. Pilih pulihkan agar perubahan tidak hilang.
-              </p>
-            </div>
-            <div className="flex gap-2">
+            <WikiCollaborationPanel pageId={page.id} onEditableChange={setCanEdit} />
+            <div className="flex items-center gap-0.5">
               <Button
                 type="button"
-                size="sm"
                 variant="ghost"
-                onClick={() => {
-                  localStorage.removeItem(wikiDraftStorageKey(page.id));
-                  setRecoveryCandidate(null);
-                }}
-              >
-                Buang draft
-              </Button>
-              <Button
-                type="button"
                 size="sm"
-                onClick={() => {
-                  setTitleDraft(recoveryCandidate.title);
-                  setContentDraft(recoveryCandidate.content);
-                  setEditorGeneration((value) => value + 1);
-                  onTitleChange(recoveryCandidate.title);
-                  onContentChange(recoveryCandidate.content);
-                  setRecoveryCandidate(null);
-                }}
+                className="h-8 gap-1.5 px-2"
+                onClick={() => setCommentsOpen(true)}
+                title="Komentar"
+                aria-label="Komentar"
               >
-                <RefreshCw className="size-3.5" />
-                Pulihkan draft
+                <MessageSquare className="size-3.5" aria-hidden />
+                {commentCount > 0 ? (
+                  <span className="text-xs tabular-nums">{commentCount}</span>
+                ) : null}
               </Button>
+              <WikiVersionHistory
+                pageId={page.id}
+                currentTitle={titleDraft}
+                currentContent={contentDraft}
+                restoreDisabled={!canEdit || saveStatus === "dirty" || saveStatus === "saving"}
+                onRestored={onRestored}
+              />
+              <WikiPageDownloadMenu
+                roomId={roomId}
+                viewId={viewId}
+                pageId={page.id}
+                title={titleDraft}
+                contentHtml={contentDraft}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Aksi halaman lainnya"
+                    >
+                      <MoreHorizontal className="size-3.5" aria-hidden />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onClick={onCreateChild} disabled={!canEdit}>
+                    <Plus /> Subhalaman baru
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={onDelete} disabled={!canEdit}>
+                    <Trash2 /> Hapus halaman
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
-        ) : null}
+        </div>
 
-        <RichTextEditor
-          key={editorGeneration}
-          initialContent={contentDraft}
-          editable={canEdit}
-          onUpdate={(html) => {
-            setContentDraft(html);
-            onContentChange(html);
-          }}
-          onUploadFile={async (file) => {
-            const formData = new FormData();
-            formData.set("file", file);
-            return uploadRoomWikiAttachment(page.id, formData);
-          }}
-          wikiPages={pages.filter((candidate) => candidate.id !== page.id)}
-          onNavigateWikiPage={onNavigatePage}
-          placeholder="Tulis catatan, keputusan rapat, atau brief singkat di sini…"
-        />
+        {/* Kolom konten terpusat ala Notion */}
+        <div className="mx-auto w-full max-w-4xl px-4 pb-6 sm:px-8">
+          <Input
+            value={titleDraft}
+            disabled={!canEdit}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTitleDraft(v);
+              onTitleChange(v);
+            }}
+            maxLength={160}
+            placeholder="Tanpa judul"
+            aria-label="Judul halaman"
+            className="!h-auto border-0 bg-transparent px-0 py-1 text-3xl font-bold tracking-tight shadow-none ring-0 placeholder:text-muted-foreground/40 focus-visible:ring-0 sm:text-4xl"
+          />
 
-        {backlinks.length > 0 ? (
-          <div className="border-border border-t pt-4">
-            <div className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
-              <Link2 className="size-3.5" /> {backlinks.length} backlink
+          {/* Baris properti: kalem tanpa border, kontrol baru terlihat saat hover/focus */}
+          <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+            <span className="whitespace-nowrap py-1">Diperbarui {fmt(page.updatedAt)}</span>
+            <span aria-hidden className="text-border">·</span>
+            <div className="relative flex items-center">
+              <Tag className="pointer-events-none absolute left-1.5 size-3" aria-hidden />
+              <input
+                value={tagsDraft}
+                onChange={(event) => setTagsDraft(event.target.value)}
+                onBlur={saveTags}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    saveTags();
+                    event.currentTarget.blur();
+                  }
+                }}
+                placeholder="Tambah tag…"
+                aria-label="Tag halaman Wiki"
+                disabled={organizationPending || !canEdit}
+                className="hover:bg-muted focus:bg-muted placeholder:text-muted-foreground/60 h-7 w-44 rounded-md bg-transparent pl-6 pr-2 text-xs outline-none transition-colors disabled:cursor-not-allowed"
+              />
             </div>
-            <div className="flex flex-wrap gap-2">
-              {backlinks.map((backlink) => (
-                <button
-                  key={backlink.id}
+            <span aria-hidden className="text-border">·</span>
+            <div className="relative flex items-center">
+              <CornerDownRight className="pointer-events-none absolute left-1.5 size-3" aria-hidden />
+              <select
+                value={page.parentId ?? ""}
+                onChange={(event) => moveToParent(event.target.value || null)}
+                disabled={organizationPending || !canEdit}
+                aria-label="Halaman induk"
+                title="Halaman induk"
+                className="hover:bg-muted h-7 max-w-52 cursor-pointer appearance-none rounded-md border-0 bg-transparent pl-6 pr-2 text-xs outline-none transition-colors disabled:cursor-not-allowed"
+              >
+                <option value="">Root Wiki</option>
+                {pages.filter((candidate) => candidate.id !== page.id).map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.title || "Tanpa judul"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {recoveryCandidate ? (
+            <div className="border-amber-500/25 bg-amber-500/10 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-1.5 text-xs">
+              <span className="font-medium text-amber-800 dark:text-amber-200">
+                Draft lokal ditemukan ({fmt(recoveryCandidate.savedAt)})
+              </span>
+              <span className="text-muted-foreground">Pulihkan agar perubahan tidak hilang.</span>
+              <span className="ml-auto flex items-center gap-1">
+                <Button
                   type="button"
-                  onClick={() => onNavigatePage(backlink.id)}
-                  className="bg-muted hover:bg-muted/80 rounded-md px-2.5 py-1.5 text-xs"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    localStorage.removeItem(wikiDraftStorageKey(page.id));
+                    setRecoveryCandidate(null);
+                  }}
                 >
-                  {backlink.title || "Tanpa judul"}
-                </button>
-              ))}
+                  Buang
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    setTitleDraft(recoveryCandidate.title);
+                    setContentDraft(recoveryCandidate.content);
+                    setEditorGeneration((value) => value + 1);
+                    onTitleChange(recoveryCandidate.title);
+                    onContentChange(recoveryCandidate.content);
+                    setRecoveryCandidate(null);
+                  }}
+                >
+                  <RefreshCw className="size-3" />
+                  Pulihkan
+                </Button>
+              </span>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        <WikiCollaborationPanel
+          <div className="mt-3">
+            <RichTextEditor
+              key={editorGeneration}
+              initialContent={contentDraft}
+              editable={canEdit}
+              onUpdate={(html) => {
+                setContentDraft(html);
+                onContentChange(html);
+              }}
+              onUploadFile={async (file) => {
+                const formData = new FormData();
+                formData.set("file", file);
+                return uploadRoomWikiAttachment(page.id, formData);
+              }}
+              wikiPages={pages.filter((candidate) => candidate.id !== page.id)}
+              onNavigateWikiPage={onNavigatePage}
+              placeholder="Tulis catatan, ketik / untuk perintah…"
+              showTableOfContents
+              showToolbar={false}
+            />
+          </div>
+
+          {backlinks.length > 0 ? (
+            <div className="border-border mt-4 border-t pt-4">
+              <div className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                <Link2 className="size-3.5" /> {backlinks.length} backlink
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {backlinks.map((backlink) => (
+                  <button
+                    key={backlink.id}
+                    type="button"
+                    onClick={() => onNavigatePage(backlink.id)}
+                    className="bg-muted hover:bg-muted/80 rounded-md px-2.5 py-1.5 text-xs"
+                  >
+                    {backlink.title || "Tanpa judul"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+        </div>
+
+        <WikiCommentsSheet
           pageId={page.id}
           currentUserId={currentUserId}
           members={members}
-          onEditableChange={setCanEdit}
+          open={commentsOpen}
+          onOpenChange={setCommentsOpen}
+          onCountChange={setCommentCount}
         />
       </CardContent>
     </Card>

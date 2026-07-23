@@ -1,3 +1,5 @@
+import { isCreativeFile } from "@/lib/creative-file-formats";
+
 const ALLOWED_PREFIXES = [
   "image/",
   "application/pdf",
@@ -16,10 +18,11 @@ const ALLOWED_PREFIXES = [
 
 export const DIRECT_CHAT_MAX_FILES_PER_MESSAGE = 10;
 
-export function isDirectChatAllowedMime(mime: string): boolean {
+export function isDirectChatAllowedMime(mime: string, fileName?: string): boolean {
   const m = (mime || "application/octet-stream").toLowerCase();
   if (m === "application/octet-stream") return true;
   if (m.startsWith("text/")) return true;
+  if (isCreativeFile(m, fileName)) return true;
   return ALLOWED_PREFIXES.some((p) => m.startsWith(p));
 }
 

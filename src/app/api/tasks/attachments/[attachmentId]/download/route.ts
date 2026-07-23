@@ -1,4 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { Readable } from "node:stream";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -76,8 +78,9 @@ export async function GET(_req: Request, { params }: Ctx) {
       return new NextResponse("File fisik tidak ditemukan.", { status: 410 });
     }
 
-    const buf = await readFile(abs);
-    return new NextResponse(buf, {
+    // Stream dari disk — jangan buffer utuh ke RAM (lampiran bisa ratusan MB).
+    const stream = Readable.toWeb(createReadStream(abs)) as unknown as ReadableStream;
+    return new NextResponse(stream, {
       status: 200,
       headers: {
         "Content-Type": guessContentType(abs, attachment.mimeType),

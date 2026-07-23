@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import dynamicImport from "next/dynamic";
 import {
   Hash,
   Info,
@@ -57,7 +58,14 @@ import { RoomChatExperience } from "./room-chat-experience";
 import { useVoice } from "@/components/voice/voice-provider";
 import { useVoiceParticipants } from "@/components/voice/use-voice-participants";
 import { VoiceChannelList } from "@/components/voice/voice-channel-list";
-import { VoiceCallPanel } from "@/components/voice/voice-call-panel";
+// Lazy: panel voice (runtime LiveKit) hanya dimuat saat channel voice dibuka.
+const VoiceCallPanel = dynamicImport(
+  () =>
+    import("@/components/voice/voice-call-panel").then(
+      (m) => m.VoiceCallPanel,
+    ),
+  { ssr: false },
+);
 
 type MentionableUser = { id: string; name: string | null; email: string };
 

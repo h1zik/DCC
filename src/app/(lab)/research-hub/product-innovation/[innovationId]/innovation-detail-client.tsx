@@ -78,7 +78,7 @@ export function InnovationDetailClient({
 
   useEffect(() => {
     if (!isGenerating) return;
-    const id = window.setInterval(() => router.refresh(), 10_000);
+    const id = window.setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 10_000);
     return () => window.clearInterval(id);
   }, [isGenerating, router]);
 

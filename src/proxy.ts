@@ -1,5 +1,6 @@
-import { UserRole } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import { UserRole } from "@/lib/user-role";
+import { authConfig } from "@/auth.config";
 import {
   isAdministratorAppRoute,
   isCeoAppRoute,
@@ -13,6 +14,10 @@ import {
 } from "@/lib/routes";
 import { isMarketAnalyst, isStudioOrProjectManager } from "@/lib/roles";
 import { NextResponse } from "next/server";
+
+// Instance NextAuth ringan khusus proxy: cukup verifikasi JWT, tanpa
+// provider Credentials (yang menyeret Prisma + bcrypt ke bundle proxy).
+const { auth } = NextAuth(authConfig);
 
 function defaultHomeForRole(role: UserRole | undefined): string {
   if (role === UserRole.CEO) return "/";

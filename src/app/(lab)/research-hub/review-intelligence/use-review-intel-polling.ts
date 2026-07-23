@@ -13,7 +13,9 @@ export function useReviewIntelPolling(inProgress: boolean): void {
   useEffect(() => {
     if (!inProgress) return;
 
-    const tick = async () => {
+    const tick = async () => {
+      // Tab hidden: lewati — lanjut otomatis saat kembali visible.
+      if (document.visibilityState === "hidden") return;
       try {
         await pollReviewIntelJobs();
       } catch {
@@ -24,7 +26,14 @@ export function useReviewIntelPolling(inProgress: boolean): void {
 
     void tick();
     const id = window.setInterval(() => void tick(), POLL_MS);
-    return () => window.clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [inProgress, router]);
 }
 

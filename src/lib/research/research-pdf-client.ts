@@ -31,34 +31,36 @@ function cropCanvasRegion(
   return out;
 }
 
-/** Map each pdf-block to a canvas band tall enough to include full line boxes. */
-function measureBlockBandsPx(
+/**
+ * Map each pdf-block to a non-overlapping canvas band.
+ *
+ * The end of a band is the start of the next block. This keeps the original
+ * CSS whitespace while preventing the next block's first pixels from being
+ * painted once at the bottom of the current slice and again in its own slice.
+ */
+export function measureBlockBandsPx(
   blocks: HTMLElement[],
   body: HTMLElement,
   scale: number,
   canvasHeight: number,
 ): Array<{ topPx: number; heightPx: number }> {
   const bodyTop = body.getBoundingClientRect().top;
-  const slackPx = Math.ceil(BLOCK_BOTTOM_SLACK_CSS * scale);
 
   return blocks.map((block, index) => {
     const rect = block.getBoundingClientRect();
     const topPx = Math.max(0, Math.floor((rect.top - bodyTop) * scale));
-    const layoutBottomPx = Math.ceil((rect.bottom - bodyTop) * scale) + slackPx;
-    const nextTopPx =
+    const bottomPx =
       index + 1 < blocks.length
-        ? Math.floor(
-            (blocks[index + 1]!.getBoundingClientRect().top - bodyTop) * scale,
+        ? Math.max(
+            topPx + 1,
+            Math.floor(
+              (blocks[index + 1]!.getBoundingClientRect().top - bodyTop) * scale,
+            ),
           )
         : canvasHeight;
-    // Prefer layout bottom + slack, but never shrink below the gap to the next block.
-    const bottomPx = Math.min(
-      canvasHeight,
-      Math.max(layoutBottomPx, nextTopPx + slackPx),
-    );
     return {
       topPx,
-      heightPx: Math.max(1, bottomPx - topPx),
+      heightPx: Math.max(1, Math.min(canvasHeight, bottomPx) - topPx),
     };
   });
 }
@@ -76,6 +78,7 @@ function addCanvasToPdf(
     printableHeight: number;
     cursorY: number;
     isFirstImage: boolean;
+    blockGapPt: number;
   },
 ): { cursorY: number; isFirstImage: boolean } {
   const sliceHeightPt = pxToPt(slice.height, slice.width, opts.printableWidth);
@@ -96,7 +99,7 @@ function addCanvasToPdf(
       sliceHeightPt,
     );
     return {
-      cursorY: cursorY + sliceHeightPt + 4,
+      cursorY: cursorY + sliceHeightPt + opts.blockGapPt,
       isFirstImage: false,
     };
   }
@@ -113,7 +116,7 @@ function addCanvasToPdf(
       sliceHeightPt,
     );
     return {
-      cursorY: cursorY + sliceHeightPt + 4,
+      cursorY: cursorY + sliceHeightPt + opts.blockGapPt,
       isFirstImage: false,
     };
   }
@@ -137,7 +140,7 @@ function addCanvasToPdf(
     );
 
     yOffset += chunkH;
-    cursorY = opts.margin + chunkPt + 4;
+    cursorY = opts.margin + chunkPt + opts.blockGapPt;
   }
 
   return { cursorY, isFirstImage };
@@ -148,6 +151,18 @@ export async function downloadHtmlAsPdf(
   title: string,
   html: string,
   filename?: string,
+  opts?: {
+    /**
+     * Dipanggil setelah layout iframe final (fonts + rAF), sebelum capture.
+     * Dipakai wiki untuk memecah blok yang lebih tinggi dari satu halaman.
+     */
+    beforeCapture?: (doc: Document) => void | Promise<void>;
+    /**
+     * Jarak tambahan antarslice. Gunakan 0 bila jarak CSS sudah ikut tercakup
+     * dalam band agar posisi vertikal sama dengan dokumen sumber.
+     */
+    blockGapPt?: number;
+  },
 ): Promise<void> {
   const [{ jsPDF }, html2canvasMod] = await Promise.all([
     import("jspdf"),
@@ -184,11 +199,21 @@ export async function downloadHtmlAsPdf(
     if (!body) throw new Error("Gagal merender dokumen.");
 
     const layoutHeight = body.scrollHeight;
-    const captureHeight = layoutHeight + BLOCK_BOTTOM_SLACK_CSS * 2;
+    let captureHeight = layoutHeight + BLOCK_BOTTOM_SLACK_CSS * 2;
     iframe.style.height = `${captureHeight}px`;
 
     await doc.fonts?.ready;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    if (opts?.beforeCapture) {
+      await opts.beforeCapture(doc);
+      const refreshedHeight = body.scrollHeight + BLOCK_BOTTOM_SLACK_CSS * 2;
+      if (refreshedHeight !== captureHeight) {
+        captureHeight = refreshedHeight;
+        iframe.style.height = `${captureHeight}px`;
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      }
+    }
 
     const masterCanvas = await html2canvas(body, {
       backgroundColor: "#ffffff",
@@ -209,6 +234,7 @@ export async function downloadHtmlAsPdf(
     const pageHeight = pdf.internal.pageSize.getHeight();
     const printableWidth = pageWidth - margin * 2;
     const printableHeight = pageHeight - margin * 2;
+    const blockGapPt = opts?.blockGapPt ?? 4;
 
     const blocks = Array.from(
       body.querySelectorAll<HTMLElement>("[data-pdf-block]"),
@@ -234,6 +260,7 @@ export async function downloadHtmlAsPdf(
           printableHeight,
           cursorY,
           isFirstImage,
+          blockGapPt,
         });
         cursorY = result.cursorY;
         isFirstImage = result.isFirstImage;
@@ -252,6 +279,7 @@ export async function downloadHtmlAsPdf(
           printableHeight,
           cursorY: margin,
           isFirstImage,
+          blockGapPt,
         });
         isFirstImage = result.isFirstImage;
         yOffset += sliceH;

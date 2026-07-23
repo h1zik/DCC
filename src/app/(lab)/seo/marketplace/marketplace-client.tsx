@@ -144,7 +144,7 @@ export function MarketplaceClient({
   const hasBusy = analyses.some((a) => isSeoStatusBusy(a.status));
   useEffect(() => {
     if (!hasBusy) return;
-    const timer = setInterval(() => router.refresh(), 5000);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 5000);
     return () => clearInterval(timer);
   }, [hasBusy, router]);
 

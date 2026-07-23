@@ -577,21 +577,29 @@ export async function aiGetBudgetVsActual(
     include: { brand: true, account: true },
   });
 
-  const lines = await prisma.financeJournalLine.findMany({
+  // Agregasi di DB (bukan memuat semua baris jurnal lalu loop O(budget×baris)
+  // di JS) — jumlah grup (akun×brand) kecil walau volume transaksi besar.
+  const grouped = await prisma.financeJournalLine.groupBy({
+    by: ["accountId", "brandId"],
     where: {
       entry: { status: "POSTED", entryDate: { gte: start, lte: end } },
       account: { type: FinanceLedgerType.EXPENSE },
     },
-    include: { account: true },
+    _sum: { debitBase: true, creditBase: true },
   });
 
   const rows = budgets.map((b) => {
     let actual = zeroDecimal();
-    for (const ln of lines) {
-      if (b.accountId && ln.accountId !== b.accountId) continue;
-      if (b.brandId && ln.brandId !== b.brandId) continue;
+    for (const g of grouped) {
+      if (b.accountId && g.accountId !== b.accountId) continue;
+      if (b.brandId && g.brandId !== b.brandId) continue;
+      // Semua grup berjenis EXPENSE (sudah difilter di where).
       actual = actual.plus(
-        signedBalanceForAccount(ln.account.type, ln.debitBase, ln.creditBase),
+        signedBalanceForAccount(
+          FinanceLedgerType.EXPENSE,
+          g._sum.debitBase ?? zeroDecimal(),
+          g._sum.creditBase ?? zeroDecimal(),
+        ),
       );
     }
     const label = [

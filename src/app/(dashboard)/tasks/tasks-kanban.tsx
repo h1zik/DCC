@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   closestCorners,
   DndContext,
@@ -325,7 +325,12 @@ function AssigneeAvatar({
   );
 }
 
-function DraggableTask({
+/**
+ * Kartu tugas. Dibungkus `memo` supaya update state papan (dialog, hover,
+ * status lokal) tidak me-render ulang SEMUA kartu — hanya kartu yang task/
+ * props-nya berubah. (Re-render karena drag context dnd-kit tetap terjadi.)
+ */
+const DraggableTask = memo(function DraggableTask({
   task,
   users,
   roomTaskTags,
@@ -971,7 +976,7 @@ function DraggableTask({
       </div>
     </div>
   );
-}
+});
 
 function KanbanColumnShell({
   column,

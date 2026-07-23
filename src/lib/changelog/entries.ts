@@ -37,6 +37,38 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-23-wiki-editor-notion-upgrade",
+    date: "2026-07-23",
+    title: "Wiki: editor rasa Notion — tabel lebih pintar, blok baru, dan PDF rapi",
+    category: "new",
+    description:
+      "Editor wiki (juga Catatan Pribadi dan draft konten SEO) dirombak besar. Tabel kini punya kontrol ala Notion: arahkan kursor ke tabel untuk memunculkan grip baris/kolom berisi menu sisip, duplikat, gabung/pisah cell, sampai hapus baris/kolom — plus tombol + di tepi tabel dan garis bantu resize yang lebih mudah ditarik. Ada juga rata teks, warna & highlight, menu format melayang saat menyeleksi teks, blok Callout dan Toggle, geser-susun blok dengan handle ⠿, serta Daftar Isi otomatis. Export PDF diperbaiki total: bullet tidak lagi hilang, tabel dan gambar tampil sesuai editor, dan teks tidak terpotong di batas halaman.",
+    highlights: [
+      "Tampilan halaman ala Notion: judul besar, aksi halaman dirapikan ke ikon di pojok, tag & halaman induk jadi baris properti yang kalem, konten di kolom tengah — tanpa toolbar permanen; format lewat menu melayang saat seleksi dan perintah /",
+      "Komentar kini terbuka sebagai panel geser di sisi kanan (bukan lagi menumpuk di bawah halaman), dibuka lewat tombol Komentar berlonceng jumlah di pojok kanan atas",
+      "Tabel: hapus/sisip/duplikat baris & kolom lewat grip hover atau toolbar, gabung/pisah cell, toggle header, tombol + di tepi tabel",
+      "Format baru: rata kiri/tengah/kanan/justify, warna teks & highlight, callout (info/tips/peringatan/bahaya), toggle list yang bisa dilipat",
+      "Menu melayang muncul saat teks diseleksi; slash menu (/) kini berikon, berkelompok, dan hasilnya diurutkan sesuai relevansi",
+      "Drag handle ⠿ untuk memindah blok, dan panel Daftar Isi otomatis dari heading di halaman wiki",
+      "Export PDF: bullet point selalu tampil, tabel berbingkai rapi, gambar mengikuti perataan, dan halaman dipotong di antara blok — bukan di tengah kalimat",
+    ],
+  },
+  {
+    id: "2026-07-23-performance-overhaul",
+    date: "2026-07-23",
+    title: "Aplikasi lebih cepat dan ringan di seluruh halaman",
+    category: "improved",
+    description:
+      "Perombakan performa menyeluruh: server tidak lagi mengulang pekerjaan yang sama di setiap klik, halaman kini hanya mengunduh komponen berat (chart, editor, panel suara, pratinjau PDF) saat benar-benar dipakai, dan unduhan file besar tidak lagi membebani memori server. Efeknya terasa sebagai pindah halaman yang lebih gesit dan halaman yang lebih cepat terbuka — tanpa ada fitur yang berubah cara pakainya.",
+    highlights: [
+      "Navigasi antar halaman lebih responsif — data sidebar dan pengaturan tampilan kini disimpan sementara (cache) dan diperbarui otomatis saat ada perubahan",
+      "Buka halaman lebih ringan: pemutar suara, chart, editor teks, dan pratinjau PDF baru diunduh saat digunakan",
+      "Unduh file atau folder besar (ZIP) kini mengalir langsung sehingga server tetap stabil walau beberapa orang mengunduh bersamaan",
+      "Pencarian wiki/dokumen dan ringkasan keuangan lebih cepat berkat penataan index database",
+      "Tab yang ditinggal di latar belakang berhenti membebani server dan otomatis menyegarkan diri saat dibuka kembali",
+    ],
+  },
+  {
     id: "2026-07-22-voice-screenshare-layout",
     date: "2026-07-22",
     title: "Voice channel: tampilan saat share screen tidak lagi terpotong",
@@ -48,6 +80,44 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
       "Share screen tampil utuh, tidak lagi terpotong bar kontrol di bawah",
       "Share screen terbaru otomatis tampil besar; klik kartu peserta lain untuk menjadikannya tampilan utama",
       "Klik tampilan besar untuk kembali ke pilihan otomatis",
+    ],
+  },
+  {
+    id: "2026-07-22-upload-creative-file-formats",
+    date: "2026-07-22",
+    title: "Unggah: dukung file desain (AI, PSD, Premiere, After Effects, Blender, dll.)",
+    category: "improved",
+    description:
+      "Sesuai masukan tim kreatif, unggahan kini menerima berkas sumber desain — Adobe Illustrator (.ai), Photoshop (.psd/.psb), Premiere Pro (.prproj), After Effects (.aep), Blender (.blend), serta banyak format 3D, video, audio, dan alat desain lain. Sebelumnya sebagian format ini bisa ditolak “Tipe file tidak diizinkan” tergantung komputer, dan di kolom chat malah tak bisa dipilih di jendela file. Berlaku di Documents, File Pribadi, lampiran tugas, dan chat.",
+    highlights: [
+      "Adobe: .ai, .eps, .psd, .psb, .indd, .idml, .xd, .prproj, .aep, .aepx",
+      "3D & motion: .blend, .c4d, .fbx, .obj, .ma/.mb, .max, .stl, .glb/.gltf",
+      "Alat desain lain: Figma, Sketch, Affinity, CorelDRAW, Procreate, Krita, GIMP",
+      "Format dikenali dari ekstensi file sehingga tak lagi tergantung tebakan tipe oleh browser",
+    ],
+  },
+  {
+    id: "2026-07-22-documents-bulk-download-folders",
+    date: "2026-07-22",
+    title: "Documents: tombol Unduh kini aktif saat memilih folder",
+    category: "fixed",
+    description:
+      "Saat memilih satu atau beberapa folder (atau campuran folder dan file), tombol Unduh di bar aksi mati dan tak bisa ditekan — unduhan massal dulu hanya mendukung file. Sekarang folder, file, maupun campuran keduanya bisa diunduh sekaligus sebagai satu berkas ZIP; isi tiap folder tersusun rapi di bawah nama foldernya.",
+    highlights: [
+      "Pilih beberapa folder lalu Unduh kini menghasilkan satu ZIP berisi semua folder beserta isinya",
+      "Bisa mencampur folder dan file dalam satu kali unduh",
+    ],
+  },
+  {
+    id: "2026-07-22-documents-drag-move-not-upload",
+    date: "2026-07-22",
+    title: "Documents: menyeret file untuk memindahkan tidak lagi dikira unggah",
+    category: "fixed",
+    description:
+      "Saat menyeret file di dalam folder untuk memindahkannya ke folder lain, aplikasi kadang salah mengira Anda sedang mengunggah dari komputer — panel “Lepas untuk mengunggah” muncul dan saat dilepas file malah terunggah ulang. Penyebabnya: menyeret dari thumbnail gambar memicu seret gambar bawaan browser. Sekarang seret selalu diperlakukan sebagai pemindahan item.",
+    highlights: [
+      "Menyeret file lewat gambar pratinjaunya kini memindahkan, bukan mengunggah ulang",
+      "Panel unggah hanya muncul untuk file yang benar-benar diseret dari komputer",
     ],
   },
   {
