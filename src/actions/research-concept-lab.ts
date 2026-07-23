@@ -17,6 +17,7 @@ import { compareProductConcepts } from "@/lib/research/concept-lab/compare-conce
 import { generateProductConcept } from "@/lib/research/concept-lab/concept-generator";
 import { validateProductConceptById } from "@/lib/research/concept-lab/concept-validator";
 import { buildMaklonBriefHtml } from "@/lib/research/concept-lab/maklon-brief-html";
+import { renderHtmlToPdfBuffer } from "@/lib/pdf/render-html-to-pdf";
 import {
   emptyConceptData,
   parseConceptData,
@@ -186,14 +187,15 @@ export async function deleteProductConcept(conceptId: string) {
   revalidatePath("/research-hub/concept-lab");
 }
 
-export async function getMaklonBriefHtml(conceptId: string) {
+/** Render maklon brief jadi PDF vektor (headless Chromium) & kembalikan sebagai base64. */
+export async function getMaklonBriefPdfBase64(conceptId: string): Promise<string> {
   await requireMarketAnalyst();
   const concept = await prisma.productConcept.findUnique({
     where: { id: conceptId },
   });
   if (!concept) throw new Error("Konsep tidak ditemukan.");
 
-  return buildMaklonBriefHtml({
+  const html = buildMaklonBriefHtml({
     title: concept.title,
     category: concept.category,
     targetMarket: concept.targetMarket,
@@ -204,6 +206,8 @@ export async function getMaklonBriefHtml(conceptId: string) {
     riskFactors: parseRiskFactors(concept.riskFactors),
     conceptUpdatedAt: concept.updatedAt,
   });
+  const buffer = await renderHtmlToPdfBuffer(html);
+  return buffer.toString("base64");
 }
 
 const rdTaskSchema = z.object({

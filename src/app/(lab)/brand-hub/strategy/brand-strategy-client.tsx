@@ -9,7 +9,7 @@ import {
   createBrandStrategyDocument,
   createManualBrandStrategyDocument,
   deleteBrandStrategyDocument,
-  exportBrandStrategyPdfHtml,
+  exportBrandStrategyPdfBase64,
   regenerateBrandStrategyDocument,
   regenerateBrandStrategySectionAction,
   updateBrandStrategyDocument,
@@ -913,7 +913,7 @@ export function BrandStrategyClient({
                     <div className="[&_button]:w-full">
                       <BrandPdfExportButton
                         fileName="brand-strategy"
-                        getHtml={() => exportBrandStrategyPdfHtml(selected.id)}
+                        getPdfBase64={() => exportBrandStrategyPdfBase64(selected.id)}
                       />
                     </div>
                   ) : null}

@@ -14,11 +14,13 @@ import {
 } from "@/lib/wiki-export";
 import { buildWikiDocxBuffer } from "@/lib/wiki-docx-export";
 import { sanitizeRichHtml } from "@/lib/security/sanitize-html";
+import { prepareWikiHtmlForPdf, buildWikiPdfDocument } from "@/lib/wiki-pdf";
+import { renderHtmlToPdfBuffer } from "@/lib/pdf/render-html-to-pdf";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const formatSchema = z.enum(["html", "md", "txt", "docx"]);
+const formatSchema = z.enum(["html", "md", "txt", "docx", "pdf"]);
 
 type Ctx = {
   params: Promise<{ roomId: string; viewId: string; pageId: string }>;
@@ -35,7 +37,7 @@ export async function GET(req: Request, { params }: Ctx) {
     const parsed = formatSchema.safeParse(formatRaw);
     if (!parsed.success) {
       return new NextResponse(
-        "Format tidak didukung. Gunakan html, md, txt, atau docx. PDF diunduh dari browser.",
+        "Format tidak didukung. Gunakan html, md, txt, docx, atau pdf.",
         { status: 400 },
       );
     }
@@ -66,6 +68,20 @@ export async function GET(req: Request, { params }: Ctx) {
         status: 200,
         headers: {
           "Content-Type": WIKI_EXPORT_MIME.docx,
+          "Content-Disposition": attachmentDisposition(filename),
+          "Content-Length": String(buffer.byteLength),
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+
+    if (format === "pdf") {
+      const body = prepareWikiHtmlForPdf(page.content);
+      const buffer = await renderHtmlToPdfBuffer(buildWikiPdfDocument(page.title, body));
+      return new NextResponse(new Uint8Array(buffer), {
+        status: 200,
+        headers: {
+          "Content-Type": WIKI_EXPORT_MIME.pdf,
           "Content-Disposition": attachmentDisposition(filename),
           "Content-Length": String(buffer.byteLength),
           "Cache-Control": "private, no-store",

@@ -9,6 +9,7 @@ import { requireSeoAccess } from "@/lib/seo/auth";
 import { generateSeoReport } from "@/lib/seo/reports/generator";
 import { buildReportPdfHtml } from "@/lib/research/reports/report-pdf-html";
 import { parseReportSections } from "@/lib/research/reports/types";
+import { renderHtmlToPdfBuffer } from "@/lib/pdf/render-html-to-pdf";
 
 const REPORT_TYPE_TITLES: Record<SeoReportType, string> = {
   OVERVIEW: "Ringkasan SEO",
@@ -53,15 +54,15 @@ export async function deleteSeoReport(reportId: string) {
   revalidatePath("/seo/reports");
 }
 
-/** Bangun HTML laporan untuk ekspor PDF (dipakai client downloadHtmlAsPdf). */
-export async function getSeoReportPdfHtml(reportId: string): Promise<string> {
+/** Render laporan jadi PDF vektor (headless Chromium) & kembalikan sebagai base64. */
+export async function getSeoReportPdfBase64(reportId: string): Promise<string> {
   await requireSeoAccess();
   z.string().min(1).parse(reportId);
 
   const report = await prisma.seoReport.findUnique({ where: { id: reportId } });
   if (!report) throw new Error("Laporan tidak ditemukan.");
 
-  return buildReportPdfHtml({
+  const html = buildReportPdfHtml({
     title: report.title,
     aiSummary: report.aiSummary,
     sections: parseReportSections(report.sections),
@@ -69,4 +70,6 @@ export async function getSeoReportPdfHtml(reportId: string): Promise<string> {
     periodStart: report.periodStart?.toLocaleDateString("id-ID") ?? null,
     periodEnd: report.periodEnd?.toLocaleDateString("id-ID") ?? null,
   });
+  const buffer = await renderHtmlToPdfBuffer(html);
+  return buffer.toString("base64");
 }

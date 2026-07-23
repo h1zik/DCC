@@ -15,6 +15,7 @@ import {
 } from "@/lib/brand-research/creative/guideline-generator";
 import { buildCreativeGuidelinePdfHtml } from "@/lib/brand-research/creative/guideline-pdf-html";
 import { listBrandVisualAssets } from "@/lib/brand-research/visual";
+import { renderHtmlToPdfBuffer } from "@/lib/pdf/render-html-to-pdf";
 
 const createSchema = z.object({
   ownerBrandId: z.string().optional().nullable(),
@@ -175,8 +176,11 @@ export async function getBrandCreativeGuidelineDetail(guidelineId: string) {
   };
 }
 
-export async function exportBrandCreativeGuidelinePdfHtml(guidelineId: string) {
+/** Render creative guideline jadi PDF vektor (headless Chromium) & kembalikan sebagai base64. */
+export async function exportBrandCreativeGuidelinePdfBase64(guidelineId: string): Promise<string> {
   const session = await requireBrandManager();
   const detail = await getBrandCreativeGuidelineDetail(guidelineId);
-  return buildCreativeGuidelinePdfHtml(detail);
+  const html = buildCreativeGuidelinePdfHtml(detail);
+  const buffer = await renderHtmlToPdfBuffer(html);
+  return buffer.toString("base64");
 }

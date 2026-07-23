@@ -24,6 +24,7 @@ import {
 } from "@/lib/brand-research/strategy/strategy-source-catalog";
 import type { StrategyGenerationConfig } from "@/lib/brand-research/strategy/evidence-types";
 import { buildBrandStrategyPdfHtml } from "@/lib/brand-research/strategy/strategy-pdf-html";
+import { renderHtmlToPdfBuffer } from "@/lib/pdf/render-html-to-pdf";
 
 const generationConfigSchema = z.object({
   review: z.object({ enabled: z.boolean(), ids: z.array(z.string()) }),
@@ -314,7 +315,8 @@ export async function getBrandStrategyPageData(ownerBrandId?: string | null) {
   };
 }
 
-export async function exportBrandStrategyPdfHtml(documentId: string) {
+/** Render dokumen strategi jadi PDF vektor (headless Chromium) & kembalikan sebagai base64. */
+export async function exportBrandStrategyPdfBase64(documentId: string): Promise<string> {
   const session = await requireBrandManager();
   const doc = await getBrandStrategyDocument(documentId, session.user.id);
   if (!doc) throw new Error("Dokumen tidak ditemukan.");
@@ -328,8 +330,10 @@ export async function exportBrandStrategyPdfHtml(documentId: string) {
       )?.name
     : "Brand";
 
-  return buildBrandStrategyPdfHtml({
+  const html = buildBrandStrategyPdfHtml({
     brandName: brandName ?? "Brand",
     document: doc,
   });
+  const buffer = await renderHtmlToPdfBuffer(html);
+  return buffer.toString("base64");
 }

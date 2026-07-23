@@ -652,7 +652,7 @@ function PageEditor({
               <WikiPageDownloadMenu
                 title={titleDraft}
                 contentHtml={contentDraft}
-                docxApiPath={wikiDownloadApiPath(roomId, viewId, page.id, "docx")}
+                buildServerApiPath={(format) => wikiDownloadApiPath(roomId, viewId, page.id, format)}
               />
               <DropdownMenu>
                 <DropdownMenuTrigger

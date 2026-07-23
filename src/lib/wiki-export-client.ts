@@ -5,18 +5,7 @@ import {
   sanitizeWikiFilename,
   type WikiExportFormat,
 } from "@/lib/wiki-export";
-
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+import { triggerBlobDownload } from "@/lib/download-file-client";
 
 function filenameFromContentDisposition(header: string | null): string | null {
   if (!header) return null;
@@ -33,7 +22,7 @@ function filenameFromContentDisposition(header: string | null): string | null {
 
 export async function downloadWikiPageFromApi(
   apiPath: string,
-  format: "html" | "md" | "txt" | "docx",
+  format: "html" | "md" | "txt" | "docx" | "pdf",
 ): Promise<void> {
   const res = await fetch(apiPath, {
     credentials: "include",
@@ -49,40 +38,18 @@ export async function downloadWikiPageFromApi(
   triggerBlobDownload(blob, name);
 }
 
-/**
- * PDF via engine blok-aware: transform HTML wiki → dokumen ber-`data-pdf-block`
- * → `downloadHtmlAsPdf` (page break jatuh di antara blok, bukan memotong teks).
- */
-export async function downloadWikiPageAsPdf(title: string, contentHtml: string) {
-  const [wikiPdf, { downloadHtmlAsPdf }] = await Promise.all([
-    import("@/lib/wiki-pdf"),
-    import("@/lib/research/research-pdf-client"),
-  ]);
-  const body = wikiPdf.prepareWikiHtmlForPdf(contentHtml);
-  await downloadHtmlAsPdf(
-    title,
-    wikiPdf.buildWikiPdfDocument(title, body),
-    sanitizeWikiFilename(title, "wiki"),
-    {
-      beforeCapture: wikiPdf.refineWikiPdfBlocks,
-      // Band wiki sudah membawa margin CSS hingga awal blok berikutnya.
-      blockGapPt: 0,
-    },
-  );
-}
-
 export function downloadWikiPageLocally(
   title: string,
   contentHtml: string,
   format: WikiExportFormat,
-  /** Path API unduhan DOCX (satu-satunya format yang butuh server). */
-  docxApiPath: string,
+  /** Bangun path API unduhan untuk format yang butuh render server (docx/pdf). */
+  buildServerApiPath: (format: "docx" | "pdf") => string,
 ): Promise<void> {
   if (format === "pdf") {
-    return downloadWikiPageAsPdf(title, contentHtml);
+    return downloadWikiPageFromApi(buildServerApiPath("pdf"), "pdf");
   }
   if (format === "docx") {
-    return downloadWikiPageFromApi(docxApiPath, "docx");
+    return downloadWikiPageFromApi(buildServerApiPath("docx"), "docx");
   }
   if (format === "html") {
     const html = buildWikiHtmlDocument(title, contentHtml);

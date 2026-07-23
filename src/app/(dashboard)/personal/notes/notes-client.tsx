@@ -612,7 +612,7 @@ function NoteEditor({
             <WikiPageDownloadMenu
               title={titleDraft}
               contentHtml={contentDraft}
-              docxApiPath={personalNoteDownloadApiPath(note.id, "docx")}
+              buildServerApiPath={(format) => personalNoteDownloadApiPath(note.id, format)}
             />
             <DropdownMenu>
               <DropdownMenuTrigger

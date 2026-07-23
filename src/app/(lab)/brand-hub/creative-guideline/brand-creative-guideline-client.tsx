@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   createBrandCreativeGuideline,
   deleteBrandCreativeGuideline,
-  exportBrandCreativeGuidelinePdfHtml,
+  exportBrandCreativeGuidelinePdfBase64,
   regenerateBrandCreativeGuideline,
 } from "@/actions/brand-creative-guideline";
 import { actionErrorMessage } from "@/lib/action-error-message";
@@ -402,8 +402,8 @@ export function BrandCreativeGuidelineClient({
                 {selected.status === "READY" ? (
                   <BrandPdfExportButton
                     fileName="creative-guideline"
-                    getHtml={() =>
-                      exportBrandCreativeGuidelinePdfHtml(selected.id)
+                    getPdfBase64={() =>
+                      exportBrandCreativeGuidelinePdfBase64(selected.id)
                     }
                   />
                 ) : null}
