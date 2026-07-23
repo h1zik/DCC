@@ -11,10 +11,15 @@ const nextConfig: NextConfig = {
    * - Sub-package `@ffmpeg-installer/<platform>-<arch>` &
    *   `@ffprobe-installer/<platform>-<arch>` di-`require()` secara dinamis
    *   oleh paket induknya — semua kombinasi OS/arch perlu diluar bundle.
+   * - `puppeteer-core`, `@sparticuz/chromium`, `puppeteer`: binary Chromium
+   *   & native binding untuk render PDF server-side (headless print).
    */
   serverExternalPackages: [
     "sharp",
     "fluent-ffmpeg",
+    "puppeteer-core",
+    "@sparticuz/chromium",
+    "puppeteer",
     "@ffmpeg-installer/ffmpeg",
     "@ffmpeg-installer/darwin-arm64",
     "@ffmpeg-installer/darwin-x64",

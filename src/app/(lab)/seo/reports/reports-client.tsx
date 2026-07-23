@@ -26,11 +26,11 @@ import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
 import { SEO_STATUS_LABELS, isSeoStatusBusy } from "@/lib/seo/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { downloadHtmlAsPdf } from "@/lib/research/research-pdf-client";
+import { downloadPdfFromBase64 } from "@/lib/download-file-client";
 import {
   createSeoReport,
   deleteSeoReport,
-  getSeoReportPdfHtml,
+  getSeoReportPdfBase64,
 } from "@/actions/seo-reports";
 import { cn } from "@/lib/utils";
 
@@ -187,8 +187,8 @@ export function ReportsClient({
   async function handleExportPdf(report: ReportRow) {
     setDownloadingId(report.id);
     try {
-      const html = await getSeoReportPdfHtml(report.id);
-      await downloadHtmlAsPdf(report.title, html);
+      const base64 = await getSeoReportPdfBase64(report.id);
+      downloadPdfFromBase64(base64, report.title);
       toast.success("PDF diunduh.");
     } catch (err) {
       toast.error(actionErrorMessage(err, "Gagal ekspor PDF."));

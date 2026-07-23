@@ -3,9 +3,9 @@
 import { useTransition } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
-import { getMaklonBriefHtml } from "@/actions/research-concept-lab";
+import { getMaklonBriefPdfBase64 } from "@/actions/research-concept-lab";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { downloadHtmlAsPdf } from "@/lib/research/research-pdf-client";
+import { downloadPdfFromBase64 } from "@/lib/download-file-client";
 import { Button } from "@/components/ui/button";
 
 export function ConceptPdfDownloadButton({
@@ -20,8 +20,8 @@ export function ConceptPdfDownloadButton({
   function handleDownload() {
     startTransition(async () => {
       try {
-        const html = await getMaklonBriefHtml(conceptId);
-        await downloadHtmlAsPdf(title, html, `maklon-brief-${title}`);
+        const base64 = await getMaklonBriefPdfBase64(conceptId);
+        downloadPdfFromBase64(base64, `maklon-brief-${title}`);
         toast.success("PDF berhasil diunduh.");
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal mengunduh PDF."));

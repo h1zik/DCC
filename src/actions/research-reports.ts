@@ -12,6 +12,7 @@ import {
 } from "@/lib/research/reports/report-generator";
 import { buildReportPdfHtml } from "@/lib/research/reports/report-pdf-html";
 import { parseReportSections } from "@/lib/research/reports/types";
+import { renderHtmlToPdfBuffer } from "@/lib/pdf/render-html-to-pdf";
 
 const configSchema = z.object({
   notify: z.boolean().optional(),
@@ -109,7 +110,8 @@ export async function getReportShareUrl(reportId: string) {
   };
 }
 
-export async function getReportPdfHtml(reportId: string) {
+/** Render laporan jadi PDF vektor (headless Chromium) & kembalikan sebagai base64. */
+export async function getReportPdfBase64(reportId: string): Promise<string> {
   await requireMarketAnalyst();
   const report = await prisma.researchReport.findUnique({
     where: { id: reportId },
@@ -130,7 +132,7 @@ export async function getReportPdfHtml(reportId: string) {
       ? (report.metrics as Record<string, number>)
       : undefined;
 
-  return buildReportPdfHtml({
+  const html = buildReportPdfHtml({
     title: report.title,
     aiSummary: report.aiSummary,
     sections: parseReportSections(report.sections),
@@ -139,4 +141,6 @@ export async function getReportPdfHtml(reportId: string) {
     periodStart: report.periodStart?.toISOString().slice(0, 10) ?? null,
     periodEnd: report.periodEnd?.toISOString().slice(0, 10) ?? null,
   });
+  const buffer = await renderHtmlToPdfBuffer(html);
+  return buffer.toString("base64");
 }

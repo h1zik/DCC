@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-23-server-side-pdf-engine",
+    date: "2026-07-23",
+    title: "PDF makin rapi & ringan: kini dirender server, bukan lagi screenshot browser",
+    category: "improved",
+    description:
+      "Semua unduhan PDF di aplikasi (Wiki, Catatan Pribadi, Laporan Riset, Concept Lab, Strategi Brand, Creative Guideline, laporan SEO) kini dirender di server oleh headless Chromium menjadi PDF vektor asli — bukan lagi screenshot halaman (html2canvas) yang ditempel jadi gambar via jsPDF. Teks jadi bisa diseleksi/dicari di PDF, ukuran file jauh lebih kecil, dan tampilan warna/tabel/gambar mengikuti persis apa yang ada di editor.",
+    highlights: [
+      "Ukuran file PDF turun drastis untuk konten teks/tabel biasa — dulu bisa puluhan MB karena berupa gambar raster",
+      "Teks di PDF kini bisa diseleksi, dicari, dan disalin — bukan lagi gambar pixel",
+      "Berlaku di semua unduhan PDF: Wiki ruangan, Catatan Pribadi, Laporan Riset, Concept Lab, Strategi Brand, Creative Guideline, dan laporan SEO",
+      "Mesin PDF lama berbasis html2canvas + jsPDF dibuang seluruhnya",
+    ],
+  },
+  {
     id: "2026-07-23-personal-notes-wiki-parity",
     date: "2026-07-23",
     title: "Catatan Pribadi: kini selengkap Wiki ruangan",

@@ -3,9 +3,9 @@
 import { useTransition } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
-import { getReportPdfHtml } from "@/actions/research-reports";
+import { getReportPdfBase64 } from "@/actions/research-reports";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { downloadHtmlAsPdf } from "@/lib/research/research-pdf-client";
+import { downloadPdfFromBase64 } from "@/lib/download-file-client";
 import { Button } from "@/components/ui/button";
 
 export function ReportPdfDownloadButton({
@@ -20,8 +20,8 @@ export function ReportPdfDownloadButton({
   function handleDownload() {
     startTransition(async () => {
       try {
-        const html = await getReportPdfHtml(reportId);
-        await downloadHtmlAsPdf(title, html, `research-report-${title}`);
+        const base64 = await getReportPdfBase64(reportId);
+        downloadPdfFromBase64(base64, `research-report-${title}`);
         toast.success("PDF berhasil diunduh.");
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal mengunduh PDF."));

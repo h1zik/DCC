@@ -4,25 +4,25 @@ import { useTransition } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { downloadHtmlAsPdf } from "@/lib/research/research-pdf-client";
+import { downloadPdfFromBase64 } from "@/lib/download-file-client";
 import { Button } from "@/components/ui/button";
 
 export function BrandPdfExportButton({
   label = "Export PDF",
   fileName,
-  getHtml,
+  getPdfBase64,
 }: {
   label?: string;
   fileName: string;
-  getHtml: () => Promise<string>;
+  getPdfBase64: () => Promise<string>;
 }) {
   const [pending, startTransition] = useTransition();
 
   function handleDownload() {
     startTransition(async () => {
       try {
-        const html = await getHtml();
-        await downloadHtmlAsPdf(fileName, html, fileName);
+        const base64 = await getPdfBase64();
+        downloadPdfFromBase64(base64, fileName);
         toast.success("PDF berhasil diunduh.");
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal mengunduh PDF."));
