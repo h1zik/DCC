@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-23-personal-notes-wiki-parity",
+    date: "2026-07-23",
+    title: "Catatan Pribadi: kini selengkap Wiki ruangan",
+    category: "improved",
+    description:
+      "Catatan di Space Pribadi disamakan dengan Wiki ruangan versi terbaru. Tampilannya kini ala Notion — judul besar, baris properti kalem, konten di kolom tengah tanpa toolbar permanen (format lewat menu melayang dan perintah /) — plus Daftar Isi otomatis, riwayat versi dengan pulihkan, unduh ke berbagai format, dan bagian backlink. Fitur kolaborasi (komentar, presence, kunci edit) sengaja tidak dibawa karena catatan pribadi hanya milikmu.",
+    highlights: [
+      "Riwayat versi otomatis: setiap perubahan di-checkpoint berkala dan bisa dibandingkan lalu dipulihkan kapan saja",
+      "Unduh catatan sebagai PDF, Word (DOCX), HTML, Markdown, atau teks biasa",
+      "Daftar Isi otomatis dari heading, dan daftar backlink dari catatan lain yang menaut ke catatan yang sedang dibuka",
+      "Draft lokal yang tertunda kini dikirim ulang otomatis begitu koneksi internet kembali",
+    ],
+  },
+  {
     id: "2026-07-23-wiki-editor-notion-upgrade",
     date: "2026-07-23",
     title: "Wiki: editor rasa Notion — tabel lebih pintar, blok baru, dan PDF rapi",

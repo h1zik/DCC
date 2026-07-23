@@ -436,6 +436,7 @@ model User {
   profileConfig                      UserProfileConfig?
   // ─── Space Pribadi (privat murni — lihat kontrak privasi di model Personal*) ───
   personalNotes                      PersonalNote[]                 @relation("PersonalNoteOwner")
+  personalNoteVersions               PersonalNoteVersion[]          @relation("PersonalNoteVersionOwner")
   personalKanbanColumns              PersonalKanbanColumn[]         @relation("PersonalKanbanColumnOwner")
   personalKanbanCards                PersonalKanbanCard[]           @relation("PersonalKanbanCardOwner")
   personalBookmarks                  PersonalBookmark[]             @relation("PersonalBookmarkOwner")
@@ -5689,9 +5690,31 @@ model PersonalNote {
   sortOrder Int            @default(0)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+  versions  PersonalNoteVersion[]
 
   @@index([ownerId, parentId, sortOrder])
   @@index([ownerId, updatedAt(sort: Desc)])
+}
+
+/**
+ * Checkpoint versi catatan pribadi (pola RoomWikiPageVersion, tanpa createdBy
+ * karena single-user). `ownerId` didenormalisasi agar guard cukup satu
+ * `where { id, ownerId }` tanpa join ke catatan.
+ */
+model PersonalNoteVersion {
+  id        String       @id @default(cuid())
+  noteId    String
+  note      PersonalNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  ownerId   String
+  owner     User         @relation("PersonalNoteVersionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  revision  Int
+  title     String       @db.VarChar(160)
+  content   String
+  reason    String       @default("autosave") @db.VarChar(32)
+  createdAt DateTime     @default(now())
+
+  @@unique([noteId, revision])
+  @@index([noteId, createdAt(sort: Desc)])
 }
 
 /**

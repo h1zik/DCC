@@ -8,8 +8,8 @@ import { normalizeWikiTags, WIKI_TAG_LIMITS } from "@/lib/wiki-organization";
 
 /**
  * Catatan Space Pribadi. Semua query difilter `ownerId` — TANPA bypass
- * peran. Kontrak konflik autosave meniru `upsertRoomWikiPage`
- * (guard `revision`), minus edit-lock/presence/version karena single-user.
+ * peran. Kontrak konflik autosave + checkpoint versi meniru
+ * `upsertRoomWikiPage`, minus edit-lock/presence/komentar karena single-user.
  */
 
 const upsertSchema = z.object({
@@ -19,6 +19,8 @@ const upsertSchema = z.object({
   baseRevision: z.number().int().min(0).optional(),
   parentId: z.string().cuid().nullable().optional(),
 });
+
+const VERSION_CHECKPOINT_MS = 60_000;
 
 type SaveConflict = {
   conflict: true;
@@ -74,14 +76,37 @@ export async function upsertPersonalNote(input: {
       };
     }
 
+    const latestVersion = await prisma.personalNoteVersion.findFirst({
+      where: { noteId: current.id, ownerId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
     const nextRevision = current.revision + 1;
-    const guarded = await prisma.personalNote.updateMany({
-      where: { id: current.id, ownerId, revision: current.revision },
-      data: {
-        title: data.title,
-        content: data.content,
-        revision: nextRevision,
-      },
+    const shouldCheckpoint =
+      !latestVersion ||
+      Date.now() - latestVersion.createdAt.getTime() >= VERSION_CHECKPOINT_MS;
+
+    const guarded = await prisma.$transaction(async (tx) => {
+      const res = await tx.personalNote.updateMany({
+        where: { id: current.id, ownerId, revision: current.revision },
+        data: {
+          title: data.title,
+          content: data.content,
+          revision: nextRevision,
+        },
+      });
+      if (res.count === 1 && shouldCheckpoint) {
+        await tx.personalNoteVersion.create({
+          data: {
+            noteId: current.id,
+            ownerId,
+            revision: nextRevision,
+            title: data.title,
+            content: data.content,
+          },
+        });
+      }
+      return res;
     });
     if (guarded.count !== 1) {
       const latest = await prisma.personalNote.findFirst({
@@ -136,6 +161,15 @@ export async function upsertPersonalNote(input: {
       title: data.title,
       content: data.content,
       sortOrder: (max._max.sortOrder ?? -1) + 1,
+      versions: {
+        create: {
+          ownerId,
+          revision: 0,
+          title: data.title,
+          content: data.content ?? "",
+          reason: "initial",
+        },
+      },
     },
     select: { id: true, revision: true, updatedAt: true },
   });
@@ -197,6 +231,69 @@ export async function updatePersonalNoteOrganization(input: {
   });
   if (res.count === 0) throw new Error("Tidak ditemukan.");
   revalidate();
+}
+
+export async function listPersonalNoteVersions(noteId: string) {
+  const ownerId = await requirePersonalOwnerId();
+  const versions = await prisma.personalNoteVersion.findMany({
+    where: { noteId: z.string().cuid().parse(noteId), ownerId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      revision: true,
+      title: true,
+      content: true,
+      reason: true,
+      createdAt: true,
+    },
+  });
+  return versions.map((version) => ({
+    ...version,
+    createdAt: version.createdAt.toISOString(),
+  }));
+}
+
+export async function restorePersonalNoteVersion(
+  noteId: string,
+  versionId: string,
+) {
+  const ownerId = await requirePersonalOwnerId();
+  const note = await prisma.personalNote.findFirst({
+    where: { id: z.string().cuid().parse(noteId), ownerId },
+    select: { id: true, revision: true },
+  });
+  if (!note) throw new Error("Tidak ditemukan.");
+  const version = await prisma.personalNoteVersion.findFirst({
+    where: { id: z.string().cuid().parse(versionId), noteId: note.id, ownerId },
+    select: { title: true, content: true },
+  });
+  if (!version) throw new Error("Versi catatan tidak ditemukan.");
+  const nextRevision = note.revision + 1;
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.personalNote.update({
+      where: { id: note.id },
+      data: {
+        title: version.title,
+        content: version.content,
+        revision: nextRevision,
+      },
+      select: { updatedAt: true },
+    });
+    await tx.personalNoteVersion.create({
+      data: {
+        noteId: note.id,
+        ownerId,
+        revision: nextRevision,
+        title: version.title,
+        content: version.content,
+        reason: "restore",
+      },
+    });
+    return row;
+  });
+  revalidate();
+  return { revision: nextRevision, updatedAt: updated.updatedAt.toISOString() };
 }
 
 /** Hapus catatan; anak-anaknya naik ke root (onDelete: SetNull di schema). */

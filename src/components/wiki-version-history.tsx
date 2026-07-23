@@ -3,10 +3,6 @@
 import { useState, useTransition } from "react";
 import { Clock3, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import {
-  listRoomWikiPageVersions,
-  restoreRoomWikiPageVersion,
-} from "@/actions/room-view-wiki";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -20,7 +16,21 @@ import { cn } from "@/lib/utils";
 import { diffWikiText } from "@/lib/wiki-draft";
 import { actionErrorMessage } from "@/lib/action-error-message";
 
-type WikiVersion = Awaited<ReturnType<typeof listRoomWikiPageVersions>>[number];
+/** Bentuk minimum satu checkpoint; `createdBy` opsional (wiki pribadi single-user). */
+export type WikiVersionEntry = {
+  id: string;
+  revision: number;
+  title: string;
+  content: string;
+  reason: string;
+  createdAt: string;
+  createdBy?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    image?: string | null;
+  } | null;
+};
 
 function formatVersionDate(iso: string): string {
   return new Date(iso).toLocaleString("id-ID", {
@@ -38,16 +48,20 @@ export function WikiVersionHistory({
   currentContent,
   restoreDisabled,
   onRestored,
+  listVersions,
+  restoreVersion,
 }: {
   pageId: string;
   currentTitle: string;
   currentContent: string;
   restoreDisabled?: boolean;
   onRestored: () => void;
+  listVersions: (pageId: string) => Promise<WikiVersionEntry[]>;
+  restoreVersion: (pageId: string, versionId: string) => Promise<unknown>;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [versions, setVersions] = useState<WikiVersion[]>([]);
+  const [versions, setVersions] = useState<WikiVersionEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const selected = versions.find((version) => version.id === selectedId) ?? versions[0] ?? null;
@@ -56,7 +70,7 @@ export function WikiVersionHistory({
     setOpen(true);
     setLoading(true);
     try {
-      const rows = await listRoomWikiPageVersions(pageId);
+      const rows = await listVersions(pageId);
       setVersions(rows);
       setSelectedId(rows[0]?.id ?? null);
     } catch (error) {
@@ -71,7 +85,7 @@ export function WikiVersionHistory({
     if (!confirm(`Pulihkan versi “${selected.title}” dari ${formatVersionDate(selected.createdAt)}?`)) return;
     startTransition(async () => {
       try {
-        await restoreRoomWikiPageVersion(pageId, selected.id);
+        await restoreVersion(pageId, selected.id);
         toast.success("Versi lama berhasil dipulihkan.");
         setOpen(false);
         onRestored();
@@ -129,7 +143,9 @@ export function WikiVersionHistory({
                     >
                       <span className="block truncate font-medium text-foreground">{version.title}</span>
                       <span className="block">{formatVersionDate(version.createdAt)}</span>
-                      <span className="block truncate">{version.createdBy.name || version.createdBy.email}</span>
+                      {version.createdBy ? (
+                        <span className="block truncate">{version.createdBy.name || version.createdBy.email}</span>
+                      ) : null}
                     </button>
                   ))}
                 </div>
