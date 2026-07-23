@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Track } from "livekit-client";
 import {
   CarouselLayout,
@@ -28,18 +28,53 @@ function CallStage() {
     ],
     { onlySubscribed: false },
   );
-  const screenShareTrack = tracks
-    .filter(isTrackReference)
-    .find((t) => t.publication.source === Track.Source.ScreenShare);
-  const otherTracks = tracks.filter((t) => t !== screenShareTrack);
+  // Fokus manual (klik tile ala Discord); null = otomatis mengikuti screenshare.
+  const [focusSid, setFocusSid] = useState<string | null>(null);
+  const prevShareSids = useRef<string[]>([]);
 
-  if (screenShareTrack) {
+  const trackRefs = tracks.filter(isTrackReference);
+  const screenShareTracks = trackRefs.filter(
+    (t) => t.publication.source === Track.Source.ScreenShare,
+  );
+  const shareSidsKey = screenShareTracks
+    .map((t) => t.publication.trackSid)
+    .join(",");
+  const focusSidExists =
+    focusSid !== null &&
+    trackRefs.some((t) => t.publication.trackSid === focusSid);
+
+  useEffect(() => {
+    const shareSids = shareSidsKey ? shareSidsKey.split(",") : [];
+    // Screenshare yang baru mulai otomatis jadi fokus.
+    const newSid = shareSids.find(
+      (sid) => !prevShareSids.current.includes(sid),
+    );
+    prevShareSids.current = shareSids;
+    if (newSid) setFocusSid(newSid);
+  }, [shareSidsKey]);
+
+  // Bila track yang difokuskan hilang (berhenti share / keluar), fallback
+  // otomatis ke screenshare terakhir tanpa perlu mereset state.
+  const focusedTrack =
+    (focusSidExists
+      ? trackRefs.find((t) => t.publication.trackSid === focusSid)
+      : undefined) ?? screenShareTracks.at(-1);
+  const otherTracks = tracks.filter((t) => t !== focusedTrack);
+
+  if (focusedTrack) {
     return (
       <FocusLayoutContainer>
         <CarouselLayout tracks={otherTracks}>
-          <ParticipantTile />
+          <ParticipantTile
+            onParticipantClick={(evt) => {
+              if (evt.track?.trackSid) setFocusSid(evt.track.trackSid);
+            }}
+          />
         </CarouselLayout>
-        <FocusLayout trackRef={screenShareTrack} />
+        <FocusLayout
+          trackRef={focusedTrack}
+          onParticipantClick={() => setFocusSid(null)}
+        />
       </FocusLayoutContainer>
     );
   }

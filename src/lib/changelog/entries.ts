@@ -69,6 +69,20 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
+    id: "2026-07-22-voice-screenshare-layout",
+    date: "2026-07-22",
+    title: "Voice channel: tampilan saat share screen tidak lagi terpotong",
+    category: "fixed",
+    description:
+      "Saat ada yang share screen dan peserta voice banyak, kartu peserta di sisi kiri memanjang keluar layar tanpa bisa digulir, dan tampilan share screen ikut terpotong bagian bawahnya. Sekarang daftar peserta bisa digulir dan share screen selalu tampil utuh. Bonus: bila lebih dari satu orang share screen, Anda bisa memilih tontonan dengan mengeklik kartunya.",
+    highlights: [
+      "Daftar peserta di samping share screen kini bisa digulir bila tidak muat",
+      "Share screen tampil utuh, tidak lagi terpotong bar kontrol di bawah",
+      "Share screen terbaru otomatis tampil besar; klik kartu peserta lain untuk menjadikannya tampilan utama",
+      "Klik tampilan besar untuk kembali ke pilihan otomatis",
+    ],
+  },
+  {
     id: "2026-07-22-upload-creative-file-formats",
     date: "2026-07-22",
     title: "Unggah: dukung file desain (AI, PSD, Premiere, After Effects, Blender, dll.)",
