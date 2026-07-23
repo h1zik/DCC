@@ -33,7 +33,7 @@ import { actionErrorMessage } from "@/lib/action-error-message";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { RichTextEditor } from "@/components/rich-text-editor";
+import { RichTextEditorLazy as RichTextEditor } from "@/components/rich-text-editor-lazy";
 import { cn } from "@/lib/utils";
 import {
   parseWikiDraft,

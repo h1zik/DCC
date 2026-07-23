@@ -148,7 +148,7 @@ export function SocialListeningClient({
 
   useEffect(() => {
     if (!hasInProgress) return;
-    const id = window.setInterval(() => router.refresh(), 12_000);
+    const id = window.setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 12_000);
     return () => window.clearInterval(id);
   }, [hasInProgress, router]);
 

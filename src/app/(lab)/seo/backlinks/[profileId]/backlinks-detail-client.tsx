@@ -107,7 +107,7 @@ export function BacklinksDetailClient({ profile }: { profile: BacklinkDetail }) 
   const anyGapBusy = profile.gaps.some((g) => isSeoStatusBusy(g.status));
   useEffect(() => {
     if (!busy && !anyGapBusy) return;
-    const timer = setInterval(() => router.refresh(), 4000);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
     return () => clearInterval(timer);
   }, [busy, anyGapBusy, router]);
 

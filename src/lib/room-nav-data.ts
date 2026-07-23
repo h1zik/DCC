@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { Prisma, RoomWorkspaceSection, TaskStatus, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
@@ -34,11 +35,54 @@ export function roleHasTasksNav(role: UserRole | undefined): boolean {
 }
 
 /**
- * Memuat ruangan yang dapat diakses pengguna beserta custom view-nya, untuk
- * dipakai dropdown navigasi. CEO & administrator melihat semua ruangan; peran
- * lain hanya ruangan tempat mereka menjadi anggota.
+ * Tag cache struktur navigasi ruangan. Revalidate saat CRUD ruangan/view/
+ * keanggotaan; jumlah tugas terbuka cukup mengikuti revalidate berkala.
+ */
+export const NAV_ROOMS_CACHE_TAG = "nav-rooms";
+
+/**
+ * Struktur navigasi (ruangan + view + peran + jumlah tugas) — di-cache lintas
+ * request karena dimuat layout dashboard di SETIAP navigasi & router.refresh().
+ * `unreadChatCount` selalu 0 di sini; angka live dilayani terpisah (endpoint
+ * unread) supaya jalur cache tidak ikut query pesan.
+ */
+export function getNavRoomStructure(
+  userId: string,
+  role: UserRole,
+): Promise<NavRoom[]> {
+  return unstable_cache(
+    () => loadNavRoomStructure(userId, role),
+    ["nav-room-structure", userId, role],
+    {
+      tags: [NAV_ROOMS_CACHE_TAG, `${NAV_ROOMS_CACHE_TAG}:${userId}`],
+      revalidate: 120,
+    },
+  )();
+}
+
+/**
+ * Memuat ruangan yang dapat diakses pengguna beserta custom view-nya beserta
+ * jumlah chat belum dibaca (live). CEO & administrator melihat semua ruangan;
+ * peran lain hanya ruangan tempat mereka menjadi anggota.
  */
 export async function getNavRooms(
+  userId: string,
+  role: UserRole,
+): Promise<NavRoom[]> {
+  const rooms = await getNavRoomStructure(userId, role);
+  if (rooms.length === 0) return rooms;
+
+  const unreadByRoom = await getUnreadChatByRoom(
+    userId,
+    rooms.map((r) => r.id),
+  );
+  return rooms.map((r) => ({
+    ...r,
+    unreadChatCount: unreadByRoom.get(r.id) ?? 0,
+  }));
+}
+
+async function loadNavRoomStructure(
   userId: string,
   role: UserRole,
 ): Promise<NavRoom[]> {
@@ -74,11 +118,6 @@ export async function getNavRooms(
     orderBy: { name: "asc" },
   });
 
-  const unreadByRoom = await getUnreadChatByRoom(
-    userId,
-    rooms.map((r) => r.id),
-  );
-
   return rooms.map((r) => {
     const openTaskCount = r.projects.reduce(
       (sum, p) => sum + p._count.tasks,
@@ -100,7 +139,7 @@ export async function getNavRooms(
         workspaceSection: r.workspaceSection,
       }),
       openTaskCount,
-      unreadChatCount: unreadByRoom.get(r.id) ?? 0,
+      unreadChatCount: 0,
       canManageRoom,
       customViews: r.views,
     };
@@ -112,7 +151,7 @@ export async function getNavRooms(
  * SATU query (skala aman) — gabungkan pesan dengan `RoomChannelRead.lastReadAt`
  * per channel, lalu kelompokkan per ruangan.
  */
-async function getUnreadChatByRoom(
+export async function getUnreadChatByRoom(
   userId: string,
   roomIds: string[],
 ): Promise<Map<string, number>> {

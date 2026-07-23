@@ -20,6 +20,7 @@
     "db:evolve-kanban-position": "prisma db execute --file prisma/scripts/evolve-task-kanban-position.sql --schema prisma/schema.prisma",
     "db:evolve-room-kanban-columns": "prisma db execute --file prisma/scripts/evolve-room-kanban-columns.sql --schema prisma/schema.prisma",
     "db:evolve-pipeline-enum": "prisma db execute --file prisma/scripts/evolve-pipeline-stage-enum.sql --schema prisma/schema.prisma",
+    "db:evolve-perf-indexes": "prisma db execute --file prisma/scripts/evolve-perf-indexes.sql --schema prisma/schema.prisma",
     "db:backfill-kanban": "npx tsx prisma/scripts/backfill-kanban-hybrid.ts",
     "db:verify-kanban": "prisma db execute --file prisma/scripts/verify-kanban-migration.sql --schema prisma/schema.prisma",
     "db:clear-projects": "npx tsx prisma/scripts/guard-destructive.ts && prisma db execute --file prisma/clear-projects.sql --schema prisma/schema.prisma",

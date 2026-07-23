@@ -108,7 +108,7 @@ export function IdeaSetDetailClient({
   // Polling saat generate masih berjalan di background.
   useEffect(() => {
     if (!busy) return;
-    const t = setInterval(() => router.refresh(), 4000);
+    const t = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
     return () => clearInterval(t);
   }, [busy, router]);
 

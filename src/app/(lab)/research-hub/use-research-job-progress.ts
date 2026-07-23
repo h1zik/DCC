@@ -23,6 +23,9 @@ export function useResearchJobProgress(opts: {
     if (!inProgress) return;
 
     const tick = async () => {
+      // Tab hidden: lewati siklus — render penuh RSC per tick hanya berguna
+      // bila progress-nya terlihat; lanjut lagi saat tab kembali visible.
+      if (document.visibilityState === "hidden") return;
       if (poll) {
         try {
           await poll();
@@ -35,6 +38,13 @@ export function useResearchJobProgress(opts: {
 
     void tick();
     const id = window.setInterval(() => void tick(), intervalMs);
-    return () => window.clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [inProgress, poll, intervalMs, router]);
 }

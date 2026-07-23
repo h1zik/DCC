@@ -161,7 +161,7 @@ export function ProductDiscoveryDetailClient({
 
   useEffect(() => {
     if (!inProgress) return;
-    const id = window.setInterval(() => router.refresh(), 8_000);
+    const id = window.setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 8_000);
     return () => window.clearInterval(id);
   }, [inProgress, router]);
 

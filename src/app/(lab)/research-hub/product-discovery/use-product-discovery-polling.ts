@@ -11,6 +11,8 @@ export function useProductDiscoveryPolling(inProgress: boolean): void {
     if (!inProgress) return;
 
     const tick = async () => {
+      // Tab hidden: lewati — lanjut otomatis saat kembali visible.
+      if (document.visibilityState === "hidden") return;
       try {
         await pollProductDiscoveryJobs();
       } catch {
@@ -21,6 +23,13 @@ export function useProductDiscoveryPolling(inProgress: boolean): void {
 
     void tick();
     const id = window.setInterval(tick, 5_000);
-    return () => window.clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [inProgress, router]);
 }

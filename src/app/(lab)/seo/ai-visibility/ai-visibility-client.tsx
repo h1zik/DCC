@@ -90,7 +90,7 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
   const hasBusy = items.some((i) => isSeoStatusBusy(i.status));
   useEffect(() => {
     if (!hasBusy) return;
-    const timer = setInterval(() => router.refresh(), 5000);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 5000);
     return () => clearInterval(timer);
   }, [hasBusy, router]);
 

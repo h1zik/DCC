@@ -139,7 +139,7 @@ export function ContentClient({
   const hasBusy = briefs.some((b) => isSeoStatusBusy(b.status));
   useEffect(() => {
     if (!hasBusy) return;
-    const timer = setInterval(() => router.refresh(), 4000);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
     return () => clearInterval(timer);
   }, [hasBusy, router]);
 

@@ -227,7 +227,7 @@ const getExecutiveDashboardData = unstable_cache(
     };
   },
   ["executive-dashboard-metrics"],
-  { revalidate: 60 },
+  { revalidate: 60, tags: ["exec-dashboard"] },
 );
 
 export default async function ExecutiveDashboardPage() {

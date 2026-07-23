@@ -155,7 +155,7 @@ export function ReportsClient({
   const hasBusy = reports.some((r) => isSeoStatusBusy(r.status));
   useEffect(() => {
     if (!hasBusy) return;
-    const timer = setInterval(() => router.refresh(), 4000);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
     return () => clearInterval(timer);
   }, [hasBusy, router]);
 

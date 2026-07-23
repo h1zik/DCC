@@ -46,7 +46,9 @@ export function DirectChatHeaderButton({
       void loadUnread();
     };
     const t0 = window.setTimeout(tick, 0);
-    const t = window.setInterval(tick, 5000);
+    // 15 detik cukup untuk badge — perubahan in-app tetap instan lewat event
+    // `direct-chat-inbox-changed` + refetch saat pindah halaman.
+    const t = window.setInterval(tick, 15_000);
     const onVisible = () => {
       if (document.visibilityState === "visible") tick();
     };
