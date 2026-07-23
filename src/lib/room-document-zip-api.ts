@@ -55,15 +55,40 @@ function createZipStream(
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
+      // Hentikan pipeline sekali saja: setel flag, hentikan baca disk (dengan
+      // error agar promise entri yang menggantung ikut reject), matikan zip.
+      const teardown = (err?: unknown) => {
+        if (aborted) return;
+        aborted = true;
+        current?.destroy(err instanceof Error ? err : undefined);
+        zip?.terminate();
+      };
+
       zip = new Zip((err, chunk, final) => {
         if (aborted) return;
         if (err) {
-          aborted = true;
-          controller.error(err);
+          try {
+            controller.error(err);
+          } catch {
+            /* controller sudah tertutup */
+          }
+          teardown();
           return;
         }
-        controller.enqueue(chunk);
-        if (final) controller.close();
+        // enqueue/close bisa melempar ERR_INVALID_STATE ("Controller is already
+        // closed") bila client memutus koneksi sebelum cancel() sempat jalan.
+        // Callback ini dijalankan sinkron dari entry.push() di dalam handler
+        // 'data' Node, jadi lemparan di sini lolos jadi uncaughtException yang
+        // mematikan proses. Tangkap dan hentikan pipeline dengan tenang.
+        try {
+          if (chunk.length > 0) controller.enqueue(chunk);
+          if (final) {
+            controller.close();
+            aborted = true;
+          }
+        } catch {
+          teardown();
+        }
       });
 
       (async () => {
@@ -75,12 +100,23 @@ function createZipStream(
             const rs = createReadStream(file.abs);
             current = rs;
             rs.on("data", (chunk) => {
-              entry.push(
-                chunk instanceof Uint8Array
-                  ? chunk
-                  : new TextEncoder().encode(String(chunk)),
-                false,
-              );
+              if (aborted) {
+                rs.destroy();
+                return;
+              }
+              try {
+                // entry.push() memanggil callback Zip secara sinkron; lemparan
+                // apa pun harus diarahkan ke reject, bukan lolos dari handler.
+                entry.push(
+                  chunk instanceof Uint8Array
+                    ? chunk
+                    : new TextEncoder().encode(String(chunk)),
+                  false,
+                );
+              } catch (err) {
+                rs.destroy(err instanceof Error ? err : new Error(String(err)));
+                return;
+              }
               // Backpressure: berhenti baca disk bila antrean respons penuh;
               // dilanjutkan lagi oleh pull() saat client menguras antrean.
               if ((controller.desiredSize ?? 1) <= 0) rs.pause();
@@ -95,10 +131,14 @@ function createZipStream(
         }
         zip!.end();
       })().catch((err) => {
-        if (!aborted) {
-          aborted = true;
+        if (aborted) return;
+        // controller.error() sendiri melempar bila controller sudah tertutup.
+        try {
           controller.error(err);
+        } catch {
+          /* sudah tertutup — cukup bereskan pipeline */
         }
+        teardown();
       });
     },
     pull() {
@@ -106,8 +146,10 @@ function createZipStream(
     },
     cancel() {
       // Client putus di tengah unduhan: hentikan baca disk agar fd tak bocor.
+      // Destroy dengan error agar promise entri yang menggantung ikut reject
+      // dan closure async selesai (tanpa itu ia menggantung selamanya = bocor).
       aborted = true;
-      current?.destroy();
+      current?.destroy(new Error("download dibatalkan"));
       zip?.terminate();
     },
   });

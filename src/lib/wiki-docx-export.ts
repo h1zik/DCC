@@ -1,5 +1,14 @@
 import HTMLtoDOCX from "html-to-docx";
 import { buildWikiHtmlDocument, stripThemeClassesFromHtml } from "@/lib/wiki-export";
+import { solidHighlightColor } from "@/lib/editor-colors";
+
+/** html-to-docx tidak mendukung hex 8 digit (highlight ber-alpha) — petakan ke solid. */
+function normalizeHighlightColorsForDocx(html: string): string {
+  return html.replace(
+    /background-color:\s*(#[0-9a-fA-F]{8}|#[0-9a-fA-F]{4})\b/g,
+    (_match, hex: string) => `background-color: ${solidHighlightColor(hex)}`,
+  );
+}
 
 /** Buffer DOCX — kompatibel Word, LibreOffice, Google Docs. */
 export async function buildWikiDocxBuffer(
@@ -9,7 +18,7 @@ export async function buildWikiDocxBuffer(
   const safeTitle = title.trim() || "Tanpa judul";
   const html = buildWikiHtmlDocument(
     safeTitle,
-    stripThemeClassesFromHtml(bodyHtml),
+    normalizeHighlightColorsForDocx(stripThemeClassesFromHtml(bodyHtml)),
   );
 
   const result = await HTMLtoDOCX(
