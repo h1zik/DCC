@@ -24,17 +24,14 @@ const FORMATS: { format: WikiExportFormat; label: string; hint: string }[] = [
 ];
 
 export function WikiPageDownloadMenu({
-  roomId,
-  viewId,
-  pageId,
   title,
   contentHtml,
+  docxApiPath,
 }: {
-  roomId: string;
-  viewId: string;
-  pageId: string;
   title: string;
   contentHtml: string;
+  /** Path API unduhan DOCX (format lain diproses di browser). */
+  docxApiPath: string;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -45,9 +42,7 @@ export function WikiPageDownloadMenu({
         title.trim() || "Tanpa judul",
         contentHtml,
         format,
-        roomId,
-        viewId,
-        pageId,
+        docxApiPath,
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal mengunduh.");

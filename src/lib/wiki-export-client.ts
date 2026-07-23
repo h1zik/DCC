@@ -3,7 +3,6 @@ import {
   htmlToMarkdown,
   htmlToPlainText,
   sanitizeWikiFilename,
-  wikiDownloadApiPath,
   type WikiExportFormat,
 } from "@/lib/wiki-export";
 
@@ -33,12 +32,10 @@ function filenameFromContentDisposition(header: string | null): string | null {
 }
 
 export async function downloadWikiPageFromApi(
-  roomId: string,
-  viewId: string,
-  pageId: string,
+  apiPath: string,
   format: "html" | "md" | "txt" | "docx",
 ): Promise<void> {
-  const res = await fetch(wikiDownloadApiPath(roomId, viewId, pageId, format), {
+  const res = await fetch(apiPath, {
     credentials: "include",
   });
   if (!res.ok) {
@@ -78,15 +75,14 @@ export function downloadWikiPageLocally(
   title: string,
   contentHtml: string,
   format: WikiExportFormat,
-  roomId: string,
-  viewId: string,
-  pageId: string,
+  /** Path API unduhan DOCX (satu-satunya format yang butuh server). */
+  docxApiPath: string,
 ): Promise<void> {
   if (format === "pdf") {
     return downloadWikiPageAsPdf(title, contentHtml);
   }
   if (format === "docx") {
-    return downloadWikiPageFromApi(roomId, viewId, pageId, "docx");
+    return downloadWikiPageFromApi(docxApiPath, "docx");
   }
   if (format === "html") {
     const html = buildWikiHtmlDocument(title, contentHtml);
@@ -100,11 +96,8 @@ export function downloadWikiPageLocally(
     triggerBlobDownload(blob, `${sanitizeWikiFilename(title, "wiki")}.md`);
     return Promise.resolve();
   }
-  if (format === "txt") {
-    const txt = `${title}\n\n${htmlToPlainText(contentHtml)}`;
-    const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
-    triggerBlobDownload(blob, `${sanitizeWikiFilename(title, "wiki")}.txt`);
-    return Promise.resolve();
-  }
-  return downloadWikiPageFromApi(roomId, viewId, pageId, format);
+  const txt = `${title}\n\n${htmlToPlainText(contentHtml)}`;
+  const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+  triggerBlobDownload(blob, `${sanitizeWikiFilename(title, "wiki")}.txt`);
+  return Promise.resolve();
 }

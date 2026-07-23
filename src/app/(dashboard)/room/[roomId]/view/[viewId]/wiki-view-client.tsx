@@ -38,6 +38,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   deleteRoomWikiPage,
+  listRoomWikiPageVersions,
+  restoreRoomWikiPageVersion,
   uploadRoomWikiAttachment,
   upsertRoomWikiPage,
   updateRoomWikiPageOrganization,
@@ -52,6 +54,7 @@ import { WikiCollaborationPanel } from "@/components/wiki-collaboration-panel";
 import { WikiCommentsSheet } from "@/components/wiki-comments-sheet";
 import type { RoomMemberAvatarUser } from "@/components/room-member-avatar-stack";
 import { cn } from "@/lib/utils";
+import { wikiDownloadApiPath } from "@/lib/wiki-export";
 import {
   parseWikiDraft,
   shouldRecoverWikiDraft,
@@ -643,13 +646,13 @@ function PageEditor({
                 currentContent={contentDraft}
                 restoreDisabled={!canEdit || saveStatus === "dirty" || saveStatus === "saving"}
                 onRestored={onRestored}
+                listVersions={listRoomWikiPageVersions}
+                restoreVersion={restoreRoomWikiPageVersion}
               />
               <WikiPageDownloadMenu
-                roomId={roomId}
-                viewId={viewId}
-                pageId={page.id}
                 title={titleDraft}
                 contentHtml={contentDraft}
+                docxApiPath={wikiDownloadApiPath(roomId, viewId, page.id, "docx")}
               />
               <DropdownMenu>
                 <DropdownMenuTrigger

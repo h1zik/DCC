@@ -15,8 +15,11 @@ import {
   Check,
   ChevronRight,
   CloudOff,
+  CornerDownRight,
   FileText,
+  Link2,
   Loader2,
+  MoreHorizontal,
   NotebookPen,
   Plus,
   RefreshCw,
@@ -25,7 +28,16 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   deletePersonalNote,
+  listPersonalNoteVersions,
+  restorePersonalNoteVersion,
   updatePersonalNoteOrganization,
   upsertPersonalNote,
 } from "@/actions/personal-notes";
@@ -34,7 +46,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RichTextEditorLazy as RichTextEditor } from "@/components/rich-text-editor-lazy";
+import { WikiPageDownloadMenu } from "@/components/wiki-page-download-menu";
+import { WikiVersionHistory } from "@/components/wiki-version-history";
 import { cn } from "@/lib/utils";
+import { personalNoteDownloadApiPath } from "@/lib/wiki-export";
 import {
   parseWikiDraft,
   shouldRecoverWikiDraft,
@@ -43,6 +58,7 @@ import {
 } from "@/lib/wiki-draft";
 import {
   buildWikiTree,
+  findWikiBacklinks,
   normalizeWikiTags,
   searchWikiPages,
   type WikiTreeNode,
@@ -131,6 +147,10 @@ export function NotesClient({ notes: initialNotes }: { notes: Note[] }) {
     [notes, searchQuery],
   );
   const noteTree = useMemo(() => buildWikiTree(visibleNotes), [visibleNotes]);
+  const backlinks = useMemo(
+    () => (selected ? findWikiBacklinks(notes, selected.id) : []),
+    [notes, selected],
+  );
 
   const persistNote = useCallback(
     (note: Note, patch: { title?: string; content?: string }) => {
@@ -289,6 +309,24 @@ export function NotesClient({ notes: initialNotes }: { notes: Note[] }) {
     };
   }, []);
 
+  // Saat koneksi kembali, flush ulang draft lokal yang belum tersimpan.
+  useEffect(() => {
+    const retryDrafts = () => {
+      for (const note of initialNotes) {
+        const draft = parseWikiDraft(
+          localStorage.getItem(wikiDraftStorageKey(note.id)),
+          note.id,
+        );
+        if (!draft) continue;
+        latestTitleRef.current.set(note.id, draft.title);
+        latestContentRef.current.set(note.id, draft.content);
+        persistNote(note, { title: draft.title, content: draft.content });
+      }
+    };
+    window.addEventListener("online", retryDrafts);
+    return () => window.removeEventListener("online", retryDrafts);
+  }, [initialNotes, persistNote]);
+
   if (notes.length === 0) {
     return (
       <Card>
@@ -368,6 +406,7 @@ export function NotesClient({ notes: initialNotes }: { notes: Note[] }) {
           key={selected.id}
           note={selected}
           notes={notes}
+          backlinks={backlinks}
           saveStatus={saveStatus}
           onTitleChange={(v) => onTitleChange(selected, v)}
           onContentChange={(v) => onContentChange(selected, v)}
@@ -375,6 +414,10 @@ export function NotesClient({ notes: initialNotes }: { notes: Note[] }) {
           onCreateChild={() => onCreateNote(selected.id)}
           onOrganizationUpdated={() => router.refresh()}
           onDelete={() => onDeleteNote(selected)}
+          onRestored={() => {
+            localStorage.removeItem(wikiDraftStorageKey(selected.id));
+            router.refresh();
+          }}
         />
       ) : (
         <Card>
@@ -481,20 +524,24 @@ function NoteTreeItem({
 function NoteEditor({
   note,
   notes,
+  backlinks,
   saveStatus,
   onTitleChange,
   onContentChange,
   onDelete,
+  onRestored,
   onNavigateNote,
   onCreateChild,
   onOrganizationUpdated,
 }: {
   note: Note;
   notes: Note[];
+  backlinks: Note[];
   saveStatus: SaveStatus;
   onTitleChange: (next: string) => void;
   onContentChange: (next: string) => void;
   onDelete: () => void;
+  onRestored: () => void;
   onNavigateNote: (noteId: string) => void;
   onCreateChild: () => void;
   onOrganizationUpdated: () => void;
@@ -547,166 +594,212 @@ function NoteEditor({
   }
 
   return (
-    <Card>
-      <CardContent className="space-y-4 p-4 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <Input
-              value={titleDraft}
-              onChange={(e) => {
-                const v = e.target.value;
-                setTitleDraft(v);
-                onTitleChange(v);
-              }}
-              maxLength={160}
-              placeholder="Judul catatan"
-              aria-label="Judul catatan"
-              className="!h-auto border-0 bg-transparent px-0 py-1 text-2xl font-semibold tracking-tight shadow-none ring-0 focus-visible:ring-0 sm:text-3xl"
+    <Card className="hover:!translate-y-0">
+      <CardContent className="p-0">
+        {/* Chrome atas: satu baris tipis — status simpan di kiri, aksi di kanan */}
+        <div className="flex items-center justify-between gap-2 px-4 pt-3 sm:px-8">
+          <SaveBadge status={saveStatus} />
+          <div className="flex shrink-0 items-center gap-0.5">
+            <WikiVersionHistory
+              pageId={note.id}
+              currentTitle={titleDraft}
+              currentContent={contentDraft}
+              restoreDisabled={saveStatus === "dirty" || saveStatus === "saving"}
+              onRestored={onRestored}
+              listVersions={listPersonalNoteVersions}
+              restoreVersion={restorePersonalNoteVersion}
             />
-            <p className="text-muted-foreground mt-0.5 text-xs">
-              Diperbarui {fmt(note.updatedAt)}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <SaveBadge status={saveStatus} />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Hapus catatan"
-              onClick={onDelete}
-            >
-              <Trash2 className="size-3.5" aria-hidden />
-            </Button>
-          </div>
-        </div>
-
-        <div className="border-border flex flex-wrap items-center gap-2 border-y py-2">
-          <div className="relative min-w-48 flex-1">
-            <Tag
-              className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-              aria-hidden
+            <WikiPageDownloadMenu
+              title={titleDraft}
+              contentHtml={contentDraft}
+              docxApiPath={personalNoteDownloadApiPath(note.id, "docx")}
             />
-            <Input
-              value={tagsDraft}
-              onChange={(e) => setTagsDraft(e.target.value)}
-              onBlur={saveTags}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  saveTags();
-                  e.currentTarget.blur();
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Aksi catatan lainnya"
+                  >
+                    <MoreHorizontal className="size-3.5" aria-hidden />
+                  </Button>
                 }
-              }}
-              placeholder="tag-satu, tag-dua"
-              aria-label="Tag catatan"
-              className="h-8 pl-8 text-xs"
-              disabled={organizationPending}
-            />
+              />
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={onCreateChild}>
+                  <Plus /> Subcatatan baru
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                  <Trash2 /> Hapus catatan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <select
-            value={note.parentId ?? ""}
-            onChange={(e) => moveToParent(e.target.value || null)}
-            disabled={organizationPending}
-            aria-label="Catatan induk"
-            className="border-input bg-background h-8 max-w-56 rounded-md border px-2 text-xs"
-          >
-            <option value="">Root</option>
-            {notes
-              .filter((candidate) => candidate.id !== note.id)
-              .map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.title || "Tanpa judul"}
-                </option>
-              ))}
-          </select>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onCreateChild}
-          >
-            <Plus className="size-3.5" /> Subcatatan
-          </Button>
         </div>
 
-        {recoveryCandidate ? (
-          <div className="border-amber-500/30 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
-            <div>
-              <p className="font-medium">
-                Draft lokal yang belum tersimpan ditemukan
-              </p>
-              <p className="text-muted-foreground text-xs">
-                Disimpan {fmt(recoveryCandidate.savedAt)}. Pilih pulihkan agar
-                perubahan tidak hilang.
-              </p>
+        {/* Kolom konten terpusat ala Notion */}
+        <div className="mx-auto w-full max-w-4xl px-4 pb-6 sm:px-8">
+          <Input
+            value={titleDraft}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTitleDraft(v);
+              onTitleChange(v);
+            }}
+            maxLength={160}
+            placeholder="Tanpa judul"
+            aria-label="Judul catatan"
+            className="!h-auto border-0 bg-transparent px-0 py-1 text-3xl font-bold tracking-tight shadow-none ring-0 placeholder:text-muted-foreground/40 focus-visible:ring-0 sm:text-4xl"
+          />
+
+          {/* Baris properti: kalem tanpa border, kontrol baru terlihat saat hover/focus */}
+          <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+            <span className="whitespace-nowrap py-1">Diperbarui {fmt(note.updatedAt)}</span>
+            <span aria-hidden className="text-border">·</span>
+            <div className="relative flex items-center">
+              <Tag className="pointer-events-none absolute left-1.5 size-3" aria-hidden />
+              <input
+                value={tagsDraft}
+                onChange={(e) => setTagsDraft(e.target.value)}
+                onBlur={saveTags}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    saveTags();
+                    e.currentTarget.blur();
+                  }
+                }}
+                placeholder="Tambah tag…"
+                aria-label="Tag catatan"
+                disabled={organizationPending}
+                className="hover:bg-muted focus:bg-muted placeholder:text-muted-foreground/60 h-7 w-44 rounded-md bg-transparent pl-6 pr-2 text-xs outline-none transition-colors disabled:cursor-not-allowed"
+              />
             </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  localStorage.removeItem(wikiDraftStorageKey(note.id));
-                  setRecoveryCandidate(null);
-                }}
+            <span aria-hidden className="text-border">·</span>
+            <div className="relative flex items-center">
+              <CornerDownRight className="pointer-events-none absolute left-1.5 size-3" aria-hidden />
+              <select
+                value={note.parentId ?? ""}
+                onChange={(e) => moveToParent(e.target.value || null)}
+                disabled={organizationPending}
+                aria-label="Catatan induk"
+                title="Catatan induk"
+                className="hover:bg-muted h-7 max-w-52 cursor-pointer appearance-none rounded-md border-0 bg-transparent pl-6 pr-2 text-xs outline-none transition-colors disabled:cursor-not-allowed"
               >
-                Buang draft
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  setTitleDraft(recoveryCandidate.title);
-                  setContentDraft(recoveryCandidate.content);
-                  setEditorGeneration((v) => v + 1);
-                  onTitleChange(recoveryCandidate.title);
-                  onContentChange(recoveryCandidate.content);
-                  setRecoveryCandidate(null);
-                }}
-              >
-                <RefreshCw className="size-3.5" />
-                Pulihkan draft
-              </Button>
+                <option value="">Root</option>
+                {notes
+                  .filter((candidate) => candidate.id !== note.id)
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.title || "Tanpa judul"}
+                    </option>
+                  ))}
+              </select>
             </div>
           </div>
-        ) : null}
 
-        <RichTextEditor
-          key={editorGeneration}
-          initialContent={contentDraft}
-          onUpdate={(html) => {
-            setContentDraft(html);
-            onContentChange(html);
-          }}
-          onUploadFile={async (file) => {
-            const formData = new FormData();
-            formData.set("file", file);
-            formData.set("source", "note");
-            const res = await fetch("/api/personal/files", {
-              method: "POST",
-              body: formData,
-            });
-            if (!res.ok) {
-              throw new Error((await res.text()) || "Gagal mengunggah file.");
-            }
-            const data = (await res.json()) as {
-              id: string;
-              fileName: string;
-              mimeType: string;
-              size: number;
-            };
-            return {
-              url: `/api/personal/files/${data.id}/download`,
-              name: data.fileName,
-              mimeType: data.mimeType,
-              size: data.size,
-            };
-          }}
-          wikiPages={notes.filter((candidate) => candidate.id !== note.id)}
-          onNavigateWikiPage={onNavigateNote}
-          placeholder="Tulis catatan pribadimu di sini…"
-        />
+          {recoveryCandidate ? (
+            <div className="border-amber-500/25 bg-amber-500/10 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-1.5 text-xs">
+              <span className="font-medium text-amber-800 dark:text-amber-200">
+                Draft lokal ditemukan ({fmt(recoveryCandidate.savedAt)})
+              </span>
+              <span className="text-muted-foreground">Pulihkan agar perubahan tidak hilang.</span>
+              <span className="ml-auto flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    localStorage.removeItem(wikiDraftStorageKey(note.id));
+                    setRecoveryCandidate(null);
+                  }}
+                >
+                  Buang
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    setTitleDraft(recoveryCandidate.title);
+                    setContentDraft(recoveryCandidate.content);
+                    setEditorGeneration((v) => v + 1);
+                    onTitleChange(recoveryCandidate.title);
+                    onContentChange(recoveryCandidate.content);
+                    setRecoveryCandidate(null);
+                  }}
+                >
+                  <RefreshCw className="size-3" />
+                  Pulihkan
+                </Button>
+              </span>
+            </div>
+          ) : null}
+
+          <div className="mt-3">
+            <RichTextEditor
+              key={editorGeneration}
+              initialContent={contentDraft}
+              onUpdate={(html) => {
+                setContentDraft(html);
+                onContentChange(html);
+              }}
+              onUploadFile={async (file) => {
+                const formData = new FormData();
+                formData.set("file", file);
+                formData.set("source", "note");
+                const res = await fetch("/api/personal/files", {
+                  method: "POST",
+                  body: formData,
+                });
+                if (!res.ok) {
+                  throw new Error((await res.text()) || "Gagal mengunggah file.");
+                }
+                const data = (await res.json()) as {
+                  id: string;
+                  fileName: string;
+                  mimeType: string;
+                  size: number;
+                };
+                return {
+                  url: `/api/personal/files/${data.id}/download`,
+                  name: data.fileName,
+                  mimeType: data.mimeType,
+                  size: data.size,
+                };
+              }}
+              wikiPages={notes.filter((candidate) => candidate.id !== note.id)}
+              onNavigateWikiPage={onNavigateNote}
+              placeholder="Tulis catatan pribadimu, ketik / untuk perintah…"
+              showTableOfContents
+              showToolbar={false}
+            />
+          </div>
+
+          {backlinks.length > 0 ? (
+            <div className="border-border mt-4 border-t pt-4">
+              <div className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                <Link2 className="size-3.5" /> {backlinks.length} backlink
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {backlinks.map((backlink) => (
+                  <button
+                    key={backlink.id}
+                    type="button"
+                    onClick={() => onNavigateNote(backlink.id)}
+                    className="bg-muted hover:bg-muted/80 rounded-md px-2.5 py-1.5 text-xs"
+                  >
+                    {backlink.title || "Tanpa judul"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

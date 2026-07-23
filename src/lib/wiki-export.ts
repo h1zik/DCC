@@ -11,6 +11,13 @@ export function wikiDownloadApiPath(
   return `/api/rooms/${roomId}/views/${viewId}/wiki/${pageId}/download?format=${format}`;
 }
 
+export function personalNoteDownloadApiPath(
+  noteId: string,
+  format: WikiExportFormat,
+): string {
+  return `/api/personal/notes/${noteId}/download?format=${format}`;
+}
+
 export function sanitizeWikiFilename(title: string, fallback: string): string {
   const base =
     title
