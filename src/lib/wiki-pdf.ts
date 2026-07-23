@@ -142,7 +142,7 @@ export function buildWikiPdfDocument(title: string, bodyHtml: string): string {
     a { color: #2563eb; text-decoration: underline; }
     mark { background: #fef08a; color: #111111; padding: 0 2px; border-radius: 2px; }
 
-    /* Marker list dirender `outside` (di area padding kiri). 1.5em cuma pas
+    /* Marker list dirender di luar (di area padding kiri). 1.5em cuma pas
        untuk 1 digit; marker lebar seperti "10." / "12." / "viii." meluber ke
        kiri list box, masuk ke margin @page 40px, lalu terpotong Chromium.
        2.25em memberi ruang cukup + buffer supaya marker tak pernah menyentuh
