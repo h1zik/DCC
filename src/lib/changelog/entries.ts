@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-23-pdf-list-marker-clipping",
+    date: "2026-07-23",
+    title: "PDF: nomor daftar tidak lagi terpotong di tepi halaman",
+    category: "fixed",
+    description:
+      "Saat mengunduh PDF dari konten yang memuat daftar bernomor, penanda daftar yang lebar — seperti \"10.\", \"12.\", atau angka romawi \"viii.\" — meluber ke luar area daftar dan terpotong di batas cetak halaman. Ruang untuk penanda kini dilebarkan sehingga nomor selalu tampil utuh, sekaligus tidak pernah menyentuh tepi kertas.",
+    highlights: [
+      "Daftar bernomor dua digit atau lebih (10, 11, 12, …) tampil penuh di PDF",
+      "Daftar angka romawi (i, ii, …, viii, ix) juga tidak lagi terpotong",
+      "Berlaku di semua unduhan PDF yang memakai editor: Wiki, Catatan Pribadi, dan draft konten",
+    ],
+  },
+  {
     id: "2026-07-23-server-side-pdf-engine",
     date: "2026-07-23",
     title: "PDF makin rapi & ringan: kini dirender server, bukan lagi screenshot browser",
