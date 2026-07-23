@@ -96,7 +96,7 @@ export function WikiVersionHistory({
         <Clock3 className="size-3.5" />
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-[min(94vw,56rem)] sm:max-w-[56rem]">
+        <SheetContent className="w-[min(94vw,56rem)] overflow-hidden sm:max-w-[56rem]">
           <SheetHeader className="border-border border-b pr-12">
             <SheetTitle>Riwayat versi</SheetTitle>
             <SheetDescription>
@@ -110,7 +110,7 @@ export function WikiVersionHistory({
           ) : versions.length === 0 ? (
             <p className="text-muted-foreground p-6 text-sm">Belum ada checkpoint versi.</p>
           ) : (
-            <div className="grid min-h-0 flex-1 md:grid-cols-[16rem_1fr]">
+            <div className="grid min-h-0 min-w-0 flex-1 md:grid-cols-[16rem_minmax(0,1fr)]">
               <ScrollArea className="border-border h-full border-r">
                 <div className="space-y-1 p-2">
                   <div className="bg-primary/5 border-primary/20 rounded-md border px-3 py-2 text-xs">
@@ -134,13 +134,13 @@ export function WikiVersionHistory({
                   ))}
                 </div>
               </ScrollArea>
-              <div className="flex min-h-0 flex-col">
+              <div className="flex min-h-0 min-w-0 flex-col">
                 {selected ? (
                   <>
                     <div className="border-border flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium">Perubahan terhadap versi saat ini</p>
-                        <p className="text-muted-foreground text-xs">Checkpoint revisi {selected.revision} · {selected.reason}</p>
+                        <p className="text-muted-foreground truncate text-xs">Checkpoint revisi {selected.revision} · {selected.reason}</p>
                       </div>
                       <Button
                         type="button"
@@ -154,8 +154,8 @@ export function WikiVersionHistory({
                         Pulihkan versi ini
                       </Button>
                     </div>
-                    <ScrollArea className="min-h-0 flex-1">
-                      <div className="whitespace-pre-wrap p-5 font-mono text-sm leading-6">
+                    <ScrollArea className="min-h-0 min-w-0 flex-1">
+                      <div className="whitespace-pre-wrap break-words p-5 font-mono text-sm leading-6">
                         {diff.map((segment, index) => (
                           <span
                             key={`${segment.kind}-${index}`}

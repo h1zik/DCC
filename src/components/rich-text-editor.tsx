@@ -9,7 +9,11 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { TableKit } from "@tiptap/extension-table";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { TextStyle } from "@tiptap/extension-text-style";
+import { Color, TextStyle } from "@tiptap/extension-text-style";
+import TextAlign from "@tiptap/extension-text-align";
+import Highlight from "@tiptap/extension-highlight";
+import { Details, DetailsContent, DetailsSummary } from "@tiptap/extension-details";
+import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Youtube from "@tiptap/extension-youtube";
 import { createLowlight } from "lowlight";
 // Daftar bahasa eksplisit (bukan `common` = ~37 bahasa) — memangkas ratusan KB
@@ -27,21 +31,32 @@ import {
   AlignJustify,
   AlignLeft,
   AlignRight,
+  ArrowDownToLine,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  ArrowUpToLine,
   Bold,
   Braces,
+  ChevronDown,
   Code,
-  Columns3,
   FileUp,
+  GripVertical,
   Heading1,
   Heading2,
   Heading3,
   Image as ImageIcon,
   Italic,
+  Lightbulb,
   Link as LinkIcon,
   List,
   ListChecks,
+  ListCollapse,
   ListOrdered,
+  type LucideIcon,
   Minus as DividerIcon,
+  Pilcrow,
+  PanelLeft,
+  PanelTop,
   Quote,
   Redo,
   Minus,
@@ -49,19 +64,16 @@ import {
   RotateCcw,
   Strikethrough,
   Table2,
+  TableCellsMerge,
+  TableCellsSplit,
+  Trash2,
   Type,
   Undo,
   Underline as UnderlineIcon,
   Unlink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  DEFAULT_FONT_SIZE_PT,
-  FontSize,
-  clampFontSizePt,
-  fontSizeCSSValueToNumber,
-  numberToFontSizeCSSValue,
-} from "@/lib/tiptap-font-size";
+import { FontSize } from "@/lib/tiptap-font-size";
 import { EditorLinkDialog } from "@/components/editor-link-dialog";
 import {
   RichTextMediaDialog,
@@ -73,6 +85,7 @@ import {
   cleanRichTextPasteHtml,
   filterWikiSlashCommands,
   type WikiSlashCommandId,
+  type WikiSlashCommandSection,
 } from "@/lib/wiki-editor";
 import {
   clampWikiImageWidth,
@@ -89,6 +102,23 @@ import {
   ResizableWikiImage,
   type WikiImageAlignment,
 } from "@/lib/tiptap-image-layout";
+import { TableControlsOverlay } from "@/components/rich-text-editor-table-controls";
+import { FontSizeControl } from "@/components/editor-font-size-control";
+import { EditorBubbleMenu } from "@/components/editor-bubble-menu";
+import { EditorColorPicker } from "@/components/editor-color-picker";
+import { EditorToc } from "@/components/editor-toc";
+import {
+  Callout,
+  normalizeCalloutVariant,
+  type WikiCalloutVariant,
+} from "@/lib/tiptap-callout";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const lowlight = createLowlight({
   bash: langBash,
@@ -115,6 +145,13 @@ export type RichTextEditorProps = {
   onUploadFile?: (file: File) => Promise<UploadedRichTextFile>;
   wikiPages?: { id: string; title: string }[];
   onNavigateWikiPage?: (pageId: string) => void;
+  /** Tampilkan panel Daftar Isi otomatis dari heading (dipakai wiki view). */
+  showTableOfContents?: boolean;
+  /**
+   * false = tanpa toolbar statis ala Notion: format via bubble menu + slash `/`;
+   * kontrol tabel/gambar/callout tetap muncul kontekstual saat kursor di dalamnya.
+   */
+  showToolbar?: boolean;
 };
 
 /**
@@ -130,6 +167,8 @@ export function RichTextEditor({
   onUploadFile,
   wikiPages = [],
   onNavigateWikiPage,
+  showTableOfContents = false,
+  showToolbar = true,
 }: RichTextEditorProps) {
   const onUpdateRef = useRef(onUpdate);
   useEffect(() => {
@@ -205,6 +244,13 @@ export function RichTextEditor({
       }),
       WikiFile,
       WikiEmbed,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Color,
+      Highlight.configure({ multicolor: true }),
+      Callout,
+      Details.configure({ persist: true, HTMLAttributes: { class: "wiki-toggle" } }),
+      DetailsSummary,
+      DetailsContent,
     ],
     [placeholder],
   );
@@ -359,6 +405,12 @@ export function RichTextEditor({
         case "table":
           chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
           break;
+        case "callout":
+          chain.setCallout({ variant: "info" }).run();
+          break;
+        case "toggle":
+          chain.setDetails().run();
+          break;
         case "divider":
           chain.setHorizontalRule().run();
           break;
@@ -449,14 +501,28 @@ export function RichTextEditor({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <Toolbar
-        editor={editor}
-        onOpenLinkDialog={openLinkDialog}
-        onRemoveLink={removeLink}
-        onOpenMediaDialog={openMediaDialog}
-        editable={editable}
-      />
-      <EditorContent editor={editor} />
+      {showToolbar ? (
+        <Toolbar
+          editor={editor}
+          onOpenLinkDialog={openLinkDialog}
+          onRemoveLink={removeLink}
+          onOpenMediaDialog={openMediaDialog}
+          editable={editable}
+        />
+      ) : editable ? (
+        <EditorContextualBar editor={editor} />
+      ) : null}
+      {showTableOfContents ? <EditorToc editor={editor} /> : null}
+      <div className="relative">
+        <EditorContent editor={editor} />
+        <TableControlsOverlay editor={editor} editable={editable} />
+      </div>
+      {editable ? <EditorBubbleMenu editor={editor} onOpenLinkDialog={openLinkDialog} /> : null}
+      {editable ? (
+        <DragHandle editor={editor} className="wiki-drag-handle">
+          <GripVertical className="size-4" aria-hidden />
+        </DragHandle>
+      ) : null}
       {slashMenu ? (
         <SlashCommandMenu
           left={slashMenu.left}
@@ -507,6 +573,32 @@ export function RichTextEditor({
   );
 }
 
+const SLASH_COMMAND_ICONS: Record<string, LucideIcon> = {
+  pilcrow: Pilcrow,
+  "heading-1": Heading1,
+  "heading-2": Heading2,
+  "heading-3": Heading3,
+  quote: Quote,
+  minus: DividerIcon,
+  list: List,
+  "list-ordered": ListOrdered,
+  "list-checks": ListChecks,
+  image: ImageIcon,
+  "file-up": FileUp,
+  braces: Braces,
+  table: Table2,
+  code: Code,
+  lightbulb: Lightbulb,
+  "list-collapse": ListCollapse,
+};
+
+const SLASH_COMMAND_SECTIONS: WikiSlashCommandSection[] = [
+  "Dasar",
+  "Daftar",
+  "Media",
+  "Lanjutan",
+];
+
 function SlashCommandMenu({
   left,
   top,
@@ -521,6 +613,38 @@ function SlashCommandMenu({
   onSelect: (id: WikiSlashCommandId) => void;
 }) {
   const commands = filterWikiSlashCommands(query);
+  // Saat ada query, hasil diurutkan berdasar relevansi lintas section — render
+  // flat supaya urutan visual = urutan navigasi keyboard. Tanpa query, urutan
+  // WIKI_SLASH_COMMANDS sudah per section sehingga header aman ditampilkan.
+  const grouped = query.trim().length === 0;
+
+  const item = (command: (typeof commands)[number]) => {
+    const index = commands.indexOf(command);
+    const Icon = SLASH_COMMAND_ICONS[command.icon];
+    return (
+      <button
+        key={command.id}
+        type="button"
+        role="option"
+        aria-selected={selected === index}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onSelect(command.id)}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
+          selected === index ? "bg-primary/10 text-foreground" : "hover:bg-muted",
+        )}
+      >
+        <span className="border-border bg-background text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-md border">
+          {Icon ? <Icon className="size-4" aria-hidden /> : null}
+        </span>
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{command.label}</span>
+          <span className="text-muted-foreground truncate text-xs">{command.description}</span>
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div
       role="listbox"
@@ -530,127 +654,25 @@ function SlashCommandMenu({
     >
       {commands.length === 0 ? (
         <p className="text-muted-foreground px-3 py-4 text-center text-sm">Command tidak ditemukan.</p>
+      ) : grouped ? (
+        SLASH_COMMAND_SECTIONS.map((section) => {
+          const items = commands.filter((command) => command.section === section);
+          if (items.length === 0) return null;
+          return (
+            <div key={section}>
+              <p className="text-muted-foreground px-2.5 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide">
+                {section}
+              </p>
+              {items.map(item)}
+            </div>
+          );
+        })
       ) : (
-        commands.map((command, index) => (
-          <button
-            key={command.id}
-            type="button"
-            role="option"
-            aria-selected={selected === index}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onSelect(command.id)}
-            className={cn(
-              "flex w-full flex-col rounded-md px-2.5 py-2 text-left transition-colors",
-              selected === index ? "bg-primary/10 text-foreground" : "hover:bg-muted",
-            )}
-          >
-            <span className="text-sm font-medium">{command.label}</span>
-            <span className="text-muted-foreground text-xs">{command.description}</span>
-          </button>
-        ))
+        commands.map(item)
       )}
       <p className="text-muted-foreground border-border mt-1 border-t px-2 py-1.5 text-[10px]">
         ↑↓ pilih · Enter sisipkan · Esc tutup
       </p>
-    </div>
-  );
-}
-
-/** Input angka +/− seperti Google Docs (satuan pt, 1–400). */
-function FontSizeControl({ editor }: { editor: Editor }) {
-  const [inputValue, setInputValue] = useState(String(DEFAULT_FONT_SIZE_PT));
-  const editingRef = useRef(false);
-
-  const syncFromEditor = useCallback(() => {
-    const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
-    const n = fontSizeCSSValueToNumber(raw) ?? DEFAULT_FONT_SIZE_PT;
-    setInputValue(String(n));
-  }, [editor]);
-
-  useEffect(() => {
-    const handler = () => {
-      if (!editingRef.current) syncFromEditor();
-    };
-    editor.on("selectionUpdate", handler);
-    editor.on("transaction", handler);
-    return () => {
-      editor.off("selectionUpdate", handler);
-      editor.off("transaction", handler);
-    };
-  }, [editor, syncFromEditor]);
-
-  const applyFromInput = useCallback(() => {
-    const trimmed = inputValue.trim().replace(",", ".");
-    if (!trimmed) {
-      syncFromEditor();
-      return;
-    }
-    const parsed = Number.parseFloat(trimmed);
-    if (!Number.isFinite(parsed)) {
-      syncFromEditor();
-      return;
-    }
-    const pt = clampFontSizePt(parsed);
-    editor.chain().focus().setFontSize(numberToFontSizeCSSValue(pt)).run();
-    setInputValue(String(pt));
-  }, [editor, inputValue, syncFromEditor]);
-
-  const step = useCallback(
-    (delta: number) => {
-      const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
-      const current = fontSizeCSSValueToNumber(raw) ?? DEFAULT_FONT_SIZE_PT;
-      const next = clampFontSizePt(current + delta);
-      editor.chain().focus().setFontSize(numberToFontSizeCSSValue(next)).run();
-      setInputValue(String(next));
-    },
-    [editor],
-  );
-
-  const stepBtn = (label: string, onClick: () => void, icon: React.ReactNode) => (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-8 shrink-0 items-center justify-center transition-colors"
-    >
-      {icon}
-    </button>
-  );
-
-  return (
-    <div
-      className="border-border bg-background flex h-8 items-stretch overflow-hidden rounded-md border"
-      title="Ukuran font (pt) — ketik angka lalu Enter"
-    >
-      {stepBtn("Perkecil", () => step(-1), <Minus className="size-3.5" aria-hidden />)}
-      <input
-        type="text"
-        inputMode="decimal"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onFocus={() => {
-          editingRef.current = true;
-        }}
-        onBlur={() => {
-          editingRef.current = false;
-          applyFromInput();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            applyFromInput();
-          }
-          if (e.key === "Escape") {
-            editingRef.current = false;
-            syncFromEditor();
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        aria-label="Ukuran font dalam pt"
-        className="text-foreground w-11 min-w-0 border-0 bg-transparent px-0.5 text-center text-xs tabular-nums outline-none"
-      />
-      {stepBtn("Perbesar", () => step(1), <Plus className="size-3.5" aria-hidden />)}
     </div>
   );
 }
@@ -845,8 +867,46 @@ function TableDimensionControls({
     setActiveTableColumnWidth(editor, value);
   };
 
+  const actionBtn = (
+    label: string,
+    onClick: () => void,
+    icon: React.ReactNode,
+    disabled = false,
+  ) => (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 items-center justify-center rounded-md transition-colors disabled:opacity-40"
+    >
+      {icon}
+    </button>
+  );
+
   return (
     <>
+      <div role="group" aria-label="Aksi baris" className="flex items-center gap-0.5">
+        {actionBtn("Sisipkan baris di atas", () => editor.chain().focus().addRowBefore().run(), <ArrowUpToLine className="size-4" aria-hidden />)}
+        {actionBtn("Sisipkan baris di bawah", () => editor.chain().focus().addRowAfter().run(), <ArrowDownToLine className="size-4" aria-hidden />)}
+        {actionBtn("Hapus baris", () => editor.chain().focus().deleteRow().run(), <Trash2 className="size-4" aria-hidden />, !editor.can().deleteRow())}
+      </div>
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      <div role="group" aria-label="Aksi kolom" className="flex items-center gap-0.5">
+        {actionBtn("Sisipkan kolom di kiri", () => editor.chain().focus().addColumnBefore().run(), <ArrowLeftToLine className="size-4" aria-hidden />)}
+        {actionBtn("Sisipkan kolom di kanan", () => editor.chain().focus().addColumnAfter().run(), <ArrowRightToLine className="size-4" aria-hidden />)}
+        {actionBtn("Hapus kolom", () => editor.chain().focus().deleteColumn().run(), <Trash2 className="size-4" aria-hidden />, !editor.can().deleteColumn())}
+      </div>
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      <div role="group" aria-label="Header dan cell" className="flex items-center gap-0.5">
+        {actionBtn("Toggle baris header", () => editor.chain().focus().toggleHeaderRow().run(), <PanelTop className="size-4" aria-hidden />)}
+        {actionBtn("Toggle kolom header", () => editor.chain().focus().toggleHeaderColumn().run(), <PanelLeft className="size-4" aria-hidden />)}
+        {actionBtn("Gabungkan cell", () => editor.chain().focus().mergeCells().run(), <TableCellsMerge className="size-4" aria-hidden />, !editor.can().mergeCells())}
+        {actionBtn("Pisahkan cell", () => editor.chain().focus().splitCell().run(), <TableCellsSplit className="size-4" aria-hidden />, !editor.can().splitCell())}
+        {actionBtn("Hapus tabel", () => editor.chain().focus().deleteTable().run(), <TrashTableIcon />)}
+      </div>
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       <PixelDimensionControl
         label="Tinggi row"
         value={rowHeight}
@@ -865,7 +925,7 @@ function TableDimensionControls({
         onReset={() => applyColumnWidth(null)}
       />
       <span className="text-muted-foreground hidden text-[11px] xl:inline">
-        Atau drag tepi row/kolom
+        Hover tabel untuk grip baris/kolom, atau drag tepinya
       </span>
     </>
   );
@@ -970,12 +1030,15 @@ function Toolbar({
     selector: ({ editor: currentEditor, transactionNumber }) => {
       const isTable = currentEditor.isActive("table");
       const isImage = currentEditor.isActive("image");
+      const isCallout = currentEditor.isActive("callout");
       const imageAttributes = currentEditor.getAttributes("image");
       const imageWidth = Number(imageAttributes.width);
       return {
         transactionNumber,
         isTable,
         isImage,
+        isCallout,
+        calloutVariant: normalizeCalloutVariant(currentEditor.getAttributes("callout").variant),
         rowHeight: isTable ? getActiveTableRowHeight(currentEditor) : null,
         columnWidth: isTable ? getActiveTableColumnWidth(currentEditor) : null,
         imageWidth: Number.isFinite(imageWidth) && imageWidth > 0 ? imageWidth : null,
@@ -1013,26 +1076,9 @@ function Toolbar({
     <div
       role="toolbar"
       aria-label="Format teks"
-      className="border-border bg-card sticky top-14 z-10 flex flex-wrap items-center gap-0.5 rounded-lg border px-1.5 py-1 shadow-sm"
+      className="border-border/60 bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-14 z-10 flex flex-wrap items-center gap-0.5 rounded-lg border px-1.5 py-1 backdrop-blur"
     >
-      {btn(
-        editor.isActive("heading", { level: 1 }),
-        "Heading 1",
-        () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
-        <Heading1 className="size-4" aria-hidden />,
-      )}
-      {btn(
-        editor.isActive("heading", { level: 2 }),
-        "Heading 2",
-        () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
-        <Heading2 className="size-4" aria-hidden />,
-      )}
-      {btn(
-        editor.isActive("heading", { level: 3 }),
-        "Heading 3",
-        () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
-        <Heading3 className="size-4" aria-hidden />,
-      )}
+      <BlockTypeDropdown editor={editor} />
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       <div className="flex items-center gap-1">
         <Type className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
@@ -1078,6 +1124,10 @@ function Toolbar({
           )
         : null}
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      <EditorColorPicker editor={editor} mode="color" />
+      <EditorColorPicker editor={editor} mode="highlight" />
+      <TextAlignDropdown editor={editor} />
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       {btn(
         editor.isActive("bulletList"),
         "Daftar berpoin",
@@ -1110,29 +1160,46 @@ function Toolbar({
         <Code className="size-4" aria-hidden />,
       )}
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
-      {btn(
-        false,
-        "Sisipkan tabel",
-        () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
-        <Table2 className="size-4" aria-hidden />,
-      )}
-      {editor.isActive("table") ? (
-        <>
-          {btn(false, "Tambah baris", () => editor.chain().focus().addRowAfter().run(), <Plus className="size-4" aria-hidden />)}
-          {btn(false, "Tambah kolom", () => editor.chain().focus().addColumnAfter().run(), <Columns3 className="size-4" aria-hidden />)}
-          {btn(false, "Hapus tabel", () => editor.chain().focus().deleteTable().run(), <TrashTableIcon />)}
-        </>
-      ) : null}
-      {btn(
-        false,
-        "Garis pemisah",
-        () => editor.chain().focus().setHorizontalRule().run(),
-        <DividerIcon className="size-4" aria-hidden />,
-      )}
-      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
-      {btn(false, "Sisipkan gambar", () => onOpenMediaDialog("image"), <ImageIcon className="size-4" aria-hidden />)}
-      {btn(false, "Sisipkan file", () => onOpenMediaDialog("file"), <FileUp className="size-4" aria-hidden />)}
-      {btn(false, "Embed tautan atau video", () => onOpenMediaDialog("embed"), <Braces className="size-4" aria-hidden />)}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          title="Sisipkan block"
+          className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors"
+        >
+          <Plus className="size-4" aria-hidden />
+          Sisipkan
+          <ChevronDown className="size-3" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-52" align="start">
+          <DropdownMenuItem
+            onClick={() =>
+              editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+            }
+          >
+            <Table2 /> Tabel
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => editor.chain().focus().setCallout({ variant: "info" }).run()}
+          >
+            <Lightbulb /> Callout
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => editor.chain().focus().setDetails().run()}>
+            <ListCollapse /> Toggle list
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+            <DividerIcon /> Garis pemisah
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onOpenMediaDialog("image")}>
+            <ImageIcon /> Gambar
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenMediaDialog("file")}>
+            <FileUp /> File
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onOpenMediaDialog("embed")}>
+            <Braces /> Embed tautan/video
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <span className="bg-border mx-1 h-5 w-px" aria-hidden />
       {btn(
         false,
@@ -1148,7 +1215,7 @@ function Toolbar({
         <Redo className="size-4" aria-hidden />,
         !editor.can().redo(),
       )}
-      {toolbarState.isTable || toolbarState.isImage ? (
+      {toolbarState.isTable || toolbarState.isImage || toolbarState.isCallout ? (
         <div className="border-border mt-1 flex basis-full flex-wrap items-center gap-2 border-t px-1 pt-1">
           {toolbarState.isTable ? (
             <TableDimensionControls
@@ -1164,8 +1231,49 @@ function Toolbar({
               alignment={toolbarState.imageAlignment}
             />
           ) : null}
+          {toolbarState.isCallout && !toolbarState.isTable && !toolbarState.isImage ? (
+            <CalloutControls editor={editor} variant={toolbarState.calloutVariant} />
+          ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Mode tanpa toolbar (ala Notion): bar ini hanya muncul saat GAMBAR dipilih
+ * (aksi klik yang disengaja). Tabel dikontrol lewat grip hover + drag; callout
+ * lewat bubble menu — sekadar meletakkan kursor tidak memunculkan apa pun.
+ */
+function EditorContextualBar({ editor }: { editor: Editor }) {
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: currentEditor, transactionNumber }) => {
+      const isImage = currentEditor.isActive("image");
+      const imageAttributes = currentEditor.getAttributes("image");
+      const imageWidth = Number(imageAttributes.width);
+      return {
+        transactionNumber,
+        isImage,
+        imageWidth: Number.isFinite(imageWidth) && imageWidth > 0 ? imageWidth : null,
+        imageAlignment: normalizeWikiImageAlignment(imageAttributes.alignment),
+      };
+    },
+  });
+
+  if (!state.isImage) return null;
+
+  return (
+    <div
+      role="toolbar"
+      aria-label="Kontrol gambar"
+      className="border-border/60 bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-14 z-10 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1 backdrop-blur"
+    >
+      <ImageDimensionControls
+        editor={editor}
+        width={state.imageWidth}
+        alignment={state.imageAlignment}
+      />
     </div>
   );
 }
@@ -1176,5 +1284,151 @@ function TrashTableIcon() {
       <Table2 className="size-4" />
       <span className="bg-destructive absolute h-px w-5 rotate-45" />
     </span>
+  );
+}
+
+/** Dropdown jenis blok (Teks/H1–H3) — menggantikan 3 tombol heading agar toolbar lega. */
+function BlockTypeDropdown({ editor }: { editor: Editor }) {
+  const options = [
+    {
+      key: "p",
+      label: "Teks",
+      icon: <Pilcrow className="size-4" aria-hidden />,
+      active: editor.isActive("paragraph"),
+      run: () => editor.chain().focus().setParagraph().run(),
+    },
+    {
+      key: "h1",
+      label: "Heading 1",
+      icon: <Heading1 className="size-4" aria-hidden />,
+      active: editor.isActive("heading", { level: 1 }),
+      run: () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+    },
+    {
+      key: "h2",
+      label: "Heading 2",
+      icon: <Heading2 className="size-4" aria-hidden />,
+      active: editor.isActive("heading", { level: 2 }),
+      run: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+    },
+    {
+      key: "h3",
+      label: "Heading 3",
+      icon: <Heading3 className="size-4" aria-hidden />,
+      active: editor.isActive("heading", { level: 3 }),
+      run: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+    },
+  ];
+  const current = options.find((option) => option.key !== "p" && option.active) ?? options[0];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        title="Jenis blok"
+        aria-label="Jenis blok"
+        className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors"
+      >
+        {current.icon}
+        <span className="hidden sm:inline">{current.label}</span>
+        <ChevronDown className="size-3" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-44" align="start">
+        {options.map((option) => (
+          <DropdownMenuItem
+            key={option.key}
+            onClick={option.run}
+            className={cn(current.key === option.key && "bg-primary/10 text-primary")}
+          >
+            {option.icon} {option.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const TEXT_ALIGN_OPTIONS: Array<{
+  value: "left" | "center" | "right" | "justify";
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  { value: "left", label: "Rata kiri", icon: <AlignLeft className="size-4" aria-hidden /> },
+  { value: "center", label: "Rata tengah", icon: <AlignCenter className="size-4" aria-hidden /> },
+  { value: "right", label: "Rata kanan", icon: <AlignRight className="size-4" aria-hidden /> },
+  { value: "justify", label: "Rata kiri-kanan", icon: <AlignJustify className="size-4" aria-hidden /> },
+];
+
+function TextAlignDropdown({ editor }: { editor: Editor }) {
+  const active =
+    TEXT_ALIGN_OPTIONS.find((option) => editor.isActive({ textAlign: option.value })) ??
+    TEXT_ALIGN_OPTIONS[0];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        title="Perataan teks"
+        aria-label="Perataan teks"
+        className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-8 items-center gap-0.5 rounded-md px-1.5 transition-colors"
+      >
+        {active.icon}
+        <ChevronDown className="size-3" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-44" align="start">
+        {TEXT_ALIGN_OPTIONS.map((option) => (
+          <DropdownMenuItem
+            key={option.value}
+            onClick={() => editor.chain().focus().setTextAlign(option.value).run()}
+            className={cn(active.value === option.value && "bg-primary/10 text-primary")}
+          >
+            {option.icon} {option.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const CALLOUT_VARIANT_OPTIONS: Array<{ value: WikiCalloutVariant; label: string }> = [
+  { value: "info", label: "Info" },
+  { value: "tip", label: "Tips" },
+  { value: "warning", label: "Peringatan" },
+  { value: "danger", label: "Bahaya" },
+];
+
+function CalloutControls({
+  editor,
+  variant,
+}: {
+  editor: Editor;
+  variant: WikiCalloutVariant;
+}) {
+  return (
+    <>
+      <span className="text-muted-foreground whitespace-nowrap text-xs font-medium">Callout</span>
+      <div role="group" aria-label="Varian callout" className="flex items-center gap-0.5">
+        {CALLOUT_VARIANT_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            title={`Callout ${option.label}`}
+            aria-pressed={variant === option.value}
+            onClick={() => editor.chain().focus().updateCalloutVariant(option.value).run()}
+            className={cn(
+              "text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-1.5 text-xs transition-colors",
+              variant === option.value && "bg-primary/10 text-primary",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <span className="bg-border mx-1 h-5 w-px" aria-hidden />
+      <button
+        type="button"
+        title="Hapus callout (angkat isi keluar)"
+        onClick={() => editor.chain().focus().unsetCallout().run()}
+        className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-1.5 text-xs transition-colors"
+      >
+        Hapus callout
+      </button>
+    </>
   );
 }

@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-23-wiki-editor-notion-upgrade",
+    date: "2026-07-23",
+    title: "Wiki: editor rasa Notion — tabel lebih pintar, blok baru, dan PDF rapi",
+    category: "new",
+    description:
+      "Editor wiki (juga Catatan Pribadi dan draft konten SEO) dirombak besar. Tabel kini punya kontrol ala Notion: arahkan kursor ke tabel untuk memunculkan grip baris/kolom berisi menu sisip, duplikat, gabung/pisah cell, sampai hapus baris/kolom — plus tombol + di tepi tabel dan garis bantu resize yang lebih mudah ditarik. Ada juga rata teks, warna & highlight, menu format melayang saat menyeleksi teks, blok Callout dan Toggle, geser-susun blok dengan handle ⠿, serta Daftar Isi otomatis. Export PDF diperbaiki total: bullet tidak lagi hilang, tabel dan gambar tampil sesuai editor, dan teks tidak terpotong di batas halaman.",
+    highlights: [
+      "Tampilan halaman ala Notion: judul besar, aksi halaman dirapikan ke ikon di pojok, tag & halaman induk jadi baris properti yang kalem, konten di kolom tengah — tanpa toolbar permanen; format lewat menu melayang saat seleksi dan perintah /",
+      "Komentar kini terbuka sebagai panel geser di sisi kanan (bukan lagi menumpuk di bawah halaman), dibuka lewat tombol Komentar berlonceng jumlah di pojok kanan atas",
+      "Tabel: hapus/sisip/duplikat baris & kolom lewat grip hover atau toolbar, gabung/pisah cell, toggle header, tombol + di tepi tabel",
+      "Format baru: rata kiri/tengah/kanan/justify, warna teks & highlight, callout (info/tips/peringatan/bahaya), toggle list yang bisa dilipat",
+      "Menu melayang muncul saat teks diseleksi; slash menu (/) kini berikon, berkelompok, dan hasilnya diurutkan sesuai relevansi",
+      "Drag handle ⠿ untuk memindah blok, dan panel Daftar Isi otomatis dari heading di halaman wiki",
+      "Export PDF: bullet point selalu tampil, tabel berbingkai rapi, gambar mengikuti perataan, dan halaman dipotong di antara blok — bukan di tengah kalimat",
+    ],
+  },
+  {
     id: "2026-07-23-performance-overhaul",
     date: "2026-07-23",
     title: "Aplikasi lebih cepat dan ringan di seluruh halaman",

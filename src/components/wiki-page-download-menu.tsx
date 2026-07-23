@@ -62,17 +62,17 @@ export function WikiPageDownloadMenu({
         render={
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon-sm"
             disabled={busy}
-            className="h-8 gap-1.5"
+            title="Unduh halaman"
+            aria-label="Unduh halaman"
           >
             {busy ? (
               <Loader2 className="size-3.5 animate-spin" aria-hidden />
             ) : (
               <Download className="size-3.5" aria-hidden />
             )}
-            Unduh
           </Button>
         }
       />

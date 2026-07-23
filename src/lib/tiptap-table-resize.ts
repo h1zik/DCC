@@ -7,7 +7,7 @@ import { columnResizing, selectionCell, TableMap } from "@tiptap/pm/tables";
 export const WIKI_TABLE_ROW_MIN_HEIGHT = 28;
 export const WIKI_TABLE_COLUMN_MIN_WIDTH = 48;
 export const WIKI_IMAGE_MIN_WIDTH = 80;
-export const WIKI_TABLE_COLUMN_HANDLE_WIDTH = 12;
+export const WIKI_TABLE_COLUMN_HANDLE_WIDTH = 16;
 
 function clampInteger(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
@@ -192,8 +192,8 @@ export const TableRowResize = Extension.create({
             if (!row) return null;
             const rect = row.getBoundingClientRect();
             const cellRect = cell!.getBoundingClientRect();
-            const nearBottom = Math.abs(rect.bottom - event.clientY) <= 6;
-            const nearColumnHandle = Math.abs(cellRect.right - event.clientX) <= 7;
+            const nearBottom = Math.abs(rect.bottom - event.clientY) <= 8;
+            const nearColumnHandle = Math.abs(cellRect.right - event.clientX) <= 9;
             return nearBottom && !nearColumnHandle ? row : null;
           };
 
