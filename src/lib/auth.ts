@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import { authConfig } from "@/auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_CEO_EMAIL } from "@/lib/default-ceo-credentials";
 import { ensureDefaultCeoUserExists } from "@/lib/ensure-default-ceo-user";
@@ -11,7 +12,7 @@ import {
   registerLoginFailure,
   resetLogin,
 } from "@/lib/auth-rate-limit";
-import type { EmploymentType, UserRole } from "@prisma/client";
+import type { UserRole } from "@prisma/client";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -19,10 +20,7 @@ const credentialsSchema = z.object({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: process.env.AUTH_SECRET,
-  trustHost: true,
-  session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 7 },
-  pages: { signIn: "/login" },
+  ...authConfig,
   providers: [
     Credentials({
       name: "Email",
@@ -92,32 +90,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt: async ({ token, user, trigger, session }) => {
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
-        token.role = user.role;
-        token.employmentType = user.employmentType;
-        token.name = user.name ?? undefined;
-        token.picture = user.image ?? undefined;
-        token.bio = user.bio ?? undefined;
-        token.customRoleName = user.customRoleName ?? null;
-      }
-      if (trigger === "update" && session && typeof session === "object") {
-        const u = (session as {
-          user?: Partial<{
-            name: string | null;
-            image: string | null;
-            bio: string | null;
-            customRoleName: string | null;
-          }>;
-        }).user;
-        if (u?.name !== undefined) token.name = u.name ?? undefined;
-        if (u?.image !== undefined) token.picture = u.image ?? undefined;
-        if (u?.bio !== undefined) token.bio = u.bio ?? undefined;
-        if (u?.customRoleName !== undefined)
-          token.customRoleName = u.customRoleName ?? null;
-      }
+    ...authConfig.callbacks,
+    jwt: async (params) => {
+      const token = await authConfig.callbacks.jwt(params);
+      if (!token) return token;
+
+      // Backfill token lama (dibuat sebelum field role/employmentType ada) —
+      // butuh Prisma, jadi HANYA di config penuh ini, bukan di authConfig
+      // yang dipakai proxy.
       if (token.id && token.role === undefined) {
         const row = await prisma.user.findUnique({
           where: { id: token.id as string },
@@ -137,8 +117,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.customRoleName = row.customRole?.name ?? null;
         }
       }
-      // Isi employmentType untuk token lama (dibuat sebelum field ini ada).
-      // Sekali refetch lalu tersimpan di token.
       if (token.id && token.employmentType === undefined) {
         const row = await prisma.user.findUnique({
           where: { id: token.id as string },
@@ -147,22 +125,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (row) token.employmentType = row.employmentType;
       }
       return token;
-    },
-    session: async ({ session, token }) => {
-      if (session.user) {
-        if (token.id) session.user.id = token.id as string;
-        if (token.role) session.user.role = token.role as UserRole;
-        session.user.employmentType =
-          (token.employmentType as EmploymentType | undefined) ?? "EMPLOYEE";
-        if (token.name !== undefined) session.user.name = token.name as string | null;
-        if (token.picture !== undefined)
-          session.user.image = (token.picture as string | null) ?? null;
-        session.user.bio =
-          (token.bio as string | null | undefined) ?? null;
-        session.user.customRoleName =
-          (token.customRoleName as string | null | undefined) ?? null;
-      }
-      return session;
     },
   },
 });

@@ -11,8 +11,9 @@ import {
   Space_Grotesk,
 } from "next/font/google";
 import "./globals.css";
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/get-session";
 import { getAppBranding } from "@/lib/app-branding";
+import { getUserAppTheme } from "@/lib/user-app-theme";
 import {
   APP_THEME_PRESETS,
   resolveAppThemePreset,
@@ -26,7 +27,6 @@ import {
   resolveThemeLibrary,
   type ThemeLibrary,
 } from "@/lib/theme-generator";
-import { prisma } from "@/lib/prisma";
 import { Providers } from "@/components/providers";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -74,10 +74,7 @@ async function resolveInitialAppTheme(
   userId: string | undefined,
 ): Promise<{ preset: AppThemePreset; library: ThemeLibrary }> {
   if (!userId) return { preset: "original", library: DEFAULT_THEME_LIBRARY };
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { appThemePreset: true, appThemeCustom: true },
-  });
+  const user = await getUserAppTheme(userId);
   return {
     preset: resolveAppThemePreset(user?.appThemePreset),
     library: resolveThemeLibrary(user?.appThemeCustom),
@@ -89,7 +86,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  const session = await getSession();
   const { preset, library } = await resolveInitialAppTheme(session?.user?.id);
 
   // Terapkan tema server-side (anti-flicker). Untuk `custom`, token oklch

@@ -96,7 +96,7 @@ export function ContentAuditClient({
 
   useEffect(() => {
     if (!busy) return;
-    const timer = setInterval(() => router.refresh(), 4000);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
     return () => clearInterval(timer);
   }, [busy, router]);
 

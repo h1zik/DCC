@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-23-performance-overhaul",
+    date: "2026-07-23",
+    title: "Aplikasi lebih cepat dan ringan di seluruh halaman",
+    category: "improved",
+    description:
+      "Perombakan performa menyeluruh: server tidak lagi mengulang pekerjaan yang sama di setiap klik, halaman kini hanya mengunduh komponen berat (chart, editor, panel suara, pratinjau PDF) saat benar-benar dipakai, dan unduhan file besar tidak lagi membebani memori server. Efeknya terasa sebagai pindah halaman yang lebih gesit dan halaman yang lebih cepat terbuka — tanpa ada fitur yang berubah cara pakainya.",
+    highlights: [
+      "Navigasi antar halaman lebih responsif — data sidebar dan pengaturan tampilan kini disimpan sementara (cache) dan diperbarui otomatis saat ada perubahan",
+      "Buka halaman lebih ringan: pemutar suara, chart, editor teks, dan pratinjau PDF baru diunduh saat digunakan",
+      "Unduh file atau folder besar (ZIP) kini mengalir langsung sehingga server tetap stabil walau beberapa orang mengunduh bersamaan",
+      "Pencarian wiki/dokumen dan ringkasan keuangan lebih cepat berkat penataan index database",
+      "Tab yang ditinggal di latar belakang berhenti membebani server dan otomatis menyegarkan diri saat dibuka kembali",
+    ],
+  },
+  {
     id: "2026-07-22-upload-creative-file-formats",
     date: "2026-07-22",
     title: "Unggah: dukung file desain (AI, PSD, Premiere, After Effects, Blender, dll.)",

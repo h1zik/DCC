@@ -11,7 +11,17 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Youtube from "@tiptap/extension-youtube";
-import { common, createLowlight } from "lowlight";
+import { createLowlight } from "lowlight";
+// Daftar bahasa eksplisit (bukan `common` = ~37 bahasa) — memangkas ratusan KB
+// highlight.js dari bundle editor. Tambah bahasa lain di sini bila dibutuhkan.
+import langBash from "highlight.js/lib/languages/bash";
+import langCss from "highlight.js/lib/languages/css";
+import langJavascript from "highlight.js/lib/languages/javascript";
+import langJson from "highlight.js/lib/languages/json";
+import langPython from "highlight.js/lib/languages/python";
+import langSql from "highlight.js/lib/languages/sql";
+import langTypescript from "highlight.js/lib/languages/typescript";
+import langXml from "highlight.js/lib/languages/xml";
 import {
   AlignCenter,
   AlignJustify,
@@ -80,7 +90,19 @@ import {
   type WikiImageAlignment,
 } from "@/lib/tiptap-image-layout";
 
-const lowlight = createLowlight(common);
+const lowlight = createLowlight({
+  bash: langBash,
+  css: langCss,
+  html: langXml,
+  javascript: langJavascript,
+  js: langJavascript,
+  json: langJson,
+  python: langPython,
+  sql: langSql,
+  ts: langTypescript,
+  typescript: langTypescript,
+  xml: langXml,
+});
 
 export type RichTextEditorProps = {
   /** Konten awal (HTML). Komponen tidak controlled — perubahan dilaporkan via `onUpdate`. */

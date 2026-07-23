@@ -35,7 +35,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { RichTextEditor } from "@/components/rich-text-editor";
+import { RichTextEditorLazy as RichTextEditor } from "@/components/rich-text-editor-lazy";
 import { WikiPageDownloadMenu } from "@/components/wiki-page-download-menu";
 import { WikiVersionHistory } from "@/components/wiki-version-history";
 import { WikiCollaborationPanel } from "@/components/wiki-collaboration-panel";

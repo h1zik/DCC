@@ -1,8 +1,47 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import * as echarts from "echarts";
+// echarts/core + registrasi eksplisit (bukan `import * from "echarts"`) agar
+// hanya jenis chart yang benar-benar dipakai yang ikut bundle (~1MB → ~300KB).
+// Menambah jenis chart baru? Daftarkan series/komponennya di `echarts.use` ini.
+import * as echarts from "echarts/core";
+import {
+  BarChart,
+  LineChart,
+  PieChart,
+  RadarChart,
+  SankeyChart,
+  ScatterChart,
+} from "echarts/charts";
+import {
+  AxisPointerComponent,
+  GridComponent,
+  LegendComponent,
+  MarkLineComponent,
+  RadarComponent,
+  TooltipComponent,
+} from "echarts/components";
+import { CanvasRenderer } from "echarts/renderers";
+import type { EChartsOption } from "echarts";
 import { cn } from "@/lib/utils";
+
+echarts.use([
+  BarChart,
+  LineChart,
+  PieChart,
+  RadarChart,
+  SankeyChart,
+  ScatterChart,
+  AxisPointerComponent,
+  GridComponent,
+  LegendComponent,
+  MarkLineComponent,
+  RadarComponent,
+  TooltipComponent,
+  CanvasRenderer,
+]);
+
+type EChartsInstance = ReturnType<typeof echarts.init>;
 
 /**
  * Wrapper Apache ECharts yang sadar tema. Membaca token CSS (`--chart-*`,
@@ -17,13 +56,13 @@ export function EChart({
   height = 300,
   notMerge = true,
 }: {
-  option: echarts.EChartsOption;
+  option: EChartsOption;
   className?: string;
   height?: number;
   notMerge?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<echarts.ECharts | null>(null);
+  const chartRef = useRef<EChartsInstance | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -65,7 +104,7 @@ export function EChart({
       axisLabel: { color: textColor },
     };
 
-    const themed: echarts.EChartsOption = {
+    const themed: EChartsOption = {
       color: chartPalette(ref.current),
       textStyle: { fontFamily: "inherit", color: textColor },
       tooltip: {
@@ -84,10 +123,10 @@ export function EChart({
           ? { ...axisDefaults, ...(axis as object) }
           : axis;
     if (option.xAxis) {
-      themed.xAxis = mergeAxis(option.xAxis) as echarts.EChartsOption["xAxis"];
+      themed.xAxis = mergeAxis(option.xAxis) as EChartsOption["xAxis"];
     }
     if (option.yAxis) {
-      themed.yAxis = mergeAxis(option.yAxis) as echarts.EChartsOption["yAxis"];
+      themed.yAxis = mergeAxis(option.yAxis) as EChartsOption["yAxis"];
     }
     if (option.tooltip && typeof option.tooltip === "object") {
       themed.tooltip = {

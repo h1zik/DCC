@@ -39,7 +39,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { RichTextEditor } from "@/components/rich-text-editor";
+import { RichTextEditorLazy as RichTextEditor } from "@/components/rich-text-editor-lazy";
 import { SeoDetailPage } from "@/components/seo/seo-module-page";
 import { lab } from "@/components/lab/lab-primitives";
 import { isSeoStatusBusy, scoreToneClass } from "@/lib/seo/labels";
@@ -127,7 +127,7 @@ export function ContentDraftEditor({
   const busy = isSeoStatusBusy(draft.status);
   useEffect(() => {
     if (!busy) return;
-    const timer = setInterval(() => router.refresh(), 4000);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
     return () => clearInterval(timer);
   }, [busy, router]);
 

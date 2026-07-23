@@ -21,7 +21,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import * as pdfjs from "pdfjs-dist";
+import type { PDFDocumentProxy, PDFPageProxy, TextLayer } from "pdfjs-dist";
 import { cn } from "@/lib/utils";
 import { extractDocxTextFromUrl, isDocxMime } from "@/lib/docx-client-text";
 import {
@@ -39,12 +39,25 @@ import {
 
 const EXTERNAL_LINK_MIME = "text/x-task-external-url";
 
-if (typeof window !== "undefined") {
-  // Worker dibundel lokal — CDN eksternal gagal saat offline/firewall.
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
+type PdfjsModule = typeof import("pdfjs-dist");
+let pdfjsModulePromise: Promise<PdfjsModule> | null = null;
+
+/**
+ * Muat pdfjs (paket ~MB) lazy — hanya saat preview PDF benar-benar dirender,
+ * bukan ikut chunk halaman tugas.
+ */
+function loadPdfjs(): Promise<PdfjsModule> {
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = import("pdfjs-dist").then((mod) => {
+      // Worker dibundel lokal — CDN eksternal gagal saat offline/firewall.
+      mod.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/build/pdf.worker.min.mjs",
+        import.meta.url,
+      ).toString();
+      return mod;
+    });
+  }
+  return pdfjsModulePromise;
 }
 
 export type AnchoredCommentPin = {
@@ -693,7 +706,7 @@ function PdfPage({
   onCommentPinClick,
 }: {
   pageNumber: number;
-  pdf: pdfjs.PDFDocumentProxy;
+  pdf: PDFDocumentProxy;
   pageWidth: number;
   comments: AnchoredCommentPin[];
   activeCommentId: string | null;
@@ -780,8 +793,8 @@ function PdfPage({
   useEffect(() => {
     if (!visible || !baseDims || pageWidth <= 0) return;
     let cancelled = false;
-    let renderTask: ReturnType<pdfjs.PDFPageProxy["render"]> | null = null;
-    let textLayer: InstanceType<typeof pdfjs.TextLayer> | null = null;
+    let renderTask: ReturnType<PDFPageProxy["render"]> | null = null;
+    let textLayer: TextLayer | null = null;
 
     setPageReady(false);
 
@@ -819,7 +832,10 @@ function PdfPage({
         try {
           const content = await page.getTextContent();
           if (cancelled) return;
-          textLayer = new pdfjs.TextLayer({
+          // Modul sudah pasti ter-load (dokumen dibuka lewat loadPdfjs).
+          const { TextLayer: PdfTextLayer } = await loadPdfjs();
+          if (cancelled) return;
+          textLayer = new PdfTextLayer({
             textContentSource: content,
             container: textContainer,
             viewport,
@@ -993,7 +1009,7 @@ function PdfSelectablePreview({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [docState, setDocState] = useState<{
     src: string;
-    pdf: pdfjs.PDFDocumentProxy | null;
+    pdf: PDFDocumentProxy | null;
     failed: boolean;
   }>({ src, pdf: null, failed: false });
   const [pageWidth, setPageWidth] = useState(PDF_DEFAULT_PAGE_WIDTH);
@@ -1005,10 +1021,14 @@ function PdfSelectablePreview({
 
   useEffect(() => {
     let cancelled = false;
-    const task = pdfjs.getDocument({ url: src, disableAutoFetch: false });
-    task.promise
-      .then((doc) => {
-        if (!cancelled) setDocState({ src, pdf: doc, failed: false });
+    let task: ReturnType<PdfjsModule["getDocument"]> | null = null;
+    void loadPdfjs()
+      .then((pdfjs) => {
+        if (cancelled) return;
+        task = pdfjs.getDocument({ url: src, disableAutoFetch: false });
+        return task.promise.then((doc) => {
+          if (!cancelled) setDocState({ src, pdf: doc, failed: false });
+        });
       })
       .catch(() => {
         if (!cancelled) setDocState({ src, pdf: null, failed: true });
@@ -1017,7 +1037,7 @@ function PdfSelectablePreview({
       cancelled = true;
       // destroy() melepas dokumen + worker — tanpa ini preview PDF bocor
       // memori setiap kali dialog dibuka/tutup.
-      void task.destroy().catch(() => undefined);
+      void task?.destroy().catch(() => undefined);
     };
   }, [src]);
 

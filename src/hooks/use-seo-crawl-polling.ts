@@ -20,6 +20,12 @@ export function useSeoCrawlPolling(crawlIds: string[]) {
     const ids = crawlIdsKey.split("|");
 
     async function poll() {
+      // Tab hidden: tunda siklus (cron tetap fallback) — jangan bebani server
+      // dengan render penuh untuk halaman yang tidak sedang dilihat.
+      if (document.visibilityState === "hidden") {
+        timer = setTimeout(poll, POLL_INTERVAL_MS);
+        return;
+      }
       try {
         await pollSeoSiteCrawls(ids);
       } catch (err) {
@@ -33,11 +39,19 @@ export function useSeoCrawlPolling(crawlIds: string[]) {
       timer = setTimeout(poll, POLL_INTERVAL_MS);
     }
 
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(poll, 0);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     // Delay singkat mencegah double-call saat Strict Mode me-mount ulang effect.
     timer = setTimeout(poll, INITIAL_POLL_DELAY_MS);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [crawlIdsKey, router]);
 }

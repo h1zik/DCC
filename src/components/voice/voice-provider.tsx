@@ -1,6 +1,5 @@
 "use client";
 
-import "@livekit/components-styles";
 import {
   createContext,
   useCallback,
@@ -10,19 +9,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { DisconnectReason, Room, RoomEvent, VideoPresets } from "livekit-client";
-import {
-  RoomAudioRenderer,
-  RoomContext,
-  useRemoteParticipants,
-} from "@livekit/components-react";
+import dynamic from "next/dynamic";
+// HANYA import type — runtime LiveKit (~besar) dimuat lazy di join() dan di
+// VoiceActiveSession, sehingga tidak membebani bundle semua halaman dashboard.
+import type { Room } from "livekit-client";
 import { toast } from "sonner";
-import { VoiceFloatingOverlay } from "./voice-floating-overlay";
-import {
-  micCaptureOptions,
-  readVoiceSettings,
-  useVoiceSettings,
-} from "./use-voice-settings";
+import { micCaptureOptions, readVoiceSettings } from "./use-voice-settings";
+
+const VoiceActiveSession = dynamic(() => import("./voice-active-session"), {
+  ssr: false,
+});
 
 export type VoiceConnectionState = "disconnected" | "connecting" | "connected";
 
@@ -114,6 +110,9 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       setConnectionState("connecting");
       setDeafened(false);
       try {
+        // Muat runtime LiveKit saat benar-benar join (sekali; selanjutnya
+        // dari cache modul browser).
+        const livekitPromise = import("livekit-client");
         const res = await fetch(
           `/api/voice/token?channelId=${encodeURIComponent(call.channelId)}`,
           { cache: "no-store" },
@@ -128,6 +127,8 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           token: string;
           serverUrl: string;
         };
+        const { Room, RoomEvent, DisconnectReason, VideoPresets } =
+          await livekitPromise;
 
         // Preferensi audio tersimpan (device + pemrosesan mic). DeviceId basi
         // aman: constraint non-exact, browser fallback ke default.
@@ -227,28 +228,12 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     <VoiceContext.Provider value={value}>
       {children}
       {room ? (
-        <RoomContext.Provider value={room}>
-          <RoomAudioRenderer muted={deafened} />
-          <VoiceVolumeApplier />
-          {!panelMounted ? <VoiceFloatingOverlay /> : null}
-        </RoomContext.Provider>
+        <VoiceActiveSession
+          room={room}
+          deafened={deafened}
+          showOverlay={!panelMounted}
+        />
       ) : null}
     </VoiceContext.Provider>
   );
-}
-
-/**
- * Menerapkan volume per-partisipan dari settings ke LiveKit. `setVolume`
- * tersimpan di volumeMap internal — aman dipanggil sebelum track audio tiba,
- * dan diterapkan ulang tiap (re)subscribe. Satu-satunya jalur tulis volume.
- */
-function VoiceVolumeApplier() {
-  const { settings } = useVoiceSettings();
-  const participants = useRemoteParticipants();
-  useEffect(() => {
-    for (const p of participants) {
-      p.setVolume(settings.volumes[p.identity] ?? 1);
-    }
-  }, [participants, settings.volumes]);
-  return null;
 }
