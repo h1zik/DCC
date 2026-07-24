@@ -89,11 +89,11 @@ const navAdministrator = [
 ] as const;
 
 const navLogistics = [
-  { href: "/inventory", label: "Inventory", icon: Boxes },
-  { href: "/products", label: "Products & SKU", icon: Package },
-  { href: "/schedule", label: "Calendar", icon: CalendarDays },
-  { href: "/attendance", label: "Attendance", icon: ScanFace },
-  { href: "/vendors", label: "Contract Manufacturers", icon: Factory },
+  { href: "/inventory", label: "Inventori", icon: Boxes },
+  { href: "/products", label: "Produk & SKU", icon: Package },
+  { href: "/schedule", label: "Kalender", icon: CalendarDays },
+  { href: "/attendance", label: "Absensi", icon: ScanFace },
+  { href: "/vendors", label: "Vendor Maklon", icon: Factory },
 ] as const;
 
 const navFinance = [

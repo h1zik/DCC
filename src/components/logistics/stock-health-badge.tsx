@@ -8,6 +8,12 @@ const LABELS = {
   OK: "Aman",
 } as const;
 
+const TONE_CLASS = {
+  CRITICAL: "border-danger/40 bg-danger/10 text-danger",
+  LOW: "border-warning/40 bg-warning/10 text-warning",
+  OK: "border-success/40 bg-success/10 text-success",
+} as const;
+
 export function StockHealthBadge({
   currentStock,
   minStock,
@@ -18,23 +24,9 @@ export function StockHealthBadge({
   className?: string;
 }) {
   const health = getStockHealth(currentStock, minStock);
-  if (health === "CRITICAL") {
-    return (
-      <Badge variant="destructive" className={cn(className)}>
-        {LABELS.CRITICAL}
-      </Badge>
-    );
-  }
-  if (health === "LOW") {
-    return (
-      <Badge variant="secondary" className={cn(className)}>
-        {LABELS.LOW}
-      </Badge>
-    );
-  }
   return (
-    <Badge variant="outline" className={cn("border-emerald-500/40 text-emerald-700 dark:text-emerald-400", className)}>
-      {LABELS.OK}
+    <Badge variant="outline" className={cn(TONE_CLASS[health], className)}>
+      {LABELS[health]}
     </Badge>
   );
 }

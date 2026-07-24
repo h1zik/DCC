@@ -76,7 +76,7 @@ export default async function SchedulePage() {
         icon={CalendarDays}
         variant="compact"
         title="Jadwal"
-        subtitle="Meeting dan acara umum (tidak terikat ruangan). Pilih peserta — mereka mendapat notifikasi H-1 dan ±1 jam sebelum mulai."
+        subtitle="Kalender bersama seluruh tim — meeting dan acara umum."
         right={
           <>
             <PageHeroChip>
