@@ -37,6 +37,24 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-24-logistics-ui-redesign",
+    date: "2026-07-24",
+    title: "Tampilan baru modul Logistik & Kalender: lebih simpel dan intuitif",
+    category: "improved",
+    description:
+      "Halaman Inventori, Produk & SKU, dan Vendor Maklon dirombak total mengikuti bahasa visual dashboard eksekutif — header konsisten, kartu KPI berwarna status, dan tabel yang lebih mudah dipindai. Duplikasi yang membingungkan dibersihkan: navigasi pil ganda dihapus, form catat mutasi kini satu panel samping dengan tombol yang selalu terlihat, dan info forecast/reorder dikumpulkan di satu tempat. Kalender (semua peran) juga diperbarui: klik tanggal kini membuka detail hari, plus tampilan Agenda baru yang ramah HP.",
+    highlights: [
+      "Inventori: 4 tab baru (Ringkasan · Mutasi · Stok & Reorder · Audit) — tab Stok dan Forecast yang tumpang tindih digabung jadi satu; posisi tab tersimpan di alamat halaman sehingga bisa dibagikan",
+      "Kartu \"Perlu perhatian\" bisa diklik langsung menuju daftar SKU yang harus dipesan, sudah terfilter",
+      "Catat mutasi stok kini lewat panel samping dengan tombol \"Catat mutasi\" yang selalu terlihat — tidak ada lagi form dobel di dua tab",
+      "Editor produk pindah ke panel samping 4 seksi (Identitas · Stok & reorder · Rantai vendor · Pipeline) — tidak perlu lagi scroll dialog panjang",
+      "Vendor Maklon: kartu ringkasan baru (rata-rata lead time, SKU terhubung, penerimaan 30 hari) dan penjelasan permanen untuk parameter lead time / safety / review PO",
+      "Kalender: klik tanggal membuka daftar acara hari itu (bukan langsung form buat acara), tampilan Agenda baru untuk HP, filter \"Acara saya\", dan warna acara per pembuat",
+      "Semua konfirmasi hapus kini memakai dialog aplikasi yang jelas, bukan popup browser",
+      "Label menu diseragamkan ke Bahasa Indonesia: Inventori, Produk & SKU, Kalender, Absensi, Vendor Maklon",
+    ],
+  },
+  {
     id: "2026-07-23-pdf-list-marker-clipping",
     date: "2026-07-23",
     title: "PDF: nomor daftar tidak lagi terpotong di tepi halaman",
