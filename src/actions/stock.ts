@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { StockLogType } from "@prisma/client";
+import { Prisma, StockLogType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireLogisticsStaff } from "@/lib/auth-helpers";
-import { isSystemStockLog } from "@/lib/stock-log-utils";
+import { isSystemStockLog, parseSystemMeta } from "@/lib/stock-log-utils";
 
 const salesCategorySchema = z.enum(["penjualan", "sampling", "retur", "rusak"]);
 
@@ -46,6 +46,64 @@ function deltaOf(type: StockLogType, amount: number): number {
 
 function oppositeType(type: StockLogType): StockLogType {
   return type === StockLogType.IN ? StockLogType.OUT : StockLogType.IN;
+}
+
+type EffectiveState = {
+  voided: boolean;
+  amount: number;
+  type: StockLogType;
+  salesCategory: string | null;
+};
+
+/**
+ * Kondisi TERKINI sebuah mutasi setelah rantai koreksi/void.
+ * Reversal harus membalik nilai efektif — bukan nilai asli — kalau tidak,
+ * koreksi kedua akan membalik jumlah asli untuk kedua kalinya dan
+ * `currentStock` melenceng dari ledger.
+ */
+async function resolveEffectiveState(
+  tx: Prisma.TransactionClient,
+  log: {
+    id: string;
+    productId: string;
+    amount: number;
+    type: StockLogType;
+    salesCategory: string | null;
+  },
+): Promise<EffectiveState> {
+  const corrections = await tx.stockLog.findMany({
+    where: { productId: log.productId, note: { startsWith: "[SYS]" } },
+    orderBy: { createdAt: "asc" },
+    select: {
+      amount: true,
+      type: true,
+      salesCategory: true,
+      note: true,
+    },
+  });
+
+  const state: EffectiveState = {
+    voided: false,
+    amount: log.amount,
+    type: log.type,
+    salesCategory: log.salesCategory,
+  };
+
+  for (const row of corrections) {
+    const meta = parseSystemMeta(row);
+    if (meta.targetId !== log.id) continue;
+    if (meta.action === "VOID") {
+      state.voided = true;
+      continue;
+    }
+    if (meta.action === "REPLACEMENT") {
+      state.amount = row.amount;
+      state.type = row.type;
+      state.salesCategory = row.salesCategory;
+    }
+  }
+
+  return state;
 }
 
 function buildSystemNote(params: {
@@ -170,8 +228,13 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
       throw new Error("Kategori stok keluar wajib dipilih.");
     }
 
-    const reversalType = oppositeType(log.type);
-    const reversalDelta = deltaOf(reversalType, log.amount);
+    const effective = await resolveEffectiveState(tx, log);
+    if (effective.voided) {
+      throw new Error("Mutasi ini sudah di-void, tidak bisa dikoreksi lagi.");
+    }
+
+    const reversalType = oppositeType(effective.type);
+    const reversalDelta = deltaOf(reversalType, effective.amount);
     const replacementDelta = deltaOf(data.type, data.amount);
     const nextStock = log.product.currentStock + reversalDelta + replacementDelta;
     if (nextStock < 0) {
@@ -181,10 +244,12 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
     await tx.stockLog.create({
       data: {
         productId: log.product.id,
-        amount: log.amount,
+        amount: effective.amount,
         type: reversalType,
         salesCategory:
-          reversalType === StockLogType.OUT ? log.salesCategory ?? "penjualan" : null,
+          reversalType === StockLogType.OUT
+            ? effective.salesCategory ?? "penjualan"
+            : null,
         note: buildSystemNote({
           action: "REVERSAL",
           targetLogId: log.id,
@@ -232,8 +297,12 @@ export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
     if (isSystemStockLog(log.note)) {
       throw new Error("Mutasi sistem tidak dapat di-void langsung.");
     }
-    const reversalType = oppositeType(log.type);
-    const reversalDelta = deltaOf(reversalType, log.amount);
+    const effective = await resolveEffectiveState(tx, log);
+    if (effective.voided) {
+      throw new Error("Mutasi ini sudah di-void.");
+    }
+    const reversalType = oppositeType(effective.type);
+    const reversalDelta = deltaOf(reversalType, effective.amount);
     const nextStock = log.product.currentStock + reversalDelta;
     if (nextStock < 0) {
       throw new Error(
@@ -244,10 +313,12 @@ export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
     await tx.stockLog.create({
       data: {
         productId: log.product.id,
-        amount: log.amount,
+        amount: effective.amount,
         type: reversalType,
         salesCategory:
-          reversalType === StockLogType.OUT ? log.salesCategory ?? "penjualan" : null,
+          reversalType === StockLogType.OUT
+            ? effective.salesCategory ?? "penjualan"
+            : null,
         note: buildSystemNote({
           action: "VOID",
           targetLogId: log.id,

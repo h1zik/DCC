@@ -30,6 +30,21 @@ import { MovementVoidDialog } from "./movement-void-dialog";
 import { MovementsTable } from "./movements-table";
 import type { InventoryProductRow, StockLogRow } from "./types";
 
+/** Filter mutasi hidup di parent (InventoryTabs) supaya tidak hilang saat pindah tab. */
+export type MovementFilters = {
+  search: string;
+  brand: string;
+  type: "all" | StockLogType;
+  days: string;
+};
+
+export const DEFAULT_MOVEMENT_FILTERS: MovementFilters = {
+  search: "",
+  brand: "all",
+  type: "all",
+  days: "30",
+};
+
 export function MovementsPanel({
   businessLogs,
   brands,
@@ -37,6 +52,8 @@ export function MovementsPanel({
   replacementByTargetId,
   products,
   vendors,
+  filters,
+  onFiltersChange,
 }: {
   businessLogs: StockLogRow[];
   brands: { id: string; name: string }[];
@@ -44,11 +61,15 @@ export function MovementsPanel({
   replacementByTargetId: Map<string, StockLogRow>;
   products: InventoryProductRow[];
   vendors: { id: string; name: string }[];
+  filters: MovementFilters;
+  onFiltersChange: (next: MovementFilters) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const [brandFilter, setBrandFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | StockLogType>("all");
-  const [daysFilter, setDaysFilter] = useState("30");
+  const { search, brand: brandFilter, type: typeFilter, days: daysFilter } = filters;
+  const setSearch = (v: string) => onFiltersChange({ ...filters, search: v });
+  const setBrandFilter = (v: string) => onFiltersChange({ ...filters, brand: v });
+  const setTypeFilter = (v: MovementFilters["type"]) =>
+    onFiltersChange({ ...filters, type: v });
+  const setDaysFilter = (v: string) => onFiltersChange({ ...filters, days: v });
 
   const [editLog, setEditLog] = useState<StockLogRow | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -89,6 +110,10 @@ export function MovementsPanel({
       toast.error("Mutasi sistem tidak dapat dikoreksi.");
       return;
     }
+    if (statusById.get(log.id) === "Di-void") {
+      toast.error("Mutasi ini sudah di-void, tidak bisa dikoreksi lagi.");
+      return;
+    }
     setEditLog(log);
     setEditSession((s) => s + 1);
     setEditOpen(true);
@@ -97,6 +122,10 @@ export function MovementsPanel({
   function openVoid(log: StockLogRow) {
     if (isSystemStockLog(log.note)) {
       toast.error("Mutasi sistem tidak dapat di-void.");
+      return;
+    }
+    if (statusById.get(log.id) === "Di-void") {
+      toast.error("Mutasi ini sudah di-void.");
       return;
     }
     setVoidLog(log);
@@ -208,6 +237,7 @@ export function MovementsPanel({
           open={editOpen}
           onOpenChange={setEditOpen}
           log={editLog}
+          current={replacementByTargetId.get(editLog.id) ?? editLog}
         />
       ) : null}
       {voidLog ? (
@@ -216,6 +246,7 @@ export function MovementsPanel({
           open={voidOpen}
           onOpenChange={setVoidOpen}
           log={voidLog}
+          current={replacementByTargetId.get(voidLog.id) ?? voidLog}
         />
       ) : null}
     </div>

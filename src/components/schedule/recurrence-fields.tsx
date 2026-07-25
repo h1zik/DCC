@@ -47,7 +47,8 @@ export function ApplyToField({
         mengubah satu kejadian ini;{" "}
         <span className="text-foreground font-medium">Seluruh seri</span>{" "}
         menerapkan perubahan (termasuk aturan pengulangan) ke semua kejadian
-        dalam seri.
+        dalam seri — kejadian sebelumnya tetap ada, dan perubahan jam/tanggal
+        menggeser seluruh seri dengan selisih yang sama.
       </p>
     </div>
   );

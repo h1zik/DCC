@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { addDays, addWeeks, format, isSameDay, startOfDay } from "date-fns";
+import {
+  addDays,
+  addWeeks,
+  format,
+  isBefore,
+  isSameDay,
+  startOfDay,
+  subWeeks,
+} from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { CalendarDays, MapPin, Plus, Repeat, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +25,15 @@ import {
 } from "./schedule-types";
 
 const INITIAL_WEEKS = 8;
+const PAST_STEP_WEEKS = 4;
 
 type DayGroup = { day: Date; events: ScheduleEventRow[] };
 
-/** Daftar acara dari hari ini ke depan, dikelompokkan per hari. */
+/**
+ * Daftar acara dikelompokkan per hari. Mulai dari hari ini, tapi bisa
+ * dimundurkan — di layar ponsel tampilan ini menggantikan grid bulan, jadi
+ * tanpa ini acara yang sudah lewat tidak bisa dijangkau sama sekali.
+ */
 export function AgendaView({
   events,
   currentUserId,
@@ -33,17 +46,18 @@ export function AgendaView({
   onCreate: () => void;
 }) {
   const [limitWeeks, setLimitWeeks] = useState(INITIAL_WEEKS);
+  const [pastWeeks, setPastWeeks] = useState(0);
 
   const groups = useMemo<DayGroup[]>(() => {
-    const todayStart = startOfDay(new Date()).getTime();
-    const upcoming = events
-      .filter((ev) => new Date(ev.startsAt).getTime() >= todayStart)
+    const from = subWeeks(startOfDay(new Date()), pastWeeks).getTime();
+    const inRange = events
+      .filter((ev) => new Date(ev.startsAt).getTime() >= from)
       .sort(
         (a, b) =>
           new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
       );
     const map = new Map<string, DayGroup>();
-    for (const ev of upcoming) {
+    for (const ev of inRange) {
       const d = new Date(ev.startsAt);
       const key = dayKeyOf(d);
       const group = map.get(key);
@@ -51,12 +65,27 @@ export function AgendaView({
       else map.set(key, { day: startOfDay(d), events: [ev] });
     }
     return [...map.values()];
-  }, [events]);
+  }, [events, pastWeeks]);
 
   const today = startOfDay(new Date());
   const cutoff = addWeeks(today, limitWeeks).getTime();
   const visible = groups.filter((g) => g.day.getTime() < cutoff);
   const hasMore = groups.length > visible.length;
+  const earliestShown = subWeeks(today, pastWeeks).getTime();
+  const hasPast = events.some(
+    (ev) => new Date(ev.startsAt).getTime() < earliestShown,
+  );
+
+  const showPastButton = hasPast ? (
+    <Button
+      type="button"
+      variant="outline"
+      className="self-center"
+      onClick={() => setPastWeeks((w) => w + PAST_STEP_WEEKS)}
+    >
+      Tampilkan acara sebelumnya
+    </Button>
+  ) : null;
 
   if (groups.length === 0) {
     return (
@@ -65,10 +94,13 @@ export function AgendaView({
         title="Belum ada acara mendatang"
         description="Buat acara pertama dan pilih peserta yang mendapat pengingat."
         action={
-          <Button type="button" onClick={onCreate}>
-            <Plus className="size-4" aria-hidden />
-            Buat acara
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button type="button" onClick={onCreate}>
+              <Plus className="size-4" aria-hidden />
+              Buat acara
+            </Button>
+            {showPastButton}
+          </div>
         }
       />
     );
@@ -76,6 +108,7 @@ export function AgendaView({
 
   return (
     <div className="animate-in fade-in flex flex-col gap-5 duration-200 motion-reduce:animate-none">
+      {showPastButton}
       {visible.map((group) => (
         <section key={dayKeyOf(group.day)} className="space-y-2">
           <div className="flex items-center gap-2">
@@ -86,6 +119,8 @@ export function AgendaView({
               <Badge>Hari ini</Badge>
             ) : isSameDay(group.day, addDays(today, 1)) ? (
               <Badge variant="secondary">Besok</Badge>
+            ) : isBefore(group.day, today) ? (
+              <Badge variant="outline">Sudah lewat</Badge>
             ) : null}
           </div>
           <div className="flex flex-col gap-2">

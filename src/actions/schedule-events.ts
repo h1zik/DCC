@@ -211,6 +211,7 @@ export async function updateScheduleEvent(input: z.infer<typeof updateSchema>) {
       id: true,
       createdById: true,
       seriesId: true,
+      startsAt: true,
       recurrence: true,
       recurrenceUntil: true,
     },
@@ -249,8 +250,20 @@ export async function updateScheduleEvent(input: z.infer<typeof updateSchema>) {
       data.recurrenceUntil === undefined
         ? event.recurrenceUntil
         : data.recurrenceUntil;
+    // Seri di-generate ulang dari kejadian PERTAMA, bukan dari kejadian yang
+    // sedang dibuka — kalau tidak, semua kejadian sebelumnya ikut terhapus.
+    // Perubahan jam/tanggal diterapkan sebagai geseran (delta) ke seluruh seri.
+    const seriesStart = await prisma.scheduleEvent.findFirst({
+      where: { seriesId: targetSeriesId },
+      orderBy: { startsAt: "asc" },
+      select: { startsAt: true },
+    });
+    const shiftMs = data.startsAt.getTime() - event.startsAt.getTime();
+    const anchorStartsAt = new Date(
+      (seriesStart?.startsAt ?? data.startsAt).getTime() + shiftMs,
+    );
     const startsList = buildRecurrenceStarts({
-      startsAt: data.startsAt,
+      startsAt: anchorStartsAt,
       recurrence: nextRecurrence,
       recurrenceUntil: nextRecurrenceUntil ?? null,
     });

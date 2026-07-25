@@ -6,6 +6,7 @@ import { StockLogType } from "@prisma/client";
 import { toast } from "sonner";
 import { updateStockLog } from "@/actions/stock";
 import { actionErrorMessage } from "@/lib/action-error-message";
+import { isSystemStockLog, parseSystemMeta } from "@/lib/stock-log-utils";
 import { labeledItems, STOCK_LOG_TYPE_ITEMS } from "@/lib/select-option-items";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,21 +32,30 @@ export function MovementCorrectionDialog({
   open,
   onOpenChange,
   log,
+  current,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Mutasi asli — jadi `logId` supaya rantai audit tetap satu target. */
   log: StockLogRow;
+  /** Kondisi terkini setelah koreksi sebelumnya (default: mutasi asli). */
+  current?: StockLogRow;
 }) {
   const router = useRouter();
-  const [amount, setAmount] = useState(log.amount);
-  const [type, setType] = useState<StockLogType>(log.type);
+  const effective = current ?? log;
+  const [amount, setAmount] = useState(effective.amount);
+  const [type, setType] = useState<StockLogType>(effective.type);
   const [salesCategory, setSalesCategory] = useState<SalesCategory | "">(
-    log.type === StockLogType.OUT && log.salesCategory
-      ? (log.salesCategory as SalesCategory)
+    effective.type === StockLogType.OUT && effective.salesCategory
+      ? (effective.salesCategory as SalesCategory)
       : "",
   );
-  const [note, setNote] = useState(log.note ?? "");
-  const [reference, setReference] = useState(log.reference ?? "");
+  const [note, setNote] = useState(() =>
+    isSystemStockLog(effective.note)
+      ? parseSystemMeta(effective).extraNote
+      : (effective.note ?? ""),
+  );
+  const [reference, setReference] = useState(effective.reference ?? "");
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
 
