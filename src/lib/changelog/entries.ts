@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-25-wiki-slash-menu-position",
+    date: "2026-07-25",
+    title: "Perbaikan: menu \"/\" di Wiki tidak lagi melompat keluar layar",
+    category: "fixed",
+    description:
+      "Saat mengetik \"/\" di Wiki Space Pribadi maupun Wiki Ruangan, daftar perintah kadang muncul jauh dari kursor — melompat ke atas sampai terpotong di luar layar, atau bergeser ke kanan. Posisinya ternyata bergantung pada letak pointer mouse, sehingga gangguannya muncul-hilang tanpa pola yang jelas. Menu kini selalu menempel tepat di bawah kursor ketik.",
+    highlights: [
+      "Menu \"/\" muncul persis di bawah kursor, tidak lagi melompat ke atas layar atau bergeser ke kanan",
+      "Kalau ruang di bawah kursor tidak cukup (mis. mengetik di bagian bawah halaman), menu otomatis membuka ke atas kursor — bukan dipaksa menempel ke tepi layar",
+      "Berlaku untuk Wiki Space Pribadi dan Wiki Ruangan",
+    ],
+  },
+  {
     id: "2026-07-25-logistics-schedule-integrity-fixes",
     date: "2026-07-25",
     title: "Perbaikan penting: data stok & jadwal berulang kini akurat",
