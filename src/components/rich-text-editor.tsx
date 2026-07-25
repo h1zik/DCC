@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -186,8 +187,7 @@ export function RichTextEditor({
     from: number;
     to: number;
     query: string;
-    left: number;
-    top: number;
+    caret: SlashCaretRect;
   } | null>(null);
   const [slashSelected, setSlashSelected] = useState(0);
 
@@ -281,7 +281,12 @@ export function RichTextEditor({
     const query = match[1] ?? "";
     const from = $from.pos - query.length - 1;
     const coords = ed.view.coordsAtPos($from.pos);
-    setSlashMenu({ from, to: $from.pos, query, left: coords.left, top: coords.bottom + 8 });
+    setSlashMenu({
+      from,
+      to: $from.pos,
+      query,
+      caret: { left: coords.left, top: coords.top, bottom: coords.bottom },
+    });
     setSlashSelected(0);
   }, []);
 
@@ -525,8 +530,7 @@ export function RichTextEditor({
       ) : null}
       {slashMenu ? (
         <SlashCommandMenu
-          left={slashMenu.left}
-          top={slashMenu.top}
+          caret={slashMenu.caret}
           query={slashMenu.query}
           selected={slashSelected}
           onSelect={runSlashCommand}
@@ -599,20 +603,53 @@ const SLASH_COMMAND_SECTIONS: WikiSlashCommandSection[] = [
   "Lanjutan",
 ];
 
+/** Kotak caret (koordinat viewport) tempat menu `/` ditambatkan. */
+type SlashCaretRect = { left: number; top: number; bottom: number };
+
+/** Sinkron dengan `w-72` dan `max-h-80` di kelas menu. */
+const SLASH_MENU_WIDTH = 288;
+const SLASH_MENU_MAX_HEIGHT = 320;
+/** Jarak menu ke caret, dan jarak minimum ke tepi viewport. */
+const SLASH_MENU_GAP = 8;
+const SLASH_MENU_EDGE = 8;
+
 function SlashCommandMenu({
-  left,
-  top,
+  caret,
   query,
   selected,
   onSelect,
 }: {
-  left: number;
-  top: number;
+  caret: SlashCaretRect;
   query: string;
   selected: number;
   onSelect: (id: WikiSlashCommandId) => void;
 }) {
   const commands = filterWikiSlashCommands(query);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const { left: caretLeft, top: caretTop, bottom: caretBottom } = caret;
+
+  // Posisi dihitung setelah menu terukur (pra-paint) supaya bisa flip ke atas
+  // caret saat ruang di bawah kurang — bukan digeser paksa ke tepi viewport
+  // yang bikin menu "mental" jauh dari kursor.
+  useLayoutEffect(() => {
+    const height = Math.min(
+      menuRef.current?.offsetHeight ?? SLASH_MENU_MAX_HEIGHT,
+      SLASH_MENU_MAX_HEIGHT,
+    );
+    const left = Math.max(
+      SLASH_MENU_EDGE,
+      Math.min(caretLeft, window.innerWidth - SLASH_MENU_WIDTH - SLASH_MENU_EDGE),
+    );
+    const below = caretBottom + SLASH_MENU_GAP;
+    const above = caretTop - SLASH_MENU_GAP - height;
+    const fitsBelow = below + height <= window.innerHeight - SLASH_MENU_EDGE;
+    const top =
+      fitsBelow || above < SLASH_MENU_EDGE
+        ? Math.min(below, Math.max(SLASH_MENU_EDGE, window.innerHeight - height - SLASH_MENU_EDGE))
+        : above;
+    setPosition({ left, top });
+  }, [caretLeft, caretTop, caretBottom, commands.length]);
   // Saat ada query, hasil diurutkan berdasar relevansi lintas section — render
   // flat supaya urutan visual = urutan navigasi keyboard. Tanpa query, urutan
   // WIKI_SLASH_COMMANDS sudah per section sehingga header aman ditampilkan.
@@ -645,12 +682,20 @@ function SlashCommandMenu({
     );
   };
 
-  return (
+  // Diportal ke <body>: kartu pembungkus editor memakai `translate` (hover lift)
+  // yang menjadikannya containing block untuk `position: fixed`, sehingga menu
+  // ikut tergeser sejauh offset kartu bila dirender di dalam pohon editor.
+  return createPortal(
     <div
+      ref={menuRef}
       role="listbox"
       aria-label="Sisipkan block"
       className="border-border bg-popover fixed z-50 max-h-80 w-72 overflow-y-auto rounded-lg border p-1 shadow-xl"
-      style={{ left: Math.min(left, window.innerWidth - 304), top: Math.min(top, window.innerHeight - 340) }}
+      style={{
+        left: position?.left ?? caretLeft,
+        top: position?.top ?? caretBottom + SLASH_MENU_GAP,
+        visibility: position ? undefined : "hidden",
+      }}
     >
       {commands.length === 0 ? (
         <p className="text-muted-foreground px-3 py-4 text-center text-sm">Command tidak ditemukan.</p>
@@ -673,7 +718,8 @@ function SlashCommandMenu({
       <p className="text-muted-foreground border-border mt-1 border-t px-2 py-1.5 text-[10px]">
         ↑↓ pilih · Enter sisipkan · Esc tutup
       </p>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
