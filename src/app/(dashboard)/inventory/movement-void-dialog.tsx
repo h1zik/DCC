@@ -24,12 +24,16 @@ export function MovementVoidDialog({
   open,
   onOpenChange,
   log,
+  current,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   log: StockLogRow;
+  /** Kondisi terkini setelah koreksi — yang benar-benar akan dibalik server. */
+  current?: StockLogRow;
 }) {
   const router = useRouter();
+  const effective = current ?? log;
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -61,8 +65,9 @@ export function MovementVoidDialog({
           </DialogHeader>
           <p className="text-muted-foreground text-sm">
             {log.product.name} ·{" "}
-            {log.type === StockLogType.IN ? "Masuk" : "Keluar"} {log.amount} unit
-            — {format(log.createdAt, "d MMM yyyy HH:mm", { locale: idLocale })}
+            {effective.type === StockLogType.IN ? "Masuk" : "Keluar"}{" "}
+            {effective.amount} unit —{" "}
+            {format(log.createdAt, "d MMM yyyy HH:mm", { locale: idLocale })}
           </p>
           <div className="space-y-2">
             <Label>Alasan void (wajib)</Label>

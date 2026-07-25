@@ -9,14 +9,34 @@ import {
 import type { InventoryDashboardStats } from "@/lib/inventory-metrics";
 import { ExecutiveKpiCard } from "@/app/(dashboard)/executive-kpi-card";
 
-export function InventoryKpiCards({ stats }: { stats: InventoryDashboardStats }) {
-  const attentionCount = stats.criticalCount + stats.lowCount;
+export function InventoryKpiCards({
+  stats,
+  attentionCount,
+  reorderOnlyCount,
+  onSeeAttention,
+}: {
+  stats: InventoryDashboardStats;
+  /** Dihitung di InventoryTabs dengan `forecastNeedsAttention` — sumber tunggal. */
+  attentionCount: number;
+  /** Bagian dari attentionCount yang stok manualnya masih aman tapi perlu reorder. */
+  reorderOnlyCount: number;
+  onSeeAttention: () => void;
+}) {
   const healthyPct =
     stats.totalSkus > 0
       ? Math.round(((stats.totalSkus - attentionCount) / stats.totalSkus) * 100)
       : 100;
   const attentionTone =
-    stats.criticalCount > 0 ? "danger" : stats.lowCount > 0 ? "warning" : "success";
+    stats.criticalCount > 0
+      ? "danger"
+      : attentionCount > 0
+        ? "warning"
+        : "success";
+  const attentionBreakdown = [
+    `${stats.criticalCount} kritis`,
+    `${stats.lowCount} menipis`,
+    ...(reorderOnlyCount > 0 ? [`${reorderOnlyCount} perlu reorder`] : []),
+  ].join(" · ");
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -30,11 +50,11 @@ export function InventoryKpiCards({ stats }: { stats: InventoryDashboardStats })
       <ExecutiveKpiCard
         label="Perlu perhatian"
         value={attentionCount}
-        description={`${stats.criticalCount} kritis · ${stats.lowCount} menipis`}
+        description={attentionBreakdown}
         icon={<AlertTriangle className="size-4" />}
         tone={attentionTone}
         indicator={healthyPct}
-        href={attentionCount > 0 ? "/inventory?tab=stok&status=attention" : undefined}
+        onSelect={attentionCount > 0 ? onSeeAttention : undefined}
         ctaLabel={attentionCount > 0 ? "Lihat daftar" : undefined}
       />
       <ExecutiveKpiCard

@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-25-logistics-schedule-integrity-fixes",
+    date: "2026-07-25",
+    title: "Perbaikan penting: data stok & jadwal berulang kini akurat",
+    category: "fixed",
+    description:
+      "Dua masalah yang bisa merusak data ditemukan dan diperbaiki setelah perombakan tampilan Logistik & Kalender kemarin. Mengedit acara berulang dengan pilihan \"Seluruh seri\" tidak lagi menghapus kejadian-kejadian sebelumnya, dan mengoreksi mutasi stok untuk kedua kalinya tidak lagi membuat stok produk melenceng. Sejumlah gangguan pemakaian sehari-hari ikut dibereskan: filter tidak lagi ter-reset saat pindah tab, perpindahan tab jadi instan, dan angka \"Perlu perhatian\" konsisten di seluruh halaman.",
+    highlights: [
+      "Kalender: edit acara berulang dengan \"Seluruh seri\" kini benar-benar mengubah semua kejadian — yang sudah lewat tetap tersimpan. Kalau jam/tanggal diubah, seluruh seri bergeser dengan selisih yang sama",
+      "Kalender: tampilan Agenda punya tombol \"Tampilkan acara sebelumnya\", sehingga acara yang sudah lewat bisa dibuka lagi dari HP",
+      "Inventori: koreksi mutasi yang sudah pernah dikoreksi tidak lagi membuat stok produk salah hitung — form koreksi juga menampilkan angka terkini, bukan angka lama",
+      "Inventori: mutasi yang sudah di-void tidak bisa dikoreksi/di-void ulang, dan kartu \"Mutasi terakhir\" di Ringkasan kini menampilkan nilai setelah koreksi lengkap dengan penanda \"Di-void\" / \"Dikoreksi\"",
+      "Inventori: pindah tab kini instan tanpa halaman berkedip, dan filter di tab Mutasi maupun Stok & Reorder tidak hilang saat berpindah tab",
+      "Inventori: angka \"Perlu perhatian\" di kartu KPI, label tab, dan filter tabel kini memakai satu perhitungan yang sama",
+      "Inventori: pencarian di tab Stok & Reorder bisa memakai kategori produk lagi (mis. \"body lotion\")",
+    ],
+  },
+  {
     id: "2026-07-24-logistics-ui-redesign",
     date: "2026-07-24",
     title: "Tampilan baru modul Logistik & Kalender: lebih simpel dan intuitif",

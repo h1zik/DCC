@@ -1,20 +1,37 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Vendor } from "@prisma/client";
-import { computeInventoryDashboard } from "@/lib/inventory-metrics";
+import {
+  computeInventoryDashboard,
+  forecastNeedsAttention,
+} from "@/lib/inventory-metrics";
 import type { ProductReorderForecast } from "@/lib/reorder-forecast";
+import { getStockHealth } from "@/lib/stock-status";
 import { isSystemStockLog, parseSystemMeta } from "@/lib/stock-log-utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AuditPanel } from "./audit-panel";
 import { InventoryOverview } from "./inventory-overview";
-import { MovementsPanel } from "./movements-panel";
-import { StockReorderPanel } from "./stock-reorder-panel";
+import {
+  DEFAULT_MOVEMENT_FILTERS,
+  MovementsPanel,
+  type MovementFilters,
+} from "./movements-panel";
+import {
+  DEFAULT_STOCK_FILTERS,
+  normalizeStockStatus,
+  StockReorderPanel,
+  type StockFilters,
+} from "./stock-reorder-panel";
 import type { InventoryProductRow, StockLogRow } from "./types";
 
 const TABS = ["ringkasan", "mutasi", "stok", "audit"] as const;
 type TabValue = (typeof TABS)[number];
+
+function isTabValue(value: string): value is TabValue {
+  return (TABS as readonly string[]).includes(value);
+}
 
 export function InventoryTabs({
   products,
@@ -29,28 +46,41 @@ export function InventoryTabs({
   forecasts: ProductReorderForecast[];
   windowDays: number;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const rawTab = searchParams?.get("tab") ?? "ringkasan";
-  const tab: TabValue = (TABS as readonly string[]).includes(rawTab)
-    ? (rawTab as TabValue)
-    : "ringkasan";
-  const statusParam = searchParams?.get("status") ?? undefined;
-
-  const setTab = useCallback(
-    (next: string, extra?: Record<string, string | null>) => {
-      const sp = new URLSearchParams(searchParams?.toString() ?? "");
-      sp.set("tab", next);
-      for (const [k, v] of Object.entries(extra ?? {})) {
-        if (v === null) sp.delete(k);
-        else sp.set(k, v);
-      }
-      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
-    },
-    [router, pathname, searchParams],
+  // Deep-link dibaca sekali saat mount; sesudah itu tab & filter murni state
+  // klien. `router.replace` di sini akan membuat setiap klik tab me-refetch
+  // RSC payload (page.tsx menunggu searchParams) — mahal dan berkedip.
+  const [tab, setTabState] = useState<TabValue>(() => {
+    const raw = searchParams?.get("tab") ?? "";
+    return isTabValue(raw) ? raw : "ringkasan";
+  });
+  const [stockFilters, setStockFilters] = useState<StockFilters>(() => ({
+    ...DEFAULT_STOCK_FILTERS,
+    status: normalizeStockStatus(searchParams?.get("status")),
+  }));
+  const [movementFilters, setMovementFilters] = useState<MovementFilters>(
+    DEFAULT_MOVEMENT_FILTERS,
   );
+
+  const setTab = useCallback((next: TabValue) => {
+    setTabState(next);
+    // history.replaceState tersinkron dengan useSearchParams tanpa render ulang
+    // server. `status` dibuang supaya tidak pernah menimpa filter pilihan user.
+    const sp = new URLSearchParams(window.location.search);
+    sp.set("tab", next);
+    sp.delete("status");
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}?${sp.toString()}`,
+    );
+  }, []);
+
+  const showAttention = useCallback(() => {
+    setStockFilters((f) => ({ ...f, status: "attention" }));
+    setTab("stok");
+  }, [setTab]);
 
   const brands = useMemo(() => {
     const map = new Map<string, string>();
@@ -103,17 +133,36 @@ export function InventoryTabs({
     return map;
   }, [correctionLogs]);
 
-  const attentionCount = forecasts.filter(
-    (f) => f.status === "ORDER_NOW" || f.status === "ORDER_SOON",
-  ).length;
+  const categoryByProductId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of products) if (p.category) map.set(p.id, p.category);
+    return map;
+  }, [products]);
+
+  // Satu definisi "perlu perhatian" untuk KPI card, label tab, dan filter tabel.
+  const attention = useMemo(() => {
+    let total = 0;
+    let reorderOnly = 0;
+    for (const f of forecasts) {
+      if (!forecastNeedsAttention(f)) continue;
+      total++;
+      if (getStockHealth(f.currentStock, f.manualMinStock) === "OK") reorderOnly++;
+    }
+    return { total, reorderOnly };
+  }, [forecasts]);
 
   return (
-    <Tabs value={tab} onValueChange={(v) => v && setTab(v)}>
+    <Tabs
+      value={tab}
+      onValueChange={(v) => {
+        if (v && isTabValue(v)) setTab(v);
+      }}
+    >
       <TabsList className="w-full justify-start overflow-x-auto">
         <TabsTrigger value="ringkasan">Ringkasan</TabsTrigger>
         <TabsTrigger value="mutasi">Mutasi ({businessLogs.length})</TabsTrigger>
         <TabsTrigger value="stok">
-          Stok &amp; Reorder{attentionCount > 0 ? ` (${attentionCount})` : ""}
+          Stok &amp; Reorder{attention.total > 0 ? ` (${attention.total})` : ""}
         </TabsTrigger>
         <TabsTrigger value="audit">Audit ({correctionLogs.length})</TabsTrigger>
       </TabsList>
@@ -122,7 +171,11 @@ export function InventoryTabs({
         <InventoryOverview
           stats={stats}
           recentLogs={businessLogs}
-          onSeeAllReorder={() => setTab("stok", { status: "attention" })}
+          statusById={statusById}
+          replacementByTargetId={replacementByTargetId}
+          attentionCount={attention.total}
+          reorderOnlyCount={attention.reorderOnly}
+          onSeeAllReorder={showAttention}
           onSeeAllMovements={() => setTab("mutasi")}
         />
       </TabsContent>
@@ -135,15 +188,18 @@ export function InventoryTabs({
           replacementByTargetId={replacementByTargetId}
           products={products}
           vendors={vendors}
+          filters={movementFilters}
+          onFiltersChange={setMovementFilters}
         />
       </TabsContent>
 
       <TabsContent value="stok" className="mt-4">
         <StockReorderPanel
-          key={statusParam ?? "none"}
           forecasts={forecasts}
           windowDays={windowDays}
-          initialStatus={statusParam}
+          categoryByProductId={categoryByProductId}
+          filters={stockFilters}
+          onFiltersChange={setStockFilters}
         />
       </TabsContent>
 

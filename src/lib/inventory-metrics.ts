@@ -54,6 +54,17 @@ export type InventoryDashboardStats = {
   }>;
 };
 
+/**
+ * Satu-satunya definisi "perlu perhatian": dipakai KPI card, label tab, dan
+ * filter tabel Stok & Reorder supaya ketiganya tidak pernah beda angka.
+ * Tinggal di modul ini (bukan reorder-forecast) karena dipanggil dari komponen
+ * klien — reorder-forecast menarik Prisma.
+ */
+export function forecastNeedsAttention(f: ProductReorderForecast): boolean {
+  if (f.status === "ORDER_NOW" || f.status === "ORDER_SOON") return true;
+  return getStockHealth(f.currentStock, f.manualMinStock) !== "OK";
+}
+
 function forecastStatusRank(status?: ReorderForecastStatus): number {
   if (status === "ORDER_NOW") return 0;
   if (status === "ORDER_SOON") return 1;

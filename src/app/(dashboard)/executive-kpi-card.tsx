@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type Tone = "neutral" | "warning" | "danger" | "success" | "accent";
@@ -37,7 +38,10 @@ type KpiCardProps = {
   tone?: Tone;
   /** 0–100, drives the thin bottom indicator bar. */
   indicator?: number;
+  /** Navigasi antar-halaman — dirender sebagai <Link> (client-side, tanpa reload). */
   href?: string;
+  /** Aksi dalam halaman (mis. ganti tab) — dirender sebagai <button>. */
+  onSelect?: () => void;
   ctaLabel?: string;
 };
 
@@ -49,19 +53,19 @@ export function ExecutiveKpiCard({
   tone = "neutral",
   indicator,
   href,
+  onSelect,
   ctaLabel,
 }: KpiCardProps) {
-  const Wrapper = href ? "a" : "div";
-  return (
-    <Wrapper
-      href={href}
-      className={cn(
-        "group/kpi relative flex flex-col gap-3 rounded-xl bg-card px-4 py-3.5 ring-1 transition-[box-shadow,transform] duration-200",
-        "hover:shadow-sm hover:-translate-y-0.5",
-        toneRing[tone],
-        href && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-      )}
-    >
+  const interactive = Boolean(href || onSelect);
+  const className = cn(
+    "group/kpi relative flex flex-col gap-3 rounded-xl bg-card px-4 py-3.5 ring-1 transition-[box-shadow,transform] duration-200",
+    "hover:shadow-sm hover:-translate-y-0.5",
+    toneRing[tone],
+    interactive &&
+      "cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+  );
+  const body = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <span className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
           {label}
@@ -100,7 +104,7 @@ export function ExecutiveKpiCard({
         />
       ) : null}
 
-      {ctaLabel && href ? (
+      {ctaLabel && interactive ? (
         <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-accent-foreground">
           {ctaLabel}
           <svg
@@ -117,6 +121,22 @@ export function ExecutiveKpiCard({
           </svg>
         </span>
       ) : null}
-    </Wrapper>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {body}
+      </Link>
+    );
+  }
+  if (onSelect) {
+    return (
+      <button type="button" onClick={onSelect} className={className}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }

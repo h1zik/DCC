@@ -12,7 +12,7 @@ import {
 } from "@/components/logistics/logistics-filter-bar";
 import { ReorderStatusBadge } from "@/components/logistics/reorder-status-badge";
 import { StockHealthBadge } from "@/components/logistics/stock-health-badge";
-import { getStockHealth } from "@/lib/stock-status";
+import { forecastNeedsAttention } from "@/lib/inventory-metrics";
 import type {
   ProductReorderForecast,
   ReorderForecastStatus,
@@ -43,9 +43,25 @@ const STATUS_FILTER_ITEMS = [
   { value: "NO_LEAD_TIME", label: "Set lead time" },
 ];
 
-function needsAttention(f: ProductReorderForecast): boolean {
-  if (f.status === "ORDER_NOW" || f.status === "ORDER_SOON") return true;
-  return getStockHealth(f.currentStock, f.manualMinStock) !== "OK";
+/** Filter panel Stok hidup di parent (InventoryTabs) supaya bertahan antar tab. */
+export type StockFilters = {
+  search: string;
+  brand: string;
+  status: StatusFilter;
+};
+
+export const DEFAULT_STOCK_FILTERS: StockFilters = {
+  search: "",
+  brand: "all",
+  status: "all",
+};
+
+export function normalizeStockStatus(
+  raw: string | null | undefined,
+): StatusFilter {
+  return raw && STATUS_FILTER_ITEMS.some((item) => item.value === raw)
+    ? (raw as StatusFilter)
+    : "all";
 }
 
 /**
@@ -55,24 +71,27 @@ function needsAttention(f: ProductReorderForecast): boolean {
 export function StockReorderPanel({
   forecasts,
   windowDays,
-  initialStatus,
+  categoryByProductId,
+  filters,
+  onFiltersChange,
 }: {
   forecasts: ProductReorderForecast[];
   windowDays: number;
-  initialStatus?: string;
+  /** Kategori produk — tidak ada di forecast, tapi ikut dicari seperti tab Stok lama. */
+  categoryByProductId: Map<string, string>;
+  filters: StockFilters;
+  onFiltersChange: (next: StockFilters) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [search, setSearch] = useState("");
-  const [brandFilter, setBrandFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
-    initialStatus &&
-      STATUS_FILTER_ITEMS.some((item) => item.value === initialStatus)
-      ? (initialStatus as StatusFilter)
-      : "all",
-  );
+  const { search, brand: brandFilter, status: statusFilter } = filters;
+  const setSearch = (v: string) => onFiltersChange({ ...filters, search: v });
+  const setBrandFilter = (v: string) => onFiltersChange({ ...filters, brand: v });
+  const setStatusFilter = (v: StatusFilter) =>
+    onFiltersChange({ ...filters, status: v });
+
   const [applyTarget, setApplyTarget] = useState<ProductReorderForecast | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [applySession, setApplySession] = useState(0);
@@ -89,7 +108,7 @@ export function StockReorderPanel({
     const q = search.trim().toLowerCase();
     return forecasts.filter((f) => {
       if (brandFilter !== "all" && f.brandName !== brandFilter) return false;
-      if (statusFilter === "attention" && !needsAttention(f)) return false;
+      if (statusFilter === "attention" && !forecastNeedsAttention(f)) return false;
       if (
         statusFilter !== "all" &&
         statusFilter !== "attention" &&
@@ -97,13 +116,20 @@ export function StockReorderPanel({
       )
         return false;
       if (!q) return true;
-      return [f.name, f.sku, f.brandName, f.vendorsSummary, f.preferredVendor?.name]
+      return [
+        f.name,
+        f.sku,
+        f.brandName,
+        categoryByProductId.get(f.productId),
+        f.vendorsSummary,
+        f.preferredVendor?.name,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
         .includes(q);
     });
-  }, [forecasts, search, brandFilter, statusFilter]);
+  }, [forecasts, search, brandFilter, statusFilter, categoryByProductId]);
 
   const orderNow = forecasts.filter((f) => f.status === "ORDER_NOW").length;
   const orderSoon = forecasts.filter((f) => f.status === "ORDER_SOON").length;
@@ -115,9 +141,12 @@ export function StockReorderPanel({
       : 0;
 
   function changeWindow(v: string) {
+    // Window mengubah hasil forecast di server — ini satu-satunya kontrol di
+    // panel ini yang memang perlu navigasi ulang.
     const sp = new URLSearchParams(searchParams?.toString() ?? "");
     sp.set("window", v);
     sp.set("tab", "stok");
+    sp.delete("status");
     router.push(`${pathname}?${sp.toString()}`, { scroll: false });
   }
 
