@@ -1,6 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "@/lib/utils";
 import {
   type Column,
@@ -39,7 +46,20 @@ interface DataTableProps<TData, TValue> {
   viewportHeight?: string;
   /** Sticky `<thead>` di atas saat scroll vertikal di dalam viewport. */
   stickyHeader?: boolean;
+  /**
+   * Jumlah kolom pertama yang dipin ke kiri saat scroll horizontal, sehingga
+   * kolom identitas (mis. judul konten) tetap terlihat. Offset kiri diukur dari
+   * lebar header aslinya, jadi aman walau kolom melar mengikuti kontainer.
+   */
+  stickyColumns?: number;
 }
+
+/** Divider tipis di tepi kanan kolom pin terakhir (pseudo-element: aman dari `border-collapse`). */
+const STICKY_EDGE_CLASS =
+  "after:bg-border after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:content-['']";
+
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 function columnWidthStyle<TData>(
   column: Column<TData, unknown>,
@@ -67,6 +87,7 @@ export function DataTable<TData, TValue>({
   viewportMaxHeight,
   viewportHeight,
   stickyHeader = false,
+  stickyColumns = 0,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
@@ -81,6 +102,78 @@ export function DataTable<TData, TValue>({
   });
 
   const useInternalScroll = !!viewportMaxHeight || !!viewportHeight;
+
+  const stickyCount = Math.max(0, Math.min(stickyColumns, columns.length));
+  const headerCellRefs = useRef<(HTMLTableCellElement | null)[]>([]);
+  const [measuredOffsets, setMeasuredOffsets] = useState<number[] | null>(null);
+
+  // Tebakan awal dari `size` kolom supaya paint pertama tidak menumpuk.
+  const fallbackOffsets = useMemo(() => {
+    const offsets: number[] = [];
+    let acc = 0;
+    for (let i = 0; i < stickyCount; i += 1) {
+      offsets.push(acc);
+      const size = columns[i]?.size;
+      acc += typeof size === "number" ? size : 0;
+    }
+    return offsets;
+  }, [columns, stickyCount]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (stickyCount === 0) return;
+    const cells = headerCellRefs.current
+      .slice(0, stickyCount)
+      .filter((cell): cell is HTMLTableCellElement => cell !== null);
+    if (cells.length !== stickyCount) return;
+
+    const measure = () => {
+      const next: number[] = [];
+      let acc = 0;
+      for (const cell of cells) {
+        next.push(acc);
+        acc += cell.getBoundingClientRect().width;
+      }
+      setMeasuredOffsets((prev) =>
+        prev &&
+        prev.length === next.length &&
+        prev.every((value, i) => Math.abs(value - next[i]) < 0.5)
+          ? prev
+          : next,
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    for (const cell of cells) observer.observe(cell);
+    return () => observer.disconnect();
+  }, [columns, stickyCount]);
+
+  const stickyOffsets = measuredOffsets ?? fallbackOffsets;
+
+  const stickyCellStyle = (
+    index: number,
+    variant: "head" | "cell",
+  ): CSSProperties | undefined => {
+    if (index >= stickyCount) return undefined;
+    // Inline supaya menang dari selector `[&_th]:z-10` / `[&_th]:bg-card/95`
+    // milik sticky header — kolom pin harus benar-benar opaque.
+    return {
+      position: "sticky",
+      left: stickyOffsets[index] ?? 0,
+      zIndex: variant === "head" ? 20 : 5,
+      ...(variant === "head" ? { backgroundColor: "var(--card)" } : null),
+    };
+  };
+
+  const stickyCellClass = (index: number, variant: "head" | "cell") => {
+    if (index >= stickyCount) return undefined;
+    return cn(
+      variant === "cell"
+        ? "bg-card group-hover/row:bg-muted/50"
+        : !stickyHeader && "bg-card",
+      index === stickyCount - 1 && STICKY_EDGE_CLASS,
+    );
+  };
 
   return (
     <div
@@ -104,12 +197,23 @@ export function DataTable<TData, TValue>({
         }
       >
         <TableHeader sticky={stickyHeader}>
-          {table.getHeaderGroups().map((headerGroup) => (
+          {table.getHeaderGroups().map((headerGroup, groupIndex) => (
             <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
+              {headerGroup.headers.map((header, index) => (
                 <TableHead
                   key={header.id}
-                  style={columnWidthStyle(header.column, fitViewport)}
+                  ref={
+                    groupIndex === 0 && index < stickyCount
+                      ? (node) => {
+                          headerCellRefs.current[index] = node;
+                        }
+                      : undefined
+                  }
+                  className={stickyCellClass(index, "head")}
+                  style={{
+                    ...columnWidthStyle(header.column, fitViewport),
+                    ...stickyCellStyle(index, "head"),
+                  }}
                 >
                   {header.isPlaceholder
                     ? null
@@ -127,15 +231,22 @@ export function DataTable<TData, TValue>({
             table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
-                className={onRowClick ? "hover:bg-muted/50 cursor-pointer" : undefined}
+                className={cn(
+                  "group/row",
+                  onRowClick && "hover:bg-muted/50 cursor-pointer",
+                )}
                 onClick={
                   onRowClick ? () => onRowClick(row.original) : undefined
                 }
               >
-                {row.getVisibleCells().map((cell) => (
+                {row.getVisibleCells().map((cell, index) => (
                   <TableCell
                     key={cell.id}
-                    style={columnWidthStyle(cell.column, fitViewport)}
+                    className={stickyCellClass(index, "cell")}
+                    style={{
+                      ...columnWidthStyle(cell.column, fitViewport),
+                      ...stickyCellStyle(index, "cell"),
+                    }}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
