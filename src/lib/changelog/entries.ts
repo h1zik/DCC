@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-27-content-plan-sticky-title-column",
+    date: "2026-07-27",
+    title: "Judul konten tetap terlihat saat menggeser tabel Content Plan",
+    category: "improved",
+    description:
+      "Tabel Content Plan lebih lebar dari layar, jadi begitu digeser ke kanan kolom \"Konten\" ikut hilang dan sulit tahu baris yang sedang diisi itu konten yang mana. Kolom judul (beserta kotak centang di sebelahnya) kini menempel di tepi kiri dan tetap terlihat sejauh apa pun tabel digeser.",
+    highlights: [
+      "Kolom \"Konten\" dan kotak centang Kanban tetap menempel di kiri saat tabel digeser ke kanan/kiri",
+      "Ada garis pemisah tipis sebagai penanda batas kolom yang dikunci",
+      "Baris tetap ikut menyala saat disorot mouse, dan judul kolom tetap menempel di atas seperti sebelumnya",
+      "Berlaku di tampilan desktop; tampilan ponsel tetap memakai kartu per konten",
+    ],
+  },
+  {
     id: "2026-07-25-wiki-slash-menu-position",
     date: "2026-07-25",
     title: "Perbaikan: menu \"/\" di Wiki tidak lagi melompat keluar layar",

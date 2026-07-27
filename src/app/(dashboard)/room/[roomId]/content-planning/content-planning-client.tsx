@@ -3039,6 +3039,7 @@ export function ContentPlanningClient({
           fitViewport
           sortable
           stickyHeader
+          stickyColumns={2}
           viewportHeight="100%"
         />
       </div>
