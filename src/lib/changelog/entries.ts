@@ -37,6 +37,22 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-27-content-plan-gantt-view",
+    date: "2026-07-27",
+    title: "Tampilan Gantt di Content Plan",
+    category: "new",
+    description:
+      "Content Plan sekarang punya dua tampilan: Tabel seperti biasa, dan Gantt untuk melihat seluruh jadwal konten dalam satu linimasa. Setiap konten digambar sebagai dua bar — Copywriting di atas, Design di bawah — dengan wajik berwarna sebagai tanggal posting, jadi kelihatan mana yang menumpuk, mana yang lewat tenggat.",
+    highlights: [
+      "Tombol Tabel / Gantt di baris alat; filter dan pencarian yang aktif tetap berlaku di kedua tampilan",
+      "Warna bar mengikuti status kerja, dan bar yang tenggatnya lewat tapi belum terbit diberi garis merah",
+      "Geser bar (atau tekan panah kiri/kanan saat bar dipilih, Shift untuk per minggu) untuk mengubah tenggat — langsung tersimpan",
+      "Skala Hari / Minggu / Bulan, tombol \"Hari ini\", dan pengelompokan per PIC, jenis, atau usage",
+      "Arahkan mouse ke bar untuk kartu ringkasan: status, tenggat, tanggal posting, progres, dan PIC",
+      "Konten yang belum punya tenggat maupun tanggal posting didaftar terpisah di bawah linimasa",
+    ],
+  },
+  {
     id: "2026-07-27-content-plan-sticky-title-column",
     date: "2026-07-27",
     title: "Judul konten tetap terlihat saat menggeser tabel Content Plan",

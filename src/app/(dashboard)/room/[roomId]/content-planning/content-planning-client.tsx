@@ -62,6 +62,18 @@ import {
   contentPlanDownloadApiPath,
   contentPlanHasStoredFiles,
 } from "@/lib/content-plan-files";
+import {
+  JENIS_BADGE_CLASS,
+  JENIS_LABEL,
+  STATUS_BADGE_CLASS,
+  STATUS_LABEL,
+  USAGE_BADGE_CLASS,
+  USAGE_LABEL,
+} from "@/lib/content-plan-ui";
+import {
+  ContentPlanGantt,
+  type ContentPlanGanttField,
+} from "./content-plan-gantt";
 import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
@@ -71,6 +83,7 @@ import {
   Bookmark,
   CalendarDays,
   Camera,
+  ChartGantt,
   ChevronDown,
   Clock,
   ChevronLeft,
@@ -100,45 +113,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { Column, ColumnDef } from "@tanstack/react-table";
 
-const JENIS_LABEL: Record<ContentPlanJenis, string> = {
-  [ContentPlanJenis.REELS]: "Reels",
-  [ContentPlanJenis.CAROUSEL]: "Carousel",
-  [ContentPlanJenis.SINGLE_FEED]: "Single Feed",
-};
-
-const STATUS_LABEL: Record<ContentPlanStatusKerja, string> = {
-  [ContentPlanStatusKerja.BARU]: "Baru",
-  [ContentPlanStatusKerja.DALAM_PROSES]: "Dalam Proses",
-  [ContentPlanStatusKerja.DALAM_PENINJAUAN]: "Dalam Peninjauan",
-  [ContentPlanStatusKerja.DIPUBLIKASIKAN]: "Dipublikasikan",
-  [ContentPlanStatusKerja.DITANGGUHKAN]: "Ditangguhkan",
-  [ContentPlanStatusKerja.DIJEDA]: "Dijeda",
-};
-
-const JENIS_BADGE_CLASS: Record<ContentPlanJenis, string> = {
-  [ContentPlanJenis.REELS]:
-    "border-fuchsia-500/35 bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300",
-  [ContentPlanJenis.CAROUSEL]:
-    "border-sky-500/35 bg-sky-500/12 text-sky-700 dark:text-sky-300",
-  [ContentPlanJenis.SINGLE_FEED]:
-    "border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-300",
-};
-
-const USAGE_LABEL: Record<ContentPlanUsage, string> = {
-  [ContentPlanUsage.AWARENESS]: "Awareness",
-  [ContentPlanUsage.CONSIDERATION]: "Consideration",
-  [ContentPlanUsage.CONVERSION]: "Conversion",
-};
-
-const USAGE_BADGE_CLASS: Record<ContentPlanUsage, string> = {
-  [ContentPlanUsage.AWARENESS]:
-    "border-cyan-500/35 bg-cyan-500/12 text-cyan-800 dark:text-cyan-300",
-  [ContentPlanUsage.CONSIDERATION]:
-    "border-violet-500/35 bg-violet-500/12 text-violet-800 dark:text-violet-300",
-  [ContentPlanUsage.CONVERSION]:
-    "border-emerald-500/35 bg-emerald-500/12 text-emerald-800 dark:text-emerald-300",
-};
-
 /** Base UI Select: onValueChange juga terpanggil saat sync internal (reason `none`). */
 type InlineSelectChangeDetails = {
   reason?: string;
@@ -162,21 +136,6 @@ const STATUS_SELECT_TRIGGER = cn(
 /** Lebar kolom status diperbesar agar label status lebih lega. */
 const STATUS_COL_BOX = "w-[10.5rem] max-w-full shrink-0 overflow-hidden";
 
-const STATUS_BADGE_CLASS: Record<ContentPlanStatusKerja, string> = {
-  [ContentPlanStatusKerja.BARU]:
-    "border-slate-500/35 bg-slate-500/12 text-slate-700 dark:text-slate-300",
-  [ContentPlanStatusKerja.DALAM_PROSES]:
-    "border-blue-500/35 bg-blue-500/12 text-blue-700 dark:text-blue-300",
-  [ContentPlanStatusKerja.DALAM_PENINJAUAN]:
-    "border-violet-500/35 bg-violet-500/12 text-violet-700 dark:text-violet-300",
-  [ContentPlanStatusKerja.DIPUBLIKASIKAN]:
-    "border-emerald-500/35 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
-  [ContentPlanStatusKerja.DITANGGUHKAN]:
-    "border-rose-500/35 bg-rose-500/12 text-rose-700 dark:text-rose-300",
-  [ContentPlanStatusKerja.DIJEDA]:
-    "border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-300",
-};
-
 export type ContentPlanTableRow = {
   id: string;
   konten: string;
@@ -196,6 +155,8 @@ export type ContentPlanTableRow = {
   tanggalPosting: Date | string | null;
   jamPosting: string | null;
   catatan: string | null;
+  /** Dipakai Gantt sebagai titik awal bar copywriting. */
+  createdAt?: Date | string | null;
   pic: Pick<User, "id" | "name" | "email" | "image"> | null;
   pics?: Pick<User, "id" | "name" | "email" | "image">[];
   createdBy: Pick<User, "id" | "name" | "email">;
@@ -1185,6 +1146,7 @@ export function ContentPlanningClient({
   const [statusDesignFilter, setStatusDesignFilter] = useState<ContentPlanStatusKerja | "all">("all");
   const [picFilter, setPicFilter] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [view, setView] = useState<"table" | "gantt">("table");
 
   const kanbanSet = useMemo(() => new Set(kanbanSelectedIds), [kanbanSelectedIds]);
 
@@ -1551,6 +1513,29 @@ export function ContentPlanningClient({
       }
     },
     [buildUpsertPayload, withResolvedPics],
+  );
+
+  /** Gantt: klik bar / judul membuka sheet edit baris yang sama. */
+  const openRowById = useCallback(
+    (rowId: string) => {
+      const row = tableRows.find((r) => r.id === rowId);
+      if (row) openEdit(row);
+    },
+    [tableRows, openEdit],
+  );
+
+  /** Gantt: geser bar/milestone → simpan tanggal baru lewat jalur inline save. */
+  const onGanttReschedule = useCallback(
+    (rowId: string, field: ContentPlanGanttField, next: Date) => {
+      const patch: Partial<ContentPlanTableRow> =
+        field === "deadlineCopywriting"
+          ? { deadlineCopywriting: next }
+          : field === "deadlineDesign"
+            ? { deadlineDesign: next }
+            : { tanggalPosting: next };
+      void saveInlineRow(rowId, patch, `${rowId}:gantt:${field}`);
+    },
+    [saveInlineRow],
   );
 
   const onAiSuggest = useCallback(() => {
@@ -2183,6 +2168,34 @@ export function ContentPlanningClient({
               <X className="size-3.5" />
             </button>
           ) : null}
+        </div>
+        <div
+          className="bg-muted/50 flex shrink-0 items-center rounded-lg p-0.5"
+          role="group"
+          aria-label="Tampilan content planning"
+        >
+          {(
+            [
+              { key: "table", label: "Tabel", icon: LayoutList },
+              { key: "gantt", label: "Gantt", icon: ChartGantt },
+            ] as const
+          ).map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              aria-pressed={view === v.key}
+              onClick={() => setView(v.key)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                view === v.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <v.icon className="size-3.5" aria-hidden />
+              {v.label}
+            </button>
+          ))}
         </div>
         <Button
           type="button"
@@ -2881,168 +2894,182 @@ export function ContentPlanningClient({
         </div>
       ) : null}
 
-      <div className="min-w-0 max-w-full md:hidden">
-        {filteredRows.length === 0 ? (
-          <div className="text-muted-foreground rounded-xl border border-border px-4 py-8 text-center text-sm">
-            {hasActiveFilters
-              ? "Tidak ada baris yang cocok dengan filter / pencarian."
-              : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredRows.map((row) => (
-              <Card key={row.id} size="sm" className="shadow-none ring-border/60">
-                <div className="space-y-3 px-4 py-3">
-                  <div className="flex items-start justify-between gap-2">
-                    {row.statusDesign === ContentPlanStatusKerja.BARU ? (
-                      <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          checked={kanbanSet.has(row.id)}
-                          aria-label={`Tambahkan "${row.konten || "baris"}" ke Kanban`}
-                          onCheckedChange={() => toggleKanbanSelect(row.id)}
+      {view === "gantt" ? (
+        <div className="flex min-w-0 max-w-full flex-col md:min-h-0 md:flex-1">
+          <ContentPlanGantt
+            rows={filteredRows}
+            onOpenRow={openRowById}
+            onReschedule={onGanttReschedule}
+            onAddRow={openCreate}
+            hasActiveFilters={hasActiveFilters}
+          />
+        </div>
+      ) : (
+        <>
+        <div className="min-w-0 max-w-full md:hidden">
+          {filteredRows.length === 0 ? (
+            <div className="text-muted-foreground rounded-xl border border-border px-4 py-8 text-center text-sm">
+              {hasActiveFilters
+                ? "Tidak ada baris yang cocok dengan filter / pencarian."
+                : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredRows.map((row) => (
+                <Card key={row.id} size="sm" className="shadow-none ring-border/60">
+                  <div className="space-y-3 px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      {row.statusDesign === ContentPlanStatusKerja.BARU ? (
+                        <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={kanbanSet.has(row.id)}
+                            aria-label={`Tambahkan "${row.konten || "baris"}" ke Kanban`}
+                            onCheckedChange={() => toggleKanbanSelect(row.id)}
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground w-5 shrink-0 text-center text-xs" title="Hanya status design Baru yang bisa ditambahkan ke Kanban">
+                          —
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p
+                          className="text-sm leading-snug font-semibold whitespace-normal break-words"
+                          title={row.konten?.trim() || undefined}
+                        >
+                          {row.konten || "—"}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <JenisBadge jenis={row.jenisKonten} />
+                          <UsageBadge usage={row.usage ?? ContentPlanUsage.AWARENESS} />
+                          {(row.pics?.length ?? 0) > 0 ? (
+                            <span className="text-muted-foreground text-xs">
+                              PIC: {(row.pics ?? [])
+                                .map((p) => p.name?.trim() || p.email)
+                                .join(", ")}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">PIC: —</span>
+                          )}
+                        </div>
+                      </div>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            className={cn(
+                              buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                              "size-8",
+                            )}
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(row)}>
+                              <Pencil className="size-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => onDelete(row.id)}
+                            >
+                              <Trash2 className="size-4" />
+                              Hapus
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <p className="text-muted-foreground text-[11px] uppercase">Status Copy</p>
+                        <StatusBadge status={row.statusCopywriting} />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-muted-foreground text-[11px] uppercase">Status Design</p>
+                        <StatusBadge status={row.statusDesign} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">DL Copy</p>
+                        <p>{formatDateShort(row.deadlineCopywriting)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">DL Design</p>
+                        <p>{formatDateShort(row.deadlineDesign)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Posting</p>
+                        <p>
+                          {formatDateShort(row.tanggalPosting)}
+                          {row.jamPosting ? ` • ${row.jamPosting}` : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    {row.detailKonten?.trim() ? (
+                      <p className="text-muted-foreground line-clamp-2 text-xs">{row.detailKonten}</p>
+                    ) : null}
+                    {(row.designFilePaths?.length ?? 0) > 0 ? (
+                      <div className="flex items-center gap-1 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-xs"
+                          className="size-6 shrink-0"
+                          aria-label={`Preview ${JENIS_LABEL[row.jenisKonten]}`}
+                          title="Preview"
+                          onClick={() => {
+                            setPreviewRow(row);
+                            setPreviewIndex(0);
+                          }}
+                        >
+                          <Eye className="size-3" />
+                        </Button>
+                        <ContentPlanDownloadButton
+                          roomId={roomId}
+                          row={row}
+                          size="icon-xs"
+                          showLabel={false}
                         />
                       </div>
-                    ) : (
-                      <span className="text-muted-foreground w-5 shrink-0 text-center text-xs" title="Hanya status design Baru yang bisa ditambahkan ke Kanban">
-                        —
-                      </span>
-                    )}
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p
-                        className="text-sm leading-snug font-semibold whitespace-normal break-words"
-                        title={row.konten?.trim() || undefined}
-                      >
-                        {row.konten || "—"}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <JenisBadge jenis={row.jenisKonten} />
-                        <UsageBadge usage={row.usage ?? ContentPlanUsage.AWARENESS} />
-                        {(row.pics?.length ?? 0) > 0 ? (
-                          <span className="text-muted-foreground text-xs">
-                            PIC: {(row.pics ?? [])
-                              .map((p) => p.name?.trim() || p.email)
-                              .join(", ")}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">PIC: —</span>
-                        )}
+                    ) : contentPlanHasStoredFiles(row) ? (
+                      <div className="flex items-center gap-1 pt-1">
+                        <ContentPlanDownloadButton
+                          roomId={roomId}
+                          row={row}
+                          size="icon-xs"
+                          showLabel={false}
+                        />
                       </div>
-                    </div>
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          className={cn(
-                            buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                            "size-8",
-                          )}
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEdit(row)}>
-                            <Pencil className="size-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => onDelete(row.id)}
-                          >
-                            <Trash2 className="size-4" />
-                            Hapus
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    ) : null}
                   </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <p className="text-muted-foreground text-[11px] uppercase">Status Copy</p>
-                      <StatusBadge status={row.statusCopywriting} />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-muted-foreground text-[11px] uppercase">Status Design</p>
-                      <StatusBadge status={row.statusDesign} />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">DL Copy</p>
-                      <p>{formatDateShort(row.deadlineCopywriting)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">DL Design</p>
-                      <p>{formatDateShort(row.deadlineDesign)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Posting</p>
-                      <p>
-                        {formatDateShort(row.tanggalPosting)}
-                        {row.jamPosting ? ` • ${row.jamPosting}` : ""}
-                      </p>
-                    </div>
-                  </div>
-
-                  {row.detailKonten?.trim() ? (
-                    <p className="text-muted-foreground line-clamp-2 text-xs">{row.detailKonten}</p>
-                  ) : null}
-                  {(row.designFilePaths?.length ?? 0) > 0 ? (
-                    <div className="flex items-center gap-1 pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-xs"
-                        className="size-6 shrink-0"
-                        aria-label={`Preview ${JENIS_LABEL[row.jenisKonten]}`}
-                        title="Preview"
-                        onClick={() => {
-                          setPreviewRow(row);
-                          setPreviewIndex(0);
-                        }}
-                      >
-                        <Eye className="size-3" />
-                      </Button>
-                      <ContentPlanDownloadButton
-                        roomId={roomId}
-                        row={row}
-                        size="icon-xs"
-                        showLabel={false}
-                      />
-                    </div>
-                  ) : contentPlanHasStoredFiles(row) ? (
-                    <div className="flex items-center gap-1 pt-1">
-                      <ContentPlanDownloadButton
-                        roomId={roomId}
-                        row={row}
-                        size="icon-xs"
-                        showLabel={false}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="hidden min-w-0 max-w-full md:flex md:min-h-0 md:flex-1 md:flex-col">
-        <DataTable
-          columns={columns}
-          data={filteredRows}
-          empty={
-            hasActiveFilters
-              ? "Tidak ada baris yang cocok dengan filter / pencarian."
-              : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."
-          }
-          fitViewport
-          sortable
-          stickyHeader
-          stickyColumns={2}
-          viewportHeight="100%"
-        />
-      </div>
+        <div className="hidden min-w-0 max-w-full md:flex md:min-h-0 md:flex-1 md:flex-col">
+          <DataTable
+            columns={columns}
+            data={filteredRows}
+            empty={
+              hasActiveFilters
+                ? "Tidak ada baris yang cocok dengan filter / pencarian."
+                : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."
+            }
+            fitViewport
+            sortable
+            stickyHeader
+            stickyColumns={2}
+            viewportHeight="100%"
+          />
+        </div>
+        </>
+      )}
 
       <Dialog
         open={previewRow !== null}
