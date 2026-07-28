@@ -21,6 +21,7 @@ import {
   createTaskTag,
   deleteTask,
   updateTask,
+  type TaskMutationResult,
 } from "@/actions/tasks";
 import {
   addTaskLinkAttachment,
@@ -31,6 +32,7 @@ import { TasksCalendar, type CalendarTask } from "./tasks-calendar";
 import { TasksList } from "./tasks-list";
 import {
   TasksGantt,
+  type GanttDraftTask,
   type GanttSchedule,
   type GanttTask,
 } from "./tasks-gantt";
@@ -378,6 +380,23 @@ export function TasksWorkspace({
     setDetailOpen(true);
   }, []);
 
+  /** Sisipkan tugas hasil `createTask` ke daftar lokal tanpa reload server. */
+  const appendCreatedTask = useCallback((created: TaskMutationResult) => {
+    setLocalTasks((prev) => {
+      if (prev.some((t) => t.id === created.id)) return prev;
+      return [
+        ...prev,
+        {
+          ...created,
+          checklistItems: [],
+          comments: [],
+          attachments: [],
+          tags: created.tags ?? [],
+        },
+      ];
+    });
+  }, []);
+
   async function onSaveCreate() {
     setPending(true);
     try {
@@ -434,19 +453,7 @@ export function TasksWorkspace({
 
       toast.success("Tugas dibuat.");
       setCreateOpen(false);
-      setLocalTasks((prev) => {
-        if (prev.some((t) => t.id === created.id)) return prev;
-        return [
-          ...prev,
-          {
-            ...created,
-            checklistItems: [],
-            comments: [],
-            attachments: [],
-            tags: created.tags ?? [],
-          },
-        ];
-      });
+      appendCreatedTask(created);
     } catch (e) {
       const msg = actionErrorMessage(e, "Gagal menyimpan.");
       toast.error(msg);
@@ -636,6 +643,65 @@ export function TasksWorkspace({
     },
     [localTasks],
   );
+  /**
+   * Tugas baru langsung dari kanvas Gantt: hanya judul + rentang tanggal.
+   * Sisanya memakai default papan (proyek pertama, tahap awal, prioritas
+   * sedang) mengikuti tab fase/kelompok yang sedang dibuka — sama seperti
+   * dialog "Tugas baru" tanpa isian tambahan.
+   */
+  const onGanttInlineCreate = useCallback(
+    async (draft: GanttDraftTask) => {
+      const project = projects[0];
+      if (!project) {
+        toast.error(
+          simpleHub
+            ? "Papan tugas ruangan belum siap. Muat ulang halaman atau hubungi CEO."
+            : "Belum ada proyek di ruangan ini. Tugas harus terikat ke proyek.",
+        );
+        throw new Error("no-project");
+      }
+      const stageColumn =
+        pickableStageColumns.find((c) => c.id === defaultCreateStageColumnId) ??
+        null;
+      try {
+        const created = await createTask({
+          projectId: project.id,
+          title: draft.title,
+          description: null,
+          assigneeIds: [],
+          tagIds: [],
+          priority: TaskPriority.MEDIUM,
+          ...(stageColumn
+            ? { kanbanColumnId: stageColumn.id }
+            : { status: TaskStatus.TODO }),
+          startDate: draft.startDate,
+          dueDate: draft.dueDate,
+          isApprovalRequired: false,
+          ...(simpleHub
+            ? { customProcessPhaseId: activeTaskGroup?.id ?? null }
+            : activePhase
+              ? { customProcessPhaseId: activePhase.id }
+              : {}),
+        });
+        appendCreatedTask(created);
+        toast.success("Tugas dibuat.");
+      } catch (e) {
+        toast.error(actionErrorMessage(e, "Gagal membuat tugas."));
+        // Lempar ulang: Gantt menahan draf agar judul & rentang tidak hilang.
+        throw e;
+      }
+    },
+    [
+      activePhase,
+      activeTaskGroup,
+      appendCreatedTask,
+      defaultCreateStageColumnId,
+      pickableStageColumns,
+      projects,
+      simpleHub,
+    ],
+  );
+
   const calendarTasks: CalendarTask[] = useMemo(
     () =>
       localTasks.map((t) => ({
@@ -1037,6 +1103,11 @@ export function TasksWorkspace({
               showArchived
                 ? undefined
                 : (taskId, next) => void onGanttReschedule(taskId, next)
+            }
+            onTaskCreate={
+              isRoomManager && !showArchived && projects.length > 0
+                ? onGanttInlineCreate
+                : undefined
             }
             onAddTask={
               isRoomManager && !showArchived ? () => openCreate() : undefined
