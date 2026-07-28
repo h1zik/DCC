@@ -1388,6 +1388,13 @@ model Task {
   kanbanColumnId           String?
   kanbanColumn             RoomKanbanColumn?       @relation(fields: [kanbanColumnId], references: [id], onDelete: Restrict)
   priority                 TaskPriority            @default(MEDIUM)
+  /**
+   * Tanggal mulai rencana (dipilih user, opsional). Dipakai sebagai ujung KIRI
+   * bar Gantt sehingga bar bisa digeser utuh. Bila null, Gantt jatuh balik ke
+   * `createdAt` — tanggal tugas dibuat tetap disimpan terpisah dan tidak pernah
+   * ditimpa oleh perubahan jadwal.
+   */
+  startDate                DateTime?
   dueDate                  DateTime?
   isApprovalRequired       Boolean                 @default(false)
   isApproved               Boolean                 @default(false)

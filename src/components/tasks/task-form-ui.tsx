@@ -277,6 +277,9 @@ export function TaskFormPlanning({
   onStageChange,
   priority,
   onPriorityChange,
+  startDate,
+  onStartDateChange,
+  startDateId = "task-form-start",
   dueDate,
   onDueDateChange,
   dueDateId = "task-form-due",
@@ -299,6 +302,13 @@ export function TaskFormPlanning({
   onStageChange?: (columnId: string) => void;
   priority: TaskPriority;
   onPriorityChange: (p: TaskPriority) => void;
+  /**
+   * Tanggal mulai rencana (yyyy-mm-dd, "" = kosong). Field hanya dirender bila
+   * `onStartDateChange` diisi — pemakai lama tetap hanya punya Deadline.
+   */
+  startDate?: string;
+  onStartDateChange?: (v: string) => void;
+  startDateId?: string;
   dueDate: string;
   onDueDateChange: (v: string) => void;
   dueDateId?: string;
@@ -313,16 +323,26 @@ export function TaskFormPlanning({
     stageMode && stageValue
       ? stageItems.find((i) => i.value === stageValue)?.label
       : undefined;
+  const startMode = onStartDateChange !== undefined;
+  // Mulai lewat dari deadline ditolak server — beri tahu lebih awal di form.
+  const invalidRange =
+    startMode && !!startDate && !!dueDate && startDate > dueDate;
   return (
     <TaskFormSection
       icon={<CalendarDays className="size-4" />}
       title="Jadwal & prioritas"
-      description="Atur kapan harus selesai dan seberapa penting tugas ini."
+      description="Atur kapan tugas mulai dikerjakan, kapan harus selesai, dan seberapa penting."
     >
       <div
         className={cn(
           "grid gap-3",
-          showStatus || stageMode ? "sm:grid-cols-3" : "sm:grid-cols-2",
+          showStatus || stageMode
+            ? startMode
+              ? "sm:grid-cols-2 lg:grid-cols-4"
+              : "sm:grid-cols-3"
+            : startMode
+              ? "sm:grid-cols-3"
+              : "sm:grid-cols-2",
         )}
       >
         {stageMode ? (
@@ -393,6 +413,20 @@ export function TaskFormPlanning({
             </SelectContent>
           </Select>
         </div>
+        {startMode ? (
+          <div className="space-y-1.5">
+            <Label htmlFor={startDateId} className="text-xs">
+              Mulai
+            </Label>
+            <Input
+              id={startDateId}
+              type="date"
+              value={startDate ?? ""}
+              aria-invalid={invalidRange}
+              onChange={(e) => onStartDateChange?.(e.target.value)}
+            />
+          </div>
+        ) : null}
         <div className="space-y-1.5">
           <Label htmlFor={dueDateId} className="text-xs">
             Deadline
@@ -401,10 +435,21 @@ export function TaskFormPlanning({
             id={dueDateId}
             type="date"
             value={dueDate}
+            aria-invalid={invalidRange}
             onChange={(e) => onDueDateChange(e.target.value)}
           />
         </div>
       </div>
+      {invalidRange ? (
+        <p className="text-destructive text-xs">
+          Tanggal mulai tidak boleh lewat dari deadline.
+        </p>
+      ) : startMode && !startDate ? (
+        <p className="text-muted-foreground text-xs">
+          Tanggal mulai opsional — bila kosong, Gantt memakai tanggal tugas
+          dibuat sebagai awal bar.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={cn(

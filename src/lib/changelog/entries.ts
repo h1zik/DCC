@@ -37,6 +37,39 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-28-room-task-groups",
+    date: "2026-07-28",
+    title: "Kelompok tugas di ruangan non-brand",
+    category: "new",
+    description:
+      "Ruangan HQ/Team yang tidak terikat brand kini bisa memecah papan tugasnya menjadi beberapa kelompok — misalnya Rekrutmen, Acara kantor, Operasional — lengkap dengan tab pemilih di atas papan, seperti tab fase di ruangan brand. Tab pertama, \"Umum\", berisi tugas yang belum dikelompokkan.",
+    highlights: [
+      "Manager ruangan menambah/mengurutkan/menghapus kelompok lewat tombol \"Kelola kelompok\"",
+      "Semua kelompok memakai kolom papan yang sama, jadi List, Linimasa, dan Kalender tetap menggabungkan seluruh tugas ruangan dengan status yang sejajar",
+      "Pindahkan tugas antar kelompok dari panel detail tugas",
+      "Tugas yang sudah ada tidak berpindah ke mana pun — semuanya tetap di tab \"Umum\"",
+      "Menghapus kelompok tidak menghapus tugasnya: tugas kembali ke \"Umum\"",
+      "Ruangan yang belum membuat kelompok tampil persis seperti sebelumnya, tanpa tab",
+    ],
+  },
+  {
+    id: "2026-07-28-task-start-date",
+    date: "2026-07-28",
+    title: "Tugas punya tanggal mulai — bar Gantt bisa dipindah utuh",
+    category: "new",
+    description:
+      "Selain Deadline, tugas kini punya kolom Mulai yang bisa Anda isi sendiri. Karena awal bar tidak lagi terpaku pada tanggal tugas dibuat, bar di Gantt bisa digeser utuh ke tanggal lain tanpa mengubah durasinya. Tanggal tugas dibuat tetap disimpan dan dipakai sebagai awal bar selama tanggal mulai belum diisi.",
+    highlights: [
+      "Kolom \"Mulai\" di form Tugas baru dan di panel detail tugas — opsional, boleh dikosongkan",
+      "Geser bar Gantt untuk memindahkan mulai + tenggat sekaligus (durasi tetap)",
+      "Tarik ujung kiri bar untuk mengubah tanggal mulai, ujung kanan untuk mengubah tenggat",
+      "Keyboard: panah kiri/kanan menggeser jadwal, Alt+panah ubah tenggat, Ctrl+panah ubah tanggal mulai, Shift untuk per minggu",
+      "Kartu Kanban: tugas yang belum waktunya mulai menampilkan \"Mulai 3 Agu\" (biru) alih-alih hitung mundur tenggat; rentang lengkap muncul saat kursor diarahkan ke chip",
+      "Chip tanggal di kartu Kanban sekaligus jadi tempat mengatur tanggal mulai dan deadline",
+      "Tanggal mulai tidak boleh lewat dari deadline — ditolak dengan pesan jelas",
+    ],
+  },
+  {
     id: "2026-07-27-content-plan-gantt-view",
     date: "2026-07-27",
     title: "Tampilan Gantt di Content Plan",
@@ -94,6 +127,18 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
       "Inventori: pindah tab kini instan tanpa halaman berkedip, dan filter di tab Mutasi maupun Stok & Reorder tidak hilang saat berpindah tab",
       "Inventori: angka \"Perlu perhatian\" di kartu KPI, label tab, dan filter tabel kini memakai satu perhitungan yang sama",
       "Inventori: pencarian di tab Stok & Reorder bisa memakai kategori produk lagi (mis. \"body lotion\")",
+    ],
+  },
+  {
+    id: "2026-07-24-personal-note-version-table-fix",
+    date: "2026-07-24",
+    title: "Perbaikan: menambah Catatan Pribadi tidak lagi gagal",
+    category: "fixed",
+    description:
+      "Membuat catatan baru di Space Pribadi sempat gagal dengan pesan error karena tabel riwayat versi belum terpasang di server. Tabelnya kini dibuat, sehingga catatan tersimpan normal dan riwayat versinya langsung ikut tercatat sejak versi pertama.",
+    highlights: [
+      "Catatan Pribadi baru tersimpan tanpa error",
+      "Riwayat versi catatan tercatat sejak awal, bisa ditelusuri seperti Wiki ruangan",
     ],
   },
   {

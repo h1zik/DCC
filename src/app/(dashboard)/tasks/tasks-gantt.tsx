@@ -53,8 +53,10 @@ export type GanttTask = {
   id: string;
   title: string;
   status: TaskStatus;
-  /** ISO — start bar memakai tanggal dibuat (tidak ada startDate terpisah). */
+  /** ISO — tanggal tugas dibuat; fallback ujung kiri bar bila belum ada mulai. */
   createdAt: string;
+  /** ISO — tanggal mulai pilihan user; null = pakai `createdAt`. */
+  startDate: string | null;
   /** ISO — tugas tanpa tenggat tidak digambar di timeline. */
   dueDate: string | null;
   projectId: string;
@@ -261,11 +263,29 @@ type GanttRowGeom = {
   startDay: Date;
   endDay: Date;
   lenDays: number;
+  /** false = ujung kiri bar masih memakai tanggal dibuat (belum diisi user). */
+  hasExplicitStart: boolean;
   /** null = tanpa checklist & belum selesai → bar tanpa fill progres. */
   progressPct: number | null;
   /** Tugas 1 hari tanpa sub-tugas digambar sebagai diamond milestone. */
   isMilestone: boolean;
 };
+
+/** Jadwal baru hasil drag bar — `startDate: null` = tanpa tanggal mulai. */
+export type GanttSchedule = { startDate: Date | null; dueDate: Date };
+
+/**
+ * Mode drag bar:
+ * - `move`   — geser seluruh bar (mulai + tenggat ikut bergerak);
+ * - `start`  — tarik ujung kiri (ubah tanggal mulai saja);
+ * - `end`    — tarik ujung kanan (ubah tenggat saja).
+ */
+type DragMode = "move" | "start" | "end";
+
+/** Lebar area tarik ujung bar (px). */
+const HANDLE_PX = 8;
+/** Handle ujung baru muncul bila bar cukup lebar untuk ditarik. */
+const HANDLE_MIN_BAR_PX = 34;
 
 type TimeCell = {
   left: number;
@@ -298,80 +318,139 @@ const GanttRow = memo(function GanttRow({
   sidebarOpen: boolean;
   readOnly: boolean;
   onOpen: (taskId: string) => void;
-  onReschedule?: (taskId: string, nextDue: Date) => void;
+  onReschedule?: (taskId: string, next: GanttSchedule) => void;
   onHover: (task: GanttTask | null, rect?: DOMRect) => void;
 }) {
-  const { task, statusKey, startDay, endDay, lenDays, progressPct, isMilestone } =
-    geom;
+  const {
+    task,
+    statusKey,
+    startDay,
+    endDay,
+    lenDays,
+    hasExplicitStart,
+    progressPct,
+    isMilestone,
+  } = geom;
   const meta = GANTT_STATUS_META[statusKey];
   const canDrag = !readOnly && !!onReschedule;
 
   const dragRef = useRef<{
     pointerId: number;
+    mode: DragMode;
     startX: number;
     moved: boolean;
     delta: number;
   } | null>(null);
   const suppressClickRef = useRef(false);
-  const [dragging, setDragging] = useState(false);
-  const [previewDelta, setPreviewDelta] = useState(0);
-
-  // Tenggat tidak boleh mundur melewati hari mulai (durasi minimal 1 hari).
-  const minDelta = -(lenDays - 1);
+  const [drag, setDrag] = useState<{ mode: DragMode; delta: number } | null>(
+    null,
+  );
 
   const offsetDays = differenceInCalendarDays(startDay, new Date(rangeStartMs));
-  const previewLen = lenDays + (dragging ? previewDelta : 0);
-  const leftPx = offsetDays * pxPerDay;
+
+  // Geser bar tidak boleh keluar dari sisi kiri rentang yang digambar; ujung
+  // kiri/kanan tidak boleh saling melewati (durasi minimal 1 hari).
+  const deltaBounds = useCallback(
+    (mode: DragMode) => {
+      switch (mode) {
+        case "move":
+          return { min: -offsetDays, max: Number.POSITIVE_INFINITY };
+        case "start":
+          return { min: -offsetDays, max: lenDays - 1 };
+        case "end":
+          return { min: -(lenDays - 1), max: Number.POSITIVE_INFINITY };
+      }
+    },
+    [lenDays, offsetDays],
+  );
+
+  const dStart = drag && drag.mode !== "end" ? drag.delta : 0;
+  const dEnd = drag && drag.mode !== "start" ? drag.delta : 0;
+  const previewStart = addDays(startDay, dStart);
+  const previewEnd = addDays(endDay, dEnd);
+  const previewLen = lenDays + dEnd - dStart;
+  const leftPx = (offsetDays + dStart) * pxPerDay;
   const widthPx = Math.max(previewLen * pxPerDay - 2, 12);
-  const previewEnd = addDays(endDay, dragging ? previewDelta : 0);
 
   const labelInside = !isMilestone && widthPx >= 90;
   const showPctInside = !isMilestone && widthPx >= 150 && progressPct != null;
+  // Tetap terpasang selama drag: bar yang menyempit saat ujung ditarik tidak
+  // boleh melepas handle-nya (pointer capture ikut hilang → drag menggantung).
+  const showHandles =
+    canDrag &&
+    !isMilestone &&
+    (drag != null || widthPx >= HANDLE_MIN_BAR_PX);
 
-  function commitDrag() {
-    const d = dragRef.current;
-    dragRef.current = null;
-    setDragging(false);
-    setPreviewDelta(0);
-    if (!d) return;
-    if (d.moved && d.delta !== 0 && onReschedule) {
-      suppressClickRef.current = true;
-      onReschedule(task.id, addDays(new Date(task.dueDate!), d.delta));
-    } else if (d.moved) {
-      suppressClickRef.current = true;
-    }
-  }
+  /** Kirim jadwal baru sesuai mode — bar yang tampak = jadwal yang disimpan. */
+  const applyDelta = useCallback(
+    (mode: DragMode, delta: number) => {
+      if (!onReschedule || delta === 0) return;
+      switch (mode) {
+        case "move":
+          onReschedule(task.id, {
+            startDate: addDays(startDay, delta),
+            dueDate: addDays(endDay, delta),
+          });
+          return;
+        case "start":
+          onReschedule(task.id, {
+            startDate: addDays(startDay, delta),
+            dueDate: endDay,
+          });
+          return;
+        case "end":
+          onReschedule(task.id, {
+            // Tanpa tanggal mulai eksplisit, ujung kiri tetap tanggal dibuat.
+            startDate: hasExplicitStart ? startDay : null,
+            dueDate: addDays(endDay, delta),
+          });
+      }
+    },
+    [endDay, hasExplicitStart, onReschedule, startDay, task.id],
+  );
 
-  function onPointerDown(e: ReactPointerEvent<HTMLButtonElement>) {
+  function beginDrag(
+    e: ReactPointerEvent<HTMLElement>,
+    mode: DragMode,
+  ) {
     if (!canDrag || e.button !== 0) return;
+    e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
       pointerId: e.pointerId,
+      mode,
       startX: e.clientX,
       moved: false,
       delta: 0,
     };
-    setDragging(true);
-    setPreviewDelta(0);
+    setDrag({ mode, delta: 0 });
     onHover(null);
   }
 
-  function onPointerMove(e: ReactPointerEvent<HTMLButtonElement>) {
+  function onPointerMove(e: ReactPointerEvent<HTMLElement>) {
     const d = dragRef.current;
     if (!d || e.pointerId !== d.pointerId) return;
     if (Math.abs(e.clientX - d.startX) > 3) d.moved = true;
+    const { min, max } = deltaBounds(d.mode);
     const raw = Math.round((e.clientX - d.startX) / pxPerDay);
-    const clamped = Math.max(raw, minDelta);
+    const clamped = Math.min(Math.max(raw, min), max);
     if (clamped !== d.delta) {
       d.delta = clamped;
-      setPreviewDelta(clamped);
+      setDrag({ mode: d.mode, delta: clamped });
     }
   }
 
-  function onPointerUp(e: ReactPointerEvent<HTMLButtonElement>) {
+  function onPointerUp(e: ReactPointerEvent<HTMLElement>) {
     const d = dragRef.current;
     if (!d || e.pointerId !== d.pointerId) return;
-    commitDrag();
+    dragRef.current = null;
+    setDrag(null);
+    if (!d.moved) return;
+    // Hanya drag yang dimulai di bar (mode "move") memicu klik pada tombol —
+    // klik itu ditelan agar tidak ikut membuka detail. Drag dari handle ujung
+    // tidak boleh menyetel flag ini (kliknya jatuh di span, bukan tombol).
+    if (d.mode === "move") suppressClickRef.current = true;
+    applyDelta(d.mode, d.delta);
   }
 
   function onClick() {
@@ -383,14 +462,19 @@ const GanttRow = memo(function GanttRow({
   }
 
   function onKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>) {
-    if (!canDrag || !onReschedule) return;
+    if (!canDrag) return;
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
+    // Alt = ubah tenggat saja, Ctrl/Cmd = ubah tanggal mulai saja, polos =
+    // geser seluruh bar. Shift mengubah langkah jadi satu minggu.
+    const mode: DragMode = e.altKey
+      ? "end"
+      : e.ctrlKey || e.metaKey
+        ? "start"
+        : "move";
     const step = (e.shiftKey ? 7 : 1) * (e.key === "ArrowRight" ? 1 : -1);
-    const clamped = Math.max(step, minDelta);
-    if (clamped !== 0) {
-      onReschedule(task.id, addDays(new Date(task.dueDate!), clamped));
-    }
+    const { min, max } = deltaBounds(mode);
+    applyDelta(mode, Math.min(Math.max(step, min), max));
   }
 
   const progressLabel =
@@ -399,14 +483,17 @@ const GanttRow = memo(function GanttRow({
         ? `progres ${progressPct}% (${task.checklistDone}/${task.checklistTotal} sub-tugas)`
         : `progres ${progressPct}%`
       : "tanpa progres terukur";
-  const ariaLabel = `${task.title} — ${taskStatusLabel(task.status)}, ${fmtLong(startDay)} sampai ${fmtLong(endDay)}, ${lenDays} hari, ${progressLabel}.${canDrag ? " Tekan panah kiri/kanan untuk menggeser tenggat, Shift untuk per minggu." : ""}`;
+  const ariaLabel = `${task.title} — ${taskStatusLabel(task.status)}, ${fmtLong(startDay)} sampai ${fmtLong(endDay)}, ${lenDays} hari, ${progressLabel}.${canDrag ? " Panah kiri/kanan menggeser seluruh jadwal, Alt+panah mengubah tenggat, Ctrl+panah mengubah tanggal mulai, Shift untuk per minggu." : ""}`;
+
+  const dragging = drag != null;
 
   const barButtonProps = {
     type: "button" as const,
     "aria-label": ariaLabel,
     onClick,
     onKeyDown,
-    onPointerDown,
+    onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) =>
+      beginDrag(e, "move"),
     onPointerMove,
     onPointerUp,
     onPointerCancel: onPointerUp,
@@ -418,6 +505,13 @@ const GanttRow = memo(function GanttRow({
       onHover(task, e.currentTarget.getBoundingClientRect()),
     onBlur: () => onHover(null),
   };
+
+  /** Kelas handle tarik ujung bar — presentasional; keyboard lewat bar utama. */
+  const handleClass = cn(
+    "absolute inset-y-1 z-30 cursor-ew-resize touch-none rounded-sm bg-current",
+    "opacity-0 transition-opacity group-hover:opacity-30 hover:opacity-60",
+    meta.barText,
+  );
 
   return (
     <div
@@ -443,7 +537,19 @@ const GanttRow = memo(function GanttRow({
             <p className="text-foreground truncate text-xs font-medium">
               {task.title}
             </p>
-            <p className="text-muted-foreground truncate text-[10px] tabular-nums">
+            <p
+              className={cn(
+                "truncate text-[10px] tabular-nums",
+                hasExplicitStart
+                  ? "text-muted-foreground"
+                  : "text-muted-foreground/70 italic",
+              )}
+              title={
+                hasExplicitStart
+                  ? undefined
+                  : "Belum ada tanggal mulai — memakai tanggal tugas dibuat."
+              }
+            >
               {fmtShort(startDay)} – {fmtShort(endDay)} · {lenDays} hari
             </p>
           </div>
@@ -461,9 +567,7 @@ const GanttRow = memo(function GanttRow({
               canDrag && "cursor-grab touch-pan-y",
               dragging && "cursor-grabbing",
             )}
-            style={{
-              left: leftPx + (dragging ? previewDelta : 0) * pxPerDay + pxPerDay / 2 - 14,
-            }}
+            style={{ left: leftPx + pxPerDay / 2 - 14 }}
           >
             <span
               className={cn(
@@ -506,21 +610,42 @@ const GanttRow = memo(function GanttRow({
                 ) : null}
               </span>
             ) : null}
-            {canDrag ? (
-              <span
-                className="absolute inset-y-1 right-0.5 z-20 w-1 rounded-full bg-current opacity-0 transition-opacity group-hover:opacity-25"
-                aria-hidden
-              />
-            ) : null}
           </button>
         )}
+
+        {/* Ujung kiri = tanggal mulai, ujung kanan = tenggat. */}
+        {showHandles ? (
+          <>
+            <span
+              aria-hidden
+              className={cn(handleClass, drag?.mode === "start" && "opacity-70")}
+              style={{ width: HANDLE_PX, left: leftPx + 1 }}
+              onPointerDown={(e) => beginDrag(e, "start")}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+            />
+            <span
+              aria-hidden
+              className={cn(handleClass, drag?.mode === "end" && "opacity-70")}
+              style={{
+                width: HANDLE_PX,
+                left: leftPx + widthPx - HANDLE_PX - 1,
+              }}
+              onPointerDown={(e) => beginDrag(e, "end")}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+            />
+          </>
+        ) : null}
 
         {!labelInside ? (
           <span
             className="text-muted-foreground pointer-events-none absolute top-1/2 z-0 max-w-44 -translate-y-1/2 truncate text-[11px]"
             style={{
               left: isMilestone
-                ? leftPx + (dragging ? previewDelta : 0) * pxPerDay + pxPerDay / 2 + 12
+                ? leftPx + pxPerDay / 2 + 12
                 : leftPx + widthPx + 8,
             }}
             aria-hidden
@@ -529,16 +654,23 @@ const GanttRow = memo(function GanttRow({
           </span>
         ) : null}
 
-        {dragging ? (
+        {drag ? (
           <span
             className="bg-foreground text-background pointer-events-none absolute -top-1 z-40 -translate-x-1/2 rounded-md px-2 py-0.5 text-[10px] font-medium whitespace-nowrap shadow-md"
             style={{
-              left: isMilestone
-                ? leftPx + previewDelta * pxPerDay + pxPerDay / 2
-                : leftPx + widthPx,
+              left:
+                drag.mode === "start"
+                  ? leftPx
+                  : isMilestone
+                    ? leftPx + pxPerDay / 2
+                    : leftPx + widthPx,
             }}
           >
-            Tenggat: {fmtLong(previewEnd)}
+            {drag.mode === "start"
+              ? `Mulai: ${fmtLong(previewStart)}`
+              : drag.mode === "end"
+                ? `Tenggat: ${fmtLong(previewEnd)}`
+                : `${fmtShort(previewStart)} – ${fmtLong(previewEnd)}`}
           </span>
         ) : null}
       </div>
@@ -560,8 +692,12 @@ export function TasksGantt({
 }: {
   tasks: GanttTask[];
   onTaskClick?: (taskId: string) => void;
-  /** Dipanggil saat bar digeser/diresize (drag atau keyboard) — tenggat baru. */
-  onTaskReschedule?: (taskId: string, nextDue: Date) => void;
+  /**
+   * Dipanggil saat bar digeser/ditarik ujungnya (drag atau keyboard) — jadwal
+   * baru sesuai bar yang tampak. `startDate: null` = tugas tetap tanpa tanggal
+   * mulai (ujung kiri masih memakai tanggal dibuat).
+   */
+  onTaskReschedule?: (taskId: string, next: GanttSchedule) => void;
   /** Tombol "Tugas baru" di empty state (khusus manager). */
   onAddTask?: () => void;
   readOnly?: boolean;
@@ -592,11 +728,15 @@ export function TasksGantt({
   const geoms = useMemo<GanttRowGeom[]>(() => {
     return dated
       .map((task) => {
-        const created = startOfDay(new Date(task.createdAt));
         const due = startOfDay(new Date(task.dueDate!));
-        // Tenggat di masa lalu sebelum tanggal dibuat: gambar rentangnya saja.
-        const startDay = minDate([created, due]);
-        const endDay = maxDate([created, due]);
+        // Ujung kiri bar: tanggal mulai pilihan user, atau tanggal dibuat bila
+        // belum diisi. Tenggat di masa lalu sebelum acuan itu: gambar
+        // rentangnya saja agar bar tidak terbalik.
+        const anchor = startOfDay(
+          new Date(task.startDate ?? task.createdAt),
+        );
+        const startDay = minDate([anchor, due]);
+        const endDay = maxDate([anchor, due]);
         const lenDays = differenceInCalendarDays(endDay, startDay) + 1;
         const progressPct =
           task.status === TaskStatus.DONE
@@ -610,6 +750,7 @@ export function TasksGantt({
           startDay,
           endDay,
           lenDays,
+          hasExplicitStart: task.startDate != null,
           progressPct,
           isMilestone: lenDays === 1 && task.checklistTotal === 0,
         };
@@ -1173,6 +1314,13 @@ export function TasksGantt({
         </div>
       )}
 
+      {!readOnly && onTaskReschedule && filteredGeoms.length > 0 ? (
+        <p className="text-muted-foreground text-xs">
+          Geser bar untuk memindahkan seluruh jadwal; tarik ujung kiri/kanan
+          untuk mengubah tanggal mulai atau tenggat saja.
+        </p>
+      ) : null}
+
       {undatedCount > 0 ? (
         <p className="text-muted-foreground text-xs">
           {undatedCount} tugas tanpa tenggat tidak ditampilkan — tambahkan
@@ -1219,6 +1367,11 @@ export function TasksGantt({
             {fmtLong(hoverGeom.startDay)} – {fmtLong(hoverGeom.endDay)} ·{" "}
             {hoverGeom.lenDays} hari
           </p>
+          {!hoverGeom.hasExplicitStart ? (
+            <p className="text-muted-foreground/70 mt-0.5 text-[10px]">
+              Belum ada tanggal mulai — memakai tanggal dibuat.
+            </p>
+          ) : null}
           {hoverGeom.progressPct != null ? (
             <div className="mt-2">
               <div className="text-muted-foreground flex items-center justify-between text-[10px]">

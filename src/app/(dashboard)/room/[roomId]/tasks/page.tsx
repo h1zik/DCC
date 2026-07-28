@@ -24,13 +24,21 @@ import {
   getSimpleHubKanbanColumns,
 } from "@/lib/room-kanban-columns";
 import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
+import {
+  parseRoomTaskGroupParam,
+  roomTaskGroupHref,
+  roomTaskGroupWhere,
+} from "@/lib/room-task-group";
+import { listRoomTaskGroups } from "@/lib/room-task-groups-query";
 import { TasksWorkspace } from "../../../tasks/tasks-workspace";
 import { RoomTasksProcessNav } from "./room-tasks-process-nav";
+import { RoomTasksGroupNav } from "./room-tasks-group-nav";
 
 type PageProps = {
   params: Promise<{ roomId: string }>;
   searchParams: Promise<{
     process?: string | string[];
+    group?: string | string[];
     archived?: string | string[];
   }>;
 };
@@ -97,6 +105,15 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
   if (simpleHub) {
     const canManageRoomTasks = isRoomHubManagerRole(role);
 
+    // Kelompok tugas ruangan non-brand. Tanpa kelompok, halaman ini tampil
+    // persis seperti sebelumnya (tab tidak dirender).
+    const taskGroups = await listRoomTaskGroups(roomId);
+    const parsedGroup = parseRoomTaskGroupParam(sp.group, taskGroups);
+    if (!parsedGroup.valid) {
+      redirect(roomTaskGroupHref(roomId, null, { showArchived }));
+    }
+    const activeGroup = parsedGroup.group;
+
     const archivedWhere = showArchived
       ? { archivedAt: { not: null }, status: TaskStatus.DONE }
       : { archivedAt: null };
@@ -104,7 +121,11 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
     const [tasks, projects, memberRows, kanbanColumns, roomTaskTags] =
       await Promise.all([
       prisma.task.findMany({
-        where: { project: { roomId }, ...archivedWhere },
+        where: {
+          project: { roomId },
+          ...roomTaskGroupWhere(activeGroup),
+          ...archivedWhere,
+        },
         orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
         // `comments` & `attachments` SENGAJA tidak di-include di SSR daftar
         // tugas — terlalu berat (lihat `task-list-query.ts`). Detail sheet
@@ -159,10 +180,21 @@ export default async function RoomTasksPage({ params, searchParams }: PageProps)
 
     return (
       <div className="flex flex-col gap-4">
+        {taskGroups.length > 0 || canManageRoomTasks ? (
+          <RoomTasksGroupNav
+            roomId={roomId}
+            groups={taskGroups}
+            activeGroup={activeGroup}
+            showArchived={showArchived}
+            canManageGroups={canManageRoomTasks}
+          />
+        ) : null}
         <TasksWorkspace
           roomId={roomId}
           roomTitle={room.name}
           simpleHub
+          taskGroups={taskGroups}
+          activeTaskGroup={activeGroup}
           projects={projects}
           users={users}
           isRoomManager={canManageRoomTasks}

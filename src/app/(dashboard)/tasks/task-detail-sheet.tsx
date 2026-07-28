@@ -40,6 +40,10 @@ import {
 } from "@/lib/room-task-process";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import {
+  ROOM_TASK_GROUP_UNGROUPED_LABEL,
+  type RoomTaskGroupRef,
+} from "@/lib/room-task-group";
+import {
   resolveColumnIdForTask,
   statusForColumn,
   type RoomKanbanColumnDTO,
@@ -100,6 +104,13 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+/**
+ * Nilai Select untuk tab "Umum". Select tidak menerima string kosong sebagai
+ * value, dan `null` bukan nilai yang sah di komponennya — jadi dipakai sentinel
+ * yang diterjemahkan balik ke `null` saat menyimpan.
+ */
+const UNGROUPED_VALUE = "__ungrouped__";
+
 function contentPlanJenisLabel(j: ContentPlanJenis) {
   switch (j) {
     case ContentPlanJenis.CAROUSEL:
@@ -126,6 +137,11 @@ type Props = {
   currentUserId: string;
   /** Ruangan HQ/Team tanpa brand: sembunyikan fase proses alur. */
   simpleHub?: boolean;
+  /**
+   * Kelompok tugas ruangan non-brand. Selama kosong, ruangan belum memakai
+   * kelompok dan pemilihnya tidak ditampilkan.
+   */
+  taskGroups?: RoomTaskGroupRef[];
   documentFolders?: RoomFolderNode[];
   /**
    * Kolom papan Kanban aktif — dropdown "Tahap" (menggantikan Status enum).
@@ -157,6 +173,7 @@ export function TaskDetailSheet({
   isRoomManager,
   currentUserId,
   simpleHub = false,
+  taskGroups = [],
   documentFolders: documentFoldersProp = [],
   kanbanColumns = [],
 }: Props) {
@@ -167,6 +184,8 @@ export function TaskDetailSheet({
   const [roomProcess, setRoomProcess] = useState<RoomTaskProcess>(
     RoomTaskProcess.MARKET_RESEARCH,
   );
+  /** Kelompok tugas (ruangan non-brand); sentinel = tab "Umum". */
+  const [taskGroupId, setTaskGroupId] = useState<string>(UNGROUPED_VALUE);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
@@ -179,6 +198,7 @@ export function TaskDetailSheet({
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   /** Tahap (kolom papan) terpilih — sumber posisi; status jadi turunan. */
   const [stageColumnId, setStageColumnId] = useState<string>("");
+  const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [approval, setApproval] = useState(false);
   const [savePending, setSavePending] = useState(false);
@@ -268,6 +288,7 @@ export function TaskDetailSheet({
     if (!task) return;
     setProjectId(task.projectId);
     setRoomProcess(task.roomProcess);
+    setTaskGroupId(task.customProcessPhaseId ?? UNGROUPED_VALUE);
     setTitle(task.title);
     setDescription(task.description ?? "");
     setAssigneeIds(task.assignees.map((a) => a.user.id));
@@ -275,6 +296,9 @@ export function TaskDetailSheet({
     setSelectedTagIds(task.tags.map((t) => t.tagId));
     setStatus(task.status);
     setStageColumnId(resolveColumnIdForTask(task, kanbanColumns) ?? "");
+    setStartDate(
+      task.startDate ? task.startDate.toISOString().slice(0, 10) : "",
+    );
     setDueDate(task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "");
     setApproval(task.isApprovalRequired);
     setNewCheck("");
@@ -373,6 +397,15 @@ export function TaskDetailSheet({
       })),
     [],
   );
+  /** Pemilih kelompok hanya relevan di ruangan non-brand yang sudah punya kelompok. */
+  const showTaskGroupPicker = simpleHub && taskGroups.length > 0;
+  const taskGroupSelectItems = useMemo(
+    () => [
+      { value: UNGROUPED_VALUE, label: ROOM_TASK_GROUP_UNGROUPED_LABEL },
+      ...taskGroups.map((g) => ({ value: g.id, label: g.name })),
+    ],
+    [taskGroups],
+  );
   const contentPlanAttachmentHint = useMemo(() => {
     if (!task?.contentPlanItemId || !task.contentPlanJenis) {
       return {
@@ -419,6 +452,7 @@ export function TaskDetailSheet({
     setSavePending(true);
     try {
       const due = dueDate ? new Date(dueDate) : null;
+      const start = startDate ? new Date(startDate) : null;
       const updated = await updateTask({
         taskId: task.id,
         projectId,
@@ -429,6 +463,7 @@ export function TaskDetailSheet({
         tagIds: selectedTagIds,
         vendorId: task.vendorId ?? null,
         priority,
+        startDate: start,
         dueDate: due,
         leadTimeDays: task.leadTimeDays,
         isApprovalRequired: approval,
@@ -437,6 +472,15 @@ export function TaskDetailSheet({
         ...(selectedStageColumn
           ? { kanbanColumnId: selectedStageColumn.id }
           : { status }),
+        // Kelompok hanya dikirim bila ruangan ini memang memakainya — pemanggil
+        // lain (edit cepat di List/Kanban) tidak mengirim field ini sama sekali
+        // sehingga kelompok tugas tidak pernah tergeser diam-diam.
+        ...(showTaskGroupPicker
+          ? {
+              customProcessPhaseId:
+                taskGroupId === UNGROUPED_VALUE ? null : taskGroupId,
+            }
+          : {}),
       });
       toast.success("Tugas disimpan.");
       onTaskPatched?.(task.id, updated);
@@ -752,6 +796,34 @@ export function TaskDetailSheet({
                       onDescriptionChange={setDescription}
                       descriptionId="td-desc"
                     />
+                    {showTaskGroupPicker ? (
+                      <TaskFormSection
+                        title="Kelompok"
+                        description="Pindahkan tugas ke tab kelompok lain di ruangan ini."
+                      >
+                        <Select
+                          value={taskGroupId}
+                          items={taskGroupSelectItems}
+                          onValueChange={(v) => {
+                            if (v) setTaskGroupId(v as string);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={UNGROUPED_VALUE}>
+                              {ROOM_TASK_GROUP_UNGROUPED_LABEL}
+                            </SelectItem>
+                            {taskGroups.map((g) => (
+                              <SelectItem key={g.id} value={g.id}>
+                                {g.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TaskFormSection>
+                    ) : null}
                     {!simpleHub ? (
                       <TaskFormSection
                         title="Proses alur"
@@ -786,6 +858,9 @@ export function TaskDetailSheet({
                       onStageChange={setStageColumnId}
                       priority={priority}
                       onPriorityChange={setPriority}
+                      startDate={startDate}
+                      onStartDateChange={setStartDate}
+                      startDateId="td-start"
                       dueDate={dueDate}
                       onDueDateChange={setDueDate}
                       dueDateId="td-due"

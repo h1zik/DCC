@@ -29,7 +29,11 @@ import {
 import { setDefaultTaskWorkspaceView } from "@/actions/task-view-preference";
 import { TasksCalendar, type CalendarTask } from "./tasks-calendar";
 import { TasksList } from "./tasks-list";
-import { TasksGantt, type GanttTask } from "./tasks-gantt";
+import {
+  TasksGantt,
+  type GanttSchedule,
+  type GanttTask,
+} from "./tasks-gantt";
 import { TasksKanban, type KanbanTask } from "./tasks-kanban";
 import { TaskDetailSheet } from "./task-detail-sheet";
 import type { TaskRow } from "./task-types";
@@ -56,6 +60,7 @@ import {
   type RoomProcessPhaseRef,
 } from "@/lib/room-process-phase";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
+import type { RoomTaskGroupRef } from "@/lib/room-task-group";
 import {
   mergeKanbanColumns,
   type RoomKanbanColumnDTO,
@@ -134,11 +139,16 @@ function roomTasksPath(opts: {
   roomId: string;
   simpleHub: boolean;
   activePhase?: RoomProcessPhaseRef;
+  activeTaskGroup?: RoomTaskGroupRef | null;
   archived: boolean;
 }) {
   const qs = new URLSearchParams();
   if (!opts.simpleHub && opts.activePhase) {
     qs.set("process", roomProcessPhaseKey(opts.activePhase));
+  }
+  // Beralih ke/dari Arsip harus bertahan di tab kelompok yang sedang dibuka.
+  if (opts.simpleHub && opts.activeTaskGroup) {
+    qs.set("group", opts.activeTaskGroup.id);
   }
   if (opts.archived) qs.set("archived", "1");
   const q = qs.toString();
@@ -150,6 +160,8 @@ export function TasksWorkspace({
   roomTitle,
   activePhase,
   simpleHub = false,
+  taskGroups = [],
+  activeTaskGroup = null,
   tasks,
   projects,
   users,
@@ -167,6 +179,10 @@ export function TasksWorkspace({
   activePhase?: RoomProcessPhaseRef;
   /** Ruangan HQ/Team tanpa brand: UI tanpa fase proses / pipeline. */
   simpleHub?: boolean;
+  /** Kelompok tugas ruangan non-brand (kosong = ruangan belum punya kelompok). */
+  taskGroups?: RoomTaskGroupRef[];
+  /** Tab kelompok aktif; `null` = "Umum" (tugas tanpa kelompok). */
+  activeTaskGroup?: RoomTaskGroupRef | null;
   tasks: TaskRow[];
   projects: (Project & { brand: Brand | null })[];
   users: Pick<User, "id" | "name" | "email">[];
@@ -225,6 +241,7 @@ export function TasksWorkspace({
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   /** Tahap awal tugas baru (kolom papan) — menggantikan pilihan status enum. */
   const [createStageColumnId, setCreateStageColumnId] = useState<string>("");
+  const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [approval, setApproval] = useState(false);
   const [pending, setPending] = useState(false);
@@ -296,6 +313,7 @@ export function TasksWorkspace({
     // "+" dari kolom Overdue jatuh ke tahap default — lajur itu diisi sistem.
     const initialCol = pickableStageColumns.find((c) => c.id === initialColumnId);
     setCreateStageColumnId(initialCol?.id ?? defaultCreateStageColumnId);
+    setStartDate("");
     setDueDate("");
     setApproval(false);
     setCreateOpen(true);
@@ -364,6 +382,7 @@ export function TasksWorkspace({
     setPending(true);
     try {
       const due = dueDate ? new Date(dueDate) : null;
+      const start = startDate ? new Date(startDate) : null;
       const createStageColumn =
         pickableStageColumns.find((c) => c.id === createStageColumnId) ?? null;
       const payload = {
@@ -377,9 +396,16 @@ export function TasksWorkspace({
         ...(createStageColumn
           ? { kanbanColumnId: createStageColumn.id }
           : { status }),
+        startDate: start,
         dueDate: due,
         isApprovalRequired: approval,
-        ...(activePhase ? { customProcessPhaseId: activePhase.id } : {}),
+        // Ruangan brand: ikut tab fase aktif. Ruangan non-brand: ikut tab
+        // kelompok aktif (`null` = Umum, kirim null supaya eksplisit).
+        ...(simpleHub
+          ? { customProcessPhaseId: activeTaskGroup?.id ?? null }
+          : activePhase
+            ? { customProcessPhaseId: activePhase.id }
+            : {}),
       };
       const created = await createTask(payload);
 
@@ -478,6 +504,7 @@ export function TasksWorkspace({
           roomId,
           simpleHub,
           activePhase,
+          activeTaskGroup,
           archived: false,
         })
       : null;
@@ -487,6 +514,7 @@ export function TasksWorkspace({
           roomId,
           simpleHub,
           activePhase,
+          activeTaskGroup,
           archived: true,
         })
       : null;
@@ -506,6 +534,7 @@ export function TasksWorkspace({
         title: t.title,
         status: t.status,
         priority: t.priority,
+        startDate: t.startDate ? t.startDate.toISOString() : null,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
         description: t.description,
         isApprovalRequired: t.isApprovalRequired,
@@ -549,6 +578,7 @@ export function TasksWorkspace({
         id: t.id,
         title: t.title,
         status: t.status,
+        startDate: t.startDate ? t.startDate.toISOString() : null,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
         createdAt: t.createdAt.toISOString(),
         projectId: t.projectId,
@@ -567,13 +597,18 @@ export function TasksWorkspace({
   );
 
   const onGanttReschedule = useCallback(
-    async (taskId: string, nextDue: Date) => {
+    async (taskId: string, next: GanttSchedule) => {
       const task = localTasks.find((t) => t.id === taskId);
       if (!task) return;
-      const prevDue = task.dueDate;
+      const prevSchedule = { startDate: task.startDate, dueDate: task.dueDate };
+      const dueChanged = task.dueDate?.getTime() !== next.dueDate.getTime();
       // Optimistis: geser bar dulu, rollback jika server menolak.
       setLocalTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, dueDate: nextDue } : t)),
+        prev.map((t) =>
+          t.id === taskId
+            ? { ...t, startDate: next.startDate, dueDate: next.dueDate }
+            : t,
+        ),
       );
       try {
         await updateTask({
@@ -585,17 +620,18 @@ export function TasksWorkspace({
           tagIds: task.tags.map((row) => row.tagId),
           vendorId: task.vendorId ?? null,
           priority: task.priority,
-          dueDate: nextDue,
+          startDate: next.startDate,
+          dueDate: next.dueDate,
           leadTimeDays: task.leadTimeDays,
           isApprovalRequired: task.isApprovalRequired,
           status: task.status,
         });
-        toast.success("Tenggat diperbarui.");
+        toast.success(dueChanged ? "Jadwal diperbarui." : "Tanggal mulai diperbarui.");
       } catch (e) {
         setLocalTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, dueDate: prevDue } : t)),
+          prev.map((t) => (t.id === taskId ? { ...t, ...prevSchedule } : t)),
         );
-        toast.error(actionErrorMessage(e, "Gagal memperbarui tenggat."));
+        toast.error(actionErrorMessage(e, "Gagal memperbarui jadwal."));
       }
     },
     [localTasks],
@@ -652,6 +688,7 @@ export function TasksWorkspace({
         isRoomManager={isRoomManager}
         currentUserId={currentUserId}
         simpleHub={simpleHub}
+        taskGroups={taskGroups}
         documentFolders={documentFolders}
         kanbanColumns={resolvedKanbanColumns}
       />
@@ -999,7 +1036,7 @@ export function TasksWorkspace({
             onTaskReschedule={
               showArchived
                 ? undefined
-                : (taskId, nextDue) => void onGanttReschedule(taskId, nextDue)
+                : (taskId, next) => void onGanttReschedule(taskId, next)
             }
             onAddTask={
               isRoomManager && !showArchived ? () => openCreate() : undefined
@@ -1048,6 +1085,9 @@ export function TasksWorkspace({
               onStageChange={setCreateStageColumnId}
               priority={priority}
               onPriorityChange={setPriority}
+              startDate={startDate}
+              onStartDateChange={setStartDate}
+              startDateId="create-task-start"
               dueDate={dueDate}
               onDueDateChange={setDueDate}
               dueDateId="create-task-due"

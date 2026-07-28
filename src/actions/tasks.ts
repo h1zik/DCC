@@ -41,6 +41,7 @@ import {
   type RoomProcessPhaseRef,
 } from "@/lib/room-process-phase";
 import { ensureRoomProcessPhases } from "@/lib/room-process-phases-seed";
+import { findRoomTaskGroup } from "@/lib/room-task-groups-query";
 import {
   assertRoomHubManager,
   assertRoomMember,
@@ -302,6 +303,40 @@ async function resolveTaskPhaseForCreate(
     phase: phaseRef(row),
     roomProcess: row.legacyProcessKey ?? legacy,
     customProcessPhaseId: row.id,
+  };
+}
+
+/**
+ * Padanan `resolveTaskPhaseForCreate` untuk ruangan non-brand.
+ *
+ * Bedanya: TIDAK memanggil `ensureRoomProcessPhases()` (fungsi itu menyeed fase
+ * bawaan dan menulis ulang `customProcessPhaseId` tugas lama), dan kelompok
+ * boleh kosong — `null` berarti tugas masuk tab "Umum".
+ */
+async function resolveTaskGroupForCreate(
+  roomId: string,
+  data: { customProcessPhaseId?: string | null },
+): Promise<{
+  phase: RoomProcessPhaseRef;
+  roomProcess: RoomTaskProcess;
+  customProcessPhaseId: string | null;
+}> {
+  const groupId = data.customProcessPhaseId?.trim();
+  const group = groupId ? await findRoomTaskGroup(roomId, groupId) : null;
+  if (groupId && !group) {
+    throw new Error("Kelompok tugas tidak ditemukan di ruangan ini.");
+  }
+  return {
+    phase: {
+      id: group?.id ?? "simple-hub",
+      name: group?.name ?? "Tasks",
+      legacyProcessKey: null,
+    },
+    // Ruangan non-brand berbagi satu set kolom Kanban yang di-scope ke
+    // `roomProcess = MARKET_RESEARCH` + `customProcessPhaseId = null`.
+    // Nilai ini menjaga tautan kolom itu, apa pun kelompok tugasnya.
+    roomProcess: RoomTaskProcess.MARKET_RESEARCH,
+    customProcessPhaseId: group?.id ?? null,
   };
 }
 
@@ -698,6 +733,12 @@ const createSchema = z
     status: z.nativeEnum(TaskStatus).optional(),
     /** Tahap awal (kolom papan). Diutamakan di atas `status` bila diisi. */
     kanbanColumnId: z.string().min(1).optional().nullable(),
+    /**
+     * Tanggal mulai rencana (opsional). Pada updateTask, `undefined` = biarkan
+     * apa adanya, `null` = kosongkan — supaya pemanggil lama yang belum kirim
+     * field ini tidak menghapus tanggal mulai yang sudah diisi user.
+     */
+    startDate: z.coerce.date().optional().nullable(),
     dueDate: z.coerce.date().optional().nullable(),
     isApprovalRequired: z.boolean().optional(),
     vendorId: z.string().optional().nullable(),
@@ -716,6 +757,13 @@ const createSchema = z
         message:
           "Tautan Content Planning tidak lengkap: isi id baris dan jenis konten, atau kosongkan keduanya.",
         path: hasId ? ["contentPlanJenis"] : ["contentPlanItemId"],
+      });
+    }
+    if (val.startDate && val.dueDate && val.startDate > val.dueDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Tanggal mulai tidak boleh lewat dari tenggat.",
+        path: ["startDate"],
       });
     }
   });
@@ -751,15 +799,7 @@ export async function createTask(
   const simpleHub = await isSimpleHubRoom(roomId);
 
   const phaseFields = simpleHub
-    ? {
-        phase: {
-          id: "simple-hub",
-          name: "Tasks",
-          legacyProcessKey: null,
-        },
-        roomProcess: RoomTaskProcess.MARKET_RESEARCH,
-        customProcessPhaseId: null,
-      }
+    ? await resolveTaskGroupForCreate(roomId, data)
     : await resolveTaskPhaseForCreate(roomId, data);
 
   if (
@@ -807,7 +847,15 @@ export async function createTask(
   }
 
   const maxSort = await prisma.task.aggregate({
-    where: { projectId: data.projectId, ...taskPhaseWhere(phaseFields.phase) },
+    where: {
+      projectId: data.projectId,
+      // `taskPhaseWhere` ikut memfilter `roomProcess` untuk fase legacy —
+      // tidak berlaku di ruangan non-brand, yang cukup dipisah per kelompok
+      // (`null` = Umum).
+      ...(simpleHub
+        ? { customProcessPhaseId: phaseFields.customProcessPhaseId }
+        : taskPhaseWhere(phaseFields.phase)),
+    },
     _max: { sortOrder: true },
   });
 
@@ -861,6 +909,7 @@ export async function createTask(
       priority: data.priority,
       status: initialStatus,
       kanbanColumnId: kanbanColumnId ?? undefined,
+      startDate: data.startDate ?? undefined,
       dueDate: data.dueDate ?? undefined,
       isApprovalRequired: data.isApprovalRequired ?? false,
       vendorId: data.vendorId || undefined,
@@ -946,6 +995,7 @@ export async function updateTask(
       isApproved: true,
       assignees: { select: { userId: true } },
       tags: { select: { tagId: true } },
+      startDate: true,
       dueDate: true,
       archivedAt: true,
       project: { select: { roomId: true } },
@@ -1032,7 +1082,21 @@ export async function updateTask(
   let customProcessPhaseId = prev.customProcessPhaseId;
   if (simpleHub) {
     roomProcess = RoomTaskProcess.MARKET_RESEARCH;
-    customProcessPhaseId = null;
+    // `undefined` = payload tidak menyertakan kelompok sama sekali (edit cepat
+    // deadline/status dari List & Kanban) → pertahankan kelompok saat ini.
+    // Hanya nilai eksplisit yang memindahkan tugas antar tab.
+    if (data.customProcessPhaseId !== undefined) {
+      const nextGroupId = data.customProcessPhaseId?.trim() || null;
+      if (nextGroupId) {
+        const group = await findRoomTaskGroup(roomId, nextGroupId);
+        if (!group) {
+          throw new Error("Kelompok tugas tidak ditemukan di ruangan ini.");
+        }
+        customProcessPhaseId = group.id;
+      } else {
+        customProcessPhaseId = null;
+      }
+    }
   }
 
   if (!isHubManager) {
@@ -1065,6 +1129,15 @@ export async function updateTask(
   const prevDue = prev.dueDate;
   const dueDateChanged =
     (prevDue?.getTime() ?? null) !== (nextDue?.getTime() ?? null);
+  // `startDate` absen dari payload = tidak diubah (pemanggil lama seperti edit
+  // cepat deadline di List/Kanban tidak boleh menghapus tanggal mulai).
+  const startDateProvided = data.startDate !== undefined;
+  const nextStart = startDateProvided ? (data.startDate ?? null) : prev.startDate;
+  if (nextStart && nextDue && nextStart > nextDue) {
+    throw new Error(
+      "Tenggat lebih awal dari tanggal mulai tugas ini. Geser tanggal mulai dulu.",
+    );
+  }
   // Kategori final: bucket kolom + overlay telat dari deadline BARU — deadline
   // diundur otomatis melepas OVERDUE, deadline mundur ke masa lalu otomatis
   // menandai telat, tanpa menunggu cron.
@@ -1108,6 +1181,7 @@ export async function updateTask(
       title: data.title,
       description: data.description ?? null,
       priority: data.priority,
+      ...(startDateProvided ? { startDate: data.startDate ?? null } : {}),
       dueDate: data.dueDate ?? null,
       isApprovalRequired,
       vendorId: data.vendorId || null,
