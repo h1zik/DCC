@@ -102,6 +102,8 @@ export type KanbanTask = {
   title: string;
   status: TaskStatus;
   priority: TaskPriority;
+  /** ISO — tanggal mulai rencana; null = belum diisi. */
+  startDate: string | null;
   dueDate: string | null;
   description: string | null;
   isApprovalRequired: boolean;
@@ -165,6 +167,7 @@ function kanbanTaskToUpdatePayload(
     assigneeIds?: string[];
     tagIds?: string[];
     priority?: TaskPriority;
+    startDate?: Date | null;
     dueDate?: Date | null;
   } = {},
 ) {
@@ -178,6 +181,11 @@ function kanbanTaskToUpdatePayload(
     tagIds: overrides.tagIds ?? task.tagIds,
     vendorId: task.vendorId,
     priority: overrides.priority ?? task.priority,
+    // Tanpa override, `startDate` sengaja tidak dikirim — server membiarkan
+    // nilai lama (bukan mengosongkannya).
+    ...(overrides.startDate !== undefined
+      ? { startDate: overrides.startDate }
+      : {}),
     dueDate:
       overrides.dueDate !== undefined
         ? overrides.dueDate
@@ -197,6 +205,7 @@ function applyKanbanPatch(
   return {
     title: updated.title,
     priority: updated.priority,
+    startDate: updated.startDate ? updated.startDate.toISOString() : null,
     dueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
     assignees: updated.assignees.map((a) => ({
       id: a.user.id,
@@ -240,10 +249,32 @@ function assigneeInitials(assignee: KanbanTask["assignees"][number]) {
   return assignee.email.slice(0, 2).toUpperCase();
 }
 
+function fmtDay(d: Date) {
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
+/**
+ * Chip tanggal kartu: satu chip, isinya mengikuti fase tugas.
+ * - Belum waktunya mulai (tanggal mulai masih di depan) → "Mulai <tgl>", nada
+ *   netral — countdown tenggat di sini justru menyesatkan urgensinya.
+ * - Sudah jalan / tanpa tanggal mulai → hitung mundur tenggat seperti biasa.
+ * Rentang lengkapnya selalu tersedia di tooltip.
+ */
 function formatDueDateChip(
-  dueDate: string,
+  dueDate: string | null,
   isDone: boolean,
-): { label: string; tone: string } {
+  startDate: string | null,
+): { label: string; tone: string; title: string } | null {
+  if (!dueDate) {
+    // Tanpa tenggat, tanggal mulai saja sudah cukup jadi isi chip.
+    if (!startDate) return null;
+    const only = new Date(startDate);
+    return {
+      label: `Mulai ${fmtDay(only)}`,
+      tone: "text-muted-foreground",
+      title: `Mulai ${fmtDay(only)} · belum ada tenggat`,
+    };
+  }
   const due = new Date(dueDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -252,6 +283,25 @@ function formatDueDateChip(
   const diffDays = Math.floor(
     (dueStart.getTime() - today.getTime()) / 86_400_000,
   );
+
+  const start = startDate ? new Date(startDate) : null;
+  if (start) start.setHours(0, 0, 0, 0);
+  const startDiff = start
+    ? Math.floor((start.getTime() - today.getTime()) / 86_400_000)
+    : null;
+  const title = start
+    ? `${fmtDay(start)} – ${fmtDay(due)} · ${Math.max(1, Math.floor((dueStart.getTime() - start.getTime()) / 86_400_000) + 1)} hari`
+    : `Tenggat ${fmtDay(due)}`;
+
+  // Belum mulai, dan tenggatnya belum lewat → tampilkan tanggal mulai.
+  if (!isDone && startDiff != null && startDiff > 0 && diffDays >= 0) {
+    return {
+      label:
+        startDiff === 1 ? "Mulai besok" : `Mulai ${fmtDay(start!)}`,
+      tone: "text-sky-600 dark:text-sky-400",
+      title,
+    };
+  }
 
   let label: string;
   if (!isDone && diffDays < 0) {
@@ -268,12 +318,7 @@ function formatDueDateChip(
   else if (diffDays === -1) label = "Kemarin";
   else if (diffDays > 1 && diffDays <= 7) label = `${diffDays} hari lagi`;
   else if (diffDays < -1 && diffDays >= -7) label = `${Math.abs(diffDays)} hari lalu`;
-  else {
-    label = due.toLocaleDateString("id-ID", {
-      day: "numeric",
-      month: "short",
-    });
-  }
+  else label = fmtDay(due);
 
   let tone = "text-muted-foreground";
   if (!isDone) {
@@ -281,7 +326,7 @@ function formatDueDateChip(
     else if (diffDays <= 3) tone = "text-amber-600 dark:text-amber-400";
   }
 
-  return { label, tone };
+  return { label, tone, title };
 }
 
 function metaChipClass(className?: string) {
@@ -499,9 +544,11 @@ const DraggableTask = memo(function DraggableTask({
     }
   }
 
-  const dueDateInfo = task.dueDate
-    ? formatDueDateChip(task.dueDate, task.status === TaskStatus.DONE)
-    : null;
+  const dueDateInfo = formatDueDateChip(
+    task.dueDate,
+    task.status === TaskStatus.DONE,
+    task.startDate,
+  );
   const visibleAssignees = task.assignees.slice(0, 3);
   const extraAssignees = Math.max(0, task.assignees.length - 3);
 
@@ -744,10 +791,11 @@ const DraggableTask = memo(function DraggableTask({
                 type="button"
                 className={metaChipClass()}
                 disabled={readOnly || metaPending}
+                title={dueDateInfo?.title}
                 aria-label={
                   dueDateInfo
-                    ? `Deadline: ${dueDateInfo.label}`
-                    : "Atur deadline"
+                    ? `Jadwal: ${dueDateInfo.label} (${dueDateInfo.title})`
+                    : "Atur jadwal"
                 }
                 onPointerDown={stopDrag}
                 onClick={stopClick}
@@ -766,6 +814,30 @@ const DraggableTask = memo(function DraggableTask({
               </PopoverTrigger>
               <PopoverContent align="start" className="w-52 p-3" onClick={stopClick}>
                 <p className="text-muted-foreground mb-2 text-xs font-medium">
+                  Mulai
+                </p>
+                <Input
+                  type="date"
+                  value={task.startDate ? task.startDate.slice(0, 10) : ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    void patchTask({
+                      startDate: raw ? new Date(raw) : null,
+                    });
+                  }}
+                />
+                {task.startDate ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1.5 w-full"
+                    onClick={() => void patchTask({ startDate: null })}
+                  >
+                    Hapus tanggal mulai
+                  </Button>
+                ) : null}
+                <p className="text-muted-foreground mt-3 mb-2 text-xs font-medium">
                   Deadline
                 </p>
                 <Input
@@ -783,7 +855,7 @@ const DraggableTask = memo(function DraggableTask({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="mt-2 w-full"
+                    className="mt-1.5 w-full"
                     onClick={() => void patchTask({ dueDate: null })}
                   >
                     Hapus deadline
