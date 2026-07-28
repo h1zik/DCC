@@ -44,8 +44,9 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     description:
       "Tidak perlu lagi membuka dialog \"Tugas baru\" hanya untuk menaruh satu tugas di linimasa. Di baris paling bawah kanvas Gantt, tarik rentang tanggal yang Anda mau, ketik judulnya, lalu tekan Enter — tugas langsung muncul sebagai bar di tanggal itu, mirip cara kerja Notion.",
     highlights: [
-      "Tarik rentang di baris \"Tambah tugas\" untuk menentukan tanggal mulai dan tenggat sekaligus; klik sekali membuat tugas satu hari",
-      "Tombol \"Tambah tugas\" di kolom kiri membuka draf di tanggal hari ini",
+      "Tarik rentang di baris \"Tambah tugas\" untuk menentukan tanggal mulai dan tenggat sekaligus",
+      "Klik sekali (tanpa menarik) memakai durasi default 5 hari mulai dari tanggal yang diklik — bayangan rentangnya sudah terlihat saat kursor diarahkan ke kanvas",
+      "Tombol \"Tambah tugas\" di kolom kiri membuka draf 5 hari mulai dari hari ini",
       "Saat mengetik judul: Enter menyimpan, Esc membatalkan, Ctrl+panah menggeser tanggal mulai, Alt+panah menggeser tenggat",
       "Tugas dibuat dengan pengaturan default papan (tahap awal, prioritas Sedang, ikut tab kelompok/fase yang sedang dibuka) — PIC, tag, dan detail lain diisi menyusul lewat panel detail tugas",
       "Kalau penyimpanan gagal, judul dan rentang yang sudah diketik tidak hilang",

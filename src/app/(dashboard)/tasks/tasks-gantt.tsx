@@ -723,6 +723,13 @@ type CreateDraft = { startIdx: number; endIdx: number };
 /** Lebar minimal kotak isian judul agar tetap terbaca pada draf pendek. */
 const DRAFT_BOX_MIN_PX = 240;
 
+/**
+ * Durasi draf saat rentang tidak ditarik sendiri — klik sekali di kanvas atau
+ * tombol "Tambah tugas" di sidebar. Menarik rentang tetap memakai hari yang
+ * benar-benar ditarik.
+ */
+const DEFAULT_DRAFT_DAYS = 5;
+
 const GanttCreateRow = memo(function GanttCreateRow({
   rangeStartMs,
   totalDays,
@@ -748,7 +755,12 @@ const GanttCreateRow = memo(function GanttCreateRow({
   const [title, setTitle] = useState("");
   const [pending, setPending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dragRef = useRef<{ pointerId: number; anchorIdx: number } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    anchorIdx: number;
+    /** false saat dilepas = klik biasa → pakai durasi default. */
+    moved: boolean;
+  } | null>(null);
 
   /** Isian judul baru muncul setelah tarikan selesai. */
   const editing = draft != null && !dragging;
@@ -762,6 +774,15 @@ const GanttCreateRow = memo(function GanttCreateRow({
     [totalDays],
   );
 
+  /** Rentang default `DEFAULT_DRAFT_DAYS` hari mulai dari hari yang dipilih. */
+  const defaultRange = useCallback(
+    (idx: number): CreateDraft => ({
+      startIdx: clampIdx(idx),
+      endIdx: clampIdx(idx + DEFAULT_DRAFT_DAYS - 1),
+    }),
+    [clampIdx],
+  );
+
   function idxFromPointer(e: ReactPointerEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     return clampIdx(Math.floor((e.clientX - rect.left) / pxPerDay));
@@ -771,12 +792,13 @@ const GanttCreateRow = memo(function GanttCreateRow({
     if (e.button !== 0 || pending) return;
     const idx = idxFromPointer(e);
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { pointerId: e.pointerId, anchorIdx: idx };
+    dragRef.current = { pointerId: e.pointerId, anchorIdx: idx, moved: false };
     setDragging(true);
     setHoverIdx(null);
     // Judul yang sudah diketik sengaja dipertahankan: menarik ulang rentang
-    // hanya mengubah tanggal, bukan membatalkan draf.
-    setDraft({ startIdx: idx, endIdx: idx });
+    // hanya mengubah tanggal, bukan membatalkan draf. Rentang default menyusul
+    // saat dilepas kalau ternyata ini klik biasa.
+    setDraft(defaultRange(idx));
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
@@ -787,6 +809,10 @@ const GanttCreateRow = memo(function GanttCreateRow({
     }
     if (e.pointerId !== d.pointerId) return;
     const idx = idxFromPointer(e);
+    // Begitu kursor keluar dari hari awal, rentangnya milik user sepenuhnya —
+    // termasuk kalau ia menarik balik ke hari yang sama (draf 1 hari).
+    if (idx !== d.anchorIdx) d.moved = true;
+    if (!d.moved) return;
     setDraft({
       startIdx: Math.min(d.anchorIdx, idx),
       endIdx: Math.max(d.anchorIdx, idx),
@@ -798,11 +824,12 @@ const GanttCreateRow = memo(function GanttCreateRow({
     if (!d || e.pointerId !== d.pointerId) return;
     dragRef.current = null;
     setDragging(false);
+    if (!d.moved) setDraft(defaultRange(d.anchorIdx));
   }
 
   function startDraftAt(idx: number) {
     setHoverIdx(null);
-    setDraft({ startIdx: clampIdx(idx), endIdx: clampIdx(idx) });
+    setDraft(defaultRange(idx));
   }
 
   function cancelDraft() {
@@ -867,6 +894,9 @@ const GanttCreateRow = memo(function GanttCreateRow({
   }
 
   const base = new Date(rangeStartMs);
+  // Bayangan saat hover memakai rentang default supaya jelas klik sekali
+  // menghasilkan tugas berapa hari.
+  const hoverRange = hoverIdx != null ? defaultRange(hoverIdx) : null;
   const draftStartDay = draft ? addDays(base, draft.startIdx) : null;
   const draftEndDay = draft ? addDays(base, draft.endIdx) : null;
   const barLeft = draft ? draft.startIdx * pxPerDay : 0;
@@ -911,17 +941,20 @@ const GanttCreateRow = memo(function GanttCreateRow({
         onPointerCancel={onPointerUp}
         onPointerLeave={() => setHoverIdx(null)}
       >
-        {/* Bayangan sel hari di bawah kursor — penanda tempat tugas dibuat. */}
-        {hoverIdx != null && !draft ? (
+        {/* Bayangan rentang di bawah kursor — penanda tempat & durasi tugas. */}
+        {hoverRange && !draft ? (
           <span
             aria-hidden
             className="border-primary/40 bg-primary/5 text-primary/70 absolute top-1/2 flex h-7 -translate-y-1/2 items-center justify-center rounded-lg border border-dashed"
             style={{
-              left: hoverIdx * pxPerDay,
-              width: Math.max(pxPerDay - 2, 12),
+              left: hoverRange.startIdx * pxPerDay,
+              width: Math.max(
+                (hoverRange.endIdx - hoverRange.startIdx + 1) * pxPerDay - 2,
+                12,
+              ),
             }}
           >
-            {pxPerDay >= 24 ? <Plus className="size-3" /> : null}
+            <Plus className="size-3" />
           </span>
         ) : null}
 
@@ -1662,7 +1695,8 @@ export function TasksGantt({
       {canInlineCreate && showCanvas ? (
         <p className="text-muted-foreground text-xs">
           Tugas baru: tarik rentang tanggal di baris terbawah kanvas, ketik
-          judulnya, lalu Enter. Saat mengetik, Ctrl+panah menggeser tanggal
+          judulnya, lalu Enter — klik sekali memakai durasi default{" "}
+          {DEFAULT_DRAFT_DAYS} hari. Saat mengetik, Ctrl+panah menggeser tanggal
           mulai dan Alt+panah menggeser tenggat.
         </p>
       ) : null}
