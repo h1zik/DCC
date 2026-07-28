@@ -24,9 +24,11 @@ import { TaskStatus } from "@prisma/client";
 import {
   CalendarRange,
   FilterX,
+  Loader2,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -136,6 +138,12 @@ const ZOOM_ITEMS: { key: ZoomKey; label: string }[] = [
 
 /** Lebar kolom daftar tugas (sidebar kiri). */
 const SIDEBAR_PX = 264;
+/**
+ * Lapisan kolom sidebar dalam satu baris. Harus lebih tinggi dari seluruh isi
+ * track (bar biasa z-10, bar saat drag z-30, handle z-30, tooltip z-40) supaya
+ * bar yang ter-scroll ke kiri tidak menembus kolom daftar tugas.
+ */
+const SIDEBAR_Z = "z-50";
 /** Tinggi satu baris tugas (px) — dipakai juga untuk content-visibility. */
 const ROW_PX = 44;
 /** Batas rentang hari yang digambar agar DOM tetap ringan. */
@@ -171,6 +179,15 @@ function resolveGanttStatus(
     return "inProgress";
   }
   return "notStarted";
+}
+
+/**
+ * Kanvas berhitung dalam tanggal lokal, tetapi tugas disimpan sebagai tengah
+ * malam UTC — sama seperti input tanggal di dialog (`new Date("YYYY-MM-DD")`).
+ * Tanpa normalisasi ini, tanggal di detail tugas & daftar meleset satu hari.
+ */
+function toStoredDate(d: Date) {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
 function fmtShort(d: Date) {
@@ -273,6 +290,16 @@ type GanttRowGeom = {
 
 /** Jadwal baru hasil drag bar — `startDate: null` = tanpa tanggal mulai. */
 export type GanttSchedule = { startDate: Date | null; dueDate: Date };
+
+/**
+ * Tugas baru hasil tarik rentang langsung di kanvas Gantt. Tanggalnya sudah
+ * dinormalkan ke tengah malam UTC (lihat `toStoredDate`).
+ */
+export type GanttDraftTask = {
+  title: string;
+  startDate: Date;
+  dueDate: Date;
+};
 
 /**
  * Mode drag bar:
@@ -388,21 +415,21 @@ const GanttRow = memo(function GanttRow({
       switch (mode) {
         case "move":
           onReschedule(task.id, {
-            startDate: addDays(startDay, delta),
-            dueDate: addDays(endDay, delta),
+            startDate: toStoredDate(addDays(startDay, delta)),
+            dueDate: toStoredDate(addDays(endDay, delta)),
           });
           return;
         case "start":
           onReschedule(task.id, {
-            startDate: addDays(startDay, delta),
-            dueDate: endDay,
+            startDate: toStoredDate(addDays(startDay, delta)),
+            dueDate: toStoredDate(endDay),
           });
           return;
         case "end":
           onReschedule(task.id, {
             // Tanpa tanggal mulai eksplisit, ujung kiri tetap tanggal dibuat.
-            startDate: hasExplicitStart ? startDay : null,
-            dueDate: addDays(endDay, delta),
+            startDate: hasExplicitStart ? toStoredDate(startDay) : null,
+            dueDate: toStoredDate(addDays(endDay, delta)),
           });
       }
     },
@@ -498,11 +525,14 @@ const GanttRow = memo(function GanttRow({
     onPointerUp,
     onPointerCancel: onPointerUp,
     onPointerEnter: (e: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!dragging) onHover(task, e.currentTarget.getBoundingClientRect());
+      if (!dragRef.current) onHover(task, e.currentTarget.getBoundingClientRect());
     },
     onPointerLeave: () => onHover(null),
-    onFocus: (e: React.FocusEvent<HTMLButtonElement>) =>
-      onHover(task, e.currentTarget.getBoundingClientRect()),
+    // Pointer-down memfokuskan tombol; tanpa cek ini kartu hover terbuka lagi
+    // tepat setelah `beginDrag` menutupnya, lalu menggantung selama drag.
+    onFocus: (e: React.FocusEvent<HTMLButtonElement>) => {
+      if (!dragRef.current) onHover(task, e.currentTarget.getBoundingClientRect());
+    },
     onBlur: () => onHover(null),
   };
 
@@ -526,7 +556,12 @@ const GanttRow = memo(function GanttRow({
     >
       {sidebarOpen ? (
         <div
-          className="border-border bg-card sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r px-3"
+          className={cn(
+            "border-border bg-card sticky left-0 flex shrink-0 items-center gap-2 border-r px-3",
+            // Di atas semua isi track (bar z-30, handle z-30, tooltip z-40)
+            // supaya bar yang tergeser ke kiri tetap tersembunyi di baliknya.
+            SIDEBAR_Z,
+          )}
           style={{ width: SIDEBAR_PX }}
         >
           <span
@@ -679,6 +714,276 @@ const GanttRow = memo(function GanttRow({
 });
 
 /* ------------------------------------------------------------------ */
+/* Baris tambah tugas: tarik rentang di kanvas lalu ketik judulnya.    */
+/* ------------------------------------------------------------------ */
+
+/** Draf tugas baru sebagai indeks hari relatif terhadap awal rentang. */
+type CreateDraft = { startIdx: number; endIdx: number };
+
+/** Lebar minimal kotak isian judul agar tetap terbaca pada draf pendek. */
+const DRAFT_BOX_MIN_PX = 240;
+
+const GanttCreateRow = memo(function GanttCreateRow({
+  rangeStartMs,
+  totalDays,
+  pxPerDay,
+  timelineWidth,
+  sidebarOpen,
+  todayIdx,
+  onCreate,
+}: {
+  rangeStartMs: number;
+  totalDays: number;
+  pxPerDay: number;
+  timelineWidth: number;
+  sidebarOpen: boolean;
+  /** Indeks hari "hari ini" — dipakai tombol tambah di sidebar. */
+  todayIdx: number;
+  /** Reject/throw = draf dipertahankan supaya judul & rentang tidak hilang. */
+  onCreate: (draft: GanttDraftTask) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<CreateDraft | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [title, setTitle] = useState("");
+  const [pending, setPending] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dragRef = useRef<{ pointerId: number; anchorIdx: number } | null>(null);
+
+  /** Isian judul baru muncul setelah tarikan selesai. */
+  const editing = draft != null && !dragging;
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const clampIdx = useCallback(
+    (idx: number) => Math.min(Math.max(idx, 0), Math.max(totalDays - 1, 0)),
+    [totalDays],
+  );
+
+  function idxFromPointer(e: ReactPointerEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return clampIdx(Math.floor((e.clientX - rect.left) / pxPerDay));
+  }
+
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (e.button !== 0 || pending) return;
+    const idx = idxFromPointer(e);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { pointerId: e.pointerId, anchorIdx: idx };
+    setDragging(true);
+    setHoverIdx(null);
+    // Judul yang sudah diketik sengaja dipertahankan: menarik ulang rentang
+    // hanya mengubah tanggal, bukan membatalkan draf.
+    setDraft({ startIdx: idx, endIdx: idx });
+  }
+
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = dragRef.current;
+    if (!d) {
+      if (!editing && !pending) setHoverIdx(idxFromPointer(e));
+      return;
+    }
+    if (e.pointerId !== d.pointerId) return;
+    const idx = idxFromPointer(e);
+    setDraft({
+      startIdx: Math.min(d.anchorIdx, idx),
+      endIdx: Math.max(d.anchorIdx, idx),
+    });
+  }
+
+  function onPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+  }
+
+  function startDraftAt(idx: number) {
+    setHoverIdx(null);
+    setDraft({ startIdx: clampIdx(idx), endIdx: clampIdx(idx) });
+  }
+
+  function cancelDraft() {
+    dragRef.current = null;
+    setDragging(false);
+    setDraft(null);
+    setTitle("");
+  }
+
+  async function commitDraft() {
+    if (!draft || pending) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const base = new Date(rangeStartMs);
+    setPending(true);
+    try {
+      await onCreate({
+        title: trimmed,
+        startDate: toStoredDate(addDays(base, draft.startIdx)),
+        dueDate: toStoredDate(addDays(base, draft.endIdx)),
+      });
+      setDraft(null);
+      setTitle("");
+    } catch {
+      // Draf dibiarkan terbuka agar judul & rentang bisa dicoba simpan lagi.
+    } finally {
+      setPending(false);
+    }
+  }
+
+  /** Alt+panah menggeser tenggat, Ctrl/Cmd+panah menggeser tanggal mulai. */
+  function onInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelDraft();
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void commitDraft();
+      return;
+    }
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const isEnd = e.altKey;
+    const isStart = e.ctrlKey || e.metaKey;
+    if (!isEnd && !isStart) return;
+    e.preventDefault();
+    const step = e.key === "ArrowRight" ? 1 : -1;
+    setDraft((prev) => {
+      if (!prev) return prev;
+      if (isEnd) {
+        return {
+          ...prev,
+          endIdx: clampIdx(Math.max(prev.endIdx + step, prev.startIdx)),
+        };
+      }
+      return {
+        ...prev,
+        startIdx: clampIdx(Math.min(prev.startIdx + step, prev.endIdx)),
+      };
+    });
+  }
+
+  const base = new Date(rangeStartMs);
+  const draftStartDay = draft ? addDays(base, draft.startIdx) : null;
+  const draftEndDay = draft ? addDays(base, draft.endIdx) : null;
+  const barLeft = draft ? draft.startIdx * pxPerDay : 0;
+  const barWidth = draft
+    ? Math.max((draft.endIdx - draft.startIdx + 1) * pxPerDay - 2, 12)
+    : 0;
+  const boxWidth = Math.max(barWidth, DRAFT_BOX_MIN_PX);
+  // Kotak isian tidak boleh menjorok keluar timeline di ujung kanan rentang.
+  const boxLeft = Math.min(barLeft, Math.max(0, timelineWidth - boxWidth));
+
+  return (
+    <div
+      className="border-border/40 relative z-10 flex border-b last:border-b-0"
+      style={{ height: ROW_PX }}
+    >
+      {sidebarOpen ? (
+        <div
+          className={cn(
+            "border-border bg-card sticky left-0 flex shrink-0 items-center border-r px-3",
+            SIDEBAR_Z,
+          )}
+          style={{ width: SIDEBAR_PX }}
+        >
+          <button
+            type="button"
+            onClick={() => startDraftAt(todayIdx)}
+            disabled={pending}
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 -mx-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-xs font-medium transition-colors disabled:opacity-60"
+          >
+            <Plus className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate">Tambah tugas</span>
+          </button>
+        </div>
+      ) : null}
+
+      <div
+        className="relative shrink-0 touch-pan-y"
+        style={{ width: timelineWidth, cursor: pending ? "wait" : "crosshair" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onPointerLeave={() => setHoverIdx(null)}
+      >
+        {/* Bayangan sel hari di bawah kursor — penanda tempat tugas dibuat. */}
+        {hoverIdx != null && !draft ? (
+          <span
+            aria-hidden
+            className="border-primary/40 bg-primary/5 text-primary/70 absolute top-1/2 flex h-7 -translate-y-1/2 items-center justify-center rounded-lg border border-dashed"
+            style={{
+              left: hoverIdx * pxPerDay,
+              width: Math.max(pxPerDay - 2, 12),
+            }}
+          >
+            {pxPerDay >= 24 ? <Plus className="size-3" /> : null}
+          </span>
+        ) : null}
+
+        {draft ? (
+          <>
+            <span
+              aria-hidden
+              className="border-primary/50 bg-primary/10 absolute top-1/2 h-7 -translate-y-1/2 rounded-lg border border-dashed"
+              style={{ left: barLeft, width: barWidth }}
+            />
+            {draftStartDay && draftEndDay ? (
+              <span
+                className="bg-foreground text-background pointer-events-none absolute -top-1 z-40 rounded-md px-2 py-0.5 text-[10px] font-medium whitespace-nowrap shadow-md"
+                style={{ left: boxLeft }}
+              >
+                {fmtShort(draftStartDay)} – {fmtLong(draftEndDay)} ·{" "}
+                {draft.endIdx - draft.startIdx + 1} hari
+              </span>
+            ) : null}
+          </>
+        ) : null}
+
+        {editing && draft ? (
+          <div
+            className="border-primary/60 bg-card absolute top-1/2 z-30 flex h-8 -translate-y-1/2 items-center gap-1 rounded-lg border px-1.5 shadow-md"
+            style={{ left: boxLeft, width: boxWidth }}
+            // Klik di dalam kotak tidak boleh memulai tarikan rentang baru.
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <input
+              ref={inputRef}
+              value={title}
+              disabled={pending}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={onInputKeyDown}
+              placeholder="Nama tugas — Enter simpan, Esc batal"
+              aria-label="Judul tugas baru"
+              className="placeholder:text-muted-foreground/70 min-w-0 flex-1 bg-transparent text-xs outline-none disabled:opacity-60"
+            />
+            {pending ? (
+              <Loader2
+                className="text-muted-foreground size-3.5 shrink-0 animate-spin"
+                aria-hidden
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={cancelDraft}
+                aria-label="Batalkan tugas baru"
+                className="text-muted-foreground hover:text-foreground shrink-0 rounded p-0.5"
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /* Komponen utama                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -686,6 +991,7 @@ export function TasksGantt({
   tasks,
   onTaskClick,
   onTaskReschedule,
+  onTaskCreate,
   onAddTask,
   readOnly = false,
   loading = false,
@@ -698,6 +1004,13 @@ export function TasksGantt({
    * mulai (ujung kiri masih memakai tanggal dibuat).
    */
   onTaskReschedule?: (taskId: string, next: GanttSchedule) => void;
+  /**
+   * Buat tugas langsung di kanvas: tarik rentang di baris paling bawah lalu
+   * ketik judulnya. Tugas dibuat dengan nilai default (proyek pertama, tahap
+   * awal papan, prioritas sedang) — sisanya diatur lewat detail tugas.
+   * Promise yang gagal menahan draf tetap terbuka.
+   */
+  onTaskCreate?: (draft: GanttDraftTask) => Promise<void>;
   /** Tombol "Tugas baru" di empty state (khusus manager). */
   onAddTask?: () => void;
   readOnly?: boolean;
@@ -958,6 +1271,13 @@ export function TasksGantt({
     assigneeFilter !== ALL_FILTER ||
     projectFilter !== ALL_FILTER;
 
+  const canInlineCreate = !readOnly && !!onTaskCreate;
+  const todayIdx = differenceInCalendarDays(today, rangeStart);
+  // Kanvas tetap digambar walau tidak ada bar yang lolos filter, selama baris
+  // "tambah tugas" masih berguna (tanpa filter aktif yang menyembunyikannya).
+  const showCanvas =
+    filteredGeoms.length > 0 || (canInlineCreate && !hasActiveFilter);
+
   function resetFilters() {
     setHiddenStatuses([]);
     setAssigneeFilter(ALL_FILTER);
@@ -1006,7 +1326,9 @@ export function TasksGantt({
     );
   }
 
-  if (tasks.length === 0) {
+  // Papan kosong tetap digambar bila tugas bisa dibuat di kanvas — barisnya
+  // sendiri yang jadi ajakan "tambah tugas".
+  if (tasks.length === 0 && !canInlineCreate) {
     return (
       <EmptyState
         icon={CalendarRange}
@@ -1024,7 +1346,8 @@ export function TasksGantt({
     );
   }
 
-  if (dated.length === 0) {
+  // Tanpa hak buat di kanvas, papan kosong tidak perlu digambar sama sekali.
+  if (dated.length === 0 && !canInlineCreate) {
     return (
       <EmptyState
         icon={CalendarRange}
@@ -1163,7 +1486,7 @@ export function TasksGantt({
         </div>
       </div>
 
-      {filteredGeoms.length === 0 ? (
+      {!showCanvas ? (
         <EmptyState
           icon={FilterX}
           title="Tidak ada tugas yang cocok dengan filter"
@@ -1195,7 +1518,10 @@ export function TasksGantt({
               <div className="flex">
                 {sidebarOpen ? (
                   <div
-                    className="border-border bg-card sticky left-0 z-20 flex shrink-0 items-end border-r px-3 pb-1.5"
+                    className={cn(
+                      "border-border bg-card sticky left-0 flex shrink-0 items-end border-r px-3 pb-1.5",
+                      SIDEBAR_Z,
+                    )}
                     style={{ width: SIDEBAR_PX }}
                   >
                     <p className="text-muted-foreground text-[11px] font-medium">
@@ -1309,6 +1635,18 @@ export function TasksGantt({
                   onHover={onBarHover}
                 />
               ))}
+
+              {canInlineCreate && onTaskCreate ? (
+                <GanttCreateRow
+                  rangeStartMs={rangeStart.getTime()}
+                  totalDays={totalDays}
+                  pxPerDay={pxPerDay}
+                  timelineWidth={timelineWidth}
+                  sidebarOpen={sidebarOpen}
+                  todayIdx={todayIdx}
+                  onCreate={onTaskCreate}
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -1318,6 +1656,14 @@ export function TasksGantt({
         <p className="text-muted-foreground text-xs">
           Geser bar untuk memindahkan seluruh jadwal; tarik ujung kiri/kanan
           untuk mengubah tanggal mulai atau tenggat saja.
+        </p>
+      ) : null}
+
+      {canInlineCreate && showCanvas ? (
+        <p className="text-muted-foreground text-xs">
+          Tugas baru: tarik rentang tanggal di baris terbawah kanvas, ketik
+          judulnya, lalu Enter. Saat mengetik, Ctrl+panah menggeser tanggal
+          mulai dan Alt+panah menggeser tenggat.
         </p>
       ) : null}
 

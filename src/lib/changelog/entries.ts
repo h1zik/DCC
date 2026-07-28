@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-28-gantt-inline-create",
+    date: "2026-07-28",
+    title: "Buat tugas langsung di kanvas Gantt",
+    category: "new",
+    description:
+      "Tidak perlu lagi membuka dialog \"Tugas baru\" hanya untuk menaruh satu tugas di linimasa. Di baris paling bawah kanvas Gantt, tarik rentang tanggal yang Anda mau, ketik judulnya, lalu tekan Enter — tugas langsung muncul sebagai bar di tanggal itu, mirip cara kerja Notion.",
+    highlights: [
+      "Tarik rentang di baris \"Tambah tugas\" untuk menentukan tanggal mulai dan tenggat sekaligus; klik sekali membuat tugas satu hari",
+      "Tombol \"Tambah tugas\" di kolom kiri membuka draf di tanggal hari ini",
+      "Saat mengetik judul: Enter menyimpan, Esc membatalkan, Ctrl+panah menggeser tanggal mulai, Alt+panah menggeser tenggat",
+      "Tugas dibuat dengan pengaturan default papan (tahap awal, prioritas Sedang, ikut tab kelompok/fase yang sedang dibuka) — PIC, tag, dan detail lain diisi menyusul lewat panel detail tugas",
+      "Kalau penyimpanan gagal, judul dan rentang yang sudah diketik tidak hilang",
+      "Perbaikan: tanggal yang dibuat/digeser di kanvas Gantt kini sama persis dengan yang tampil di panel detail tugas dan daftar — sebelumnya bisa meleset satu hari",
+      "Perbaikan: bar yang sedang digeser tidak lagi menembus kolom daftar tugas di kiri, dan kartu ringkasan tugas tidak lagi menggantung di layar selama bar digeser",
+    ],
+  },
+  {
     id: "2026-07-28-room-task-groups",
     date: "2026-07-28",
     title: "Kelompok tugas di ruangan non-brand",
