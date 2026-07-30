@@ -1,13 +1,10 @@
 "use client";
 
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { CREATIVE_ACCEPT_EXTENSIONS } from "@/lib/creative-file-formats";
-import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -28,20 +25,18 @@ import type { DirectChatMessageView } from "@/lib/direct-chat-message-view";
 import type { DirectInboxItem } from "@/lib/direct-chat-inbox";
 import { previewText } from "@/lib/direct-chat-inbox";
 import { directChatReplySnippet } from "@/lib/direct-chat-reply-snippet";
-import { DIRECT_CHAT_MAX_FILES_PER_MESSAGE } from "@/lib/direct-chat-attachments-shared";
-import {
-  mergePendingChatFiles,
-  readClipboardImageFiles,
-} from "@/lib/chat-pending-files";
-import {
-  preventComposerBlur,
-  useChatComposerFocus,
-} from "@/lib/use-chat-composer-focus";
-import { assertSafeGifUrl } from "@/lib/room-chat-gif";
 import { toast } from "sonner";
-import { DirectChatPushSetup } from "@/components/direct-chat/direct-chat-push-setup";
-import { DirectChatMessageBubble } from "@/components/direct-chat/direct-chat-message-bubble";
-import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DirectChatComposer,
+  focusDirectChatComposer,
+  type DirectChatComposerPayload,
+} from "@/components/direct-chat/direct-chat-composer";
+import {
+  DirectChatMessageList,
+  DIRECT_CHAT_WINDOW_SIZE,
+  DIRECT_CHAT_WINDOW_STEP,
+} from "@/components/direct-chat/direct-chat-message-list";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -49,31 +44,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import {
-  ArrowLeft,
-  Clapperboard,
-  MessageCircle,
-  Paperclip,
-  Search,
-  Send,
-  Smile,
-  X,
-} from "lucide-react";
-import type { EmojiClickData } from "emoji-picker-react";
-import { Theme } from "emoji-picker-react";
-
-const EmojiPicker = dynamic(
-  () => import("emoji-picker-react").then((m) => m.default),
-  { ssr: false, loading: () => null },
-);
+import { ArrowLeft, MessageCircle, Search, X } from "lucide-react";
 
 type EligibleUser = {
   id: string;
@@ -116,21 +89,6 @@ function formatTime(iso: string) {
   });
 }
 
-function formatDateSeparator(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (isSameCalendarDay(d, now)) return "Hari ini";
-  if (isSameCalendarDay(d, yesterday)) return "Kemarin";
-  return d.toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
-  });
-}
-
 function formatPresence(lastSeenAt: Date | string | null) {
   if (!lastSeenAt) return "Belum ada aktivitas";
   const iso = typeof lastSeenAt === "string" ? lastSeenAt : lastSeenAt.toISOString();
@@ -161,105 +119,24 @@ function syncLastActivityRef(
   list: DirectChatMessageView[],
 ) {
   if (list.length === 0) return;
-  const maxMs = Math.max(...list.map(messageActivityMs));
+  let maxMs = 0;
+  for (const m of list) {
+    const ms = messageActivityMs(m);
+    if (ms > maxMs) maxMs = ms;
+  }
   const prevMs = ref.current ? new Date(ref.current).getTime() : 0;
   if (maxMs > prevMs) ref.current = new Date(maxMs).toISOString();
 }
 
-type DirectChatMessageItem =
-  | {
-      type: "date";
-      id: string;
-      label: string;
-    }
-  | {
-      type: "message";
-      message: DirectChatMessageView;
-      compact: boolean;
-    };
-
-const DirectChatMessageList = memo(function DirectChatMessageList({
-  items,
-  currentUserId,
-  lastOwnMessageId,
-  peerLastReadAt,
-  messageRefs,
-  endRef,
-  onReply,
-  onEdit,
-  onDelete,
-  onScrollToReply,
-}: {
-  items: DirectChatMessageItem[];
-  currentUserId: string;
-  lastOwnMessageId: string | null;
-  peerLastReadAt: string | null;
-  messageRefs: { current: Map<string, HTMLDivElement> };
-  endRef: { current: HTMLDivElement | null };
-  onReply: (message: DirectChatMessageView) => void;
-  onEdit: (message: DirectChatMessageView) => void;
-  onDelete: (messageId: string) => void;
-  onScrollToReply: (messageId: string) => void;
-}) {
-  const readReceiptForMessage = (
-    message: DirectChatMessageView,
-  ): "read" | "unread" | null => {
-    if (
-      message.author.id !== currentUserId ||
-      message.deletedAt ||
-      message.id !== lastOwnMessageId
-    ) {
-      return null;
-    }
-    if (!peerLastReadAt) return "unread";
-    return new Date(message.createdAt).getTime() <=
-      new Date(peerLastReadAt).getTime()
-      ? "read"
-      : "unread";
-  };
-
-  return (
-    <div className="direct-chat-messages flex flex-col">
-      {items.map((item) => {
-        if (item.type === "date") {
-          return (
-            <div key={item.id} className="my-4 flex items-center gap-3">
-              <span className="bg-border h-px flex-1" />
-              <span className="border-border bg-background text-muted-foreground rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm">
-                {item.label}
-              </span>
-              <span className="bg-border h-px flex-1" />
-            </div>
-          );
-        }
-        const message = item.message;
-        return (
-          <div
-            key={message.id}
-            ref={(element) => {
-              if (element) messageRefs.current.set(message.id, element);
-              else messageRefs.current.delete(message.id);
-            }}
-            data-message-id={message.id}
-            className="[content-visibility:auto] [contain-intrinsic-size:auto_80px]"
-          >
-            <DirectChatMessageBubble
-              message={message}
-              own={message.author.id === currentUserId}
-              readReceipt={readReceiptForMessage(message)}
-              onReply={() => onReply(message)}
-              onEdit={() => onEdit(message)}
-              onDelete={() => onDelete(message.id)}
-              onScrollToReply={onScrollToReply}
-              compact={item.compact}
-            />
-          </div>
-        );
-      })}
-      <div ref={endRef} aria-hidden />
-    </div>
-  );
-});
+/** Tanda tangan ringkas inbox — dipakai agar poll 5 detik tidak memicu render ulang sia-sia. */
+function inboxSignature(items: DirectInboxItem[]): string {
+  return items
+    .map(
+      (i) =>
+        `${i.conversationId}:${i.unreadCount}:${i.updatedAt}:${i.lastMessage?.createdAt ?? ""}:${i.otherUser.lastSeenAt ?? ""}`,
+    )
+    .join("|");
+}
 
 export function DirectChatExperience({
   className,
@@ -278,7 +155,7 @@ export function DirectChatExperience({
 
   const [inbox, setInbox] = useState(initialInbox);
   const [messages, setMessages] = useState<DirectChatMessageView[]>([]);
-  const [body, setBody] = useState("");
+  const [windowSize, setWindowSize] = useState(DIRECT_CHAT_WINDOW_SIZE);
   const [reply, setReply] = useState<{
     id: string;
     authorLabel: string;
@@ -289,17 +166,6 @@ export function DirectChatExperience({
   const [startingUserId, setStartingUserId] = useState<string | null>(null);
   const [inboxQuery, setInboxQuery] = useState("");
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
-  const [emojiOpen, setEmojiOpen] = useState(false);
-  const [pendingGifUrl, setPendingGifUrl] = useState<string | null>(null);
-  const [gifOpen, setGifOpen] = useState(false);
-  const [gifQuery, setGifQuery] = useState("happy");
-  const [gifItems, setGifItems] = useState<{ url: string; preview: string }[]>(
-    [],
-  );
-  const [gifLoading, setGifLoading] = useState(false);
-  const [giphyConfigured, setGiphyConfigured] = useState<boolean | null>(null);
-  const [pasteGif, setPasteGif] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [editingMessage, setEditingMessage] = useState<{
     id: string;
     body: string;
@@ -309,15 +175,25 @@ export function DirectChatExperience({
   const [loadingThread, setLoadingThread] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const scheduleComposerFocus = useChatComposerFocus(taRef, pending);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastSyncedAtRef = useRef<string>("");
   const nearBottomRef = useRef(true);
   const suppressNearBottomCheckRef = useRef(true);
   const shouldScrollToEndRef = useRef(true);
+  const messagesRef = useRef<DirectChatMessageView[]>(messages);
+  const inboxSignatureRef = useRef(inboxSignature(initialInbox));
+  const olderAnchorRef = useRef<{ height: number; top: number } | null>(null);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  /** Reset jendela render tiap ganti percakapan — disesuaikan saat render agar tidak berantai. */
+  const [windowedConversationId, setWindowedConversationId] = useState(activeId);
+  if (windowedConversationId !== activeId) {
+    setWindowedConversationId(activeId);
+    setWindowSize(DIRECT_CHAT_WINDOW_SIZE);
+  }
+
   const activeItem = useMemo(
     () => inbox.find((i) => i.conversationId === activeId) ?? null,
     [inbox, activeId],
@@ -352,56 +228,51 @@ export function DirectChatExperience({
     [inbox],
   );
 
-  const lastOwnMessageId = useMemo(() => {
+  /**
+   * Jendela render: hanya pesan terbaru yang masuk DOM. Riwayat panjang tidak
+   * lagi menambah ribuan node yang harus di-layout ulang tiap kali composer
+   * berubah tinggi atau ada pesan baru.
+   */
+  const visibleMessages = useMemo(
+    () =>
+      messages.length > windowSize ? messages.slice(-windowSize) : messages,
+    [messages, windowSize],
+  );
+  const hiddenCount = messages.length - visibleMessages.length;
+
+  const lastOwnMessage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]!;
-      if (m.author.id === currentUserId && !m.deletedAt) return m.id;
+      if (m.author.id === currentUserId && !m.deletedAt) return m;
     }
     return null;
   }, [messages, currentUserId]);
 
-  const messageItems = useMemo<DirectChatMessageItem[]>(
-    () =>
-      messages.flatMap((message, index) => {
-        const createdAt = new Date(message.createdAt);
-        const dayKey = `${createdAt.getFullYear()}-${createdAt.getMonth()}-${createdAt.getDate()}`;
-        const previous = index > 0 ? messages[index - 1]! : null;
-        const previousCreatedAt = previous ? new Date(previous.createdAt) : null;
-        const previousDayKey = previousCreatedAt
-          ? `${previousCreatedAt.getFullYear()}-${previousCreatedAt.getMonth()}-${previousCreatedAt.getDate()}`
-          : "";
-        const showDate = dayKey !== previousDayKey;
-        const compact = Boolean(
-          previous &&
-            previous.author.id === message.author.id &&
-            !showDate &&
-            createdAt.getTime() - previousCreatedAt!.getTime() < 5 * 60 * 1000,
-        );
-        return [
-          ...(showDate
-            ? [
-                {
-                  type: "date" as const,
-                  id: `date-${dayKey}-${index}`,
-                  label: formatDateSeparator(message.createdAt),
-                },
-              ]
-            : []),
-          { type: "message" as const, message, compact },
-        ];
-      }),
-    [messages],
-  );
+  /**
+   * Status baca dihitung di sini menjadi dua nilai primitif, bukan dilempar
+   * sebagai `peerLastReadAt` mentah ke daftar pesan — supaya poll yang
+   * mengembalikan waktu baca berbeda tapi status sama tidak me-render ulang
+   * seluruh riwayat.
+   */
+  const readReceiptState = useMemo<"read" | "unread" | null>(() => {
+    if (!lastOwnMessage) return null;
+    if (!peerLastReadAt) return "unread";
+    return new Date(lastOwnMessage.createdAt).getTime() <=
+      new Date(peerLastReadAt).getTime()
+      ? "read"
+      : "unread";
+  }, [lastOwnMessage, peerLastReadAt]);
 
   const peerReadSubtitle = useMemo(() => {
-    if (!lastOwnMessageId || !peerLastReadAt) return null;
-    const lastOwn = messages.find((m) => m.id === lastOwnMessageId);
-    if (!lastOwn) return null;
-    if (new Date(lastOwn.createdAt).getTime() > new Date(peerLastReadAt).getTime()) {
+    if (!lastOwnMessage || !peerLastReadAt) return null;
+    if (
+      new Date(lastOwnMessage.createdAt).getTime() >
+      new Date(peerLastReadAt).getTime()
+    ) {
       return null;
     }
     return `Dibaca ${formatTime(peerLastReadAt)}`;
-  }, [lastOwnMessageId, peerLastReadAt, messages]);
+  }, [lastOwnMessage, peerLastReadAt]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const container = scrollRef.current;
@@ -420,6 +291,9 @@ export function DirectChatExperience({
       const res = await fetch("/api/direct-chat/inbox", { credentials: "include" });
       if (!res.ok) return;
       const data = (await res.json()) as { inbox: DirectInboxItem[] };
+      const signature = inboxSignature(data.inbox);
+      if (signature === inboxSignatureRef.current) return;
+      inboxSignatureRef.current = signature;
       setInbox(data.inbox);
     } catch {
       /* abaikan */
@@ -477,6 +351,7 @@ export function DirectChatExperience({
     shouldScrollToEndRef.current = true;
     nearBottomRef.current = true;
     suppressNearBottomCheckRef.current = true;
+    olderAnchorRef.current = null;
   }, [activeId]);
 
   useLayoutEffect(() => {
@@ -500,6 +375,16 @@ export function DirectChatExperience({
       window.clearTimeout(t3);
     };
   }, [activeId, messages.length, scrollToBottom]);
+
+  /** Pertahankan posisi baca setelah pesan lama disisipkan di atas. */
+  useLayoutEffect(() => {
+    const anchor = olderAnchorRef.current;
+    if (!anchor) return;
+    olderAnchorRef.current = null;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
+  }, [windowSize]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -536,6 +421,7 @@ export function DirectChatExperience({
           i.conversationId === activeId ? { ...i, unreadCount: 0 } : i,
         ),
       );
+      inboxSignatureRef.current = "";
       window.dispatchEvent(new Event("direct-chat-inbox-changed"));
     })();
     const t = window.setInterval(pollMessages, 2500);
@@ -566,29 +452,6 @@ export function DirectChatExperience({
     });
   }
 
-  useEffect(() => {
-    if (!gifOpen) return;
-    const t = window.setTimeout(async () => {
-      setGifLoading(true);
-      try {
-        const r = await fetch(
-          `/api/room-chat/giphy?q=${encodeURIComponent(gifQuery)}`,
-        );
-        const j = (await r.json()) as {
-          items?: { url: string; preview: string }[];
-          configured?: boolean;
-        };
-        setGifItems(Array.isArray(j.items) ? j.items : []);
-        if (typeof j.configured === "boolean") setGiphyConfigured(j.configured);
-      } catch {
-        setGifItems([]);
-      } finally {
-        setGifLoading(false);
-      }
-    }, 380);
-    return () => window.clearTimeout(t);
-  }, [gifQuery, gifOpen]);
-
   const startReplyTo = useCallback((message: DirectChatMessageView) => {
     if (message.deletedAt) return;
     setEditingMessage(null);
@@ -601,152 +464,141 @@ export function DirectChatExperience({
         attachmentCount: message.attachments.length,
       }),
     });
-    taRef.current?.focus();
   }, []);
 
   const startEdit = useCallback((message: DirectChatMessageView) => {
     if (message.deletedAt) return;
     setReply(null);
-    setPendingGifUrl(null);
-    setPendingFiles([]);
     setEditingMessage({ id: message.id, body: message.body });
-    setBody(message.body);
-    taRef.current?.focus();
   }, []);
 
-  const cancelEdit = useCallback(() => {
-    setEditingMessage(null);
-    setBody("");
-  }, []);
+  const cancelEdit = useCallback(() => setEditingMessage(null), []);
+  const cancelReply = useCallback(() => setReply(null), []);
 
-  function onPickFiles(incoming: File[]) {
-    if (incoming.length === 0) return;
-    setPendingFiles((prev) => mergePendingChatFiles(prev, incoming));
-  }
-
-  function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    if (editingMessage || pending) return;
-    const images = readClipboardImageFiles(e.clipboardData);
-    if (images.length === 0) return;
-    e.preventDefault();
-    onPickFiles(images);
-  }
-
-  function applyPastedGif() {
-    const raw = pasteGif.trim();
-    if (!raw) return;
-    try {
-      setPendingGifUrl(assertSafeGifUrl(raw));
-      setPasteGif("");
-      setGifOpen(false);
-    } catch (e) {
-      toast.error(actionErrorMessage(e, "URL GIF tidak valid."));
+  const loadOlderMessages = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) {
+      olderAnchorRef.current = { height: el.scrollHeight, top: el.scrollTop };
     }
-  }
+    setWindowSize((n) => n + DIRECT_CHAT_WINDOW_STEP);
+  }, []);
 
   const scrollToMessage = useCallback((messageId: string) => {
-    messageRefs.current.get(messageId)?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
+    const container = scrollRef.current;
+    if (!container) return;
+    const focus = () => {
+      const el = container.querySelector<HTMLElement>(
+        `[data-message-id="${CSS.escape(messageId)}"]`,
+      );
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return Boolean(el);
+    };
+    if (focus()) return;
+    /** Target masih di luar jendela render — lebarkan dulu, baru lompat. */
+    const all = messagesRef.current;
+    const index = all.findIndex((m) => m.id === messageId);
+    if (index < 0) return;
+    setWindowSize((n) => Math.max(n, all.length - index + 5));
+    requestAnimationFrame(() => requestAnimationFrame(focus));
   }, []);
 
-  function submitMessage() {
-    const text = body.trim();
-    const gif = pendingGifUrl?.trim() ?? "";
-    const hasFiles = pendingFiles.length > 0;
-    if (!activeId || pending) return;
-    if (editingMessage) {
-      if (!text) {
-        toast.error("Pesan tidak boleh kosong.");
+  const handleComposerSubmit = useCallback(
+    (payload: DirectChatComposerPayload) =>
+      new Promise<boolean>((resolve) => {
+        if (!activeId) {
+          resolve(false);
+          return;
+        }
+        startTransition(async () => {
+          try {
+            if (payload.editingMessageId) {
+              const updated = await editDirectMessage({
+                messageId: payload.editingMessageId,
+                body: payload.body,
+              });
+              setEditingMessage(null);
+              setMessages((prev) => mergeMessageLists(prev, [updated]));
+              syncLastActivityRef(lastSyncedAtRef, [updated]);
+              resolve(true);
+              return;
+            }
+
+            let created: DirectChatMessageView;
+            if (payload.files.length > 0) {
+              const fd = new FormData();
+              fd.append("conversationId", activeId);
+              fd.append("body", payload.body);
+              if (payload.gifUrl) fd.append("gifUrl", payload.gifUrl);
+              if (payload.replyToId) fd.append("replyToId", payload.replyToId);
+              for (const f of payload.files) fd.append("files", f);
+              created = await sendDirectMessageForm(fd);
+            } else {
+              created = await sendDirectMessage({
+                conversationId: activeId,
+                body: payload.body,
+                gifUrl: payload.gifUrl ?? undefined,
+                replyToId: payload.replyToId ?? undefined,
+              });
+            }
+
+            setReply(null);
+            nearBottomRef.current = true;
+            setMessages((prev) => mergeMessageLists(prev, [created]));
+            syncLastActivityRef(lastSyncedAtRef, [created]);
+            scrollToBottom();
+            void pollInbox();
+            window.dispatchEvent(new Event("direct-chat-inbox-changed"));
+            resolve(true);
+          } catch (e) {
+            toast.error(
+              actionErrorMessage(
+                e,
+                payload.editingMessageId
+                  ? "Gagal mengedit pesan."
+                  : "Gagal mengirim.",
+              ),
+            );
+            resolve(false);
+          }
+        });
+      }),
+    [activeId, pollInbox, scrollToBottom],
+  );
+
+  const confirmDeleteMessage = useCallback(
+    (messageId: string) => {
+      if (!window.confirm("Hapus pesan ini? Tindakan tidak dapat dibatalkan.")) {
         return;
       }
       startTransition(async () => {
         try {
-          const updated = await editDirectMessage({
-            messageId: editingMessage.id,
-            body: text,
-          });
-          setEditingMessage(null);
-          setBody("");
-          setMessages((prev) => mergeMessageLists(prev, [updated]));
-          syncLastActivityRef(lastSyncedAtRef, [updated]);
-          scheduleComposerFocus();
+          await deleteDirectMessage(messageId);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    body: "",
+                    gifUrl: null,
+                    deletedAt: new Date().toISOString(),
+                    editedAt: null,
+                    attachments: [],
+                    updatedAt: new Date().toISOString(),
+                  }
+                : m,
+            ),
+          );
+          lastSyncedAtRef.current = new Date().toISOString();
+          setEditingMessage((current) =>
+            current?.id === messageId ? null : current,
+          );
         } catch (e) {
-          toast.error(actionErrorMessage(e, "Gagal mengedit pesan."));
+          toast.error(actionErrorMessage(e, "Gagal menghapus pesan."));
         }
       });
-      return;
-    }
-    if (!text && !gif && !hasFiles) return;
-
-    startTransition(async () => {
-      try {
-        let created: DirectChatMessageView;
-        if (hasFiles) {
-          const fd = new FormData();
-          fd.append("conversationId", activeId);
-          fd.append("body", text);
-          if (gif) fd.append("gifUrl", gif);
-          if (reply?.id) fd.append("replyToId", reply.id);
-          for (const f of pendingFiles) fd.append("files", f);
-          created = await sendDirectMessageForm(fd);
-        } else {
-          created = await sendDirectMessage({
-            conversationId: activeId,
-            body: text,
-            gifUrl: gif || undefined,
-            replyToId: reply?.id,
-          });
-        }
-        setBody("");
-        setReply(null);
-        setPendingGifUrl(null);
-        setPendingFiles([]);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        nearBottomRef.current = true;
-        setMessages((prev) => mergeMessageLists(prev, [created]));
-        syncLastActivityRef(lastSyncedAtRef, [created]);
-        scrollToBottom();
-        void pollInbox();
-        window.dispatchEvent(new Event("direct-chat-inbox-changed"));
-        scheduleComposerFocus();
-      } catch (e) {
-        toast.error(actionErrorMessage(e, "Gagal mengirim."));
-      }
-    });
-  }
-
-  const confirmDeleteMessage = useCallback((messageId: string) => {
-    if (!window.confirm("Hapus pesan ini? Tindakan tidak dapat dibatalkan.")) return;
-    startTransition(async () => {
-      try {
-        await deleteDirectMessage(messageId);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? {
-                  ...m,
-                  body: "",
-                  gifUrl: null,
-                  deletedAt: new Date().toISOString(),
-                  editedAt: null,
-                  attachments: [],
-                  updatedAt: new Date().toISOString(),
-                }
-              : m,
-          ),
-        );
-        lastSyncedAtRef.current = new Date().toISOString();
-        if (editingMessage?.id === messageId) cancelEdit();
-      } catch (e) {
-        toast.error(actionErrorMessage(e, "Gagal menghapus pesan."));
-      }
-    });
-  }, [cancelEdit, editingMessage]);
-
-  const canSend =
-    Boolean(editingMessage ? body.trim() : body.trim() || pendingGifUrl || pendingFiles.length);
+    },
+    [],
+  );
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}>
@@ -1061,7 +913,7 @@ export function DirectChatExperience({
                         size="sm"
                         variant="secondary"
                         className="mt-4"
-                        onClick={() => taRef.current?.focus()}
+                        onClick={focusDirectChatComposer}
                       >
                         Tulis pesan
                       </Button>
@@ -1069,12 +921,12 @@ export function DirectChatExperience({
                   </div>
                 ) : (
                   <DirectChatMessageList
-                    items={messageItems}
+                    messages={visibleMessages}
                     currentUserId={currentUserId}
-                    lastOwnMessageId={lastOwnMessageId}
-                    peerLastReadAt={peerLastReadAt}
-                    messageRefs={messageRefs}
-                    endRef={endRef}
+                    readReceiptMessageId={lastOwnMessage?.id ?? null}
+                    readReceiptState={readReceiptState}
+                    hiddenCount={hiddenCount}
+                    onLoadOlder={loadOlderMessages}
                     onReply={startReplyTo}
                     onEdit={startEdit}
                     onDelete={confirmDeleteMessage}
@@ -1083,289 +935,14 @@ export function DirectChatExperience({
                 )}
               </div>
 
-              <div className="border-border/70 bg-card/95 supports-[backdrop-filter]:bg-card/90 sticky bottom-0 z-20 shrink-0 space-y-2 border-t p-2.5 shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.12)] backdrop-blur-sm sm:p-3 dark:shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.45)]">
-                <DirectChatPushSetup className="mb-0.5 rounded-xl" />
-                {editingMessage ? (
-                  <div className="border-primary/25 bg-primary/10 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs">
-                    <span>
-                      <strong>Mengedit pesan</strong> — Enter simpan, Esc batal
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Batal edit"
-                      onClick={cancelEdit}
-                    >
-                      <X className="size-3.5" />
-                    </Button>
-                  </div>
-                ) : null}
-                {reply ? (
-                  <div className="border-border bg-muted/60 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs">
-                    <span className="truncate">
-                      Balas <strong>{reply.authorLabel}</strong>: {reply.snippet}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => setReply(null)}
-                      aria-label="Batal balas"
-                    >
-                      <X className="size-3.5" />
-                    </Button>
-                  </div>
-                ) : null}
-                {pendingGifUrl ? (
-                  <div className="border-border bg-muted/60 flex items-center justify-between gap-2 rounded-xl border px-3 py-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={pendingGifUrl}
-                        alt=""
-                        className="border-border size-12 shrink-0 rounded-lg border object-cover"
-                      />
-                      <p className="text-muted-foreground truncate text-xs">
-                        GIF akan dikirim bersama teks.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Hapus GIF"
-                      onClick={() => setPendingGifUrl(null)}
-                    >
-                      <X className="size-3.5" />
-                    </Button>
-                  </div>
-                ) : null}
-                {pendingFiles.length > 0 ? (
-                  <ul className="border-border bg-muted/40 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-xl border p-2 text-xs">
-                    {pendingFiles.map((f, idx) => (
-                      <li
-                        key={`${f.name}-${idx}`}
-                        className="bg-background/80 flex max-w-full items-center justify-between gap-2 rounded-full border px-2 py-1"
-                      >
-                        <span className="max-w-[12rem] truncate">{f.name}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={`Hapus ${f.name}`}
-                          onClick={() =>
-                            setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
-                          }
-                        >
-                          <X className="size-3" />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="sr-only"
-                  accept={`image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv,${CREATIVE_ACCEPT_EXTENSIONS}`}
-                  disabled={pending || Boolean(editingMessage)}
-                  onChange={(e) => {
-                    const input = e.target;
-                    /** `FileList` hidup: reset `value` mengosongkan `files` — salin dulu. */
-                    const picked = input.files?.length ? Array.from(input.files) : [];
-                    input.value = "";
-                    onPickFiles(picked);
-                  }}
-                />
-                <div className="border-border bg-background focus-within:border-ring focus-within:ring-ring/50 overflow-hidden rounded-2xl border transition-[border-color,box-shadow] focus-within:ring-3">
-                  <Textarea
-                    ref={taRef}
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    onPaste={onComposerPaste}
-                    placeholder={editingMessage ? "Edit teks pesan…" : "Tulis pesan…"}
-                    rows={1}
-                    disabled={pending}
-                    className="max-h-40 min-h-12 resize-none rounded-none border-0 bg-transparent px-3 pt-3 pb-1 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape" && editingMessage) {
-                        e.preventDefault();
-                        cancelEdit();
-                        return;
-                      }
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        submitMessage();
-                      }
-                    }}
-                  />
-                  <div className="flex items-center justify-between gap-2 px-2 pb-2">
-                    {!editingMessage ? (
-                      <div className="flex items-center gap-0.5">
-                        <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-                          <PopoverTrigger
-                            className={cn(
-                              buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                              "text-muted-foreground hover:text-foreground",
-                              pending && "pointer-events-none opacity-50",
-                            )}
-                            disabled={pending}
-                            aria-label="Pilih emoji"
-                            title="Emoji"
-                          >
-                            <Smile className="size-4" />
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="border-border w-auto max-w-[calc(100vw-2rem)] overflow-hidden border p-0 shadow-lg"
-                            align="start"
-                            side="top"
-                            sideOffset={8}
-                          >
-                            <EmojiPicker
-                              theme={Theme.AUTO}
-                              onEmojiClick={(d: EmojiClickData) => {
-                                setBody((b) => b + d.emoji);
-                                setEmojiOpen(false);
-                                taRef.current?.focus();
-                              }}
-                              width={352}
-                              height={380}
-                              previewConfig={{ showPreview: false }}
-                              skinTonesDisabled
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <Popover open={gifOpen} onOpenChange={setGifOpen}>
-                          <PopoverTrigger
-                            className={cn(
-                              buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                              "text-muted-foreground hover:text-foreground",
-                              pending && "pointer-events-none opacity-50",
-                            )}
-                            disabled={pending}
-                            aria-label="Tambah GIF"
-                            title="GIF"
-                          >
-                            <Clapperboard className="size-4" />
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="border-border w-[min(100vw-2rem,380px)] p-3 shadow-lg"
-                            align="start"
-                            side="top"
-                            sideOffset={8}
-                          >
-                            <p className="text-muted-foreground mb-2 text-xs">
-                              Cari Giphy atau tempel URL GIF (HTTPS).
-                            </p>
-                            <Input
-                              value={gifQuery}
-                              onChange={(e) => setGifQuery(e.target.value)}
-                              placeholder="Cari GIF…"
-                              className="mb-2"
-                            />
-                            {giphyConfigured === false ? (
-                              <p className="text-muted-foreground mb-2 text-xs">
-                                API Giphy belum diatur — tempel URL di bawah.
-                              </p>
-                            ) : null}
-                            <div className="max-h-48 overflow-y-auto">
-                              {gifLoading ? (
-                                <p className="text-muted-foreground py-4 text-center text-sm">
-                                  Memuat…
-                                </p>
-                              ) : gifItems.length === 0 ? (
-                                <p className="text-muted-foreground py-3 text-center text-xs">
-                                  Tidak ada hasil.
-                                </p>
-                              ) : (
-                                <div className="grid grid-cols-3 gap-1.5">
-                                  {gifItems.map((g) => (
-                                    <button
-                                      key={g.url}
-                                      type="button"
-                                      className="border-border overflow-hidden rounded-md border"
-                                      onClick={() => {
-                                        setPendingGifUrl(g.url);
-                                        setGifOpen(false);
-                                      }}
-                                    >
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={g.preview}
-                                        alt=""
-                                        className="aspect-square w-full object-cover"
-                                        loading="lazy"
-                                      />
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <div className="border-border mt-2 space-y-1 border-t pt-2">
-                              <p className="text-muted-foreground text-[10px] font-medium">
-                                Tempel URL GIF
-                              </p>
-                              <div className="flex gap-1">
-                                <Input
-                                  value={pasteGif}
-                                  onChange={(e) => setPasteGif(e.target.value)}
-                                  placeholder="https://media.giphy.com/…"
-                                  className="text-xs"
-                                />
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={applyPastedGif}
-                                >
-                                  Pakai
-                                </Button>
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-muted-foreground hover:text-foreground"
-                          disabled={
-                            pending ||
-                            pendingFiles.length >= DIRECT_CHAT_MAX_FILES_PER_MESSAGE
-                          }
-                          onClick={() => fileInputRef.current?.click()}
-                          aria-label="Lampirkan file"
-                          title="Lampirkan file"
-                        >
-                          <Paperclip className="size-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground px-1 text-xs">
-                        Mode edit: hanya teks pesan.
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground hidden text-[10px] sm:inline">
-                        Enter kirim · Shift+Enter baris baru
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="shrink-0 gap-1.5 rounded-full px-3"
-                        disabled={pending || !canSend}
-                        onMouseDown={preventComposerBlur}
-                        onClick={submitMessage}
-                      >
-                        {!editingMessage ? <Send className="size-4" aria-hidden /> : null}
-                        {pending ? "…" : editingMessage ? "Simpan" : "Kirim"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <DirectChatComposer
+                pending={pending}
+                reply={reply}
+                editing={editingMessage}
+                onCancelReply={cancelReply}
+                onCancelEdit={cancelEdit}
+                onSubmit={handleComposerSubmit}
+              />
             </>
           ) : null}
         </section>
