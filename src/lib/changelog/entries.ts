@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-30-direct-chat-typing-lag",
+    date: "2026-07-30",
+    title: "Mengetik di chat pribadi tidak lagi delay",
+    category: "fixed",
+    description:
+      "Di percakapan dengan riwayat panjang, huruf yang diketik sempat muncul terlambat sementara chat yang riwayatnya sedikit terasa normal. Sekarang composer bekerja terpisah dari daftar pesan, dan hanya pesan terbaru yang ditampilkan lebih dulu — jadi ketikan langsung responsif berapa pun panjang riwayatnya.",
+    highlights: [
+      "Ketikan tetap responsif di percakapan yang sudah ratusan pesan",
+      "Pesan baru masuk tanpa membuat seluruh riwayat berkedip/tersendat",
+      "Riwayat lama dibuka lewat tombol \"Muat pesan lama\" di atas percakapan",
+    ],
+  },
+  {
     id: "2026-07-30-direct-chat-performance",
     date: "2026-07-30",
     title: "Chat pribadi terasa lebih ringan",

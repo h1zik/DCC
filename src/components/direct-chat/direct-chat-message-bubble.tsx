@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { memo } from "react";
 import {
   Check,
   CheckCheck,
@@ -56,7 +57,14 @@ const chatMeta = "text-[11px] leading-snug";
 const bubbleRound = "rounded-2xl";
 const bubbleInnerRound = "rounded-xl";
 
-export function DirectChatMessageBubble({
+/**
+ * `memo` di sini penting untuk performa: daftar pesan bisa berisi ratusan
+ * gelembung, dan setiap poll (2,5 detik) mengganti identitas array `messages`.
+ * Tanpa memo, satu pesan baru memaksa render ulang seluruh riwayat — termasuk
+ * puluhan `DropdownMenu` Radix — sehingga main thread tersendat dan ketikan
+ * di composer terasa delay.
+ */
+export const DirectChatMessageBubble = memo(function DirectChatMessageBubble({
   message: m,
   own,
   readReceipt,
@@ -69,9 +77,9 @@ export function DirectChatMessageBubble({
   message: DirectChatMessageView;
   own: boolean;
   readReceipt?: "read" | "unread" | null;
-  onReply: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  onReply: (message: DirectChatMessageView) => void;
+  onEdit: (message: DirectChatMessageView) => void;
+  onDelete: (messageId: string) => void;
   onScrollToReply?: (id: string) => void;
   compact?: boolean;
 }) {
@@ -287,7 +295,7 @@ export function DirectChatMessageBubble({
                 "text-muted-foreground h-6 gap-0.5 px-1.5 opacity-70 group-hover:opacity-100",
                 chatMeta,
               )}
-              onClick={onReply}
+              onClick={() => onReply(m)}
             >
               <Reply className="size-3" />
               Balas
@@ -302,12 +310,15 @@ export function DirectChatMessageBubble({
                 <MoreHorizontal className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align={own ? "start" : "end"}>
-                <DropdownMenuItem onClick={onEdit}>
+                <DropdownMenuItem onClick={() => onEdit(m)}>
                   <Pencil className="size-3.5" />
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => onDelete(m.id)}
+                >
                   <Trash2 className="size-3.5" />
                   Hapus
                 </DropdownMenuItem>
@@ -318,4 +329,4 @@ export function DirectChatMessageBubble({
       </div>
     </div>
   );
-}
+});
