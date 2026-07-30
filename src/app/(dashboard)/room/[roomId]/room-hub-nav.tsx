@@ -9,6 +9,7 @@ import { Hash, ImagePlus, Pencil, Settings2, Sparkles } from "lucide-react";
 import { roomWorkspaceSectionTitle } from "@/lib/room-workspace-section";
 import { RoomLogoEditor } from "./room-logo-editor";
 import { RoomEditorButton } from "./room-editor-button";
+import { RoomHeaderActionsSlot } from "@/components/room/room-header-actions";
 import {
   RoomMemberAvatarStack,
   type RoomMemberAvatarUser,
@@ -125,6 +126,8 @@ export function RoomHubNav({
           </Link>
         </div>
       </div>
+
+      <RoomHeaderActionsSlot />
 
       {showSettings ? (
         <>

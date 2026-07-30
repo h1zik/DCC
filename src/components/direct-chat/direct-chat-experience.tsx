@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -165,6 +166,101 @@ function syncLastActivityRef(
   if (maxMs > prevMs) ref.current = new Date(maxMs).toISOString();
 }
 
+type DirectChatMessageItem =
+  | {
+      type: "date";
+      id: string;
+      label: string;
+    }
+  | {
+      type: "message";
+      message: DirectChatMessageView;
+      compact: boolean;
+    };
+
+const DirectChatMessageList = memo(function DirectChatMessageList({
+  items,
+  currentUserId,
+  lastOwnMessageId,
+  peerLastReadAt,
+  messageRefs,
+  endRef,
+  onReply,
+  onEdit,
+  onDelete,
+  onScrollToReply,
+}: {
+  items: DirectChatMessageItem[];
+  currentUserId: string;
+  lastOwnMessageId: string | null;
+  peerLastReadAt: string | null;
+  messageRefs: { current: Map<string, HTMLDivElement> };
+  endRef: { current: HTMLDivElement | null };
+  onReply: (message: DirectChatMessageView) => void;
+  onEdit: (message: DirectChatMessageView) => void;
+  onDelete: (messageId: string) => void;
+  onScrollToReply: (messageId: string) => void;
+}) {
+  const readReceiptForMessage = (
+    message: DirectChatMessageView,
+  ): "read" | "unread" | null => {
+    if (
+      message.author.id !== currentUserId ||
+      message.deletedAt ||
+      message.id !== lastOwnMessageId
+    ) {
+      return null;
+    }
+    if (!peerLastReadAt) return "unread";
+    return new Date(message.createdAt).getTime() <=
+      new Date(peerLastReadAt).getTime()
+      ? "read"
+      : "unread";
+  };
+
+  return (
+    <div className="direct-chat-messages flex flex-col">
+      {items.map((item) => {
+        if (item.type === "date") {
+          return (
+            <div key={item.id} className="my-4 flex items-center gap-3">
+              <span className="bg-border h-px flex-1" />
+              <span className="border-border bg-background text-muted-foreground rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm">
+                {item.label}
+              </span>
+              <span className="bg-border h-px flex-1" />
+            </div>
+          );
+        }
+        const message = item.message;
+        return (
+          <div
+            key={message.id}
+            ref={(element) => {
+              if (element) messageRefs.current.set(message.id, element);
+              else messageRefs.current.delete(message.id);
+            }}
+            data-message-id={message.id}
+            className="[content-visibility:auto] [contain-intrinsic-size:auto_80px]"
+          >
+            <DirectChatMessageBubble
+              message={message}
+              own={message.author.id === currentUserId}
+              readReceipt={readReceiptForMessage(message)}
+              onReply={() => onReply(message)}
+              onEdit={() => onEdit(message)}
+              onDelete={() => onDelete(message.id)}
+              onScrollToReply={onScrollToReply}
+              compact={item.compact}
+            />
+          </div>
+        );
+      })}
+      <div ref={endRef} aria-hidden />
+    </div>
+  );
+});
+
 export function DirectChatExperience({
   className,
   currentUserId,
@@ -264,7 +360,7 @@ export function DirectChatExperience({
     return null;
   }, [messages, currentUserId]);
 
-  const messageItems = useMemo(
+  const messageItems = useMemo<DirectChatMessageItem[]>(
     () =>
       messages.flatMap((message, index) => {
         const createdAt = new Date(message.createdAt);
@@ -296,16 +392,6 @@ export function DirectChatExperience({
       }),
     [messages],
   );
-
-  function readReceiptForMessage(m: DirectChatMessageView): "read" | "unread" | null {
-    if (m.author.id !== currentUserId || m.deletedAt || m.id !== lastOwnMessageId) {
-      return null;
-    }
-    if (!peerLastReadAt) return "unread";
-    return new Date(m.createdAt).getTime() <= new Date(peerLastReadAt).getTime()
-      ? "read"
-      : "unread";
-  }
 
   const peerReadSubtitle = useMemo(() => {
     if (!lastOwnMessageId || !peerLastReadAt) return null;
@@ -428,16 +514,18 @@ export function DirectChatExperience({
 
   useEffect(() => {
     if (!activeId) {
-      setMessages([]);
-      setPeerLastReadAt(null);
       lastSyncedAtRef.current = "";
       return;
     }
-    setLoadingThread(true);
+    let cancelled = false;
     lastSyncedAtRef.current = "";
     nearBottomRef.current = true;
     void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setLoadingThread(true);
       await pollMessages();
+      if (cancelled) return;
       setLoadingThread(false);
       scrollToBottom("auto");
       void markDirectConversationRead(activeId).then(() => {
@@ -451,8 +539,11 @@ export function DirectChatExperience({
       window.dispatchEvent(new Event("direct-chat-inbox-changed"));
     })();
     const t = window.setInterval(pollMessages, 2500);
-    return () => window.clearInterval(t);
-  }, [activeId, pollMessages]);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [activeId, pollMessages, scrollToBottom]);
 
   function openConversation(conversationId: string) {
     router.replace(`/messages?c=${conversationId}`, { scroll: false });
@@ -498,35 +589,35 @@ export function DirectChatExperience({
     return () => window.clearTimeout(t);
   }, [gifQuery, gifOpen]);
 
-  function startReplyTo(m: DirectChatMessageView) {
-    if (m.deletedAt) return;
+  const startReplyTo = useCallback((message: DirectChatMessageView) => {
+    if (message.deletedAt) return;
     setEditingMessage(null);
     setReply({
-      id: m.id,
-      authorLabel: authorLabel(m.author.name, m.author.email),
+      id: message.id,
+      authorLabel: authorLabel(message.author.name, message.author.email),
       snippet: directChatReplySnippet({
-        body: m.body,
-        gifUrl: m.gifUrl,
-        attachmentCount: m.attachments.length,
+        body: message.body,
+        gifUrl: message.gifUrl,
+        attachmentCount: message.attachments.length,
       }),
     });
     taRef.current?.focus();
-  }
+  }, []);
 
-  function startEdit(m: DirectChatMessageView) {
-    if (m.deletedAt) return;
+  const startEdit = useCallback((message: DirectChatMessageView) => {
+    if (message.deletedAt) return;
     setReply(null);
     setPendingGifUrl(null);
     setPendingFiles([]);
-    setEditingMessage({ id: m.id, body: m.body });
-    setBody(m.body);
+    setEditingMessage({ id: message.id, body: message.body });
+    setBody(message.body);
     taRef.current?.focus();
-  }
+  }, []);
 
-  function cancelEdit() {
+  const cancelEdit = useCallback(() => {
     setEditingMessage(null);
     setBody("");
-  }
+  }, []);
 
   function onPickFiles(incoming: File[]) {
     if (incoming.length === 0) return;
@@ -553,12 +644,12 @@ export function DirectChatExperience({
     }
   }
 
-  function scrollToMessage(id: string) {
-    messageRefs.current.get(id)?.scrollIntoView({
+  const scrollToMessage = useCallback((messageId: string) => {
+    messageRefs.current.get(messageId)?.scrollIntoView({
       behavior: "smooth",
       block: "center",
     });
-  }
+  }, []);
 
   function submitMessage() {
     const text = body.trim();
@@ -626,7 +717,7 @@ export function DirectChatExperience({
     });
   }
 
-  function confirmDeleteMessage(messageId: string) {
+  const confirmDeleteMessage = useCallback((messageId: string) => {
     if (!window.confirm("Hapus pesan ini? Tindakan tidak dapat dibatalkan.")) return;
     startTransition(async () => {
       try {
@@ -652,7 +743,7 @@ export function DirectChatExperience({
         toast.error(actionErrorMessage(e, "Gagal menghapus pesan."));
       }
     });
-  }
+  }, [cancelEdit, editingMessage]);
 
   const canSend =
     Boolean(editingMessage ? body.trim() : body.trim() || pendingGifUrl || pendingFiles.length);
@@ -977,44 +1068,18 @@ export function DirectChatExperience({
                     </div>
                   </div>
                 ) : (
-                  <div className="direct-chat-messages flex flex-col">
-                    {messageItems.map((item) => {
-                      if (item.type === "date") {
-                        return (
-                          <div key={item.id} className="my-4 flex items-center gap-3">
-                            <span className="bg-border h-px flex-1" />
-                            <span className="border-border bg-background text-muted-foreground rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm">
-                              {item.label}
-                            </span>
-                            <span className="bg-border h-px flex-1" />
-                          </div>
-                        );
-                      }
-                      const m = item.message;
-                      return (
-                        <div
-                          key={m.id}
-                          ref={(el) => {
-                            if (el) messageRefs.current.set(m.id, el);
-                            else messageRefs.current.delete(m.id);
-                          }}
-                          data-message-id={m.id}
-                        >
-                          <DirectChatMessageBubble
-                            message={m}
-                            own={m.author.id === currentUserId}
-                            readReceipt={readReceiptForMessage(m)}
-                            onReply={() => startReplyTo(m)}
-                            onEdit={() => startEdit(m)}
-                            onDelete={() => confirmDeleteMessage(m.id)}
-                            onScrollToReply={scrollToMessage}
-                            compact={item.compact}
-                          />
-                        </div>
-                      );
-                    })}
-                    <div ref={endRef} aria-hidden />
-                  </div>
+                  <DirectChatMessageList
+                    items={messageItems}
+                    currentUserId={currentUserId}
+                    lastOwnMessageId={lastOwnMessageId}
+                    peerLastReadAt={peerLastReadAt}
+                    messageRefs={messageRefs}
+                    endRef={endRef}
+                    onReply={startReplyTo}
+                    onEdit={startEdit}
+                    onDelete={confirmDeleteMessage}
+                    onScrollToReply={scrollToMessage}
+                  />
                 )}
               </div>
 

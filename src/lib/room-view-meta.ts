@@ -59,11 +59,20 @@ export const ROOM_VIEW_TYPE_META: Record<RoomViewType, RoomViewTypeMeta> = {
     defaultTitle: "Glosarium",
     iconKey: "book-marked",
   },
+  [RoomViewType.WHITEBOARD]: {
+    type: RoomViewType.WHITEBOARD,
+    label: "Whiteboard",
+    description:
+      "Kanvas tak terbatas untuk brainstorming bareng — sticky note, diagram, coretan, dan gambar, tersinkron realtime. Satu view bisa menampung banyak papan.",
+    defaultTitle: "Whiteboard",
+    iconKey: "presentation",
+  },
 };
 
 export const ROOM_VIEW_TYPE_ORDER: RoomViewType[] = [
   RoomViewType.CALENDAR,
   RoomViewType.TIMELINE,
+  RoomViewType.WHITEBOARD,
   RoomViewType.WIKI,
   RoomViewType.LINKS,
   RoomViewType.LIST,
