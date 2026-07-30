@@ -240,6 +240,26 @@ enum RoomViewType {
   LINKS
   LIST
   GLOSSARY
+  WHITEBOARD
+}
+
+/**
+ * Jenis objek di kanvas whiteboard. Disimpan sebagai enum agar bisa
+ * difilter/di-index di DB; detail visual tiap tipe ada di `props` (JSON).
+ */
+enum RoomWhiteboardElementType {
+  STICKY
+  RECTANGLE
+  ELLIPSE
+  DIAMOND
+  TRIANGLE
+  LINE
+  ARROW
+  DRAW
+  TEXT
+  IMAGE
+  FRAME
+  CONNECTOR
 }
 
 enum RoomTimelineStatus {
@@ -629,6 +649,7 @@ model RoomView {
   listColumns        RoomListColumn[]
   listRows           RoomListRow[]
   glossaryEntries    RoomGlossaryEntry[]
+  whiteboards        RoomWhiteboard[]
 
   @@index([roomId, sortOrder])
 }
@@ -849,6 +870,90 @@ model RoomGlossaryEntry {
   updatedAt  DateTime @updatedAt
 
   @@index([viewId, term])
+}
+
+/**
+ * Papan whiteboard kolaboratif. Satu view WHITEBOARD bisa menampung banyak
+ * papan (mirip file di Figma) — anggota ruangan bisa membuat, menamai ulang,
+ * menduplikasi, dan menghapus papan.
+ *
+ * Sinkronisasi realtime memakai pola *revision counter*: setiap mutasi
+ * menaikkan `rev` papan, dan tiap elemen menyimpan `rev` terakhirnya. Klien
+ * cukup meminta `elements WHERE rev > since` untuk mendapatkan delta.
+ */
+model RoomWhiteboard {
+  id             String                  @id @default(cuid())
+  viewId         String
+  view           RoomView                @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title          String                  @db.VarChar(120)
+  /**
+   * Revisi papan — naik setiap kali ada mutasi elemen. Dasar sinkron delta.
+   */
+  rev            Int                     @default(0)
+  /**
+   * Preview papan (data URL PNG kecil) untuk kartu di daftar papan.
+   */
+  thumbnail      String?
+  /**
+   * Pola latar kanvas: `dots` | `grid` | `lines` | `plain`.
+   */
+  background     String                  @default("dots") @db.VarChar(16)
+  sortOrder      Int                     @default(0)
+  createdById    String?
+  lastEditedById String?
+  lastEditedAt   DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  elements       RoomWhiteboardElement[]
+
+  @@index([viewId, sortOrder])
+  @@index([viewId, updatedAt])
+}
+
+/**
+ * Satu objek di kanvas whiteboard (sticky, bentuk, coretan, teks, gambar,
+ * frame, konektor). `id` dibuat di klien supaya operasi optimistik tidak
+ * perlu menunggu balasan server.
+ *
+ * Penghapusan bersifat *soft* (`deletedAt`) supaya klien lain yang sedang
+ * offline tetap menerima informasi "elemen ini hilang" lewat delta sync.
+ */
+model RoomWhiteboardElement {
+  id          String                    @id
+  boardId     String
+  board       RoomWhiteboard            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  type        RoomWhiteboardElementType
+  /**
+   * Urutan tumpukan (z-order). Makin besar makin di depan.
+   */
+  zIndex      Int                       @default(0)
+  x           Float                     @default(0)
+  y           Float                     @default(0)
+  width       Float                     @default(0)
+  height      Float                     @default(0)
+  /** Rotasi dalam radian. */
+  rotation    Float                     @default(0)
+  /**
+   * Atribut visual & konten spesifik per tipe (warna, teks, titik coretan,
+   * ujung panah, dll). Divalidasi di aplikasi lewat zod.
+   */
+  props       Json
+  /** Elemen terkunci: tidak bisa dipilih atau diubah dari kanvas. */
+  locked      Boolean                   @default(false)
+  /** Frame induk, kalau elemen berada di dalam sebuah frame. */
+  frameId     String?
+  /** Revisi papan saat elemen ini terakhir berubah. */
+  rev         Int                       @default(0)
+  /** Tombstone — baris disimpan agar delta sync bisa mengabarkan penghapusan. */
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@index([boardId, rev])
+  @@index([boardId, deletedAt, zIndex])
 }
 
 /**

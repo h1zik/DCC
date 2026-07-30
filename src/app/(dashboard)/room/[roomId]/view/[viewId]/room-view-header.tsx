@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RoomHeaderActions } from "@/components/room/room-header-actions";
 type Props = {
   view: {
     id: string;
@@ -79,7 +80,7 @@ export function RoomViewHeader({ view, canManage }: Props) {
 
   return (
     <>
-      <div className="flex justify-end">
+      <RoomHeaderActions>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -89,9 +90,10 @@ export function RoomViewHeader({ view, canManage }: Props) {
                 size="sm"
                 className="gap-1.5"
                 aria-label="Pengaturan view"
+                title="Atur view"
               >
                 <MoreHorizontal className="size-3.5" aria-hidden />
-                Atur view
+                <span className="hidden sm:inline">Atur view</span>
               </Button>
             }
           />
@@ -110,7 +112,7 @@ export function RoomViewHeader({ view, canManage }: Props) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+      </RoomHeaderActions>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>

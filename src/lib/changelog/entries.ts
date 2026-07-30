@@ -37,6 +37,38 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-07-30-direct-chat-performance",
+    date: "2026-07-30",
+    title: "Chat pribadi terasa lebih ringan",
+    category: "improved",
+    description:
+      "Halaman Pesan sekarang lebih lancar saat percakapan sudah panjang. Menggulir riwayat dan mengetik tidak lagi tersendat, dan berpindah percakapan tidak membuat layar berkedip kosong sesaat.",
+    highlights: [
+      "Riwayat pesan yang panjang digulir lebih mulus",
+      "Berpindah antar percakapan tidak lagi mengosongkan layar sebelum pesan baru muncul",
+    ],
+  },
+  {
+    id: "2026-07-30-room-whiteboard",
+    date: "2026-07-30",
+    title: "Whiteboard kolaboratif di ruangan",
+    category: "new",
+    description:
+      "Sekarang setiap ruangan bisa punya kanvas whiteboard tak terbatas untuk brainstorming bareng — sticky note, bentuk, panah, coretan tangan, teks, frame, dan gambar. Semua yang Anda lakukan langsung terlihat oleh rekan yang membuka papan yang sama, lengkap dengan kursor mereka. Satu view Whiteboard bisa menampung banyak papan, jadi tiap topik atau sesi bisa punya papannya sendiri.",
+    highlights: [
+      "Tambahkan lewat \"Tambah view\" di ruangan, lalu pilih jenis \"Whiteboard\"",
+      "Banyak papan per ruangan: buat papan baru, ubah nama, duplikat, atau hapus — lewat menu ⋯ di daftar papan sisi kiri maupun di header papan yang sedang dibuka, lengkap dengan pratinjau tiap papan",
+      "Kolaborasi realtime: kursor rekan, avatar siapa saja yang sedang membuka, dan objek yang bergerak terlihat langsung saat digeser",
+      "Alat lengkap: pilih, tangan, sticky note, teks, persegi, elips, diamond, segitiga, panah, garis, konektor yang menempel ke objek, pena, stabilo, penghapus, frame, gambar, dan laser pointer",
+      "Rapi otomatis: garis bantu perataan saat menggeser, tahan Shift untuk mengunci arah atau menjaga proporsi, dan menu perataan/sebar untuk banyak objek sekaligus",
+      "Panel gaya kontekstual: warna isi & garis, gaya isian, tebal/jenis garis, ujung panah, font, ukuran teks, transparansi, dan radius sudut",
+      "Pintasan ala Figma/Miro: V pilih, N sticky, T teks, R persegi, O elips, P pena, H tangan, Ctrl+Z urungkan, Ctrl+D duplikat, Del hapus, 1 muat seluruh papan",
+      "Tempel gambar langsung dari clipboard atau seret file ke kanvas; klik ganda di area kosong langsung membuat sticky note",
+      "Peta mini untuk melompat cepat di papan yang luas, plus ekspor papan (atau hanya objek terpilih) ke PNG, SVG, atau JSON",
+      "Latar kanvas bisa diganti: titik, kotak, garis, atau polos — dan seluruh papan mengikuti tema terang/gelap aplikasi",
+    ],
+  },
+  {
     id: "2026-07-28-gantt-inline-create",
     date: "2026-07-28",
     title: "Buat tugas langsung di kanvas Gantt",

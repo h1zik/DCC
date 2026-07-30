@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Link as LinkIcon,
   Milestone,
+  Presentation,
   Table,
   type LucideIcon,
 } from "lucide-react";
@@ -23,6 +24,8 @@ export function roomViewTypeIcon(type: RoomViewType): LucideIcon {
       return Table;
     case RoomViewType.GLOSSARY:
       return BookMarked;
+    case RoomViewType.WHITEBOARD:
+      return Presentation;
     default:
       return Table;
   }

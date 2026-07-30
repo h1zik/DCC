@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
 import { RoomViewType } from "@prisma/client";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   getRoomHubMemberUsers,
   getRoomMemberContextOrThrow,
 } from "@/lib/ensure-room-studio";
 import { isRoomHubManagerRole } from "@/lib/room-access";
+import { rowToElement } from "@/lib/whiteboard/serialize";
 import { RoomViewHeader } from "./room-view-header";
 import { CalendarViewClient } from "./calendar-view-client";
 import { TimelineViewClient } from "./timeline-view-client";
@@ -13,6 +15,7 @@ import { WikiViewClient } from "./wiki-view-client";
 import { LinksViewClient } from "./links-view-client";
 import { ListViewClient } from "./list-view-client";
 import { GlossaryViewClient } from "./glossary-view-client";
+import { WhiteboardViewClient } from "@/components/whiteboard/whiteboard-view-client";
 
 type PageProps = {
   params: Promise<{ roomId: string; viewId: string }>;
@@ -38,11 +41,106 @@ export default async function RoomCustomViewPage({ params }: PageProps) {
 
   const canManage = isRoomHubManagerRole(role);
 
+  // Whiteboard mengambil tinggi penuh: kanvasnya perlu ruang sebanyak mungkin,
+  // jadi header dibuat ringkas dan body-nya yang meregang.
+  if (view.type === RoomViewType.WHITEBOARD) {
+    return (
+      <div
+        data-whiteboard-view
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden"
+      >
+        <RoomViewHeader view={view} canManage={canManage} />
+        {await renderWhiteboardBody(roomId, view.id, viewerUserId)}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <RoomViewHeader view={view} canManage={canManage} />
       {await renderViewBody(roomId, view, canManage, viewerUserId)}
     </div>
+  );
+}
+
+const MAX_INITIAL_ELEMENTS = 10_000;
+
+async function renderWhiteboardBody(
+  roomId: string,
+  viewId: string,
+  viewerUserId: string,
+) {
+  const [boards, session] = await Promise.all([
+    prisma.roomWhiteboard.findMany({
+      where: { viewId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        title: true,
+        rev: true,
+        background: true,
+        thumbnail: true,
+        updatedAt: true,
+        lastEditedById: true,
+      },
+    }),
+    auth(),
+  ]);
+
+  const editorIds = [
+    ...new Set(boards.map((b) => b.lastEditedById).filter((id): id is string => Boolean(id))),
+  ];
+  const editors = editorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: editorIds } },
+        select: { id: true, name: true, email: true },
+      })
+    : [];
+  const editorName = new Map(
+    editors.map((u) => [u.id, u.name?.trim() || u.email] as const),
+  );
+
+  const activeBoard = boards[0] ?? null;
+  const elements = activeBoard
+    ? await prisma.roomWhiteboardElement.findMany({
+        where: { boardId: activeBoard.id, deletedAt: null },
+        orderBy: { zIndex: "asc" },
+        take: MAX_INITIAL_ELEMENTS,
+      })
+    : [];
+
+  return (
+    <WhiteboardViewClient
+      roomId={roomId}
+      viewId={viewId}
+      boards={boards.map((b) => ({
+        id: b.id,
+        title: b.title,
+        rev: b.rev,
+        background: b.background,
+        thumbnail: b.thumbnail,
+        updatedAt: b.updatedAt.toISOString(),
+        lastEditedByName: b.lastEditedById
+          ? (editorName.get(b.lastEditedById) ?? null)
+          : null,
+      }))}
+      activeBoard={
+        activeBoard
+          ? {
+              id: activeBoard.id,
+              title: activeBoard.title,
+              rev: activeBoard.rev,
+              background: activeBoard.background,
+            }
+          : null
+      }
+      activeElements={elements.map(rowToElement)}
+      currentUser={{
+        id: viewerUserId,
+        name: session?.user?.name?.trim() || session?.user?.email || "Anggota",
+        image: session?.user?.image ?? null,
+      }}
+    />
   );
 }
 
