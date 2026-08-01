@@ -505,15 +505,19 @@ export function RoomChatExperience({
     };
   }, [roomId, messages.length, scrollToBottom]);
 
-  /** GIF/gambar yang muat belakangan menambah tinggi — tetap di bawah jika user di pesan terbaru. */
+  /**
+   * Tetap di bawah saat tinggi berubah: GIF/gambar yang muat belakangan
+   * menambah tinggi isi, dan keyboard HP menyusutkan area baca.
+   */
   useEffect(() => {
     const container = scrollRef.current;
-    const inner = container?.firstElementChild;
-    if (!container || !inner) return;
+    if (!container) return;
     const ro = new ResizeObserver(() => {
       if (nearBottomRef.current) scrollToBottom("auto");
     });
-    ro.observe(inner);
+    ro.observe(container);
+    const inner = container.firstElementChild;
+    if (inner) ro.observe(inner);
     return () => ro.disconnect();
   }, [roomId, scrollToBottom]);
 

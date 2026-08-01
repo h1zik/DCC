@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-01-chat-scroll-keyboard",
+    date: "2026-08-01",
+    title: "Chat langsung turun ke pesan terbaru, composer tidak lagi tertutup keyboard",
+    category: "fixed",
+    description:
+      "Dua gangguan di Chat Pribadi diperbaiki. Di komputer, mengirim pesan kadang tidak menggeser tampilan ke bawah sehingga pesan yang baru saja dikirim tidak terlihat. Di ponsel, kolom tulis pesan tertutup keyboard begitu Anda hendak mengetik lagi. Sekarang tampilan selalu mengikuti pesan terbaru, dan kolom tulis berhenti tepat di atas keyboard.",
+    highlights: [
+      "Pesan yang baru dikirim langsung terlihat tanpa perlu menggulir manual",
+      "Kolom tulis pesan tetap di atas keyboard ponsel selama percakapan",
+      "Tampilan tetap menempel di pesan terbaru saat gambar/GIF selesai dimuat",
+      "Berlaku untuk Chat Pribadi maupun chat di ruangan",
+    ],
+  },
+  {
     id: "2026-08-01-chat-full-history",
     date: "2026-08-01",
     title: "Riwayat chat bisa dibuka sampai pesan pertama",

@@ -1,3 +1,5 @@
+import { ChatKeyboardInset } from "@/components/chat-keyboard-inset";
+
 type ChatLayoutProps = {
   children: React.ReactNode;
 };
@@ -9,6 +11,7 @@ export default function RoomChatLayout({ children }: ChatLayoutProps) {
       data-chat-shell
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
+      <ChatKeyboardInset />
       {children}
     </div>
   );
