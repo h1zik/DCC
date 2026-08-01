@@ -127,6 +127,27 @@ export const ROOM_CHAT_INITIAL_MESSAGE_LIMIT = 200;
  */
 export const ROOM_CHAT_DELTA_MESSAGE_LIMIT = 500;
 
+/**
+ * Ukuran satu halaman riwayat lama (mode `?before=`). Riwayat penuh channel
+ * tetap bisa dijangkau — klien memanggil berulang selama `hasMore` true.
+ */
+export const ROOM_CHAT_OLDER_PAGE_SIZE = 100;
+
+/**
+ * Urutan kanonik channel. `id` dipakai sebagai pemecah seri agar cursor
+ * `?before=` tidak melewati pesan yang punya `createdAt` identik.
+ */
+const ROOM_CHAT_DESC_ORDER = [
+  { createdAt: "desc" as const },
+  { id: "desc" as const },
+];
+
+export type RoomChatMessagePage = {
+  messages: RoomChatMessageView[];
+  /** Masih ada pesan yang lebih lama dari halaman ini. */
+  hasMore: boolean;
+};
+
 function channelMessageActivityWhere(channelId: string, since: Date) {
   return {
     channelId,
@@ -141,15 +162,51 @@ function channelMessageActivityWhere(channelId: string, since: Date) {
 export async function loadRoomChatMessagesForChannel(
   channelId: string,
   limit: number = ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
-): Promise<RoomChatMessageView[]> {
+): Promise<RoomChatMessagePage> {
   const take = Math.max(1, Math.min(limit, ROOM_CHAT_INITIAL_MESSAGE_LIMIT));
   const rows = await prisma.roomMessage.findMany({
     where: { channelId },
-    orderBy: { createdAt: "desc" },
-    take,
+    orderBy: ROOM_CHAT_DESC_ORDER,
+    // Satu baris ekstra hanya untuk mendeteksi adanya riwayat lebih lama.
+    take: take + 1,
     include: roomChatMessageInclude,
   });
-  return rows.map(mapRoomMessageToView).reverse();
+  const hasMore = rows.length > take;
+  const page = hasMore ? rows.slice(0, take) : rows;
+  return { messages: page.map(mapRoomMessageToView).reverse(), hasMore };
+}
+
+/**
+ * Halaman riwayat sebelum `beforeMessageId` (eksklusif), ascending.
+ * Dipakai tombol "Muat pesan lama" agar channel bisa ditelusuri sampai pesan
+ * pertama tanpa membebani pemuatan awal.
+ */
+export async function loadRoomChatMessagesOlderForChannel(
+  channelId: string,
+  beforeMessageId: string,
+  limit: number = ROOM_CHAT_OLDER_PAGE_SIZE,
+): Promise<RoomChatMessagePage> {
+  const take = Math.max(1, Math.min(limit, ROOM_CHAT_OLDER_PAGE_SIZE));
+
+  // Cursor wajib milik channel ini — jangan sampai id dari channel lain
+  // menggeser jendela paginasi.
+  const anchor = await prisma.roomMessage.findFirst({
+    where: { id: beforeMessageId, channelId },
+    select: { id: true },
+  });
+  if (!anchor) return { messages: [], hasMore: false };
+
+  const rows = await prisma.roomMessage.findMany({
+    where: { channelId },
+    orderBy: ROOM_CHAT_DESC_ORDER,
+    cursor: { id: beforeMessageId },
+    skip: 1,
+    take: take + 1,
+    include: roomChatMessageInclude,
+  });
+  const hasMore = rows.length > take;
+  const page = hasMore ? rows.slice(0, take) : rows;
+  return { messages: page.map(mapRoomMessageToView).reverse(), hasMore };
 }
 
 /**

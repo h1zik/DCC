@@ -156,6 +156,9 @@ export function DirectChatExperience({
   const [inbox, setInbox] = useState(initialInbox);
   const [messages, setMessages] = useState<DirectChatMessageView[]>([]);
   const [windowSize, setWindowSize] = useState(DIRECT_CHAT_WINDOW_SIZE);
+  /** Server masih menyimpan riwayat lebih lama dari yang sudah diambil. */
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [reply, setReply] = useState<{
     id: string;
     authorLabel: string;
@@ -180,18 +183,23 @@ export function DirectChatExperience({
   const suppressNearBottomCheckRef = useRef(true);
   const shouldScrollToEndRef = useRef(true);
   const messagesRef = useRef<DirectChatMessageView[]>(messages);
+  const windowSizeRef = useRef(windowSize);
   const inboxSignatureRef = useRef(inboxSignature(initialInbox));
   const olderAnchorRef = useRef<{ height: number; top: number } | null>(null);
 
+  /** Cermin state untuk dibaca handler tanpa membuat ulang callback tiap poll. */
   useEffect(() => {
     messagesRef.current = messages;
-  }, [messages]);
+    windowSizeRef.current = windowSize;
+  }, [messages, windowSize]);
 
   /** Reset jendela render tiap ganti percakapan — disesuaikan saat render agar tidak berantai. */
   const [windowedConversationId, setWindowedConversationId] = useState(activeId);
   if (windowedConversationId !== activeId) {
     setWindowedConversationId(activeId);
     setWindowSize(DIRECT_CHAT_WINDOW_SIZE);
+    setHasMoreOlder(false);
+    setLoadingOlder(false);
   }
 
   const activeItem = useMemo(
@@ -311,6 +319,7 @@ export function DirectChatExperience({
       if (!res.ok) return;
       const data = (await res.json()) as {
         messages: DirectChatMessageView[];
+        hasMore?: boolean;
         peerLastReadAt?: string | null;
         mode: "delta" | "initial";
       };
@@ -318,6 +327,7 @@ export function DirectChatExperience({
         setPeerLastReadAt(data.peerLastReadAt);
       }
       if (data.mode === "initial") {
+        setHasMoreOlder(Boolean(data.hasMore));
         setMessages(data.messages);
         syncLastActivityRef(lastSyncedAtRef, data.messages);
         nearBottomRef.current = true;
@@ -384,7 +394,7 @@ export function DirectChatExperience({
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
-  }, [windowSize]);
+  }, [windowSize, messages]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -475,13 +485,72 @@ export function DirectChatExperience({
   const cancelEdit = useCallback(() => setEditingMessage(null), []);
   const cancelReply = useCallback(() => setReply(null), []);
 
-  const loadOlderMessages = useCallback(() => {
+  /**
+   * Kunci posisi baca. Dipanggil tepat sebelum state yang menyisipkan riwayat
+   * lama di-set — bukan sebelum fetch — supaya poll pesan baru yang kebetulan
+   * mendarat di tengah fetch tidak memakai anchor ini duluan.
+   */
+  const captureScrollAnchor = useCallback(() => {
     const el = scrollRef.current;
     if (el) {
       olderAnchorRef.current = { height: el.scrollHeight, top: el.scrollTop };
     }
-    setWindowSize((n) => n + DIRECT_CHAT_WINDOW_STEP);
   }, []);
+
+  /** Cegah observer/efek menarik tampilan balik ke pesan terbaru. */
+  const suppressAutoScrollToEnd = useCallback(() => {
+    nearBottomRef.current = false;
+    shouldScrollToEndRef.current = false;
+  }, []);
+
+  /**
+   * Dua tahap: buka dulu pesan yang sudah diambil tapi belum dirender, baru
+   * ambil halaman berikutnya dari server. Dengan begitu riwayat bisa
+   * ditelusuri sampai pesan pertama tanpa memuat semuanya sekaligus.
+   */
+  const loadOlderMessages = useCallback(() => {
+    const all = messagesRef.current;
+    suppressAutoScrollToEnd();
+
+    if (all.length > windowSizeRef.current) {
+      captureScrollAnchor();
+      setWindowSize((n) => n + DIRECT_CHAT_WINDOW_STEP);
+      return;
+    }
+    const oldest = all[0];
+    if (!activeId || !oldest || !hasMoreOlder || loadingOlder) return;
+
+    setLoadingOlder(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/direct-chat/${activeId}/messages?before=${encodeURIComponent(oldest.id)}`,
+          { credentials: "include" },
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          messages: DirectChatMessageView[];
+          hasMore?: boolean;
+        };
+        setHasMoreOlder(Boolean(data.hasMore));
+        if (data.messages.length > 0) {
+          captureScrollAnchor();
+          setMessages((prev) => mergeMessageLists(prev, data.messages));
+          setWindowSize((n) => n + DIRECT_CHAT_WINDOW_STEP);
+        }
+      } catch {
+        /* abaikan — tombol tetap tersedia untuk dicoba lagi */
+      } finally {
+        setLoadingOlder(false);
+      }
+    })();
+  }, [
+    activeId,
+    captureScrollAnchor,
+    suppressAutoScrollToEnd,
+    hasMoreOlder,
+    loadingOlder,
+  ]);
 
   const scrollToMessage = useCallback((messageId: string) => {
     const container = scrollRef.current;
@@ -926,6 +995,8 @@ export function DirectChatExperience({
                     readReceiptMessageId={lastOwnMessage?.id ?? null}
                     readReceiptState={readReceiptState}
                     hiddenCount={hiddenCount}
+                    hasMoreOlder={hasMoreOlder}
+                    loadingOlder={loadingOlder}
                     onLoadOlder={loadOlderMessages}
                     onReply={startReplyTo}
                     onEdit={startEdit}

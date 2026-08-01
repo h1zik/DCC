@@ -25,7 +25,7 @@ export default async function RoomChatPage({ params, searchParams }: PageProps) 
 
   const activeChannelId = await resolveRoomChannelId(roomId, channelParam);
 
-  const [channels, messages, totalMessages, mentionableUsers] = await Promise.all([
+  const [channels, initialPage, totalMessages, mentionableUsers] = await Promise.all([
     listRoomChannelsForUser(roomId, viewerUserId),
     loadRoomChatMessagesForChannel(activeChannelId),
     countRoomChatChannelMessages(activeChannelId),
@@ -42,7 +42,8 @@ export default async function RoomChatPage({ params, searchParams }: PageProps) 
 
   await markRoomChannelRead(activeChannelId, viewerUserId);
 
-  const hasMoreHistory = totalMessages > messages.length;
+  const messages = initialPage.messages;
+  const hasMoreHistory = initialPage.hasMore;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

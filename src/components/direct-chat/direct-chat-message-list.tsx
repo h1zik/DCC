@@ -84,6 +84,8 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
   readReceiptMessageId,
   readReceiptState,
   hiddenCount,
+  hasMoreOlder,
+  loadingOlder,
   onLoadOlder,
   onReply,
   onEdit,
@@ -97,6 +99,9 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
   readReceiptState: "read" | "unread" | null;
   /** Jumlah pesan lama yang belum dirender (di luar jendela). */
   hiddenCount: number;
+  /** Masih ada riwayat lebih lama di server yang belum diambil. */
+  hasMoreOlder: boolean;
+  loadingOlder: boolean;
   onLoadOlder: () => void;
   onReply: (message: DirectChatMessageView) => void;
   onEdit: (message: DirectChatMessageView) => void;
@@ -107,19 +112,28 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
 
   return (
     <div className="direct-chat-messages flex flex-col">
-      {hiddenCount > 0 ? (
+      {hiddenCount > 0 || hasMoreOlder ? (
         <div className="mb-2 flex justify-center">
           <Button
             type="button"
             variant="secondary"
             size="sm"
             className="h-8 gap-1.5 rounded-full px-3 text-xs"
+            disabled={loadingOlder}
             onClick={onLoadOlder}
           >
             <ChevronUp className="size-3.5" aria-hidden />
-            Muat pesan lama ({hiddenCount})
+            {loadingOlder
+              ? "Memuat pesan lama…"
+              : hiddenCount > 0
+                ? `Muat pesan lama (${hiddenCount})`
+                : "Muat pesan lama"}
           </Button>
         </div>
+      ) : messages.length > 0 ? (
+        <p className="text-muted-foreground mb-2 text-center text-[11px]">
+          Awal percakapan
+        </p>
       ) : null}
       {items.map((item) => {
         if (item.type === "date") {

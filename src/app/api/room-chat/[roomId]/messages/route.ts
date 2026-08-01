@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import {
   loadRoomChatMessagesForChannel,
+  loadRoomChatMessagesOlderForChannel,
   loadRoomChatMessagesSinceForChannel,
   ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
 } from "@/lib/room-chat-message-view";
@@ -54,13 +55,35 @@ export async function GET(
     return NextResponse.json({ error: "Channel not found" }, { status: 404 });
   }
 
+  // Mode "older": paginasi riwayat ke belakang. Bukan polling, jadi status
+  // "sedang mengetik" sengaja tidak ikut dikirim agar tidak menimpa state klien.
+  const beforeParam = url.searchParams.get("before");
+  if (beforeParam) {
+    const page = await loadRoomChatMessagesOlderForChannel(
+      channelId,
+      beforeParam,
+    );
+    return NextResponse.json(
+      {
+        messages: page.messages,
+        hasMore: page.hasMore,
+        mode: "older",
+        serverTime: new Date().toISOString(),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   let messages;
+  let hasMore = false;
   let mode: "delta" | "initial";
   if (since && Number.isFinite(since.getTime())) {
     messages = await loadRoomChatMessagesSinceForChannel(channelId, since);
     mode = "delta";
   } else {
-    messages = await loadRoomChatMessagesForChannel(channelId);
+    const page = await loadRoomChatMessagesForChannel(channelId);
+    messages = page.messages;
+    hasMore = page.hasMore;
     mode = "initial";
   }
 
@@ -68,6 +91,7 @@ export async function GET(
   return NextResponse.json(
     {
       messages,
+      hasMore,
       typingUsers,
       mode,
       initialLimit: ROOM_CHAT_INITIAL_MESSAGE_LIMIT,
