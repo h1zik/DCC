@@ -47,6 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   ChevronDown,
+  ChevronUp,
   Clapperboard,
   Download,
   FileText,
@@ -216,16 +217,21 @@ export function RoomChatExperience({
   channelId,
   currentUserId,
   messages: initialMessages,
+  hasMoreHistory: initialHasMore = false,
   mentionableUsers,
 }: {
   roomId: string;
   channelId: string;
   currentUserId: string;
   messages: RoomChatMessageView[];
+  /** Masih ada riwayat lebih lama dari pesan yang dipra-muat server. */
+  hasMoreHistory?: boolean;
   mentionableUsers: MentionableUser[];
 }) {
   const [messages, setMessages] =
     useState<RoomChatMessageView[]>(initialMessages);
+  const [hasMoreOlder, setHasMoreOlder] = useState(initialHasMore);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [body, setBody] = useState("");
   const [reply, setReply] = useState<ReplyTarget | null>(null);
   const [pendingGifUrl, setPendingGifUrl] = useState<string | null>(null);
@@ -262,6 +268,7 @@ export function RoomChatExperience({
   const suppressNearBottomCheckRef = useRef(true);
   const shouldScrollToEndRef = useRef(true);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const olderAnchorRef = useRef<{ height: number; top: number } | null>(null);
   const bodyRef = useRef(body);
   const lastTypingPingRef = useRef(0);
   bodyRef.current = body;
@@ -410,6 +417,67 @@ export function RoomChatExperience({
     if (gap < 120) setUnseenCount(0);
   }, []);
 
+  /**
+   * Ambil satu halaman riwayat lama dan sisipkan di atas. Posisi baca dikunci
+   * (tinggi + scrollTop) tepat sebelum penyisipan supaya tampilan tidak
+   * melompat setelah render.
+   */
+  const loadOlderMessages = useCallback(() => {
+    const oldest = messages[0];
+    if (!oldest || !hasMoreOlder || loadingOlder) return;
+
+    // Matikan auto-scroll ke bawah selama penyisipan berlangsung.
+    nearBottomRef.current = false;
+    shouldScrollToEndRef.current = false;
+    setLoadingOlder(true);
+
+    void (async () => {
+      try {
+        const url = new URL(
+          `/api/room-chat/${roomId}/messages`,
+          window.location.origin,
+        );
+        url.searchParams.set("channelId", channelId);
+        url.searchParams.set("before", oldest.id);
+        const r = await fetch(url.toString(), { credentials: "include" });
+        if (!r.ok) return;
+        const j = (await r.json()) as {
+          messages?: RoomChatMessageView[];
+          hasMore?: boolean;
+        };
+        setHasMoreOlder(Boolean(j.hasMore));
+        if (Array.isArray(j.messages) && j.messages.length > 0) {
+          const incoming = j.messages;
+          // Kunci posisi baca tepat sebelum penyisipan, bukan sebelum fetch —
+          // supaya pesan baru yang mendarat di tengah fetch tidak memakai
+          // anchor ini duluan.
+          const el = scrollRef.current;
+          if (el) {
+            olderAnchorRef.current = {
+              height: el.scrollHeight,
+              top: el.scrollTop,
+            };
+          }
+          setMessages((prev) => mergeRoomMessageLists(prev, incoming));
+        }
+      } catch {
+        /* offline / transient — tombol tetap bisa dicoba lagi */
+      } finally {
+        setLoadingOlder(false);
+      }
+    })();
+  }, [roomId, channelId, messages, hasMoreOlder, loadingOlder]);
+
+  /** Pertahankan posisi baca setelah pesan lama disisipkan di atas. */
+  useLayoutEffect(() => {
+    const anchor = olderAnchorRef.current;
+    if (!anchor) return;
+    olderAnchorRef.current = null;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
+  }, [messages]);
+
   useLayoutEffect(() => {
     shouldScrollToEndRef.current = true;
     nearBottomRef.current = true;
@@ -485,10 +553,12 @@ export function RoomChatExperience({
         if (!r.ok || cancelled) return;
         const j = (await r.json()) as {
           messages?: RoomChatMessageView[];
+          hasMore?: boolean;
           typingUsers?: string[];
           mode?: "initial" | "delta";
         };
         if (!Array.isArray(j.messages) || cancelled) return;
+        if (j.mode === "initial") setHasMoreOlder(Boolean(j.hasMore));
         hasBaselineRef.current = true;
         setTypingUsers(
           Array.isArray(j.typingUsers)
@@ -535,10 +605,21 @@ export function RoomChatExperience({
   }, [body, roomId]);
 
   const prevMessageCountRef = useRef(messages.length);
+  const prevLastIdRef = useRef<string | null>(
+    messages[messages.length - 1]?.id ?? null,
+  );
   useEffect(() => {
     const added = messages.length - prevMessageCountRef.current;
-    prevMessageCountRef.current = messages.length;
     const last = messages[messages.length - 1];
+    const lastId = last?.id ?? null;
+    const tailChanged = lastId !== prevLastIdRef.current;
+    prevMessageCountRef.current = messages.length;
+    prevLastIdRef.current = lastId;
+    /**
+     * Riwayat lama yang disisipkan di atas bukan pesan baru — jangan geser
+     * posisi baca dan jangan dihitung sebagai pesan yang belum terlihat.
+     */
+    if (!tailChanged) return;
     const own = last?.author.id === currentUserId;
     if (own || nearBottomRef.current) {
       setUnseenCount(0);
@@ -776,6 +857,27 @@ export function RoomChatExperience({
         className="h-full overflow-y-auto overscroll-contain px-2 py-3 sm:px-3"
       >
         <div className="flex flex-col">
+          {messages.length > 0 ? (
+            hasMoreOlder ? (
+              <div className="mb-2 flex justify-center">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-full px-3 text-xs"
+                  disabled={loadingOlder}
+                  onClick={loadOlderMessages}
+                >
+                  <ChevronUp className="size-3.5" aria-hidden />
+                  {loadingOlder ? "Memuat pesan lama…" : "Muat pesan lama"}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-muted-foreground mb-2 text-center text-[11px]">
+                Awal channel
+              </p>
+            )
+          ) : null}
           {messages.length === 0 ? (
             <div className="flex flex-col items-center gap-3 px-2 py-16 text-center">
               <span className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-2xl">

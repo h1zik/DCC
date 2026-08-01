@@ -101,6 +101,27 @@ export function mapDirectMessageToView(
 export const DIRECT_CHAT_INITIAL_MESSAGE_LIMIT = 200;
 export const DIRECT_CHAT_DELTA_MESSAGE_LIMIT = 500;
 
+/**
+ * Ukuran satu halaman riwayat lama (mode `?before=`). Riwayat penuh tetap bisa
+ * dijangkau — klien memanggil berulang selama `hasMore` masih true.
+ */
+export const DIRECT_CHAT_OLDER_PAGE_SIZE = 100;
+
+/**
+ * Urutan kanonik percakapan. `id` dipakai sebagai pemecah seri agar cursor
+ * `?before=` tidak melewati pesan yang punya `createdAt` identik.
+ */
+const DIRECT_CHAT_DESC_ORDER = [
+  { createdAt: "desc" as const },
+  { id: "desc" as const },
+];
+
+export type DirectChatMessagePage = {
+  messages: DirectChatMessageView[];
+  /** Masih ada pesan yang lebih lama dari halaman ini. */
+  hasMore: boolean;
+};
+
 function messageActivityWhere(conversationId: string, since: Date) {
   return {
     conversationId,
@@ -111,15 +132,51 @@ function messageActivityWhere(conversationId: string, since: Date) {
 export async function loadDirectChatMessages(
   conversationId: string,
   limit: number = DIRECT_CHAT_INITIAL_MESSAGE_LIMIT,
-): Promise<DirectChatMessageView[]> {
+): Promise<DirectChatMessagePage> {
   const take = Math.max(1, Math.min(limit, DIRECT_CHAT_INITIAL_MESSAGE_LIMIT));
   const rows = await prisma.directMessage.findMany({
     where: { conversationId },
-    orderBy: { createdAt: "desc" },
-    take,
+    orderBy: DIRECT_CHAT_DESC_ORDER,
+    // Satu baris ekstra hanya untuk mendeteksi adanya riwayat lebih lama.
+    take: take + 1,
     include: directChatMessageInclude,
   });
-  return rows.map(mapDirectMessageToView).reverse();
+  const hasMore = rows.length > take;
+  const page = hasMore ? rows.slice(0, take) : rows;
+  return { messages: page.map(mapDirectMessageToView).reverse(), hasMore };
+}
+
+/**
+ * Halaman riwayat sebelum `beforeMessageId` (eksklusif), ascending.
+ * Dipakai tombol "Muat pesan lama" agar percakapan bisa ditelusuri sampai
+ * pesan pertama tanpa membebani pemuatan awal.
+ */
+export async function loadDirectChatMessagesOlder(
+  conversationId: string,
+  beforeMessageId: string,
+  limit: number = DIRECT_CHAT_OLDER_PAGE_SIZE,
+): Promise<DirectChatMessagePage> {
+  const take = Math.max(1, Math.min(limit, DIRECT_CHAT_OLDER_PAGE_SIZE));
+
+  // Cursor wajib milik percakapan ini — jangan sampai id dari percakapan lain
+  // menggeser jendela paginasi.
+  const anchor = await prisma.directMessage.findFirst({
+    where: { id: beforeMessageId, conversationId },
+    select: { id: true },
+  });
+  if (!anchor) return { messages: [], hasMore: false };
+
+  const rows = await prisma.directMessage.findMany({
+    where: { conversationId },
+    orderBy: DIRECT_CHAT_DESC_ORDER,
+    cursor: { id: beforeMessageId },
+    skip: 1,
+    take: take + 1,
+    include: directChatMessageInclude,
+  });
+  const hasMore = rows.length > take;
+  const page = hasMore ? rows.slice(0, take) : rows;
+  return { messages: page.map(mapDirectMessageToView).reverse(), hasMore };
 }
 
 export async function loadDirectChatMessagesSince(

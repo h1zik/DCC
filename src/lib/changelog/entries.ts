@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-01-chat-full-history",
+    date: "2026-08-01",
+    title: "Riwayat chat bisa dibuka sampai pesan pertama",
+    category: "improved",
+    description:
+      "Sebelumnya tombol \"Muat pesan lama\" berhenti setelah beberapa ratus pesan terakhir, sehingga percakapan yang ramai terasa seperti hanya menyimpan riwayat sekitar seminggu. Sekarang tombol itu terus mengambil riwayat berikutnya dari server sampai benar-benar habis — dan Anda akan melihat tanda \"Awal percakapan\" begitu sampai di pesan pertama. Tidak ada pesan lama yang pernah terhapus; selama ini hanya tidak ikut ditampilkan.",
+    highlights: [
+      "Berlaku untuk Chat Pribadi maupun chat di ruangan (per channel)",
+      "Posisi baca tetap di tempat saat pesan lama disisipkan — tampilan tidak melompat",
+      "Riwayat diambil bertahap, jadi membuka percakapan tetap secepat sebelumnya",
+      "Penanda \"Awal percakapan\" / \"Awal channel\" muncul saat sudah sampai pesan pertama",
+    ],
+  },
+  {
     id: "2026-07-30-direct-chat-typing-lag",
     date: "2026-07-30",
     title: "Mengetik di chat pribadi tidak lagi delay",

@@ -653,6 +653,9 @@ export function RoomChannelChat({
               messages={
                 activeChannel.id === initialChannelId ? initialMessages : []
               }
+              hasMoreHistory={
+                activeChannel.id === initialChannelId ? hasMoreHistory : false
+              }
               mentionableUsers={mentionableUsers}
             />
           </div>
