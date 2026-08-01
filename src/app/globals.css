@@ -184,6 +184,8 @@
 /* Login page — animasi ringan (respects reduced motion) */
 :root {
   --login-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Tinggi keyboard virtual; diisi `ChatKeyboardInset` saat halaman chat aktif. */
+  --chat-keyboard-inset: 0px;
 }
 
 @keyframes login-drift-a {

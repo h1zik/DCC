@@ -30,7 +30,10 @@ export function DashboardShell({
               className={cn(
                 PAGE_PADDING_CLASS,
                 "flex min-h-0 flex-1 flex-col",
-                "has-[_[data-chat-shell]]:h-[calc(100svh-3.5rem)] has-[_[data-chat-shell]]:max-h-[calc(100svh-3.5rem)] has-[_[data-chat-shell]]:overflow-hidden has-[_[data-chat-shell]]:p-0",
+                // Keyboard virtual HP tidak mengecilkan `100svh`, jadi tingginya
+                // dipangkas manual lewat `--chat-keyboard-inset` supaya composer
+                // tidak tertutup keyboard.
+                "has-[_[data-chat-shell]]:h-[calc(100svh_-_3.5rem_-_var(--chat-keyboard-inset))] has-[_[data-chat-shell]]:max-h-[calc(100svh_-_3.5rem_-_var(--chat-keyboard-inset))] has-[_[data-chat-shell]]:overflow-hidden has-[_[data-chat-shell]]:p-0",
                 "md:has-[_[data-content-plan-shell]]:h-[calc(100svh-3.5rem)] md:has-[_[data-content-plan-shell]]:max-h-[calc(100svh-3.5rem)] md:has-[_[data-content-plan-shell]]:overflow-hidden",
               )}
             >

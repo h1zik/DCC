@@ -340,7 +340,6 @@ export function DirectChatExperience({
         );
         setMessages((prev) => mergeMessageLists(prev, data.messages));
         syncLastActivityRef(lastSyncedAtRef, data.messages);
-        if (nearBottomRef.current) scrollToBottom();
         if (fromPeer && activeId) {
           void markDirectConversationRead(activeId).then(() => {
             window.dispatchEvent(new Event("direct-chat-inbox-changed"));
@@ -396,16 +395,44 @@ export function DirectChatExperience({
     el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
   }, [windowSize, messages]);
 
+  /**
+   * Ikuti pesan terbaru setelah React menempelkannya ke DOM.
+   *
+   * `scrollToBottom()` yang dipanggil langsung di handler kirim/poll berjalan
+   * sebelum render, jadi ia hanya menggulir ke dasar daftar yang *lama* —
+   * pesan yang baru dikirim tetap di bawah garis pandang.
+   */
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1]! : null;
+  const lastMessageId = lastMessage?.id ?? null;
+  const lastMessageOwn = lastMessage?.author.id === currentUserId;
+  useLayoutEffect(() => {
+    if (!activeId || !lastMessageId) return;
+    /** Pesan sendiri selalu ditarik ke bawah; pesan lawan hanya bila sedang di bawah. */
+    if (!lastMessageOwn && !nearBottomRef.current) return;
+    nearBottomRef.current = true;
+    scrollToBottom("auto");
+    /** Tinggi bubble baru bisa mengendap satu frame kemudian. */
+    const raf = requestAnimationFrame(() => scrollToBottom("auto"));
+    return () => cancelAnimationFrame(raf);
+  }, [activeId, lastMessageId, lastMessageOwn, scrollToBottom]);
+
+  const hasMessages = messages.length > 0;
   useEffect(() => {
     const container = scrollRef.current;
-    const inner = container?.querySelector(".direct-chat-messages");
-    if (!container || !inner) return;
+    if (!container) return;
     const ro = new ResizeObserver(() => {
       if (nearBottomRef.current) scrollToBottom("auto");
     });
-    ro.observe(inner);
+    /**
+     * Dua sumber pergeseran: isi yang tumbuh (media telat muat) dan area baca
+     * yang menyusut (keyboard HP terbuka). Daftar pesan baru ada di DOM setelah
+     * pesan termuat, jadi efek ini ikut dijalankan ulang lewat `hasMessages`.
+     */
+    ro.observe(container);
+    const inner = container.querySelector(".direct-chat-messages");
+    if (inner) ro.observe(inner);
     return () => ro.disconnect();
-  }, [activeId, scrollToBottom]);
+  }, [activeId, hasMessages, scrollToBottom]);
 
   useEffect(() => {
     if (!activeId) {
@@ -614,7 +641,6 @@ export function DirectChatExperience({
             nearBottomRef.current = true;
             setMessages((prev) => mergeMessageLists(prev, [created]));
             syncLastActivityRef(lastSyncedAtRef, [created]);
-            scrollToBottom();
             void pollInbox();
             window.dispatchEvent(new Event("direct-chat-inbox-changed"));
             resolve(true);
@@ -631,7 +657,7 @@ export function DirectChatExperience({
           }
         });
       }),
-    [activeId, pollInbox, scrollToBottom],
+    [activeId, pollInbox],
   );
 
   const confirmDeleteMessage = useCallback(
