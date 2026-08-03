@@ -115,9 +115,9 @@ export function ProductVendorsEditor({
         {rows.map((row) => (
           <div
             key={row.key}
-            className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_1fr_100px_32px]"
+            className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem_2rem]"
           >
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">Peran</Label>
               <Select
                 value={row.role}
@@ -126,7 +126,7 @@ export function ProductVendorsEditor({
                   v && updateRow(row.key, { role: v as ProductVendorRole })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -138,7 +138,7 @@ export function ProductVendorsEditor({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">Vendor</Label>
               <Select
                 value={row.vendorId || "none"}
@@ -147,7 +147,7 @@ export function ProductVendorsEditor({
                   updateRow(row.key, { vendorId: !v || v === "none" ? "" : v })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Pilih vendor" />
                 </SelectTrigger>
                 <SelectContent>
@@ -160,7 +160,7 @@ export function ProductVendorsEditor({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">LT override</Label>
               <Input
                 type="number"
@@ -188,7 +188,7 @@ export function ProductVendorsEditor({
               </Button>
             </div>
             {row.role === "OTHER" ? (
-              <div className="space-y-1 sm:col-span-3">
+              <div className="col-span-full min-w-0 space-y-1">
                 <Label className="text-xs">Label peran kustom</Label>
                 <Input
                   value={row.roleLabel ?? ""}

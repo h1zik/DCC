@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-03-vendor-chain-form-overflow",
+    date: "2026-08-03",
+    title: "Form rantai vendor tidak lagi meluber ke kanan",
+    category: "fixed",
+    description:
+      "Di form Edit produk, baris rantai vendor melebar keluar kotak begitu nama vendornya panjang — kolom \"LT override\" dan tombol hapus jadi terpotong, dan muncul geser kanan-kiri di dalam form. Sekarang setiap baris menyesuaikan lebar form: nama vendor yang panjang dipotong rapi dengan titik tiga, dan semua kolom tetap terlihat.",
+    highlights: [
+      "Nama vendor panjang tidak lagi mendorong isi form keluar layar",
+      "Kolom \"LT override\" dan tombol hapus vendor selalu terjangkau",
+      "Kolom \"Label peran kustom\" (peran Lainnya) kini selebar penuh barisnya",
+      "Pilihan Tipe & Kategori keluar di dialog Koreksi mutasi ikut dirapikan selebar kolomnya",
+    ],
+  },
+  {
     id: "2026-08-01-chat-scroll-keyboard",
     date: "2026-08-01",
     title: "Chat langsung turun ke pesan terbaru, composer tidak lagi tertutup keyboard",
