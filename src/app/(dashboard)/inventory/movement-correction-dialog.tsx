@@ -112,7 +112,7 @@ export function MovementCorrectionDialog({
                 onValueChange={(v) => v && setType(v as StockLogType)}
                 disabled={pending}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -141,7 +141,7 @@ export function MovementCorrectionDialog({
                 onValueChange={(v) => v && setSalesCategory(v as SalesCategory)}
                 disabled={pending}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Pilih" />
                 </SelectTrigger>
                 <SelectContent>
