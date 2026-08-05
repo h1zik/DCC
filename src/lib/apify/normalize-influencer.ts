@@ -328,13 +328,132 @@ function normalizeTikTokPost(
 }
 
 /**
+ * Bentuk keluaran `apidojo/tiktok-profile-scraper` — actor cadangan.
+ *
+ * Dikenali dari `channel` (metadata pemilik menempel di tiap video) dan
+ * `postPage`. Nama fieldnya sama sekali berbeda dari clockworks, jadi
+ * normalisasinya dipisah alih-alih ditambal dengan daftar alias panjang.
+ */
+function isApidojoTikTokItem(item: Record<string, unknown>): boolean {
+  return !!rec(item.channel) && (!!str(item.postPage) || "views" in item);
+}
+
+function normalizeApidojoTikTokPost(
+  raw: Record<string, unknown>,
+): NormalizedInfluencerPost | null {
+  const externalId = str(raw.id) ?? str(raw.postPage);
+  if (!externalId) return null;
+
+  const video = rec(raw.video);
+
+  return {
+    externalId,
+    url: httpUrl(raw.postPage),
+    caption: str(raw.title),
+    thumbnailUrl: httpUrl(video?.cover) ?? httpUrl(video?.thumbnail),
+    mediaType: "Video",
+    likes: Math.max(num(raw.likes), 0),
+    comments: Math.max(num(raw.comments), 0),
+    shares: Math.max(num(raw.shares), 0),
+    views: Math.max(num(raw.views), 0),
+    saves: Math.max(num(raw.bookmarks), 0),
+    postedAt: toDate(raw.uploadedAtFormatted) ?? toDate(raw.uploadedAt),
+    // Actor ini tidak mengekspos penanda iklan; deteksi berbayar jatuh ke
+    // caption. Itu batas bawah, dan UI memang sudah menyampaikannya begitu.
+    isSponsoredMeta: false,
+    surface: "reels",
+    // Diisi oleh markLeadingPinnedPosts — actor ini tidak menandainya.
+    isPinned: false,
+    commentSamples: extractPostComments(raw),
+  };
+}
+
+/** TikTok hanya mengizinkan tiga video dipin. */
+const MAX_TIKTOK_PINS = 3;
+
+/**
+ * Tandai video yang dipin dari URUTANNYA.
+ *
+ * TikTok menaruh video pin di paling atas profil, sebelum daftar terbaru, dan
+ * actor cadangan tidak menandainya sama sekali. Tapi urutannya membocorkan
+ * mereka: post pin muncul lebih dulu padahal ada post yang lebih baru di
+ * bawahnya. Tanpa ini, video pin lama yang viral ikut terhitung sebagai post
+ * terbaru dan merusak ritme posting.
+ *
+ * Profil tanpa pin urut menurun sempurna, jadi tidak ada yang tertandai.
+ */
+export function markLeadingPinnedPosts(
+  posts: NormalizedInfluencerPost[],
+): NormalizedInfluencerPost[] {
+  if (posts.length < 2) return posts;
+
+  // Sebuah post "melanggar urutan" bila ada post yang LEBIH BARU di bawahnya.
+  const outOfOrder: boolean[] = new Array(posts.length).fill(false);
+  let newestBelow = Number.NEGATIVE_INFINITY;
+  for (let i = posts.length - 1; i >= 0; i -= 1) {
+    const at = posts[i].postedAt?.getTime();
+    if (at === undefined) continue;
+    outOfOrder[i] = at < newestBelow;
+    newestBelow = Math.max(newestBelow, at);
+  }
+
+  // Hanya deretan pelanggar di PALING DEPAN yang dianggap pin; pelanggaran di
+  // tengah daftar lebih mungkin data berantakan daripada video pin.
+  return posts.map((post, i) => {
+    if (i >= MAX_TIKTOK_PINS || !outOfOrder[i]) return post;
+    const leading = outOfOrder.slice(0, i + 1).every(Boolean);
+    return leading ? { ...post, isPinned: true } : post;
+  });
+}
+
+function normalizeApidojoTikTokProfile(
+  items: Record<string, unknown>[],
+  fallbackHandle: string,
+): NormalizedInfluencerProfile {
+  const videos = items.filter((i) => str(i.id) || str(i.postPage));
+  const channel = rec(items.find((i) => rec(i.channel))?.channel);
+
+  if (!channel && videos.length === 0) {
+    throw new Error(
+      "Actor cadangan tidak mengembalikan video. Cek apakah akun TikTok ada dan punya video publik.",
+    );
+  }
+
+  const posts = markLeadingPinnedPosts(
+    videos
+      .map(normalizeApidojoTikTokPost)
+      .filter((p): p is NormalizedInfluencerPost => !!p),
+  );
+
+  return {
+    handle: (str(channel?.username) ?? fallbackHandle).toLowerCase(),
+    displayName: str(channel?.name),
+    avatarUrl: httpUrl(channel?.avatar),
+    bio: str(channel?.bio),
+    isVerified: bool(channel?.verified),
+    isPrivate: false,
+    followers: Math.max(num(channel?.followers), 0),
+    following: Math.max(num(channel?.following), 0),
+    postCount: Math.max(num(channel?.videos), posts.length),
+    posts,
+  };
+}
+
+/**
  * `clockworks/tiktok-scraper` mengembalikan daftar video; data follower ada di
  * `authorMeta` yang menempel pada setiap video.
+ *
+ * Bentuk actor cadangan dikenali dari datanya sendiri, bukan dari actor mana
+ * yang dipanggil — dengan begitu mengganti actor lewat env tidak diam-diam
+ * menghasilkan angka nol.
  */
 export function normalizeTikTokProfile(
   items: Record<string, unknown>[],
   fallbackHandle: string,
 ): NormalizedInfluencerProfile {
+  if (items.some(isApidojoTikTokItem)) {
+    return normalizeApidojoTikTokProfile(items, fallbackHandle);
+  }
   const videos = items.filter((i) => str(i.id) || str(i.webVideoUrl));
   const authorSource = items.find((i) => rec(i.authorMeta));
   const author = rec(authorSource?.authorMeta);

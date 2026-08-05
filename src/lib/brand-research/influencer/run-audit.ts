@@ -10,8 +10,10 @@ import { prisma } from "@/lib/prisma";
 import {
   buildInfluencerActorInput,
   buildInstagramReelsActorInput,
+  buildTikTokFallbackActorInput,
   DEFAULT_POST_SAMPLE,
   getInfluencerActorId,
+  getInfluencerFallbackActorId,
   influencerActorEnvHint,
 } from "@/lib/apify/influencer-actors";
 import {
@@ -384,15 +386,54 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
 
       await patchAudit(auditId, {
         apifyRunId: started.runId,
-        apifyReelsRunId: reelsRunId,
+        apifySecondaryRunId: reelsRunId,
       });
       // Jangan blokir request ini menunggu actor; poll berikutnya melanjutkan.
       return;
     }
 
+    /**
+     * Pindah ke actor cadangan.
+     *
+     * Dipakai saat actor utama TikTok pulang tanpa video. Run cadangan disimpan
+     * di kolom yang sama dengan run Reels Instagram — perannya beda per
+     * platform, dan karena TikTok tidak punya Reels, keduanya tidak pernah
+     * bertabrakan. Kolom yang sudah terisi juga menjadi penanda bahwa cadangan
+     * SUDAH dicoba, sehingga tidak ada kemungkinan berputar tanpa henti.
+     */
+    const startFallback = async (reason: string): Promise<boolean> => {
+      const fallbackActor = getInfluencerFallbackActorId(profile.platform);
+      if (!fallbackActor || audit.apifySecondaryRunId) return false;
+
+      try {
+        const started = await startApifyActor(
+          fallbackActor,
+          buildTikTokFallbackActorInput(profile.handle, DEFAULT_POST_SAMPLE),
+        );
+        await patchAudit(auditId, { apifySecondaryRunId: started.runId });
+        console.warn(
+          `[brand/influencer/fallback] ${auditId}: ${reason} — beralih ke ${fallbackActor}.`,
+        );
+        return true;
+      } catch (err) {
+        console.error("[brand/influencer/start-fallback]", auditId, err);
+        return false;
+      }
+    };
+
+    const usesFallback =
+      profile.platform === InfluencerPlatform.TIKTOK &&
+      !!audit.apifySecondaryRunId;
+
+    // Begitu cadangan berjalan, run utama tidak lagi relevan — yang ditunggu
+    // dan dibaca adalah run cadangan itu.
+    const activeRunId = usesFallback
+      ? (audit.apifySecondaryRunId as string)
+      : runId;
+
     let run: Awaited<ReturnType<typeof getApifyRunStatus>>;
     try {
-      run = await getApifyRunStatus(runId);
+      run = await getApifyRunStatus(activeRunId);
     } catch (err) {
       // Run yang hilang tidak akan pernah muncul lagi — tandai gagal supaya
       // audit tidak nyangkut di COLLECTING selamanya.
@@ -404,15 +445,23 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
 
     const outcome = getAdLibraryApifyOutcome(run.status);
     if (outcome === "waiting") return;
-    if (outcome === "failed") throw new Error(`Apify run status: ${run.status}`);
+    if (outcome === "failed") {
+      // Actor utama yang gagal masih menyisakan satu peluang: vendor lain.
+      if (!usesFallback && (await startFallback(`run ${run.status}`))) return;
+      throw new Error(
+        usesFallback
+          ? `Actor utama dan actor cadangan sama-sama gagal (status terakhir: ${run.status}).`
+          : `Apify run status: ${run.status}`,
+      );
+    }
 
     // Run Reels ditunggu juga, tapi kegagalannya diturunkan jadi audit tanpa
     // data Reels — bukan audit yang gagal.
     let reelsItems: Record<string, unknown>[] = [];
-    if (audit.apifyReelsRunId) {
+    if (needsReelsRun && audit.apifySecondaryRunId) {
       let reelsRun: Awaited<ReturnType<typeof getApifyRunStatus>> | null = null;
       try {
-        reelsRun = await getApifyRunStatus(audit.apifyReelsRunId);
+        reelsRun = await getApifyRunStatus(audit.apifySecondaryRunId);
       } catch (err) {
         if (!(err instanceof ApifyRunNotFoundError)) {
           console.warn("[brand/influencer/poll-reels]", auditId, err);
@@ -450,11 +499,30 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
       return;
     }
 
-    const normalized = normalizeInfluencerDataset(
-      profile.platform,
-      items,
-      profile.handle,
-    );
+    /**
+     * Run yang SUKSES tapi pulang tanpa satu pun item adalah gejala khas
+     * scraper TikTok yang sedang diblokir — bukan akun yang kosong. Membedakan
+     * keduanya penting: yang satu bisa ditolong actor lain, yang satu tidak.
+     */
+    if (items.length === 0 && !usesFallback) {
+      if (await startFallback("actor utama tidak mengembalikan item")) return;
+    }
+
+    let normalized: NormalizedInfluencerProfile;
+    try {
+      normalized = normalizeInfluencerDataset(
+        profile.platform,
+        items,
+        profile.handle,
+      );
+    } catch (err) {
+      // Normalizer menolak dataset ini (mis. tidak ada video sama sekali).
+      // Selama cadangan belum dicoba, itu belum tentu salah akunnya.
+      if (!usesFallback && (await startFallback("dataset tidak bisa dibaca"))) {
+        return;
+      }
+      throw err;
+    }
 
     if (needsReelsRun && reelsItems.length > 0) {
       normalized.posts = mergeInstagramSurfaces(
@@ -463,9 +531,15 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
       );
     }
 
+    if (normalized.posts.length === 0 && !usesFallback) {
+      if (await startFallback("tidak ada post yang bisa dibaca")) return;
+    }
+
     if (normalized.posts.length === 0) {
       throw new Error(
-        `Tidak ada post yang bisa dianalisis dari @${profile.handle}. Akun mungkin kosong, privat, atau baru saja mengganti username.`,
+        usesFallback
+          ? `Tidak ada post yang bisa dianalisis dari @${profile.handle}. Actor utama dan actor cadangan sama-sama pulang kosong — kemungkinan besar akunnya memang kosong, privat, atau baru ganti username; tapi bisa juga kedua scraper sedang diblokir TikTok. Coba lagi beberapa jam lagi sebelum menyimpulkan.`
+          : `Tidak ada post yang bisa dianalisis dari @${profile.handle}. Akun mungkin kosong, privat, atau baru saja mengganti username.`,
       );
     }
     if (normalized.followers === 0) {

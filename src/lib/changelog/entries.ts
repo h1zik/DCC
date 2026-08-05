@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-05-tiktok-scraper-cadangan",
+    date: "2026-08-05",
+    title: "Audit TikTok punya scraper cadangan saat yang utama diblokir",
+    category: "fixed",
+    description:
+      "Sejak siang tadi, scraper TikTok yang dipakai DCC berhenti mengembalikan video — TikTok mulai memblokirnya. Anehnya, prosesnya tetap dilaporkan \"berhasil\" dengan nol video, sehingga audit gagal seolah-olah akunnya yang kosong. Sekarang, kalau scraper utama pulang dengan tangan kosong, audit otomatis mengulang lewat penyedia lain yang cara kerjanya berbeda.",
+    highlights: [
+      "Pergantian terjadi otomatis, dan kembali ke penyedia utama sendiri begitu penyedia itu pulih — tanpa perlu deploy",
+      "Cadangannya sengaja dari penyedia berbeda: cadangan dari pembuat yang sama akan ikut patah oleh perubahan yang sama",
+      "Video yang dipin tetap dikenali walau penyedia cadangan tidak menandainya, supaya video pin lama tidak terhitung sebagai post terbaru",
+      "Pesan gagal jadi jujur: kalau dua-duanya kosong, disebutkan bahwa bisa jadi kedua scraper sedang diblokir — bukan langsung menyalahkan akun influencer-nya",
+      "Selama jalur cadangan aktif, thumbnail post TikTok tidak tampil: penyedia cadangan mengirim gambar dalam format HEIC yang tidak bisa ditampilkan browser. Semua angka auditnya tetap lengkap dan benar",
+    ],
+  },
+  {
     id: "2026-08-05-influencer-filter-persist",
     date: "2026-08-05",
     title: "Filter Influencer Audit tidak hilang lagi saat membuka profil",
