@@ -4,9 +4,11 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
+  Clapperboard,
   ExternalLink,
   Eye,
   Heart,
+  LayoutGrid,
   Megaphone,
   MessageCircle,
   RefreshCw,
@@ -64,6 +66,8 @@ export type PostView = {
   engagementRate: number;
   isSponsored: boolean;
   inSample: boolean;
+  surface: string;
+  isPinned: boolean;
   postedAt: string | null;
 };
 
@@ -93,6 +97,9 @@ export type AuditView = {
   totalEngagementRate: number;
   viewEngagementRate: number | null;
   viewRate: number | null;
+  feedPostCount: number;
+  reelsPostCount: number;
+  reelsEngagementRate: number | null;
   postsPerWeek: number;
   daysSinceLastPost: number | null;
   sponsoredCount: number;
@@ -354,6 +361,77 @@ function HistoryChart({ audits }: { audits: AuditView[] }) {
   );
 }
 
+/**
+ * Membandingkan dua permukaan Instagram. Selisih besar di antara keduanya
+ * bukan tanda buruk — itu memberi tahu format apa yang harus diminta dari
+ * influencer ini, tergantung tujuan kampanyenya.
+ */
+function SurfacePanel({ audit }: { audit: AuditView }) {
+  const feedEr = audit.engagementRate;
+  const reelsEr = audit.reelsEngagementRate;
+  const feedStronger = reelsEr !== null && feedEr > reelsEr * 1.5;
+  const reelsStronger = reelsEr !== null && reelsEr > feedEr * 1.5;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricTile
+          label="Post feed"
+          value={String(audit.feedPostCount)}
+          hint={`ER ${pct(feedEr)} terhadap follower`}
+          icon={LayoutGrid}
+          tone={feedStronger ? "good" : "neutral"}
+        />
+        <MetricTile
+          label="Reels"
+          value={String(audit.reelsPostCount)}
+          hint={
+            reelsEr !== null
+              ? `ER ${pct(reelsEr)} terhadap follower`
+              : "Engagement Reels tidak terukur"
+          }
+          icon={Clapperboard}
+          tone={reelsStronger ? "good" : "neutral"}
+        />
+        <MetricTile
+          label="Jangkauan Reels"
+          value={pct(audit.viewRate)}
+          hint="View dibagi follower"
+          icon={Eye}
+        />
+        <MetricTile
+          label="ER per view Reels"
+          value={pct(audit.viewEngagementRate)}
+          hint="Seberapa banyak penonton ikut berinteraksi"
+          icon={Eye}
+        />
+      </div>
+
+      {feedStronger ? (
+        <p className="rounded-xl border border-sky-300/60 bg-sky-50/60 p-3.5 text-xs leading-relaxed text-sky-900 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200">
+          <strong>Audiensnya berinteraksi di feed, bukan di Reels.</strong> Kalau
+          target Anda engagement, minta post feed atau carousel. Reels-nya lebih
+          cocok dipakai untuk menjangkau orang baru.
+        </p>
+      ) : null}
+      {reelsStronger ? (
+        <p className="rounded-xl border border-sky-300/60 bg-sky-50/60 p-3.5 text-xs leading-relaxed text-sky-900 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200">
+          <strong>Kekuatannya ada di Reels.</strong> Reels-nya menghasilkan
+          engagement lebih tinggi daripada post feed — arahkan kerja sama ke
+          format video.
+        </p>
+      ) : null}
+
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        Angka engagement utama dihitung dari post feed, sedangkan jangkauan
+        dihitung dari Reels — dua-duanya diambil dari koleksi masing-masing.
+        Grid profil dikurasi pemiliknya dan hitungan view di sana tidak dapat
+        dipercaya, jadi Reels diambil lewat panggilan terpisah.
+      </p>
+    </div>
+  );
+}
+
 function SponsoredPanel({ audit }: { audit: AuditView }) {
   const comparable = audit.sponsoredEr !== null && audit.organicEr !== null;
   const delta = audit.sponsoredDeltaPct;
@@ -436,6 +514,22 @@ function PostTable({ posts }: { posts: PostView[] }) {
                   <PostThumbnail src={p.thumbnailUrl} className="size-9" />
                   <div className="min-w-0">
                     <div className="mb-0.5 flex flex-wrap gap-1">
+                      {p.surface === "reels" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                          <Clapperboard className="size-2.5" aria-hidden />
+                          Reels
+                        </span>
+                      ) : (
+                        <span className="bg-muted/70 text-muted-foreground inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+                          <LayoutGrid className="size-2.5" aria-hidden />
+                          Feed
+                        </span>
+                      )}
+                      {p.isPinned ? (
+                        <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+                          Dipin
+                        </span>
+                      ) : null}
                       {p.isSponsored ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
                           <Megaphone className="size-2.5" aria-hidden />
@@ -806,6 +900,16 @@ export function InfluencerDetailClient({
               </div>
             ) : null}
           </LabSection>
+
+          {profile.platform === InfluencerPlatform.INSTAGRAM &&
+          readyAudit.reelsPostCount > 0 ? (
+            <LabSection
+              title="Feed vs Reels"
+              description="Di Instagram, grid profil dan tab Reels adalah dua koleksi terpisah dengan perilaku berbeda — digabung jadi satu angka, keduanya saling menutupi."
+            >
+              <SurfacePanel audit={readyAudit} />
+            </LabSection>
+          ) : null}
 
           <LabSection
             title="Post berbayar vs organik"

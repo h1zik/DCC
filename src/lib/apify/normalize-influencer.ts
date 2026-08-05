@@ -14,7 +14,17 @@ export type NormalizedInfluencerPost = {
   postedAt?: Date;
   /** Penanda berbayar resmi dari platform (label paid partnership / isAd). */
   isSponsoredMeta?: boolean;
+  /**
+   * Asal post. Di Instagram, tab Reels adalah koleksi terpisah dari grid
+   * profil dan berperilaku sangat berbeda: audiens bisa ramai di carousel tapi
+   * sepi di Reels. Di TikTok semuanya video, jadi selalu "reels".
+   */
+  surface: PostSurface;
+  /** Post yang dipin — sering berumur tahunan, dikeluarkan dari sampel. */
+  isPinned?: boolean;
 };
+
+export type PostSurface = "feed" | "reels";
 
 export type NormalizedInfluencerProfile = {
   handle: string;
@@ -74,6 +84,7 @@ function rec(value: unknown): Record<string, unknown> | undefined {
 
 function normalizeInstagramPost(
   raw: Record<string, unknown>,
+  surface: PostSurface,
 ): NormalizedInfluencerPost | null {
   const shortCode = str(raw.shortCode);
   const externalId = str(raw.id) ?? shortCode;
@@ -81,6 +92,10 @@ function normalizeInstagramPost(
 
   // videoPlayCount lebih dekat ke "reach" daripada videoViewCount.
   const views = Math.max(num(raw.videoPlayCount), num(raw.videoViewCount));
+
+  // `productType: "clips"` menandai Reels sungguhan; video biasa di grid tidak
+  // memilikinya. Dipakai membetulkan surface bila post Reels ikut muncul di grid.
+  const isClip = str(raw.productType) === "clips";
 
   return {
     externalId,
@@ -94,7 +109,14 @@ function normalizeInstagramPost(
     views: Math.max(views, 0),
     saves: 0,
     postedAt: toDate(raw.timestamp),
-    isSponsoredMeta: bool(raw.isSponsored) || bool(raw.isPaidPartnership),
+    // Nama field yang benar adalah `paidPartnership` — dua nama lain
+    // dipertahankan untuk berjaga bila actor mengubah bentuk keluarannya.
+    isSponsoredMeta:
+      bool(raw.paidPartnership) ||
+      bool(raw.isSponsored) ||
+      bool(raw.isPaidPartnership),
+    surface: isClip ? "reels" : surface,
+    isPinned: bool(raw.isPinned),
   };
 }
 
@@ -131,7 +153,7 @@ export function normalizeInstagramProfile(
   const posts = rawPosts
     .map((p) => rec(p))
     .filter((p): p is Record<string, unknown> => !!p)
-    .map(normalizeInstagramPost)
+    .map((p) => normalizeInstagramPost(p, "feed"))
     .filter((p): p is NormalizedInfluencerPost => !!p);
 
   return {
@@ -146,6 +168,37 @@ export function normalizeInstagramProfile(
     postCount: Math.max(num(profileItem.postsCount), posts.length),
     posts,
   };
+}
+
+/**
+ * Dataset `resultsType: "reels"` — daftar Reels datar, tanpa objek profil.
+ *
+ * Inilah satu-satunya sumber view Instagram yang benar. `latestPosts` dari
+ * mode `details` hanya berisi grid profil, yang isinya dikurasi pemilik akun
+ * dan hitungan view-nya tidak bisa dipercaya.
+ */
+export function normalizeInstagramReels(
+  items: Record<string, unknown>[],
+): NormalizedInfluencerPost[] {
+  return items
+    .map((item) => normalizeInstagramPost(item, "reels"))
+    .filter((p): p is NormalizedInfluencerPost => !!p);
+}
+
+/**
+ * Gabungkan grid dan Reels menjadi satu daftar tanpa duplikat.
+ *
+ * Reels yang juga ditampilkan di grid akan muncul di kedua dataset; versi dari
+ * tab Reels yang dipakai karena hitungan view-nya benar.
+ */
+export function mergeInstagramSurfaces(
+  feedPosts: NormalizedInfluencerPost[],
+  reelPosts: NormalizedInfluencerPost[],
+): NormalizedInfluencerPost[] {
+  const byId = new Map<string, NormalizedInfluencerPost>();
+  for (const post of feedPosts) byId.set(post.externalId, post);
+  for (const post of reelPosts) byId.set(post.externalId, post);
+  return [...byId.values()];
 }
 
 function normalizeTikTokPost(
@@ -169,6 +222,10 @@ function normalizeTikTokPost(
     saves: Math.max(num(raw.collectCount), 0),
     postedAt: toDate(raw.createTimeISO) ?? toDate(raw.createTime),
     isSponsoredMeta: bool(raw.isAd) || bool(raw.isSponsored),
+    // Di TikTok tidak ada pemisahan feed/Reels — semua konten adalah video
+    // pendek dengan hitungan view, jadi seluruhnya diperlakukan sebagai video.
+    surface: "reels",
+    isPinned: bool(raw.isPinned),
   };
 }
 

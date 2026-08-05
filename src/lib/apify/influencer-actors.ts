@@ -165,6 +165,26 @@ export function influencerActorEnvHint(platform: InfluencerPlatform): string {
  */
 export const DEFAULT_POST_SAMPLE = 24;
 
+/**
+ * Panggilan kedua khusus Instagram: tab Reels.
+ *
+ * Di Instagram, Reels adalah koleksi terpisah dari grid profil — pemilik akun
+ * bisa menyembunyikan Reels dari grid, dan hitungan view di `latestPosts`
+ * (mode `details`) tidak dapat dipercaya. Hanya mode `reels` yang mengembalikan
+ * `videoPlayCount` yang benar untuk seluruh Reels.
+ */
+export function buildInstagramReelsActorInput(
+  handle: string,
+  postSample: number = DEFAULT_POST_SAMPLE,
+): Record<string, unknown> {
+  return {
+    directUrls: [buildProfileUrl(InfluencerPlatform.INSTAGRAM, handle)],
+    resultsType: "reels",
+    resultsLimit: Math.min(Math.max(Math.round(postSample), 6), 100),
+    addParentData: false,
+  };
+}
+
 export function buildInfluencerActorInput(
   platform: InfluencerPlatform,
   handle: string,
@@ -176,6 +196,8 @@ export function buildInfluencerActorInput(
     return {
       directUrls: [buildProfileUrl(platform, handle)],
       // "details" mengembalikan objek profil (followersCount) + latestPosts.
+      // latestPosts adalah GRID profil — bukan Reels. Reels diambil terpisah
+      // lewat buildInstagramReelsActorInput.
       resultsType: "details",
       resultsLimit: limit,
       addParentData: false,

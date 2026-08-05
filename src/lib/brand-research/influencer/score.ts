@@ -78,6 +78,15 @@ export type InfluencerScoreResult = {
   viewEngagementRate: number | null;
   viewRate: number | null;
 
+  /** Jumlah post per permukaan. Di TikTok semuanya masuk reels. */
+  feedPostCount: number;
+  reelsPostCount: number;
+  /**
+   * Interaksi Reels terhadap follower — sebanding langsung dengan
+   * `engagementRate` (feed), sehingga selisih keduanya terbaca.
+   */
+  reelsEngagementRate: number | null;
+
   postsPerWeek: number;
   daysSinceLastPost: number | null;
 
@@ -160,6 +169,21 @@ export function benchmarkErFor(
 ): number {
   return BENCHMARK_ER[platform][tier];
 }
+
+/**
+ * View rate (view ÷ follower, persen) yang dianggap jangkauan penuh.
+ *
+ * Dipisah per platform dengan alasan yang sama seperti benchmark ER: di TikTok
+ * seluruh konten didorong algoritma sehingga view kerap melampaui jumlah
+ * follower, sementara Reels Instagram jarang setinggi itu. Memakai satu target
+ * untuk keduanya akan membuat semua akun Instagram terlihat berjangkauan buruk.
+ *
+ * KALIBRASI: default yang masuk akal, belum dihitung dari dataset tertentu.
+ */
+const REACH_TARGET: Record<InfluencerPlatform, number> = {
+  INSTAGRAM: 20,
+  TIKTOK: 30,
+};
 
 const AUTHENTICITY_PENALTY: Record<FakeFlagSeverity, number> = {
   high: 30,
@@ -267,7 +291,13 @@ export function selectSample(
   posts: NormalizedInfluencerPost[],
   now: Date,
 ): NormalizedInfluencerPost[] {
-  const sorted = [...posts].sort((a, b) => {
+  // Post yang dipin bisa berumur tahunan dan merusak baik ritme posting maupun
+  // rata-rata engagement. Instagram mengekspos penandanya, jadi dibuang lebih
+  // dulu — kecuali kalau setelah dibuang tidak ada post tersisa.
+  const unpinned = posts.filter((p) => !p.isPinned);
+  const pool = unpinned.length > 0 ? unpinned : posts;
+
+  const sorted = [...pool].sort((a, b) => {
     const at = a.postedAt?.getTime() ?? 0;
     const bt = b.postedAt?.getTime() ?? 0;
     return bt - at;
@@ -338,15 +368,26 @@ function computeSponsoredSplit(
   };
 }
 
+/**
+ * Keyakinan ditentukan oleh sampel yang benar-benar menghasilkan angka
+ * engagement, bukan sekadar total post.
+ *
+ * Akun Instagram bisa punya 28 post terambil tapi hanya 4 di antaranya post
+ * feed — dan ER dihitung dari 4 itu. Memakai total post akan melaporkan
+ * "keyakinan tinggi" untuk angka yang sebenarnya rapuh.
+ */
 function resolveConfidence(
   postsAnalyzed: number,
+  engagementSampleSize: number,
   sampleWindowDays: number | null,
 ): SampleConfidence {
-  if (postsAnalyzed < MIN_SAMPLE) return "low";
+  if (postsAnalyzed < MIN_SAMPLE || engagementSampleSize < MIN_SAMPLE) {
+    return "low";
+  }
   if (sampleWindowDays !== null && sampleWindowDays > SAMPLE_WINDOW_DAYS) {
     return "low";
   }
-  if (postsAnalyzed >= 10) return "high";
+  if (postsAnalyzed >= 10 && engagementSampleSize >= 10) return "high";
   return "medium";
 }
 
@@ -355,6 +396,8 @@ function detectSignals(params: {
   followers: number;
   following: number;
   postsAnalyzed: number;
+  /** Jumlah post yang menghasilkan angka engagement (feed di IG, semua di TikTok). */
+  engagementSampleSize: number;
   sampleWindowDays: number | null;
   commentLikeRatio: number | null;
   engagementCv: number | null;
@@ -372,6 +415,7 @@ function detectSignals(params: {
     followers,
     following,
     postsAnalyzed,
+    engagementSampleSize,
     sampleWindowDays,
     commentLikeRatio,
     engagementCv,
@@ -482,7 +526,7 @@ function detectSignals(params: {
       "LOW_REELS_REACH",
       "medium",
       "Reels jangkauannya rendah",
-      `Nilai tengah view Reels hanya ${round(viewRate)}% dari follower${viewCoverage !== null && viewCoverage < 0.8 ? ` (dihitung dari ${Math.round(viewCoverage * 100)}% post yang berupa video)` : ""}. Ini soal jangkauan konten video, BUKAN tanda follower palsu — di Instagram, Reels didistribusikan lewat rekomendasi, bukan ke follower. Pertimbangkan format feed/carousel bila ingin bekerja sama.`,
+      `Nilai tengah view Reels hanya ${round(viewRate)}% dari follower. Ini soal jangkauan konten video, BUKAN tanda follower palsu — di Instagram, Reels didistribusikan lewat rekomendasi, bukan ke follower. Pertimbangkan format feed/carousel bila ingin bekerja sama.`,
       // Tanpa penalti tambahan: komponen jangkauan sudah menghitungnya.
       0,
     );
@@ -490,7 +534,7 @@ function detectSignals(params: {
 
   // Akun asli punya konten yang meledak dan yang gagal. Engagement yang rata
   // di semua post adalah tanda paket engagement dengan kuota tetap.
-  if (engagementCv !== null && engagementCv < 0.15 && postsAnalyzed >= 8) {
+  if (engagementCv !== null && engagementCv < 0.15 && engagementSampleSize >= 8) {
     auth(
       "FLAT_ENGAGEMENT",
       "high",
@@ -548,12 +592,14 @@ function detectSignals(params: {
   }
 
   // ── Kualitas data ─────────────────────────────────────────────────────
-  if (postsAnalyzed < MIN_SAMPLE) {
+  if (postsAnalyzed < MIN_SAMPLE || engagementSampleSize < MIN_SAMPLE) {
     data(
       "THIN_SAMPLE",
       "low",
       "Sampel post terlalu sedikit",
-      `Hanya ${postsAnalyzed} post yang bisa dianalisis. Angka ER masih bisa berubah banyak — perlakukan sebagai indikasi awal.`,
+      engagementSampleSize < MIN_SAMPLE && postsAnalyzed >= MIN_SAMPLE
+        ? `Engagement rate dihitung hanya dari ${engagementSampleSize} post feed (dari ${postsAnalyzed} post yang dianalisis) — sisanya Reels, yang dinilai terpisah. Angkanya masih bisa berubah banyak.`
+        : `Hanya ${postsAnalyzed} post yang bisa dianalisis. Angka ER masih bisa berubah banyak — perlakukan sebagai indikasi awal.`,
     );
   }
 
@@ -570,8 +616,8 @@ function detectSignals(params: {
     data(
       "NO_VIEW_DATA",
       "low",
-      "Tidak ada data view",
-      "Post yang diambil berupa foto/carousel tanpa hitungan view, jadi kualitas jangkauan tidak bisa diverifikasi — ER hanya dihitung terhadap follower.",
+      "Tidak ada Reels untuk diukur",
+      "Tab Reels akun ini kosong atau tidak bisa diambil, jadi jangkauan konten videonya tidak terukur. Engagement tetap dihitung dari post feed.",
     );
   }
 
@@ -613,12 +659,26 @@ export function scoreInfluencer(
   const sample = selectSample(input.posts, now);
   const postsAnalyzed = sample.length;
 
-  const likes = sample.map((p) => p.likes);
-  const comments = sample.map((p) => p.comments);
-  const shares = sample.map((p) => p.shares);
-  const viewsWithData = sample.map((p) => p.views).filter((v) => v > 0);
-  const standard = sample.map(standardInteractions);
-  const total = sample.map(totalInteractions);
+  /**
+   * Feed dan Reels adalah dua permukaan berbeda dengan perilaku berbeda:
+   * audiens bisa ramai di carousel tapi sepi di Reels, atau sebaliknya.
+   * Digabung jadi satu angka, keduanya saling menutupi.
+   *
+   * Engagement dinilai dari feed (kalau ada), jangkauan dari Reels. Di TikTok
+   * tidak ada pemisahan ini — semua konten adalah video, jadi keduanya sama.
+   */
+  const reelPosts = sample.filter((p) => p.surface === "reels");
+  const feedOnly = sample.filter((p) => p.surface === "feed");
+  // Akun yang isinya Reels semua tetap harus dinilai engagement-nya.
+  const engagementSample = feedOnly.length > 0 ? feedOnly : sample;
+
+  const likes = engagementSample.map((p) => p.likes);
+  const comments = engagementSample.map((p) => p.comments);
+  const shares = engagementSample.map((p) => p.shares);
+  // View HANYA diambil dari Reels: itulah satu-satunya sumber yang benar.
+  const viewsWithData = reelPosts.map((p) => p.views).filter((v) => v > 0);
+  const standard = engagementSample.map(standardInteractions);
+  const total = engagementSample.map(totalInteractions);
 
   const medianLikes = median(likes);
   const medianComments = median(comments);
@@ -627,25 +687,30 @@ export function scoreInfluencer(
   const medianStandard = median(standard);
   const medianTotal = median(total);
 
+  // Interaksi Reels dihitung dari Reels sendiri — bukan dari feed — supaya
+  // ER-terhadap-view tidak mencampur like carousel dengan view Reels.
+  const medianReelInteractions = median(reelPosts.map(totalInteractions));
+
   const engagementRate =
     followers > 0 ? (medianStandard / followers) * 100 : 0;
   const totalEngagementRate =
     followers > 0 ? (medianTotal / followers) * 100 : 0;
   const viewEngagementRate =
-    medianViews > 0 ? (medianTotal / medianViews) * 100 : null;
+    medianViews > 0 ? (medianReelInteractions / medianViews) * 100 : null;
   const viewRate =
     medianViews > 0 && followers > 0 ? (medianViews / followers) * 100 : null;
+  /** Interaksi Reels terhadap follower — sebanding langsung dengan engagementRate. */
+  const reelsEngagementRate =
+    reelPosts.length > 0 && followers > 0
+      ? (medianReelInteractions / followers) * 100
+      : null;
 
   /**
-   * Berapa bagian sampel yang sebenarnya punya hitungan view.
-   *
-   * Di Instagram hanya Reels yang punya view, sementara like dihitung dari
-   * SEMUA post. Tanpa memeriksa cakupan ini, view rate akan membandingkan
-   * subset video melawan follower lalu dipakai memvonis seluruh akun —
-   * membandingkan dua hal yang tidak sebanding.
+   * Berapa bagian Reels yang benar-benar punya hitungan view. Kalau sebagian
+   * besar Reels tidak melaporkan view, angka jangkauannya tidak bisa dipercaya.
    */
   const viewCoverage =
-    postsAnalyzed > 0 ? viewsWithData.length / postsAnalyzed : null;
+    reelPosts.length > 0 ? viewsWithData.length / reelPosts.length : null;
   const viewDataRepresentative = viewCoverage !== null && viewCoverage >= 0.8;
 
   const postsPerWeek = computeCadence(sample);
@@ -666,11 +731,15 @@ export function scoreInfluencer(
   const totalComments = comments.reduce((s, v) => s + v, 0);
   const commentLikeRatio = totalLikes > 0 ? totalComments / totalLikes : null;
 
+  // Sebaran diukur pada himpunan yang sama dengan yang menghasilkan angkanya
+  // (engagementSample), bukan seluruh sampel — kalau tidak, ambang jumlah post
+  // bisa terpenuhi oleh Reels padahal variasinya dihitung dari feed saja.
+  const engagementSampleSize = engagementSample.length;
   const meanTotal = mean(total);
   const engagementCv =
-    postsAnalyzed >= 2 && meanTotal > 0 ? stdDev(total) / meanTotal : null;
+    engagementSampleSize >= 2 && meanTotal > 0 ? stdDev(total) / meanTotal : null;
   const viralSkew =
-    postsAnalyzed >= 2 && medianTotal > 0 ? meanTotal / medianTotal : null;
+    engagementSampleSize >= 2 && medianTotal > 0 ? meanTotal / medianTotal : null;
 
   // Tren: separuh post terbaru dibanding separuh terlama (sampel urut menurun).
   let engagementTrendPct: number | null = null;
@@ -683,14 +752,21 @@ export function scoreInfluencer(
 
   const erVsBenchmark = benchmarkEr > 0 ? engagementRate / benchmarkEr : 0;
   const followingRatio = followers > 0 ? input.following / followers : null;
-  const sponsored = computeSponsoredSplit(sample, followers);
-  const confidence = resolveConfidence(postsAnalyzed, sampleWindowDays);
+  // Dibandingkan dalam permukaan yang sama dengan `engagementRate`, supaya
+  // post berbayar tidak diadu melawan post organik dari permukaan berbeda.
+  const sponsored = computeSponsoredSplit(engagementSample, followers);
+  const confidence = resolveConfidence(
+    postsAnalyzed,
+    engagementSampleSize,
+    sampleWindowDays,
+  );
 
   const fakeFlags = detectSignals({
     platform: input.platform,
     followers,
     following: input.following,
     postsAnalyzed,
+    engagementSampleSize,
     sampleWindowDays,
     commentLikeRatio,
     engagementCv,
@@ -714,14 +790,13 @@ export function scoreInfluencer(
   const engagementComponent = scoreFromRatio(erVsBenchmark);
   const consistencyComponent =
     scoreCadence(postsPerWeek) * 0.6 + scoreRecency(daysSinceLastPost) * 0.4;
-  // Jangkauan: idealnya view >= 30% follower. View hanya dipakai bila
-  // mencakup hampir seluruh sampel — kalau tidak, angkanya cuma mewakili
-  // sebagian post (mis. akun Instagram yang isinya campuran carousel dan
-  // Reels) dan tidak boleh menentukan nilai seluruh akun. Tanpa data yang
-  // mewakili, komponen ini netral, bukan nol.
+  // Jangkauan diukur dari Reels, dengan target per platform. Bila sebagian
+  // besar Reels tidak melaporkan view, angkanya tidak dapat dipercaya dan
+  // komponen ini jatuh ke netral — bukan nol, karena ketiadaan data bukan
+  // bukti jangkauan buruk.
   const reachComponent =
     viewRate !== null && viewDataRepresentative
-      ? clamp((viewRate / 30) * 100, 0, 100)
+      ? clamp((viewRate / REACH_TARGET[input.platform]) * 100, 0, 100)
       : 60;
 
   const rawScore =
@@ -788,6 +863,10 @@ export function scoreInfluencer(
     viewEngagementRate:
       viewEngagementRate === null ? null : round(viewEngagementRate, 3),
     viewRate: viewRate === null ? null : round(viewRate, 2),
+    feedPostCount: feedOnly.length,
+    reelsPostCount: reelPosts.length,
+    reelsEngagementRate:
+      reelsEngagementRate === null ? null : round(reelsEngagementRate, 3),
     postsPerWeek: round(postsPerWeek),
     daysSinceLastPost,
     score,

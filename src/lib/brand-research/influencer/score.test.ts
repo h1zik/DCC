@@ -15,6 +15,11 @@ function post(
   overrides: Partial<NormalizedInfluencerPost> & { daysAgo: number; id: string },
 ): NormalizedInfluencerPost {
   const { daysAgo, id, ...rest } = overrides;
+  // Hanya video yang punya hitungan view, jadi fixture dengan view dianggap
+  // Reels kecuali `surface` ditulis eksplisit. Normalizer sungguhan menentukan
+  // surface dari sumber datasetnya, bukan dari angka view.
+  const inferredSurface: NormalizedInfluencerPost["surface"] =
+    (rest.views ?? 0) > 0 ? "reels" : "feed";
   return {
     externalId: id,
     likes: 0,
@@ -22,6 +27,7 @@ function post(
     shares: 0,
     views: 0,
     saves: 0,
+    surface: inferredSurface,
     postedAt: new Date(NOW.getTime() - daysAgo * 86_400_000),
     ...rest,
   };
@@ -229,8 +235,8 @@ describe("selectSample", () => {
 
   it("keeps undated posts rather than discarding them", () => {
     const posts: NormalizedInfluencerPost[] = [
-      { externalId: "a", likes: 10, comments: 1, shares: 0, views: 0, saves: 0 },
-      { externalId: "b", likes: 20, comments: 2, shares: 0, views: 0, saves: 0 },
+      { externalId: "a", likes: 10, comments: 1, shares: 0, views: 0, saves: 0, surface: "feed" as const },
+      { externalId: "b", likes: 20, comments: 2, shares: 0, views: 0, saves: 0, surface: "feed" as const },
     ];
     expect(selectSample(posts, NOW)).toHaveLength(2);
   });
@@ -295,14 +301,20 @@ describe("sponsored vs organic split", () => {
 });
 
 describe("view rate is judged per platform", () => {
-  /** Akun Instagram campuran: carousel (tanpa view) + Reels yang sepi. */
+  /**
+   * Akun Instagram nyata: carousel ramai di feed, Reels yang jangkauannya
+   * jauh lebih besar tapi like-nya jauh lebih sedikit. Pola ini persis yang
+   * ditemukan pada data produksi.
+   */
   function mixedInstagram(): NormalizedInfluencerPost[] {
+    const feedLikes = [1_600, 2_300, 1_100, 1_850, 1_400, 2_800, 1_250];
+    const reelViews = [2_106, 4_528, 3_255, 21_573, 4_675];
     return [
-      ...Array.from({ length: 7 }, (_, i) =>
-        post({ id: `c${i}`, daysAgo: i * 4, likes: 1_600, comments: 45, views: 0 }),
+      ...feedLikes.map((n, i) =>
+        post({ id: `c${i}`, daysAgo: i * 4, likes: n, comments: Math.round(n * 0.03), surface: "feed" }),
       ),
-      ...Array.from({ length: 5 }, (_, i) =>
-        post({ id: `v${i}`, daysAgo: i * 4 + 2, likes: 90, comments: 6, views: 40 + i * 250 }),
+      ...reelViews.map((v, i) =>
+        post({ id: `v${i}`, daysAgo: i * 4 + 2, likes: 90 + i * 12, comments: 3, views: v, surface: "reels" }),
       ),
     ];
   }
@@ -313,19 +325,36 @@ describe("view rate is judged per platform", () => {
     const r = scoreInfluencer(input({ followers: 49_667, posts: mixedInstagram() }));
 
     expect(r.fakeFlags.map((f) => f.code)).not.toContain("LOW_VIEW_RATE");
-    expect(r.fakeFlags.map((f) => f.code)).toContain("LOW_REELS_REACH");
-    expect(r.fakeFlags.find((f) => f.code === "LOW_REELS_REACH")?.impact).toBe(
-      "performance",
-    );
     expect(r.authenticityScore).toBe(100);
     expect(r.verdict).not.toBe(InfluencerVerdict.SUSPICIOUS);
   });
 
-  it("keeps reach neutral when views only cover part of the sample", () => {
-    // 5 dari 12 post punya view — angka itu mewakili Reels saja, bukan akun.
+  it("measures engagement from the feed and reach from Reels, never mixing them", () => {
     const r = scoreInfluencer(input({ followers: 49_667, posts: mixedInstagram() }));
+
+    expect(r.feedPostCount).toBe(7);
+    expect(r.reelsPostCount).toBe(5);
+    // ER memakai like carousel (median 1.600), bukan like Reels yang jauh lebih kecil.
+    expect(r.medianLikes).toBe(1_600);
+    // View diambil dari Reels saja (median 4.528), tidak diencerkan post feed.
+    expect(r.medianViews).toBe(4_528);
+    expect(r.metrics.viewCoverage).toBe(1);
+    // Engagement Reels dilaporkan terpisah supaya selisihnya terbaca.
+    expect(r.reelsEngagementRate).not.toBeNull();
+    expect(r.reelsEngagementRate as number).toBeLessThan(r.engagementRate);
+  });
+
+  it("keeps reach neutral when most Reels report no view count", () => {
+    const posts = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        post({ id: `c${i}`, daysAgo: i * 4, likes: 1_500 + i * 90, comments: 40, surface: "feed" }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        post({ id: `v${i}`, daysAgo: i * 4 + 1, likes: 80, comments: 3, views: i === 0 ? 3_000 : 0, surface: "reels" }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 49_667, posts }));
     expect(r.metrics.viewCoverage).toBeLessThan(0.8);
-    expect(r.metrics.viewSampleCount).toBe(5);
     expect(r.metrics.components.reach).toBe(60);
   });
 
@@ -344,11 +373,13 @@ describe("view rate is judged per platform", () => {
   });
 
   it("does not flag dead followers on TikTok when view data is unrepresentative", () => {
+    // Semua konten TikTok adalah video; di sini kebanyakan tidak melaporkan
+    // view, jadi angka jangkauannya tidak layak dijadikan dasar tuduhan.
     const posts = [
       ...Array.from({ length: 8 }, (_, i) =>
-        post({ id: `n${i}`, daysAgo: i * 3, likes: 500, comments: 20, views: 0 }),
+        post({ id: `n${i}`, daysAgo: i * 3, likes: 500, comments: 20, views: 0, surface: "reels" }),
       ),
-      post({ id: "v", daysAgo: 1, likes: 500, comments: 20, views: 900 }),
+      post({ id: "v", daysAgo: 1, likes: 500, comments: 20, views: 900, surface: "reels" }),
     ];
     const r = scoreInfluencer(
       input({ platform: InfluencerPlatform.TIKTOK, followers: 100_000, posts }),
@@ -444,6 +475,25 @@ describe("flag impact separation", () => {
   it("reports high confidence for a healthy recent sample", () => {
     const r = scoreInfluencer(input());
     expect(r.confidence).toBe("high");
+  });
+
+  it("drops confidence when engagement rests on only a few feed posts", () => {
+    // Kasus nyata: 28 post terambil, tapi hanya 4 post feed — dan ER dihitung
+    // dari 4 itu. Melaporkan "keyakinan tinggi" di sini akan menyesatkan.
+    const posts = [
+      ...Array.from({ length: 4 }, (_, i) =>
+        post({ id: `f${i}`, daysAgo: i * 7, likes: 500 + i * 40, comments: 15, surface: "feed" }),
+      ),
+      ...Array.from({ length: 24 }, (_, i) =>
+        post({ id: `r${i}`, daysAgo: i * 5, likes: 90, comments: 3, views: 4_000 + i * 120, surface: "reels" }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 49_665, posts }));
+
+    expect(r.postsAnalyzed).toBe(28);
+    expect(r.feedPostCount).toBe(4);
+    expect(r.confidence).toBe("low");
+    expect(r.fakeFlags.map((f) => f.code)).toContain("THIN_SAMPLE");
   });
 
   it("drops confidence when the sample spans too long a period", () => {
@@ -605,8 +655,8 @@ describe("edge cases", () => {
     const r = scoreInfluencer(
       input({
         posts: [
-          { externalId: "a", likes: 100, comments: 5, shares: 0, views: 0, saves: 0 },
-          { externalId: "b", likes: 200, comments: 9, shares: 0, views: 0, saves: 0 },
+          { externalId: "a", likes: 100, comments: 5, shares: 0, views: 0, saves: 0, surface: "feed" as const },
+          { externalId: "b", likes: 200, comments: 9, shares: 0, views: 0, saves: 0, surface: "feed" as const },
         ],
       }),
     );

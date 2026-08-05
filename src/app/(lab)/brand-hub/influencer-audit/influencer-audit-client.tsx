@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   ArrowUpRight,
   BadgeCheck,
+  FilterX,
   Link2,
   Plus,
   RefreshCw,
+  Search,
+  SearchX,
   ShieldAlert,
   Trash2,
   UserSearch,
@@ -39,7 +42,28 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { lab, LabCard, LabEmptyState, LabStatChip } from "@/components/lab/lab-primitives";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { SelectItemDef } from "@/lib/select-option-items";
+import {
+  lab,
+  LabCard,
+  LabEmptyState,
+  LabStatChip,
+  LabToolbar,
+} from "@/components/lab/lab-primitives";
+import {
+  applyInfluencerFilters,
+  countActiveInfluencerFilters,
+  DEFAULT_INFLUENCER_FILTERS,
+  VERDICT_GROUP,
+  type InfluencerFilterState,
+} from "@/lib/brand-research/influencer/list-filter";
 import {
   AuditStatusPill,
   compactNumber,
@@ -380,6 +404,184 @@ function InfluencerCard({
   );
 }
 
+const PLATFORM_ITEMS: SelectItemDef[] = [
+  { value: "all", label: "Semua platform" },
+  { value: InfluencerPlatform.INSTAGRAM, label: "Instagram" },
+  { value: InfluencerPlatform.TIKTOK, label: "TikTok" },
+];
+
+/**
+ * Dua pilihan teratas adalah alur kerja yang sebenarnya: menyaring kandidat
+ * yang bisa langsung dipakai, dan mengerjakan antrean yang harus diperiksa.
+ * Vonis satuan di bawahnya untuk penelusuran yang lebih spesifik.
+ */
+const VERDICT_ITEMS: SelectItemDef[] = [
+  { value: VERDICT_GROUP.ALL, label: "Semua vonis" },
+  { value: VERDICT_GROUP.USABLE, label: "Layak dipakai" },
+  { value: VERDICT_GROUP.FLAGGED, label: "Perlu diperiksa" },
+  { value: InfluencerVerdict.EXCELLENT, label: "Sangat bagus" },
+  { value: InfluencerVerdict.GOOD, label: "Bagus" },
+  { value: InfluencerVerdict.AVERAGE, label: "Rata-rata" },
+  { value: InfluencerVerdict.POOR, label: "Lemah" },
+  { value: InfluencerVerdict.NEEDS_REVIEW, label: "Perlu dicek" },
+  { value: InfluencerVerdict.SUSPICIOUS, label: "Mencurigakan" },
+  { value: VERDICT_GROUP.UNAUDITED, label: "Belum diaudit" },
+];
+
+const TIER_ITEMS: SelectItemDef[] = [
+  { value: "all", label: "Semua tier" },
+  ...(
+    [
+      InfluencerTier.NANO,
+      InfluencerTier.MICRO,
+      InfluencerTier.MID,
+      InfluencerTier.MACRO,
+      InfluencerTier.MEGA,
+    ] as const
+  ).map((t) => ({ value: t, label: TIER_LABEL[t] })),
+];
+
+const SORT_ITEMS: SelectItemDef[] = [
+  { value: "recent", label: "Terbaru ditambah" },
+  { value: "score", label: "Skor tertinggi" },
+  { value: "campaignEr", label: "Perkiraan campaign" },
+  { value: "er", label: "ER tertinggi" },
+  { value: "followers", label: "Follower terbanyak" },
+];
+
+function FilterToolbar({
+  filters,
+  onChange,
+  shown,
+  total,
+}: {
+  filters: InfluencerFilterState;
+  onChange: (next: InfluencerFilterState) => void;
+  shown: number;
+  total: number;
+}) {
+  const activeCount = countActiveInfluencerFilters(filters);
+
+  function set<K extends keyof InfluencerFilterState>(
+    key: K,
+    value: InfluencerFilterState[K],
+  ) {
+    onChange({ ...filters, [key]: value });
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <LabToolbar>
+        <div className="relative min-w-[180px] flex-1">
+          <Search
+            className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2"
+            aria-hidden
+          />
+          <Input
+            value={filters.search}
+            onChange={(e) => set("search", e.target.value)}
+            placeholder="Cari username atau nama…"
+            aria-label="Cari influencer"
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+
+        <Select
+          value={filters.platform}
+          items={PLATFORM_ITEMS}
+          onValueChange={(v) =>
+            set("platform", (v as InfluencerFilterState["platform"]) ?? "all")
+          }
+        >
+          <SelectTrigger className="h-8 w-[150px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PLATFORM_ITEMS.map((i) => (
+              <SelectItem key={i.value} value={i.value}>
+                {i.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filters.verdict}
+          items={VERDICT_ITEMS}
+          onValueChange={(v) => set("verdict", v ?? VERDICT_GROUP.ALL)}
+        >
+          <SelectTrigger className="h-8 w-[160px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {VERDICT_ITEMS.map((i) => (
+              <SelectItem key={i.value} value={i.value}>
+                {i.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filters.tier}
+          items={TIER_ITEMS}
+          onValueChange={(v) =>
+            set("tier", (v as InfluencerFilterState["tier"]) ?? "all")
+          }
+        >
+          <SelectTrigger className="h-8 w-[165px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TIER_ITEMS.map((i) => (
+              <SelectItem key={i.value} value={i.value}>
+                {i.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filters.sort}
+          items={SORT_ITEMS}
+          onValueChange={(v) =>
+            set("sort", (v as InfluencerFilterState["sort"]) ?? "recent")
+          }
+        >
+          <SelectTrigger className="h-8 w-[170px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_ITEMS.map((i) => (
+              <SelectItem key={i.value} value={i.value}>
+                {i.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {activeCount > 0 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground h-8 gap-1.5 text-xs"
+            onClick={() => onChange(DEFAULT_INFLUENCER_FILTERS)}
+          >
+            <FilterX className="size-3.5" />
+            Kosongkan ({activeCount})
+          </Button>
+        ) : null}
+      </LabToolbar>
+
+      <p className="text-muted-foreground px-1 text-xs">
+        {shown === total
+          ? `${total} influencer`
+          : `Menampilkan ${shown} dari ${total} influencer`}
+      </p>
+    </div>
+  );
+}
+
 export function InfluencerAuditClient({
   profiles,
   stats,
@@ -390,10 +592,18 @@ export function InfluencerAuditClient({
   const router = useRouter();
   const brandId = useBrandHubBrandId();
   const anyRunning = profiles.some((p) => isAuditInProgress(p.latestStatus));
+  const [filters, setFilters] = useState<InfluencerFilterState>(
+    DEFAULT_INFLUENCER_FILTERS,
+  );
 
   useBrandJobProgress({ inProgress: anyRunning });
 
   const refresh = () => router.refresh();
+
+  const visible = useMemo(
+    () => applyInfluencerFilters(profiles, filters),
+    [profiles, filters],
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -429,16 +639,44 @@ export function InfluencerAuditClient({
           action={<AddInfluencerDialog onAdded={refresh} />}
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {profiles.map((row) => (
-            <InfluencerCard
-              key={row.id}
-              row={row}
-              brandId={brandId}
-              onChanged={refresh}
+        <>
+          <FilterToolbar
+            filters={filters}
+            onChange={setFilters}
+            shown={visible.length}
+            total={profiles.length}
+          />
+
+          {visible.length === 0 ? (
+            <LabEmptyState
+              icon={SearchX}
+              title="Tidak ada influencer yang cocok"
+              description="Tidak ada yang memenuhi kombinasi filter ini. Longgarkan salah satu filternya, atau kosongkan semuanya."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setFilters(DEFAULT_INFLUENCER_FILTERS)}
+                >
+                  <FilterX className="size-4" />
+                  Kosongkan filter
+                </Button>
+              }
             />
-          ))}
-        </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {visible.map((row) => (
+                <InfluencerCard
+                  key={row.id}
+                  row={row}
+                  brandId={brandId}
+                  onChanged={refresh}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

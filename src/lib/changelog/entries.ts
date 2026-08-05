@@ -37,6 +37,38 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-05-influencer-reels",
+    date: "2026-08-05",
+    title: "Audit Instagram akhirnya membaca Reels yang sebenarnya",
+    category: "fixed",
+    description:
+      "Di Instagram, grid profil dan tab Reels adalah dua koleksi terpisah — dan selama ini DCC hanya membaca grid. Akibatnya jangkauan Reels salah hitung sangat jauh: satu akun 49 ribu follower terbaca jangkauannya 0,81% padahal sebenarnya 8,94%, meleset sekitar 11 kali lipat. Sekarang Reels diambil lewat panggilan terpisah, dan engagement feed dilaporkan terpisah dari jangkauan Reels.",
+    highlights: [
+      "Reels diambil dari tab Reels-nya langsung, bukan menebak dari grid profil",
+      "Engagement dihitung dari post feed, jangkauan dari Reels — tidak lagi dicampur",
+      "Panel baru \"Feed vs Reels\" memberi tahu format apa yang sebaiknya diminta: feed bila mengejar engagement, Reels bila mengejar jangkauan",
+      "Label \"Paid partnership\" resmi Instagram kini terbaca — sebelumnya deteksi endorse hanya mengandalkan hashtag",
+      "Post yang dipin dikeluarkan dari perhitungan; post pin biasanya post terbaik yang sengaja dipajang, sehingga membuat performa terlihat lebih bagus dari kenyataan",
+      "Tingkat keyakinan kini melihat jumlah post yang benar-benar menghasilkan angkanya, bukan total post yang terambil",
+    ],
+  },
+  {
+    id: "2026-08-05-influencer-filter",
+    date: "2026-08-05",
+    title: "Filter & urutkan daftar Influencer Audit",
+    category: "new",
+    description:
+      "Daftar influencer sekarang bisa disaring dan diurutkan. Ada kotak pencarian username, plus filter platform, vonis, dan tier follower. Dua pilihan vonis dibuat mengikuti cara kerja sehari-hari: \"Layak dipakai\" langsung memunculkan kandidat yang bisa dipertimbangkan, dan \"Perlu diperiksa\" memunculkan antrean yang masih harus dicek manual.",
+    highlights: [
+      "Cari cepat berdasarkan username atau nama — tanda @ boleh ikut ditempel",
+      "Saring per platform (Instagram/TikTok), vonis, dan tier follower",
+      "Pintasan \"Layak dipakai\" dan \"Perlu diperiksa\" untuk dua alur kerja yang paling sering dipakai",
+      "Urutkan menurut skor, perkiraan hasil campaign, engagement rate, atau jumlah follower",
+      "Influencer yang belum diaudit tidak dianggap berskor nol — selalu diletakkan di bawah",
+      "Terlihat jelas berapa yang sedang ditampilkan dari total, dengan tombol mengosongkan filter",
+    ],
+  },
+  {
     id: "2026-08-05-influencer-vonis-kalibrasi",
     date: "2026-08-05",
     title: "Influencer Audit tidak lagi gampang menuduh \"Mencurigakan\"",
