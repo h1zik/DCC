@@ -4254,14 +4254,19 @@ model InfluencerProfile {
  * saat di-scout dan saat dikontrak).
  */
 model InfluencerAudit {
-  id           String                @id @default(cuid())
-  profileId    String
-  profile      InfluencerProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  status       InfluencerAuditStatus @default(PENDING)
-  errorMessage String?
-  apifyRunId   String?
-  startedAt    DateTime?
-  collectedAt  DateTime?
+  id              String                @id @default(cuid())
+  profileId       String
+  profile         InfluencerProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  status          InfluencerAuditStatus @default(PENDING)
+  errorMessage    String?
+  apifyRunId      String?
+  /**
+   * Run kedua khusus Instagram: tab Reels adalah koleksi terpisah dari grid
+   * profil, dan hanya mode `reels` yang mengembalikan hitungan view yang benar.
+   */
+  apifyReelsRunId String?
+  startedAt       DateTime?
+  collectedAt     DateTime?
 
   followers Int             @default(0)
   following Int             @default(0)
@@ -4314,6 +4319,17 @@ model InfluencerAudit {
   viewRate            Float?
   postsPerWeek        Float  @default(0)
   daysSinceLastPost   Int?
+
+  // Di Instagram, feed dan Reels adalah dua permukaan berbeda dengan perilaku
+  // berbeda: audiens bisa ramai di carousel tapi sepi di Reels, atau
+  // sebaliknya. Digabung jadi satu angka, keduanya saling menutupi.
+  feedPostCount       Int    @default(0)
+  reelsPostCount      Int    @default(0)
+  /**
+   * Interaksi Reels dibagi follower, persen — sebanding langsung dengan
+   * `engagementRate` (feed) sehingga selisih keduanya terbaca.
+   */
+  reelsEngagementRate Float?
 
   // Post berbayar hampir selalu lebih rendah engagement-nya daripada organik.
   // Untuk memutuskan kerja sama, angka berbayar inilah yang relevan.
@@ -4390,6 +4406,16 @@ model InfluencerPost {
    * tapi tidak ikut menghitung ER.
    */
   inSample       Boolean         @default(true)
+  /**
+   * Asal post: "feed" (grid profil) atau "reels" (tab Reels). Di TikTok semua
+   * post adalah video, jadi selalu "reels".
+   */
+  surface        String          @default("feed")
+  /**
+   * Post yang dipin. Sering berumur tahunan dan merusak hitungan ritme
+   * posting, jadi dikeluarkan dari sampel.
+   */
+  isPinned       Boolean         @default(false)
   postedAt       DateTime?
 
   @@unique([auditId, externalId])

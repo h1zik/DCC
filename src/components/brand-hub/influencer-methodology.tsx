@@ -35,6 +35,8 @@ export type MethodologyAudit = {
   viewRate: number | null;
   sponsoredCount: number;
   organicCount: number;
+  feedPostCount: number;
+  reelsPostCount: number;
 };
 
 type Components = {
@@ -171,14 +173,30 @@ export function InfluencerMethodology({
               .
             </p>
             <p>
-              Batas waktu ini sekaligus menyingkirkan post yang dipin, yang di
-              Instagram ikut terbawa di daftar terbaru walau berumur tahunan.
-              Kalau post terbaru kurang dari 6, semua post dipakai dan tingkat
-              keyakinan diturunkan.
+              Post yang dipin dibuang lebih dulu — Instagram menandainya, dan
+              post pin sering berumur tahunan sehingga merusak baik ritme
+              posting maupun rata-rata engagement. Kalau post terbaru kurang
+              dari 6, semua post dipakai dan tingkat keyakinan diturunkan.
             </p>
           </Step>
 
-          <Step n={2} title="Menghitung engagement rate">
+          <Step n={2} title="Memisahkan feed dari Reels (Instagram)">
+            <p>
+              Di Instagram, grid profil dan tab Reels adalah{" "}
+              <strong>dua koleksi terpisah</strong>. Grid dikurasi pemilik akun
+              dan hitungan view di sana tidak dapat dipercaya, jadi Reels
+              diambil lewat panggilan terpisah.
+            </p>
+            <p>
+              Engagement dihitung dari <strong>post feed</strong>, jangkauan
+              dari <strong>Reels</strong> — masing-masing dari koleksinya
+              sendiri. Mencampur keduanya berarti membandingkan like carousel
+              melawan view Reels, dua hal yang tidak sebanding.
+            </p>
+            <p>Audit ini memakai {audit.feedPostCount} post feed dan {audit.reelsPostCount} Reels.</p>
+          </Step>
+
+          <Step n={3} title="Menghitung engagement rate">
             <p>
               <code className="bg-muted rounded px-1 py-0.5 text-[11px]">
                 ER = median(like + komentar) ÷ follower × 100
@@ -193,7 +211,7 @@ export function InfluencerMethodology({
             </p>
           </Step>
 
-          <Step n={3} title="Membandingkan dengan tier follower, bukan angka mutlak">
+          <Step n={4} title="Membandingkan dengan tier follower, bukan angka mutlak">
             <p>
               ER influencer ini <strong>{num(audit.engagementRate, 2)}%</strong>{" "}
               dibandingkan median tier{" "}
@@ -210,7 +228,7 @@ export function InfluencerMethodology({
             </p>
           </Step>
 
-          <Step n={4} title="Memeriksa tanda engagement dibeli">
+          <Step n={5} title="Memeriksa tanda engagement dibeli">
             <p>Ambang yang dipakai:</p>
             <ul className="list-disc space-y-0.5 pl-4">
               <li>Komentar di bawah 0,4% dari like → pola like berbayar</li>
@@ -238,7 +256,7 @@ export function InfluencerMethodology({
             </p>
           </Step>
 
-          <Step n={5} title="Memisahkan post berbayar dari organik">
+          <Step n={6} title="Memisahkan post berbayar dari organik">
             <p>
               Terdeteksi <strong>{audit.sponsoredCount} post berbayar</strong>{" "}
               dan <strong>{audit.organicCount} organik</strong>. Post endorse
@@ -248,7 +266,7 @@ export function InfluencerMethodology({
           </Step>
 
           {components ? (
-            <Step n={6} title="Menjumlahkan skor akhir">
+            <Step n={7} title="Menjumlahkan skor akhir">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[380px] text-xs">
                   <thead>
@@ -325,7 +343,7 @@ export function InfluencerMethodology({
             </Step>
           ) : null}
 
-          <Step n={components ? 7 : 6} title="Menentukan vonis">
+          <Step n={components ? 8 : 7} title="Menentukan vonis">
             <ul className="list-disc space-y-0.5 pl-4">
               <li>
                 <strong>Dua atau lebih</strong> sinyal keaslian berat, atau skor

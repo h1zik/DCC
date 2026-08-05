@@ -9,6 +9,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import {
   buildInfluencerActorInput,
+  buildInstagramReelsActorInput,
   DEFAULT_POST_SAMPLE,
   getInfluencerActorId,
   influencerActorEnvHint,
@@ -21,7 +22,9 @@ import {
   startApifyActor,
 } from "@/lib/apify/client";
 import {
+  mergeInstagramSurfaces,
   normalizeInfluencerDataset,
+  normalizeInstagramReels,
   type NormalizedInfluencerProfile,
 } from "@/lib/apify/normalize-influencer";
 import { getAdLibraryApifyOutcome } from "@/lib/brand-research/ad-library-apify-status";
@@ -88,6 +91,12 @@ Metrik terukur (semua angka pusat memakai MEDIAN, bukan rata-rata, agar satu pos
 - Engagement rate penuh (termasuk share & simpan): ${scored.totalEngagementRate}%
 - Engagement rate terhadap view: ${scored.viewEngagementRate ?? "tidak tersedia"}%
 - View rate (view dibagi follower): ${scored.viewRate ?? "tidak tersedia"}%
+
+Feed vs Reels (khusus Instagram; di TikTok semuanya video):
+- Post feed dianalisis: ${scored.feedPostCount}, Reels dianalisis: ${scored.reelsPostCount}
+- ER feed (angka utama di atas): ${scored.engagementRate}%
+- ER Reels terhadap follower: ${scored.reelsEngagementRate ?? "tidak tersedia"}%
+- CATATAN PENTING: feed dan Reels adalah dua permukaan berbeda. Kalau ER feed jauh di atas ER Reels, artinya audiensnya berinteraksi di post feed sementara Reels-nya dipakai menjangkau orang baru — sarankan format feed bila brand mengejar engagement, dan Reels bila mengejar jangkauan. Jangan menyimpulkan salah satunya buruk hanya karena berbeda.
 - Median per post: like ${scored.medianLikes}, komentar ${scored.medianComments}, share ${scored.medianShares}, view ${scored.medianViews}
 - Rata-rata per post (pembanding): like ${scored.avgLikes}, view ${scored.avgViews}
 - Rasio komentar terhadap like: ${scored.metrics.commentLikeRatio ?? "tidak tersedia"}
@@ -207,6 +216,8 @@ async function persistAuditResult(
         engagementRate: postEngagementRate(p, normalized.followers),
         isSponsored: isSponsoredPost(p),
         inSample: sampleIds.has(p.externalId),
+        surface: p.surface,
+        isPinned: p.isPinned ?? false,
         postedAt: p.postedAt ?? null,
       })),
       skipDuplicates: true,
@@ -235,6 +246,9 @@ async function persistAuditResult(
     totalEngagementRate: scored.totalEngagementRate,
     viewEngagementRate: scored.viewEngagementRate,
     viewRate: scored.viewRate,
+    feedPostCount: scored.feedPostCount,
+    reelsPostCount: scored.reelsPostCount,
+    reelsEngagementRate: scored.reelsEngagementRate,
     postsPerWeek: scored.postsPerWeek,
     daysSinceLastPost: scored.daysSinceLastPost,
     sponsoredCount: scored.sponsored.sponsoredCount,
@@ -300,12 +314,17 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
     const actorId = getInfluencerActorId(profile.platform);
     if (!actorId) throw new Error(influencerActorEnvHint(profile.platform));
 
+    const needsReelsRun = profile.platform === InfluencerPlatform.INSTAGRAM;
+
     const runId = audit.apifyRunId;
     if (!runId) {
       const oldEnoughToRecover =
         Date.now() - audit.createdAt.getTime() >= ORPHANED_START_GRACE_MS;
       if (!claimedPending && !oldEnoughToRecover) return;
 
+      // Dua run dijalankan bersamaan untuk Instagram: `details` memberi
+      // metadata profil + grid, `reels` memberi Reels berikut hitungan view
+      // yang benar. Keduanya koleksi terpisah — grid saja tidak cukup.
       const started = await startApifyActor(
         actorId,
         buildInfluencerActorInput(
@@ -314,7 +333,26 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
           DEFAULT_POST_SAMPLE,
         ),
       );
-      await patchAudit(auditId, { apifyRunId: started.runId });
+
+      let reelsRunId: string | null = null;
+      if (needsReelsRun) {
+        try {
+          const startedReels = await startApifyActor(
+            actorId,
+            buildInstagramReelsActorInput(profile.handle, DEFAULT_POST_SAMPLE),
+          );
+          reelsRunId = startedReels.runId;
+        } catch (err) {
+          // Reels adalah pelengkap: metrik engagement tetap bisa dihitung dari
+          // feed, jadi kegagalan di sini tidak boleh menggagalkan audit.
+          console.warn("[brand/influencer/start-reels]", auditId, err);
+        }
+      }
+
+      await patchAudit(auditId, {
+        apifyRunId: started.runId,
+        apifyReelsRunId: reelsRunId,
+      });
       // Jangan blokir request ini menunggu actor; poll berikutnya melanjutkan.
       return;
     }
@@ -335,6 +373,41 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
     if (outcome === "waiting") return;
     if (outcome === "failed") throw new Error(`Apify run status: ${run.status}`);
 
+    // Run Reels ditunggu juga, tapi kegagalannya diturunkan jadi audit tanpa
+    // data Reels — bukan audit yang gagal.
+    let reelsItems: Record<string, unknown>[] = [];
+    if (audit.apifyReelsRunId) {
+      let reelsRun: Awaited<ReturnType<typeof getApifyRunStatus>> | null = null;
+      try {
+        reelsRun = await getApifyRunStatus(audit.apifyReelsRunId);
+      } catch (err) {
+        if (!(err instanceof ApifyRunNotFoundError)) {
+          console.warn("[brand/influencer/poll-reels]", auditId, err);
+          return;
+        }
+        console.warn("[brand/influencer/reels-run-hilang]", auditId, err);
+      }
+
+      if (reelsRun) {
+        const reelsOutcome = getAdLibraryApifyOutcome(reelsRun.status);
+        if (reelsOutcome === "waiting") return;
+        if (reelsOutcome === "succeeded") {
+          try {
+            reelsItems = await fetchApifyDataset<Record<string, unknown>>(
+              reelsRun.datasetId,
+            );
+          } catch (err) {
+            console.warn("[brand/influencer/fetch-reels]", auditId, err);
+            return;
+          }
+        } else {
+          console.warn(
+            `[brand/influencer/reels-gagal] ${auditId}: ${reelsRun.status} — audit dilanjutkan tanpa data Reels.`,
+          );
+        }
+      }
+    }
+
     let items: Record<string, unknown>[];
     try {
       items = await fetchApifyDataset<Record<string, unknown>>(run.datasetId);
@@ -349,6 +422,13 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
       items,
       profile.handle,
     );
+
+    if (needsReelsRun && reelsItems.length > 0) {
+      normalized.posts = mergeInstagramSurfaces(
+        normalized.posts,
+        normalizeInstagramReels(reelsItems),
+      );
+    }
 
     if (normalized.posts.length === 0) {
       throw new Error(

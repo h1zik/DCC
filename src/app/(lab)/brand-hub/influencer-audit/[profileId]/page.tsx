@@ -62,6 +62,9 @@ export default async function BrandInfluencerDetailPage({
     totalEngagementRate: a.totalEngagementRate,
     viewEngagementRate: a.viewEngagementRate,
     viewRate: a.viewRate,
+    feedPostCount: a.feedPostCount,
+    reelsPostCount: a.reelsPostCount,
+    reelsEngagementRate: a.reelsEngagementRate,
     postsPerWeek: a.postsPerWeek,
     daysSinceLastPost: a.daysSinceLastPost,
     sponsoredCount: a.sponsoredCount,
@@ -91,6 +94,8 @@ export default async function BrandInfluencerDetailPage({
       engagementRate: p.engagementRate,
       isSponsored: p.isSponsored,
       inSample: p.inSample,
+      surface: p.surface,
+      isPinned: p.isPinned,
       postedAt: p.postedAt?.toISOString() ?? null,
     })),
   }));
