@@ -1,7 +1,9 @@
 import { InfluencerPlatform } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildInfluencerActorInput,
+  buildTikTokFallbackActorInput,
+  getInfluencerFallbackActorId,
   parseInfluencerUrl,
 } from "@/lib/apify/influencer-actors";
 
@@ -102,5 +104,49 @@ describe("buildInfluencerActorInput", () => {
     expect(
       buildInfluencerActorInput(InfluencerPlatform.TIKTOK, "a", 1).resultsPerPage,
     ).toBe(6);
+  });
+});
+
+/**
+ * Scraper TikTok rutin patah ketika TikTok mengubah halamannya — dan patahnya
+ * diam-diam: run tetap dilaporkan SUKSES dengan nol video. Cadangan dari vendor
+ * lain adalah satu-satunya yang menolong; cadangan dari penulis yang sama akan
+ * patah oleh perubahan yang sama.
+ */
+describe("actor cadangan", () => {
+  const original = process.env.APIFY_ACTOR_TIKTOK_PROFILE_FALLBACK;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.APIFY_ACTOR_TIKTOK_PROFILE_FALLBACK;
+    else process.env.APIFY_ACTOR_TIKTOK_PROFILE_FALLBACK = original;
+  });
+
+  it("memakai actor dari vendor lain sebagai default TikTok", () => {
+    delete process.env.APIFY_ACTOR_TIKTOK_PROFILE_FALLBACK;
+    const fallback = getInfluencerFallbackActorId(InfluencerPlatform.TIKTOK);
+
+    expect(fallback).toBe("apidojo~tiktok-profile-scraper");
+    expect(fallback).not.toContain("clockworks");
+  });
+
+  it("bisa diganti lewat env tanpa deploy ulang", () => {
+    process.env.APIFY_ACTOR_TIKTOK_PROFILE_FALLBACK = "vendor~lain";
+    expect(getInfluencerFallbackActorId(InfluencerPlatform.TIKTOK)).toBe(
+      "vendor~lain",
+    );
+  });
+
+  it("tidak mengarang cadangan Instagram yang belum diuji", () => {
+    expect(getInfluencerFallbackActorId(InfluencerPlatform.INSTAGRAM)).toBeNull();
+  });
+
+  it("mengirim input sesuai skema actor cadangan", () => {
+    const input = buildTikTokFallbackActorInput("someone", 24);
+    expect(input).toEqual({ usernames: ["someone"], maxItems: 24 });
+  });
+
+  it("membatasi jumlah item yang diminta", () => {
+    expect(buildTikTokFallbackActorInput("a", 5000).maxItems).toBe(100);
+    expect(buildTikTokFallbackActorInput("a", 1).maxItems).toBe(6);
   });
 });

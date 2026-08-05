@@ -4261,10 +4261,17 @@ model InfluencerAudit {
   errorMessage    String?
   apifyRunId      String?
   /**
-   * Run kedua khusus Instagram: tab Reels adalah koleksi terpisah dari grid
-   * profil, dan hanya mode `reels` yang mengembalikan hitungan view yang benar.
+   * Run Apify kedua yang ikut ditunggu audit ini. Perannya beda per platform:
+   *
+   * - Instagram: run tab Reels. Reels adalah koleksi terpisah dari grid profil,
+   *   dan hanya mode `reels` yang mengembalikan hitungan view yang benar.
+   * - TikTok: run actor CADANGAN, dipakai saat actor utama pulang tanpa video
+   *   (scraper TikTok rutin patah dan tetap melaporkan run sukses).
+   *
+   * Kolom database-nya tetap bernama `apifyReelsRunId` — hanya nama field di
+   * kode yang digeneralkan, jadi tidak ada perubahan skema.
    */
-  apifyReelsRunId String?
+  apifySecondaryRunId String? @map("apifyReelsRunId")
   startedAt       DateTime?
   collectedAt     DateTime?
 

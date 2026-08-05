@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  markLeadingPinnedPosts,
   mergeInstagramSurfaces,
   normalizeInstagramProfile,
   normalizeInstagramReels,
@@ -201,6 +202,124 @@ describe("mergeInstagramSurfaces", () => {
 
     expect(merged[0].likes).toBe(4_200);
     expect(merged[0].likesHidden).toBe(false);
+  });
+});
+
+/**
+ * Bentuk nyata `apidojo/tiktok-profile-scraper` — actor cadangan yang dipakai
+ * saat clockworks pulang tanpa video. Fixture ini disalin dari keluaran run
+ * sungguhan, bukan dikarang.
+ */
+describe("normalizeTikTokProfile — bentuk actor cadangan", () => {
+  function apidojoItem(overrides: Record<string, unknown> = {}) {
+    return {
+      inputSource: "akhzalswan16",
+      id: "7670486784152784136",
+      title: "jujur ini pertama kalinya ke Bromo",
+      views: 92_676,
+      likes: 20_288,
+      comments: 181,
+      shares: 317,
+      bookmarks: 274,
+      uploadedAt: 1_770_285_986,
+      uploadedAtFormatted: "2026-08-05T10:06:26.000Z",
+      postPage: "https://www.tiktok.com/@akhzalswan16/video/7670486784152784136",
+      video: { cover: "https://p16.tiktokcdn.com/cover.heic" },
+      channel: {
+        username: "akhzalswan16",
+        name: "Panggil aja Aksal",
+        bio: "duArr~",
+        avatar: "https://p16.tiktokcdn.com/avatar.heic",
+        verified: true,
+        followers: 632_380,
+        following: 159,
+        videos: 979,
+      },
+      ...overrides,
+    };
+  }
+
+  it("mengenali bentuknya dari data, bukan dari actor mana yang dipanggil", () => {
+    const profile = normalizeTikTokProfile([apidojoItem()], "akhzalswan16");
+
+    expect(profile.followers).toBe(632_380);
+    expect(profile.following).toBe(159);
+    expect(profile.postCount).toBe(979);
+    expect(profile.displayName).toBe("Panggil aja Aksal");
+    expect(profile.isVerified).toBe(true);
+  });
+
+  it("memetakan nama field yang sama sekali berbeda dari clockworks", () => {
+    const [post] = normalizeTikTokProfile([apidojoItem()], "x").posts;
+
+    expect(post.likes).toBe(20_288);
+    expect(post.comments).toBe(181);
+    expect(post.shares).toBe(317);
+    expect(post.views).toBe(92_676);
+    // `bookmarks` di actor ini = simpan/collect di clockworks.
+    expect(post.saves).toBe(274);
+    expect(post.surface).toBe("reels");
+    expect(post.postedAt?.toISOString()).toBe("2026-08-05T10:06:26.000Z");
+    expect(post.url).toContain("/video/7670486784152784136");
+  });
+
+  it("menandai video yang dipin dari urutannya", () => {
+    // TikTok menaruh video pin di paling atas profil; actor ini tidak
+    // menandainya, dan tanpa deteksi urutan video pin lama ikut terhitung
+    // sebagai post terbaru.
+    const profile = normalizeTikTokProfile(
+      [
+        apidojoItem({ id: "pin1", uploadedAtFormatted: "2026-01-23T10:10:12.000Z" }),
+        apidojoItem({ id: "pin2", uploadedAtFormatted: "2025-09-22T08:30:17.000Z" }),
+        apidojoItem({ id: "baru1", uploadedAtFormatted: "2026-08-05T10:06:26.000Z" }),
+        apidojoItem({ id: "baru2", uploadedAtFormatted: "2026-08-04T09:01:48.000Z" }),
+      ],
+      "x",
+    );
+
+    expect(profile.posts.map((p) => p.isPinned)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it("tidak menandai apa pun pada profil yang urut menurun", () => {
+    const profile = normalizeTikTokProfile(
+      [
+        apidojoItem({ id: "a", uploadedAtFormatted: "2026-08-05T10:00:00.000Z" }),
+        apidojoItem({ id: "b", uploadedAtFormatted: "2026-08-04T10:00:00.000Z" }),
+        apidojoItem({ id: "c", uploadedAtFormatted: "2026-08-03T10:00:00.000Z" }),
+      ],
+      "x",
+    );
+
+    expect(profile.posts.every((p) => !p.isPinned)).toBe(true);
+  });
+
+  it("tidak menandai lebih dari tiga pin — itu batas TikTok", () => {
+    const posts = Array.from({ length: 5 }, (_, i) => ({
+      externalId: `p${i}`,
+      likes: 1,
+      comments: 1,
+      shares: 0,
+      views: 10,
+      saves: 0,
+      surface: "reels" as const,
+      // Empat post pertama lebih tua daripada yang terakhir.
+      postedAt: new Date(
+        i === 4 ? "2026-08-05T00:00:00Z" : `2025-0${i + 1}-01T00:00:00Z`,
+      ),
+    }));
+
+    expect(
+      markLeadingPinnedPosts(posts).filter((p) => p.isPinned),
+    ).toHaveLength(3);
+  });
+
+  it("menolak dataset kosong dengan pesan yang jelas", () => {
+    expect(() => normalizeTikTokProfile([], "x")).toThrow(/tidak mengembalikan/i);
   });
 });
 

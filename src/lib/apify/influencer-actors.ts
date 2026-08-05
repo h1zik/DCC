@@ -159,6 +159,47 @@ export function influencerActorEnvHint(platform: InfluencerPlatform): string {
 }
 
 /**
+ * Actor cadangan bila yang utama pulang dengan tangan kosong.
+ *
+ * Scraper TikTok rutin patah begitu TikTok mengubah halamannya: actor bisa
+ * melaporkan run SUKSES sambil mengembalikan nol video. Cadangannya sengaja
+ * dipilih dari VENDOR LAIN dengan cara kerja berbeda — cadangan dari penulis
+ * yang sama akan patah oleh perubahan yang sama, jadi tidak menolong.
+ *
+ * Instagram belum punya cadangan: satu-satunya jalur yang dipakai sekarang
+ * masih bekerja, dan menebak actor pengganti tanpa diuji lebih berisiko
+ * daripada gagal dengan jujur.
+ */
+export function getInfluencerFallbackActorId(
+  platform: InfluencerPlatform,
+): string | null {
+  if (platform === InfluencerPlatform.INSTAGRAM) {
+    return process.env.APIFY_ACTOR_INSTAGRAM_PROFILE_FALLBACK?.trim() || null;
+  }
+  return (
+    process.env.APIFY_ACTOR_TIKTOK_PROFILE_FALLBACK?.trim() ||
+    "apidojo~tiktok-profile-scraper"
+  );
+}
+
+/**
+ * Input actor cadangan TikTok (`apidojo/tiktok-profile-scraper`).
+ *
+ * Bentuknya jauh lebih sederhana daripada clockworks — hanya username dan
+ * batas jumlah. Actor ini mengembalikan video pin di urutan paling atas tanpa
+ * menandainya; penandaan dikerjakan normalizer dari urutan tanggalnya.
+ */
+export function buildTikTokFallbackActorInput(
+  handle: string,
+  postSample: number = DEFAULT_POST_SAMPLE,
+): Record<string, unknown> {
+  return {
+    usernames: [handle],
+    maxItems: Math.min(Math.max(Math.round(postSample), 6), 100),
+  };
+}
+
+/**
  * Jumlah post yang diambil. 12 adalah standar industri untuk hitung ER, tapi
  * lebih banyak post membuat deteksi engagement palsu jauh lebih andal karena
  * varians antar post baru terbaca di sampel besar.
