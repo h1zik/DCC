@@ -7,6 +7,7 @@ import {
   Info,
   ShieldAlert,
   ShieldCheck,
+  ShieldQuestion,
 } from "lucide-react";
 import {
   InfluencerAuditStatus,
@@ -96,7 +97,19 @@ export const VERDICT_LABEL: Record<InfluencerVerdict, string> = {
   GOOD: "Bagus",
   AVERAGE: "Rata-rata",
   POOR: "Lemah",
+  NEEDS_REVIEW: "Perlu dicek",
   SUSPICIOUS: "Mencurigakan",
+};
+
+export const VERDICT_HINT: Record<InfluencerVerdict, string> = {
+  EXCELLENT: "Engagement kuat, tidak ada sinyal mencurigakan.",
+  GOOD: "Engagement layak, tidak ada sinyal mencurigakan.",
+  AVERAGE: "Engagement biasa saja untuk tier follower-nya.",
+  POOR: "Engagement di bawah median tier follower-nya.",
+  NEEDS_REVIEW:
+    "Ada satu sinyal keaslian yang berat. Satu sinyal saja belum cukup jadi kesimpulan — periksa detailnya sebelum memutuskan.",
+  SUSPICIOUS:
+    "Beberapa sinyal keaslian saling menguatkan. Engagement patut dicurigai dibeli.",
 };
 
 export const TIER_LABEL: Record<InfluencerTier, string> = {
@@ -165,9 +178,11 @@ export function VerdictBadge({
   const Icon =
     verdict === InfluencerVerdict.SUSPICIOUS
       ? ShieldAlert
-      : verdict === InfluencerVerdict.EXCELLENT || verdict === InfluencerVerdict.GOOD
-        ? ShieldCheck
-        : Info;
+      : verdict === InfluencerVerdict.NEEDS_REVIEW
+        ? ShieldQuestion
+        : verdict === InfluencerVerdict.EXCELLENT || verdict === InfluencerVerdict.GOOD
+          ? ShieldCheck
+          : Info;
 
   return (
     <span
@@ -181,10 +196,15 @@ export function VerdictBadge({
           "bg-amber-500/15 text-amber-800 dark:text-amber-300",
         verdict === InfluencerVerdict.POOR &&
           "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+        // Ungu, sengaja bukan merah: ini "ditahan untuk diperiksa",
+        // bukan tuduhan.
+        verdict === InfluencerVerdict.NEEDS_REVIEW &&
+          "bg-violet-500/15 text-violet-700 dark:text-violet-300",
         verdict === InfluencerVerdict.SUSPICIOUS &&
           "bg-rose-500/15 text-rose-700 dark:text-rose-300",
         className,
       )}
+      title={VERDICT_HINT[verdict]}
     >
       <Icon className="size-3.5" aria-hidden />
       {VERDICT_LABEL[verdict]}
@@ -246,13 +266,15 @@ export function ScoreRing({
   const color =
     verdict === InfluencerVerdict.SUSPICIOUS
       ? "var(--color-rose-500)"
-      : verdict === InfluencerVerdict.EXCELLENT
-        ? "var(--color-emerald-500)"
-        : verdict === InfluencerVerdict.GOOD
-          ? "var(--color-teal-500)"
-          : verdict === InfluencerVerdict.AVERAGE
-            ? "var(--color-amber-500)"
-            : "var(--color-orange-500)";
+      : verdict === InfluencerVerdict.NEEDS_REVIEW
+        ? "var(--color-violet-500)"
+        : verdict === InfluencerVerdict.EXCELLENT
+          ? "var(--color-emerald-500)"
+          : verdict === InfluencerVerdict.GOOD
+            ? "var(--color-teal-500)"
+            : verdict === InfluencerVerdict.AVERAGE
+              ? "var(--color-amber-500)"
+              : "var(--color-orange-500)";
 
   return (
     <div

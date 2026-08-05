@@ -95,6 +95,11 @@ export type InfluencerScoreResult = {
     followingRatio: number | null;
     /** mean ÷ median interaksi. Di atas 2 = beberapa post viral mendominasi. */
     viralSkew: number | null;
+    /** Bagian post sampel yang punya hitungan view (0–1). */
+    viewCoverage: number | null;
+    viewSampleCount: number;
+    /** Jumlah sinyal keaslian berat — 2 atau lebih baru jadi SUSPICIOUS. */
+    highAuthenticityFlags: number;
     /**
      * Perkiraan ER yang akan didapat brand bila memasang campaign — memakai
      * ER post berbayar bila sampelnya memadai, kalau tidak jatuh ke ER umum.
@@ -355,6 +360,8 @@ function detectSignals(params: {
   engagementCv: number | null;
   viralSkew: number | null;
   viewRate: number | null;
+  /** Bagian post sampel yang punya hitungan view (0–1). */
+  viewCoverage: number | null;
   erVsBenchmark: number;
   daysSinceLastPost: number | null;
   sponsored: SponsoredSplit;
@@ -370,6 +377,7 @@ function detectSignals(params: {
     engagementCv,
     viralSkew,
     viewRate,
+    viewCoverage,
     erVsBenchmark,
     daysSinceLastPost,
     sponsored,
@@ -442,12 +450,41 @@ function detectSignals(params: {
     );
   }
 
-  if (viewRate !== null && viewRate < 10 && followers >= 5000) {
+  // View rate hanya sahih sebagai bukti follower mati di TikTok: di sana SEMUA
+  // konten adalah video dan view memang jalur distribusinya. Di Instagram,
+  // Reels didorong lewat rekomendasi — bukan ke follower — sehingga akun
+  // dengan follower asli yang aktif di carousel tetap bisa punya Reels sepi.
+  // Menyamakan keduanya membuat mayoritas akun Instagram salah dituduh.
+  const viewDataRepresentative = viewCoverage !== null && viewCoverage >= 0.8;
+
+  if (
+    platform === InfluencerPlatform.TIKTOK &&
+    viewRate !== null &&
+    viewDataRepresentative &&
+    viewRate < 10 &&
+    followers >= 5000
+  ) {
     auth(
       "LOW_VIEW_RATE",
       "high",
       "View jauh di bawah jumlah follower",
-      `Rata-rata view hanya ${round(viewRate)}% dari follower. Follower kemungkinan besar tidak aktif atau dibeli.`,
+      `Nilai tengah view hanya ${round(viewRate)}% dari follower. Di TikTok view adalah jalur distribusinya, jadi angka serendah ini menandakan follower tidak aktif atau dibeli.`,
+    );
+  }
+
+  if (
+    platform === InfluencerPlatform.INSTAGRAM &&
+    viewRate !== null &&
+    viewRate < 10 &&
+    followers >= 5000
+  ) {
+    perf(
+      "LOW_REELS_REACH",
+      "medium",
+      "Reels jangkauannya rendah",
+      `Nilai tengah view Reels hanya ${round(viewRate)}% dari follower${viewCoverage !== null && viewCoverage < 0.8 ? ` (dihitung dari ${Math.round(viewCoverage * 100)}% post yang berupa video)` : ""}. Ini soal jangkauan konten video, BUKAN tanda follower palsu — di Instagram, Reels didistribusikan lewat rekomendasi, bukan ke follower. Pertimbangkan format feed/carousel bila ingin bekerja sama.`,
+      // Tanpa penalti tambahan: komponen jangkauan sudah menghitungnya.
+      0,
     );
   }
 
@@ -599,6 +636,18 @@ export function scoreInfluencer(
   const viewRate =
     medianViews > 0 && followers > 0 ? (medianViews / followers) * 100 : null;
 
+  /**
+   * Berapa bagian sampel yang sebenarnya punya hitungan view.
+   *
+   * Di Instagram hanya Reels yang punya view, sementara like dihitung dari
+   * SEMUA post. Tanpa memeriksa cakupan ini, view rate akan membandingkan
+   * subset video melawan follower lalu dipakai memvonis seluruh akun —
+   * membandingkan dua hal yang tidak sebanding.
+   */
+  const viewCoverage =
+    postsAnalyzed > 0 ? viewsWithData.length / postsAnalyzed : null;
+  const viewDataRepresentative = viewCoverage !== null && viewCoverage >= 0.8;
+
   const postsPerWeek = computeCadence(sample);
 
   const timestamps = sample
@@ -647,6 +696,7 @@ export function scoreInfluencer(
     engagementCv,
     viralSkew,
     viewRate,
+    viewCoverage,
     erVsBenchmark,
     daysSinceLastPost,
     sponsored,
@@ -664,10 +714,15 @@ export function scoreInfluencer(
   const engagementComponent = scoreFromRatio(erVsBenchmark);
   const consistencyComponent =
     scoreCadence(postsPerWeek) * 0.6 + scoreRecency(daysSinceLastPost) * 0.4;
-  // Jangkauan: idealnya view >= 30% follower. Tanpa data view, jatuh ke netral
-  // supaya post foto tidak dihukum karena keterbatasan data.
+  // Jangkauan: idealnya view >= 30% follower. View hanya dipakai bila
+  // mencakup hampir seluruh sampel — kalau tidak, angkanya cuma mewakili
+  // sebagian post (mis. akun Instagram yang isinya campuran carousel dan
+  // Reels) dan tidak boleh menentukan nilai seluruh akun. Tanpa data yang
+  // mewakili, komponen ini netral, bukan nol.
   const reachComponent =
-    viewRate !== null ? clamp((viewRate / 30) * 100, 0, 100) : 60;
+    viewRate !== null && viewDataRepresentative
+      ? clamp((viewRate / 30) * 100, 0, 100)
+      : 60;
 
   const rawScore =
     engagementComponent * 0.45 +
@@ -676,18 +731,29 @@ export function scoreInfluencer(
     authenticityScore * 0.15 -
     performancePenalty;
 
-  // Sinyal keaslian berat tidak boleh tertutup oleh bobot: justru angka
-  // engagement yang tinggi itulah yang sedang dipertanyakan.
-  const hasHighAuthenticityFlag = fakeFlags.some(
+  /**
+   * Tuduhan kecurangan butuh korroborasi.
+   *
+   * Tiap sinyal punya tingkat salah-tuduh sendiri, jadi satu sinyal berdiri
+   * sendiri hanya cukup untuk menahan dan memeriksa manual — bukan memvonis.
+   * Dua sinyal berat yang saling menguatkan barulah kesimpulan.
+   *
+   * Sinyal berat tetap tidak boleh tertutup bobot komponen: justru angka
+   * engagement tinggi itulah yang sedang dipertanyakan, jadi skornya dibatasi.
+   */
+  const highAuthenticityFlags = fakeFlags.filter(
     (f) => f.impact === "authenticity" && f.severity === "high",
-  );
-  const score = hasHighAuthenticityFlag
-    ? clamp(Math.min(Math.round(rawScore), 45), 0, 100)
-    : clamp(Math.round(rawScore), 0, 100);
+  ).length;
+
+  const scoreCeiling =
+    highAuthenticityFlags >= 2 ? 45 : highAuthenticityFlags === 1 ? 60 : 100;
+  const score = clamp(Math.min(Math.round(rawScore), scoreCeiling), 0, 100);
 
   let verdict: InfluencerVerdict;
-  if (authenticityScore < 50 || hasHighAuthenticityFlag) {
+  if (authenticityScore < 50 || highAuthenticityFlags >= 2) {
     verdict = InfluencerVerdict.SUSPICIOUS;
+  } else if (highAuthenticityFlags === 1) {
+    verdict = InfluencerVerdict.NEEDS_REVIEW;
   } else if (score >= 80) verdict = InfluencerVerdict.EXCELLENT;
   else if (score >= 65) verdict = InfluencerVerdict.GOOD;
   else if (score >= 45) verdict = InfluencerVerdict.AVERAGE;
@@ -738,6 +804,9 @@ export function scoreInfluencer(
         engagementTrendPct === null ? null : round(engagementTrendPct, 1),
       followingRatio: followingRatio === null ? null : round(followingRatio, 2),
       viralSkew: viralSkew === null ? null : round(viralSkew, 2),
+      viewCoverage: viewCoverage === null ? null : round(viewCoverage, 2),
+      viewSampleCount: viewsWithData.length,
+      highAuthenticityFlags,
       expectedCampaignEr,
       expectedCampaignErSource: useSponsored ? "sponsored" : "overall",
       components: {
@@ -765,6 +834,7 @@ export const VERDICT_LABEL: Record<InfluencerVerdict, string> = {
   GOOD: "Bagus",
   AVERAGE: "Rata-rata",
   POOR: "Lemah",
+  NEEDS_REVIEW: "Perlu dicek",
   SUSPICIOUS: "Mencurigakan",
 };
 

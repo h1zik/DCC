@@ -4208,6 +4208,12 @@ enum InfluencerVerdict {
   GOOD
   AVERAGE
   POOR
+  /**
+   * Satu sinyal keaslian berat terdeteksi — cukup untuk ditahan dan diperiksa
+   * manual, belum cukup untuk dituduh. Deteksi kecurangan butuh korroborasi;
+   * satu sinyal sendirian terlalu sering salah tuduh.
+   */
+  NEEDS_REVIEW
   SUSPICIOUS
 }
 

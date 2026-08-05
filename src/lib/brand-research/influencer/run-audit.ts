@@ -115,7 +115,9 @@ Sinyal yang terdeteksi:
 ${scored.fakeFlags.length > 0 ? scored.fakeFlags.map((f) => `- [${f.impact}/${f.severity}] ${f.label}: ${f.detail}`).join("\n") : "- Tidak ada"}
 
 Tulis penilaian yang jujur dan tegas untuk tim brand. Jangan mengarang data di luar angka di atas. Aturan:
-- Bila ada sinyal berdampak "authenticity" dengan tingkat "high", katakan terus terang engagement-nya patut dicurigai dan jangan merekomendasikan kerja sama.
+- Bila ada DUA ATAU LEBIH sinyal berdampak "authenticity" tingkat "high", katakan terus terang engagement-nya patut dicurigai dan jangan merekomendasikan kerja sama.
+- Bila hanya ADA SATU sinyal "authenticity" tingkat "high", jangan menuduh. Sebutkan sinyal itu sebagai hal yang perlu diperiksa manual dulu, dan jelaskan penjelasan wajar apa yang mungkin ada di baliknya.
+- Sinyal berdampak "performance" bukan tuduhan kecurangan — itu soal hasil yang akan didapat, bukan keaslian audiens. Jangan menyebutnya engagement palsu.
 - Bila tingkat keyakinan rendah, sebutkan bahwa kesimpulannya sementara dan sarankan audit ulang setelah influencer memposting lebih banyak.
 - Bila ER post berbayar jauh di bawah organik, jadikan itu poin utama — angka itulah yang akan brand dapatkan.
 
