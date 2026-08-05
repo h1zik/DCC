@@ -178,3 +178,163 @@ export function countActiveInfluencerFilters(
   if (filters.tier !== "all") n += 1;
   return n;
 }
+
+/* ─── Bolak-balik ke URL ────────────────────────────────────────────────
+ *
+ * Filter disimpan di query supaya bertahan saat pengguna membuka satu
+ * influencer lalu kembali — dan supaya tampilan yang sudah disaring bisa
+ * dikirim ke rekan lewat link. Nilai dari URL tidak boleh dipercaya begitu
+ * saja: enum yang tidak dikenal harus jatuh ke default, bukan menghasilkan
+ * daftar kosong yang membingungkan.
+ */
+
+/** Nama parameter di URL. `q` dipakai untuk pencarian karena lebih pendek. */
+export const INFLUENCER_FILTER_PARAMS = {
+  search: "q",
+  platform: "platform",
+  verdict: "verdict",
+  tier: "tier",
+  sort: "sort",
+} as const;
+
+const SORT_KEYS: InfluencerSortKey[] = [
+  "recent",
+  "score",
+  "campaignEr",
+  "er",
+  "followers",
+];
+
+const VERDICT_VALUES: string[] = [
+  ...Object.values(VERDICT_GROUP),
+  ...Object.values(InfluencerVerdict),
+];
+
+/** Batas panjang pencarian — URL tidak perlu menampung novel. */
+const MAX_SEARCH_LENGTH = 100;
+
+type ParamSource = {
+  get(name: string): string | null;
+} | null | undefined;
+
+function pick<T extends string>(
+  raw: string | null,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return raw !== null && (allowed as readonly string[]).includes(raw)
+    ? (raw as T)
+    : fallback;
+}
+
+export function parseInfluencerFilters(
+  params: ParamSource,
+): InfluencerFilterState {
+  if (!params) return DEFAULT_INFLUENCER_FILTERS;
+
+  return {
+    search: (params.get(INFLUENCER_FILTER_PARAMS.search) ?? "").slice(
+      0,
+      MAX_SEARCH_LENGTH,
+    ),
+    platform: pick(
+      params.get(INFLUENCER_FILTER_PARAMS.platform),
+      ["all", ...Object.values(InfluencerPlatform)] as const,
+      "all",
+    ),
+    verdict: pick(
+      params.get(INFLUENCER_FILTER_PARAMS.verdict),
+      VERDICT_VALUES,
+      VERDICT_GROUP.ALL,
+    ),
+    tier: pick(
+      params.get(INFLUENCER_FILTER_PARAMS.tier),
+      ["all", ...Object.values(InfluencerTier)] as const,
+      "all",
+    ),
+    sort: pick(params.get(INFLUENCER_FILTER_PARAMS.sort), SORT_KEYS, "recent"),
+  };
+}
+
+/** Apakah URL memang membawa filter — dipakai memutuskan perlu-tidaknya pulihkan. */
+export function hasInfluencerFilterParams(params: ParamSource): boolean {
+  if (!params) return false;
+  return Object.values(INFLUENCER_FILTER_PARAMS).some(
+    (key) => params.get(key) !== null,
+  );
+}
+
+/**
+ * Query string untuk keadaan filter tertentu. Parameter lain di `base`
+ * (mis. `brandId` dari sub-nav Brand Hub) dipertahankan, dan nilai default
+ * dibuang supaya URL tetap bersih saat tidak ada filter yang aktif.
+ */
+export function influencerFilterQuery(
+  filters: InfluencerFilterState,
+  base?: URLSearchParams,
+): string {
+  const params = new URLSearchParams(base?.toString() ?? "");
+  const search = filters.search.trim().slice(0, MAX_SEARCH_LENGTH);
+
+  const entries: [string, string, string][] = [
+    [INFLUENCER_FILTER_PARAMS.search, search, ""],
+    [INFLUENCER_FILTER_PARAMS.platform, filters.platform, "all"],
+    [INFLUENCER_FILTER_PARAMS.verdict, filters.verdict, VERDICT_GROUP.ALL],
+    [INFLUENCER_FILTER_PARAMS.tier, filters.tier, "all"],
+    [INFLUENCER_FILTER_PARAMS.sort, filters.sort, "recent"],
+  ];
+
+  for (const [key, value, fallback] of entries) {
+    if (value === fallback) params.delete(key);
+    else params.set(key, value);
+  }
+
+  return params.toString();
+}
+
+/** Semua filter DAN urutan masih di posisi awal. */
+export function isInfluencerFilterPristine(
+  filters: InfluencerFilterState,
+): boolean {
+  return (
+    !isInfluencerFilterActive(filters) &&
+    filters.sort === DEFAULT_INFLUENCER_FILTERS.sort
+  );
+}
+
+/**
+ * Parameter tempat halaman detail menyimpan filter daftar asalnya, supaya
+ * tombol "kembali" mengembalikan pengguna ke tampilan yang sama persis —
+ * bukan ke daftar penuh yang harus disaring ulang.
+ */
+export const INFLUENCER_RETURN_PARAM = "from";
+
+/**
+ * Bangun href kembali ke daftar dari nilai `from` yang dibawa URL detail.
+ *
+ * Nilainya berasal dari URL sehingga tidak boleh dipercaya: isinya dicuci
+ * lewat parser filter yang sama, jadi kunci asing dibuang dan enum yang tidak
+ * dikenal jatuh ke default. Path-nya tetap dari argumen — tidak ada jalan
+ * untuk mengarahkan tombol ini ke alamat lain.
+ */
+export function influencerListHref(
+  listPath: string,
+  options: { brandId?: string | null; from?: string | null } = {},
+): string {
+  const params = new URLSearchParams(
+    influencerFilterQuery(parseInfluencerFilters(readReturnParams(options.from))),
+  );
+  if (options.brandId) params.set("brandId", options.brandId);
+
+  const query = params.toString();
+  return query ? `${listPath}?${query}` : listPath;
+}
+
+function readReturnParams(from: string | null | undefined): URLSearchParams | null {
+  if (!from) return null;
+  try {
+    return new URLSearchParams(from);
+  } catch {
+    return null;
+  }
+}
