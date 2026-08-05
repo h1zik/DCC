@@ -215,13 +215,22 @@ export function InfluencerMethodology({
             <ul className="list-disc space-y-0.5 pl-4">
               <li>Komentar di bawah 0,4% dari like → pola like berbayar</li>
               <li>Komentar di atas 20% dari like → engagement pod / bot</li>
-              <li>View di bawah 10% follower → follower tidak aktif</li>
+              <li>
+                <strong>Khusus TikTok:</strong> view di bawah 10% follower →
+                follower tidak aktif
+              </li>
               <li>
                 Variasi engagement antar post di bawah 15% → terlalu seragam
                 untuk akun organik
               </li>
               <li>Mengikuti lebih banyak dari pengikutnya → taktik follow/unfollow</li>
             </ul>
+            <p>
+              Ambang view <strong>tidak</strong> dipakai untuk menilai keaslian
+              akun Instagram. Di sana Reels didistribusikan lewat rekomendasi,
+              bukan ke follower, jadi Reels yang sepi tidak berarti follower
+              palsu — dilaporkan sebagai catatan jangkauan saja.
+            </p>
             <p>
               Tiap temuan memotong skor keaslian (berat 30, sedang 18). Skor
               keaslian influencer ini{" "}
@@ -319,14 +328,24 @@ export function InfluencerMethodology({
           <Step n={components ? 7 : 6} title="Menentukan vonis">
             <ul className="list-disc space-y-0.5 pl-4">
               <li>
-                Ada sinyal keaslian tingkat berat, atau skor keaslian di bawah 50
-                → <strong>Mencurigakan</strong> (mengabaikan skor)
+                <strong>Dua atau lebih</strong> sinyal keaslian berat, atau skor
+                keaslian di bawah 50 → <strong>Mencurigakan</strong>
+              </li>
+              <li>
+                <strong>Satu</strong> sinyal keaslian berat →{" "}
+                <strong>Perlu dicek</strong> (skor dibatasi 60)
               </li>
               <li>Skor 80+ → Sangat bagus</li>
               <li>Skor 65–79 → Bagus</li>
               <li>Skor 45–64 → Rata-rata</li>
               <li>Di bawah 45 → Lemah</li>
             </ul>
+            <p>
+              Tuduhan kecurangan butuh korroborasi. Tiap sinyal punya tingkat
+              salah-tuduh sendiri, jadi satu sinyal berdiri sendiri hanya cukup
+              untuk <em>menahan dan memeriksa</em> — bukan menyimpulkan. Dua
+              sinyal yang saling menguatkan barulah kesimpulan.
+            </p>
           </Step>
 
           <div className="border-border/60 border-t pt-3">

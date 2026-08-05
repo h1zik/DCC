@@ -294,6 +294,127 @@ describe("sponsored vs organic split", () => {
   });
 });
 
+describe("view rate is judged per platform", () => {
+  /** Akun Instagram campuran: carousel (tanpa view) + Reels yang sepi. */
+  function mixedInstagram(): NormalizedInfluencerPost[] {
+    return [
+      ...Array.from({ length: 7 }, (_, i) =>
+        post({ id: `c${i}`, daysAgo: i * 4, likes: 1_600, comments: 45, views: 0 }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        post({ id: `v${i}`, daysAgo: i * 4 + 2, likes: 90, comments: 6, views: 40 + i * 250 }),
+      ),
+    ];
+  }
+
+  it("does not accuse an Instagram account of fake followers over quiet Reels", () => {
+    // Reels didistribusikan lewat rekomendasi, bukan ke follower — Reels sepi
+    // bukan bukti follower palsu. Ini penyebab utama salah tuduh sebelumnya.
+    const r = scoreInfluencer(input({ followers: 49_667, posts: mixedInstagram() }));
+
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("LOW_VIEW_RATE");
+    expect(r.fakeFlags.map((f) => f.code)).toContain("LOW_REELS_REACH");
+    expect(r.fakeFlags.find((f) => f.code === "LOW_REELS_REACH")?.impact).toBe(
+      "performance",
+    );
+    expect(r.authenticityScore).toBe(100);
+    expect(r.verdict).not.toBe(InfluencerVerdict.SUSPICIOUS);
+  });
+
+  it("keeps reach neutral when views only cover part of the sample", () => {
+    // 5 dari 12 post punya view — angka itu mewakili Reels saja, bukan akun.
+    const r = scoreInfluencer(input({ followers: 49_667, posts: mixedInstagram() }));
+    expect(r.metrics.viewCoverage).toBeLessThan(0.8);
+    expect(r.metrics.viewSampleCount).toBe(5);
+    expect(r.metrics.components.reach).toBe(60);
+  });
+
+  it("still uses view rate for reach when videos cover the whole sample", () => {
+    const r = scoreInfluencer(
+      input({
+        platform: InfluencerPlatform.TIKTOK,
+        followers: 100_000,
+        posts: Array.from({ length: 10 }, (_, i) =>
+          post({ id: `p${i}`, daysAgo: i * 3, likes: 3_000, comments: 90, views: 45_000 + i * 500 }),
+        ),
+      }),
+    );
+    expect(r.metrics.viewCoverage).toBe(1);
+    expect(r.metrics.components.reach).toBeGreaterThan(60);
+  });
+
+  it("does not flag dead followers on TikTok when view data is unrepresentative", () => {
+    const posts = [
+      ...Array.from({ length: 8 }, (_, i) =>
+        post({ id: `n${i}`, daysAgo: i * 3, likes: 500, comments: 20, views: 0 }),
+      ),
+      post({ id: "v", daysAgo: 1, likes: 500, comments: 20, views: 900 }),
+    ];
+    const r = scoreInfluencer(
+      input({ platform: InfluencerPlatform.TIKTOK, followers: 100_000, posts }),
+    );
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("LOW_VIEW_RATE");
+  });
+});
+
+describe("verdict requires corroboration", () => {
+  /**
+   * TEPAT satu sinyal berat: komentar nyaris nol dibanding like, tapi like
+   * antar post tetap bervariasi lebar supaya FLAT_ENGAGEMENT tidak ikut nyala.
+   */
+  function oneHighSignal(): NormalizedInfluencerPost[] {
+    const likes = [1_200, 8_000, 2_400, 15_000, 900, 5_600, 3_100, 11_000, 1_800, 6_400];
+    return likes.map((n, i) =>
+      post({ id: `p${i}`, daysAgo: i * 3, likes: n, comments: 4, views: n * 12 }),
+    );
+  }
+
+  it("holds a single high signal at NEEDS_REVIEW instead of accusing", () => {
+    const r = scoreInfluencer(input({ followers: 80_000, posts: oneHighSignal() }));
+
+    expect(r.metrics.highAuthenticityFlags).toBe(1);
+    expect(r.verdict).toBe(InfluencerVerdict.NEEDS_REVIEW);
+    expect(r.score).toBeLessThanOrEqual(60);
+  });
+
+  it("escalates to SUSPICIOUS once two high signals corroborate", () => {
+    // Komentar nyaris nol DAN engagement seragam antar post.
+    const r = scoreInfluencer(
+      input({
+        followers: 80_000,
+        posts: Array.from({ length: 12 }, (_, i) =>
+          post({ id: `p${i}`, daysAgo: i * 3, likes: 5_000 + (i % 2), comments: 4, views: 60_000 }),
+        ),
+      }),
+    );
+    expect(r.metrics.highAuthenticityFlags).toBeGreaterThanOrEqual(2);
+    expect(r.verdict).toBe(InfluencerVerdict.SUSPICIOUS);
+    expect(r.score).toBeLessThanOrEqual(45);
+  });
+
+  it("still escalates when medium signals sink authenticity below 50", () => {
+    const r = scoreInfluencer(
+      input({
+        followers: 20_000,
+        following: 25_000, // FOLLOWING_RATIO_HIGH
+        posts: Array.from({ length: 10 }, (_, i) =>
+          // ER jauh di atas median tier + komentar berlebih = dua sinyal sedang.
+          post({ id: `p${i}`, daysAgo: i * 3, likes: 3_000 + i * 200, comments: 900 + i * 40, views: 40_000 + i * 900 }),
+        ),
+      }),
+    );
+    expect(r.authenticityScore).toBeLessThan(50);
+    expect(r.verdict).toBe(InfluencerVerdict.SUSPICIOUS);
+  });
+
+  it("leaves a clean account on the ordinary score scale", () => {
+    const r = scoreInfluencer(input());
+    expect(r.metrics.highAuthenticityFlags).toBe(0);
+    expect(r.verdict).not.toBe(InfluencerVerdict.NEEDS_REVIEW);
+    expect(r.verdict).not.toBe(InfluencerVerdict.SUSPICIOUS);
+  });
+});
+
 describe("flag impact separation", () => {
   it("does not dock authenticity for missing view data", () => {
     // Akun foto Instagram tanpa view bukan akun palsu — itu batas data.
@@ -364,7 +485,7 @@ describe("fake engagement detection", () => {
     expect(r.fakeFlags.map((f) => f.code)).toContain("COMMENT_LIKE_RATIO_HIGH");
   });
 
-  it("flags dead followers when views fall far below follower count", () => {
+  it("flags dead followers on TikTok when views fall far below follower count", () => {
     const r = scoreInfluencer(
       input({
         platform: InfluencerPlatform.TIKTOK,
@@ -387,7 +508,8 @@ describe("fake engagement detection", () => {
       }),
     );
     expect(r.fakeFlags.map((f) => f.code)).toContain("FLAT_ENGAGEMENT");
-    expect(r.verdict).toBe(InfluencerVerdict.SUSPICIOUS);
+    // Sendirian, sinyal ini menahan untuk diperiksa — belum menuduh.
+    expect(r.verdict).toBe(InfluencerVerdict.NEEDS_REVIEW);
   });
 
   it("does not flag flat engagement on a thin sample", () => {
@@ -433,7 +555,9 @@ describe("fake engagement detection", () => {
       }),
     );
     expect(r.authenticityScore).toBe(70);
-    expect(r.score).toBeLessThanOrEqual(45);
+    // Satu sinyal → batas 60; dua sinyal baru turun ke 45.
+    expect(r.score).toBeLessThanOrEqual(60);
+    expect(r.verdict).toBe(InfluencerVerdict.NEEDS_REVIEW);
   });
 });
 

@@ -75,6 +75,9 @@ export async function getInfluencerHubStats(ownerBrandId?: string | null) {
   const suspicious = latest.filter(
     (a) => a.verdict === InfluencerVerdict.SUSPICIOUS,
   ).length;
+  const needsReview = latest.filter(
+    (a) => a.verdict === InfluencerVerdict.NEEDS_REVIEW,
+  ).length;
   const recommended = latest.filter(
     (a) =>
       a.verdict === InfluencerVerdict.EXCELLENT ||
@@ -89,6 +92,7 @@ export async function getInfluencerHubStats(ownerBrandId?: string | null) {
     total: profiles.length,
     audited: latest.length,
     recommended,
+    needsReview,
     suspicious,
     avgScore,
   };

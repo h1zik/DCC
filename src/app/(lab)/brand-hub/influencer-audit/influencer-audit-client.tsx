@@ -84,6 +84,7 @@ type HubStats = {
   total: number;
   audited: number;
   recommended: number;
+  needsReview: number;
   suspicious: number;
   avgScore: number;
 };
@@ -404,6 +405,11 @@ export function InfluencerAuditClient({
             label="Layak"
             value={stats.recommended}
             tone={stats.recommended > 0 ? "success" : "neutral"}
+          />
+          <LabStatChip
+            label="Perlu dicek"
+            value={stats.needsReview}
+            tone={stats.needsReview > 0 ? "warning" : "neutral"}
           />
           <LabStatChip
             label="Mencurigakan"

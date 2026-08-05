@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-05-influencer-vonis-kalibrasi",
+    date: "2026-08-05",
+    title: "Influencer Audit tidak lagi gampang menuduh \"Mencurigakan\"",
+    category: "improved",
+    description:
+      "Terlalu banyak influencer yang sehat divonis mencurigakan. Dua penyebabnya sudah diperbaiki. Pertama, Reels Instagram yang sepi dianggap tanda follower palsu — padahal di Instagram, Reels disebarkan lewat rekomendasi dan bukan ke follower, jadi Reels sepi sama sekali tidak membuktikan follower palsu. Aturan itu sekarang hanya berlaku untuk TikTok, tempat view memang jalur distribusinya. Kedua, satu sinyal saja langsung memvonis; sekarang butuh dua sinyal yang saling menguatkan.",
+    highlights: [
+      "Vonis baru \"Perlu dicek\" untuk kasus satu sinyal — ditahan dan diperiksa manual, bukan langsung dituduh",
+      "\"Mencurigakan\" hanya keluar bila ada dua sinyal keaslian yang saling menguatkan",
+      "Reels Instagram yang jangkauannya rendah kini jadi catatan performa, bukan tuduhan engagement palsu",
+      "Nilai jangkauan tidak lagi dihitung dari view bila hanya sebagian post yang berupa video — akun campuran carousel dan Reels tidak lagi dihukum",
+      "Diuji ulang terhadap audit yang sudah ada: tuduhan palsu hilang, sementara akun yang engagement-nya memang lemah tetap ketahuan lemah",
+    ],
+  },
+  {
     id: "2026-08-05-apify-run-hilang",
     date: "2026-08-05",
     title: "Scrape yang run-nya sudah hilang tidak lagi nyangkut selamanya",
