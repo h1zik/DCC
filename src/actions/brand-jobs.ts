@@ -4,6 +4,7 @@ import {
   BrandCreativeGuidelineStatus,
   BrandStrategyStatus,
   BrandVisualCollectionStatus,
+  InfluencerAuditStatus,
   KeywordIntelStatus,
   ResearchScrapeJobStatus,
   ResearchScrapeJobType,
@@ -16,6 +17,7 @@ import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope"
 import { pollBrandAdLibraryBatchesLight } from "@/lib/brand-research/scrape-meta-ads";
 import { pollBrandCompetitorScrapeJob } from "@/lib/brand-research/scrape-competitor";
 import { pollBrandReviewScrapeJobsLight } from "@/lib/brand-research/run-review-scrape-job";
+import { pollRunningInfluencerAudits } from "@/lib/brand-research/influencer/run-audit";
 
 export type BrandJobSummary = {
   id: string;
@@ -66,6 +68,12 @@ const TREND_IN_PROGRESS: TrendRadarStatus[] = [
   TrendRadarStatus.ANALYZING,
 ];
 
+const INFLUENCER_IN_PROGRESS: InfluencerAuditStatus[] = [
+  InfluencerAuditStatus.PENDING,
+  InfluencerAuditStatus.COLLECTING,
+  InfluencerAuditStatus.ANALYZING,
+];
+
 function brandHref(path: string, brandId: string | null): string {
   if (!brandId) return path;
   return `${path}?brandId=${encodeURIComponent(brandId)}`;
@@ -86,6 +94,7 @@ export async function listActiveBrandJobs(): Promise<BrandJobSummary[]> {
     uspAnalyses,
     trendDigests,
     visualCollections,
+    influencerAudits,
   ] = await Promise.all([
     prisma.brandResearchScrapeJob.findMany({
       where: { status: { in: ["PENDING", "RUNNING"] } },
@@ -132,6 +141,19 @@ export async function listActiveBrandJobs(): Promise<BrandJobSummary[]> {
       where: { status: BrandVisualCollectionStatus.COLLECTING },
       select: { id: true, name: true, ownerBrandId: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
+      take: 5,
+    }),
+    prisma.influencerAudit.findMany({
+      where: { status: { in: INFLUENCER_IN_PROGRESS } },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        profile: {
+          select: { id: true, handle: true, platform: true, ownerBrandId: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
       take: 5,
     }),
   ]);
@@ -295,6 +317,23 @@ export async function listActiveBrandJobs(): Promise<BrandJobSummary[]> {
       label: c.name,
       href: brandHref("/brand-hub/visual-library", c.ownerBrandId),
     })),
+    ...influencerAudits.map((a) => ({
+      id: `influencer-${a.id}`,
+      type: "INFLUENCER_AUDIT",
+      entityId: a.profile.id,
+      status: a.status,
+      percent: a.status === InfluencerAuditStatus.ANALYZING ? 75 : 40,
+      stepLabel:
+        a.status === InfluencerAuditStatus.ANALYZING
+          ? "Menilai engagement & keaslian…"
+          : "Mengambil profil & post…",
+      startedAt: a.createdAt.toISOString(),
+      label: `@${a.profile.handle}`,
+      href: brandHref(
+        `/brand-hub/influencer-audit/${a.profile.id}`,
+        a.profile.ownerBrandId,
+      ),
+    })),
   ];
 
   return [...scrapeSummaries, ...aiSummaries].slice(0, 12);
@@ -372,6 +411,13 @@ export async function pollBrandHubBackgroundJobs(): Promise<{ polled: number }> 
     polled += 1;
   } catch (err) {
     console.error("[pollBrandHubBackgroundJobs] ad-library", err);
+  }
+
+  try {
+    const result = await pollRunningInfluencerAudits();
+    polled += result.polled;
+  } catch (err) {
+    console.error("[pollBrandHubBackgroundJobs] influencer-audit", err);
   }
 
   return { polled };

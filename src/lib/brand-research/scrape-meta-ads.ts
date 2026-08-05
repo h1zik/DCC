@@ -9,6 +9,7 @@ import {
   metaAdLibraryActorEnvHint,
 } from "@/lib/apify/actors";
 import {
+  ApifyRunNotFoundError,
   fetchApifyDataset,
   getApifyRunStatus,
   isApifyConfigured,
@@ -279,6 +280,9 @@ export async function executeBrandAdLibraryBatch(batchId: string): Promise<void>
       try {
         run = await getApifyRunStatus(runId);
       } catch (err) {
+        // Run yang hilang tidak akan pernah muncul lagi — tandai gagal supaya
+        // batch tidak nyangkut di COLLECTING dan polling berhenti mengulang.
+        if (err instanceof ApifyRunNotFoundError) throw err;
         // Gangguan sementara saat membaca status Apify bukan kegagalan scrape.
         // Biarkan COLLECTING agar polling berikutnya dapat mencoba lagi.
         console.warn("[brand/ad-library/poll-status]", batchId, err);

@@ -115,7 +115,9 @@ enum NotificationType {
    * Komentar pada dokumen ruangan ditugaskan ke anggota tim.
    */
   ROOM_DOCUMENT_COMMENT_ASSIGNED
-  /** Mention anggota pada komentar Wiki. */
+  /**
+   * Mention anggota pada komentar Wiki.
+   */
   WIKI_MENTION
   CEO_APPROVAL_REQUESTED
   /**
@@ -388,7 +390,7 @@ model User {
   roomWikiAttachments                RoomWikiAttachment[]
   roomWikiVersionsCreated            RoomWikiPageVersion[]
   roomWikiCommentsAuthored           RoomWikiComment[]              @relation("RoomWikiCommentAuthor")
-  roomWikiPageLocks                  RoomWikiPage[]                  @relation("RoomWikiPageLock")
+  roomWikiPageLocks                  RoomWikiPage[]                 @relation("RoomWikiPageLock")
   roomWikiPresences                  RoomWikiPresence[]
   roomMembers                        RoomMember[]
   contentPlanItemsCreated            RoomContentPlanItem[]          @relation("ContentPlanItemCreator")
@@ -424,6 +426,7 @@ model User {
   brandReviewSourcesCreated          BrandReviewSource[]            @relation("BrandReviewSourceCreator")
   brandKeywordQueriesCreated         BrandKeywordQuery[]            @relation("BrandKeywordQueryCreator")
   brandSocialMonitorsCreated         BrandSocialMonitor[]           @relation("BrandSocialMonitorCreator")
+  influencerProfilesCreated          InfluencerProfile[]            @relation("InfluencerProfileCreator")
   brandUspAnalysesCreated            BrandUspAnalysis[]             @relation("BrandUspAnalysisCreator")
   brandVisualCollectionsCreated      BrandVisualCollection[]        @relation("BrandVisualCollectionCreator")
   brandStrategyDocumentsCreated      BrandStrategyDocument[]        @relation("BrandStrategyDocumentCreator")
@@ -548,6 +551,7 @@ model Brand {
   brandPortfolio          BrandPortfolio?
   brandCreativeGuidelines BrandCreativeGuideline[]
   brandAdLibraryMonitors  BrandAdLibraryMonitor[]
+  influencerProfiles      InfluencerProfile[]
   contentStudioIdeaSets   ContentStudioIdeaSet[]
 }
 
@@ -555,48 +559,48 @@ model Brand {
  * Ruang kerja tim (mis. Room Archipelago) — konteks sebelum Kanban.
  */
 model Room {
-  id                  String                   @id @default(cuid())
-  name                String
+  id                   String                    @id @default(cuid())
+  name                 String
   /**
    * Banner visual ruangan (path publik di /uploads/rooms/{roomId}/...).
    */
-  bannerImage         String?
+  bannerImage          String?
   /**
    * Logo persegi ruangan (path publik di /uploads/rooms/{roomId}/logos/...).
    */
-  logoImage           String?
+  logoImage            String?
   /**
    * Bagian di menu Tugas: HQ, Team, atau Ruangan.
    */
-  workspaceSection    RoomWorkspaceSection     @default(ROOMS)
-  brandId             String?
-  brand               Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  projects            Project[]
-  messages            RoomMessage[]
-  channels            RoomChannel[]
-  documents           RoomDocument[]
-  documentFolders     RoomDocumentFolder[]
-  documentActivities  RoomDocumentActivity[]
-  documentShares      RoomDocumentShare[]
+  workspaceSection     RoomWorkspaceSection      @default(ROOMS)
+  brandId              String?
+  brand                Brand?                    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  projects             Project[]
+  messages             RoomMessage[]
+  channels             RoomChannel[]
+  documents            RoomDocument[]
+  documentFolders      RoomDocumentFolder[]
+  documentActivities   RoomDocumentActivity[]
+  documentShares       RoomDocumentShare[]
   documentFolderShares RoomDocumentFolderShare[]
-  members             RoomMember[]
-  contentPlanItems    RoomContentPlanItem[]
+  members              RoomMember[]
+  contentPlanItems     RoomContentPlanItem[]
   /**
    * Judul & urutan kolom Kanban per fase proses (diatur manager ruangan).
    */
-  kanbanColumns       RoomKanbanColumn[]
-  taskTags            TaskTag[]
+  kanbanColumns        RoomKanbanColumn[]
+  taskTags             TaskTag[]
   /**
    * View tambahan kustom yang ditambahkan oleh manager ruangan
    * (Kalender, Linimasa, Wiki, Hub tautan, List generik, Glosarium).
    */
-  views               RoomView[]
+  views                RoomView[]
   /**
    * Semua fase proses tugas di ruangan (bawaan + tambahan).
    */
-  customProcessPhases RoomCustomProcessPhase[]
+  customProcessPhases  RoomCustomProcessPhase[]
 }
 
 /**
@@ -696,31 +700,33 @@ model RoomTimelineMilestone {
  * Halaman wiki / catatan keputusan di view WIKI per ruangan.
  */
 model RoomWikiPage {
-  id          String               @id @default(cuid())
-  viewId      String
-  view        RoomView             @relation(fields: [viewId], references: [id], onDelete: Cascade)
-  parentId    String?
-  parent      RoomWikiPage?        @relation("WikiPageTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children    RoomWikiPage[]       @relation("WikiPageTree")
-  title       String               @db.VarChar(160)
+  id                String                @id @default(cuid())
+  viewId            String
+  view              RoomView              @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  parentId          String?
+  parent            RoomWikiPage?         @relation("WikiPageTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children          RoomWikiPage[]        @relation("WikiPageTree")
+  title             String                @db.VarChar(160)
   /**
    * Konten halaman dalam HTML terstruktur dari Tiptap.
    */
-  content     String               @default("")
-  /** Monotonik; dipakai optimistic concurrency guard saat auto-save. */
-  revision    Int                  @default(0)
-  tags        String[]             @default([])
-  editLockedById String?
-  editLockedBy   User?                @relation("RoomWikiPageLock", fields: [editLockedById], references: [id], onDelete: SetNull)
+  content           String                @default("")
+  /**
+   * Monotonik; dipakai optimistic concurrency guard saat auto-save.
+   */
+  revision          Int                   @default(0)
+  tags              String[]              @default([])
+  editLockedById    String?
+  editLockedBy      User?                 @relation("RoomWikiPageLock", fields: [editLockedById], references: [id], onDelete: SetNull)
   editLockExpiresAt DateTime?
-  sortOrder   Int                  @default(0)
-  updatedById String?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  attachments RoomWikiAttachment[]
-  versions    RoomWikiPageVersion[]
-  comments    RoomWikiComment[]
-  presences   RoomWikiPresence[]
+  sortOrder         Int                   @default(0)
+  updatedById       String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  attachments       RoomWikiAttachment[]
+  versions          RoomWikiPageVersion[]
+  comments          RoomWikiComment[]
+  presences         RoomWikiPresence[]
 
   @@index([viewId, sortOrder])
   @@index([viewId, parentId, sortOrder])
@@ -876,20 +882,19 @@ model RoomGlossaryEntry {
  * Papan whiteboard kolaboratif. Satu view WHITEBOARD bisa menampung banyak
  * papan (mirip file di Figma) — anggota ruangan bisa membuat, menamai ulang,
  * menduplikasi, dan menghapus papan.
- *
  * Sinkronisasi realtime memakai pola *revision counter*: setiap mutasi
  * menaikkan `rev` papan, dan tiap elemen menyimpan `rev` terakhirnya. Klien
  * cukup meminta `elements WHERE rev > since` untuk mendapatkan delta.
  */
 model RoomWhiteboard {
-  id             String                  @id @default(cuid())
+  id             String    @id @default(cuid())
   viewId         String
-  view           RoomView                @relation(fields: [viewId], references: [id], onDelete: Cascade)
-  title          String                  @db.VarChar(120)
+  view           RoomView  @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  title          String    @db.VarChar(120)
   /**
    * Revisi papan — naik setiap kali ada mutasi elemen. Dasar sinkron delta.
    */
-  rev            Int                     @default(0)
+  rev            Int       @default(0)
   /**
    * Preview papan (data URL PNG kecil) untuk kartu di daftar papan.
    */
@@ -897,15 +902,15 @@ model RoomWhiteboard {
   /**
    * Pola latar kanvas: `dots` | `grid` | `lines` | `plain`.
    */
-  background     String                  @default("dots") @db.VarChar(16)
-  sortOrder      Int                     @default(0)
+  background     String    @default("dots") @db.VarChar(16)
+  sortOrder      Int       @default(0)
   createdById    String?
   lastEditedById String?
   lastEditedAt   DateTime?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  elements       RoomWhiteboardElement[]
+  elements RoomWhiteboardElement[]
 
   @@index([viewId, sortOrder])
   @@index([viewId, updatedAt])
@@ -915,7 +920,6 @@ model RoomWhiteboard {
  * Satu objek di kanvas whiteboard (sticky, bentuk, coretan, teks, gambar,
  * frame, konektor). `id` dibuat di klien supaya operasi optimistik tidak
  * perlu menunggu balasan server.
- *
  * Penghapusan bersifat *soft* (`deletedAt`) supaya klien lain yang sedang
  * offline tetap menerima informasi "elemen ini hilang" lewat delta sync.
  */
@@ -932,20 +936,30 @@ model RoomWhiteboardElement {
   y           Float                     @default(0)
   width       Float                     @default(0)
   height      Float                     @default(0)
-  /** Rotasi dalam radian. */
+  /**
+   * Rotasi dalam radian.
+   */
   rotation    Float                     @default(0)
   /**
    * Atribut visual & konten spesifik per tipe (warna, teks, titik coretan,
    * ujung panah, dll). Divalidasi di aplikasi lewat zod.
    */
   props       Json
-  /** Elemen terkunci: tidak bisa dipilih atau diubah dari kanvas. */
+  /**
+   * Elemen terkunci: tidak bisa dipilih atau diubah dari kanvas.
+   */
   locked      Boolean                   @default(false)
-  /** Frame induk, kalau elemen berada di dalam sebuah frame. */
+  /**
+   * Frame induk, kalau elemen berada di dalam sebuah frame.
+   */
   frameId     String?
-  /** Revisi papan saat elemen ini terakhir berubah. */
+  /**
+   * Revisi papan saat elemen ini terakhir berubah.
+   */
   rev         Int                       @default(0)
-  /** Tombstone — baris disimpan agar delta sync bisa mengabarkan penghapusan. */
+  /**
+   * Tombstone — baris disimpan agar delta sync bisa mengabarkan penghapusan.
+   */
   deletedAt   DateTime?
   createdById String?
   updatedById String?
@@ -1222,26 +1236,26 @@ model DirectMessageAttachment {
  * Folder logis untuk mengelompokkan dokumen bersama per ruangan (Logo, Legal, dll.).
  */
 model RoomDocumentFolder {
-  id        String               @id @default(cuid())
-  roomId    String
-  room      Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  id          String                       @id @default(cuid())
+  roomId      String
+  room        Room                         @relation(fields: [roomId], references: [id], onDelete: Cascade)
   /**
    * Folder bersarang (mirip Google Drive). Null = folder di root drive ruangan.
    */
-  parentId  String?
-  parent    RoomDocumentFolder?  @relation("RoomDocumentFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children  RoomDocumentFolder[] @relation("RoomDocumentFolderTree")
-  name      String
-  sortOrder Int                  @default(0)
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
-  trashedAt DateTime?
+  parentId    String?
+  parent      RoomDocumentFolder?          @relation("RoomDocumentFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    RoomDocumentFolder[]         @relation("RoomDocumentFolderTree")
+  name        String
+  sortOrder   Int                          @default(0)
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+  trashedAt   DateTime?
   trashedById String?
-  trashedBy User?                @relation("RoomDocumentFolderTrashedBy", fields: [trashedById], references: [id], onDelete: SetNull)
-  documents RoomDocument[]
-  favorites RoomDocumentFolderFavorite[]
-  shares    RoomDocumentFolderShare[]
-  activities RoomDocumentActivity[]
+  trashedBy   User?                        @relation("RoomDocumentFolderTrashedBy", fields: [trashedById], references: [id], onDelete: SetNull)
+  documents   RoomDocument[]
+  favorites   RoomDocumentFolderFavorite[]
+  shares      RoomDocumentFolderShare[]
+  activities  RoomDocumentActivity[]
 
   @@unique([roomId, parentId, name])
   @@index([roomId, parentId, sortOrder])
@@ -1249,43 +1263,43 @@ model RoomDocumentFolder {
 }
 
 model RoomDocument {
-  id           String                @id @default(cuid())
-  roomId       String
-  room         Room                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  folderId     String?
-  folder       RoomDocumentFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  uploadedById String
-  uploadedBy   User                  @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  title        String?
-  fileName     String
-  mimeType     String
-  size         Int
+  id             String                 @id @default(cuid())
+  roomId         String
+  room           Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  folderId       String?
+  folder         RoomDocumentFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploadedById   String
+  uploadedBy     User                   @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  title          String?
+  fileName       String
+  mimeType       String
+  size           Int
   /**
    * Path publik, mis. /uploads/rooms/{roomId}/...
    */
-  publicPath   String
+  publicPath     String
   /**
    * Path thumbnail (webp ~480px) untuk grid/list — dibuat saat upload via
    * `sharp`. Null untuk file yang bukan gambar atau saat dekode gagal.
    * UI fallback ke `publicPath` (atau ikon tipe file) bila null.
    */
-  thumbPath    String?
+  thumbPath      String?
   /**
    * Tag bebas (mis. footage, draft, approved) — dinormalisasi di aplikasi.
    */
-  tags         String[]              @default([])
-  searchText   String?               @db.Text
-  currentVersion Int                 @default(1)
-  trashedAt    DateTime?
-  trashedById  String?
-  trashedBy    User?                 @relation("RoomDocumentTrashedBy", fields: [trashedById], references: [id], onDelete: SetNull)
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-  comments     RoomDocumentComment[]
-  versions     RoomDocumentVersion[]
-  favorites    RoomDocumentFavorite[]
-  shares       RoomDocumentShare[]
-  activities   RoomDocumentActivity[]
+  tags           String[]               @default([])
+  searchText     String?                @db.Text
+  currentVersion Int                    @default(1)
+  trashedAt      DateTime?
+  trashedById    String?
+  trashedBy      User?                  @relation("RoomDocumentTrashedBy", fields: [trashedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  comments       RoomDocumentComment[]
+  versions       RoomDocumentVersion[]
+  favorites      RoomDocumentFavorite[]
+  shares         RoomDocumentShare[]
+  activities     RoomDocumentActivity[]
 
   @@index([roomId, folderId])
   /**
@@ -1873,21 +1887,21 @@ model ScheduleReminderSent {
  * Konfigurasi branding aplikasi (singleton).
  */
 model AppBranding {
-  id            String   @id
-  appName       String   @default("Dominatus Control Center")
-  navTitle      String   @default("Dominatus")
-  navSubtitle   String   @default("Control Center")
-  logoImagePath String?
-  faviconPath   String?
+  id                         String   @id
+  appName                    String   @default("Dominatus Control Center")
+  navTitle                   String   @default("Dominatus")
+  navSubtitle                String   @default("Control Center")
+  logoImagePath              String?
+  faviconPath                String?
   /**
    * Icon untuk web push notification (chat, dsb).
    */
-  pushIconPath  String?
+  pushIconPath               String?
   /**
    * Feature flag: nyalakan Profil Gamifikasi dari admin (runtime, tanpa restart).
    * Env `PROFILE_GAMIFICATION_ENABLED` (true/false) tetap jadi override darurat.
    */
-  profileGamificationEnabled Boolean @default(false)
+  profileGamificationEnabled Boolean  @default(false)
   /**
    * Hash versi katalog gamifikasi (kode) yang terakhir disinkronkan ke DB.
    * Dipakai `ensureGamificationCatalog()` (dipanggil otomatis di `instrumentation.ts`
@@ -1895,8 +1909,8 @@ model AppBranding {
    * perlu seed manual di produksi — deploy → boot → katalog auto-sync.
    */
   gamificationCatalogVersion String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 }
 
 // --- Modul keuangan (Finance) ---
@@ -4164,6 +4178,218 @@ model BrandAdLibraryAd {
   @@index([mediaType])
 }
 
+enum InfluencerPlatform {
+  INSTAGRAM
+  TIKTOK
+}
+
+enum InfluencerAuditStatus {
+  PENDING
+  COLLECTING
+  ANALYZING
+  READY
+  FAILED
+}
+
+/**
+ * Tier follower — benchmark engagement HARUS relatif terhadap tier, karena ER
+ * turun drastis seiring naiknya jumlah follower.
+ */
+enum InfluencerTier {
+  NANO
+  MICRO
+  MID
+  MACRO
+  MEGA
+}
+
+enum InfluencerVerdict {
+  EXCELLENT
+  GOOD
+  AVERAGE
+  POOR
+  SUSPICIOUS
+}
+
+/**
+ * Influencer yang dipantau. Unik per (platform, handle) secara global supaya
+ * satu orang tidak di-scrape berulang untuk brand berbeda; `ownerBrandId`
+ * hanya label brand scope.
+ */
+model InfluencerProfile {
+  id           String             @id @default(cuid())
+  platform     InfluencerPlatform
+  /**
+   * Username lowercase tanpa "@" — kunci dedup.
+   */
+  handle       String
+  profileUrl   String
+  displayName  String?
+  avatarUrl    String?
+  bio          String?            @db.Text
+  isVerified   Boolean            @default(false)
+  notes        String?            @db.Text
+  ownerBrandId String?
+  ownerBrand   Brand?             @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
+  createdById  String
+  createdBy    User               @relation("InfluencerProfileCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  audits       InfluencerAudit[]
+
+  @@unique([platform, handle])
+  @@index([ownerBrandId])
+  @@index([createdById])
+}
+
+/**
+ * Satu kali audit = satu snapshot. Disimpan berseri supaya perubahan
+ * engagement antar waktu bisa dibandingkan (influencer bisa anjlok antara
+ * saat di-scout dan saat dikontrak).
+ */
+model InfluencerAudit {
+  id           String                @id @default(cuid())
+  profileId    String
+  profile      InfluencerProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  status       InfluencerAuditStatus @default(PENDING)
+  errorMessage String?
+  apifyRunId   String?
+  startedAt    DateTime?
+  collectedAt  DateTime?
+
+  followers Int             @default(0)
+  following Int             @default(0)
+  postCount Int             @default(0)
+  tier      InfluencerTier?
+
+  /**
+   * Jumlah post yang ditarik dari Apify sebelum penyaringan sampel.
+   */
+  postsFetched     Int    @default(0)
+  postsAnalyzed    Int    @default(0)
+  /**
+   * Rentang hari yang dicakup sampel. Terlalu lebar = akun jarang posting.
+   */
+  sampleWindowDays Int?
+  /**
+   * Tingkat keyakinan hasil: high | medium | low. Ditentukan jumlah sampel
+   * dan rentang waktunya, BUKAN kualitas influencer-nya.
+   */
+  confidence       String @default("low")
+
+  // Median = angka utama (tahan post viral). Mean disimpan sebagai pembanding.
+  medianLikes    Float @default(0)
+  medianComments Float @default(0)
+  medianShares   Float @default(0)
+  medianViews    Float @default(0)
+  avgLikes       Float @default(0)
+  avgComments    Float @default(0)
+  avgShares      Float @default(0)
+  avgViews       Float @default(0)
+
+  /**
+   * ER standar: (like + komentar) / follower, persen. HANYA angka ini yang
+   * sebanding dengan `benchmarkEr` — tabel median industri memakai definisi
+   * yang sama.
+   */
+  engagementRate      Float  @default(0)
+  /**
+   * ER termasuk share & simpan — nilai penuh bagi brand, tapi tidak sebanding
+   * dengan benchmark.
+   */
+  totalEngagementRate Float  @default(0)
+  /**
+   * ER terhadap view (Reels/TikTok) — angka yang sebenarnya dilihat brand.
+   */
+  viewEngagementRate  Float?
+  /**
+   * View dibagi follower, persen. Rendah = follower tidak aktif.
+   */
+  viewRate            Float?
+  postsPerWeek        Float  @default(0)
+  daysSinceLastPost   Int?
+
+  // Post berbayar hampir selalu lebih rendah engagement-nya daripada organik.
+  // Untuk memutuskan kerja sama, angka berbayar inilah yang relevan.
+  sponsoredCount     Int    @default(0)
+  organicCount       Int    @default(0)
+  sponsoredEr        Float?
+  organicEr          Float?
+  /**
+   * Selisih ER berbayar terhadap organik, persen. Negatif = turun.
+   */
+  sponsoredDeltaPct  Float?
+  /**
+   * Perkiraan ER yang akan didapat brand bila memasang campaign.
+   */
+  expectedCampaignEr Float  @default(0)
+
+  /**
+   * Skor performa 0-100 relatif terhadap benchmark tier.
+   */
+  score       Int                @default(0)
+  verdict     InfluencerVerdict?
+  /**
+   * ER acuan untuk tier ini, dipakai UI untuk menjelaskan skor.
+   */
+  benchmarkEr Float?
+
+  /**
+   * 0-100, makin tinggi makin asli. Turun bila terdeteksi sinyal engagement beli.
+   */
+  authenticityScore Int  @default(100)
+  /**
+   * Daftar sinyal peringatan:
+   * [{ code, severity, impact, label, detail, penalty }].
+   * `impact` memisahkan sinyal keaslian, performa, dan kualitas data.
+   */
+  fakeFlags         Json @default("[]")
+
+  aiSummary String?          @db.Text
+  aiMeta    Json?
+  /**
+   * Detail perhitungan mentah untuk transparansi di UI.
+   */
+  metrics   Json             @default("{}")
+  createdAt DateTime         @default(now())
+  posts     InfluencerPost[]
+
+  @@index([profileId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model InfluencerPost {
+  id             String          @id @default(cuid())
+  auditId        String
+  audit          InfluencerAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  externalId     String
+  url            String?
+  caption        String?         @db.Text
+  thumbnailUrl   String?
+  mediaType      String?
+  likes          Int             @default(0)
+  comments       Int             @default(0)
+  shares         Int             @default(0)
+  views          Int             @default(0)
+  saves          Int             @default(0)
+  engagementRate Float           @default(0)
+  /**
+   * Terdeteksi berbayar dari penanda platform atau hashtag caption.
+   * Ini batas bawah — post berbayar tanpa penanda ikut terhitung organik.
+   */
+  isSponsored    Boolean         @default(false)
+  /**
+   * Di luar jendela sampel (mis. post yang dipin) — disimpan untuk transparansi
+   * tapi tidak ikut menghitung ER.
+   */
+  inSample       Boolean         @default(true)
+  postedAt       DateTime?
+
+  @@unique([auditId, externalId])
+  @@index([auditId])
+}
+
 model BrandUspAnalysis {
   id             String          @id @default(cuid())
   category       String
@@ -4711,18 +4937,18 @@ model SeoTrackedKeyword {
  * Time-series posisi SERP untuk satu tracked keyword.
  */
 model SeoRankSnapshot {
-  id               String            @id @default(cuid())
-  trackedKeywordId String
-  trackedKeyword   SeoTrackedKeyword @relation(fields: [trackedKeywordId], references: [id], onDelete: Cascade)
+  id                  String            @id @default(cuid())
+  trackedKeywordId    String
+  trackedKeyword      SeoTrackedKeyword @relation(fields: [trackedKeywordId], references: [id], onDelete: Cascade)
   /**
    * Posisi organik (null = tidak masuk top 100).
    */
-  position         Int?
-  foundUrl         String?
+  position            Int?
+  foundUrl            String?
   /**
    * SERP features yang muncul (string[]).
    */
-  serpFeatures     Json?
+  serpFeatures        Json?
   /**
    * Posisi kompetitor pada SERP yang sama: { "domain": posisi | null }.
    */
@@ -4730,8 +4956,8 @@ model SeoRankSnapshot {
   /**
    * Semua URL milik sendiri di SERP [{ position, url }] — deteksi cannibalization.
    */
-  ownMatches       Json?
-  capturedAt       DateTime          @default(now())
+  ownMatches          Json?
+  capturedAt          DateTime          @default(now())
 
   @@index([trackedKeywordId, capturedAt])
 }
@@ -4994,10 +5220,10 @@ model SeoBacklinkGap {
  * (LLM, tone kosmetik, Bahasa Indonesia). Menghasilkan satu/lebih draft.
  */
 model SeoContentBrief {
-  id              String            @id @default(cuid())
+  id              String                  @id @default(cuid())
   targetKeyword   String
   title           String
-  status          SeoAnalysisStatus @default(PENDING)
+  status          SeoAnalysisStatus       @default(PENDING)
   /**
    * Related/long-tail keywords yang disarankan (string[]).
    */
@@ -5009,7 +5235,7 @@ model SeoContentBrief {
   /**
    * Catatan angle/strategi (Bahasa Indonesia).
    */
-  aiSummary       String?           @db.Text
+  aiSummary       String?                 @db.Text
   aiMeta          Json?
   errorMessage    String?
   /**
@@ -5041,12 +5267,12 @@ model SeoContentBrief {
    * Progress pipeline (pola SeoJob).
    */
   stepLabel       String?
-  percent         Int               @default(0)
-  dataNotice      String?           @db.Text
+  percent         Int                     @default(0)
+  dataNotice      String?                 @db.Text
   createdById     String
-  createdBy       User              @relation("SeoContentBriefCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdBy       User                    @relation("SeoContentBriefCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
   drafts          SeoContentDraft[]
   opportunities   SeoContentOpportunity[] @relation("SeoOpportunityBrief")
 
@@ -5058,43 +5284,43 @@ model SeoContentBrief {
  * Draft artikel (HTML TipTap) + hasil analisis SEO (skor + saran).
  */
 model SeoContentDraft {
-  id            String           @id @default(cuid())
-  briefId       String?
-  brief         SeoContentBrief? @relation(fields: [briefId], references: [id], onDelete: SetNull)
-  title         String
-  targetKeyword String?
+  id              String            @id @default(cuid())
+  briefId         String?
+  brief           SeoContentBrief?  @relation(fields: [briefId], references: [id], onDelete: SetNull)
+  title           String
+  targetKeyword   String?
   /**
    * Konten HTML dari editor TipTap.
    */
-  contentHtml   String           @default("") @db.Text
+  contentHtml     String            @default("") @db.Text
   /**
    * Hasil analisis { checks[], density, structure, suggestions[] }.
    */
-  analysis      Json?
-  score         Int?
-  aiMeta        Json?
+  analysis        Json?
+  score           Int?
+  aiMeta          Json?
   /**
    * Status pipeline penulisan AI. Default READY agar draft manual/lama valid.
    */
-  status        SeoAnalysisStatus @default(READY)
-  stepLabel     String?
-  percent       Int              @default(0)
+  status          SeoAnalysisStatus @default(READY)
+  stepLabel       String?
+  percent         Int               @default(0)
   /**
    * Section yang sudah ditulis [{ id, heading, html, done }] — resumable.
    */
-  sectionsJson  Json?
-  metaTitle     String?
-  metaDescription String?        @db.Text
-  slug          String?
+  sectionsJson    Json?
+  metaTitle       String?
+  metaDescription String?           @db.Text
+  slug            String?
   /**
    * Saran internal link [{ anchorText, url, reason }].
    */
-  internalLinks Json?
-  errorMessage  String?
-  createdById   String
-  createdBy     User             @relation("SeoContentDraftCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  internalLinks   Json?
+  errorMessage    String?
+  createdById     String
+  createdBy       User              @relation("SeoContentDraftCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([createdById])
   @@index([briefId])
@@ -5766,7 +5992,9 @@ model UserProfileConfig {
   equippedTitleId        String?
   accentColor            String?  @db.VarChar(7)
   customBackgroundUrl    String?  @db.VarChar(300)
-  /** `image` | `lottie` — jenis unggahan latar kustom user. */
+  /**
+   * `image` | `lottie` — jenis unggahan latar kustom user.
+   */
   customBackgroundMedia  String?  @db.VarChar(16)
   customBorderColor      String?  @db.VarChar(7)
   /**
@@ -5789,19 +6017,19 @@ model UserProfileConfig {
  * dan guard autosave multi-tab via `revision` (optimistic concurrency).
  */
 model PersonalNote {
-  id        String         @id @default(cuid())
+  id        String                @id @default(cuid())
   ownerId   String
-  owner     User           @relation("PersonalNoteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner     User                  @relation("PersonalNoteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   parentId  String?
-  parent    PersonalNote?  @relation("PersonalNoteTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children  PersonalNote[] @relation("PersonalNoteTree")
-  title     String         @db.VarChar(160)
-  content   String         @default("")
-  revision  Int            @default(0)
-  tags      String[]       @default([])
-  sortOrder Int            @default(0)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  parent    PersonalNote?         @relation("PersonalNoteTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  PersonalNote[]        @relation("PersonalNoteTree")
+  title     String                @db.VarChar(160)
+  content   String                @default("")
+  revision  Int                   @default(0)
+  tags      String[]              @default([])
+  sortOrder Int                   @default(0)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
   versions  PersonalNoteVersion[]
 
   @@index([ownerId, parentId, sortOrder])
@@ -5860,7 +6088,9 @@ model PersonalKanbanCard {
   description String?
   dueDate     DateTime?
   isDone      Boolean              @default(false)
-  /** Posisi dalam kolom — midpoint float, pola TaskKanbanPosition. */
+  /**
+   * Posisi dalam kolom — midpoint float, pola TaskKanbanPosition.
+   */
   sortKey     Float                @default(0)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt

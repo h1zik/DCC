@@ -62,6 +62,26 @@ export async function startApifyActor(
   };
 }
 
+/**
+ * Run tidak lagi ada di Apify — sudah lewat masa retensi, dihapus, atau
+ * dijalankan dengan token akun lain.
+ *
+ * Ini kondisi TERMINAL, bukan gangguan sementara. Pemanggil harus menandai
+ * job-nya gagal; kalau tidak, job akan berstatus "berjalan" selamanya dan
+ * setiap siklus polling menembak error yang sama berulang-ulang.
+ */
+export class ApifyRunNotFoundError extends Error {
+  readonly runId: string;
+
+  constructor(runId: string) {
+    super(
+      `Run Apify ${runId} tidak ditemukan (404) — kemungkinan sudah melewati masa retensi atau dihapus. Jalankan ulang untuk memulai run baru.`,
+    );
+    this.name = "ApifyRunNotFoundError";
+    this.runId = runId;
+  }
+}
+
 export async function getApifyRunStatus(runId: string): Promise<{
   status: string;
   datasetId: string;
@@ -72,6 +92,9 @@ export async function getApifyRunStatus(runId: string): Promise<{
   const res = await fetch(
     `${APIFY_BASE}/actor-runs/${runId}?token=${encodeURIComponent(token)}`,
   );
+  if (res.status === 404 || res.status === 410) {
+    throw new ApifyRunNotFoundError(runId);
+  }
   if (!res.ok) {
     throw new Error(`Apify get run gagal (${res.status})`);
   }

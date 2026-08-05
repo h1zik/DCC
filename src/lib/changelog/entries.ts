@@ -37,6 +37,38 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-05-apify-run-hilang",
+    date: "2026-08-05",
+    title: "Scrape yang run-nya sudah hilang tidak lagi nyangkut selamanya",
+    category: "fixed",
+    description:
+      "Bila sebuah proses scrape (Ad Library, Influencer Audit) sudah lewat masa simpan di Apify, DCC terus-menerus mencoba menanyakan statusnya dan gagal. Akibatnya proses itu berstatus \"berjalan\" tanpa henti dan indikator background job tidak pernah selesai. Sekarang kondisi ini dikenali sebagai kegagalan final, ditandai gagal dengan penjelasan, dan bisa langsung dijalankan ulang.",
+    highlights: [
+      "Proses yang run Apify-nya hilang langsung ditandai gagal, bukan menggantung",
+      "Indikator background job berhenti berputar setelah proses ditandai gagal",
+      "Gangguan jaringan sesaat tetap diperlakukan sebagai sementara dan dicoba lagi",
+    ],
+  },
+  {
+    id: "2026-08-05-influencer-audit",
+    date: "2026-08-05",
+    title: "Influencer Audit — cek engagement KOL sebelum bayar",
+    category: "new",
+    description:
+      "Modul baru di Brand & Creative Hub. Tempel link profil Instagram atau TikTok, lalu DCC mengambil post terbaru influencer tersebut dan menghitung seberapa bagus engagement-nya. Angka engagement dibandingkan dengan median influencer se-tier follower, karena 3% di akun 5 ribu follower artinya berbeda jauh dengan 3% di akun 1 juta follower.",
+    highlights: [
+      "Memisahkan engagement post berbayar dari post organik — post endorse hampir selalu lebih rendah, dan angka itulah yang akan brand dapatkan",
+      "Memakai nilai tengah (median), bukan rata-rata, supaya satu post viral tidak membuat influencer terlihat lebih bagus dari kenyataannya",
+      "Engagement rate dihitung tiga cara: terhadap follower, termasuk share & simpan, dan terhadap jumlah view",
+      "Deteksi engagement yang dibeli: like tanpa komentar, view jauh di bawah follower, engagement terlalu seragam antar post, dan taktik follow/unfollow",
+      "Satu sinyal kecurangan berat langsung menurunkan vonis, walau angka engagement-nya terlihat tinggi",
+      "Sinyal dipisah menurut dampaknya — keterbatasan data (mis. post foto tanpa hitungan view) tidak lagi ikut menurunkan skor keaslian",
+      "Setiap hasil disertai tingkat keyakinan, supaya penilaian dari sampel yang tipis tidak dibaca sebagai kesimpulan final",
+      "Panel \"Bagaimana penilaian ini dibuat\" membuka seluruh rumus, ambang batas, dan rincian skor influencer tersebut — angka akhirnya bisa diperiksa manual",
+      "Riwayat audit tersimpan — bisa cek ulang influencer yang sama dan lihat apakah performanya turun sejak terakhir di-scout",
+    ],
+  },
+  {
     id: "2026-08-03-vendor-chain-form-overflow",
     date: "2026-08-03",
     title: "Form rantai vendor tidak lagi meluber ke kanan",
