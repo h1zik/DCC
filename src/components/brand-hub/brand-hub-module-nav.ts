@@ -9,6 +9,7 @@ import {
   Target,
   TrendingUp,
   Users,
+  UserSearch,
   type LucideIcon,
 } from "lucide-react";
 
@@ -70,6 +71,12 @@ export const BRAND_HUB_ZONES: BrandHubNavZone[] = [
         href: "/brand-hub/social-listening",
         label: "Social Listening",
         icon: MessageSquare,
+      },
+      {
+        key: "influencer-audit",
+        href: "/brand-hub/influencer-audit",
+        label: "Influencer Audit",
+        icon: UserSearch,
       },
       {
         key: "visual-trend",
