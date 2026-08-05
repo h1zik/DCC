@@ -37,6 +37,52 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-05-influencer-filter-persist",
+    date: "2026-08-05",
+    title: "Filter Influencer Audit tidak hilang lagi saat membuka profil",
+    category: "fixed",
+    description:
+      "Sebelumnya, memasang filter lalu membuka salah satu influencer dan kembali membuat semua filter tereset — daftar harus disaring ulang dari awal setiap kali. Sekarang filter tersimpan di alamat halaman, jadi bertahan lewat tombol kembali (baik tombol di halaman maupun tombol browser) dan juga saat halaman di-refresh.",
+    highlights: [
+      "Filter, pencarian, dan urutan bertahan saat membuka satu influencer lalu kembali",
+      "Tampilan yang sudah disaring bisa langsung dikirim ke rekan sebagai link — filternya ikut terbawa",
+      "Refresh halaman tidak lagi mengosongkan filter",
+    ],
+  },
+  {
+    id: "2026-08-05-influencer-brand-safety",
+    date: "2026-08-05",
+    title: "Cek risiko merek sebelum merekrut influencer",
+    category: "new",
+    description:
+      "Engagement bagus tidak menolong kalau merek Anda berdiri di samping konten yang salah. Caption seluruh post yang diambil kini dipindai untuk judi online, pinjol, investasi bodong, klaim kesehatan berlebihan, konten dewasa, alkohol/vape, dan kampanye politik. Temuan berat menahan rekomendasi di \"Perlu dicek\" sebagus apa pun angkanya, dan langsung terlihat di daftar kandidat.",
+    highlights: [
+      "Panel \"Risiko asosiasi merek\" dengan tautan ke post yang perlu diperiksa manual",
+      "Penyamaran angka-huruf ala iklan judi (\"sl0t g4c0r\") dan hashtag tergabung (\"#slotgacor\") ikut tertangkap",
+      "Temuan tidak memotong skor — skor mengukur performa, ini soal risiko — tapi menahan vonis sampai ada yang memeriksa",
+      "Peringatan saat isi profil didominasi endorse: audiens yang tiap hari disuguhi iklan cenderung melewatinya, jadi post Anda ikut tenggelam",
+      "Kualitas komentar dinilai bila datanya terbawa: 500 komentar \"🔥\" tidak sama nilainya dengan 500 pertanyaan harga",
+      "Batasnya disebutkan terbuka: ini pencocokan kata pada caption, jadi post yang justru mengkritik judi bisa ikut tertangkap dan konten di dalam video tidak terbaca",
+    ],
+  },
+  {
+    id: "2026-08-05-influencer-permukaan-adil",
+    date: "2026-08-05",
+    title: "Reels yang kuat tidak lagi diseret turun oleh feed yang lemah",
+    category: "improved",
+    description:
+      "Meski Reels sudah diambil terpisah, seluruh penilaian masih dihitung dari grid saja — Reels tidak pernah ikut menentukan skor. Akun yang grid-nya biasa saja tapi Reels-nya kuat divonis lemah. Sekarang kedua permukaan dihitung penuh dengan rumus yang sama, dan angka utama diambil dari yang terkuat, karena itulah format yang akan dipesan brand.",
+    highlights: [
+      "ER feed dan ER Reels dihitung terpisah dengan rumus identik, jadi keduanya bisa dibandingkan langsung",
+      "Skor memakai permukaan terkuat, dan halaman menyebut format mana yang harus dipesan beserta angkanya kalau salah pesan",
+      "Post yang jumlah like-nya disembunyikan pemilik akun tidak lagi dihitung sebagai nol like — dulu ini membuat akun sehat terbaca mati",
+      "Satu post giveaway dengan puluhan ribu komentar tidak bisa lagi memicu tuduhan \"engagement pod\"",
+      "Ambang tuduhan beli-like kini mengikuti tier: audiens akun mega memang lebih pasif, jadi tidak lagi disamakan dengan akun kecil",
+      "Perbandingan post berbayar vs organik kini juga membaca endorse berupa Reels, yang sebelumnya tidak terlihat sama sekali",
+      "Vonis \"Sangat bagus\" ditahan bila sampelnya masih tipis — empat post belum cukup untuk janji terbaik",
+    ],
+  },
+  {
     id: "2026-08-05-influencer-reels",
     date: "2026-08-05",
     title: "Audit Instagram akhirnya membaca Reels yang sebenarnya",
