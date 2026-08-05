@@ -314,7 +314,11 @@ export function ScoreRing({
   );
 }
 
-export type FlagImpact = "authenticity" | "performance" | "data";
+export type FlagImpact =
+  | "authenticity"
+  | "performance"
+  | "data"
+  | "brandSafety";
 
 export type FakeFlag = {
   code: string;
@@ -336,7 +340,9 @@ export function parseFakeFlags(raw: unknown): FakeFlag[] {
       typeof (f as FakeFlag).label === "string" &&
       typeof (f as FakeFlag).detail === "string" &&
       ["high", "medium", "low"].includes((f as FakeFlag).severity) &&
-      ["authenticity", "performance", "data"].includes((f as FakeFlag).impact),
+      ["authenticity", "performance", "data", "brandSafety"].includes(
+        (f as FakeFlag).impact,
+      ),
   );
 }
 
@@ -407,6 +413,10 @@ function FlagItem({ flag }: { flag: FakeFlag }) {
 }
 
 const IMPACT_HEADING: Record<FlagImpact, { title: string; note: string }> = {
+  brandSafety: {
+    title: "Risiko asosiasi merek",
+    note: "Tidak memotong skor — skor mengukur performa, ini soal konten yang akan berdiri di samping merek Anda. Wajib diperiksa manual.",
+  },
   authenticity: {
     title: "Sinyal keaslian",
     note: "Menurunkan skor keaslian dan bisa membatalkan rekomendasi.",
@@ -422,13 +432,18 @@ const IMPACT_HEADING: Record<FlagImpact, { title: string; note: string }> = {
 };
 
 export function FakeFlagList({ flags }: { flags: FakeFlag[] }) {
+  const brandSafety = flags.filter((f) => f.impact === "brandSafety");
   const authenticity = flags.filter((f) => f.impact === "authenticity");
   const performance = flags.filter((f) => f.impact === "performance");
   const data = flags.filter((f) => f.impact === "data");
 
+  // Kabar baik soal keaslian tidak boleh berdiri di atas temuan judi online:
+  // pembaca berhenti di banner hijau pertama yang dilihatnya.
+  const hasSevereRisk = brandSafety.some((f) => f.severity === "high");
+
   return (
     <div className="flex flex-col gap-4">
-      {authenticity.length === 0 ? (
+      {authenticity.length === 0 && !hasSevereRisk ? (
         <div className="flex items-start gap-2.5 rounded-xl border border-emerald-300/50 bg-emerald-50/60 p-4 dark:border-emerald-500/25 dark:bg-emerald-500/10">
           <BadgeCheck
             className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
@@ -448,6 +463,7 @@ export function FakeFlagList({ flags }: { flags: FakeFlag[] }) {
 
       {(
         [
+          ["brandSafety", brandSafety],
           ["authenticity", authenticity],
           ["performance", performance],
           ["data", data],

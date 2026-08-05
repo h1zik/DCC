@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Save,
   Share2,
+  ShieldAlert,
+  ShieldCheck,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -156,6 +158,68 @@ function readString(metrics: unknown, key: string): string | null {
   return typeof v === "string" ? v : null;
 }
 
+function readBoolean(metrics: unknown, key: string): boolean | null {
+  if (!metrics || typeof metrics !== "object") return null;
+  const v = (metrics as Record<string, unknown>)[key];
+  return typeof v === "boolean" ? v : null;
+}
+
+type BrandSafetyHitView = {
+  category: string;
+  severity: "high" | "medium" | "low";
+  label: string;
+  why: string;
+  terms: string[];
+  postCount: number;
+  daysSinceLatest: number | null;
+  sampleUrls: string[];
+};
+
+function readBrandSafety(metrics: unknown): BrandSafetyHitView[] {
+  if (!metrics || typeof metrics !== "object") return [];
+  const bs = (metrics as { brandSafety?: unknown }).brandSafety;
+  if (!bs || typeof bs !== "object") return [];
+  const hits = (bs as { hits?: unknown }).hits;
+  if (!Array.isArray(hits)) return [];
+  return hits.filter(
+    (h): h is BrandSafetyHitView =>
+      !!h &&
+      typeof h === "object" &&
+      typeof (h as BrandSafetyHitView).label === "string" &&
+      typeof (h as BrandSafetyHitView).postCount === "number" &&
+      ["high", "medium", "low"].includes((h as BrandSafetyHitView).severity),
+  );
+}
+
+type CommentQualityView = {
+  analyzedComments: number;
+  postsWithComments: number;
+  lowSubstanceShare: number;
+  duplicateShare: number;
+  foreignScriptShare: number;
+  spamShare: number;
+  repeatAuthorShare: number;
+};
+
+function readCommentQuality(metrics: unknown): CommentQualityView | null {
+  if (!metrics || typeof metrics !== "object") return null;
+  const q = (metrics as { commentQuality?: unknown }).commentQuality;
+  if (!q || typeof q !== "object") return null;
+  const o = q as Record<string, unknown>;
+  if (typeof o.analyzedComments !== "number") return null;
+  const pick = (key: string): number =>
+    typeof o[key] === "number" && Number.isFinite(o[key]) ? (o[key] as number) : 0;
+  return {
+    analyzedComments: o.analyzedComments,
+    postsWithComments: pick("postsWithComments"),
+    lowSubstanceShare: pick("lowSubstanceShare"),
+    duplicateShare: pick("duplicateShare"),
+    foreignScriptShare: pick("foreignScriptShare"),
+    spamShare: pick("spamShare"),
+    repeatAuthorShare: pick("repeatAuthorShare"),
+  };
+}
+
 /** Rincian komponen skor untuk panel metodologi. */
 function readComponents(metrics: unknown) {
   if (!metrics || typeof metrics !== "object") return null;
@@ -176,6 +240,20 @@ function readComponents(metrics: unknown) {
 function pct(value: number | null, digits = 2): string {
   if (value === null) return "—";
   return `${value.toLocaleString("id-ID", { maximumFractionDigits: digits })}%`;
+}
+
+/**
+ * Nol yang berarti "tidak terukur" harus dibaca sebagai tanda hubung.
+ * Menampilkan "ER 0%" untuk akun yang menyembunyikan jumlah like adalah
+ * tuduhan, bukan pengukuran.
+ */
+function pctMeasured(
+  value: number | null,
+  measurable: boolean | null,
+  digits = 2,
+): string {
+  if (measurable === false) return "—";
+  return pct(value, digits);
 }
 
 function MetricTile({
@@ -363,14 +441,22 @@ function HistoryChart({ audits }: { audits: AuditView[] }) {
 
 /**
  * Membandingkan dua permukaan Instagram. Selisih besar di antara keduanya
- * bukan tanda buruk — itu memberi tahu format apa yang harus diminta dari
- * influencer ini, tergantung tujuan kampanyenya.
+ * bukan tanda buruk — itu memberi tahu format apa yang harus DIPESAN dari
+ * influencer ini. Karena itu keduanya dihitung dengan rumus yang sama persis
+ * dan ditampilkan bersebelahan: angka utama diambil dari yang terkuat, dan
+ * yang lemah tidak menyeretnya turun.
  */
 function SurfacePanel({ audit }: { audit: AuditView }) {
-  const feedEr = audit.engagementRate;
+  const feedEr = readNumber(audit.metrics, "feedEngagementRate");
   const reelsEr = audit.reelsEngagementRate;
-  const feedStronger = reelsEr !== null && feedEr > reelsEr * 1.5;
-  const reelsStronger = reelsEr !== null && reelsEr > feedEr * 1.5;
+  const primary = readString(audit.metrics, "primarySurface");
+  const gapPct = readNumber(audit.metrics, "surfaceGapPct");
+  const viewReliable = readBoolean(audit.metrics, "viewDataRepresentative");
+  const bothMeasured = feedEr !== null && reelsEr !== null;
+
+  const strongerLabel = primary === "reels" ? "Reels" : "feed";
+  const weakerLabel = primary === "reels" ? "feed" : "Reels";
+  const weakerEr = primary === "reels" ? feedEr : reelsEr;
 
   return (
     <div className="flex flex-col gap-3">
@@ -378,26 +464,35 @@ function SurfacePanel({ audit }: { audit: AuditView }) {
         <MetricTile
           label="Post feed"
           value={String(audit.feedPostCount)}
-          hint={`ER ${pct(feedEr)} terhadap follower`}
+          hint={
+            feedEr !== null
+              ? `ER ${pct(feedEr)} terhadap follower${primary === "feed" ? " · dasar skor" : ""}`
+              : "Tidak ada post feed terukur"
+          }
           icon={LayoutGrid}
-          tone={feedStronger ? "good" : "neutral"}
+          tone={primary === "feed" ? "good" : "neutral"}
         />
         <MetricTile
           label="Reels"
           value={String(audit.reelsPostCount)}
           hint={
             reelsEr !== null
-              ? `ER ${pct(reelsEr)} terhadap follower`
+              ? `ER ${pct(reelsEr)} terhadap follower${primary === "reels" ? " · dasar skor" : ""}`
               : "Engagement Reels tidak terukur"
           }
           icon={Clapperboard}
-          tone={reelsStronger ? "good" : "neutral"}
+          tone={primary === "reels" ? "good" : "neutral"}
         />
         <MetricTile
           label="Jangkauan Reels"
           value={pct(audit.viewRate)}
-          hint="View dibagi follower"
+          hint={
+            viewReliable === false
+              ? "View dibagi follower — hanya sebagian Reels melaporkan view, angka ini tidak dipakai menilai"
+              : "View dibagi follower"
+          }
           icon={Eye}
+          tone={viewReliable === false ? "warn" : "neutral"}
         />
         <MetricTile
           label="ER per view Reels"
@@ -407,26 +502,197 @@ function SurfacePanel({ audit }: { audit: AuditView }) {
         />
       </div>
 
-      {feedStronger ? (
+      {bothMeasured && gapPct !== null && gapPct >= 50 ? (
         <p className="rounded-xl border border-sky-300/60 bg-sky-50/60 p-3.5 text-xs leading-relaxed text-sky-900 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200">
-          <strong>Audiensnya berinteraksi di feed, bukan di Reels.</strong> Kalau
-          target Anda engagement, minta post feed atau carousel. Reels-nya lebih
-          cocok dipakai untuk menjangkau orang baru.
+          <strong>
+            Pesan {strongerLabel}, jangan {weakerLabel}.
+          </strong>{" "}
+          ER di {strongerLabel} {gapPct.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+          % lebih tinggi daripada di {weakerLabel} ({pct(weakerEr)}). Skor di
+          halaman ini memakai angka {strongerLabel} — dengan harga yang sama,
+          salah memesan format berarti hasilnya jauh di bawah itu.
         </p>
       ) : null}
-      {reelsStronger ? (
-        <p className="rounded-xl border border-sky-300/60 bg-sky-50/60 p-3.5 text-xs leading-relaxed text-sky-900 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200">
-          <strong>Kekuatannya ada di Reels.</strong> Reels-nya menghasilkan
-          engagement lebih tinggi daripada post feed — arahkan kerja sama ke
-          format video.
+      {bothMeasured && (gapPct === null || gapPct < 50) ? (
+        <p className="text-muted-foreground rounded-xl border border-border/70 bg-muted/30 p-3.5 text-xs leading-relaxed">
+          Feed dan Reels menghasilkan engagement yang setara, jadi pemilihan
+          format bisa mengikuti kebutuhan kreatif — bukan angka.
         </p>
       ) : null}
 
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Angka engagement utama dihitung dari post feed, sedangkan jangkauan
-        dihitung dari Reels — dua-duanya diambil dari koleksi masing-masing.
-        Grid profil dikurasi pemiliknya dan hitungan view di sana tidak dapat
-        dipercaya, jadi Reels diambil lewat panggilan terpisah.
+        Kedua permukaan dihitung terpisah dengan rumus yang sama (median like +
+        komentar ÷ follower), jadi angkanya benar-benar sebanding. Skor memakai
+        permukaan terkuat karena itulah format yang akan dipesan — grid yang
+        lemah tidak menutupi Reels yang kuat, dan sebaliknya. Jangkauan tetap
+        hanya dari Reels: hitungan view di grid profil tidak dapat dipercaya,
+        jadi Reels diambil lewat panggilan terpisah.
+      </p>
+    </div>
+  );
+}
+
+const RISK_TONE: Record<string, string> = {
+  high: "border-rose-300/60 bg-rose-50/60 dark:border-rose-500/25 dark:bg-rose-500/10",
+  medium:
+    "border-amber-300/60 bg-amber-50/60 dark:border-amber-500/25 dark:bg-amber-500/10",
+  low: "border-border/70 bg-muted/30",
+};
+
+/**
+ * Konten berisiko yang akan berdiri di samping merek.
+ *
+ * Ditempatkan sebagai panel sendiri, bukan sekadar poin di daftar sinyal,
+ * karena satu post judi online lebih menentukan keputusan rekrutmen daripada
+ * selisih ER satu-dua persen.
+ */
+function BrandSafetyPanel({ hits }: { hits: BrandSafetyHitView[] }) {
+  if (hits.length === 0) {
+    return (
+      <div className="flex items-start gap-2.5 rounded-xl border border-emerald-300/50 bg-emerald-50/60 p-4 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+        <ShieldCheck
+          className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+          aria-hidden
+        />
+        <div>
+          <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+            Tidak ada istilah berisiko di caption yang terbaca
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-emerald-800/80 dark:text-emerald-200/70">
+            Pemindaian mencakup judi online, pinjol, investasi bodong, klaim
+            kesehatan berlebihan, konten dewasa, alkohol/vape, dan kampanye
+            politik. Hanya caption yang dipindai — konten di dalam video atau
+            gambar tidak terbaca.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-2">
+        {hits.map((hit) => (
+          <li
+            key={hit.category}
+            className={cn("rounded-xl border p-3.5", RISK_TONE[hit.severity])}
+          >
+            <div className="flex items-start gap-2.5">
+              <ShieldAlert
+                className={cn(
+                  "mt-0.5 size-4 shrink-0",
+                  hit.severity === "high"
+                    ? "text-rose-600 dark:text-rose-400"
+                    : hit.severity === "medium"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground",
+                )}
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-foreground text-sm font-semibold">
+                  {hit.label}
+                  <span className="text-muted-foreground ml-2 text-xs font-medium">
+                    {hit.postCount} post
+                    {hit.daysSinceLatest !== null
+                      ? ` · terbaru ${hit.daysSinceLatest} hari lalu`
+                      : ""}
+                  </span>
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+                  {hit.why}
+                </p>
+                <p className="text-muted-foreground mt-1.5 text-[11px] leading-relaxed">
+                  Cocok pada:{" "}
+                  {hit.terms.slice(0, 6).map((t) => (
+                    <code
+                      key={t}
+                      className="bg-muted mr-1 rounded px-1 py-0.5 text-[10px]"
+                    >
+                      {t}
+                    </code>
+                  ))}
+                </p>
+                {hit.sampleUrls.length > 0 ? (
+                  <p className="mt-1.5 flex flex-wrap gap-2 text-[11px]">
+                    {hit.sampleUrls.map((url, i) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="text-foreground inline-flex items-center gap-1 font-semibold underline underline-offset-2"
+                      >
+                        Periksa post {i + 1}
+                        <ExternalLink className="size-3" aria-hidden />
+                      </a>
+                    ))}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        Ini <strong>pencocokan kata pada caption</strong>, bukan pemahaman
+        konteks — post yang membahas bahaya judi online akan ikut tertangkap.
+        Buka post-nya sebelum menyimpulkan. Sebaliknya, konten berisiko yang
+        hanya muncul di dalam video atau gambar tidak akan terdeteksi sama
+        sekali, jadi temuan kosong bukan jaminan bersih.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Kualitas komentar: 500 komentar "🔥" tidak sama nilainya dengan 500 komentar
+ * yang menanyakan harga produk, meski rasio komentar-terhadap-like identik.
+ */
+function CommentQualityPanel({ quality }: { quality: CommentQualityView }) {
+  const share = (v: number) => `${Math.round(v * 100)}%`;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricTile
+          label="Tanpa substansi"
+          value={share(quality.lowSubstanceShare)}
+          hint="Emoji saja atau pujian satu kata"
+          icon={MessageCircle}
+          tone={
+            quality.lowSubstanceShare >= 0.85
+              ? "bad"
+              : quality.lowSubstanceShare >= 0.7
+                ? "warn"
+                : "good"
+          }
+        />
+        <MetricTile
+          label="Berpola jualan"
+          value={share(quality.spamShare)}
+          hint="Ajakan cek bio, nomor WA, promosi lain"
+          tone={quality.spamShare >= 0.3 ? "bad" : "neutral"}
+        />
+        <MetricTile
+          label="Akun berulang"
+          value={share(quality.repeatAuthorShare)}
+          hint="Komentar dari akun yang sama di banyak post"
+          tone={quality.repeatAuthorShare >= 0.5 ? "warn" : "neutral"}
+        />
+        <MetricTile
+          label="Aksara non-Latin"
+          value={share(quality.foreignScriptShare)}
+          hint="Indikasi comment farm luar negeri"
+          tone={quality.foreignScriptShare >= 0.3 ? "warn" : "neutral"}
+        />
+      </div>
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        Dihitung dari {quality.analyzedComments} komentar di{" "}
+        {quality.postsWithComments} post yang ikut terbawa dataset — bukan
+        seluruh komentar. Komentar pendek adalah kebiasaan wajar audiens
+        Indonesia, jadi angka tinggi di sini <strong>bukan bukti bot</strong>;
+        ia hanya berarti kolom komentarnya tidak menunjukkan minat pada produk.
       </p>
     </div>
   );
@@ -435,6 +701,10 @@ function SurfacePanel({ audit }: { audit: AuditView }) {
 function SponsoredPanel({ audit }: { audit: AuditView }) {
   const comparable = audit.sponsoredEr !== null && audit.organicEr !== null;
   const delta = audit.sponsoredDeltaPct;
+  const allSurfaces = readNumber(audit.metrics, "sponsoredCountAllSurfaces");
+  const share = readNumber(audit.metrics, "sponsoredShare");
+  const primary = readString(audit.metrics, "primarySurface");
+  const surfaceWord = primary === "reels" ? "Reels" : "post feed";
 
   return (
     <div className="flex flex-col gap-3">
@@ -471,11 +741,31 @@ function SponsoredPanel({ audit }: { audit: AuditView }) {
         </p>
       ) : null}
 
+      {allSurfaces !== null && share !== null ? (
+        <p
+          className={cn(
+            "rounded-xl border p-3.5 text-xs leading-relaxed",
+            share >= 0.5
+              ? "border-amber-300/60 bg-amber-50/60 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200"
+              : "text-muted-foreground border-border/70 bg-muted/30",
+          )}
+        >
+          Di seluruh permukaan, <strong>{allSurfaces} dari {audit.postsAnalyzed} post</strong>{" "}
+          ({Math.round(share * 100)}%) terdeteksi berbayar.
+          {share >= 0.5
+            ? " Feed yang isinya sebagian besar endorse membuat audiens terbiasa melewatinya — post Anda ikut tenggelam."
+            : ""}
+        </p>
+      ) : null}
+
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Deteksi berbayar membaca label paid partnership dan hashtag seperti #ad,
-        #endorse, #kerjasama. <strong>Angka ini batas bawah</strong> — influencer
-        yang tidak mencantumkan penanda akan terhitung organik, sehingga
-        penurunan sesungguhnya bisa lebih besar.
+        Perbandingan di atas dihitung <strong>di dalam {surfaceWord}</strong>{" "}
+        saja, supaya post berbayar tidak diadu melawan post organik dari format
+        yang berbeda. Deteksi berbayar membaca label paid partnership dan
+        hashtag seperti #ad, #endorse, #kerjasama.{" "}
+        <strong>Angka ini batas bawah</strong> — influencer yang tidak
+        mencantumkan penanda akan terhitung organik, sehingga penurunan
+        sesungguhnya bisa lebih besar.
       </p>
     </div>
   );
@@ -560,7 +850,17 @@ function PostTable({ posts }: { posts: PostView[] }) {
                 </div>
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">
-                {compactNumber(p.likes)}
+                {/* -1 = pemilik akun menyembunyikan jumlah like. Bukan nol. */}
+                {p.likes < 0 ? (
+                  <span
+                    className="text-muted-foreground text-xs"
+                    title="Pemilik akun menyembunyikan jumlah like — post ini tidak ikut menghitung ER"
+                  >
+                    disembunyikan
+                  </span>
+                ) : (
+                  compactNumber(p.likes)
+                )}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {compactNumber(p.comments)}
@@ -572,7 +872,7 @@ function PostTable({ posts }: { posts: PostView[] }) {
                 {p.views > 0 ? compactNumber(p.views) : "—"}
               </td>
               <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                {pct(p.engagementRate)}
+                {p.likes < 0 ? "—" : pct(p.engagementRate)}
               </td>
               <td className="text-muted-foreground px-3 py-2.5 text-right text-xs tabular-nums">
                 {p.postedAt
@@ -679,6 +979,21 @@ export function InfluencerDetailClient({
     readyAudit?.metrics,
     "expectedCampaignErSource",
   );
+  const primarySurface = readString(readyAudit?.metrics, "primarySurface");
+  const viewReliable = readBoolean(readyAudit?.metrics, "viewDataRepresentative");
+  const hiddenLikePosts = readNumber(readyAudit?.metrics, "hiddenLikePosts");
+  const engagementMeasurable = readBoolean(
+    readyAudit?.metrics,
+    "engagementMeasurable",
+  );
+  const brandSafetyHits = readBrandSafety(readyAudit?.metrics);
+  const commentQuality = readCommentQuality(readyAudit?.metrics);
+  const surfaceLabel =
+    primarySurface === "reels"
+      ? "Reels"
+      : primarySurface === "feed"
+        ? "post feed"
+        : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -789,7 +1104,7 @@ export function InfluencerDetailClient({
         <>
           <LabSection
             title="Metrik engagement"
-            description={`Angka pusat memakai median dari ${readyAudit.postsAnalyzed} post (dari ${readyAudit.postsFetched} yang diambil${readyAudit.sampleWindowDays !== null ? `, mencakup ${readyAudit.sampleWindowDays} hari` : ""}). Median dipakai agar satu post viral tidak menaikkan angkanya.`}
+            description={`Angka pusat memakai median dari ${readyAudit.postsAnalyzed} post (dari ${readyAudit.postsFetched} yang diambil${readyAudit.sampleWindowDays !== null ? `, mencakup ${readyAudit.sampleWindowDays} hari` : ""}). Median dipakai agar satu post viral tidak menaikkan angkanya.${surfaceLabel ? ` Angka utama dihitung dari ${surfaceLabel} — permukaan terkuat akun ini.` : ""}${hiddenLikePosts ? ` ${hiddenLikePosts} post dikeluarkan karena jumlah like-nya disembunyikan pemilik akun.` : ""}`}
           >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <MetricTile
@@ -798,28 +1113,38 @@ export function InfluencerDetailClient({
                 hint={`Mengikuti ${compactNumber(readyAudit.following)}`}
               />
               <MetricTile
-                label="ER standar"
-                value={pct(readyAudit.engagementRate)}
+                label={surfaceLabel ? `ER standar (${surfaceLabel})` : "ER standar"}
+                value={pctMeasured(readyAudit.engagementRate, engagementMeasurable)}
                 hint={
-                  readyAudit.benchmarkEr
-                    ? `Like+komentar ÷ follower. Median tier: ${pct(readyAudit.benchmarkEr)}`
-                    : "Like+komentar ÷ follower"
+                  engagementMeasurable === false
+                    ? "Tidak terukur — akun ini menyembunyikan jumlah like di semua post"
+                    : readyAudit.benchmarkEr
+                      ? `Like+komentar ÷ follower${surfaceLabel ? `, dari ${surfaceLabel}` : ""}. Median tier: ${pct(readyAudit.benchmarkEr)}`
+                      : "Like+komentar ÷ follower"
                 }
                 tone={
-                  readyAudit.benchmarkEr &&
-                  readyAudit.engagementRate >= readyAudit.benchmarkEr
-                    ? "good"
-                    : "warn"
+                  engagementMeasurable === false
+                    ? "neutral"
+                    : readyAudit.benchmarkEr &&
+                        readyAudit.engagementRate >= readyAudit.benchmarkEr
+                      ? "good"
+                      : "warn"
                 }
               />
               <MetricTile
                 label="ER penuh"
-                value={pct(readyAudit.totalEngagementRate)}
+                value={pctMeasured(
+                  readyAudit.totalEngagementRate,
+                  engagementMeasurable,
+                )}
                 hint="Termasuk share & simpan — tidak sebanding dengan benchmark"
               />
               <MetricTile
                 label="Perkiraan campaign"
-                value={pct(readyAudit.expectedCampaignEr)}
+                value={pctMeasured(
+                  readyAudit.expectedCampaignEr,
+                  engagementMeasurable,
+                )}
                 hint={
                   campaignSource === "sponsored"
                     ? "Dari post berbayar influencer ini"
@@ -837,13 +1162,17 @@ export function InfluencerDetailClient({
               <MetricTile
                 label="View rate"
                 value={pct(readyAudit.viewRate)}
-                hint="View dibagi follower — di bawah 10% mencurigakan"
+                hint={
+                  viewReliable === false
+                    ? "Hanya sebagian Reels melaporkan view — angka ini tidak dipakai menilai jangkauan"
+                    : "View dibagi follower — rendah berarti jangkauan video kecil, bukan follower palsu"
+                }
                 icon={Eye}
                 tone={
-                  readyAudit.viewRate === null
+                  readyAudit.viewRate === null || viewReliable === false
                     ? "neutral"
                     : readyAudit.viewRate < 10
-                      ? "bad"
+                      ? "warn"
                       : "good"
                 }
               />
@@ -912,11 +1241,27 @@ export function InfluencerDetailClient({
           ) : null}
 
           <LabSection
+            title="Risiko asosiasi merek"
+            description="Engagement bagus tidak menolong kalau merek Anda berdiri di samping konten yang salah. Dipindai dari caption seluruh post yang diambil, termasuk yang sudah di luar jendela penilaian."
+          >
+            <BrandSafetyPanel hits={brandSafetyHits} />
+          </LabSection>
+
+          <LabSection
             title="Post berbayar vs organik"
             description="Post endorse hampir selalu lebih rendah engagement-nya. Angka berbayar inilah yang akan Anda dapat, bukan ER umumnya."
           >
             <SponsoredPanel audit={readyAudit} />
           </LabSection>
+
+          {commentQuality ? (
+            <LabSection
+              title="Kualitas komentar"
+              description="Jumlah komentar saja tidak membedakan audiens yang benar-benar tertarik dari kolom komentar yang penuh emoji."
+            >
+              <CommentQualityPanel quality={commentQuality} />
+            </LabSection>
+          ) : null}
 
           <LabSection
             title="Sinyal peringatan"
@@ -990,7 +1335,17 @@ export function InfluencerDetailClient({
             description="Penilaian otomatis yang tidak bisa ditelusuri tidak layak dipakai memutuskan pembayaran — semua rumus dan ambangnya terbuka di sini."
           >
             <InfluencerMethodology
-              audit={readyAudit}
+              audit={{
+                ...readyAudit,
+                primarySurface,
+                feedEngagementRate: readNumber(
+                  readyAudit.metrics,
+                  "feedEngagementRate",
+                ),
+                hiddenLikePosts: hiddenLikePosts ?? 0,
+                analyzedComments: commentQuality?.analyzedComments ?? 0,
+                brandSafetyHitCount: brandSafetyHits.length,
+              }}
               components={readComponents(readyAudit.metrics)}
             />
           </LabSection>

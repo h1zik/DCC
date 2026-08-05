@@ -22,6 +22,24 @@ export type NormalizedInfluencerPost = {
   surface: PostSurface;
   /** Post yang dipin — sering berumur tahunan, dikeluarkan dari sampel. */
   isPinned?: boolean;
+  /**
+   * Pemilik akun menyembunyikan jumlah like pada post ini (Instagram
+   * mengembalikan -1). Angkanya BUKAN nol — tidak diketahui. Post seperti ini
+   * harus dikeluarkan dari perhitungan engagement, bukan dihitung sebagai nol,
+   * karena kalau tidak akun yang menyembunyikan like akan terlihat mati.
+   */
+  likesHidden?: boolean;
+  /**
+   * Cuplikan komentar yang ikut terbawa dataset. Dipakai menilai kualitas
+   * komentar (bot vs manusia). Tidak selalu ada — analisisnya wajib mundur
+   * dengan anggun bila kosong.
+   */
+  commentSamples?: NormalizedComment[];
+};
+
+export type NormalizedComment = {
+  text: string;
+  author?: string;
 };
 
 export type PostSurface = "feed" | "reels";
@@ -82,6 +100,50 @@ function rec(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+/**
+ * Angka yang mungkin dikembalikan sebagai -1 (Instagram memakai -1 untuk
+ * "disembunyikan pemilik akun"). Dibedakan dari 0 karena keduanya berarti hal
+ * yang sangat berbeda bagi penilaian.
+ */
+function countOrHidden(value: unknown): { count: number; hidden: boolean } {
+  if (value === null || value === undefined) return { count: 0, hidden: false };
+  const n = num(value);
+  return n < 0 ? { count: 0, hidden: true } : { count: n, hidden: false };
+}
+
+/** Ambil teks komentar yang ikut terbawa item post, kalau ada. */
+export function extractPostComments(
+  raw: Record<string, unknown>,
+  max = 24,
+): NormalizedComment[] {
+  const out: NormalizedComment[] = [];
+
+  for (const key of ["latestComments", "comments", "topComments", "commentList"]) {
+    const value = raw[key];
+    // `commentsCount` sering bernama mirip; hanya array yang diproses.
+    if (!Array.isArray(value)) continue;
+
+    for (const entry of value) {
+      if (out.length >= max) break;
+      const item = rec(entry);
+      if (!item) continue;
+      const text = str(item.text) ?? str(item.comment);
+      if (!text) continue;
+      out.push({
+        text,
+        author:
+          str(item.ownerUsername) ??
+          str(item.username) ??
+          str(rec(item.owner)?.username) ??
+          str(rec(item.user)?.uniqueId),
+      });
+    }
+    if (out.length >= max) break;
+  }
+
+  return out;
+}
+
 function normalizeInstagramPost(
   raw: Record<string, unknown>,
   surface: PostSurface,
@@ -90,12 +152,21 @@ function normalizeInstagramPost(
   const externalId = str(raw.id) ?? shortCode;
   if (!externalId) return null;
 
-  // videoPlayCount lebih dekat ke "reach" daripada videoViewCount.
-  const views = Math.max(num(raw.videoPlayCount), num(raw.videoViewCount));
+  // videoPlayCount lebih dekat ke "reach" daripada videoViewCount. Nama field
+  // berubah beberapa kali mengikuti Instagram (plays → views), jadi semua
+  // varian yang pernah dipakai actor ini dibaca dan yang terbesar diambil.
+  const views = Math.max(
+    num(raw.videoPlayCount),
+    num(raw.videoViewCount),
+    num(raw.igPlayCount),
+    num(raw.playCount),
+    num(raw.viewCount),
+  );
 
   // `productType: "clips"` menandai Reels sungguhan; video biasa di grid tidak
   // memilikinya. Dipakai membetulkan surface bila post Reels ikut muncul di grid.
   const isClip = str(raw.productType) === "clips";
+  const likes = countOrHidden(raw.likesCount);
 
   return {
     externalId,
@@ -103,7 +174,8 @@ function normalizeInstagramPost(
     caption: str(raw.caption),
     thumbnailUrl: httpUrl(raw.displayUrl) ?? httpUrl(raw.thumbnailUrl),
     mediaType: str(raw.type) ?? str(raw.productType),
-    likes: Math.max(num(raw.likesCount), 0),
+    likes: likes.count,
+    likesHidden: likes.hidden,
     comments: Math.max(num(raw.commentsCount), 0),
     shares: 0, // Instagram tidak mengekspos share count publik.
     views: Math.max(views, 0),
@@ -117,6 +189,7 @@ function normalizeInstagramPost(
       bool(raw.isPaidPartnership),
     surface: isClip ? "reels" : surface,
     isPinned: bool(raw.isPinned),
+    commentSamples: extractPostComments(raw),
   };
 }
 
@@ -197,7 +270,31 @@ export function mergeInstagramSurfaces(
 ): NormalizedInfluencerPost[] {
   const byId = new Map<string, NormalizedInfluencerPost>();
   for (const post of feedPosts) byId.set(post.externalId, post);
-  for (const post of reelPosts) byId.set(post.externalId, post);
+
+  for (const post of reelPosts) {
+    const existing = byId.get(post.externalId);
+    // Versi Reels menang untuk view, tapi dataset Reels kerap tidak membawa
+    // komentar. Membuang versi grid begitu saja berarti membuang satu-satunya
+    // sampel komentar yang kita punya, jadi field itu dipertahankan.
+    byId.set(
+      post.externalId,
+      existing
+        ? {
+            ...post,
+            commentSamples:
+              post.commentSamples?.length
+                ? post.commentSamples
+                : existing.commentSamples,
+            caption: post.caption ?? existing.caption,
+            // Like tersembunyi di satu sumber tapi terbaca di sumber lain:
+            // pakai angka yang benar-benar ada.
+            likes: post.likesHidden ? existing.likes : post.likes,
+            likesHidden: post.likesHidden ? (existing.likesHidden ?? false) : false,
+          }
+        : post,
+    );
+  }
+
   return [...byId.values()];
 }
 
@@ -226,6 +323,7 @@ function normalizeTikTokPost(
     // pendek dengan hitungan view, jadi seluruhnya diperlakukan sebagai video.
     surface: "reels",
     isPinned: bool(raw.isPinned),
+    commentSamples: extractPostComments(raw),
   };
 }
 
