@@ -3,8 +3,19 @@ import {
   InfluencerTier,
   InfluencerVerdict,
 } from "@prisma/client";
-import type { NormalizedInfluencerPost } from "@/lib/apify/normalize-influencer";
+import type {
+  NormalizedInfluencerPost,
+  PostSurface,
+} from "@/lib/apify/normalize-influencer";
 import { isSponsoredPost } from "@/lib/brand-research/influencer/sponsored";
+import {
+  scanBrandSafety,
+  type BrandSafetyResult,
+} from "@/lib/brand-research/influencer/brand-safety";
+import {
+  analyzeCommentQuality,
+  type CommentQualityResult,
+} from "@/lib/brand-research/influencer/comment-quality";
 
 export type FakeFlagSeverity = "high" | "medium" | "low";
 
@@ -15,7 +26,7 @@ export type FakeFlagSeverity = "high" | "medium" | "low";
  * yang tidak asli — itu keterbatasan data. Menghukum skor keaslian karenanya
  * membuat penilaian salah.
  */
-export type FlagImpact = "authenticity" | "performance" | "data";
+export type FlagImpact = "authenticity" | "performance" | "data" | "brandSafety";
 
 export type InfluencerFakeFlag = {
   code: string;
@@ -38,6 +49,27 @@ export type SponsoredSplit = {
 };
 
 export type SampleConfidence = "high" | "medium" | "low";
+
+/**
+ * Angka satu permukaan konten (grid feed atau Reels), dihitung terpisah.
+ *
+ * Inilah unit yang sebenarnya dibeli brand: yang dipesan adalah "satu Reels"
+ * atau "satu post feed", bukan "rata-rata akun". Menggabungkan keduanya jadi
+ * satu angka menyembunyikan justru informasi yang menentukan pesanan.
+ */
+export type SurfaceStats = {
+  surface: PostSurface;
+  postCount: number;
+  /** Post yang benar-benar bisa dihitung (like tidak disembunyikan). */
+  measuredCount: number;
+  medianLikes: number;
+  medianComments: number;
+  /** ER standar (like + komentar) ÷ follower untuk permukaan ini. */
+  engagementRate: number | null;
+  erVsBenchmark: number | null;
+  engagementCv: number | null;
+  sponsored: SponsoredSplit;
+};
 
 export type InfluencerScoreInput = {
   platform: InfluencerPlatform;
@@ -69,8 +101,10 @@ export type InfluencerScoreResult = {
   avgViews: number;
 
   /**
-   * ER standar: (like + komentar) / follower. Definisi yang dipakai tabel
-   * median industri, jadi hanya angka INI yang boleh dibandingkan ke benchmark.
+   * ER standar: (like + komentar) / follower, dihitung pada PERMUKAAN UTAMA —
+   * format terkuat yang benar-benar bisa dipesan brand. Definisi yang dipakai
+   * tabel median industri, jadi hanya angka INI yang boleh dibandingkan ke
+   * benchmark.
    */
   engagementRate: number;
   /** ER termasuk share & simpan — nilai penuh bagi brand, tapi tak sebanding benchmark. */
@@ -82,10 +116,14 @@ export type InfluencerScoreResult = {
   feedPostCount: number;
   reelsPostCount: number;
   /**
-   * Interaksi Reels terhadap follower — sebanding langsung dengan
-   * `engagementRate` (feed), sehingga selisih keduanya terbaca.
+   * ER standar tiap permukaan terhadap follower — dihitung dengan definisi yang
+   * sama persis sehingga keduanya boleh dibandingkan langsung.
    */
+  feedEngagementRate: number | null;
   reelsEngagementRate: number | null;
+  /** Permukaan yang jadi dasar `engagementRate` dan komponen engagement. */
+  primarySurface: PostSurface | null;
+  surfaces: SurfaceStats[];
 
   postsPerWeek: number;
   daysSinceLastPost: number | null;
@@ -95,6 +133,8 @@ export type InfluencerScoreResult = {
   authenticityScore: number;
   fakeFlags: InfluencerFakeFlag[];
   sponsored: SponsoredSplit;
+  brandSafety: BrandSafetyResult;
+  commentQuality: CommentQualityResult | null;
 
   metrics: {
     erVsBenchmark: number;
@@ -107,6 +147,8 @@ export type InfluencerScoreResult = {
     /** Bagian post sampel yang punya hitungan view (0–1). */
     viewCoverage: number | null;
     viewSampleCount: number;
+    /** Apakah data view cukup lengkap untuk dipercaya sebagai jangkauan. */
+    viewDataRepresentative: boolean;
     /** Jumlah sinyal keaslian berat — 2 atau lebih baru jadi SUSPICIOUS. */
     highAuthenticityFlags: number;
     /**
@@ -115,6 +157,25 @@ export type InfluencerScoreResult = {
      */
     expectedCampaignEr: number;
     expectedCampaignErSource: "sponsored" | "overall";
+    primarySurface: PostSurface | null;
+    feedEngagementRate: number | null;
+    reelsEngagementRate: number | null;
+    /** Selisih ER permukaan terkuat terhadap yang terlemah, persen. */
+    surfaceGapPct: number | null;
+    /**
+     * Ada setidaknya satu post yang angkanya bisa dihitung. Bila false, seluruh
+     * angka ER di hasil ini nol karena TIDAK TERUKUR — bukan karena nol.
+     */
+    engagementMeasurable: boolean;
+    /** Post yang like-nya disembunyikan pemilik akun — tidak bisa dihitung. */
+    hiddenLikePosts: number;
+    /** Bagian post sampel yang terdeteksi berbayar (0–1), seluruh permukaan. */
+    sponsoredShare: number;
+    sponsoredCountAllSurfaces: number;
+    brandSafetyWorstSeverity: FakeFlagSeverity | null;
+    /** Disimpan utuh agar UI bisa menautkan post yang perlu diperiksa manual. */
+    brandSafety: BrandSafetyResult;
+    commentQuality: CommentQualityResult | null;
     components: {
       engagement: number;
       consistency: number;
@@ -145,6 +206,11 @@ export const TIER_LABEL: Record<InfluencerTier, string> = {
   MID: "Mid (100rb–500rb)",
   MACRO: "Macro (500rb–1jt)",
   MEGA: "Mega (>1jt)",
+};
+
+export const SURFACE_LABEL: Record<PostSurface, string> = {
+  feed: "Feed",
+  reels: "Reels",
 };
 
 /**
@@ -185,6 +251,21 @@ const REACH_TARGET: Record<InfluencerPlatform, number> = {
   TIKTOK: 30,
 };
 
+/**
+ * Ambang "komentar terlalu sedikit dibanding like", per tier.
+ *
+ * Rasio komentar turun secara alami seiring besarnya akun: audiens mega jauh
+ * lebih pasif daripada audiens nano yang saling kenal. Satu ambang untuk semua
+ * tier akan menuduh hampir setiap akun besar membeli like.
+ */
+const COMMENT_RATIO_FLOOR: Record<InfluencerTier, number> = {
+  NANO: 0.004,
+  MICRO: 0.004,
+  MID: 0.004,
+  MACRO: 0.003,
+  MEGA: 0.002,
+};
+
 const AUTHENTICITY_PENALTY: Record<FakeFlagSeverity, number> = {
   high: 30,
   medium: 18,
@@ -208,6 +289,14 @@ const SAMPLE_WINDOW_DAYS = 180;
 const MIN_SAMPLE = 6;
 /** Sampel minimal per sisi agar perbandingan berbayar vs organik bermakna. */
 const MIN_SPLIT_SAMPLE = 2;
+/**
+ * Post minimal pada satu permukaan sebelum permukaan itu boleh jadi dasar
+ * angka utama. Dua Reels bagus di antara dua puluh post feed lemah belum cukup
+ * jadi janji.
+ */
+const MIN_SURFACE_SAMPLE = 3;
+/** Sampel minimal sebelum rasio komentar boleh dipakai menuduh. */
+const MIN_RATIO_SAMPLE = 4;
 
 function mean(values: number[]): number {
   if (values.length === 0) return 0;
@@ -248,6 +337,17 @@ function standardInteractions(post: NormalizedInfluencerPost): number {
 /** Seluruh interaksi bernilai bagi brand, termasuk share & simpan. */
 function totalInteractions(post: NormalizedInfluencerPost): number {
   return post.likes + post.comments + post.shares + post.saves;
+}
+
+/**
+ * Post yang angkanya benar-benar terukur.
+ *
+ * Instagram mengembalikan -1 saat pemilik akun menyembunyikan jumlah like.
+ * Menghitungnya sebagai nol membuat akun yang sehat terlihat mati, jadi post
+ * seperti itu dikeluarkan dari perhitungan engagement — bukan dianggap nol.
+ */
+function isMeasurable(post: NormalizedInfluencerPost): boolean {
+  return post.likesHidden !== true;
 }
 
 /**
@@ -369,12 +469,71 @@ function computeSponsoredSplit(
 }
 
 /**
+ * Hitung angka satu permukaan dari post-nya sendiri.
+ *
+ * Semua permukaan memakai definisi ER yang persis sama, sehingga ER feed dan
+ * ER Reels boleh dibandingkan langsung — itulah inti pemisahan ini.
+ */
+function buildSurfaceStats(
+  surface: PostSurface,
+  posts: NormalizedInfluencerPost[],
+  followers: number,
+  benchmarkEr: number,
+): SurfaceStats {
+  const measured = posts.filter(isMeasurable);
+  const totals = measured.map(totalInteractions);
+  const meanTotal = mean(totals);
+  const engagementRate =
+    measured.length > 0 && followers > 0
+      ? round((median(measured.map(standardInteractions)) / followers) * 100, 3)
+      : null;
+
+  return {
+    surface,
+    postCount: posts.length,
+    measuredCount: measured.length,
+    medianLikes: round(median(measured.map((p) => p.likes))),
+    medianComments: round(median(measured.map((p) => p.comments))),
+    engagementRate,
+    erVsBenchmark:
+      engagementRate !== null && benchmarkEr > 0
+        ? round(engagementRate / benchmarkEr, 2)
+        : null,
+    engagementCv:
+      measured.length >= 2 && meanTotal > 0
+        ? round(stdDev(totals) / meanTotal, 3)
+        : null,
+    sponsored: computeSponsoredSplit(measured, followers),
+  };
+}
+
+/**
+ * Rasio komentar-terhadap-like sebagai NILAI TENGAH antar post, bukan total
+ * dibagi total.
+ *
+ * Satu post giveaway dengan puluhan ribu komentar bisa menyeret rasio total ke
+ * atas 20% dan memicu tuduhan "engagement pod" pada akun yang sepenuhnya
+ * wajar. Median tidak bisa digeser satu post.
+ */
+function medianCommentLikeRatio(
+  posts: NormalizedInfluencerPost[],
+): { ratio: number | null; sampleSize: number } {
+  const ratios = posts
+    .filter((p) => isMeasurable(p) && p.likes > 0)
+    .map((p) => p.comments / p.likes);
+  return {
+    ratio: ratios.length >= MIN_RATIO_SAMPLE ? median(ratios) : null,
+    sampleSize: ratios.length,
+  };
+}
+
+/**
  * Keyakinan ditentukan oleh sampel yang benar-benar menghasilkan angka
  * engagement, bukan sekadar total post.
  *
- * Akun Instagram bisa punya 28 post terambil tapi hanya 4 di antaranya post
- * feed — dan ER dihitung dari 4 itu. Memakai total post akan melaporkan
- * "keyakinan tinggi" untuk angka yang sebenarnya rapuh.
+ * Akun Instagram bisa punya 28 post terambil tapi hanya 4 di antaranya ada di
+ * permukaan utama — dan ER dihitung dari 4 itu. Memakai total post akan
+ * melaporkan "keyakinan tinggi" untuk angka yang sebenarnya rapuh.
  */
 function resolveConfidence(
   postsAnalyzed: number,
@@ -393,38 +552,68 @@ function resolveConfidence(
 
 function detectSignals(params: {
   platform: InfluencerPlatform;
+  tier: InfluencerTier;
   followers: number;
   following: number;
   postsAnalyzed: number;
-  /** Jumlah post yang menghasilkan angka engagement (feed di IG, semua di TikTok). */
+  /** Jumlah post di permukaan utama yang menghasilkan angka engagement. */
   engagementSampleSize: number;
+  engagementMeasurable: boolean;
+  hiddenLikePosts: number;
   sampleWindowDays: number | null;
   commentLikeRatio: number | null;
-  engagementCv: number | null;
+  commentRatioSampleSize: number;
+  /** Permukaan yang engagement-nya terlalu seragam untuk ukuran sampelnya. */
+  flatSurfaces: SurfaceStats[];
+  /** Ada permukaan lain dengan sampel memadai yang variasinya wajar. */
+  hasVariedSurface: boolean;
   viralSkew: number | null;
   viewRate: number | null;
   /** Bagian post sampel yang punya hitungan view (0–1). */
   viewCoverage: number | null;
+  viewDataRepresentative: boolean;
+  reelsPostCount: number;
   erVsBenchmark: number;
   daysSinceLastPost: number | null;
   sponsored: SponsoredSplit;
+  sponsoredShare: number;
+  sponsoredCountAllSurfaces: number;
+  primarySurface: PostSurface | null;
+  surfaceGapPct: number | null;
+  weakestSurface: SurfaceStats | null;
+  commentQuality: CommentQualityResult | null;
+  brandSafety: BrandSafetyResult;
 }): InfluencerFakeFlag[] {
   const flags: InfluencerFakeFlag[] = [];
   const {
     platform,
+    tier,
     followers,
     following,
     postsAnalyzed,
     engagementSampleSize,
+    engagementMeasurable,
+    hiddenLikePosts,
     sampleWindowDays,
     commentLikeRatio,
-    engagementCv,
+    commentRatioSampleSize,
+    flatSurfaces,
+    hasVariedSurface,
     viralSkew,
     viewRate,
     viewCoverage,
+    viewDataRepresentative,
+    reelsPostCount,
     erVsBenchmark,
     daysSinceLastPost,
     sponsored,
+    sponsoredShare,
+    sponsoredCountAllSurfaces,
+    primarySurface,
+    surfaceGapPct,
+    weakestSurface,
+    commentQuality,
+    brandSafety,
   } = params;
 
   const auth = (
@@ -476,21 +665,31 @@ function detectSignals(params: {
 
   // ── Keaslian ──────────────────────────────────────────────────────────
   // Audiens asli berkomentar. Like yang dibeli datang tanpa komentar.
-  if (commentLikeRatio !== null && commentLikeRatio < 0.004 && followers >= 1000) {
+  const ratioFloor = COMMENT_RATIO_FLOOR[tier];
+  if (
+    commentLikeRatio !== null &&
+    commentLikeRatio < ratioFloor &&
+    commentRatioSampleSize >= MIN_RATIO_SAMPLE &&
+    followers >= 1000
+  ) {
     auth(
       "COMMENT_LIKE_RATIO_LOW",
       "high",
       "Komentar terlalu sedikit dibanding like",
-      `Hanya ${round(commentLikeRatio * 100)}% dari like yang disertai komentar (sehat: 1–5%). Pola khas like berbayar.`,
+      `Post biasanya hanya mendapat ${round(commentLikeRatio * 100, 2)}% komentar dari jumlah like — di bawah ambang ${round(ratioFloor * 100, 2)}% untuk tier ${TIER_LABEL[tier]}. Pola khas like berbayar.`,
     );
   }
 
-  if (commentLikeRatio !== null && commentLikeRatio > 0.2) {
+  if (
+    commentLikeRatio !== null &&
+    commentLikeRatio > 0.2 &&
+    commentRatioSampleSize >= MIN_RATIO_SAMPLE
+  ) {
     auth(
       "COMMENT_LIKE_RATIO_HIGH",
       "medium",
       "Komentar tidak wajar banyak",
-      `Komentar mencapai ${round(commentLikeRatio * 100)}% dari like (sehat: 1–5%). Indikasi engagement pod atau bot komentar.`,
+      `Komentar mencapai ${round(commentLikeRatio * 100)}% dari like pada post biasanya (sehat: 1–5%). Indikasi engagement pod atau bot komentar — angka ini nilai tengah, jadi bukan sekadar efek satu post giveaway.`,
     );
   }
 
@@ -499,8 +698,6 @@ function detectSignals(params: {
   // Reels didorong lewat rekomendasi — bukan ke follower — sehingga akun
   // dengan follower asli yang aktif di carousel tetap bisa punya Reels sepi.
   // Menyamakan keduanya membuat mayoritas akun Instagram salah dituduh.
-  const viewDataRepresentative = viewCoverage !== null && viewCoverage >= 0.8;
-
   if (
     platform === InfluencerPlatform.TIKTOK &&
     viewRate !== null &&
@@ -519,6 +716,9 @@ function detectSignals(params: {
   if (
     platform === InfluencerPlatform.INSTAGRAM &&
     viewRate !== null &&
+    // Sama seperti komponen jangkauan: kalau sebagian besar Reels tidak
+    // melaporkan view, angkanya tidak layak dipakai memberi peringatan.
+    viewDataRepresentative &&
     viewRate < 10 &&
     followers >= 5000
   ) {
@@ -534,16 +734,20 @@ function detectSignals(params: {
 
   // Akun asli punya konten yang meledak dan yang gagal. Engagement yang rata
   // di semua post adalah tanda paket engagement dengan kuota tetap.
-  if (engagementCv !== null && engagementCv < 0.15 && engagementSampleSize >= 8) {
+  //
+  // Diperiksa PER PERMUKAAN lalu disyaratkan konsisten: kalau Reels seragam
+  // tapi feed bervariasi wajar, itu ciri format, bukan ciri paket engagement.
+  if (flatSurfaces.length > 0 && !hasVariedSurface) {
+    const worst = flatSurfaces[0];
     auth(
       "FLAT_ENGAGEMENT",
       "high",
       "Engagement terlalu seragam antar post",
-      `Variasi engagement hanya ${round(engagementCv * 100)}% dari rata-rata. Akun organik biasanya di atas 40% karena ada konten yang viral dan yang gagal.`,
+      `Variasi engagement hanya ${round((worst.engagementCv ?? 0) * 100)}% dari rata-rata di ${SURFACE_LABEL[worst.surface]} (${worst.measuredCount} post). Akun organik biasanya di atas 40% karena ada konten yang viral dan yang gagal.`,
     );
   }
 
-  if (erVsBenchmark > 4 && postsAnalyzed >= MIN_SAMPLE) {
+  if (erVsBenchmark > 4 && engagementSampleSize >= MIN_SAMPLE) {
     auth(
       "ER_OUTLIER_HIGH",
       "medium",
@@ -559,6 +763,42 @@ function detectSignals(params: {
       "Mengikuti lebih banyak dari pengikutnya",
       `Mengikuti ${following.toLocaleString("id-ID")} akun dengan ${followers.toLocaleString("id-ID")} follower. Pola khas taktik follow/unfollow, bukan audiens yang datang karena konten.`,
     );
+  }
+
+  // ── Kualitas komentar ─────────────────────────────────────────────────
+  // Sengaja "medium": komentar pendek adalah kebiasaan wajar audiens
+  // Indonesia, jadi sinyal ini menambah bobot bila berbarengan dengan yang
+  // lain, tapi tidak boleh sendirian memvonis siapa pun.
+  if (commentQuality) {
+    if (commentQuality.lowSubstanceShare >= 0.85) {
+      auth(
+        "COMMENT_SUBSTANCE_LOW",
+        "medium",
+        "Hampir semua komentar tanpa substansi",
+        `${Math.round(commentQuality.lowSubstanceShare * 100)}% dari ${commentQuality.analyzedComments} komentar yang terbaca hanya emoji atau pujian satu kata. Audiens yang benar-benar tertarik biasanya bertanya soal produk, harga, atau pengalaman.`,
+      );
+    }
+
+    if (commentQuality.spamShare >= 0.3) {
+      auth(
+        "COMMENT_SPAM_HIGH",
+        "medium",
+        "Banyak komentar berpola jualan",
+        `${Math.round(commentQuality.spamShare * 100)}% komentar berisi ajakan "cek bio", nomor WA, atau promosi lain. Kolom komentar seperti ini menenggelamkan percakapan tentang produk Anda.`,
+      );
+    }
+
+    if (
+      commentQuality.duplicateShare >= 0.25 ||
+      commentQuality.repeatAuthorShare >= 0.5
+    ) {
+      auth(
+        "COMMENT_POD_PATTERN",
+        "medium",
+        "Komentar datang dari lingkaran yang sama",
+        `${Math.round(commentQuality.repeatAuthorShare * 100)}% komentar berasal dari akun yang muncul berulang di banyak post, dan ${Math.round(commentQuality.duplicateShare * 100)}% teksnya persis sama dengan komentar lain. Bisa penggemar setia, bisa juga engagement pod — periksa manual.`,
+      );
+    }
   }
 
   // ── Performa ──────────────────────────────────────────────────────────
@@ -578,11 +818,23 @@ function detectSignals(params: {
       "SPONSORED_COLLAPSE",
       "high",
       "Engagement anjlok di post berbayar",
-      `ER post berbayar ${Math.abs(sponsored.deltaPct)}% lebih rendah daripada post organik (${sponsored.sponsoredEr}% vs ${sponsored.organicEr}%). Inilah angka yang akan Anda dapat, bukan ER umumnya.`,
+      `ER post berbayar ${Math.abs(sponsored.deltaPct)}% lebih rendah daripada post organik (${sponsored.sponsoredEr}% vs ${sponsored.organicEr}%) di ${primarySurface ? SURFACE_LABEL[primarySurface] : "permukaan utama"}. Inilah angka yang akan Anda dapat, bukan ER umumnya.`,
     );
   }
 
-  if (viralSkew !== null && viralSkew > 2 && postsAnalyzed >= MIN_SAMPLE) {
+  // Feed penuh endorse membuat post berbayar berikutnya tenggelam: audiens
+  // sudah terbiasa melewatinya.
+  if (sponsoredShare >= 0.5 && sponsoredCountAllSurfaces >= 4) {
+    perf(
+      "SPONSORED_CLUTTER",
+      "medium",
+      "Kontennya didominasi endorse",
+      `${Math.round(sponsoredShare * 100)}% post yang dianalisis (${sponsoredCountAllSurfaces} post) terdeteksi berbayar. Audiens yang tiap hari disuguhi endorse cenderung mengabaikannya, jadi post Anda ikut tenggelam. Deteksi ini batas bawah — kenyataannya bisa lebih tinggi.`,
+      6,
+    );
+  }
+
+  if (viralSkew !== null && viralSkew > 2 && engagementSampleSize >= MIN_SAMPLE) {
     perf(
       "VIRAL_SKEW",
       "medium",
@@ -591,14 +843,61 @@ function detectSignals(params: {
     );
   }
 
+  // Selisih besar antar permukaan bukan cacat — itu instruksi pemesanan.
+  if (
+    surfaceGapPct !== null &&
+    surfaceGapPct >= 50 &&
+    primarySurface &&
+    weakestSurface?.engagementRate != null
+  ) {
+    perf(
+      "SURFACE_GAP",
+      "low",
+      `Hasilnya sangat bergantung format: pesan ${SURFACE_LABEL[primarySurface]}`,
+      `ER di ${SURFACE_LABEL[primarySurface]} ${round(surfaceGapPct)}% lebih tinggi daripada di ${SURFACE_LABEL[weakestSurface.surface]} (${weakestSurface.engagementRate}%). Salah memesan format berarti membayar harga yang sama untuk hasil jauh lebih rendah.`,
+      // Bukan hukuman: skor sudah memakai permukaan terkuat, ini instruksi.
+      0,
+    );
+  }
+
+  // ── Risiko asosiasi merek ─────────────────────────────────────────────
+  for (const hit of brandSafety.hits) {
+    flags.push({
+      code: `BRAND_SAFETY_${hit.category}`,
+      severity: hit.severity,
+      impact: "brandSafety" as const,
+      label: hit.label,
+      detail: `${hit.postCount} post memuat istilah seperti "${hit.terms.slice(0, 3).join('", "')}"${hit.daysSinceLatest !== null ? `, terbaru ${hit.daysSinceLatest} hari lalu` : ""}. ${hit.why} Buka post-nya dan pastikan sebelum memutuskan — pencocokan kata bisa keliru menangkap konteks lain.`,
+      // Tidak memotong skor: skor mengukur performa, ini soal risiko. Yang
+      // berat menahan vonis di "perlu dicek" lewat aturan terpisah.
+      penalty: 0,
+    });
+  }
+
   // ── Kualitas data ─────────────────────────────────────────────────────
+  if (!engagementMeasurable) {
+    data(
+      "NO_ENGAGEMENT_DATA",
+      "low",
+      "Jumlah like disembunyikan di semua post",
+      "Akun ini menyembunyikan hitungan like, jadi engagement rate tidak bisa dihitung sama sekali. Komponen engagement dinilai netral — bukan nol — dan angka ER di halaman ini tidak bisa dipakai.",
+    );
+  } else if (hiddenLikePosts > 0) {
+    data(
+      "HIDDEN_LIKES",
+      "low",
+      "Sebagian post menyembunyikan jumlah like",
+      `${hiddenLikePosts} post dikeluarkan dari perhitungan karena hitungan like-nya disembunyikan pemilik akun. Angka -1 dari Instagram berarti "tidak diketahui", bukan nol — menghitungnya sebagai nol akan membuat akun ini terlihat mati padahal tidak.`,
+    );
+  }
+
   if (postsAnalyzed < MIN_SAMPLE || engagementSampleSize < MIN_SAMPLE) {
     data(
       "THIN_SAMPLE",
       "low",
       "Sampel post terlalu sedikit",
       engagementSampleSize < MIN_SAMPLE && postsAnalyzed >= MIN_SAMPLE
-        ? `Engagement rate dihitung hanya dari ${engagementSampleSize} post feed (dari ${postsAnalyzed} post yang dianalisis) — sisanya Reels, yang dinilai terpisah. Angkanya masih bisa berubah banyak.`
+        ? `Engagement rate dihitung hanya dari ${engagementSampleSize} post di ${primarySurface ? SURFACE_LABEL[primarySurface] : "permukaan utama"} (dari ${postsAnalyzed} post yang dianalisis) — permukaan lain dinilai terpisah. Angkanya masih bisa berubah banyak.`
         : `Hanya ${postsAnalyzed} post yang bisa dianalisis. Angka ER masih bisa berubah banyak — perlakukan sebagai indikasi awal.`,
     );
   }
@@ -612,12 +911,32 @@ function detectSignals(params: {
     );
   }
 
-  if (platform === InfluencerPlatform.INSTAGRAM && viewRate === null) {
+  if (platform === InfluencerPlatform.INSTAGRAM && reelsPostCount === 0) {
     data(
       "NO_VIEW_DATA",
       "low",
       "Tidak ada Reels untuk diukur",
       "Tab Reels akun ini kosong atau tidak bisa diambil, jadi jangkauan konten videonya tidak terukur. Engagement tetap dihitung dari post feed.",
+    );
+  } else if (viewCoverage !== null && !viewDataRepresentative) {
+    // Reels-nya ada, hitungan view-nya yang tidak lengkap — dua hal berbeda
+    // yang dulu dilaporkan dengan kalimat yang sama dan menyesatkan.
+    data(
+      "PARTIAL_VIEW_DATA",
+      "low",
+      "Hitungan view tidak lengkap di Reels",
+      viewCoverage === 0
+        ? "Tidak satu pun Reels melaporkan jumlah view, jadi jangkauan tidak terukur. Komponen jangkauan dinilai netral, bukan nol."
+        : `Hanya ${Math.round(viewCoverage * 100)}% Reels yang melaporkan jumlah view, jadi angka jangkauan di halaman ini dihitung dari sebagian kecil saja. Komponen jangkauan dinilai netral agar tidak menghukum berdasarkan data yang tidak lengkap.`,
+    );
+  }
+
+  if (!commentQuality) {
+    data(
+      "NO_COMMENT_SAMPLE",
+      "low",
+      "Isi komentar tidak ikut terambil",
+      "Dataset tidak membawa cukup contoh komentar, jadi kualitas komentar (bot vs manusia) tidak dinilai. Rasio komentar tetap dihitung dari jumlahnya.",
     );
   }
 
@@ -630,7 +949,7 @@ function detectSignals(params: {
     );
   }
 
-  if (sponsored.sponsoredCount === 0 && postsAnalyzed >= MIN_SAMPLE) {
+  if (sponsoredCountAllSurfaces === 0 && postsAnalyzed >= MIN_SAMPLE) {
     data(
       "NO_SPONSORED_MARKER",
       "low",
@@ -664,13 +983,51 @@ export function scoreInfluencer(
    * audiens bisa ramai di carousel tapi sepi di Reels, atau sebaliknya.
    * Digabung jadi satu angka, keduanya saling menutupi.
    *
-   * Engagement dinilai dari feed (kalau ada), jangkauan dari Reels. Di TikTok
-   * tidak ada pemisahan ini — semua konten adalah video, jadi keduanya sama.
+   * Tiap permukaan dinilai penuh dan terpisah, lalu angka utama diambil dari
+   * permukaan TERKUAT — karena itulah format yang akan dipesan brand. Grid
+   * yang lemah tidak boleh menyeret turun akun yang Reels-nya kuat, dan
+   * sebaliknya. Di TikTok tidak ada pemisahan ini: semua konten adalah video.
    */
   const reelPosts = sample.filter((p) => p.surface === "reels");
-  const feedOnly = sample.filter((p) => p.surface === "feed");
-  // Akun yang isinya Reels semua tetap harus dinilai engagement-nya.
-  const engagementSample = feedOnly.length > 0 ? feedOnly : sample;
+  const feedPosts = sample.filter((p) => p.surface === "feed");
+
+  const surfaces: SurfaceStats[] = [];
+  if (feedPosts.length > 0) {
+    surfaces.push(buildSurfaceStats("feed", feedPosts, followers, benchmarkEr));
+  }
+  if (reelPosts.length > 0) {
+    surfaces.push(buildSurfaceStats("reels", reelPosts, followers, benchmarkEr));
+  }
+
+  const scored = surfaces.filter((s) => s.engagementRate !== null);
+  // Permukaan dengan sampel terlalu tipis boleh dilaporkan, tapi belum boleh
+  // jadi dasar janji — kecuali memang tidak ada permukaan lain.
+  const eligible = scored.filter((s) => s.measuredCount >= MIN_SURFACE_SAMPLE);
+  const pool = eligible.length > 0 ? eligible : scored;
+  const primary =
+    pool.length > 0
+      ? pool.reduce((best, s) =>
+          (s.engagementRate as number) > (best.engagementRate as number) ? s : best,
+        )
+      : null;
+  // Permukaan terlemah diambil dari kolam yang sama dengan permukaan utama:
+  // menyuruh orang "pesan Reels, jangan feed" berdasarkan satu post feed sama
+  // menyesatkannya dengan menilai akun dari satu post.
+  const weakest =
+    pool.length > 1
+      ? pool.reduce((worst, s) =>
+          (s.engagementRate as number) < (worst.engagementRate as number) ? s : worst,
+        )
+      : null;
+
+  const primaryPosts = primary
+    ? primary.surface === "feed"
+      ? feedPosts
+      : reelPosts
+    : sample;
+  const engagementSample = primaryPosts.filter(isMeasurable);
+  const engagementMeasurable = engagementSample.length > 0;
+  const hiddenLikePosts = sample.filter((p) => !isMeasurable(p)).length;
 
   const likes = engagementSample.map((p) => p.likes);
   const comments = engagementSample.map((p) => p.comments);
@@ -689,7 +1046,11 @@ export function scoreInfluencer(
 
   // Interaksi Reels dihitung dari Reels sendiri — bukan dari feed — supaya
   // ER-terhadap-view tidak mencampur like carousel dengan view Reels.
-  const medianReelInteractions = median(reelPosts.map(totalInteractions));
+  const measuredReels = reelPosts.filter(isMeasurable);
+  const medianReelInteractions = median(measuredReels.map(totalInteractions));
+
+  const feedStats = surfaces.find((s) => s.surface === "feed") ?? null;
+  const reelStats = surfaces.find((s) => s.surface === "reels") ?? null;
 
   const engagementRate =
     followers > 0 ? (medianStandard / followers) * 100 : 0;
@@ -699,11 +1060,6 @@ export function scoreInfluencer(
     medianViews > 0 ? (medianReelInteractions / medianViews) * 100 : null;
   const viewRate =
     medianViews > 0 && followers > 0 ? (medianViews / followers) * 100 : null;
-  /** Interaksi Reels terhadap follower — sebanding langsung dengan engagementRate. */
-  const reelsEngagementRate =
-    reelPosts.length > 0 && followers > 0
-      ? (medianReelInteractions / followers) * 100
-      : null;
 
   /**
    * Berapa bagian Reels yang benar-benar punya hitungan view. Kalau sebagian
@@ -727,26 +1083,33 @@ export function scoreInfluencer(
       ? (Math.max(...timestamps) - Math.min(...timestamps)) / DAY_MS
       : null;
 
-  const totalLikes = likes.reduce((s, v) => s + v, 0);
-  const totalComments = comments.reduce((s, v) => s + v, 0);
-  const commentLikeRatio = totalLikes > 0 ? totalComments / totalLikes : null;
+  // Rasio komentar dihitung dari SELURUH permukaan: ini sifat audiens, bukan
+  // sifat format, dan sampel yang lebih besar membuatnya jauh lebih stabil.
+  const { ratio: commentLikeRatio, sampleSize: commentRatioSampleSize } =
+    medianCommentLikeRatio(sample);
 
-  // Sebaran diukur pada himpunan yang sama dengan yang menghasilkan angkanya
-  // (engagementSample), bukan seluruh sampel — kalau tidak, ambang jumlah post
-  // bisa terpenuhi oleh Reels padahal variasinya dihitung dari feed saja.
   const engagementSampleSize = engagementSample.length;
   const meanTotal = mean(total);
-  const engagementCv =
-    engagementSampleSize >= 2 && meanTotal > 0 ? stdDev(total) / meanTotal : null;
+  const engagementCv = primary?.engagementCv ?? null;
   const viralSkew =
     engagementSampleSize >= 2 && medianTotal > 0 ? meanTotal / medianTotal : null;
 
-  // Tren: separuh post terbaru dibanding separuh terlama (sampel urut menurun).
+  // Seragam-atau-tidak diperiksa per permukaan supaya ciri format tidak
+  // tertukar dengan ciri paket engagement.
+  const flatSurfaces = surfaces.filter(
+    (s) => s.measuredCount >= 8 && s.engagementCv !== null && s.engagementCv < 0.15,
+  );
+  const hasVariedSurface = surfaces.some(
+    (s) => s.measuredCount >= 8 && s.engagementCv !== null && s.engagementCv >= 0.15,
+  );
+
+  // Tren: separuh post terbaru dibanding separuh terlama, dihitung pada
+  // himpunan yang sama dengan yang menghasilkan angkanya (sampel urut menurun).
   let engagementTrendPct: number | null = null;
-  if (postsAnalyzed >= MIN_SAMPLE) {
-    const half = Math.floor(postsAnalyzed / 2);
+  if (engagementSampleSize >= MIN_SAMPLE) {
+    const half = Math.floor(engagementSampleSize / 2);
     const recent = median(total.slice(0, half));
-    const older = median(total.slice(postsAnalyzed - half));
+    const older = median(total.slice(engagementSampleSize - half));
     if (older > 0) engagementTrendPct = ((recent - older) / older) * 100;
   }
 
@@ -754,28 +1117,73 @@ export function scoreInfluencer(
   const followingRatio = followers > 0 ? input.following / followers : null;
   // Dibandingkan dalam permukaan yang sama dengan `engagementRate`, supaya
   // post berbayar tidak diadu melawan post organik dari permukaan berbeda.
-  const sponsored = computeSponsoredSplit(engagementSample, followers);
+  const sponsored = primary
+    ? primary.sponsored
+    : computeSponsoredSplit(engagementSample, followers);
+
+  // Kepadatan endorse dihitung dari seluruh permukaan: yang dilihat audiens
+  // adalah profilnya secara utuh, bukan satu tab saja.
+  const sponsoredCountAllSurfaces = sample.filter((p) => isSponsoredPost(p)).length;
+  const sponsoredShare =
+    postsAnalyzed > 0 ? sponsoredCountAllSurfaces / postsAnalyzed : 0;
+
+  const surfaceGapPct =
+    primary?.engagementRate != null &&
+    weakest?.engagementRate != null &&
+    weakest.surface !== primary.surface &&
+    weakest.engagementRate > 0
+      ? ((primary.engagementRate - weakest.engagementRate) /
+          weakest.engagementRate) *
+        100
+      : null;
+
   const confidence = resolveConfidence(
     postsAnalyzed,
     engagementSampleSize,
     sampleWindowDays,
   );
 
+  // Risiko asosiasi dipindai dari SELURUH post yang diambil, bukan hanya yang
+  // masuk sampel: post judi delapan bulan lalu tetap terpampang di profil.
+  const brandSafety = scanBrandSafety(
+    input.posts.map((p) => ({
+      caption: p.caption,
+      url: p.url,
+      postedAt: p.postedAt ?? null,
+    })),
+    now,
+  );
+  const commentQuality = analyzeCommentQuality(sample);
+
   const fakeFlags = detectSignals({
     platform: input.platform,
+    tier,
     followers,
     following: input.following,
     postsAnalyzed,
     engagementSampleSize,
+    engagementMeasurable,
+    hiddenLikePosts,
     sampleWindowDays,
     commentLikeRatio,
-    engagementCv,
+    commentRatioSampleSize,
+    flatSurfaces,
+    hasVariedSurface,
     viralSkew,
     viewRate,
     viewCoverage,
+    viewDataRepresentative,
+    reelsPostCount: reelPosts.length,
     erVsBenchmark,
     daysSinceLastPost,
     sponsored,
+    sponsoredShare,
+    sponsoredCountAllSurfaces,
+    primarySurface: primary?.surface ?? null,
+    surfaceGapPct,
+    weakestSurface: weakest,
+    commentQuality,
+    brandSafety,
   });
 
   const authenticityPenalty = fakeFlags
@@ -787,7 +1195,11 @@ export function scoreInfluencer(
     .filter((f) => f.impact === "performance")
     .reduce((sum, f) => sum + f.penalty, 0);
 
-  const engagementComponent = scoreFromRatio(erVsBenchmark);
+  // Engagement yang tidak terukur (like disembunyikan) dinilai netral, bukan
+  // nol: ketiadaan data bukan bukti performa buruk.
+  const engagementComponent = engagementMeasurable
+    ? scoreFromRatio(erVsBenchmark)
+    : 60;
   const consistencyComponent =
     scoreCadence(postsPerWeek) * 0.6 + scoreRecency(daysSinceLastPost) * 0.4;
   // Jangkauan diukur dari Reels, dengan target per platform. Bila sebagian
@@ -834,6 +1246,21 @@ export function scoreInfluencer(
   else if (score >= 45) verdict = InfluencerVerdict.AVERAGE;
   else verdict = InfluencerVerdict.POOR;
 
+  // Vonis terbaik menuntut bukti yang cukup. Empat post tidak boleh
+  // menghasilkan "sangat bagus" — angkanya masih bisa bergerak jauh.
+  if (verdict === InfluencerVerdict.EXCELLENT && confidence === "low") {
+    verdict = InfluencerVerdict.GOOD;
+  }
+
+  // Risiko asosiasi berat (judi online, konten dewasa) menahan rekomendasi
+  // sampai manusia memeriksanya — sebagus apa pun angkanya.
+  if (
+    brandSafety.worstSeverity === "high" &&
+    (verdict === InfluencerVerdict.EXCELLENT || verdict === InfluencerVerdict.GOOD)
+  ) {
+    verdict = InfluencerVerdict.NEEDS_REVIEW;
+  }
+
   // Prediksi hasil kampanye: pakai ER post berbayar bila sampelnya memadai.
   const useSponsored =
     sponsored.sponsoredEr !== null &&
@@ -863,10 +1290,12 @@ export function scoreInfluencer(
     viewEngagementRate:
       viewEngagementRate === null ? null : round(viewEngagementRate, 3),
     viewRate: viewRate === null ? null : round(viewRate, 2),
-    feedPostCount: feedOnly.length,
+    feedPostCount: feedPosts.length,
     reelsPostCount: reelPosts.length,
-    reelsEngagementRate:
-      reelsEngagementRate === null ? null : round(reelsEngagementRate, 3),
+    feedEngagementRate: feedStats?.engagementRate ?? null,
+    reelsEngagementRate: reelStats?.engagementRate ?? null,
+    primarySurface: primary?.surface ?? null,
+    surfaces,
     postsPerWeek: round(postsPerWeek),
     daysSinceLastPost,
     score,
@@ -874,20 +1303,34 @@ export function scoreInfluencer(
     authenticityScore,
     fakeFlags,
     sponsored,
+    brandSafety,
+    commentQuality,
     metrics: {
       erVsBenchmark: round(erVsBenchmark, 2),
       commentLikeRatio:
         commentLikeRatio === null ? null : round(commentLikeRatio, 4),
-      engagementCv: engagementCv === null ? null : round(engagementCv, 3),
+      engagementCv,
       engagementTrendPct:
         engagementTrendPct === null ? null : round(engagementTrendPct, 1),
       followingRatio: followingRatio === null ? null : round(followingRatio, 2),
       viralSkew: viralSkew === null ? null : round(viralSkew, 2),
       viewCoverage: viewCoverage === null ? null : round(viewCoverage, 2),
       viewSampleCount: viewsWithData.length,
+      viewDataRepresentative,
       highAuthenticityFlags,
       expectedCampaignEr,
       expectedCampaignErSource: useSponsored ? "sponsored" : "overall",
+      primarySurface: primary?.surface ?? null,
+      feedEngagementRate: feedStats?.engagementRate ?? null,
+      reelsEngagementRate: reelStats?.engagementRate ?? null,
+      surfaceGapPct: surfaceGapPct === null ? null : round(surfaceGapPct, 1),
+      engagementMeasurable,
+      hiddenLikePosts,
+      sponsoredShare: round(sponsoredShare, 3),
+      sponsoredCountAllSurfaces,
+      brandSafetyWorstSeverity: brandSafety.worstSeverity,
+      brandSafety,
+      commentQuality,
       components: {
         engagement: round(engagementComponent),
         consistency: round(consistencyComponent),
@@ -905,6 +1348,9 @@ export function postEngagementRate(
   followers: number,
 ): number {
   if (followers <= 0) return 0;
+  // Like disembunyikan: ER-nya tidak diketahui, dan menampilkan angka
+  // komentar-saja akan terbaca sebagai "engagement-nya nyaris nol".
+  if (post.likesHidden) return 0;
   return round((standardInteractions(post) / followers) * 100, 3);
 }
 

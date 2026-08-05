@@ -61,6 +61,7 @@ import {
   applyInfluencerFilters,
   countActiveInfluencerFilters,
   DEFAULT_INFLUENCER_FILTERS,
+  INFLUENCER_RETURN_PARAM,
   VERDICT_GROUP,
   type InfluencerFilterState,
 } from "@/lib/brand-research/influencer/list-filter";
@@ -76,6 +77,7 @@ import {
 } from "@/components/brand-hub/influencer-badges";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandJobProgress } from "../use-brand-job-progress";
+import { useInfluencerFilters } from "./use-influencer-filters";
 import { cn } from "@/lib/utils";
 
 export type InfluencerRow = {
@@ -102,6 +104,10 @@ export type InfluencerRow = {
   expectedCampaignEr: number | null;
   sponsoredDeltaPct: number | null;
   flagCount: number;
+  /** Label risiko asosiasi tingkat berat, mis. "Promosi judi online". */
+  severeRisk: string | null;
+  /** "Feed" atau "Reels" — permukaan yang jadi dasar ER di kartu ini. */
+  primarySurface: string | null;
 };
 
 type HubStats = {
@@ -241,10 +247,13 @@ function AddInfluencerDialog({ onAdded }: { onAdded: () => void }) {
 function InfluencerCard({
   row,
   brandId,
+  filterQuery,
   onChanged,
 }: {
   row: InfluencerRow;
   brandId: string | null;
+  /** Filter daftar saat ini, dititipkan ke detail agar tombol kembali utuh. */
+  filterQuery: string;
   onChanged: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -316,7 +325,7 @@ function InfluencerCard({
           <div className="grid grid-cols-4 gap-3">
             <CardStat label="Follower" value={compactNumber(row.followers ?? 0)} />
             <CardStat
-              label="ER"
+              label={row.primarySurface ? `ER ${row.primarySurface}` : "ER"}
               value={`${(row.engagementRate ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`}
             />
             <CardStat
@@ -332,6 +341,13 @@ function InfluencerCard({
               }
             />
           </div>
+        ) : null}
+
+        {row.severeRisk ? (
+          <p className="rounded-lg border border-rose-300/60 bg-rose-50/60 p-2.5 text-xs leading-relaxed text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
+            <strong>{row.severeRisk}</strong> terdeteksi di caption. Periksa
+            post-nya sebelum menghubungi.
+          </p>
         ) : null}
 
         {row.sponsoredDeltaPct !== null && row.sponsoredDeltaPct < -20 ? (
@@ -368,7 +384,15 @@ function InfluencerCard({
           className="gap-1.5"
           render={
             <Link
-              href={brandHubHref(`/brand-hub/influencer-audit/${row.id}`, brandId)}
+              href={
+                brandHubHref(
+                  `/brand-hub/influencer-audit/${row.id}`,
+                  brandId,
+                ) +
+                (filterQuery
+                  ? `${brandId ? "&" : "?"}${INFLUENCER_RETURN_PARAM}=${encodeURIComponent(filterQuery)}`
+                  : "")
+              }
             />
           }
         >
@@ -592,9 +616,9 @@ export function InfluencerAuditClient({
   const router = useRouter();
   const brandId = useBrandHubBrandId();
   const anyRunning = profiles.some((p) => isAuditInProgress(p.latestStatus));
-  const [filters, setFilters] = useState<InfluencerFilterState>(
-    DEFAULT_INFLUENCER_FILTERS,
-  );
+  // Filter hidup di URL, bukan di state komponen: membuka satu influencer lalu
+  // kembali tidak boleh menghapus penyaringan yang sudah dipasang.
+  const { filters, setFilters, query: filterQuery } = useInfluencerFilters();
 
   useBrandJobProgress({ inProgress: anyRunning });
 
@@ -671,6 +695,7 @@ export function InfluencerAuditClient({
                   key={row.id}
                   row={row}
                   brandId={brandId}
+                  filterQuery={filterQuery}
                   onChanged={refresh}
                 />
               ))}

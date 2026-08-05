@@ -58,6 +58,39 @@ describe("normalizeInstagramReels", () => {
     ] as Record<string, unknown>[]);
     expect(posts).toHaveLength(1);
   });
+
+  it("membedakan like yang disembunyikan dari like nol", () => {
+    // Instagram mengembalikan -1 saat pemilik akun menyembunyikan hitungan
+    // like. Menyimpannya sebagai 0 membuat akun sehat terlihat mati.
+    const [hidden] = normalizeInstagramReels([reelItem({ likesCount: -1 })]);
+    expect(hidden.likesHidden).toBe(true);
+    expect(hidden.likes).toBe(0);
+
+    const [visible] = normalizeInstagramReels([reelItem({ likesCount: 0 })]);
+    expect(visible.likesHidden).toBe(false);
+  });
+
+  it("membaca nama field view yang berganti-ganti", () => {
+    // Instagram mengganti "plays" jadi "views"; actor ikut berubah nama field.
+    const [post] = normalizeInstagramReels([
+      reelItem({ videoPlayCount: undefined, videoViewCount: undefined, igPlayCount: 88_000 }),
+    ]);
+    expect(post.views).toBe(88_000);
+  });
+
+  it("ikut mengambil contoh komentar bila terbawa dataset", () => {
+    const [post] = normalizeInstagramReels([
+      reelItem({
+        latestComments: [
+          { text: "Kak ini harganya berapa?", ownerUsername: "budi" },
+          { text: "🔥🔥", ownerUsername: "sari" },
+          { text: "   ", ownerUsername: "kosong" },
+        ],
+      }),
+    ]);
+    expect(post.commentSamples).toHaveLength(2);
+    expect(post.commentSamples?.[0].author).toBe("budi");
+  });
 });
 
 describe("normalizeInstagramProfile", () => {
@@ -142,6 +175,32 @@ describe("mergeInstagramSurfaces", () => {
   it("handles an empty Reels result", () => {
     const merged = mergeInstagramSurfaces([post("a", "feed")], []);
     expect(merged).toHaveLength(1);
+  });
+
+  it("mempertahankan komentar dari versi grid saat dataset Reels tidak membawanya", () => {
+    // Dataset Reels kerap tanpa komentar. Membuang versi grid begitu saja
+    // berarti membuang satu-satunya sampel komentar yang kita punya.
+    const feed = {
+      ...post("shared", "feed"),
+      commentSamples: [{ text: "Kak ini harganya berapa?", author: "budi" }],
+    };
+    const merged = mergeInstagramSurfaces([feed], [post("shared", "reels", 21_573)]);
+
+    expect(merged[0].views).toBe(21_573);
+    expect(merged[0].commentSamples).toHaveLength(1);
+  });
+
+  it("memakai jumlah like yang benar-benar terbaca dari salah satu sumber", () => {
+    const feed = { ...post("shared", "feed"), likes: 4_200, likesHidden: false };
+    const reelHidden = {
+      ...post("shared", "reels", 21_573),
+      likes: 0,
+      likesHidden: true,
+    };
+    const merged = mergeInstagramSurfaces([feed], [reelHidden]);
+
+    expect(merged[0].likes).toBe(4_200);
+    expect(merged[0].likesHidden).toBe(false);
   });
 });
 

@@ -703,3 +703,435 @@ describe("edge cases", () => {
     expect(r.postsAnalyzed).toBe(8);
   });
 });
+
+/**
+ * Inti pemisahan permukaan: grid yang lemah tidak boleh menyeret turun akun
+ * yang Reels-nya kuat, dan sebaliknya. Yang dipesan brand adalah satu FORMAT,
+ * bukan rata-rata akun.
+ */
+describe("feed dan Reels dinilai sebagai dua produk terpisah", () => {
+  /** Grid seadanya, Reels yang jadi kekuatan sesungguhnya. */
+  function weakFeedStrongReels(): NormalizedInfluencerPost[] {
+    const feedLikes = [220, 380, 190, 300, 250, 420, 200, 310];
+    const reelLikes = [2_100, 3_400, 1_900, 2_800, 2_500, 3_900, 2_200, 3_000];
+    return [
+      ...feedLikes.map((n, i) =>
+        post({
+          id: `f${i}`,
+          daysAgo: i * 7,
+          likes: n,
+          comments: Math.round(n * 0.03),
+          surface: "feed",
+        }),
+      ),
+      ...reelLikes.map((n, i) =>
+        post({
+          id: `r${i}`,
+          daysAgo: i * 7 + 3,
+          likes: n,
+          comments: Math.round(n * 0.035),
+          views: n * 24,
+          surface: "reels",
+        }),
+      ),
+    ];
+  }
+
+  it("menilai dari Reels ketika Reels jauh lebih kuat daripada grid", () => {
+    const r = scoreInfluencer(input({ followers: 50_000, posts: weakFeedStrongReels() }));
+
+    expect(r.primarySurface).toBe("reels");
+    expect(r.engagementRate).toBe(r.reelsEngagementRate);
+    expect(r.feedEngagementRate as number).toBeLessThan(r.engagementRate);
+    // Sebelum pemisahan ini, ER grid 0,5% yang dipakai — di bawah seperempat
+    // median tier — dan akun ini tervonis lemah padahal Reels-nya kuat.
+    expect(r.metrics.erVsBenchmark).toBeGreaterThan(2);
+    expect(r.score).toBeGreaterThan(80);
+    expect(r.verdict).toBe(InfluencerVerdict.EXCELLENT);
+  });
+
+  it("tetap menilai dari grid ketika grid yang lebih kuat", () => {
+    const posts = weakFeedStrongReels().map((p) =>
+      p.surface === "feed"
+        ? { ...p, likes: p.likes * 12, comments: p.comments * 12 }
+        : p,
+    );
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.primarySurface).toBe("feed");
+    expect(r.engagementRate).toBe(r.feedEngagementRate);
+    expect(r.reelsEngagementRate as number).toBeLessThan(r.engagementRate);
+  });
+
+  it("melaporkan kedua permukaan dengan definisi ER yang sama persis", () => {
+    const r = scoreInfluencer(input({ followers: 50_000, posts: weakFeedStrongReels() }));
+
+    const feed = r.surfaces.find((s) => s.surface === "feed");
+    const reels = r.surfaces.find((s) => s.surface === "reels");
+    expect(feed?.engagementRate).toBe(r.feedEngagementRate);
+    expect(reels?.engagementRate).toBe(r.reelsEngagementRate);
+    // Sebanding = boleh dibagi satu sama lain tanpa koreksi apa pun.
+    expect(r.metrics.surfaceGapPct).toBeGreaterThan(50);
+  });
+
+  it("memberi instruksi format, bukan hukuman, saat selisihnya lebar", () => {
+    const r = scoreInfluencer(input({ followers: 50_000, posts: weakFeedStrongReels() }));
+
+    const gap = r.fakeFlags.find((f) => f.code === "SURFACE_GAP");
+    expect(gap?.impact).toBe("performance");
+    expect(gap?.penalty).toBe(0);
+    expect(r.metrics.components.performancePenalty).toBe(0);
+  });
+
+  it("tidak menjadikan dua Reels bagus sebagai dasar penilaian", () => {
+    // Sampel setipis ini belum layak jadi janji, sekuat apa pun angkanya.
+    const posts = [
+      ...Array.from({ length: 8 }, (_, i) =>
+        post({ id: `f${i}`, daysAgo: i * 5, likes: 300 + i * 20, comments: 9, surface: "feed" }),
+      ),
+      ...Array.from({ length: 2 }, (_, i) =>
+        post({
+          id: `r${i}`,
+          daysAgo: i * 5 + 2,
+          likes: 9_000,
+          comments: 300,
+          views: 200_000,
+          surface: "reels",
+        }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.primarySurface).toBe("feed");
+    expect(r.engagementRate).toBe(r.feedEngagementRate);
+    // Angka Reels tetap dilaporkan supaya tim bisa memutuskan sendiri.
+    expect(r.reelsEngagementRate).not.toBeNull();
+  });
+
+  it("tidak menyuruh ganti format berdasarkan satu post saja", () => {
+    // Satu post feed yang sepi bukan bukti bahwa feed-nya lemah.
+    const posts = [
+      post({ id: "f0", daysAgo: 4, likes: 60, comments: 2, surface: "feed" }),
+      ...Array.from({ length: 8 }, (_, i) =>
+        post({
+          id: `r${i}`,
+          daysAgo: i * 5,
+          likes: 2_400 + i * 100,
+          comments: 80,
+          views: 60_000,
+          surface: "reels",
+        }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.primarySurface).toBe("reels");
+    expect(r.metrics.surfaceGapPct).toBeNull();
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("SURFACE_GAP");
+    // Angkanya tetap dilaporkan — hanya tidak dijadikan saran.
+    expect(r.feedEngagementRate).not.toBeNull();
+  });
+
+  it("membandingkan berbayar vs organik di dalam permukaan yang sama", () => {
+    const posts = [
+      // Grid: organik semua.
+      ...Array.from({ length: 6 }, (_, i) =>
+        post({ id: `f${i}`, daysAgo: i * 6, likes: 400, comments: 12, surface: "feed" }),
+      ),
+      // Reels: campuran berbayar dan organik, dan Reels-lah permukaan utamanya.
+      ...Array.from({ length: 4 }, (_, i) =>
+        post({
+          id: `ro${i}`,
+          daysAgo: i * 6 + 1,
+          likes: 4_000,
+          comments: 140,
+          views: 90_000,
+          surface: "reels",
+        }),
+      ),
+      ...Array.from({ length: 3 }, (_, i) =>
+        post({
+          id: `rs${i}`,
+          daysAgo: i * 6 + 3,
+          likes: 1_100,
+          comments: 30,
+          views: 40_000,
+          surface: "reels",
+          caption: "Racun check! #endorse",
+        }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.primarySurface).toBe("reels");
+    // Post berbayar ada di Reels — sebelumnya tak terlihat sama sekali karena
+    // pembandingan hanya berjalan di grid.
+    expect(r.sponsored.sponsoredCount).toBe(3);
+    expect(r.sponsored.organicCount).toBe(4);
+    expect(r.sponsored.deltaPct as number).toBeLessThan(-35);
+    expect(r.fakeFlags.map((f) => f.code)).toContain("SPONSORED_COLLAPSE");
+    expect(r.metrics.expectedCampaignErSource).toBe("sponsored");
+  });
+
+  it("menghitung tren pada himpunan yang sama dengan yang menghasilkan ER", () => {
+    // Regresi: dulu indeks tren diambil dari jumlah SELURUH post sampel tapi
+    // dipakai memotong array permukaan utama, sehingga separuh "terlama"
+    // sering jadi array kosong dan trennya hilang diam-diam.
+    const posts = [
+      ...[5_000, 4_800, 4_600, 1_400, 1_200, 1_000].map((n, i) =>
+        post({
+          id: `f${i}`,
+          daysAgo: i * 6,
+          likes: n,
+          comments: Math.round(n * 0.03),
+          surface: "feed",
+        }),
+      ),
+      ...Array.from({ length: 12 }, (_, i) =>
+        post({
+          id: `r${i}`,
+          daysAgo: i * 3,
+          likes: 300,
+          comments: 9,
+          views: 20_000,
+          surface: "reels",
+        }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.primarySurface).toBe("feed");
+    expect(r.metrics.engagementTrendPct).not.toBeNull();
+    expect(r.metrics.engagementTrendPct as number).toBeGreaterThan(0);
+  });
+
+  it("tidak menuduh engagement seragam bila permukaan lain bervariasi wajar", () => {
+    // Reels yang rata adalah ciri format (distribusi algoritmik seragam),
+    // bukan ciri paket engagement — apalagi saat feed jelas naik-turun.
+    const posts = [
+      ...[900, 4_200, 1_300, 6_800, 1_100, 3_400, 800, 5_100].map((n, i) =>
+        post({
+          id: `f${i}`,
+          daysAgo: i * 6,
+          likes: n,
+          comments: Math.round(n * 0.03),
+          surface: "feed",
+        }),
+      ),
+      ...Array.from({ length: 8 }, (_, i) =>
+        post({
+          id: `r${i}`,
+          daysAgo: i * 6 + 2,
+          likes: 1_000,
+          comments: 30,
+          views: 30_000,
+          surface: "reels",
+        }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("FLAT_ENGAGEMENT");
+    expect(r.authenticityScore).toBe(100);
+  });
+});
+
+describe("like yang disembunyikan bukan like nol", () => {
+  function withHiddenLikes(hidden: number, total = 10): NormalizedInfluencerPost[] {
+    return Array.from({ length: total }, (_, i) =>
+      post({
+        id: `p${i}`,
+        daysAgo: i * 3,
+        likes: i < hidden ? 0 : 1_400 + i * 90,
+        likesHidden: i < hidden,
+        comments: i < hidden ? 40 : 45,
+        views: 30_000,
+        surface: "reels",
+      }),
+    );
+  }
+
+  it("mengeluarkan post yang like-nya disembunyikan dari perhitungan", () => {
+    const hiddenRun = scoreInfluencer(
+      input({ followers: 50_000, posts: withHiddenLikes(3) }),
+    );
+    const cleanRun = scoreInfluencer(
+      input({ followers: 50_000, posts: withHiddenLikes(0) }),
+    );
+
+    expect(hiddenRun.metrics.hiddenLikePosts).toBe(3);
+    // Kalau -1 diperlakukan sebagai nol, ER akan anjlok jauh di bawah ini.
+    expect(hiddenRun.engagementRate).toBeGreaterThan(cleanRun.engagementRate * 0.9);
+    const flag = hiddenRun.fakeFlags.find((f) => f.code === "HIDDEN_LIKES");
+    expect(flag?.impact).toBe("data");
+    expect(flag?.penalty).toBe(0);
+  });
+
+  it("menilai netral, bukan nol, saat semua like disembunyikan", () => {
+    const r = scoreInfluencer(
+      input({ followers: 50_000, posts: withHiddenLikes(10) }),
+    );
+
+    expect(r.metrics.components.engagement).toBe(60);
+    expect(r.fakeFlags.map((f) => f.code)).toContain("NO_ENGAGEMENT_DATA");
+    expect(r.authenticityScore).toBe(100);
+    expect(r.verdict).not.toBe(InfluencerVerdict.SUSPICIOUS);
+  });
+});
+
+describe("rasio komentar tahan outlier dan sadar tier", () => {
+  it("tidak menuduh engagement pod gara-gara satu post giveaway", () => {
+    const posts = [
+      ...Array.from({ length: 9 }, (_, i) =>
+        post({ id: `p${i}`, daysAgo: i * 3, likes: 1_000, comments: 30, views: 20_000 }),
+      ),
+      // Giveaway: puluhan ribu komentar "sudah follow ya kak".
+      post({ id: "give", daysAgo: 2, likes: 1_000, comments: 50_000, views: 20_000 }),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("COMMENT_LIKE_RATIO_HIGH");
+    expect(r.metrics.commentLikeRatio).toBeCloseTo(0.03, 2);
+  });
+
+  it("menurunkan ambang tuduhan untuk akun mega", () => {
+    const posts = Array.from({ length: 10 }, (_, i) =>
+      post({
+        id: `p${i}`,
+        daysAgo: i * 3,
+        likes: 40_000 + i * 2_000,
+        // 0,25% — wajar untuk audiens mega, mencurigakan untuk micro.
+        comments: Math.round((40_000 + i * 2_000) * 0.0025),
+        views: 900_000,
+      }),
+    );
+
+    const mega = scoreInfluencer(input({ followers: 2_000_000, posts }));
+    expect(mega.fakeFlags.map((f) => f.code)).not.toContain("COMMENT_LIKE_RATIO_LOW");
+
+    const micro = scoreInfluencer(input({ followers: 50_000, posts }));
+    expect(micro.fakeFlags.map((f) => f.code)).toContain("COMMENT_LIKE_RATIO_LOW");
+  });
+});
+
+describe("kepadatan endorse", () => {
+  it("memperingatkan saat isi profilnya didominasi endorse", () => {
+    const posts = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        post({
+          id: `s${i}`,
+          daysAgo: i * 4,
+          likes: 1_200,
+          comments: 36,
+          views: 25_000,
+          caption: "Cobain produk ini ya! #endorse",
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        post({ id: `o${i}`, daysAgo: i * 4 + 2, likes: 1_300, comments: 39, views: 26_000 }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.metrics.sponsoredCountAllSurfaces).toBe(6);
+    expect(r.metrics.sponsoredShare).toBeCloseTo(0.6, 2);
+    const flag = r.fakeFlags.find((f) => f.code === "SPONSORED_CLUTTER");
+    expect(flag?.impact).toBe("performance");
+    expect(flag?.penalty).toBe(6);
+  });
+});
+
+describe("jangkauan Reels tidak dipakai saat datanya tidak lengkap", () => {
+  it("tidak memperingatkan jangkauan rendah dari satu Reels saja", () => {
+    const posts = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        post({ id: `f${i}`, daysAgo: i * 4, likes: 1_500 + i * 90, comments: 45, surface: "feed" }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        post({
+          id: `r${i}`,
+          daysAgo: i * 4 + 1,
+          likes: 900,
+          comments: 27,
+          views: i === 0 ? 900 : 0,
+          surface: "reels",
+        }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.metrics.viewDataRepresentative).toBe(false);
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("LOW_REELS_REACH");
+    expect(r.fakeFlags.map((f) => f.code)).toContain("PARTIAL_VIEW_DATA");
+    expect(r.metrics.components.reach).toBe(60);
+  });
+});
+
+describe("vonis terbaik menuntut bukti yang cukup", () => {
+  it("menahan vonis tertinggi saat sampelnya masih tipis", () => {
+    const posts = Array.from({ length: 4 }, (_, i) =>
+      post({ id: `p${i}`, daysAgo: i * 3, likes: 3_000 + i * 200, comments: 95, views: 400_000 }),
+    );
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.confidence).toBe("low");
+    expect(r.score).toBeGreaterThanOrEqual(80);
+    expect(r.verdict).toBe(InfluencerVerdict.GOOD);
+  });
+});
+
+describe("risiko asosiasi merek", () => {
+  function withGamblingCaption(): NormalizedInfluencerPost[] {
+    const posts = organicPosts();
+    posts[2] = {
+      ...posts[2],
+      caption: "Cuan terus malam ini, main di situs slot gacor maxwin! Link di bio",
+    };
+    return posts;
+  }
+
+  it("menahan rekomendasi meski angkanya bagus", () => {
+    const clean = scoreInfluencer(input());
+    expect(clean.verdict).toBe(InfluencerVerdict.EXCELLENT);
+
+    const risky = scoreInfluencer(input({ posts: withGamblingCaption() }));
+    expect(risky.brandSafety.worstSeverity).toBe("high");
+    expect(risky.verdict).toBe(InfluencerVerdict.NEEDS_REVIEW);
+  });
+
+  it("tidak memotong skor keaslian maupun performa", () => {
+    const risky = scoreInfluencer(input({ posts: withGamblingCaption() }));
+    const flag = risky.fakeFlags.find((f) => f.code === "BRAND_SAFETY_JUDI");
+
+    expect(flag?.impact).toBe("brandSafety");
+    expect(flag?.penalty).toBe(0);
+    // Keaslian mengukur apakah engagement-nya nyata — itu tidak berubah.
+    expect(risky.authenticityScore).toBe(100);
+    expect(risky.score).toBe(scoreInfluencer(input()).score);
+  });
+
+  it("memindai post di luar jendela sampel juga", () => {
+    // Post judi delapan bulan lalu tetap terpampang di profil.
+    const posts = [
+      ...organicPosts(),
+      post({
+        id: "old-risk",
+        daysAgo: 240,
+        likes: 900,
+        comments: 30,
+        caption: "Jangan lupa main judi online ya guys",
+      }),
+    ];
+    const r = scoreInfluencer(input({ posts }));
+
+    expect(r.postsAnalyzed).toBe(12);
+    expect(r.brandSafety.scannedPosts).toBe(13);
+    expect(r.brandSafety.hits.map((h) => h.category)).toContain("JUDI");
+  });
+
+  it("tidak menandai caption biasa", () => {
+    const r = scoreInfluencer(input());
+    expect(r.brandSafety.hits).toHaveLength(0);
+    expect(r.metrics.brandSafetyWorstSeverity).toBeNull();
+  });
+});

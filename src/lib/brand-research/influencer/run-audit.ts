@@ -32,6 +32,7 @@ import {
   postEngagementRate,
   scoreInfluencer,
   selectSample,
+  SURFACE_LABEL,
   TIER_LABEL,
   VERDICT_LABEL,
   type InfluencerScoreResult,
@@ -87,16 +88,17 @@ Tier: ${TIER_LABEL[scored.tier]}
 Follower: ${profile.followers.toLocaleString("id-ID")}
 
 Metrik terukur (semua angka pusat memakai MEDIAN, bukan rata-rata, agar satu post viral tidak menyesatkan):
-- Engagement rate standar (like+komentar terhadap follower): ${scored.engagementRate}% — median tier ini ${scored.benchmarkEr}%, jadi ${scored.metrics.erVsBenchmark}× median
+- Engagement rate standar (like+komentar terhadap follower), dihitung dari ${scored.primarySurface ? SURFACE_LABEL[scored.primarySurface] : "seluruh post"}: ${scored.engagementRate}% — median tier ini ${scored.benchmarkEr}%, jadi ${scored.metrics.erVsBenchmark}× median
 - Engagement rate penuh (termasuk share & simpan): ${scored.totalEngagementRate}%
 - Engagement rate terhadap view: ${scored.viewEngagementRate ?? "tidak tersedia"}%
 - View rate (view dibagi follower): ${scored.viewRate ?? "tidak tersedia"}%
 
 Feed vs Reels (khusus Instagram; di TikTok semuanya video):
 - Post feed dianalisis: ${scored.feedPostCount}, Reels dianalisis: ${scored.reelsPostCount}
-- ER feed (angka utama di atas): ${scored.engagementRate}%
-- ER Reels terhadap follower: ${scored.reelsEngagementRate ?? "tidak tersedia"}%
-- CATATAN PENTING: feed dan Reels adalah dua permukaan berbeda. Kalau ER feed jauh di atas ER Reels, artinya audiensnya berinteraksi di post feed sementara Reels-nya dipakai menjangkau orang baru — sarankan format feed bila brand mengejar engagement, dan Reels bila mengejar jangkauan. Jangan menyimpulkan salah satunya buruk hanya karena berbeda.
+- ER feed: ${scored.feedEngagementRate ?? "tidak tersedia"}%
+- ER Reels: ${scored.reelsEngagementRate ?? "tidak tersedia"}%
+- Permukaan yang jadi dasar angka utama: ${scored.primarySurface ? SURFACE_LABEL[scored.primarySurface] : "tidak ada"}
+- CATATAN PENTING: feed dan Reels adalah dua permukaan berbeda dan dihitung terpisah dengan rumus yang sama, jadi kedua angka di atas boleh dibandingkan langsung. Angka utama diambil dari permukaan TERKUAT karena itulah format yang akan dipesan brand. WAJIB sebutkan format mana yang harus dipesan, dan berapa angkanya kalau brand salah memesan format satunya. Permukaan yang lemah BUKAN alasan menolak influencer — itu alasan memilih format.
 - Median per post: like ${scored.medianLikes}, komentar ${scored.medianComments}, share ${scored.medianShares}, view ${scored.medianViews}
 - Rata-rata per post (pembanding): like ${scored.avgLikes}, view ${scored.avgViews}
 - Rasio komentar terhadap like: ${scored.metrics.commentLikeRatio ?? "tidak tersedia"}
@@ -105,15 +107,40 @@ Feed vs Reels (khusus Instagram; di TikTok semuanya video):
 - Tren engagement (post terbaru vs terlama): ${scored.metrics.engagementTrendPct ?? "tidak tersedia"}%
 - Ritme posting: ${scored.postsPerWeek} post/minggu, terakhir posting ${scored.daysSinceLastPost ?? "?"} hari lalu
 
-Post berbayar vs organik:
+Post berbayar vs organik (dibandingkan DI DALAM permukaan utama saja, supaya post berbayar tidak diadu melawan post organik dari format berbeda):
 - Post berbayar terdeteksi: ${scored.sponsored.sponsoredCount}, organik: ${scored.sponsored.organicCount}
+- Di seluruh permukaan: ${scored.metrics.sponsoredCountAllSurfaces} post berbayar dari ${scored.postsAnalyzed} post (${Math.round(scored.metrics.sponsoredShare * 100)}% isi profilnya endorse)
 - ER post berbayar: ${scored.sponsored.sponsoredEr ?? "sampel tidak cukup"}%, ER post organik: ${scored.sponsored.organicEr ?? "sampel tidak cukup"}%
 - Selisih: ${scored.sponsored.deltaPct ?? "tidak bisa dihitung"}%
 - Perkiraan ER yang akan didapat brand bila memasang campaign: ${scored.metrics.expectedCampaignEr}% (sumber: ${scored.metrics.expectedCampaignErSource === "sponsored" ? "post berbayar influencer ini" : "ER umum, karena post berbayar tidak cukup untuk dijadikan dasar"})
 - CATATAN: deteksi berbayar hanya menangkap post yang memberi penanda (#ad, #kerjasama, label paid partnership). Angka ini batas bawah, bukan jumlah pasti.
 
+Kualitas komentar (hanya bila datanya terbawa):
+${
+  scored.commentQuality
+    ? `- ${scored.commentQuality.analyzedComments} komentar terbaca dari ${scored.commentQuality.postsWithComments} post
+- Komentar tanpa substansi (emoji/pujian satu kata): ${Math.round(scored.commentQuality.lowSubstanceShare * 100)}%
+- Komentar berpola jualan/spam: ${Math.round(scored.commentQuality.spamShare * 100)}%
+- Komentar dari akun yang muncul berulang di banyak post: ${Math.round(scored.commentQuality.repeatAuthorShare * 100)}%
+- Komentar beraksara non-Latin: ${Math.round(scored.commentQuality.foreignScriptShare * 100)}%`
+    : "- Tidak tersedia — dataset tidak membawa cukup contoh komentar. JANGAN berspekulasi soal kualitas komentar."
+}
+
+Risiko asosiasi merek (pencocokan kata pada caption, WAJIB diverifikasi manual):
+${
+  scored.brandSafety.hits.length > 0
+    ? scored.brandSafety.hits
+        .map(
+          (h) =>
+            `- [${h.severity}] ${h.label}: ${h.postCount} post, istilah "${h.terms.slice(0, 4).join('", "')}"${h.daysSinceLatest !== null ? `, terbaru ${h.daysSinceLatest} hari lalu` : ""}`,
+        )
+        .join("\n")
+    : "- Tidak ada istilah berisiko terdeteksi di caption yang terbaca."
+}
+
 Kualitas sampel:
 - Post dianalisis: ${scored.postsAnalyzed} dari ${scored.postsFetched} yang diambil, mencakup ${scored.sampleWindowDays ?? "?"} hari
+- Post yang like-nya disembunyikan pemilik akun (dikeluarkan dari hitungan, BUKAN dihitung nol): ${scored.metrics.hiddenLikePosts}
 - Tingkat keyakinan: ${scored.confidence}
 
 Hasil penilaian sistem:
@@ -129,6 +156,8 @@ Tulis penilaian yang jujur dan tegas untuk tim brand. Jangan mengarang data di l
 - Sinyal berdampak "performance" bukan tuduhan kecurangan — itu soal hasil yang akan didapat, bukan keaslian audiens. Jangan menyebutnya engagement palsu.
 - Bila tingkat keyakinan rendah, sebutkan bahwa kesimpulannya sementara dan sarankan audit ulang setelah influencer memposting lebih banyak.
 - Bila ER post berbayar jauh di bawah organik, jadikan itu poin utama — angka itulah yang akan brand dapatkan.
+- Bila ada risiko asosiasi merek tingkat "high" (mis. judi online), jadikan itu poin PERTAMA di risiko dan syaratkan verifikasi manual post terkait sebelum deal — tapi tetap sebut bahwa ini hasil pencocokan kata yang bisa keliru, bukan vonis.
+- Sebut format yang harus dipesan (feed atau Reels) di rekomendasi bila kedua permukaan ada dan angkanya berbeda jauh.
 
 Balas JSON:
 {
@@ -179,6 +208,7 @@ async function persistAuditResult(
   profileId: string,
   normalized: NormalizedInfluencerProfile,
   scored: InfluencerScoreResult,
+  now: Date,
 ): Promise<void> {
   await prisma.influencerProfile.update({
     where: { id: profileId },
@@ -197,7 +227,7 @@ async function persistAuditResult(
     // Post di luar jendela sampel tetap disimpan (transparansi) tapi ditandai
     // agar UI bisa menjelaskan mengapa post itu tidak ikut menghitung ER.
     const sampleIds = new Set(
-      selectSample(normalized.posts, new Date()).map((p) => p.externalId),
+      selectSample(normalized.posts, now).map((p) => p.externalId),
     );
 
     await prisma.influencerPost.createMany({
@@ -208,7 +238,10 @@ async function persistAuditResult(
         caption: p.caption?.slice(0, 2000) ?? null,
         thumbnailUrl: p.thumbnailUrl ?? null,
         mediaType: p.mediaType ?? null,
-        likes: p.likes,
+        // -1 dipertahankan apa adanya: itu penanda Instagram untuk "like
+        // disembunyikan". Menyimpannya sebagai 0 akan membuat tabel post
+        // melaporkan nol like padahal angkanya cuma tidak diketahui.
+        likes: p.likesHidden ? -1 : p.likes,
         comments: p.comments,
         shares: p.shares,
         views: p.views,
@@ -441,11 +474,15 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
       );
     }
 
+    // Satu `now` dipakai untuk menilai dan untuk menandai post mana yang masuk
+    // sampel, supaya keduanya tidak pernah berbeda batas jendelanya.
+    const now = new Date();
     const scored = scoreInfluencer({
       platform: profile.platform,
       followers: normalized.followers,
       following: normalized.following,
       posts: normalized.posts,
+      now,
     });
 
     const stillThere = await prisma.influencerProfile.findUnique({
@@ -459,7 +496,7 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
       return;
     }
 
-    await persistAuditResult(auditId, profile.id, normalized, scored);
+    await persistAuditResult(auditId, profile.id, normalized, scored, now);
     await generateAuditNarrative(
       auditId,
       {

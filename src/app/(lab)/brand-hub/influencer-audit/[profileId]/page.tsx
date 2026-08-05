@@ -2,6 +2,10 @@ import { notFound } from "next/navigation";
 import { UserSearch } from "lucide-react";
 import { BrandHubDetailPage } from "@/components/brand-hub/brand-hub-list-page";
 import { getInfluencerProfileDetail } from "@/lib/brand-research/influencer/readers";
+import {
+  influencerListHref,
+  INFLUENCER_RETURN_PARAM,
+} from "@/lib/brand-research/influencer/list-filter";
 import { ensureBrandHubPage } from "../../layout";
 import {
   InfluencerDetailClient,
@@ -14,11 +18,11 @@ export default async function BrandInfluencerDetailPage({
   searchParams,
 }: {
   params: Promise<{ profileId: string }>;
-  searchParams: Promise<{ brandId?: string }>;
+  searchParams: Promise<{ brandId?: string; [INFLUENCER_RETURN_PARAM]?: string }>;
 }) {
   await ensureBrandHubPage();
   const { profileId } = await params;
-  const { brandId } = await searchParams;
+  const { brandId, [INFLUENCER_RETURN_PARAM]: from } = await searchParams;
 
   const profile = await getInfluencerProfileDetail(profileId, brandId ?? null);
   if (!profile) notFound();
@@ -100,9 +104,12 @@ export default async function BrandInfluencerDetailPage({
     })),
   }));
 
-  const backHref = brandId
-    ? `/brand-hub/influencer-audit?brandId=${encodeURIComponent(brandId)}`
-    : "/brand-hub/influencer-audit";
+  // Kembali ke daftar dengan filter yang sama persis seperti saat ditinggalkan.
+  // Nilai `from` datang dari URL, jadi dicuci dulu lewat parser filter.
+  const backHref = influencerListHref("/brand-hub/influencer-audit", {
+    brandId,
+    from,
+  });
 
   return (
     <BrandHubDetailPage

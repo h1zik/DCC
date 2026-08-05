@@ -8,8 +8,13 @@ import {
   applyInfluencerFilters,
   countActiveInfluencerFilters,
   DEFAULT_INFLUENCER_FILTERS,
+  hasInfluencerFilterParams,
+  influencerFilterQuery,
+  influencerListHref,
   isInfluencerFilterActive,
+  isInfluencerFilterPristine,
   matchesInfluencerFilter,
+  parseInfluencerFilters,
   sortInfluencers,
   VERDICT_GROUP,
   type FilterableInfluencer,
@@ -272,5 +277,159 @@ describe("active filter tracking", () => {
     });
     expect(isInfluencerFilterActive(f)).toBe(true);
     expect(countActiveInfluencerFilters(f)).toBe(3);
+  });
+});
+
+/**
+ * Filter disimpan di URL supaya bertahan saat pengguna membuka satu influencer
+ * lalu kembali. Nilai dari URL adalah masukan dari luar — harus selalu dicuci.
+ */
+describe("filter di URL", () => {
+  it("membaca seluruh filter dari query", () => {
+    const parsed = parseInfluencerFilters(
+      new URLSearchParams(
+        "q=nabila&platform=TIKTOK&verdict=usable&tier=MID&sort=score",
+      ),
+    );
+
+    expect(parsed).toEqual({
+      search: "nabila",
+      platform: InfluencerPlatform.TIKTOK,
+      verdict: VERDICT_GROUP.USABLE,
+      tier: InfluencerTier.MID,
+      sort: "score",
+    });
+  });
+
+  it("menerima nilai vonis tunggal, bukan hanya kelompoknya", () => {
+    expect(
+      parseInfluencerFilters(new URLSearchParams("verdict=SUSPICIOUS")).verdict,
+    ).toBe(InfluencerVerdict.SUSPICIOUS);
+  });
+
+  it("jatuh ke default saat nilainya tidak dikenal", () => {
+    // Kalau nilai asing diteruskan begitu saja, hasilnya daftar kosong tanpa
+    // penjelasan — pengguna mengira datanya hilang.
+    const parsed = parseInfluencerFilters(
+      new URLSearchParams("platform=FRIENDSTER&tier=ULTRA&sort=harga&verdict=xx"),
+    );
+
+    expect(parsed).toEqual(DEFAULT_INFLUENCER_FILTERS);
+  });
+
+  it("memangkas pencarian yang kepanjangan", () => {
+    const parsed = parseInfluencerFilters(
+      new URLSearchParams(`q=${"a".repeat(500)}`),
+    );
+    expect(parsed.search).toHaveLength(100);
+  });
+
+  it("mengembalikan default saat tidak ada query sama sekali", () => {
+    expect(parseInfluencerFilters(null)).toEqual(DEFAULT_INFLUENCER_FILTERS);
+    expect(parseInfluencerFilters(new URLSearchParams())).toEqual(
+      DEFAULT_INFLUENCER_FILTERS,
+    );
+  });
+
+  it("mengenali ada-tidaknya filter di URL", () => {
+    expect(hasInfluencerFilterParams(new URLSearchParams("brandId=abc"))).toBe(
+      false,
+    );
+    expect(hasInfluencerFilterParams(new URLSearchParams("tier=MICRO"))).toBe(
+      true,
+    );
+    expect(hasInfluencerFilterParams(null)).toBe(false);
+  });
+
+  it("membuang nilai default supaya URL tetap bersih", () => {
+    expect(influencerFilterQuery(DEFAULT_INFLUENCER_FILTERS)).toBe("");
+    expect(influencerFilterQuery(filters({ tier: InfluencerTier.MICRO }))).toBe(
+      "tier=MICRO",
+    );
+  });
+
+  it("mempertahankan parameter lain seperti brandId", () => {
+    const query = influencerFilterQuery(
+      filters({ platform: InfluencerPlatform.TIKTOK }),
+      new URLSearchParams("brandId=abc&platform=INSTAGRAM"),
+    );
+    const params = new URLSearchParams(query);
+
+    expect(params.get("brandId")).toBe("abc");
+    expect(params.get("platform")).toBe("TIKTOK");
+  });
+
+  it("menghapus parameter filter yang kembali ke default", () => {
+    const query = influencerFilterQuery(
+      DEFAULT_INFLUENCER_FILTERS,
+      new URLSearchParams("brandId=abc&q=nabila&tier=MICRO"),
+    );
+    expect(query).toBe("brandId=abc");
+  });
+
+  it("bolak-balik tanpa kehilangan apa pun", () => {
+    const original = filters({
+      search: "nabila",
+      platform: InfluencerPlatform.TIKTOK,
+      verdict: VERDICT_GROUP.FLAGGED,
+      tier: InfluencerTier.MEGA,
+      sort: "followers",
+    });
+
+    expect(
+      parseInfluencerFilters(new URLSearchParams(influencerFilterQuery(original))),
+    ).toEqual(original);
+  });
+
+  it("tahu kapan tidak ada yang perlu diingat", () => {
+    expect(isInfluencerFilterPristine(DEFAULT_INFLUENCER_FILTERS)).toBe(true);
+    expect(isInfluencerFilterPristine(filters({ sort: "score" }))).toBe(false);
+    expect(isInfluencerFilterPristine(filters({ search: "x" }))).toBe(false);
+  });
+});
+
+describe("influencerListHref", () => {
+  it("mengembalikan filter yang dititipkan halaman detail", () => {
+    const href = influencerListHref("/brand-hub/influencer-audit", {
+      brandId: "abc",
+      from: "q=nabila&tier=MICRO&sort=score",
+    });
+    const [path, query] = href.split("?");
+    const params = new URLSearchParams(query);
+
+    expect(path).toBe("/brand-hub/influencer-audit");
+    expect(params.get("q")).toBe("nabila");
+    expect(params.get("tier")).toBe("MICRO");
+    expect(params.get("sort")).toBe("score");
+    expect(params.get("brandId")).toBe("abc");
+  });
+
+  it("tetap bersih saat tidak ada filter yang dititipkan", () => {
+    expect(influencerListHref("/brand-hub/influencer-audit")).toBe(
+      "/brand-hub/influencer-audit",
+    );
+    expect(
+      influencerListHref("/brand-hub/influencer-audit", { from: "" }),
+    ).toBe("/brand-hub/influencer-audit");
+  });
+
+  it("membuang kunci asing dan nilai yang tidak dikenal", () => {
+    // `from` datang dari URL, jadi isinya tidak boleh dipercaya: hanya kunci
+    // filter yang dikenal yang boleh lolos, dan path-nya tidak bisa digeser.
+    const href = influencerListHref("/brand-hub/influencer-audit", {
+      from: "q=nabila&redirect=https://jahat.example&tier=PALSU",
+    });
+
+    expect(href).toBe("/brand-hub/influencer-audit?q=nabila");
+  });
+
+  it("tidak bisa ditimpa brandId dari titipan", () => {
+    const href = influencerListHref("/brand-hub/influencer-audit", {
+      brandId: "asli",
+      from: "brandId=palsu&tier=MICRO",
+    });
+    const params = new URLSearchParams(href.split("?")[1]);
+
+    expect(params.get("brandId")).toBe("asli");
   });
 });

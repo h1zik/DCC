@@ -37,6 +37,27 @@ export type MethodologyAudit = {
   organicCount: number;
   feedPostCount: number;
   reelsPostCount: number;
+  /** Permukaan yang jadi dasar angka utama: "feed" | "reels" | null. */
+  primarySurface: string | null;
+  feedEngagementRate: number | null;
+  reelsEngagementRate: number | null;
+  hiddenLikePosts: number;
+  /** Jumlah komentar yang sempat dianalisis; 0 bila datanya tidak terbawa. */
+  analyzedComments: number;
+  brandSafetyHitCount: number;
+};
+
+/**
+ * Ambang "komentar terlalu sedikit" per tier — disalin dari COMMENT_RATIO_FLOOR
+ * di score.ts. Rasio komentar turun secara alami seiring besarnya akun, jadi
+ * satu ambang untuk semua tier akan menuduh hampir setiap akun besar.
+ */
+const COMMENT_RATIO_FLOOR: Record<InfluencerTier, number> = {
+  NANO: 0.4,
+  MICRO: 0.4,
+  MID: 0.4,
+  MACRO: 0.3,
+  MEGA: 0.2,
 };
 
 type Components = {
@@ -180,20 +201,45 @@ export function InfluencerMethodology({
             </p>
           </Step>
 
-          <Step n={2} title="Memisahkan feed dari Reels (Instagram)">
+          <Step n={2} title="Menilai feed dan Reels sebagai dua produk terpisah">
             <p>
               Di Instagram, grid profil dan tab Reels adalah{" "}
-              <strong>dua koleksi terpisah</strong>. Grid dikurasi pemilik akun
-              dan hitungan view di sana tidak dapat dipercaya, jadi Reels
-              diambil lewat panggilan terpisah.
+              <strong>dua koleksi terpisah</strong> dengan perilaku berbeda.
+              Grid dikurasi pemilik akun dan hitungan view di sana tidak dapat
+              dipercaya, jadi Reels diambil lewat panggilan terpisah.
             </p>
             <p>
-              Engagement dihitung dari <strong>post feed</strong>, jangkauan
-              dari <strong>Reels</strong> — masing-masing dari koleksinya
-              sendiri. Mencampur keduanya berarti membandingkan like carousel
-              melawan view Reels, dua hal yang tidak sebanding.
+              Keduanya dihitung <strong>penuh dan sendiri-sendiri</strong>{" "}
+              dengan rumus ER yang sama persis, sehingga angkanya benar-benar
+              sebanding. Angka utama lalu diambil dari{" "}
+              <strong>permukaan terkuat</strong> — karena itulah format yang
+              akan dipesan brand. Grid yang lemah tidak boleh menyeret turun
+              akun yang Reels-nya kuat, dan sebaliknya.
             </p>
-            <p>Audit ini memakai {audit.feedPostCount} post feed dan {audit.reelsPostCount} Reels.</p>
+            <p>
+              Audit ini memakai {audit.feedPostCount} post feed (ER{" "}
+              {audit.feedEngagementRate !== null
+                ? `${num(audit.feedEngagementRate, 2)}%`
+                : "tidak terukur"}
+              ) dan {audit.reelsPostCount} Reels (ER{" "}
+              {audit.reelsEngagementRate !== null
+                ? `${num(audit.reelsEngagementRate, 2)}%`
+                : "tidak terukur"}
+              ). Dasar skor:{" "}
+              <strong>
+                {audit.primarySurface === "reels"
+                  ? "Reels"
+                  : audit.primarySurface === "feed"
+                    ? "post feed"
+                    : "—"}
+              </strong>
+              . Jangkauan tetap dihitung hanya dari Reels.
+            </p>
+            <p>
+              Sebuah permukaan baru boleh jadi dasar skor kalau punya minimal{" "}
+              <strong>3 post terukur</strong>. Dua Reels bagus di antara dua
+              puluh post feed lemah belum cukup untuk dijadikan janji.
+            </p>
           </Step>
 
           <Step n={3} title="Menghitung engagement rate">
@@ -208,6 +254,18 @@ export function InfluencerMethodology({
               Hanya like dan komentar yang dihitung di sini karena angka
               pembanding industri memakai definisi yang sama — share dan simpan
               dilaporkan terpisah sebagai &ldquo;ER penuh&rdquo;.
+            </p>
+            <p>
+              Post yang jumlah like-nya <strong>disembunyikan</strong> pemilik
+              akun dikeluarkan dari perhitungan, bukan dihitung sebagai nol —
+              kalau tidak, akun yang sehat akan terlihat mati.
+              {audit.hiddenLikePosts > 0 ? (
+                <>
+                  {" "}
+                  Di audit ini ada <strong>{audit.hiddenLikePosts} post</strong>{" "}
+                  seperti itu.
+                </>
+              ) : null}
             </p>
           </Step>
 
@@ -231,7 +289,15 @@ export function InfluencerMethodology({
           <Step n={5} title="Memeriksa tanda engagement dibeli">
             <p>Ambang yang dipakai:</p>
             <ul className="list-disc space-y-0.5 pl-4">
-              <li>Komentar di bawah 0,4% dari like → pola like berbayar</li>
+              <li>
+                Komentar di bawah{" "}
+                <strong>
+                  {num(COMMENT_RATIO_FLOOR[audit.tier ?? InfluencerTier.MICRO], 1)}%
+                </strong>{" "}
+                dari like → pola like berbayar. Ambangnya turun untuk tier
+                besar (0,4% nano–mid, 0,3% macro, 0,2% mega) karena audiens akun
+                besar memang jauh lebih pasif.
+              </li>
               <li>Komentar di atas 20% dari like → engagement pod / bot</li>
               <li>
                 <strong>Khusus TikTok:</strong> view di bawah 10% follower →
@@ -242,7 +308,22 @@ export function InfluencerMethodology({
                 untuk akun organik
               </li>
               <li>Mengikuti lebih banyak dari pengikutnya → taktik follow/unfollow</li>
+              <li>
+                Komentar hampir seluruhnya tanpa substansi, berpola jualan, atau
+                datang dari lingkaran akun yang sama
+              </li>
             </ul>
+            <p>
+              Rasio komentar diambil sebagai <strong>nilai tengah antar post</strong>,
+              bukan total komentar dibagi total like. Satu post giveaway dengan
+              puluhan ribu komentar tidak lagi bisa menyeret rasionya dan
+              memicu tuduhan yang keliru.
+            </p>
+            <p>
+              Keseragaman engagement diperiksa <strong>per permukaan</strong>:
+              kalau Reels seragam tapi feed bervariasi wajar, itu ciri format,
+              bukan ciri paket engagement — jadi tidak diflag.
+            </p>
             <p>
               Ambang view <strong>tidak</strong> dipakai untuk menilai keaslian
               akun Instagram. Di sana Reels didistribusikan lewat rekomendasi,
@@ -259,14 +340,42 @@ export function InfluencerMethodology({
           <Step n={6} title="Memisahkan post berbayar dari organik">
             <p>
               Terdeteksi <strong>{audit.sponsoredCount} post berbayar</strong>{" "}
-              dan <strong>{audit.organicCount} organik</strong>. Post endorse
-              hampir selalu lebih rendah engagement-nya, dan angka itulah yang
-              akan brand dapatkan — bukan rata-rata semua post.
+              dan <strong>{audit.organicCount} organik</strong> di permukaan
+              yang jadi dasar skor. Post endorse hampir selalu lebih rendah
+              engagement-nya, dan angka itulah yang akan brand dapatkan — bukan
+              rata-rata semua post.
+            </p>
+            <p>
+              Perbandingannya sengaja dikurung di dalam satu permukaan: post
+              berbayar berupa Reels tidak boleh diadu melawan post organik
+              berupa carousel, karena yang terukur jadi selisih format, bukan
+              selisih berbayar.
+            </p>
+          </Step>
+
+          <Step n={7} title="Memindai risiko asosiasi merek">
+            <p>
+              Caption seluruh post yang diambil dipindai untuk judi online,
+              pinjol, investasi bodong, klaim kesehatan berlebihan, konten
+              dewasa, alkohol/vape, dan kampanye politik.{" "}
+              {audit.brandSafetyHitCount > 0 ? (
+                <strong>
+                  {audit.brandSafetyHitCount} kategori terdeteksi.
+                </strong>
+              ) : (
+                "Tidak ada yang terdeteksi."
+              )}
+            </p>
+            <p>
+              Temuan di sini <strong>tidak memotong skor</strong> — skor
+              mengukur performa, ini soal risiko. Yang tingkat berat menahan
+              vonis di &ldquo;perlu dicek&rdquo; sampai ada yang membuka
+              post-nya, karena pencocokan kata tidak memahami konteks.
             </p>
           </Step>
 
           {components ? (
-            <Step n={7} title="Menjumlahkan skor akhir">
+            <Step n={8} title="Menjumlahkan skor akhir">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[380px] text-xs">
                   <thead>
@@ -343,7 +452,7 @@ export function InfluencerMethodology({
             </Step>
           ) : null}
 
-          <Step n={components ? 8 : 7} title="Menentukan vonis">
+          <Step n={components ? 9 : 8} title="Menentukan vonis">
             <ul className="list-disc space-y-0.5 pl-4">
               <li>
                 <strong>Dua atau lebih</strong> sinyal keaslian berat, atau skor
@@ -358,6 +467,14 @@ export function InfluencerMethodology({
               <li>Skor 45–64 → Rata-rata</li>
               <li>Di bawah 45 → Lemah</li>
             </ul>
+            <p>
+              Dua pengaman terakhir: vonis <strong>&ldquo;Sangat bagus&rdquo;</strong>{" "}
+              tidak diberikan bila tingkat keyakinan rendah — empat post belum
+              cukup untuk janji terbaik, dan angkanya masih bisa bergerak jauh.
+              Risiko asosiasi tingkat berat juga menahan vonis di{" "}
+              <strong>&ldquo;Perlu dicek&rdquo;</strong> sebagus apa pun
+              angkanya.
+            </p>
             <p>
               Tuduhan kecurangan butuh korroborasi. Tiap sinyal punya tingkat
               salah-tuduh sendiri, jadi satu sinyal berdiri sendiri hanya cukup
@@ -378,15 +495,32 @@ export function InfluencerMethodology({
                 followernya langsung.
               </li>
               <li>
-                Kualitas komentar — komentar &ldquo;🔥🔥&rdquo; dihitung sama
-                dengan komentar bersubstansi.
+                Kualitas komentar hanya terbaca bila dataset ikut membawa
+                contoh komentar
+                {audit.analyzedComments > 0
+                  ? ` (audit ini: ${audit.analyzedComments} komentar)`
+                  : " — di audit ini tidak terbawa, jadi tidak dinilai"}
+                . Yang terbaca pun komentar teratas, bukan seluruhnya.
+              </li>
+              <li>
+                Risiko merek dipindai dari <em>caption</em> saja. Konten
+                berisiko yang hanya muncul di dalam video atau gambar tidak
+                terdeteksi, dan post yang justru mengkritik judi online bisa
+                ikut tertangkap.
               </li>
               <li>
                 Biaya per engagement (CPE) — butuh input rate card influencer.
               </li>
               <li>
                 Angka acuan tier adalah default yang masuk akal, belum
-                dikalibrasi dengan data kampanye Anda sendiri.
+                dikalibrasi dengan data kampanye Anda sendiri. Acuan yang sama
+                dipakai untuk feed dan Reels, padahal keduanya bisa punya
+                median industri yang berbeda.
+              </li>
+              <li>
+                Feed dan Reels bisa mencakup rentang waktu yang tidak sama bila
+                salah satunya jarang diposting, sehingga perbandingannya tidak
+                selalu periode yang persis sama.
               </li>
             </ul>
             <p className="text-muted-foreground mt-2 text-[11px] leading-relaxed">
