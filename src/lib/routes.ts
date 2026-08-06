@@ -86,8 +86,9 @@ export function isDominatusLabRoute(pathname: string): boolean {
 }
 
 /**
- * Semua rute di dalam Dominatus Lab (launcher + 4 modul). Dipakai antara lain
- * untuk theme takeover Lab (forcedTheme next-themes) — bukan untuk otorisasi.
+ * Semua rute di dalam Dominatus Lab (launcher + 4 modul). Dipakai untuk theme
+ * takeover Lab (forcedTheme next-themes) dan sebagai daftar rute Lab pada
+ * gate peran di proxy. Otorisasi sebenarnya tetap di guard tiap halaman.
  */
 export function isLabPathname(pathname: string): boolean {
   return (
@@ -170,10 +171,14 @@ export function isCeoAppRoute(pathname: string): boolean {
   );
 }
 
-/** Brand, ruang kerja, pengguna/hak akses, tugas/Kanban (dukungan), profil — administrator. */
+/**
+ * Brand, ruang kerja, pengguna/hak akses, tugas/Kanban (dukungan), profil,
+ * dan seluruh Dominatus Lab — administrator.
+ */
 export function isAdministratorAppRoute(pathname: string): boolean {
   return (
     isWorkspaceDashboardRoute(pathname) ||
+    isLabPathname(pathname) ||
     isProfileRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||

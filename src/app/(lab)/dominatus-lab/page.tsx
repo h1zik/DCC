@@ -3,9 +3,11 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
-  canAccessResearchHub,
-  isBrandManager,
-  isMarketAnalystOrStudio,
+  canAccessLab,
+  canAccessLabBrandHub,
+  canAccessLabContentStudio,
+  canAccessLabResearchHub,
+  canAccessLabSeo,
 } from "@/lib/roles";
 import { DominatusLabClient } from "./dominatus-lab-client";
 
@@ -18,13 +20,13 @@ export default async function DominatusLabPage() {
   if (!session?.user) redirect("/login");
 
   const role = session.user.role;
-  if (!isMarketAnalystOrStudio(role)) redirect("/home");
+  if (!canAccessLab(role)) redirect("/home");
 
   const access = {
-    brandHub: isBrandManager(role),
-    researchHub: canAccessResearchHub(role),
-    seo: canAccessResearchHub(role),
-    contentStudio: isMarketAnalystOrStudio(role),
+    brandHub: canAccessLabBrandHub(role),
+    researchHub: canAccessLabResearchHub(role),
+    seo: canAccessLabSeo(role),
+    contentStudio: canAccessLabContentStudio(role),
   };
 
   // Statistik ringan: hanya count() agar halaman launcher tetap cepat.

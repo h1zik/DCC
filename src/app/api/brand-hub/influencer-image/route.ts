@@ -1,7 +1,7 @@
-import { UserRole } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isProxyableImageHost } from "@/lib/brand-research/influencer/image-proxy";
+import { canAccessLabBrandHub } from "@/lib/roles";
 
 /**
  * Meneruskan gambar CDN Instagram/TikTok ke browser.
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Belum masuk." }, { status: 401 });
   }
-  if (session.user.role !== UserRole.PROJECT_MANAGER) {
+  if (!canAccessLabBrandHub(session.user.role)) {
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
 

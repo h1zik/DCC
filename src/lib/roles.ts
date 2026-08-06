@@ -107,3 +107,41 @@ export function canUseDirectChat(role: UserRole | undefined): boolean {
   if (isMarketAnalystOrStudio(role)) return true;
   return false;
 }
+
+/* -------------------------------------------------------------------------
+ * Dominatus Lab
+ *
+ * Administrator adalah peran lintas-modul (dukungan, audit, penyiapan data),
+ * jadi seluruh modul Lab terbuka untuknya di samping peran fungsional
+ * masing-masing modul. Semua guard Lab — layout, halaman, server action, dan
+ * route handler — memakai helper di bawah ini supaya aturannya satu pintu.
+ * ---------------------------------------------------------------------- */
+
+/** Masuk ke shell Dominatus Lab — studio/PM, Market Analyst, Administrator. */
+export function canAccessLab(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  return isAdministrator(role) || isMarketAnalystOrStudio(role);
+}
+
+/** Brand & Creative Hub — Brand Manager (Project Manager) + Administrator. */
+export function canAccessLabBrandHub(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  return isAdministrator(role) || isBrandManager(role);
+}
+
+/** Research Hub — Market Analyst, Project Manager + Administrator. */
+export function canAccessLabResearchHub(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  return isAdministrator(role) || canAccessResearchHub(role);
+}
+
+/** SEO Toolkit — akses sama dengan Research Hub. */
+export function canAccessLabSeo(role: UserRole | undefined): boolean {
+  return canAccessLabResearchHub(role);
+}
+
+/** Content & Creator Studio — studio/PM, Market Analyst + Administrator. */
+export function canAccessLabContentStudio(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  return isAdministrator(role) || isMarketAnalystOrStudio(role);
+}

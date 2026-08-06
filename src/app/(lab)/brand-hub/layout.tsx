@@ -1,7 +1,7 @@
-import { UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canAccessLabBrandHub } from "@/lib/roles";
 import { BrandHubModuleSidebar } from "@/components/brand-hub/brand-hub-sidebar";
 import { BrandHubSubNav } from "@/components/brand-hub/brand-hub-sub-nav";
 import { BrandBackgroundJobIndicator } from "@/components/brand-hub/brand-background-job-indicator";
@@ -9,7 +9,7 @@ import { BrandBackgroundJobIndicator } from "@/components/brand-hub/brand-backgr
 export async function ensureBrandHubPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.role !== UserRole.PROJECT_MANAGER) {
+  if (!canAccessLabBrandHub(session.user.role)) {
     redirect("/");
   }
   return session;
