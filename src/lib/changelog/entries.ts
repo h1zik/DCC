@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-06-dominatus-lab-administrator",
+    date: "2026-08-06",
+    title: "Administrator kini bisa membuka Dominatus Lab",
+    category: "new",
+    description:
+      "Sebelumnya Administrator ditolak masuk ke Dominatus Lab — menunya tidak ada di sidebar, dan membuka alamatnya langsung akan dilempar balik ke Home. Padahal Administrator-lah yang menyiapkan data, membantu pengguna, dan memeriksa masalah di semua modul. Sekarang menu Dominatus Lab muncul di sidebar Administrator dan keempat modulnya terbuka penuh.",
+    highlights: [
+      "Brand & Creative Hub, Research Hub, SEO Toolkit, dan Content Studio semuanya terbuka — tidak ada lagi kartu terkunci di beranda Lab",
+      "Terbuka penuh, bukan hanya melihat: menjalankan riset, membuat dan mengubah data, serta mengunduh laporan Word/DOCX ikut bisa dilakukan",
+      "Hak akses peran lain tidak berubah sama sekali — Market Analyst dan tim studio tetap tidak bisa masuk Brand & Creative Hub seperti sebelumnya",
+    ],
+  },
+  {
     id: "2026-08-06-influencer-like-disembunyikan",
     date: "2026-08-06",
     title: "Menyembunyikan jumlah like tidak lagi menaikkan skor influencer",

@@ -61,6 +61,17 @@ import { TasksNav } from "@/components/nav/tasks-nav";
 import { ChangelogNavItem } from "@/components/changelog/changelog-nav-item";
 import { cn } from "@/lib/utils";
 
+/**
+ * Dominatus Lab — launcher untuk 4 modul riset & kreatif (Brand & Creative
+ * Hub, Research Hub, SEO Toolkit, Content Studio). Menggantikan item modul
+ * satuan di sidebar; item ini tetap aktif saat user berada di dalam modulnya.
+ */
+const labItem = {
+  href: "/dominatus-lab",
+  label: "Dominatus Lab",
+  icon: FlaskConical,
+} as const;
+
 const navCeo = [
   { href: "/", label: "Executive Overview", icon: LayoutDashboard },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
@@ -75,6 +86,7 @@ const navCeo = [
 
 const navAdministrator = [
   { href: "/home", label: "Home", icon: Home },
+  labItem,
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/projects", label: "Projects", icon: GitBranch },
@@ -112,17 +124,6 @@ const navFinance = [
   { href: "/finance/fixed-assets", label: "Fixed Assets", icon: Calculator },
   { href: "/attendance", label: "Attendance", icon: ScanFace },
 ] as const;
-
-/**
- * Dominatus Lab — launcher untuk 4 modul riset & kreatif (Brand & Creative
- * Hub, Research Hub, SEO Toolkit, Content Studio). Menggantikan item modul
- * satuan di sidebar; item ini tetap aktif saat user berada di dalam modulnya.
- */
-const labItem = {
-  href: "/dominatus-lab",
-  label: "Dominatus Lab",
-  icon: FlaskConical,
-} as const;
 
 const LAB_SECTION_PREFIXES = [
   "/dominatus-lab",

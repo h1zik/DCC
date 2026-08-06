@@ -5,9 +5,11 @@ import { LabShell } from "@/components/lab/lab-shell";
 import { LabThemeScript } from "@/components/lab/lab-theme-script";
 import { PwaPushRegistrar } from "@/components/push/pwa-push-registrar";
 import {
-  canAccessResearchHub,
-  isBrandManager,
-  isMarketAnalystOrStudio,
+  canAccessLab,
+  canAccessLabBrandHub,
+  canAccessLabContentStudio,
+  canAccessLabResearchHub,
+  canAccessLabSeo,
 } from "@/lib/roles";
 
 /**
@@ -29,14 +31,13 @@ export default async function LabLayout({
     (await cookies()).get("lab_sidebar_state")?.value === "collapsed";
 
   const role = session.user.role;
-  if (!isMarketAnalystOrStudio(role)) redirect("/home");
+  if (!canAccessLab(role)) redirect("/home");
 
   const access = {
-    brandHub: isBrandManager(role),
-    researchHub: canAccessResearchHub(role),
-    seo: canAccessResearchHub(role),
-    // Gate grup di atas sudah menjamin akses Content Studio.
-    contentStudio: true,
+    brandHub: canAccessLabBrandHub(role),
+    researchHub: canAccessLabResearchHub(role),
+    seo: canAccessLabSeo(role),
+    contentStudio: canAccessLabContentStudio(role),
   };
 
   return (

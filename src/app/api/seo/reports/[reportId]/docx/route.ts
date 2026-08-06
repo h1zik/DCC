@@ -1,6 +1,6 @@
 import HTMLtoDOCX from "html-to-docx";
 import { auth } from "@/lib/auth";
-import { canAccessResearchHub } from "@/lib/roles";
+import { canAccessLabSeo } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { buildReportPdfHtml } from "@/lib/research/reports/report-pdf-html";
 import { parseReportSections } from "@/lib/research/reports/types";
@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   if (!session?.user) {
     return new Response("Unauthorized", { status: 401 });
   }
-  if (!canAccessResearchHub(session.user.role)) {
+  if (!canAccessLabSeo(session.user.role)) {
     return new Response("Forbidden", { status: 403 });
   }
 

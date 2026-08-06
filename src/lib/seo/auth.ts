@@ -2,21 +2,21 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { canAccessResearchHub } from "@/lib/roles";
+import { canAccessLabSeo } from "@/lib/roles";
 
 /**
- * SEO Toolkit memakai akses yang sama dengan Research Hub: Market Analyst &
- * Project Manager (Brand Manager). Throw bila tidak berhak — dipakai di server
- * actions.
+ * SEO Toolkit memakai akses yang sama dengan Research Hub: Market Analyst,
+ * Project Manager (Brand Manager), & Administrator. Throw bila tidak berhak —
+ * dipakai di server actions.
  */
 export async function requireSeoAccess() {
   const session = await auth();
   if (!session?.user?.id) {
     throw new Error("Belum masuk.");
   }
-  if (!canAccessResearchHub(session.user.role)) {
+  if (!canAccessLabSeo(session.user.role)) {
     throw new Error(
-      "Akses ditolak — hanya Market Analyst atau Project Manager.",
+      "Akses ditolak — hanya Market Analyst, Project Manager, atau Administrator.",
     );
   }
   return session;
@@ -26,6 +26,6 @@ export async function requireSeoAccess() {
 export async function ensureSeoPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!canAccessResearchHub(session.user.role)) redirect("/home");
+  if (!canAccessLabSeo(session.user.role)) redirect("/home");
   return session;
 }
