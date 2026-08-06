@@ -967,15 +967,164 @@ describe("like yang disembunyikan bukan like nol", () => {
     expect(flag?.penalty).toBe(0);
   });
 
-  it("menilai netral, bukan nol, saat semua like disembunyikan", () => {
+  it("memperkirakan dari komentar, bukan memberi nilai netral, saat semua like disembunyikan", () => {
     const r = scoreInfluencer(
       input({ followers: 50_000, posts: withHiddenLikes(10) }),
     );
 
-    expect(r.metrics.components.engagement).toBe(60);
+    expect(r.metrics.engagementImputed).toBe(true);
+    expect(r.metrics.hiddenLikeShare).toBe(1);
+    // Komentar tetap publik, jadi ER-nya diperkirakan — bukan dianggap nol
+    // maupun diberi angka netral buta.
+    expect(r.metrics.imputedEngagementRate).toBeGreaterThan(0);
     expect(r.fakeFlags.map((f) => f.code)).toContain("NO_ENGAGEMENT_DATA");
+    // Menyembunyikan like bukan tuduhan kecurangan.
     expect(r.authenticityScore).toBe(100);
     expect(r.verdict).not.toBe(InfluencerVerdict.SUSPICIOUS);
+  });
+
+  /**
+   * Inti perbaikannya. Sebelum ini, akun yang seluruh like-nya disembunyikan
+   * mendapat komponen engagement netral 60 — dan karena engagement berbobot
+   * 45%, akun yang performanya buruk JUSTRU diuntungkan dengan menyembunyikan
+   * like. Menyembunyikan tidak boleh jadi strategi yang menguntungkan.
+   */
+  it("tidak lagi memberi nilai gratis kepada akun lemah yang menyembunyikan like", () => {
+    const weakHidden = Array.from({ length: 10 }, (_, i) =>
+      post({
+        id: `w${i}`,
+        daysAgo: i * 3,
+        likes: 0,
+        likesHidden: true,
+        // Komentar sangat sedikit untuk akun 50 ribu follower: audiensnya mati.
+        comments: 8,
+        views: 30_000,
+        surface: "reels",
+      }),
+    );
+    const r = scoreInfluencer(input({ followers: 50_000, posts: weakHidden }));
+
+    expect(r.metrics.components.engagement).toBeLessThan(60);
+    expect(r.verdict).not.toBe(InfluencerVerdict.EXCELLENT);
+  });
+
+  it("menahan akun kuat yang menyembunyikan seluruh like di bawah nilai penuh", () => {
+    const strongHidden = Array.from({ length: 10 }, (_, i) =>
+      post({
+        id: `s${i}`,
+        daysAgo: i * 3,
+        likes: 0,
+        likesHidden: true,
+        comments: 120,
+        views: 900_000,
+        surface: "reels",
+      }),
+    );
+    const r = scoreInfluencer(input({ followers: 50_000, posts: strongHidden }));
+
+    // Perkiraan boleh mengangkat, tapi tidak sampai nilai penuh: angka
+    // tertinggi harus menuntut bukti yang bisa diverifikasi.
+    expect(r.metrics.components.engagement).toBeLessThanOrEqual(75);
+    expect(r.metrics.components.engagement).toBeGreaterThan(60);
+    expect(r.verdict).not.toBe(InfluencerVerdict.EXCELLENT);
+  });
+
+  it("menurunkan keyakinan saat sebagian besar sampel harus diperkirakan", () => {
+    const mostlyHidden = scoreInfluencer(
+      input({ followers: 50_000, posts: withHiddenLikes(5, 12) }),
+    );
+    const clean = scoreInfluencer(
+      input({ followers: 50_000, posts: withHiddenLikes(0, 12) }),
+    );
+
+    expect(clean.confidence).toBe("high");
+    // Tujuh post terukur cukup melewati ambang jumlah, tapi 42% sampelnya
+    // perkiraan — itu bukan keyakinan tinggi.
+    expect(mostlyHidden.confidence).not.toBe("high");
+  });
+
+  it("menahan vonis tertinggi saat porsi perkiraannya besar", () => {
+    const strong = (hidden: number) =>
+      Array.from({ length: 12 }, (_, i) =>
+        post({
+          id: `e${i}`,
+          daysAgo: i * 3,
+          likes: i < hidden ? 0 : 1_900 + i * 140,
+          likesHidden: i < hidden,
+          comments: 170,
+          shares: 400,
+          views: 900_000,
+          surface: "reels",
+        }),
+      );
+
+    const clean = scoreInfluencer(input({ followers: 50_000, posts: strong(0) }));
+    const hidden = scoreInfluencer(input({ followers: 50_000, posts: strong(5) }));
+
+    expect(clean.verdict).toBe(InfluencerVerdict.EXCELLENT);
+    expect(hidden.verdict).not.toBe(InfluencerVerdict.EXCELLENT);
+  });
+
+  /**
+   * Menyembunyikan like di SELURUH akun adalah setelan. Menyembunyikannya
+   * hanya pada post berbayar adalah pilihan — dan yang ditutupi persis jenis
+   * post yang akan dibeli brand.
+   */
+  it("menandai akun yang menyembunyikan like justru di post berbayarnya", () => {
+    const posts = [
+      ...Array.from({ length: 8 }, (_, i) =>
+        post({
+          id: `org${i}`,
+          daysAgo: i * 3,
+          likes: 1_600 + i * 90,
+          comments: 48,
+          views: 40_000,
+          surface: "reels",
+        }),
+      ),
+      ...Array.from({ length: 3 }, (_, i) =>
+        post({
+          id: `ad${i}`,
+          daysAgo: i * 4 + 1,
+          likes: 0,
+          likesHidden: true,
+          comments: 12,
+          caption: "Cobain produk barunya ya #ad",
+          views: 40_000,
+          surface: "reels",
+        }),
+      ),
+    ];
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    const flag = r.fakeFlags.find((f) => f.code === "HIDDEN_LIKES_ON_SPONSORED");
+    expect(flag?.impact).toBe("authenticity");
+    expect(flag?.severity).toBe("medium");
+    expect(r.metrics.hiddenSponsoredPosts).toBe(3);
+    expect(r.authenticityScore).toBeLessThan(100);
+    // Satu sinyal keaslian tidak boleh langsung memvonis curang.
+    expect(r.verdict).not.toBe(InfluencerVerdict.SUSPICIOUS);
+  });
+
+  it("tidak menandai penyembunyian menyeluruh sebagai pola menutupi endorse", () => {
+    const posts = Array.from({ length: 10 }, (_, i) =>
+      post({
+        id: `all${i}`,
+        daysAgo: i * 3,
+        likes: 0,
+        likesHidden: true,
+        comments: 45,
+        caption: i % 3 === 0 ? "Kerja sama seru #ad" : "Sabtu santai",
+        views: 40_000,
+        surface: "reels",
+      }),
+    );
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain(
+      "HIDDEN_LIKES_ON_SPONSORED",
+    );
+    expect(r.authenticityScore).toBe(100);
   });
 });
 

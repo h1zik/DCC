@@ -257,8 +257,14 @@ export function InfluencerMethodology({
             </p>
             <p>
               Post yang jumlah like-nya <strong>disembunyikan</strong> pemilik
-              akun dikeluarkan dari perhitungan, bukan dihitung sebagai nol —
-              kalau tidak, akun yang sehat akan terlihat mati.
+              akun tidak dihitung sebagai nol — kalau tidak, akun yang sehat
+              akan terlihat mati. Tapi juga tidak sekadar dibuang: jumlah
+              komentarnya tetap publik, dan karena rasio komentar-terhadap-like
+              sebuah akun cukup stabil antar post, like yang hilang{" "}
+              <strong>diperkirakan dari komentar</strong>. Itu penting karena
+              post yang disembunyikan sering justru yang paling lemah — menilai
+              akun hanya dari post yang angkanya dibiarkan terlihat akan
+              melebihkan hasilnya.
               {audit.hiddenLikePosts > 0 ? (
                 <>
                   {" "}
@@ -266,6 +272,14 @@ export function InfluencerMethodology({
                   seperti itu.
                 </>
               ) : null}
+            </p>
+            <p>
+              Karena perkiraan bisa meleset beberapa kali lipat, skornya ditahan:
+              makin besar porsi post yang harus diperkirakan, makin rendah
+              plafon nilai engagement-nya, dan di atas 30% vonis{" "}
+              <strong>&ldquo;Sangat bagus&rdquo;</strong> tidak lagi diberikan.
+              Untuk angka yang benar-benar pasti, minta screenshot Instagram
+              Insights.
             </p>
           </Step>
 

@@ -142,7 +142,12 @@ ${
 
 Kualitas sampel:
 - Post dianalisis: ${scored.postsAnalyzed} dari ${scored.postsFetched} yang diambil, mencakup ${scored.sampleWindowDays ?? "?"} hari
-- Post yang like-nya disembunyikan pemilik akun (dikeluarkan dari hitungan, BUKAN dihitung nol): ${scored.metrics.hiddenLikePosts}
+- Post yang like-nya disembunyikan pemilik akun: ${scored.metrics.hiddenLikePosts} (${Math.round(scored.metrics.hiddenLikeShare * 100)}% dari permukaan utama)${scored.metrics.hiddenSponsoredPosts > 0 ? `, ${scored.metrics.hiddenSponsoredPosts} di antaranya post berbayar` : ""}
+${
+  scored.metrics.engagementImputed
+    ? `- CATATAN PENTING: like yang disembunyikan TIDAK dihitung nol dan TIDAK dibuang — angkanya DIPERKIRAKAN dari jumlah komentar yang tetap publik. ER yang dipakai menilai: ${scored.metrics.imputedEngagementRate}% (ER terukur dari post yang angkanya terlihat: ${scored.engagementRate}%). Perkiraan ini bisa meleset beberapa kali lipat ke atas maupun ke bawah, jadi sebut terus terang bahwa angkanya perkiraan dan syaratkan screenshot Instagram Insights sebelum deal. JANGAN menyebut penyembunyian like sebagai bukti kecurangan — itu setelan yang wajar dipakai banyak akun besar.`
+    : "- Semua post yang dianalisis menampilkan jumlah like-nya."
+}
 - Tingkat keyakinan: ${scored.confidence}
 
 Hasil penilaian sistem:

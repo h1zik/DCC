@@ -986,6 +986,16 @@ export function InfluencerDetailClient({
     readyAudit?.metrics,
     "engagementMeasurable",
   );
+  // Like yang disembunyikan tidak menghapus seluruh data: komentar tetap
+  // publik, jadi ER-nya diperkirakan. Angka perkiraan ditandai "≈".
+  const imputedEngagementRate = readNumber(
+    readyAudit?.metrics,
+    "imputedEngagementRate",
+  );
+  const hiddenSponsoredPosts = readNumber(
+    readyAudit?.metrics,
+    "hiddenSponsoredPosts",
+  );
   const brandSafetyHits = readBrandSafety(readyAudit?.metrics);
   const commentQuality = readCommentQuality(readyAudit?.metrics);
   const surfaceLabel =
@@ -1104,7 +1114,7 @@ export function InfluencerDetailClient({
         <>
           <LabSection
             title="Metrik engagement"
-            description={`Angka pusat memakai median dari ${readyAudit.postsAnalyzed} post (dari ${readyAudit.postsFetched} yang diambil${readyAudit.sampleWindowDays !== null ? `, mencakup ${readyAudit.sampleWindowDays} hari` : ""}). Median dipakai agar satu post viral tidak menaikkan angkanya.${surfaceLabel ? ` Angka utama dihitung dari ${surfaceLabel} — permukaan terkuat akun ini.` : ""}${hiddenLikePosts ? ` ${hiddenLikePosts} post dikeluarkan karena jumlah like-nya disembunyikan pemilik akun.` : ""}`}
+            description={`Angka pusat memakai median dari ${readyAudit.postsAnalyzed} post (dari ${readyAudit.postsFetched} yang diambil${readyAudit.sampleWindowDays !== null ? `, mencakup ${readyAudit.sampleWindowDays} hari` : ""}). Median dipakai agar satu post viral tidak menaikkan angkanya.${surfaceLabel ? ` Angka utama dihitung dari ${surfaceLabel} — permukaan terkuat akun ini.` : ""}${hiddenLikePosts ? ` ${hiddenLikePosts} post menyembunyikan jumlah like — angkanya tidak dianggap nol, melainkan diperkirakan dari jumlah komentarnya yang tetap publik.` : ""}${hiddenSponsoredPosts ? ` ${hiddenSponsoredPosts} di antaranya post berbayar.` : ""}`}
           >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <MetricTile
@@ -1114,10 +1124,14 @@ export function InfluencerDetailClient({
               />
               <MetricTile
                 label={surfaceLabel ? `ER standar (${surfaceLabel})` : "ER standar"}
-                value={pctMeasured(readyAudit.engagementRate, engagementMeasurable)}
+                value={
+                  engagementMeasurable === false && imputedEngagementRate
+                    ? `≈ ${pct(imputedEngagementRate)}`
+                    : pctMeasured(readyAudit.engagementRate, engagementMeasurable)
+                }
                 hint={
                   engagementMeasurable === false
-                    ? "Tidak terukur — akun ini menyembunyikan jumlah like di semua post"
+                    ? "Perkiraan dari jumlah komentar — akun ini menyembunyikan like di semua post. Bisa meleset beberapa kali lipat; minta screenshot Insights sebelum deal."
                     : readyAudit.benchmarkEr
                       ? `Like+komentar ÷ follower${surfaceLabel ? `, dari ${surfaceLabel}` : ""}. Median tier: ${pct(readyAudit.benchmarkEr)}`
                       : "Like+komentar ÷ follower"

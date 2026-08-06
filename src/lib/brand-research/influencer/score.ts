@@ -167,8 +167,24 @@ export type InfluencerScoreResult = {
      * angka ER di hasil ini nol karena TIDAK TERUKUR — bukan karena nol.
      */
     engagementMeasurable: boolean;
-    /** Post yang like-nya disembunyikan pemilik akun — tidak bisa dihitung. */
+    /** Post yang like-nya disembunyikan pemilik akun — angkanya diperkirakan. */
     hiddenLikePosts: number;
+    /** Porsi post permukaan utama yang like-nya disembunyikan (0–1). */
+    hiddenLikeShare: number;
+    /** Post berbayar yang like-nya disembunyikan. */
+    hiddenSponsoredPosts: number;
+    /**
+     * ER yang dipakai MENILAI, dengan like tersembunyi diperkirakan dari
+     * komentar. Sama dengan `engagementRate` bila tidak ada yang disembunyikan.
+     */
+    imputedEngagementRate: number;
+    /**
+     * Rasio komentar-terhadap-like yang dipakai memperkirakan. Bila
+     * `commentLikeRatio` null, ini angka umum — perkiraannya jauh lebih longgar.
+     */
+    imputationRatio: number;
+    /** Komponen engagement bersandar pada perkiraan, bukan angka terukur. */
+    engagementImputed: boolean;
     /** Bagian post sampel yang terdeteksi berbayar (0–1), seluruh permukaan. */
     sponsoredShare: number;
     sponsoredCountAllSurfaces: number;
@@ -297,6 +313,55 @@ const MIN_SPLIT_SAMPLE = 2;
 const MIN_SURFACE_SAMPLE = 3;
 /** Sampel minimal sebelum rasio komentar boleh dipakai menuduh. */
 const MIN_RATIO_SAMPLE = 4;
+
+/**
+ * Rasio komentar-terhadap-like yang dipakai memperkirakan like tersembunyi
+ * saat akun tidak menyisakan satu pun post terukur untuk mengukur rasionya
+ * sendiri. 3% adalah titik tengah rentang sehat 1–5%.
+ */
+const FALLBACK_COMMENT_LIKE_RATIO = 0.03;
+/**
+ * Batas rasio yang boleh dipakai memperkirakan. Di luar rentang ini
+ * perkiraannya meledak: rasio 0,1% mengubah 40 komentar jadi 40.000 like.
+ */
+const IMPUTE_RATIO_MIN = 0.005;
+const IMPUTE_RATIO_MAX = 0.2;
+/**
+ * Bobot perkiraan saat rasio komentar akun ini sendiri TIDAK diketahui, yaitu
+ * ketika seluruh like disembunyikan.
+ *
+ * Rasio komentar antar akun berbeda beberapa kali lipat, jadi perkiraan yang
+ * berpijak pada angka umum tidak boleh menggerakkan skor sejauh perkiraan yang
+ * berpijak pada perilaku akun itu sendiri. Sisa bobotnya ditarik ke netral —
+ * mengakui bahwa kita memang tidak tahu.
+ *
+ * Sengaja dibuat tinggi. Tiap poin yang ditarik ke netral adalah hadiah bagi
+ * akun berperforma buruk yang menyembunyikan like, dan ketidakpastian sudah
+ * disampaikan lewat jalur yang tidak membelokkan skor: keyakinan turun, vonis
+ * tertinggi ditahan, dan flag-nya meminta screenshot Insights. Menyisakan
+ * sedikit tarikan ke netral hanya untuk menjaga agar akun yang audiensnya
+ * memang pendiam tidak jatuh terlalu dalam gara-gara rasio umum yang meleset.
+ */
+const GENERIC_IMPUTE_WEIGHT = 0.8;
+/** Nilai komponen engagement saat tidak ada dasar sama sekali untuk menilai. */
+const NEUTRAL_ENGAGEMENT = 60;
+/**
+ * Plafon komponen engagement saat SELURUH angkanya diperkirakan.
+ *
+ * Perkiraan punya rentang salah yang lebar, dan nilai tertinggi harus menuntut
+ * bukti. Plafonnya melandai sesuai porsi data yang diperkirakan: satu post
+ * tersembunyi dari dua puluh nyaris tidak mengubah apa pun.
+ */
+const IMPUTED_ENGAGEMENT_CEILING = 75;
+/** Di atas porsi ini, angka engagement lebih banyak diperkirakan daripada diukur. */
+const HIDDEN_SHARE_LOW_CONFIDENCE = 0.6;
+/** Di atas porsi ini, keyakinan tidak boleh lagi "tinggi". */
+const HIDDEN_SHARE_MEDIUM_CONFIDENCE = 0.3;
+/**
+ * Selisih kekerapan sebelum "post berbayar lebih sering disembunyikan" boleh
+ * disebut pola, bukan kebetulan.
+ */
+const SPONSORED_HIDING_MULTIPLE = 2;
 
 function mean(values: number[]): number {
   if (values.length === 0) return 0;
@@ -528,17 +593,56 @@ function medianCommentLikeRatio(
 }
 
 /**
+ * Rasio yang dipakai memperkirakan like tersembunyi — rasio akun itu sendiri
+ * bila terukur, kalau tidak angka umum. Dijepit ke rentang wajar supaya akun
+ * dengan rasio ekstrem tidak menghasilkan perkiraan yang mustahil.
+ */
+function imputationRatioFor(observed: number | null): number {
+  return clamp(
+    observed ?? FALLBACK_COMMENT_LIKE_RATIO,
+    IMPUTE_RATIO_MIN,
+    IMPUTE_RATIO_MAX,
+  );
+}
+
+/**
+ * Interaksi standar dengan like tersembunyi diganti perkiraan dari komentar.
+ *
+ * Menyembunyikan like TIDAK menghapus seluruh data: jumlah komentar tetap
+ * publik, dan rasio komentar-terhadap-like sebuah akun cukup stabil antar
+ * post. Jadi komentar bisa dipakai memperkirakan like yang hilang.
+ *
+ * Ini menutup dua celah sekaligus. Menganggap like tersembunyi sebagai nol
+ * membuat akun sehat terlihat mati; memberi nilai netral membuat akun lemah
+ * dapat nilai gratis — dan karena engagement berbobot 45%, nilai netral itu
+ * justru MENGUNTUNGKAN akun yang performanya buruk. Perkiraan mengembalikan
+ * penilaian ke level akun yang sebenarnya, ke arah mana pun itu.
+ */
+function imputedStandardInteractions(
+  post: NormalizedInfluencerPost,
+  ratio: number,
+): number {
+  if (!post.likesHidden) return standardInteractions(post);
+  return post.comments / ratio + post.comments;
+}
+
+/**
  * Keyakinan ditentukan oleh sampel yang benar-benar menghasilkan angka
  * engagement, bukan sekadar total post.
  *
  * Akun Instagram bisa punya 28 post terambil tapi hanya 4 di antaranya ada di
  * permukaan utama — dan ER dihitung dari 4 itu. Memakai total post akan
  * melaporkan "keyakinan tinggi" untuk angka yang sebenarnya rapuh.
+ *
+ * Porsi post yang like-nya disembunyikan ikut menentukan. Sampel 20 post yang
+ * separuhnya disembunyikan tetap menyisakan 10 post terukur — cukup untuk
+ * lolos ambang jumlah, padahal separuh datanya adalah perkiraan.
  */
 function resolveConfidence(
   postsAnalyzed: number,
   engagementSampleSize: number,
   sampleWindowDays: number | null,
+  hiddenShare: number,
 ): SampleConfidence {
   if (postsAnalyzed < MIN_SAMPLE || engagementSampleSize < MIN_SAMPLE) {
     return "low";
@@ -546,6 +650,8 @@ function resolveConfidence(
   if (sampleWindowDays !== null && sampleWindowDays > SAMPLE_WINDOW_DAYS) {
     return "low";
   }
+  if (hiddenShare > HIDDEN_SHARE_LOW_CONFIDENCE) return "low";
+  if (hiddenShare > HIDDEN_SHARE_MEDIUM_CONFIDENCE) return "medium";
   if (postsAnalyzed >= 10 && engagementSampleSize >= 10) return "high";
   return "medium";
 }
@@ -560,6 +666,14 @@ function detectSignals(params: {
   engagementSampleSize: number;
   engagementMeasurable: boolean;
   hiddenLikePosts: number;
+  /** Porsi post permukaan utama yang like-nya disembunyikan (0–1). */
+  hiddenShare: number;
+  /** Post berbayar di sampel yang like-nya disembunyikan. */
+  hiddenSponsoredPosts: number;
+  /** Porsi post berbayar yang disembunyikan (0–1). */
+  hiddenSponsoredShare: number;
+  /** Porsi post organik yang disembunyikan (0–1) — pembanding kekerapan. */
+  hiddenOrganicShare: number;
   sampleWindowDays: number | null;
   commentLikeRatio: number | null;
   commentRatioSampleSize: number;
@@ -594,6 +708,10 @@ function detectSignals(params: {
     engagementSampleSize,
     engagementMeasurable,
     hiddenLikePosts,
+    hiddenShare,
+    hiddenSponsoredPosts,
+    hiddenSponsoredShare,
+    hiddenOrganicShare,
     sampleWindowDays,
     commentLikeRatio,
     commentRatioSampleSize,
@@ -874,20 +992,47 @@ function detectSignals(params: {
     });
   }
 
-  // ── Kualitas data ─────────────────────────────────────────────────────
+  // ── Penyembunyian like ────────────────────────────────────────────────
+  //
+  // Menyembunyikan like di SELURUH akun adalah setelan, dan itu wajar — banyak
+  // akun besar melakukannya. Menyembunyikannya pada SEBAGIAN post adalah
+  // pilihan post per post: pemiliknya memutuskan angka mana yang boleh dilihat.
+  // Keduanya ditangani berbeda.
   if (!engagementMeasurable) {
     data(
       "NO_ENGAGEMENT_DATA",
-      "low",
+      "medium",
       "Jumlah like disembunyikan di semua post",
-      "Akun ini menyembunyikan hitungan like, jadi engagement rate tidak bisa dihitung sama sekali. Komponen engagement dinilai netral — bukan nol — dan angka ER di halaman ini tidak bisa dipakai.",
+      "Akun ini menyembunyikan hitungan like, jadi engagement rate tidak bisa diukur langsung. Angkanya DIPERKIRAKAN dari jumlah komentar yang tetap publik — perkiraan itu bisa meleset beberapa kali lipat ke atas maupun ke bawah, jadi skornya ditahan di bawah nilai penuh dan vonis tertinggi tidak diberikan. Minta screenshot Instagram Insights (reach, like, simpan) untuk 5 post terakhir sebelum deal.",
     );
   } else if (hiddenLikePosts > 0) {
     data(
       "HIDDEN_LIKES",
-      "low",
+      hiddenShare > HIDDEN_SHARE_MEDIUM_CONFIDENCE ? "medium" : "low",
       "Sebagian post menyembunyikan jumlah like",
-      `${hiddenLikePosts} post dikeluarkan dari perhitungan karena hitungan like-nya disembunyikan pemilik akun. Angka -1 dari Instagram berarti "tidak diketahui", bukan nol — menghitungnya sebagai nol akan membuat akun ini terlihat mati padahal tidak.`,
+      `${hiddenLikePosts} post menyembunyikan hitungan like (${round(hiddenShare * 100)}% dari permukaan utama). Angkanya tidak dianggap nol — itu akan membuat akun sehat terlihat mati — melainkan diperkirakan dari jumlah komentar post tersebut, yang tetap publik. Ini penting karena post yang disembunyikan sering justru yang performanya paling lemah; menilai akun hanya dari post yang angkanya dibiarkan terlihat akan melebihkan hasilnya.`,
+    );
+  }
+
+  /**
+   * Post berbayar jauh lebih sering disembunyikan daripada post organik.
+   *
+   * Ini bukan lagi soal kualitas data, tapi soal apa yang sedang ditutupi.
+   * Brand diminta membeli persis format yang angkanya tidak boleh dilihat,
+   * sementara post organik dibiarkan terpampang. Severity "medium", bukan
+   * "high": deteksi berbayar hanyalah batas bawah, jadi sinyal ini boleh
+   * mengurangi keaslian tapi belum boleh memvonis sendirian.
+   */
+  if (
+    engagementMeasurable &&
+    hiddenSponsoredPosts >= 2 &&
+    hiddenSponsoredShare > hiddenOrganicShare * SPONSORED_HIDING_MULTIPLE
+  ) {
+    auth(
+      "HIDDEN_LIKES_ON_SPONSORED",
+      "medium",
+      "Justru post berbayar yang like-nya disembunyikan",
+      `${hiddenSponsoredPosts} post berbayar menyembunyikan jumlah like (${round(hiddenSponsoredShare * 100)}% dari post berbayarnya), jauh di atas kekerapan pada post organik (${round(hiddenOrganicShare * 100)}%). Akun ini membiarkan angka post organiknya terlihat tapi menutup angka post yang dibayar brand — persis jenis post yang akan Anda beli. Minta bukti performa endorse sebelumnya secara langsung.`,
     );
   }
 
@@ -1029,6 +1174,35 @@ export function scoreInfluencer(
   const engagementMeasurable = engagementSample.length > 0;
   const hiddenLikePosts = sample.filter((p) => !isMeasurable(p)).length;
 
+  /**
+   * Porsi permukaan utama yang angkanya harus diperkirakan. Dihitung dari
+   * permukaan utama — bukan seluruh sampel — karena permukaan itulah yang
+   * menjadi dasar ER dan komponen engagement.
+   */
+  const hiddenShare =
+    primaryPosts.length > 0
+      ? primaryPosts.filter((p) => !isMeasurable(p)).length / primaryPosts.length
+      : 0;
+
+  // Kekerapan penyembunyian pada post berbayar vs organik. Selisih besar di
+  // antara keduanya adalah pilihan sadar, bukan setelan akun.
+  const sponsoredSamplePosts = sample.filter((p) => isSponsoredPost(p));
+  const organicSamplePosts = sample.filter((p) => !isSponsoredPost(p));
+  const hiddenSponsoredPosts = sponsoredSamplePosts.filter(
+    (p) => !isMeasurable(p),
+  ).length;
+  const hiddenOrganicPosts = organicSamplePosts.filter(
+    (p) => !isMeasurable(p),
+  ).length;
+  const hiddenSponsoredShare =
+    sponsoredSamplePosts.length > 0
+      ? hiddenSponsoredPosts / sponsoredSamplePosts.length
+      : 0;
+  const hiddenOrganicShare =
+    organicSamplePosts.length > 0
+      ? hiddenOrganicPosts / organicSamplePosts.length
+      : 0;
+
   const likes = engagementSample.map((p) => p.likes);
   const comments = engagementSample.map((p) => p.comments);
   const shares = engagementSample.map((p) => p.shares);
@@ -1088,6 +1262,26 @@ export function scoreInfluencer(
   const { ratio: commentLikeRatio, sampleSize: commentRatioSampleSize } =
     medianCommentLikeRatio(sample);
 
+  /**
+   * ER untuk PENILAIAN, dengan like tersembunyi diperkirakan dari komentar.
+   *
+   * `engagementRate` di atas sengaja hanya memakai post terukur: itu angka
+   * yang dilaporkan ke pengguna dan harus jujur menyebut apa yang benar-benar
+   * diukur. Tapi MENILAI akun hanya dari post yang like-nya dibiarkan terlihat
+   * membuka dua celah — akun yang menyembunyikan seluruh like dapat nilai
+   * netral gratis, dan akun yang menyembunyikan post-post lemahnya saja dinilai
+   * dari sisa terbaiknya. Keduanya membuat menyembunyikan like jadi strategi
+   * yang menguntungkan, yang justru kebalikan dari tujuan audit ini.
+   */
+  const imputationRatio = imputationRatioFor(commentLikeRatio);
+  const scoringInteractions = primaryPosts.map((p) =>
+    imputedStandardInteractions(p, imputationRatio),
+  );
+  const imputedEngagementRate =
+    followers > 0 && scoringInteractions.length > 0
+      ? (median(scoringInteractions) / followers) * 100
+      : 0;
+
   const engagementSampleSize = engagementSample.length;
   const meanTotal = mean(total);
   const engagementCv = primary?.engagementCv ?? null;
@@ -1123,7 +1317,7 @@ export function scoreInfluencer(
 
   // Kepadatan endorse dihitung dari seluruh permukaan: yang dilihat audiens
   // adalah profilnya secara utuh, bukan satu tab saja.
-  const sponsoredCountAllSurfaces = sample.filter((p) => isSponsoredPost(p)).length;
+  const sponsoredCountAllSurfaces = sponsoredSamplePosts.length;
   const sponsoredShare =
     postsAnalyzed > 0 ? sponsoredCountAllSurfaces / postsAnalyzed : 0;
 
@@ -1141,6 +1335,7 @@ export function scoreInfluencer(
     postsAnalyzed,
     engagementSampleSize,
     sampleWindowDays,
+    hiddenShare,
   );
 
   // Risiko asosiasi dipindai dari SELURUH post yang diambil, bukan hanya yang
@@ -1164,6 +1359,10 @@ export function scoreInfluencer(
     engagementSampleSize,
     engagementMeasurable,
     hiddenLikePosts,
+    hiddenShare,
+    hiddenSponsoredPosts,
+    hiddenSponsoredShare,
+    hiddenOrganicShare,
     sampleWindowDays,
     commentLikeRatio,
     commentRatioSampleSize,
@@ -1195,11 +1394,34 @@ export function scoreInfluencer(
     .filter((f) => f.impact === "performance")
     .reduce((sum, f) => sum + f.penalty, 0);
 
-  // Engagement yang tidak terukur (like disembunyikan) dinilai netral, bukan
-  // nol: ketiadaan data bukan bukti performa buruk.
-  const engagementComponent = engagementMeasurable
-    ? scoreFromRatio(erVsBenchmark)
-    : 60;
+  /**
+   * Komponen engagement.
+   *
+   * Tanpa satu pun post tersembunyi, dipakai angka terukur apa adanya. Begitu
+   * ada yang disembunyikan, dasarnya pindah ke ER perkiraan — dan hasilnya
+   * ditahan dua lapis:
+   *
+   * 1. Bila rasio komentar akun ini sendiri tidak diketahui (semua like
+   *    disembunyikan), perkiraannya dicampur ke netral. Kita memang tidak tahu,
+   *    dan angka yang tidak diketahui tidak boleh menghukum maupun menghadiahi
+   *    terlalu jauh.
+   * 2. Plafon yang melandai sesuai porsi data yang diperkirakan. Nilai penuh
+   *    hanya untuk angka yang benar-benar terukur.
+   */
+  const imputedErVsBenchmark =
+    benchmarkEr > 0 ? imputedEngagementRate / benchmarkEr : 0;
+  const imputeWeight = commentLikeRatio !== null ? 1 : GENERIC_IMPUTE_WEIGHT;
+  const imputedCeiling =
+    100 - (100 - IMPUTED_ENGAGEMENT_CEILING) * clamp(hiddenShare, 0, 1);
+
+  const engagementComponent =
+    hiddenShare <= 0
+      ? scoreFromRatio(erVsBenchmark)
+      : Math.min(
+          scoreFromRatio(imputedErVsBenchmark) * imputeWeight +
+            NEUTRAL_ENGAGEMENT * (1 - imputeWeight),
+          imputedCeiling,
+        );
   const consistencyComponent =
     scoreCadence(postsPerWeek) * 0.6 + scoreRecency(daysSinceLastPost) * 0.4;
   // Jangkauan diukur dari Reels, dengan target per platform. Bila sebagian
@@ -1249,6 +1471,16 @@ export function scoreInfluencer(
   // Vonis terbaik menuntut bukti yang cukup. Empat post tidak boleh
   // menghasilkan "sangat bagus" — angkanya masih bisa bergerak jauh.
   if (verdict === InfluencerVerdict.EXCELLENT && confidence === "low") {
+    verdict = InfluencerVerdict.GOOD;
+  }
+
+  // Engagement yang sebagian besarnya diperkirakan — bukan diukur — tidak boleh
+  // menghasilkan rekomendasi tertinggi. "Sangat bagus" adalah janji ke tim yang
+  // akan membelanjakan uang, dan janji menuntut angka yang bisa diverifikasi.
+  if (
+    verdict === InfluencerVerdict.EXCELLENT &&
+    hiddenShare > HIDDEN_SHARE_MEDIUM_CONFIDENCE
+  ) {
     verdict = InfluencerVerdict.GOOD;
   }
 
@@ -1326,6 +1558,11 @@ export function scoreInfluencer(
       surfaceGapPct: surfaceGapPct === null ? null : round(surfaceGapPct, 1),
       engagementMeasurable,
       hiddenLikePosts,
+      hiddenLikeShare: round(hiddenShare, 3),
+      hiddenSponsoredPosts,
+      imputedEngagementRate: round(imputedEngagementRate, 3),
+      imputationRatio: round(imputationRatio, 4),
+      engagementImputed: hiddenShare > 0,
       sponsoredShare: round(sponsoredShare, 3),
       sponsoredCountAllSurfaces,
       brandSafetyWorstSeverity: brandSafety.worstSeverity,

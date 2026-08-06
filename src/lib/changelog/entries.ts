@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-06-influencer-like-disembunyikan",
+    date: "2026-08-06",
+    title: "Menyembunyikan jumlah like tidak lagi menaikkan skor influencer",
+    category: "improved",
+    description:
+      "Kalau sebuah akun menyembunyikan jumlah like-nya, angka itu tidak bisa dibaca — dan sebelumnya audit memberi nilai netral untuk bagian engagement-nya. Akibatnya terbalik dari yang seharusnya: akun yang performanya buruk justru DIUNTUNGKAN dengan menyembunyikan like, sementara akun yang bagus dirugikan. Sekarang jumlah like yang disembunyikan diperkirakan dari jumlah komentarnya, yang tetap terlihat, sehingga penilaiannya kembali ke level akun yang sebenarnya.",
+    highlights: [
+      "Contoh nyata: akun lemah yang menyembunyikan like sebelumnya bisa mencetak skor 82; sekarang 67 — hampir sama dengan 66 yang didapatnya bila angkanya ditampilkan apa adanya",
+      "Perkiraan tidak pernah dianggap sepasti angka terukur: makin besar porsi post yang disembunyikan, makin rendah plafon nilainya, dan di atas 30% vonis \"Sangat bagus\" tidak lagi diberikan",
+      "Tingkat keyakinan ikut turun. Sebelumnya sampel yang separuhnya disembunyikan masih bisa dilaporkan berkeyakinan \"tinggi\"",
+      "Sinyal baru: bila yang disembunyikan justru post berbayarnya sementara post organik dibiarkan terlihat, itu ditandai sebagai peringatan keaslian — brand diminta membeli persis format yang angkanya ditutup",
+      "Menyembunyikan like di SELURUH akun tetap tidak dianggap kecurangan — itu setelan wajar yang dipakai banyak akun besar; yang berubah hanya angkanya jadi perkiraan, bukan hadiah",
+    ],
+  },
+  {
     id: "2026-08-05-tiktok-scraper-cadangan",
     date: "2026-08-05",
     title: "Audit TikTok punya scraper cadangan saat yang utama diblokir",
