@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { AppThemeProvider } from "@/components/app-theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { VoiceProvider } from "@/components/voice/voice-provider";
 import { APP_THEME_PRESETS, type AppThemePreset } from "@/lib/app-themes";
 import { useLabMode } from "@/lib/lab-theme";
 import { isLabPathname } from "@/lib/routes";
@@ -58,7 +59,15 @@ export function Providers({
           initialLibrary={initialLibrary}
         >
           <TooltipProvider>
-            {children}
+            {/*
+             * VoiceProvider dipasang di root, bukan di layout (dashboard):
+             * Dominatus Lab ada di route group (lab) yang bersaudara, jadi
+             * provider yang tinggal di (dashboard) ikut ter-unmount — dan call
+             * terputus — begitu user pindah ke Lab. Provider ini idle sampai
+             * ada join (runtime LiveKit di-import lazy), jadi aman di semua
+             * halaman termasuk /login.
+             */}
+            <VoiceProvider>{children}</VoiceProvider>
             <Toaster richColors position="top-center" />
           </TooltipProvider>
         </AppThemeProvider>

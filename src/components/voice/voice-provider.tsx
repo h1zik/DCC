@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 // HANYA import type — runtime LiveKit (~besar) dimuat lazy di join() dan di
 // VoiceActiveSession, sehingga tidak membebani bundle semua halaman dashboard.
 import type { Room } from "livekit-client";
@@ -50,6 +51,11 @@ type VoiceContextValue = {
 
 const VoiceContext = createContext<VoiceContextValue | null>(null);
 
+/** Halaman aplikasi ber-sesi — di luar ini (login, tautan publik) call diputus. */
+function isAppPathname(pathname: string): boolean {
+  return !pathname.startsWith("/login") && !pathname.startsWith("/shared/");
+}
+
 export function useVoice(): VoiceContextValue {
   const ctx = useContext(VoiceContext);
   if (!ctx) throw new Error("useVoice harus dipakai di dalam VoiceProvider.");
@@ -57,11 +63,13 @@ export function useVoice(): VoiceContextValue {
 }
 
 /**
- * Provider voice global — dipasang di layout (dashboard) sehingga call tetap
- * hidup ke mana pun user bernavigasi. Saat panel call tidak terlihat, overlay
+ * Provider voice global — dipasang di root (components/providers.tsx) sehingga
+ * call tetap hidup ke mana pun user bernavigasi, termasuk menyeberang ke route
+ * group (lab) alias Dominatus Lab. Saat panel call tidak terlihat, overlay
  * mengambang (draggable) menampilkan video + kontrol.
  */
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [room, setRoom] = useState<Room | null>(null);
   const [connectionState, setConnectionState] =
     useState<VoiceConnectionState>("disconnected");
@@ -190,7 +198,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     [bumpPollNonce],
   );
 
-  // Unmount provider (keluar dari area dashboard / hard refresh) = putuskan call.
+  // Unmount provider (tutup tab / hard refresh) = putuskan call.
   useEffect(() => {
     return () => {
       joinSeqRef.current += 1;
@@ -198,6 +206,19 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       roomRef.current = null;
     };
   }, []);
+
+  /*
+   * Keluar dari area aplikasi = putuskan call. Dulu ini gratis karena provider
+   * ikut ter-unmount bersama layout (dashboard); sekarang providernya di root,
+   * jadi batasnya ditegaskan di sini. Sasarannya sesi yang berakhir di tengah
+   * call (middleware melempar ke /login) — tanpa ini, mic & share screen tetap
+   * jalan di halaman login.
+   */
+  useEffect(() => {
+    if (isAppPathname(pathname)) return;
+    if (!roomRef.current && !activeCallRef.current) return;
+    void leave();
+  }, [pathname, leave]);
 
   const value = useMemo<VoiceContextValue>(
     () => ({

@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-06-voice-tetap-hidup-di-lab",
+    date: "2026-08-06",
+    title: "Voice call tidak putus lagi saat membuka Dominatus Lab",
+    category: "fixed",
+    description:
+      "Sebelumnya, siapa pun yang sedang di voice channel langsung terlempar keluar begitu pindah ke Dominatus Lab — paling terasa saat sedang share screen, karena share-nya hilang dan harus memilih ulang jendelanya. Penyebabnya: Dominatus Lab punya kerangka halaman sendiri, dan mesin voice dulu hanya dipasang di kerangka DCC, jadi ikut mati saat berpindah. Sekarang mesin voice dipasang di lapisan paling luar sehingga call bertahan lintas halaman.",
+    highlights: [
+      "Call, mic, dan share screen tetap jalan saat masuk Brand & Creative Hub, Research Hub, SEO Toolkit, atau Content Studio",
+      "Jendela call mengambang ikut muncul di dalam Lab — bisa digeser, dan tombol perbesarnya membawa kembali ke ruangannya",
+      "Call tetap diputus otomatis saat keluar dari aplikasi, misalnya sesi berakhir dan halaman login muncul",
+    ],
+  },
+  {
     id: "2026-08-06-dominatus-lab-administrator",
     date: "2026-08-06",
     title: "Administrator kini bisa membuka Dominatus Lab",

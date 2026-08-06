@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
-import { VoiceProvider } from "@/components/voice/voice-provider";
 import { getSession } from "@/lib/get-session";
 import { getNavRoomStructure } from "@/lib/room-nav-data";
 
@@ -21,9 +20,7 @@ export default async function DashboardLayout({
     ? await getNavRoomStructure(session.user.id, session.user.role)
     : [];
 
-  return (
-    <VoiceProvider>
-      <DashboardShell navRooms={navRooms}>{children}</DashboardShell>
-    </VoiceProvider>
-  );
+  // VoiceProvider sengaja TIDAK di sini — lihat komentarnya di
+  // components/providers.tsx (call harus selamat saat pindah ke Dominatus Lab).
+  return <DashboardShell navRooms={navRooms}>{children}</DashboardShell>;
 }
