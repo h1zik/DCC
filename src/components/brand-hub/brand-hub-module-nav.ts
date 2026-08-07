@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Megaphone,
   MessageSquare,
+  Radar,
   Sparkles,
   Target,
   TrendingUp,
@@ -71,6 +72,12 @@ export const BRAND_HUB_ZONES: BrandHubNavZone[] = [
         href: "/brand-hub/social-listening",
         label: "Social Listening",
         icon: MessageSquare,
+      },
+      {
+        key: "kol-radar",
+        href: "/brand-hub/kol-radar",
+        label: "KOL Radar",
+        icon: Radar,
       },
       {
         key: "influencer-audit",

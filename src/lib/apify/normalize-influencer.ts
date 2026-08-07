@@ -494,3 +494,40 @@ export function normalizeInfluencerDataset(
     ? normalizeInstagramProfile(items, fallbackHandle)
     : normalizeTikTokProfile(items, fallbackHandle);
 }
+
+/**
+ * Pisahkan dataset satu run BANYAK handle menjadi per-orang.
+ *
+ * Ini yang membedakan run batch dari run tunggal. Normalizer di atas berasumsi
+ * seluruh isi dataset milik satu orang — asumsi yang benar untuk audit, dan
+ * salah total untuk batch: `normalizeTikTokProfile` mengambil `authorMeta` dari
+ * item mana pun yang punya, sehingga tanpa pengelompokan ini, lima puluh
+ * kreator akan tercatat dengan jumlah follower orang yang kebetulan pertama.
+ *
+ * Handle yang diminta tapi tidak muncul di dataset TIDAK dikarang jadi entri
+ * kosong — pemanggil yang memutuskan apa arti ketidakhadiran itu.
+ */
+export function groupInfluencerDatasetByHandle(
+  platform: InfluencerPlatform,
+  items: Record<string, unknown>[],
+): Map<string, Record<string, unknown>[]> {
+  const groups = new Map<string, Record<string, unknown>[]>();
+
+  for (const item of items) {
+    const handle =
+      platform === InfluencerPlatform.INSTAGRAM
+        ? // Mode "details" memulangkan satu objek profil per URL yang diminta.
+          str(item.username) ?? str(rec(item.owner)?.username)
+        : // clockworks menempelkan authorMeta di tiap video; apidojo memakai channel.
+          str(rec(item.authorMeta)?.name) ?? str(rec(item.channel)?.username);
+
+    if (!handle) continue;
+
+    const key = handle.toLowerCase();
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(item);
+    else groups.set(key, [item]);
+  }
+
+  return groups;
+}

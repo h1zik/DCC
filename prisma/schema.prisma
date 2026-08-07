@@ -427,6 +427,7 @@ model User {
   brandKeywordQueriesCreated         BrandKeywordQuery[]            @relation("BrandKeywordQueryCreator")
   brandSocialMonitorsCreated         BrandSocialMonitor[]           @relation("BrandSocialMonitorCreator")
   influencerProfilesCreated          InfluencerProfile[]            @relation("InfluencerProfileCreator")
+  influencerDiscoveryRunsCreated     InfluencerDiscoveryRun[]       @relation("InfluencerDiscoveryCreator")
   brandUspAnalysesCreated            BrandUspAnalysis[]             @relation("BrandUspAnalysisCreator")
   brandVisualCollectionsCreated      BrandVisualCollection[]        @relation("BrandVisualCollectionCreator")
   brandStrategyDocumentsCreated      BrandStrategyDocument[]        @relation("BrandStrategyDocumentCreator")
@@ -4218,6 +4219,37 @@ enum InfluencerVerdict {
 }
 
 /**
+ * Dari mana sebuah profil pertama kali masuk database.
+ *
+ * Penting untuk kalibrasi: kreator yang ditemukan lewat hashtag kategori sudah
+ * membawa petunjuk niche, sementara yang ditambahkan manual tidak membawa
+ * apa-apa dan harus diklasifikasi dari nol.
+ */
+enum InfluencerDiscoverySource {
+  /** Crawl hashtag — pemasok utama. */
+  HASHTAG
+  /** Pencarian kata kunci bebas (bukan hashtag). */
+  KEYWORD
+  /** Muncul di hasil Social Listening sebuah brand/kompetitor. */
+  COMPETITOR_MENTION
+  /** Ditempel orang lewat form Influencer Audit. */
+  MANUAL
+  IMPORT
+}
+
+/**
+ * Siklus hidup job Apify di modul kreator — dipakai bersama oleh crawl
+ * penemuan dan batch pengayaan. Keduanya bergerak persis sama: antre, tunggu
+ * actor, lalu selesai atau gagal.
+ */
+enum InfluencerJobStatus {
+  PENDING
+  COLLECTING
+  READY
+  FAILED
+}
+
+/**
  * Influencer yang dipantau. Unik per (platform, handle) secara global supaya
  * satu orang tidak di-scrape berulang untuk brand berbeda; `ownerBrandId`
  * hanya label brand scope.
@@ -4237,15 +4269,69 @@ model InfluencerProfile {
   notes        String?            @db.Text
   ownerBrandId String?
   ownerBrand   Brand?             @relation(fields: [ownerBrandId], references: [id], onDelete: SetNull)
-  createdById  String
-  createdBy    User               @relation("InfluencerProfileCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  /**
+   * Nullable sejak profil bisa lahir dari crawler, yang tidak punya manusia
+   * pembuat. `onDelete` juga turun dari Cascade ke SetNull: profil ini identitas
+   * BERSAMA (unik global per platform+handle), jadi satu orang keluar dari
+   * organisasi tidak boleh ikut menghapus kreator yang sedang dipantau brand lain.
+   */
+  createdById  String?
+  createdBy    User?              @relation("InfluencerProfileCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   audits       InfluencerAudit[]
 
+  // ── Discovery & katalogisasi ────────────────────────────────────────────
+  /** Cara profil ini pertama kali masuk. Null = ditambahkan sebelum modul discovery ada. */
+  discoverySource InfluencerDiscoverySource?
+  /**
+   * Kapan crawler pertama melihat mereka. Beda dari `createdAt` hanya untuk
+   * profil lama yang dibuat manual lalu belakangan tertangkap crawl.
+   */
+  firstSeenAt     DateTime?
+  /**
+   * Kategori/niche hasil klasifikasi AI (mis. "beauty", "f&b", "parenting").
+   * Sengaja String bebas, bukan enum: daftar niche berubah jauh lebih sering
+   * daripada yang pantas dibayar dengan migrasi skema tiap kali.
+   */
+  category           String?
+  /** 0-1. Di bawah ambang tertentu UI harus menampilkannya sebagai dugaan. */
+  categoryConfidence Float?
+  /** Dipakai memutuskan kapan perlu klasifikasi ulang. */
+  categorySetAt      DateTime?
+  /** Bahasa dominan caption (ISO 639-1) — proksi kasar untuk lokasi audiens. */
+  language           String?
+
+  /**
+   * Salinan angka snapshot TERAKHIR.
+   *
+   * Denormalisasi yang disengaja. Sumber kebenarannya tetap deret
+   * `InfluencerSnapshot`; kolom-kolom ini hanya cache supaya halaman peringkat
+   * bisa mengurutkan dan menyaring lewat index biasa. Tanpa ini, "urutkan
+   * menurut engagement" memaksa membaca snapshot terbaru tiap kreator dulu —
+   * yang di angka puluhan ribu berarti memuat seluruh database ke memori hanya
+   * untuk menampilkan 25 baris.
+   *
+   * Ditulis ulang tiap kali snapshot baru masuk.
+   */
+  latestFollowers      Int?
+  latestEngagementRate Float?
+  latestTier           InfluencerTier?
+  latestMeasuredAt     DateTime?
+
+  snapshots     InfluencerSnapshot[]
+  discoveryHits InfluencerDiscoveryHit[]
+
   @@unique([platform, handle])
   @@index([ownerBrandId])
   @@index([createdById])
+  // Filter utama halaman ranking: platform + kategori.
+  @@index([platform, category])
+  @@index([firstSeenAt])
+  // Kolom urutan halaman ranking.
+  @@index([latestFollowers])
+  @@index([latestEngagementRate])
+  @@index([latestTier])
 }
 
 /**
@@ -4427,6 +4513,186 @@ model InfluencerPost {
 
   @@unique([auditId, externalId])
   @@index([auditId])
+}
+
+/**
+ * Satu sesi crawl penemuan kreator.
+ *
+ * Ini kebalikan arah dari InfluencerAudit: audit berangkat dari orang yang
+ * sudah diketahui, sementara run ini berangkat dari hashtag/kata kunci dan
+ * pulang membawa orang-orang yang belum pernah kita dengar.
+ */
+model InfluencerDiscoveryRun {
+  id     String                    @id @default(cuid())
+  source InfluencerDiscoverySource
+  status InfluencerJobStatus       @default(PENDING)
+
+  /** Hashtag/kata kunci yang disisir. Disimpan apa adanya supaya bisa diulang. */
+  terms     String[]             @default([])
+  /** Platform yang disisir. Kosong berarti keduanya. */
+  platforms InfluencerPlatform[] @default([])
+  /**
+   * Batas video per platform. Ini pengendali biaya utama modul discovery —
+   * setiap kenaikan di sini berbanding lurus dengan tagihan Apify.
+   */
+  searchLimit Int                @default(20)
+
+  apifyTikTokRunId String?
+  /**
+   * Instagram memulai SATU run per hashtag (lihat startInstagramScrapes), jadi
+   * jamak — tidak bisa ditampung satu kolom seperti TikTok.
+   */
+  apifyInstagramRunIds Json @default("[]")
+
+  /** Video yang terbaca — pembagi untuk menilai apakah crawl-nya produktif. */
+  postsScanned  Int @default(0)
+  /** Handle unik hasil crawl. */
+  profilesFound Int @default(0)
+  /** Dari situ, yang benar-benar belum ada di database. */
+  profilesNew   Int @default(0)
+
+  /** Peringatan non-fatal dari scraper (mis. hasil di bawah limit). */
+  warnings     Json    @default("[]")
+  errorMessage String?
+
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdById String?
+  createdBy   User?     @relation("InfluencerDiscoveryCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  hits InfluencerDiscoveryHit[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+/**
+ * Pertemuan antara satu run discovery dan satu kreator.
+ *
+ * Dibuat tabel tersendiri — bukan kolom `discoveryRunId` di profil — karena
+ * kreator yang sama muncul di banyak pencarian, dan justru pengulangan itulah
+ * sinyalnya: yang muncul di lima hashtag beauty jauh lebih pasti seorang
+ * beauty creator daripada yang muncul sekali. Post penemunya ikut disimpan
+ * supaya ada angka engagement awal sebelum enrichment apa pun dijalankan.
+ */
+model InfluencerDiscoveryHit {
+  id        String                 @id @default(cuid())
+  runId     String
+  run       InfluencerDiscoveryRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  profileId String
+  profile   InfluencerProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  /** Hashtag/kata kunci yang memunculkan mereka. */
+  matchedTerm String
+
+  postUrl      String?
+  postCaption  String?   @db.Text
+  postLikes    Int       @default(0)
+  postComments Int       @default(0)
+  postViews    Int       @default(0)
+  postedAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  /**
+   * Satu baris per KATA KUNCI, bukan per crawl.
+   *
+   * Kreator yang tertangkap di lima hashtag beauty sekaligus jauh lebih pasti
+   * seorang beauty creator daripada yang tertangkap di satu — dan itu justru
+   * sinyal yang dipakai mengurutkan relevansi. Kalau kuncinya hanya
+   * (run, profil), kelima kemunculan itu runtuh jadi satu dan sinyalnya hilang.
+   */
+  @@unique([runId, profileId, matchedTerm])
+  @@index([profileId])
+  @@index([runId])
+}
+
+/**
+ * Pengukuran murah tingkat-1, hasil satu run Apify berisi BANYAK handle.
+ *
+ * Sengaja dipisah dari InfluencerAudit meski sebagian kolomnya mirip. Snapshot
+ * lahir dari sampel tipis (6-8 post) tanpa run Reels terpisah, sehingga tidak
+ * cukup untuk memvonis siapa pun — dan karena itu di sini TIDAK ADA kolom
+ * `verdict`, `authenticityScore`, maupun `fakeFlags`. Kalau ketiganya ikut
+ * disimpan, cepat atau lambat badge "SUSPICIOUS" akan tampil di kreator yang
+ * sebenarnya belum pernah diaudit; itu jenis kekeliruan yang merusak
+ * kepercayaan pada seluruh modul.
+ *
+ * Angka yang ADA di sini dihitung oleh scoreInfluencer() yang sama dengan audit
+ * penuh, jadi definisinya identik dan boleh diperbandingkan antar kreator —
+ * yang berbeda hanya tebal sampelnya, dan itu dilaporkan lewat `confidence`.
+ */
+model InfluencerSnapshot {
+  id        String            @id @default(cuid())
+  profileId String
+  profile   InfluencerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  followers Int             @default(0)
+  following Int             @default(0)
+  postCount Int             @default(0)
+  tier      InfluencerTier?
+
+  /** Post yang benar-benar terbaca di sampel tipis ini. */
+  postsSampled Int @default(0)
+  /** high | medium | low — hampir selalu "low" di tingkat ini, dan itu jujur. */
+  confidence   String @default("low")
+
+  /** ER standar (like+komentar ÷ follower), definisi sama persis dengan audit penuh. */
+  engagementRate    Float?
+  benchmarkEr       Float?
+  medianLikes       Float   @default(0)
+  medianComments    Float   @default(0)
+  medianViews       Float   @default(0)
+  postsPerWeek      Float?
+  daysSinceLastPost Int?
+
+  /** Run Apify batch asalnya — satu run memasok puluhan snapshot sekaligus. */
+  batchRunId  String?
+  collectedAt DateTime @default(now())
+
+  @@index([profileId, collectedAt])
+  @@index([batchRunId])
+}
+
+/**
+ * Satu run Apify yang mengukur BANYAK kreator sekaligus.
+ *
+ * Inilah pengungkit biaya seluruh modul. Audit penuh memanggil actor sekali per
+ * orang; batch ini menjejalkan puluhan handle ke satu panggilan dengan sampel
+ * post yang jauh lebih tipis, sehingga ongkos per kreator turun sekitar sepuluh
+ * kali lipat. Itulah yang membuat database ribuan kreator masuk akal dibiayai.
+ */
+model InfluencerEnrichmentBatch {
+  id       String              @id @default(cuid())
+  platform InfluencerPlatform
+  status   InfluencerJobStatus @default(PENDING)
+
+  /** Handle yang diukur di run ini. Satu platform per batch — bentuk input actor-nya beda. */
+  handles    String[] @default([])
+  /** Post per kreator. Sengaja kecil; menaikkannya menaikkan tagihan selipat jumlah handle. */
+  postSample Int      @default(8)
+
+  apifyRunId String?
+
+  /** Kreator yang datanya berhasil terbaca dan tersimpan jadi snapshot. */
+  profilesEnriched Int @default(0)
+  /**
+   * Kreator yang diminta tapi tidak pulang datanya — akun privat, sudah ganti
+   * username, atau tidak dikembalikan actor. Dihitung terpisah supaya "batch
+   * berhasil" tidak menyamarkan separuh isinya yang kosong.
+   */
+  profilesMissing  Int @default(0)
+
+  warnings     Json    @default("[]")
+  errorMessage String?
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([status])
+  @@index([createdAt])
 }
 
 model BrandUspAnalysis {

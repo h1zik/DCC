@@ -22,18 +22,21 @@ import {
 } from "@/lib/scraper-api/social-mentions";
 import { cacheVpsRun, getCachedVpsRun } from "@/lib/scraper-api/vps-run-cache";
 import { DEFAULT_TIKTOK_SEARCH_LIMIT } from "@/lib/research/social-listening/search-limits-public";
+import type { ScrapeRouteOpts } from "@/lib/research/social-listening/scrape-instagram-mentions";
 
 function getTikTokActorId(): string | null {
   return process.env.APIFY_ACTOR_TIKTOK_TRENDS?.trim() || null;
 }
 
-export function isTikTokMentionsConfigured(): boolean {
-  if (isScraperApiConfigured()) return true;
+export function isTikTokMentionsConfigured(
+  opts?: ScrapeRouteOpts,
+): boolean {
+  if (!opts?.preferApify && isScraperApiConfigured()) return true;
   return isApifyConfigured() && !!getTikTokActorId();
 }
 
-function useVpsTikTok(): boolean {
-  return isScraperApiConfigured();
+function useVpsTikTok(opts?: ScrapeRouteOpts): boolean {
+  return !opts?.preferApify && isScraperApiConfigured();
 }
 
 function itemId(item: Record<string, unknown>): string {
@@ -182,12 +185,12 @@ function dedupeTikTokMentions(mentions: RawSocialMention[]): RawSocialMention[] 
 
 export async function startTikTokScrape(
   keywords: string[],
-  opts?: { searchLimit?: number },
+  opts?: { searchLimit?: number } & ScrapeRouteOpts,
 ): Promise<{ runId: string; warnings?: string[] } | null> {
   const searchLimit = opts?.searchLimit ?? DEFAULT_TIKTOK_SEARCH_LIMIT;
   const scrapeWarnings: string[] = [];
 
-  if (useVpsTikTok()) {
+  if (useVpsTikTok(opts)) {
     const searchQueries = keywords.map((k) => k.trim()).filter(Boolean).slice(0, 5);
     if (searchQueries.length === 0) return null;
 
@@ -255,13 +258,16 @@ export async function startTikTokScrape(
 
 const TERMINAL = new Set(["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"]);
 
-export async function pollTikTokScrape(runId: string): Promise<{
+export async function pollTikTokScrape(
+  runId: string,
+  opts?: ScrapeRouteOpts,
+): Promise<{
   done: boolean;
   succeeded: boolean;
   mentions: RawSocialMention[];
   apifyStatus: string;
 }> {
-  if (isScraperApiConfigured()) {
+  if (!opts?.preferApify && isScraperApiConfigured()) {
     const loaded = await resolveVpsCachedRun(
       runId,
       SocialListeningPlatform.TIKTOK,

@@ -120,6 +120,19 @@ export const TIER_LABEL: Record<InfluencerTier, string> = {
   MEGA: "Mega",
 };
 
+/**
+ * Tier lengkap dengan rentang followernya — untuk dropdown filter, tempat orang
+ * perlu tahu batas angkanya sebelum memilih. Di kartu, pakai `TIER_LABEL` yang
+ * pendek: di sana angkanya sudah terpampang di sebelahnya.
+ */
+export const TIER_RANGE_LABEL: Record<InfluencerTier, string> = {
+  NANO: "Nano (<10rb)",
+  MICRO: "Micro (10rb–100rb)",
+  MID: "Mid (100rb–500rb)",
+  MACRO: "Macro (500rb–1jt)",
+  MEGA: "Mega (>1jt)",
+};
+
 export const AUDIT_STATUS_LABEL: Record<InfluencerAuditStatus, string> = {
   PENDING: "Menunggu",
   COLLECTING: "Mengambil data",
