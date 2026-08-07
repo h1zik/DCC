@@ -5,12 +5,32 @@ import { prisma } from "@/lib/prisma";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
 
 /**
+ * Halaman ini hanya memuat orang yang SUDAH atau SEDANG diaudit.
+ *
+ * `InfluencerProfile` dipakai bersama dengan KOL Radar, dan crawl satu hashtag
+ * saja bisa menyuntikkan ratusan kreator ke tabel yang sama. Tanpa saringan
+ * ini, daftar audit tenggelam oleh nama-nama yang belum pernah diperiksa
+ * siapa pun — padahal pertanyaan di halaman ini justru "apa hasil pemeriksaan
+ * orang ini", yang tidak punya jawaban bagi mereka. Tempat kandidat mentah
+ * adalah KOL Radar; profil pindah ke sini begitu auditnya diantre.
+ *
+ * Sengaja `some: {}` tanpa menyebut status: audit yang masih berjalan atau
+ * gagal tetap milik halaman ini — statusnya bagian dari yang perlu dilihat.
+ */
+function auditedOnlyFilter(ownerBrandId?: string | null) {
+  return {
+    ...brandStudioBrandFilter(ownerBrandId),
+    audits: { some: {} },
+  };
+}
+
+/**
  * Daftar influencer + audit terakhir. Audit dibatasi satu per profil supaya
  * halaman daftar tidak menarik seluruh riwayat.
  */
 export async function listInfluencerProfiles(ownerBrandId?: string | null) {
   return prisma.influencerProfile.findMany({
-    where: brandStudioBrandFilter(ownerBrandId),
+    where: auditedOnlyFilter(ownerBrandId),
     orderBy: { updatedAt: "desc" },
     include: {
       ownerBrand: { select: { id: true, name: true } },
@@ -50,8 +70,10 @@ export async function getInfluencerProfileDetail(
 
 /** Ringkasan untuk kartu statistik di halaman daftar. */
 export async function getInfluencerHubStats(ownerBrandId?: string | null) {
+  // Saringan yang sama dengan daftarnya — "Total" yang menghitung kandidat
+  // KOL Radar akan mengklaim 69 sementara daftarnya menampilkan 9.
   const profiles = await prisma.influencerProfile.findMany({
-    where: brandStudioBrandFilter(ownerBrandId),
+    where: auditedOnlyFilter(ownerBrandId),
     select: {
       id: true,
       audits: {

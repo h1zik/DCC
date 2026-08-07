@@ -12,6 +12,7 @@
  */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  InfluencerAuditStatus,
   InfluencerDiscoverySource,
   InfluencerJobStatus,
   InfluencerPlatform,
@@ -28,6 +29,10 @@ import {
   DEFAULT_RADAR_FILTERS,
   type RadarFilterState,
 } from "@/lib/brand-research/influencer/discovery/radar-query";
+import {
+  getInfluencerHubStats,
+  listInfluencerProfiles,
+} from "@/lib/brand-research/influencer/readers";
 
 const prisma = new PrismaClient();
 
@@ -328,5 +333,49 @@ describe("DB smoke: query halaman peringkat", () => {
     const stats = await getRadarStats();
     expect(stats.pendingMeasurement).toBeGreaterThanOrEqual(2);
     expect(stats.pendingClassification).toBeGreaterThanOrEqual(2);
+  });
+});
+
+/**
+ * Batas antara kedua modul, diuji lewat database karena di situlah letaknya:
+ * keduanya berbagi tabel `InfluencerProfile`, dan yang memisahkan mereka cuma
+ * ada-tidaknya baris audit. Satu crawl hashtag bisa menyuntikkan ratusan
+ * kreator; kalau saringan ini lepas, daftar audit tenggelam tanpa ada yang
+ * gagal — tidak ada error, hanya halaman yang pelan-pelan jadi tidak berguna.
+ */
+describe("DB smoke: kandidat crawl tidak bocor ke Influencer Audit", () => {
+  it("menyembunyikan kreator hasil crawl yang belum diantre audit", async () => {
+    await persist([creator("belumdiaudit")]);
+
+    const rows = await listInfluencerProfiles(null);
+    expect(rows.map((r) => r.handle)).not.toContain(`${PREFIX}belumdiaudit`);
+  });
+
+  it("memunculkannya begitu auditnya dibuat, walau belum selesai", async () => {
+    await persist([creator("diantre")]);
+    const profile = await prisma.influencerProfile.findUniqueOrThrow({
+      where: {
+        platform_handle: {
+          platform: InfluencerPlatform.TIKTOK,
+          handle: `${PREFIX}diantre`,
+        },
+      },
+      select: { id: true },
+    });
+
+    // Sengaja PENDING, bukan READY: audit yang masih berjalan tetap milik
+    // halaman audit — statusnya justru bagian dari yang perlu dilihat.
+    await prisma.influencerAudit.create({
+      data: {
+        profileId: profile.id,
+        status: InfluencerAuditStatus.PENDING,
+      },
+    });
+
+    const rows = await listInfluencerProfiles(null);
+    expect(rows.map((r) => r.handle)).toContain(`${PREFIX}diantre`);
+
+    const stats = await getInfluencerHubStats(null);
+    expect(stats.total).toBeGreaterThanOrEqual(1);
   });
 });

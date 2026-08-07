@@ -9,6 +9,7 @@ import {
   FilterX,
   Link2,
   Plus,
+  Radar,
   RefreshCw,
   Search,
   SearchX,
@@ -449,7 +450,9 @@ const VERDICT_ITEMS: SelectItemDef[] = [
   { value: InfluencerVerdict.POOR, label: "Lemah" },
   { value: InfluencerVerdict.NEEDS_REVIEW, label: "Perlu dicek" },
   { value: InfluencerVerdict.SUSPICIOUS, label: "Mencurigakan" },
-  { value: VERDICT_GROUP.UNAUDITED, label: "Belum diaudit" },
+  // Daftar ini hanya memuat orang yang auditnya sudah diantre, jadi "belum
+  // diaudit" tidak lagi mungkin. Yang tersisa: audit masih jalan atau gagal.
+  { value: VERDICT_GROUP.UNAUDITED, label: "Belum ada vonis" },
 ];
 
 const TIER_ITEMS: SelectItemDef[] = [
@@ -659,8 +662,23 @@ export function InfluencerAuditClient({
         <LabEmptyState
           icon={UserSearch}
           title="Belum ada influencer yang diaudit"
-          description="Tempel link profil Instagram atau TikTok. Kami hitung engagement rate terhadap follower dan terhadap view, bandingkan dengan median tier-nya, lalu periksa tanda-tanda engagement yang dibeli."
-          action={<AddInfluencerDialog onAdded={refresh} />}
+          description="Tempel link profil Instagram atau TikTok. Kami hitung engagement rate terhadap follower dan terhadap view, bandingkan dengan median tier-nya, lalu periksa tanda-tanda engagement yang dibeli. Belum punya nama yang mau diperiksa? Cari dulu di KOL Radar."
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <AddInfluencerDialog onAdded={refresh} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                render={
+                  <Link href={brandHubHref("/brand-hub/kol-radar", brandId)} />
+                }
+              >
+                <Radar className="size-4" aria-hidden />
+                Cari di KOL Radar
+              </Button>
+            </div>
+          }
         />
       ) : (
         <>

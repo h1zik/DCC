@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-07-audit-hanya-yang-diaudit",
+    date: "2026-08-07",
+    title: "Influencer Audit kembali hanya berisi yang benar-benar diaudit",
+    category: "improved",
+    description:
+      "Kreator hasil crawl KOL Radar ikut muncul di Influencer Audit meski belum pernah diperiksa siapa pun — satu crawl hashtag saja bisa menambahkan ratusan nama, sehingga influencer yang sungguh-sungguh diaudit tenggelam di antaranya. Sekarang Influencer Audit hanya memuat orang yang auditnya sudah dijalankan atau sedang berjalan. Kandidat mentah tetap aman di KOL Radar, dan pindah ke Influencer Audit begitu tombol \"Audit penuh\" ditekan.",
+    highlights: [
+      "Angka statistik di Influencer Audit ikut dibersihkan — \"Influencer\" tidak lagi menghitung kandidat yang belum diperiksa",
+      "Tidak ada data yang hilang: kreator hasil crawl tetap lengkap di KOL Radar beserta hashtag penemunya",
+      "Saringan \"Belum diaudit\" berganti nama jadi \"Belum ada vonis\" — isinya audit yang masih berjalan atau gagal",
+    ],
+  },
+  {
     id: "2026-08-07-kol-radar-crawl-macet",
     date: "2026-08-07",
     title: "KOL Radar: crawl yang berputar tanpa pernah selesai",

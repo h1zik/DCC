@@ -102,7 +102,7 @@ export default async function BrandInfluencerAuditPage({
       icon={UserSearch}
       eyebrow="Creative Intelligence"
       title="Influencer Audit"
-      subtitle="Tempel link Instagram/TikTok influencer — dapatkan engagement rate relatif terhadap tiernya, plus deteksi engagement yang dibeli."
+      subtitle="Tempel link Instagram/TikTok influencer — dapatkan engagement rate relatif terhadap tiernya, plus deteksi engagement yang dibeli. Halaman ini hanya memuat yang sudah atau sedang diaudit; kandidat mentah hasil crawl ada di KOL Radar."
     >
       <InfluencerAuditClient profiles={rows} stats={stats} />
     </BrandHubListPage>
