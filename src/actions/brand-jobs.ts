@@ -18,6 +18,8 @@ import { pollBrandAdLibraryBatchesLight } from "@/lib/brand-research/scrape-meta
 import { pollBrandCompetitorScrapeJob } from "@/lib/brand-research/scrape-competitor";
 import { pollBrandReviewScrapeJobsLight } from "@/lib/brand-research/run-review-scrape-job";
 import { pollRunningInfluencerAudits } from "@/lib/brand-research/influencer/run-audit";
+import { pollRunningDiscoveryRuns } from "@/lib/brand-research/influencer/discovery/run-discovery";
+import { pollRunningEnrichmentBatches } from "@/lib/brand-research/influencer/discovery/enrich-batch";
 
 export type BrandJobSummary = {
   id: string;
@@ -418,6 +420,31 @@ export async function pollBrandHubBackgroundJobs(): Promise<{ polled: number }> 
     polled += result.polled;
   } catch (err) {
     console.error("[pollBrandHubBackgroundJobs] influencer-audit", err);
+  }
+
+  /**
+   * Crawl KOL Radar dan pengukurannya WAJIB ikut di sini, bukan hanya di cron.
+   *
+   * Keduanya mesin status yang maju satu langkah per pemanggilan: permintaan
+   * yang memulai crawl hanya sempat menyalakan run Apify lalu pulang, dan
+   * langkah "panen hasilnya" menunggu panggilan berikutnya. Ketika satu-satunya
+   * pemanggil adalah cron, crawl di lingkungan yang cron-nya belum terpasang
+   * berhenti selamanya di COLLECTING — termasuk pagar 30 menit yang seharusnya
+   * mengubahnya jadi pesan error, karena pagar itu pun hidup di dalam langkah
+   * yang tidak pernah dijalankan.
+   */
+  try {
+    const result = await pollRunningDiscoveryRuns();
+    polled += result.polled;
+  } catch (err) {
+    console.error("[pollBrandHubBackgroundJobs] kol-radar-discovery", err);
+  }
+
+  try {
+    const result = await pollRunningEnrichmentBatches();
+    polled += result.polled;
+  } catch (err) {
+    console.error("[pollBrandHubBackgroundJobs] kol-radar-enrichment", err);
   }
 
   return { polled };

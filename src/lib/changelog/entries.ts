@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-07-kol-radar-crawl-macet",
+    date: "2026-08-07",
+    title: "KOL Radar: crawl yang berputar tanpa pernah selesai",
+    category: "fixed",
+    description:
+      "Crawl hashtag bisa menampilkan \"Job berjalan\" selamanya tanpa memulangkan satu kreator pun. Crawl memang dikerjakan bertahap — permintaan pertama hanya menyalakan scraper, dan tahap \"panen hasilnya\" menunggu pemicu berikutnya. Pemicu itu ternyata cuma terpasang di penjadwal latar, tidak di halamannya, sehingga di lingkungan yang penjadwalnya belum aktif crawl tidak pernah maju selangkah pun. Sekarang halaman KOL Radar ikut memajukan crawl-nya sendiri, persis seperti Influencer Audit.",
+    highlights: [
+      "Cukup buka halaman KOL Radar — crawl dan pengukuran berjalan maju sendiri tanpa menunggu penjadwal latar",
+      "Crawl yang benar-benar bermasalah kini berhenti sebagai pesan error yang bisa dibaca, bukan baris yang berputar tanpa batas",
+      "Crawl yang terlanjur tersangkut lebih dari 30 menit akan ditandai gagal dan perlu dijalankan ulang — hasilnya tidak bisa diselamatkan",
+    ],
+  },
+  {
     id: "2026-08-07-kol-radar",
     date: "2026-08-07",
     title: "KOL Radar — cari influencer yang belum Anda kenal",
