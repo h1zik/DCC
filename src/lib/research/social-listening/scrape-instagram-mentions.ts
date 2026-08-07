@@ -38,13 +38,25 @@ function apifyInstagramInput(tag: string, limit: number): Record<string, unknown
   };
 }
 
-export function isInstagramMentionsConfigured(): boolean {
-  if (isScraperApiConfigured()) return true;
+/**
+ * Lewati VPS dan langsung pakai Apify.
+ *
+ * Dipakai pemanggil yang berjalan tanpa pengawasan dan tidak boleh menggantung:
+ * VPS tidak punya batas waktu, sehingga panggilan yang tidak dijawab akan
+ * menyangkut selamanya tanpa jejak error. Social Listening tetap memakai VPS
+ * secara bawaan — di sana ada orang yang menunggu dan bisa mengulang.
+ */
+export type ScrapeRouteOpts = { preferApify?: boolean };
+
+export function isInstagramMentionsConfigured(
+  opts?: ScrapeRouteOpts,
+): boolean {
+  if (!opts?.preferApify && isScraperApiConfigured()) return true;
   return isApifyConfigured() && !!getInstagramActorId();
 }
 
-function vpsInstagramEnabled(): boolean {
-  return isScraperApiConfigured();
+function vpsInstagramEnabled(opts?: ScrapeRouteOpts): boolean {
+  return !opts?.preferApify && isScraperApiConfigured();
 }
 
 function itemId(item: Record<string, unknown>): string {
@@ -212,7 +224,7 @@ function instagramTags(keywords: string[]): string[] {
 
 export async function startInstagramScrapes(
   keywords: string[],
-  opts?: { searchLimit?: number },
+  opts?: { searchLimit?: number } & ScrapeRouteOpts,
 ): Promise<{ runIds: string[]; warnings: string[] }> {
   const tags = instagramTags(keywords);
   if (tags.length === 0) return { runIds: [], warnings: [] };
@@ -220,7 +232,7 @@ export async function startInstagramScrapes(
   const searchLimit = opts?.searchLimit ?? DEFAULT_INSTAGRAM_SEARCH_LIMIT;
   const warnings: string[] = [];
 
-  if (vpsInstagramEnabled()) {
+  if (vpsInstagramEnabled(opts)) {
     const runIds: string[] = [];
 
     for (const keyword of keywords.slice(0, 5)) {
@@ -287,7 +299,10 @@ export async function startInstagramScrapes(
 
 const TERMINAL = new Set(["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"]);
 
-export async function pollInstagramScrapes(runIds: string[]): Promise<{
+export async function pollInstagramScrapes(
+  runIds: string[],
+  opts?: ScrapeRouteOpts,
+): Promise<{
   done: boolean;
   succeeded: boolean;
   mentions: RawSocialMention[];
@@ -303,7 +318,7 @@ export async function pollInstagramScrapes(runIds: string[]): Promise<{
     id.startsWith(APIFY_FALLBACK_PREFIX),
   );
 
-  if (vpsInstagramEnabled() && !apifyFallback) {
+  if (vpsInstagramEnabled(opts) && !apifyFallback) {
     const mentions: RawSocialMention[] = [];
     const apifyStatuses: string[] = [];
     let succeeded = false;

@@ -163,3 +163,19 @@ export function formatRelativeTime(date: Date | null | undefined): string {
   const days = Math.floor(hours / 24);
   return `${days} hari lalu`;
 }
+
+/**
+ * Versi pendek untuk kolom tabel/metrik, tempat "18 menit lalu" memaksa
+ * kolomnya melebar melebihi tetangganya.
+ */
+export function formatRelativeTimeCompact(
+  date: Date | null | undefined,
+): string {
+  if (!date) return "—";
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (mins < 1) return "baru";
+  if (mins < 60) return `${mins} mnt`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} jam`;
+  return `${Math.floor(hours / 24)} hr`;
+}

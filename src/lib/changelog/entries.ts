@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-07-kol-radar",
+    date: "2026-08-07",
+    title: "KOL Radar — cari influencer yang belum Anda kenal",
+    category: "new",
+    description:
+      "Selama ini Influencer Audit hanya bisa menilai orang yang sudah Anda tahu namanya: Anda tempel link, sistem memeriksanya. KOL Radar bekerja terbalik — Anda isi hashtag seperti #skincarelokal, sistem menyisir post terbarunya, mengambil pemilik akunnya, lalu mengukur follower dan engagement mereka secara otomatis. Hasilnya daftar kreator yang bisa disaring per niche, ukuran, dan platform, sebelum Anda memutuskan siapa yang layak diaudit penuh.",
+    highlights: [
+      "Sisir sampai 5 hashtag sekaligus di TikTok dan Instagram — kreator yang muncul di banyak pencarian naik ke urutan atas karena lebih pasti berada di niche itu",
+      "Follower dan engagement setiap kreator diukur otomatis setelah crawl, tanpa perlu menekan apa pun lagi — daftar juga menunjukkan kapan terakhir diukur, jadi angka basi kelihatan",
+      "Perkiraan jumlah post yang akan disisir muncul sebelum crawl dijalankan; pengendali biaya scraping ada di depan mata, bukan baru terbaca di tagihan",
+      "Riwayat crawl mencatat platform, batas post, dan siapa yang menjalankan. Catatan yang sudah selesai bisa dihapus, dan kreator yang ditemukannya tetap ada di daftar",
+      "Niche kreator (skincare, makeup, kuliner, parenting, dan 14 lainnya) diberi label otomatis; yang tebakannya lemah ditandai kuning lengkap dengan persentase keyakinannya agar dicek manual",
+      "Tombol \"Audit penuh\" membawa kandidat terpilih ke pemeriksaan mendalam yang sudah ada — lengkap dengan deteksi engagement palsu dan risiko merek",
+      "Angka di sini sengaja dari sampel kecil dan TIDAK memberi vonis apa pun; vonis hanya keluar dari audit penuh",
+    ],
+  },
+  {
     id: "2026-08-06-voice-tetap-hidup-di-lab",
     date: "2026-08-06",
     title: "Voice call tidak putus lagi saat membuka Dominatus Lab",

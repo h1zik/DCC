@@ -226,6 +226,62 @@ export function buildInstagramReelsActorInput(
   };
 }
 
+/**
+ * Sampel post untuk snapshot murah. Sepertiga dari audit penuh: di tahap ini
+ * pertanyaannya cuma "orang ini kira-kira sebesar dan seaktif apa", bukan
+ * "layakkah dia dibayar" — dan yang kedua itulah yang menuntut 24 post.
+ */
+export const SNAPSHOT_POST_SAMPLE = 8;
+
+/**
+ * Banyaknya handle yang dijejalkan ke satu run.
+ *
+ * Inilah yang menurunkan ongkos per kreator: biaya tetap sebuah run terbagi ke
+ * seluruh isinya. Dibatasi 50 karena run yang terlalu gemuk lebih sering kena
+ * timeout, dan satu run gagal berarti 50 kreator harus diulang sekaligus.
+ */
+export const SNAPSHOT_BATCH_SIZE = 50;
+
+/**
+ * Input actor untuk mengukur BANYAK handle sekaligus.
+ *
+ * Kedua actor sudah menerima banyak target sejak awal — `profiles` di
+ * clockworks, `directUrls` di instagram-scraper — jadi tidak ada yang perlu
+ * diakali; yang berubah hanya kita berhenti memanggilnya satu per satu.
+ */
+export function buildInfluencerBatchActorInput(
+  platform: InfluencerPlatform,
+  handles: string[],
+  postSample: number = SNAPSHOT_POST_SAMPLE,
+): Record<string, unknown> {
+  const limit = Math.min(Math.max(Math.round(postSample), 3), 30);
+
+  if (platform === InfluencerPlatform.INSTAGRAM) {
+    return {
+      directUrls: handles.map((h) => buildProfileUrl(platform, h)),
+      resultsType: "details",
+      resultsLimit: limit,
+      addParentData: false,
+    };
+  }
+
+  return {
+    profiles: handles,
+    // Di clockworks angka ini berlaku PER PROFIL, jadi biaya run = handle × limit.
+    resultsPerPage: limit,
+    profileScrapeSections: ["videos"],
+    profileSorting: "latest",
+    excludePinnedPosts: true,
+    proxyCountryCode: "ID",
+    shouldDownloadVideos: false,
+    shouldDownloadCovers: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadSlideshowImages: false,
+    shouldDownloadAvatars: false,
+    shouldDownloadMusicCovers: false,
+  };
+}
+
 export function buildInfluencerActorInput(
   platform: InfluencerPlatform,
   handle: string,
