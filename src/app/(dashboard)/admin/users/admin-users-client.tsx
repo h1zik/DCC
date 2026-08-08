@@ -35,8 +35,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { SelectItemDef } from "@/lib/select-option-items";
-import { Lock, Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
+import {
+  FlaskConical,
+  Lock,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import type { EmploymentType } from "@prisma/client";
+import {
+  UserLabAccessDialog,
+  type UserCapabilityOverride,
+  type UserLabAccessTarget,
+} from "./user-lab-access-dialog";
 import { cn } from "@/lib/utils";
 
 export type UserAdminRow = {
@@ -51,6 +65,10 @@ export type UserAdminRow = {
   customRole: { id: string; name: string; isProtected: boolean } | null;
   online: boolean;
   lastSeenLabel: string;
+  /** Kapabilitas Lab yang datang dari peran — basis sebelum override. */
+  inheritedCapabilities: string[];
+  /** Pengecualian khusus orang ini (ALLOW/DENY). */
+  capabilityOverrides: UserCapabilityOverride[];
 };
 
 export type CustomRoleOption = {
@@ -154,6 +172,8 @@ export function AdminUsersClient({
   const [draftPassword, setDraftPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
+  const [labAccessTarget, setLabAccessTarget] =
+    useState<UserLabAccessTarget | null>(null);
 
   const roleSelectItems = useMemo((): SelectItemDef[] => {
     return roles.map((r) => ({
@@ -271,9 +291,44 @@ export function AdminUsersClient({
     }
   }
 
+  function openLabAccess(u: UserAdminRow) {
+    setLabAccessTarget({
+      id: u.id,
+      label: personLabel(u),
+      roleLabel: effectiveRoleLabel(u),
+      inherited: u.inheritedCapabilities,
+      overrides: u.capabilityOverrides,
+    });
+  }
+
   function rowActions(u: UserAdminRow) {
+    const selfOrCeo = u.id === currentUserId || u.role === UserRole.CEO;
     return (
       <div className="flex shrink-0 items-center justify-end gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="relative size-8"
+          disabled={selfOrCeo}
+          aria-label={`Atur akses Dominatus Lab untuk ${u.email}`}
+          title={
+            u.id === currentUserId
+              ? "Tidak bisa mengubah akses akun sendiri"
+              : u.role === UserRole.CEO
+                ? "Akses akun CEO tidak dapat diubah"
+                : "Akses Dominatus Lab"
+          }
+          onClick={() => openLabAccess(u)}
+        >
+          <FlaskConical className="size-3.5" />
+          {u.capabilityOverrides.length > 0 ? (
+            <span
+              className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary"
+              aria-label={`${u.capabilityOverrides.length} pengecualian akses`}
+            />
+          ) : null}
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -705,6 +760,11 @@ export function AdminUsersClient({
           </form>
         </DialogContent>
       </Dialog>
+
+      <UserLabAccessDialog
+        target={labAccessTarget}
+        onClose={() => setLabAccessTarget(null)}
+      />
     </div>
   );
 }

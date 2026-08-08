@@ -1,20 +1,17 @@
 import "server-only";
 
-import { auth } from "@/lib/auth";
-import { canAccessLabResearchHub } from "@/lib/roles";
+import { ensureLabPage, requireLabCapability } from "@/lib/lab-access";
 
-export async function requireMarketAnalyst() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("Belum masuk.");
-  }
-  if (!canAccessLabResearchHub(session.user.role)) {
-    throw new Error(
-      "Akses ditolak — hanya Market Analyst, Project Manager, atau Administrator.",
-    );
-  }
-  return session;
+/** Research Hub — server actions. Melempar bila kapabilitas belum diberikan. */
+export async function requireResearchHubAccess() {
+  return requireLabCapability("lab.research_hub");
 }
 
-/** Alias eksplisit untuk halaman & action Research Hub. */
-export const requireResearchHubAccess = requireMarketAnalyst;
+/** @deprecated Nama lama dari era akses berbasis peran. Pakai {@link requireResearchHubAccess}. */
+export const requireMarketAnalyst = requireResearchHubAccess;
+
+/** Versi untuk halaman/layout: redirect alih-alih melempar. */
+export async function ensureResearchHubPage() {
+  const { session } = await ensureLabPage("lab.research_hub");
+  return session;
+}

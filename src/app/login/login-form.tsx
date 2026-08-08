@@ -11,6 +11,7 @@ import {
   isBrandHubRoute,
   isCeoAppRoute,
   isFinanceAppRoute,
+  isLabPathname,
   isLogisticsRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
@@ -66,7 +67,12 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
     const s = await getSession();
     const userRole = s?.user?.role;
     let dest = callbackUrl;
-    if (userRole === UserRole.CEO) {
+    if (isLabPathname(callbackUrl)) {
+      // Rute Dominatus Lab selalu tujuan yang sah: haknya ditentukan
+      // kapabilitas di server, bukan peran. Kalau ternyata belum diberi akses,
+      // layout Lab yang memulangkan — bukan tebakan di sisi klien.
+      dest = callbackUrl;
+    } else if (userRole === UserRole.CEO) {
       dest =
         isCeoAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl

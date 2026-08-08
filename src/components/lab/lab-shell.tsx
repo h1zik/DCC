@@ -9,14 +9,14 @@ import { LabSidebar } from "@/components/lab/lab-sidebar";
 import { LabThemeController } from "@/components/lab/lab-theme-controller";
 import type { LabUser } from "@/components/lab/lab-user-menu";
 import { PAGE_PADDING_CLASS } from "@/components/page-container";
+import type { LabModuleAccess } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 
-export type LabAccess = {
-  brandHub: boolean;
-  researchHub: boolean;
-  seo: boolean;
-  contentStudio: boolean;
-};
+/**
+ * Akses per modul. Didefinisikan di `@/lib/capabilities` supaya resolver
+ * server dan komponen Lab tidak pernah berbeda bentuk.
+ */
+export type LabAccess = LabModuleAccess;
 
 /**
  * Shell Dominatus Lab — pengganti DashboardShell selama berada di dalam Lab.

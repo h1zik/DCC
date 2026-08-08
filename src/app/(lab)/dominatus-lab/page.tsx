@@ -1,14 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import {
-  canAccessLab,
-  canAccessLabBrandHub,
-  canAccessLabContentStudio,
-  canAccessLabResearchHub,
-  canAccessLabSeo,
-} from "@/lib/roles";
+import { ensureLabPage } from "@/lib/lab-access";
 import { DominatusLabClient } from "./dominatus-lab-client";
 
 export const metadata: Metadata = {
@@ -16,18 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DominatusLabPage() {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-
-  const role = session.user.role;
-  if (!canAccessLab(role)) redirect("/home");
-
-  const access = {
-    brandHub: canAccessLabBrandHub(role),
-    researchHub: canAccessLabResearchHub(role),
-    seo: canAccessLabSeo(role),
-    contentStudio: canAccessLabContentStudio(role),
-  };
+  const { session, access } = await ensureLabPage();
 
   // Statistik ringan: hanya count() agar halaman launcher tetap cepat.
   const c = (p: Promise<number>) => p.catch(() => 0);

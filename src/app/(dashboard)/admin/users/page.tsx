@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import { Users } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
+import { baselineCapabilitiesForRole } from "@/lib/capabilities";
 import { ensureCustomRolesSeeded } from "@/lib/custom-roles";
 import { PageHero, PageHeroChip } from "@/components/page-hero";
 import { AdminUsersClient } from "./admin-users-client";
@@ -48,7 +49,22 @@ export default async function AdminUsersPage() {
         createdAt: true,
         lastSeenAt: true,
         customRoleId: true,
-        customRole: { select: { id: true, name: true, isProtected: true } },
+        customRole: {
+          select: {
+            id: true,
+            name: true,
+            isProtected: true,
+            capabilities: true,
+          },
+        },
+        capabilities: {
+          select: {
+            capability: true,
+            effect: true,
+            expiresAt: true,
+            reason: true,
+          },
+        },
       },
     }),
     prisma.customRole.findMany({
@@ -68,12 +84,29 @@ export default async function AdminUsersPage() {
   // Status online & label aktivitas dihitung di server agar HTML awal dan
   // hidrasi client konsisten (tanpa Date.now() di render client).
   const nowMs = new Date().getTime();
-  const users = rawUsers.map(({ lastSeenAt, ...u }) => ({
-    ...u,
-    online:
-      lastSeenAt != null && nowMs - lastSeenAt.getTime() <= ONLINE_THRESHOLD_MS,
-    lastSeenLabel: lastSeenLabel(lastSeenAt, nowMs),
-  }));
+  const users = rawUsers.map(
+    ({ lastSeenAt, capabilities, customRole, ...u }) => ({
+      ...u,
+      // Basis akses Lab: kapabilitas perannya, atau — bila belum punya peran
+      // kustom — matriks tier historis. Sama persis dengan yang dipakai
+      // resolver di server (lihat `src/lib/lab-access.ts`).
+      customRole: customRole
+        ? {
+            id: customRole.id,
+            name: customRole.name,
+            isProtected: customRole.isProtected,
+          }
+        : null,
+      inheritedCapabilities: customRole
+        ? customRole.capabilities
+        : baselineCapabilitiesForRole(u.role),
+      capabilityOverrides: capabilities,
+      online:
+        lastSeenAt != null &&
+        nowMs - lastSeenAt.getTime() <= ONLINE_THRESHOLD_MS,
+      lastSeenLabel: lastSeenLabel(lastSeenAt, nowMs),
+    }),
+  );
 
   const counts = users.reduce<Record<string, number>>((acc, u) => {
     acc[u.role] = (acc[u.role] ?? 0) + 1;

@@ -1,28 +1,14 @@
 import "server-only";
 
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { canAccessLabContentStudio } from "@/lib/roles";
+import { ensureLabPage, requireLabCapability } from "@/lib/lab-access";
 
-/**
- * Content & Creator Studio — alat pembuatan konten untuk tim marketing.
- * Akses: tim studio, Project Manager (Brand Manager), Market Analyst, dan
- * Administrator.
- */
+/** Content & Creator Studio — server actions. */
 export async function requireContentStudioAccess() {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Belum masuk.");
-  if (!canAccessLabContentStudio(session.user.role)) {
-    throw new Error(
-      "Akses ditolak — hanya tim studio, PM, Market Analyst, atau Administrator.",
-    );
-  }
-  return session;
+  return requireLabCapability("lab.content_studio");
 }
 
+/** Versi untuk halaman/layout: redirect alih-alih melempar. */
 export async function ensureContentStudioPage() {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-  if (!canAccessLabContentStudio(session.user.role)) redirect("/home");
+  const { session } = await ensureLabPage("lab.content_studio");
   return session;
 }

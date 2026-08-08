@@ -6,6 +6,7 @@ import {
   isCeoAppRoute,
   isChangelogRoute,
   isFinanceAppRoute,
+  isLabPathname,
   isLogisticsRoute,
   isMarketAnalystAppRoute,
   isPersonalRoute,
@@ -58,6 +59,22 @@ export default auth((req) => {
     isChangelogRoute(pathname) ||
     isPersonalRoute(pathname)
   ) {
+    return NextResponse.next();
+  }
+
+  /**
+   * Dominatus Lab dilewatkan untuk semua peran yang sudah login — otorisasinya
+   * bukan urusan proxy.
+   *
+   * Akses Lab kini per-kapabilitas dan bisa diberikan ke siapa saja (lihat
+   * `src/lib/lab-access.ts`), sementara proxy cuma memegang JWT berumur 7 hari
+   * yang tidak bisa dipaksa refresh oleh admin. Menggate di sini berarti
+   * pencabutan akses tertunda sampai token kedaluwarsa — persis yang
+   * diperingatkan dokumentasi Next: proxy untuk "optimistic check", bukan
+   * otorisasi. Yang menolak adalah layout & guard server tiap modul, dan
+   * keputusannya berlaku di navigasi berikutnya.
+   */
+  if (isLabPathname(pathname)) {
     return NextResponse.next();
   }
 

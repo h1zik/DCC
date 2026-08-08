@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { baselineCapabilitiesForRole } from "@/lib/capabilities";
 
 export {
   ASSIGNABLE_PERMISSION_TIERS,
@@ -155,6 +156,8 @@ export async function ensureCustomRolesSeeded(): Promise<void> {
     // custom role yang tepat sebelum role enum-nya ikut dimigrasi.
     await backfillUserCustomRoleIds();
     await migrateLegacyStudioTiers();
+    // Terakhir — setelah tier final — barulah kapabilitas diturunkan darinya.
+    await backfillCustomRoleCapabilities();
   })().finally(() => {
     seedingPromise = null;
   });
@@ -179,6 +182,41 @@ async function migrateLegacyStudioTiers() {
     where: { role: { in: LEGACY_STUDIO_TIERS } },
     data: { role: UserRole.NORMAL_USER },
   });
+}
+
+/**
+ * Isi `CustomRole.capabilities` sekali saja, dari matriks akses Lab yang
+ * berlaku untuk tier peran tersebut — sehingga menyalakan sistem kapabilitas
+ * tidak mengubah akses siapa pun pada hari deploy.
+ *
+ * Dijaga `capabilitiesSeededAt`: begitu sebuah peran pernah di-backfill (atau
+ * dibuat lewat UI), seeder tidak pernah menyentuhnya lagi. Tanpa penanda ini,
+ * setiap boot aplikasi akan menimpa hasil editan admin di matriks peran —
+ * `upsert` di atas memang sengaja tidak menulis apa pun untuk peran non-inti,
+ * tapi peran inti ditulis ulang tiap kali.
+ *
+ * Sengaja mencakup SEMUA custom role, bukan hanya yang di-seed, supaya peran
+ * buatan admin (mis. "DevOps Engineer") juga mewarisi akses tier-nya.
+ */
+async function backfillCustomRoleCapabilities() {
+  const pending = await prisma.customRole.findMany({
+    where: { capabilitiesSeededAt: null },
+    select: { id: true, permissionTier: true },
+  });
+  if (pending.length === 0) return;
+
+  const now = new Date();
+  await prisma.$transaction(
+    pending.map((role) =>
+      prisma.customRole.update({
+        where: { id: role.id },
+        data: {
+          capabilities: baselineCapabilitiesForRole(role.permissionTier),
+          capabilitiesSeededAt: now,
+        },
+      }),
+    ),
+  );
 }
 
 async function backfillUserCustomRoleIds() {

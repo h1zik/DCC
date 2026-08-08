@@ -31,6 +31,13 @@ type LabNavItem = {
   lockedLabel?: string;
 };
 
+/**
+ * Modul terkunci tidak lagi menyebut nama peran: akses diberikan per modul
+ * lewat kapabilitas, jadi "Khusus Brand Manager" sudah tidak menggambarkan
+ * siapa yang sebenarnya bisa dapat akses.
+ */
+const LOCKED_LABEL = "Belum punya akses — minta ke Administrator";
+
 const LAB_NAV: LabNavItem[] = [
   { key: "home", href: "/dominatus-lab", label: "Beranda Lab", icon: Home },
   {
@@ -38,28 +45,28 @@ const LAB_NAV: LabNavItem[] = [
     href: "/brand-hub",
     label: "Brand & Creative Hub",
     icon: Palette,
-    lockedLabel: "Khusus Brand Manager",
+    lockedLabel: LOCKED_LABEL,
   },
   {
     key: "researchHub",
     href: "/research-hub",
     label: "Research Hub",
     icon: Microscope,
-    lockedLabel: "Khusus Market Analyst & Brand Manager",
+    lockedLabel: LOCKED_LABEL,
   },
   {
     key: "seo",
     href: "/seo",
     label: "SEO Toolkit",
     icon: Gauge,
-    lockedLabel: "Khusus Market Analyst & Brand Manager",
+    lockedLabel: LOCKED_LABEL,
   },
   {
     key: "contentStudio",
     href: "/content-studio",
     label: "Content Studio",
     icon: Sparkles,
-    lockedLabel: "Khusus tim studio & Market Analyst",
+    lockedLabel: LOCKED_LABEL,
   },
 ];
 

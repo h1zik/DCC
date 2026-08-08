@@ -5,6 +5,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdministrator } from "@/lib/auth-helpers";
+import { baselineCapabilitiesForRole } from "@/lib/capabilities";
 import {
   ASSIGNABLE_PERMISSION_TIERS,
   ensureCustomRolesSeeded,
@@ -59,6 +60,11 @@ export async function createCustomRole(input: z.infer<typeof createSchema>) {
         slug,
         permissionTier: data.permissionTier,
         isProtected: false,
+        // Peran baru mewarisi akses Lab yang lazim untuk tier-nya, lalu boleh
+        // disetel bebas di matriks. `capabilitiesSeededAt` diisi di sini agar
+        // seeder tidak pernah menimpanya belakangan.
+        capabilities: baselineCapabilitiesForRole(data.permissionTier),
+        capabilitiesSeededAt: new Date(),
       },
     });
     revalidatePath("/admin/roles");

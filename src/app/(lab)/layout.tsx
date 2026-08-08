@@ -1,20 +1,12 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 import { LabShell } from "@/components/lab/lab-shell";
 import { LabThemeScript } from "@/components/lab/lab-theme-script";
 import { PwaPushRegistrar } from "@/components/push/pwa-push-registrar";
-import {
-  canAccessLab,
-  canAccessLabBrandHub,
-  canAccessLabContentStudio,
-  canAccessLabResearchHub,
-  canAccessLabSeo,
-} from "@/lib/roles";
+import { ensureLabPage } from "@/lib/lab-access";
 
 /**
  * Layout Dominatus Lab — shell terpisah dari DCC (tanpa sidebar/header
- * dashboard). Setiap modul tetap punya guard aksesnya sendiri di layout
+ * dashboard). Setiap modul tetap punya guard kapabilitasnya sendiri di layout
  * masing-masing; gate di sini hanya backstop level grup.
  */
 export default async function LabLayout({
@@ -22,23 +14,12 @@ export default async function LabLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const { session, access } = await ensureLabPage();
 
   // State sidebar dibaca server-side agar SSR langsung render lebar yang
   // benar — tanpa flash saat reload.
   const sidebarCollapsed =
     (await cookies()).get("lab_sidebar_state")?.value === "collapsed";
-
-  const role = session.user.role;
-  if (!canAccessLab(role)) redirect("/home");
-
-  const access = {
-    brandHub: canAccessLabBrandHub(role),
-    researchHub: canAccessLabResearchHub(role),
-    seo: canAccessLabSeo(role),
-    contentStudio: canAccessLabContentStudio(role),
-  };
 
   return (
     <>
@@ -50,7 +31,7 @@ export default async function LabLayout({
         user={{
           name: session.user.name ?? null,
           image: session.user.image ?? null,
-          role,
+          role: session.user.role,
           customRoleName: session.user.customRoleName ?? null,
         }}
       >

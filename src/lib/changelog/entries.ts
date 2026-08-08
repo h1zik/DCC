@@ -37,6 +37,24 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-08-akses-lab-fleksibel",
+    date: "2026-08-08",
+    title: "Akses Dominatus Lab kini bisa diatur per modul, per orang",
+    category: "new",
+    description:
+      "Sebelumnya akses Dominatus Lab menempel mati pada peran: hanya Project Manager, Market Analyst, dan Administrator yang bisa masuk, dan pembagian modulnya sudah dipatok. Mau meminjamkan SEO Toolkit ke seorang Copywriter? Satu-satunya jalan adalah menaikkan perannya jadi Market Analyst — yang ikut memberinya Research Hub dan mengubah halaman awal serta menu sidebar-nya. Sekarang akses tiap modul Lab diberikan terpisah dari peran, jadi bisa dipas-kan ke kebutuhan orangnya.",
+    highlights: [
+      "Halaman Peran punya matriks baru: centang modul Lab mana yang boleh dibuka tiap peran — Brand & Creative Hub, Research Hub, SEO Toolkit, Content Studio",
+      "Peran kustom akhirnya benar-benar berarti: \"SEO Specialist\" bisa dibuat hanya dengan SEO Toolkit, tanpa ikut kebagian modul lain",
+      "Di halaman Pengguna ada pengecualian per orang — beri satu modul ke satu orang, atau cabut modul yang seharusnya ia dapat dari perannya",
+      "Pemberian akses bisa dibatasi waktu: isi tanggal berakhirnya, dan akses kembali mengikuti peran dengan sendirinya tanpa perlu diingat-ingat",
+      "Setiap pengecualian menyimpan alasan dan siapa yang memberikannya, jadi keputusan akses masih bisa ditelusuri berbulan-bulan kemudian",
+      "Siapa pun bisa diberi akses Lab sekarang — termasuk tim Finance atau Logistik — dan entri Dominatus Lab langsung muncul di sidebar mereka",
+      "Perubahan akses berlaku di halaman berikutnya yang dibuka; tidak perlu menunggu orangnya keluar-masuk akun",
+      "Akses semua orang persis sama seperti sebelumnya pada hari pertama — yang bertambah hanya keleluasaan mengubahnya",
+    ],
+  },
+  {
     id: "2026-08-07-audit-hanya-yang-diaudit",
     date: "2026-08-07",
     title: "Influencer Audit kembali hanya berisi yang benar-benar diaudit",
