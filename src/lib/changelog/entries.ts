@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-08-08-content-plan-urutan-baris",
+    date: "2026-08-08",
+    title: "Urutan baris Content Plan sekarang bisa disusun sendiri",
+    category: "new",
+    description:
+      "Selama ini baris Content Plan selalu tersusun mengikuti urutan pembuatannya. Konten yang ditambahkan belakangan tapi tayang lebih dulu akan tetap nangkring di bawah, dan satu-satunya cara membaca rencana sesuai alurnya adalah mengurutkan kolom — yang hanya berlaku selama halaman itu dibuka dan tidak ikut terlihat oleh anggota lain. Sekarang urutan baris bisa diatur langsung dan tersimpan untuk semua orang di ruangan tersebut.",
+    highlights: [
+      "Ada pegangan seret di kolom paling kiri tabel — tarik satu baris ke atas atau ke bawah untuk memindahkannya",
+      "Urutan baru langsung tersimpan dan terlihat sama oleh seluruh anggota ruangan, bukan cuma di layar sendiri",
+      "Bisa juga lewat keyboard: fokuskan pegangannya, tekan spasi, lalu panah atas/bawah untuk memindahkan baris",
+      "Di layar ponsel, menu titik tiga tiap kartu punya pilihan Pindah ke atas / Pindah ke bawah",
+      "Menyeret saat filter atau pencarian aktif tetap aman — baris yang sedang tersembunyi tidak ikut berpindah",
+      "Kalau tabel sedang diurutkan lewat klik judul kolom, pegangan seret dimatikan sementara supaya urutan tersimpan tidak tertimpa keliru",
+      "Baris baru tetap masuk di posisi paling bawah seperti biasa",
+    ],
+  },
+  {
     id: "2026-08-08-akses-lab-fleksibel",
     date: "2026-08-08",
     title: "Akses Dominatus Lab kini bisa diatur per modul, per orang",

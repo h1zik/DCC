@@ -22,11 +22,12 @@ import {
   clearContentPlanDesignFiles,
   deleteRoomContentPlanItem,
   removeContentPlanDesignSlide,
+  reorderRoomContentPlanItems,
   uploadContentPlanCopywritingFile,
   uploadContentPlanDesignFile,
   upsertRoomContentPlanItem,
 } from "@/actions/room-content-planning";
-import { DataTable } from "@/components/data-table";
+import { DataTable, DataTableRowDragHandle } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1515,6 +1516,58 @@ export function ContentPlanningClient({
     [buildUpsertPayload, withResolvedPics],
   );
 
+  /**
+   * Susun ulang baris. `visibleIds` hanya memuat baris yang lolos filter, jadi
+   * baris tersembunyi dipertahankan di slot aslinya: slot milik baris terlihat
+   * diisi ulang mengikuti urutan barunya.
+   */
+  const reorderRows = useCallback(
+    (visibleIds: string[]) => {
+      const byId = new Map(tableRows.map((r) => [r.id, r]));
+      const queue = visibleIds
+        .map((id) => byId.get(id))
+        .filter((r): r is ContentPlanTableRow => Boolean(r));
+      if (queue.length !== visibleIds.length) return;
+
+      const visibleSet = new Set(visibleIds);
+      let cursor = 0;
+      const next = tableRows.map((r) =>
+        visibleSet.has(r.id) ? queue[cursor++]! : r,
+      );
+      if (next.every((r, i) => r.id === tableRows[i].id)) return;
+
+      const rollback = tableRows;
+      setTableRows(next);
+      void (async () => {
+        try {
+          await reorderRoomContentPlanItems(
+            roomId,
+            next.map((r) => r.id),
+          );
+        } catch (e) {
+          setTableRows(rollback);
+          toast.error(actionErrorMessage(e, "Gagal menyimpan urutan baris."));
+        }
+      })();
+    },
+    [roomId, tableRows],
+  );
+
+  /** Mobile: geser satu baris naik/turun dalam daftar yang sedang tampil. */
+  const moveRowInList = useCallback(
+    (rowId: string, delta: -1 | 1) => {
+      const ids = filteredRows.map((r) => r.id);
+      const from = ids.indexOf(rowId);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= ids.length) return;
+      const next = [...ids];
+      next[from] = ids[to];
+      next[to] = ids[from];
+      reorderRows(next);
+    },
+    [filteredRows, reorderRows],
+  );
+
   /** Gantt: klik bar / judul membuka sheet edit baris yang sama. */
   const openRowById = useCallback(
     (rowId: string) => {
@@ -1593,6 +1646,21 @@ export function ContentPlanningClient({
 
   const columns = useMemo<ColumnDef<ContentPlanTableRow>[]>(
     () => [
+      {
+        id: "reorder",
+        size: 34,
+        minSize: 30,
+        maxSize: 40,
+        enableSorting: false,
+        header: () => <span className="sr-only">Urutan baris</span>,
+        cell: ({ row }) => (
+          <div className="flex justify-center">
+            <DataTableRowDragHandle
+              label={`Seret untuk memindahkan "${row.original.konten || "baris"}"`}
+            />
+          </div>
+        ),
+      },
       {
         id: "kanbanPick",
         size: 40,
@@ -2915,7 +2983,7 @@ export function ContentPlanningClient({
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredRows.map((row) => (
+              {filteredRows.map((row, rowIndex) => (
                 <Card key={row.id} size="sm" className="shadow-none ring-border/60">
                   <div className="space-y-3 px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
@@ -2967,6 +3035,20 @@ export function ContentPlanningClient({
                             <DropdownMenuItem onClick={() => openEdit(row)}>
                               <Pencil className="size-4" />
                               Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={rowIndex === 0}
+                              onClick={() => moveRowInList(row.id, -1)}
+                            >
+                              <ArrowUp className="size-4" />
+                              Pindah ke atas
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={rowIndex === filteredRows.length - 1}
+                              onClick={() => moveRowInList(row.id, 1)}
+                            >
+                              <ArrowDown className="size-4" />
+                              Pindah ke bawah
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               variant="destructive"
@@ -3064,8 +3146,10 @@ export function ContentPlanningClient({
             fitViewport
             sortable
             stickyHeader
-            stickyColumns={2}
+            stickyColumns={3}
             viewportHeight="100%"
+            getRowId={(row) => row.id}
+            onReorder={reorderRows}
           />
         </div>
         </>

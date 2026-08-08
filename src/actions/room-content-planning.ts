@@ -210,6 +210,47 @@ export async function upsertRoomContentPlanItem(
   return { id: created.id };
 }
 
+const reorderSchema = z
+  .array(z.string().min(1))
+  .min(1)
+  .max(2000)
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: "Urutan baris tidak valid.",
+  });
+
+/**
+ * Susun ulang posisi baris content plan satu ruangan. `orderedIds` harus memuat
+ * **seluruh** baris ruangan tersebut; `sortOrder` ditulis ulang jadi 0..n-1 agar
+ * baris baru (pakai `max + 1`) selalu masuk di paling bawah.
+ */
+export async function reorderRoomContentPlanItems(
+  roomId: string,
+  orderedIds: string[],
+): Promise<void> {
+  const session = await requireTasksRoomHubSession();
+  await assertRoomMember(roomId, session.user.id);
+  const ids = reorderSchema.parse(orderedIds);
+
+  const rows = await prisma.roomContentPlanItem.findMany({
+    where: { roomId },
+    select: { id: true },
+  });
+  const ownedIds = new Set(rows.map((r) => r.id));
+  if (ids.length !== ownedIds.size || ids.some((id) => !ownedIds.has(id))) {
+    throw new Error("Urutan baris tidak valid.");
+  }
+
+  await prisma.$transaction(
+    ids.map((id, index) =>
+      prisma.roomContentPlanItem.updateMany({
+        where: { id, roomId },
+        data: { sortOrder: index },
+      }),
+    ),
+  );
+  revalidatePath(`/room/${roomId}/content-planning`);
+}
+
 export async function deleteRoomContentPlanItem(roomId: string, itemId: string) {
   const session = await requireTasksRoomHubSession();
   await assertRoomMember(roomId, session.user.id);
