@@ -5,6 +5,7 @@ import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
 import { ensureCustomRolesSeeded } from "@/lib/custom-roles";
 import { PageHero, PageHeroChip } from "@/components/page-hero";
 import { AdminRolesClient } from "./admin-roles-client";
+import { LabAccessMatrix } from "./lab-access-matrix";
 
 export default async function AdminRolesPage() {
   const session = await ensureAdminUserAccess();
@@ -19,6 +20,7 @@ export default async function AdminRolesPage() {
       slug: true,
       permissionTier: true,
       isProtected: true,
+      capabilities: true,
       _count: { select: { users: true } },
     },
   });
@@ -52,6 +54,7 @@ export default async function AdminRolesPage() {
       />
 
       <AdminRolesClient roles={roles} />
+      <LabAccessMatrix roles={roles} />
     </div>
   );
 }

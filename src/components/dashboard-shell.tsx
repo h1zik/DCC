@@ -7,6 +7,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { RoomNavProvider } from "@/components/nav/room-nav-context";
 import type { NavRoom } from "@/lib/room-nav-data";
+import { type LabAccess, NO_LAB_ACCESS } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 import { PwaPushRegistrar } from "@/components/push/pwa-push-registrar";
 import { PAGE_GAP_CLASS, PAGE_MAX_WIDTH_CLASS, PAGE_PADDING_CLASS } from "@/components/page-container";
@@ -14,16 +15,19 @@ import { PAGE_GAP_CLASS, PAGE_MAX_WIDTH_CLASS, PAGE_PADDING_CLASS } from "@/comp
 export function DashboardShell({
   children,
   navRooms = [],
+  labAccess = NO_LAB_ACCESS,
 }: {
   children: React.ReactNode;
   navRooms?: NavRoom[];
+  /** Diresolusi di layout server — sidebar tidak boleh menebak dari peran. */
+  labAccess?: LabAccess;
 }) {
   return (
     <SidebarProvider defaultOpen={false}>
       <PwaPushRegistrar />
       <RoomNavProvider rooms={navRooms}>
         <AgentPanelProvider>
-          <AppSidebar />
+          <AppSidebar labAccess={labAccess} />
           <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-x-hidden has-[_[data-chat-shell]]:overflow-hidden">
             <DashboardHeader />
             <div

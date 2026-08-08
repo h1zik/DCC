@@ -1,12 +1,5 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { canAccessLabResearchHub } from "@/lib/roles";
-
-export async function ensureResearchHubPage() {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-  if (!canAccessLabResearchHub(session.user.role)) {
-    redirect("/home");
-  }
-  return session;
-}
+/**
+ * Titik masuk lama untuk guard halaman Research Hub. Implementasinya kini satu
+ * pintu di `@/lib/research/auth` bersama guard server action-nya.
+ */
+export { ensureResearchHubPage } from "@/lib/research/auth";

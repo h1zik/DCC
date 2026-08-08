@@ -1,6 +1,6 @@
 import HTMLtoDOCX from "html-to-docx";
 import { auth } from "@/lib/auth";
-import { canAccessLabSeo } from "@/lib/roles";
+import { hasLabCapability } from "@/lib/lab-access";
 import { prisma } from "@/lib/prisma";
 import { buildReportPdfHtml } from "@/lib/research/reports/report-pdf-html";
 import { parseReportSections } from "@/lib/research/reports/types";
@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   if (!session?.user) {
     return new Response("Unauthorized", { status: 401 });
   }
-  if (!canAccessLabSeo(session.user.role)) {
+  if (!(await hasLabCapability("lab.seo"))) {
     return new Response("Forbidden", { status: 403 });
   }
 

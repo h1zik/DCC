@@ -35,7 +35,9 @@ import {
   WandSparkles,
   Bot,
   Trophy,
+  type LucideIcon,
 } from "lucide-react";
+import { type LabAccess, NO_LAB_ACCESS } from "@/lib/capabilities";
 import { effectiveRoleLabel } from "@/lib/role-labels";
 import {
   canUseAgent,
@@ -65,6 +67,9 @@ import { cn } from "@/lib/utils";
  * Dominatus Lab — launcher untuk 4 modul riset & kreatif (Brand & Creative
  * Hub, Research Hub, SEO Toolkit, Content Studio). Menggantikan item modul
  * satuan di sidebar; item ini tetap aktif saat user berada di dalam modulnya.
+ *
+ * Tampil-tidaknya ditentukan kapabilitas (lihat `withLabItem`), bukan peran —
+ * siapa pun bisa diberi akses satu modul tanpa pindah tier.
  */
 const labItem = {
   href: "/dominatus-lab",
@@ -180,6 +185,21 @@ function navForRole(role: UserRole | undefined) {
   return navLogistics;
 }
 
+type NavItem = { href: string; label: string; icon: LucideIcon };
+
+/**
+ * Selaraskan entri Dominatus Lab dengan akses sebenarnya: sisipkan untuk yang
+ * dapat kapabilitas meski perannya tidak pernah punya Lab (mis. Finance yang
+ * dipinjami SEO Toolkit), dan lepas untuk yang aksesnya dicabut.
+ */
+function withLabItem(items: readonly NavItem[], hasLab: boolean): NavItem[] {
+  const present = items.some((item) => item.href === labItem.href);
+  if (hasLab === present) return [...items];
+  if (!hasLab) return items.filter((item) => item.href !== labItem.href);
+  // Disisipkan tepat setelah item pertama (beranda modul masing-masing peran).
+  return [items[0], labItem, ...items.slice(1)];
+}
+
 function groupLabelForRole(role: UserRole | undefined) {
   if (role === UserRole.CEO) return "CEO";
   if (role === UserRole.ADMINISTRATOR) return "Administrator";
@@ -230,14 +250,18 @@ function SidebarNavLabel({
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({
+  labAccess = NO_LAB_ACCESS,
+}: {
+  labAccess?: LabAccess;
+}) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const { open: agentOpen, toggle: toggleAgent } = useAgentPanel();
   const role = session?.user?.role;
   const isFreelance = session?.user?.employmentType === "FREELANCE";
   // Freelance tidak ikut absensi — sembunyikan menu Attendance & laporannya.
-  const nav = navForRole(role).filter(
+  const nav = withLabItem(navForRole(role), labAccess.shell).filter(
     (item) => !isFreelance || !item.href.startsWith("/attendance"),
   );
   const groupLabel = groupLabelForRole(role);

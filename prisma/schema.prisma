@@ -466,6 +466,9 @@ model User {
   personalBookmarks                  PersonalBookmark[]             @relation("PersonalBookmarkOwner")
   personalFileFolders                PersonalFileFolder[]           @relation("PersonalFileFolderOwner")
   personalFiles                      PersonalFile[]                 @relation("PersonalFileOwner")
+  // ─── Kapabilitas (akses per-fitur di luar tier peran) ───
+  capabilities                       UserCapability[]               @relation("UserCapabilityUser")
+  capabilitiesGranted                UserCapability[]               @relation("UserCapabilityGrantedBy")
 
   @@index([customRoleId])
 }
@@ -498,11 +501,71 @@ model CustomRole {
    * Role inti yang dipastikan selalu ada — tidak boleh dihapus oleh user.
    */
   isProtected    Boolean  @default(false)
+  /**
+   * Kapabilitas yang diwariskan ke semua user dengan peran ini (mis.
+   * `["lab", "lab.seo"]`). Inilah yang membuat peran kustom benar-benar
+   * bermakna, bukan sekadar label di atas `permissionTier`.
+   * @see `CAPABILITIES` di `src/lib/capabilities.ts`
+   */
+  capabilities   String[]
+  /**
+   * Penanda backfill sekali-jalan. Selama masih null, seeder boleh mengisi
+   * `capabilities` dari matriks peran bawaan; setelah terisi, seeder tidak
+   * pernah menyentuhnya lagi agar editan admin tidak tertimpa tiap boot.
+   */
+  capabilitiesSeededAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   users          User[]
 
   @@index([permissionTier])
+}
+
+/**
+ * Arah sebuah kapabilitas per-user: menambah (ALLOW) atau mencabut (DENY)
+ * akses yang diwariskan dari tier peran / custom role. DENY selalu menang.
+ */
+enum CapabilityEffect {
+  ALLOW
+  DENY
+}
+
+/**
+ * Pengecualian akses untuk satu orang — di luar apa yang diwariskan perannya.
+ *
+ * Contoh: seorang Copywriter (tier NORMAL_USER) diberi `lab.seo` untuk satu
+ * kuartal, atau seorang Project Manager dicabut `lab.brand_hub`-nya.
+ * Resolusi akhir dihitung di `src/lib/lab-access.ts`.
+ */
+model UserCapability {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation("UserCapabilityUser", fields: [userId], references: [id], onDelete: Cascade)
+  /**
+   * Kunci kapabilitas (mis. `lab.seo`). Divalidasi terhadap katalog di kode,
+   * bukan enum DB, supaya menambah kapabilitas baru tidak perlu migrasi.
+   */
+  capability  String           @db.VarChar(64)
+  effect      CapabilityEffect @default(ALLOW)
+  /**
+   * Kedaluwarsa opsional — untuk akses sementara. Null = permanen.
+   * Baris yang lewat tanggal ini diabaikan resolver (tidak dihapus, agar
+   * jejak auditnya tetap ada).
+   */
+  expiresAt   DateTime?
+  /**
+   * Alasan pemberian/pencabutan — wajib diisi lewat UI admin agar keputusan
+   * akses bisa ditelusuri berbulan-bulan kemudian.
+   */
+  reason      String?          @db.VarChar(200)
+  grantedById String?
+  grantedBy   User?            @relation("UserCapabilityGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([userId, capability])
+  @@index([userId])
+  @@index([capability])
 }
 
 model PushSubscription {

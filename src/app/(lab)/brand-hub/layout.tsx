@@ -1,17 +1,11 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canAccessLabBrandHub } from "@/lib/roles";
+import { ensureLabPage } from "@/lib/lab-access";
 import { BrandHubModuleSidebar } from "@/components/brand-hub/brand-hub-sidebar";
 import { BrandHubSubNav } from "@/components/brand-hub/brand-hub-sub-nav";
 import { BrandBackgroundJobIndicator } from "@/components/brand-hub/brand-background-job-indicator";
 
 export async function ensureBrandHubPage() {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-  if (!canAccessLabBrandHub(session.user.role)) {
-    redirect("/");
-  }
+  const { session } = await ensureLabPage("lab.brand_hub");
   return session;
 }
 

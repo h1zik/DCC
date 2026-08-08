@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { getSession } from "@/lib/get-session";
+import { getLabAccess } from "@/lib/lab-access";
 import { getNavRoomStructure } from "@/lib/room-nav-data";
 
 export default async function DashboardLayout({
@@ -16,11 +17,20 @@ export default async function DashboardLayout({
   }
   // Struktur nav ter-cache; badge unread live diambil client-side oleh
   // RoomNavProvider agar layout tidak query pesan di tiap navigasi.
-  const navRooms = session.user.role
-    ? await getNavRoomStructure(session.user.id, session.user.role)
-    : [];
+  // Akses Lab diresolusi di server (bukan dari JWT) supaya pemberian/pencabutan
+  // kapabilitas langsung tercermin di sidebar tanpa menunggu sesi diperbarui.
+  const [navRooms, labAccess] = await Promise.all([
+    session.user.role
+      ? getNavRoomStructure(session.user.id, session.user.role)
+      : Promise.resolve([]),
+    getLabAccess(),
+  ]);
 
   // VoiceProvider sengaja TIDAK di sini — lihat komentarnya di
   // components/providers.tsx (call harus selamat saat pindah ke Dominatus Lab).
-  return <DashboardShell navRooms={navRooms}>{children}</DashboardShell>;
+  return (
+    <DashboardShell navRooms={navRooms} labAccess={labAccess}>
+      {children}
+    </DashboardShell>
+  );
 }

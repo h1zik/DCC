@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isProxyableImageHost } from "@/lib/brand-research/influencer/image-proxy";
-import { canAccessLabBrandHub } from "@/lib/roles";
+import { hasLabCapability } from "@/lib/lab-access";
 
 /**
  * Meneruskan gambar CDN Instagram/TikTok ke browser.
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Belum masuk." }, { status: 401 });
   }
-  if (!canAccessLabBrandHub(session.user.role)) {
+  if (!(await hasLabCapability("lab.brand_hub"))) {
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
 
