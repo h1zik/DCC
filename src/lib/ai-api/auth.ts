@@ -120,12 +120,19 @@ export function isAiApiPathAllowed(
   );
 }
 
+/**
+ * Tugas, ruangan & wiki. LOGISTICS ikut sejak staf logistik punya ruang kerja
+ * studio penuh (lihat `isStudioOrProjectManager` di `src/lib/roles.ts`) —
+ * AI Agent in-app memetakan peran logistik ke sini dan harus melihat data
+ * yang sama dengan yang dia lihat di UI.
+ */
 export function canViewTasks(role: AiApiRole): boolean {
   return (
     role === "ALL" ||
     role === "CEO" ||
     role === "ADMINISTRATOR" ||
-    role === "STUDIO"
+    role === "STUDIO" ||
+    role === "LOGISTICS"
   );
 }
 
@@ -173,7 +180,8 @@ export function canViewBrandPipeline(role: AiApiRole): boolean {
     role === "ALL" ||
     role === "CEO" ||
     role === "ADMINISTRATOR" ||
-    role === "STUDIO"
+    role === "STUDIO" ||
+    role === "LOGISTICS"
   );
 }
 

@@ -42,6 +42,7 @@ import { effectiveRoleLabel } from "@/lib/role-labels";
 import {
   canUseAgent,
   isBrandManager,
+  isLogistics,
   isMarketAnalyst,
   isStudioOrProjectManager,
 } from "@/lib/roles";
@@ -105,12 +106,22 @@ const navAdministrator = [
   { href: "/admin/gamification", label: "Gamifikasi", icon: Trophy },
 ] as const;
 
+/**
+ * Logistik = modul inventori miliknya sendiri + seluruh ruang kerja studio.
+ * Modul logistik ditaruh paling atas karena itu beranda kerjanya (login
+ * mendarat di /inventory); sisanya menyamai `navStudio`.
+ */
 const navLogistics = [
   { href: "/inventory", label: "Inventori", icon: Boxes },
   { href: "/products", label: "Produk & SKU", icon: Package },
+  { href: "/vendors", label: "Vendor Maklon", icon: Factory },
+  { href: "/home", label: "Home", icon: Home },
+  labItem,
+  { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
+  { href: "/for-me", label: "My Work", icon: Focus },
+  { href: "/projects", label: "Projects", icon: GitBranch },
   { href: "/schedule", label: "Kalender", icon: CalendarDays },
   { href: "/attendance", label: "Absensi", icon: ScanFace },
-  { href: "/vendors", label: "Vendor Maklon", icon: Factory },
 ] as const;
 
 const navFinance = [
@@ -180,6 +191,9 @@ function navForRole(role: UserRole | undefined) {
   if (role === UserRole.ADMINISTRATOR) return navAdministrator;
   if (isMarketAnalyst(role)) return navMarketAnalyst;
   if (isBrandManager(role)) return navBrandManager;
+  // Logistik termasuk `isStudioOrProjectManager` — cek dulu agar dapat menu
+  // inventorinya, bukan menu studio polos.
+  if (isLogistics(role)) return navLogistics;
   if (isStudioOrProjectManager(role)) return navStudio;
   if (role === UserRole.FINANCE) return navFinance;
   return navLogistics;
@@ -205,6 +219,7 @@ function groupLabelForRole(role: UserRole | undefined) {
   if (role === UserRole.ADMINISTRATOR) return "Administrator";
   if (isMarketAnalyst(role)) return "Market Analyst";
   if (isBrandManager(role)) return "Brand Manager";
+  if (isLogistics(role)) return "Logistik";
   if (isStudioOrProjectManager(role)) return "Studio & PM";
   if (role === UserRole.FINANCE) return "Finance";
   return "Logistik";

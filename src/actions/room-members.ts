@@ -40,9 +40,6 @@ export async function upsertRoomMember(
 
   await prisma.room.findUniqueOrThrow({ where: { id: roomId } });
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  if (user.role === UserRole.LOGISTICS) {
-    throw new Error("Staf logistik tidak dapat ditambahkan ke ruangan kerja.");
-  }
   if (user.role === UserRole.FINANCE) {
     throw new Error("Tim finance tidak dapat ditambahkan ke ruangan kerja.");
   }

@@ -158,6 +158,7 @@ export async function ensureCustomRolesSeeded(): Promise<void> {
     await migrateLegacyStudioTiers();
     // Terakhir — setelah tier final — barulah kapabilitas diturunkan darinya.
     await backfillCustomRoleCapabilities();
+    await grantStudioLabToLegacyLogisticsRoles();
   })().finally(() => {
     seedingPromise = null;
   });
@@ -212,6 +213,52 @@ async function backfillCustomRoleCapabilities() {
         where: { id: role.id },
         data: {
           capabilities: baselineCapabilitiesForRole(role.permissionTier),
+          capabilitiesSeededAt: now,
+        },
+      }),
+    ),
+  );
+}
+
+/**
+ * Batas waktu perluasan akses Logistik ke ruang kerja studio. Peran bertier
+ * LOGISTICS yang kapabilitasnya di-backfill SEBELUM tanggal ini lahir dari
+ * matriks lama (Logistik = tanpa Lab), jadi belum punya Content Studio.
+ */
+const LOGISTICS_STUDIO_ACCESS_SINCE = new Date("2026-09-03T00:00:00.000Z");
+
+/**
+ * Migrasi sekali-jalan: susulkan kapabilitas Lab tier studio ke peran
+ * Logistik yang sudah terlanjur di-backfill dengan matriks lama.
+ *
+ * `backfillCustomRoleCapabilities` sengaja tidak menyentuh peran yang sudah
+ * punya `capabilitiesSeededAt`, jadi perluasan tier di kode saja tidak
+ * mengubah apa pun untuk peran "Logistik" yang sudah ada di DB. Di sini
+ * kapabilitas baseline di-union (bukan ditimpa — grant tambahan dari admin
+ * tetap utuh), lalu `capabilitiesSeededAt` dimajukan supaya langkah ini tidak
+ * pernah terulang: kalau admin kemudian mencabut Content Studio dari
+ * Logistik, boot berikutnya tidak akan memasangnya kembali.
+ */
+async function grantStudioLabToLegacyLogisticsRoles() {
+  const stale = await prisma.customRole.findMany({
+    where: {
+      permissionTier: UserRole.LOGISTICS,
+      capabilitiesSeededAt: { lt: LOGISTICS_STUDIO_ACCESS_SINCE },
+    },
+    select: { id: true, capabilities: true },
+  });
+  if (stale.length === 0) return;
+
+  const baseline = baselineCapabilitiesForRole(UserRole.LOGISTICS);
+  const now = new Date();
+  await prisma.$transaction(
+    stale.map((role) =>
+      prisma.customRole.update({
+        where: { id: role.id },
+        data: {
+          capabilities: Array.from(
+            new Set([...role.capabilities, ...baseline]),
+          ),
           capabilitiesSeededAt: now,
         },
       }),

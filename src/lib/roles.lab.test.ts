@@ -41,12 +41,16 @@ describe("akses Dominatus Lab", () => {
     expect(canAccessLabSeo(UserRole.NORMAL_USER)).toBe(false);
   });
 
+  it("memberi Logistik akses Lab setara tim studio", () => {
+    expect(canAccessLab(UserRole.LOGISTICS)).toBe(true);
+    expect(canAccessLabContentStudio(UserRole.LOGISTICS)).toBe(true);
+    expect(canAccessLabBrandHub(UserRole.LOGISTICS)).toBe(false);
+    expect(canAccessLabResearchHub(UserRole.LOGISTICS)).toBe(false);
+    expect(canAccessLabSeo(UserRole.LOGISTICS)).toBe(false);
+  });
+
   it("menolak peran di luar Lab", () => {
-    for (const role of [
-      UserRole.CEO,
-      UserRole.FINANCE,
-      UserRole.LOGISTICS,
-    ] as const) {
+    for (const role of [UserRole.CEO, UserRole.FINANCE] as const) {
       expect(canAccessLab(role)).toBe(false);
       expect(canAccessLabBrandHub(role)).toBe(false);
       expect(canAccessLabResearchHub(role)).toBe(false);

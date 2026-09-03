@@ -53,6 +53,7 @@ export async function listDirectChatEligibleUsers(excludeUserId: string) {
           UserRole.ADMINISTRATOR,
           UserRole.PROJECT_MANAGER,
           UserRole.NORMAL_USER,
+          UserRole.LOGISTICS,
           UserRole.MARKETING,
           UserRole.CREATIVE_DIRECTOR,
           UserRole.BUSINESS_ANALYST,

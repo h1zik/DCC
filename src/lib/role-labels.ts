@@ -65,7 +65,7 @@ export function permissionTierLabel(tier: UserRole): string {
     case UserRole.MARKET_ANALYST:
       return "Market Analyst (Research Hub + studio)";
     case UserRole.LOGISTICS:
-      return "Logistik (akses inventori & produk)";
+      return "Logistik (inventori & produk + ruang kerja studio)";
     case UserRole.PROJECT_MANAGER:
       return "Project Manager (kelola pipeline & ruangan)";
     case UserRole.NORMAL_USER:

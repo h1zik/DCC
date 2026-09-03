@@ -36,6 +36,7 @@ export function isAttendanceRoute(pathname: string): boolean {
   return pathname === "/attendance" || pathname.startsWith("/attendance/");
 }
 
+/** Modul khusus logistik (inventori, produk, vendor) + jadwal & absensi. */
 export function isLogisticsRoute(pathname: string): boolean {
   return (
     isScheduleRoute(pathname) ||
@@ -44,6 +45,16 @@ export function isLogisticsRoute(pathname: string): boolean {
       (p) => pathname === p || pathname.startsWith(`${p}/`),
     )
   );
+}
+
+/**
+ * Seluruh rute yang boleh dibuka staf logistik: modul logistik miliknya
+ * sendiri DITAMBAH seluruh ruang kerja studio (Home, tugas, ruangan, pipeline,
+ * chat pribadi, AI Agent, Dominatus Lab). Dulu logistik dikurung di modul
+ * inventori saja.
+ */
+export function isLogisticsAppRoute(pathname: string): boolean {
+  return isLogisticsRoute(pathname) || isStudioWorkspaceRoute(pathname);
 }
 
 /** Modul keuangan — hanya peran Finance (plus profil & absensi). */

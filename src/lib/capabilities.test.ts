@@ -41,11 +41,12 @@ describe("baselineCapabilitiesForRole", () => {
       "lab",
       "lab.content_studio",
     ]);
-    for (const role of [
-      UserRole.CEO,
-      UserRole.FINANCE,
-      UserRole.LOGISTICS,
-    ] as const) {
+    // Logistik menyamai tim studio sejak punya ruang kerja studio penuh.
+    expect(baselineCapabilitiesForRole(UserRole.LOGISTICS)).toEqual([
+      "lab",
+      "lab.content_studio",
+    ]);
+    for (const role of [UserRole.CEO, UserRole.FINANCE] as const) {
       expect(baselineCapabilitiesForRole(role)).toEqual([]);
     }
     expect(baselineCapabilitiesForRole(undefined)).toEqual([]);
