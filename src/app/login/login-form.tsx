@@ -12,7 +12,7 @@ import {
   isCeoAppRoute,
   isFinanceAppRoute,
   isLabPathname,
-  isLogisticsRoute,
+  isLogisticsAppRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
 } from "@/lib/routes";
@@ -79,7 +79,7 @@ export function LoginForm({ branding }: { branding: LoginBranding }) {
           : "/";
     } else if (userRole === UserRole.LOGISTICS) {
       dest =
-        isLogisticsRoute(callbackUrl) || isProfileRoute(callbackUrl)
+        isLogisticsAppRoute(callbackUrl) || isProfileRoute(callbackUrl)
           ? callbackUrl
           : "/inventory";
     } else if (userRole === UserRole.ADMINISTRATOR) {

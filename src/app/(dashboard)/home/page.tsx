@@ -14,7 +14,6 @@ export default async function HomePage() {
   if (!canAccessHome(role)) {
     if (role === UserRole.CEO) redirect("/");
     if (role === UserRole.FINANCE) redirect("/finance");
-    if (role === UserRole.LOGISTICS) redirect("/inventory");
     if (isMarketAnalyst(role)) redirect("/dominatus-lab");
     redirect("/login");
   }

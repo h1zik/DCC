@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-03-logistik-akses-ruang-kerja-studio",
+    date: "2026-09-03",
+    title: "Tim Logistik kini punya seluruh ruang kerja studio",
+    category: "new",
+    description:
+      "Sebelumnya akun Logistik hanya bisa membuka Inventori, Produk & SKU, Vendor Maklon, Kalender, dan Absensi — bahkan pesan pribadi pun tidak tersedia. Sekarang Logistik mendapat semua fitur yang dipakai tim studio, sementara modul inventorinya tetap ada dan tetap hanya bisa diubah oleh Logistik.",
+    highlights: [
+      "Home, Workspaces, My Work, dan Projects muncul di menu samping Logistik",
+      "Pesan pribadi 1:1 dan AI Agent kini bisa dipakai akun Logistik",
+      "Logistik bisa ditambahkan sebagai anggota ruangan dan ditunjuk jadi PIC tugas",
+      "Dominatus Lab terbuka dengan modul Content Studio, sama seperti tim studio — Administrator tetap bisa menambah atau mencabut modul lain dari menu Roles & Access",
+      "Login tetap mendarat di Inventori, dan menu inventori tetap di posisi paling atas",
+    ],
+  },
+  {
     id: "2026-08-08-content-plan-urutan-baris",
     date: "2026-08-08",
     title: "Urutan baris Content Plan sekarang bisa disusun sendiri",

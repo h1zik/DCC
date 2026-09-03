@@ -28,14 +28,31 @@ const LEGACY_STUDIO_ROLES: UserRole[] = [
 export const PICAssignableRoles: UserRole[] = [
   UserRole.NORMAL_USER,
   UserRole.PROJECT_MANAGER,
+  UserRole.LOGISTICS,
 ];
 
-/** Akses papan tugas, ruangan, pipeline (studio + PM + market analyst). */
+/** Staf logistik — inventori, produk & SKU, vendor maklon. */
+export function isLogistics(role: UserRole | undefined): boolean {
+  return role === UserRole.LOGISTICS;
+}
+
+/**
+ * Akses papan tugas, ruangan, pipeline (studio + PM + market analyst +
+ * logistik).
+ *
+ * Logistik ikut di sini sejak modul inventori berhenti jadi satu-satunya
+ * dunianya: staf logistik sekarang punya seluruh ruang kerja studio (Home,
+ * tugas, ruangan, pipeline, chat pribadi, AI Agent, Content Studio) di samping
+ * modul inventori yang tetap eksklusif miliknya. Pemanggil yang perlu
+ * membedakan logistik dari studio (sidebar, halaman tujuan login) mengecek
+ * `isLogistics` lebih dulu.
+ */
 export function isStudioOrProjectManager(role: UserRole | undefined): boolean {
   if (!role) return false;
   if (role === UserRole.MARKET_ANALYST) return true;
   if (role === UserRole.PROJECT_MANAGER) return true;
   if (role === UserRole.NORMAL_USER) return true;
+  if (role === UserRole.LOGISTICS) return true;
   return LEGACY_STUDIO_ROLES.includes(role);
 }
 
@@ -90,7 +107,7 @@ export function isMarketAnalystOrStudio(role: UserRole | undefined): boolean {
   return isStudioOrProjectManager(role);
 }
 
-/** AI Agent in-app — CEO, administrator, studio/PM, market analyst. */
+/** AI Agent in-app — CEO, administrator, studio/PM, market analyst, logistik. */
 export function canUseAgent(role: UserRole | undefined): boolean {
   if (!role) return false;
   if (role === UserRole.CEO) return true;
@@ -99,7 +116,7 @@ export function canUseAgent(role: UserRole | undefined): boolean {
   return false;
 }
 
-/** Pesan pribadi 1:1 — CEO, administrator, studio/PM, market analyst. */
+/** Pesan pribadi 1:1 — CEO, administrator, studio/PM, market analyst, logistik. */
 export function canUseDirectChat(role: UserRole | undefined): boolean {
   if (!role) return false;
   if (role === UserRole.CEO) return true;
@@ -117,7 +134,7 @@ export function canUseDirectChat(role: UserRole | undefined): boolean {
  * route handler — memakai helper di bawah ini supaya aturannya satu pintu.
  * ---------------------------------------------------------------------- */
 
-/** Masuk ke shell Dominatus Lab — studio/PM, Market Analyst, Administrator. */
+/** Masuk ke shell Dominatus Lab — studio/PM, Market Analyst, Logistik, Administrator. */
 export function canAccessLab(role: UserRole | undefined): boolean {
   if (!role) return false;
   return isAdministrator(role) || isMarketAnalystOrStudio(role);
@@ -140,7 +157,7 @@ export function canAccessLabSeo(role: UserRole | undefined): boolean {
   return canAccessLabResearchHub(role);
 }
 
-/** Content & Creator Studio — studio/PM, Market Analyst + Administrator. */
+/** Content & Creator Studio — studio/PM, Market Analyst, Logistik + Administrator. */
 export function canAccessLabContentStudio(role: UserRole | undefined): boolean {
   if (!role) return false;
   return isAdministrator(role) || isMarketAnalystOrStudio(role);

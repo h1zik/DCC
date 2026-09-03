@@ -7,13 +7,17 @@ import {
   isChangelogRoute,
   isFinanceAppRoute,
   isLabPathname,
-  isLogisticsRoute,
+  isLogisticsAppRoute,
   isMarketAnalystAppRoute,
   isPersonalRoute,
   isProfileRoute,
   isStudioWorkspaceRoute,
 } from "@/lib/routes";
-import { isMarketAnalyst, isStudioOrProjectManager } from "@/lib/roles";
+import {
+  isLogistics,
+  isMarketAnalyst,
+  isStudioOrProjectManager,
+} from "@/lib/roles";
 import { NextResponse } from "next/server";
 
 // Instance NextAuth ringan khusus proxy: cukup verifikasi JWT, tanpa
@@ -25,6 +29,8 @@ function defaultHomeForRole(role: UserRole | undefined): string {
   if (role === UserRole.ADMINISTRATOR) return "/home";
   if (role === UserRole.FINANCE) return "/finance";
   if (isMarketAnalyst(role)) return "/dominatus-lab";
+  // Logistik ikut ruang kerja studio, tapi beranda kerjanya tetap inventori.
+  if (isLogistics(role)) return "/inventory";
   if (isStudioOrProjectManager(role)) return "/home";
   return "/inventory";
 }
@@ -102,9 +108,10 @@ export default auth((req) => {
     if (pathname === "/") {
       return NextResponse.redirect(new URL("/inventory", req.nextUrl));
     }
-    if (!isLogisticsRoute(pathname)) {
+    if (!isLogisticsAppRoute(pathname)) {
       return NextResponse.redirect(new URL("/inventory", req.nextUrl));
     }
+    return NextResponse.next();
   }
 
   if (role === UserRole.FINANCE) {
