@@ -3316,7 +3316,8 @@ export function ContentPlanningClient({
       ) : null}
 
       {view === "feed" ? (
-        <div className="min-w-0 max-w-full">
+        /* Shell halaman overflow-hidden di desktop (tabel/Gantt scroll sendiri), jadi feed butuh area scroll sendiri. */
+        <div className="min-w-0 max-w-full pb-6 md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
           <ContentPlanFeedSimulation
             roomId={roomId}
             rows={feedSourceRows}

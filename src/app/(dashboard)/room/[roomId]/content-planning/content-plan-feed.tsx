@@ -1148,7 +1148,7 @@ export function ContentPlanFeedSimulation({
       {/* ------------------------------------------------------------ */}
       {/* Panel kustomisasi                                              */}
       {/* ------------------------------------------------------------ */}
-      <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
+      <aside className="min-w-0 space-y-4 lg:self-start">
         <section className="border-border bg-card rounded-xl border p-3">
           <h3 className="text-sm font-semibold">Profil simulasi</h3>
           <p className="text-muted-foreground mb-3 text-[11px]">
