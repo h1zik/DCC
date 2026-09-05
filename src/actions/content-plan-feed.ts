@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
+import { ContentPlanFeedVisibility } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import {
@@ -226,15 +227,58 @@ export async function clearContentPlanFeedCover(roomId: string, itemId: string) 
   revalidateFeed(roomId);
 }
 
-export async function setContentPlanFeedHidden(
+/** AUTO ikut aturan profil, SHOWN selalu tampil, HIDDEN tidak pernah tampil. */
+export async function setContentPlanFeedVisibility(
   roomId: string,
   itemId: string,
-  hidden: boolean,
+  visibility: ContentPlanFeedVisibility,
 ) {
   await assertItemInRoom(roomId, itemId);
+  const v = z.nativeEnum(ContentPlanFeedVisibility).parse(visibility);
   await prisma.roomContentPlanItem.update({
     where: { id: itemId },
-    data: { hiddenFromFeed: hidden },
+    data: { feedVisibility: v },
   });
   revalidateFeed(roomId);
+}
+
+/* ------------------------------------------------------------------ */
+/* Urutan manual grid                                                   */
+/* ------------------------------------------------------------------ */
+
+const reorderSchema = z.array(z.string().min(1)).min(1).max(2000);
+
+/**
+ * Simpan posisi manual untuk tile yang sedang tampil (index = posisi dari kiri
+ * atas). Baris yang tidak ada di daftar dibiarkan (tetap otomatis / posisi lama).
+ */
+export async function reorderContentPlanFeed(roomId: string, orderedIds: string[]) {
+  await assertMember(roomId);
+  const ids = [...new Set(reorderSchema.parse(orderedIds))];
+  const owned = await prisma.roomContentPlanItem.count({
+    where: { roomId, id: { in: ids } },
+  });
+  if (owned !== ids.length) {
+    throw new Error("Ada baris yang bukan milik ruangan ini.");
+  }
+  await prisma.$transaction(
+    ids.map((id, index) =>
+      prisma.roomContentPlanItem.updateMany({
+        where: { id, roomId },
+        data: { feedPosition: index },
+      }),
+    ),
+  );
+  revalidateFeed(roomId);
+}
+
+/** Kembalikan seluruh grid ke urutan otomatis (tanggal & jam posting). */
+export async function resetContentPlanFeedOrder(roomId: string) {
+  await assertMember(roomId);
+  const result = await prisma.roomContentPlanItem.updateMany({
+    where: { roomId, feedPosition: { not: null } },
+    data: { feedPosition: null },
+  });
+  revalidateFeed(roomId);
+  return { updated: result.count };
 }

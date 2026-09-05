@@ -3,23 +3,38 @@
 import Image from "next/image";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ContentPlanFeedVisibility, ContentPlanJenis } from "@prisma/client";
 import {
-  ContentPlanJenis,
-  ContentPlanPlatform,
-  ContentPlanStatusKerja,
-} from "@prisma/client";
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   clearContentPlanFeedAvatar,
   clearContentPlanFeedCover,
+  reorderContentPlanFeed,
+  resetContentPlanFeedOrder,
   saveContentPlanFeedProfile,
   setContentPlanFeedCoverIndex,
-  setContentPlanFeedHidden,
+  setContentPlanFeedVisibility,
   uploadContentPlanFeedAvatar,
   uploadContentPlanFeedCover,
   type ContentPlanFeedProfileInput,
 } from "@/actions/content-plan-feed";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -46,6 +61,14 @@ import {
   isContentPlanVideoPath,
   JENIS_LABEL,
 } from "@/lib/content-plan-ui";
+import {
+  contentPlanFeedExclusionReason,
+  contentPlanFeedIsPublished,
+  contentPlanFeedPostingTime,
+  FEED_EXCLUSION_LABEL,
+  mergeContentPlanFeedOrder,
+  type FeedExclusionReason,
+} from "@/lib/content-plan-feed-order";
 import type { ContentPlanTableRow } from "./content-planning-client";
 import {
   BadgeCheck,
@@ -59,12 +82,15 @@ import {
   Menu,
   MoreHorizontal,
   Pencil,
+  Pin,
   Plus,
   RotateCcw,
   SquareUser,
   Trash2,
   Upload,
   UserPlus,
+  Wand2,
+  X,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -89,6 +115,11 @@ export type ContentPlanFeedDefaults = {
   username: string;
   displayName: string;
   avatarPath: string | null;
+};
+
+export type ContentPlanFeedRowPatch = {
+  id: string;
+  patch: Partial<ContentPlanTableRow>;
 };
 
 const DEFAULT_FOLLOWERS = "12,4K";
@@ -137,39 +168,15 @@ const MONTH_SHORT_ID = [
   "Des",
 ];
 
-function toDate(v: Date | string | null | undefined): Date | null {
-  if (!v) return null;
-  const d = typeof v === "string" ? new Date(v) : v;
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/** Waktu tayang efektif (ms): tanggal posting lokal + jam posting. null = belum dijadwalkan. */
-function feedPostingTime(row: ContentPlanTableRow): number | null {
-  const d = toDate(row.tanggalPosting);
-  if (!d) return null;
-  const base = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const m = /^(\d{2}):(\d{2})$/.exec(row.jamPosting ?? "");
-  const minutes = m ? Number(m[1]) * 60 + Number(m[2]) : 0;
-  return base + minutes * 60_000;
-}
-
 function feedDateLabel(row: ContentPlanTableRow): string {
-  const d = toDate(row.tanggalPosting);
-  if (!d) return "Tanpa tgl";
+  const v = row.tanggalPosting;
+  const d = v ? (typeof v === "string" ? new Date(v) : v) : null;
+  if (!d || Number.isNaN(d.getTime())) return "Tanpa tgl";
   return `${d.getDate()} ${MONTH_SHORT_ID[d.getMonth()] ?? ""}`;
 }
 
-function isPublished(row: ContentPlanTableRow): boolean {
-  if (row.archivedAt) return true;
-  return (
-    row.statusCopywriting === ContentPlanStatusKerja.DIPUBLIKASIKAN &&
-    row.statusDesign === ContentPlanStatusKerja.DIPUBLIKASIKAN
-  );
-}
-
-function isInstagramRow(row: ContentPlanTableRow): boolean {
-  const list = row.platforms ?? [];
-  return list.length === 0 || list.includes(ContentPlanPlatform.INSTAGRAM);
+function rowTitle(row: ContentPlanTableRow): string {
+  return row.konten?.trim() || JENIS_LABEL[row.jenisKonten];
 }
 
 /** Warna placeholder tile bila belum ada file design — beda per jenis konten. */
@@ -265,31 +272,38 @@ function FeedAvatar({
 /* Tile grid                                                            */
 /* ------------------------------------------------------------------ */
 
-function FeedTile({
-  row,
-  reelsAspect,
-  onPreview,
-  onEdit,
-  onPickCover,
-  onHide,
-}: {
-  row: ContentPlanTableRow;
-  reelsAspect: boolean;
+type TileActions = {
   onPreview: (row: ContentPlanTableRow) => void;
   onEdit: (row: ContentPlanTableRow) => void;
   onPickCover: (row: ContentPlanTableRow) => void;
-  onHide: (row: ContentPlanTableRow) => void;
+  onSetVisibility: (row: ContentPlanTableRow, v: ContentPlanFeedVisibility) => void;
+};
+
+function FeedTile({
+  row,
+  reelsAspect,
+  dragging,
+  onPreview,
+  onEdit,
+  onPickCover,
+  onSetVisibility,
+}: TileActions & {
+  row: ContentPlanTableRow;
+  reelsAspect: boolean;
+  dragging?: boolean;
 }) {
   const cover = contentPlanFeedCoverPath(row);
   const canPreview = (row.designFilePaths?.length ?? 0) > 0;
-  const published = isPublished(row);
-  const title = row.konten?.trim() || JENIS_LABEL[row.jenisKonten];
+  const published = contentPlanFeedIsPublished(row);
+  const title = rowTitle(row);
+  const pinned = row.feedVisibility === ContentPlanFeedVisibility.SHOWN;
 
   return (
     <div
       className={cn(
         "group bg-background relative overflow-hidden",
         reelsAspect ? "aspect-[9/16]" : "aspect-[3/4]",
+        dragging && "ring-primary ring-2 ring-inset",
       )}
     >
       <button
@@ -340,6 +354,28 @@ function FeedTile({
         </span>
       ) : null}
 
+      {/* Penanda "selalu tampil" (mengabaikan aturan otomatis) */}
+      {pinned ? (
+        <Pin
+          className="pointer-events-none absolute top-1.5 left-1.5 size-3 text-white drop-shadow-md group-hover:opacity-0"
+          aria-label="Selalu tampil di feed"
+        />
+      ) : null}
+
+      {/* Hapus dari feed — muncul saat hover */}
+      <button
+        type="button"
+        className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive focus-visible:opacity-100"
+        aria-label={`Hapus "${title}" dari feed`}
+        title="Hapus dari feed"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSetVisibility(row, ContentPlanFeedVisibility.HIDDEN);
+        }}
+      >
+        <X className="size-3" />
+      </button>
+
       {/* Menu aksi tile */}
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -348,7 +384,7 @@ function FeedTile({
         >
           <MoreHorizontal className="size-3" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuContent align="end" className="w-52">
           <div className="text-muted-foreground truncate px-2 py-1 text-[11px]">{title}</div>
           <DropdownMenuSeparator />
           {canPreview ? (
@@ -366,12 +402,56 @@ function FeedTile({
             Atur cover
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => onHide(row)}>
+          {row.feedVisibility === ContentPlanFeedVisibility.AUTO ? (
+            <DropdownMenuItem
+              onClick={() => onSetVisibility(row, ContentPlanFeedVisibility.SHOWN)}
+            >
+              <Pin className="size-4" />
+              Selalu tampilkan
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => onSetVisibility(row, ContentPlanFeedVisibility.AUTO)}
+            >
+              <Wand2 className="size-4" />
+              Ikuti aturan otomatis
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => onSetVisibility(row, ContentPlanFeedVisibility.HIDDEN)}
+          >
             <EyeOff className="size-4" />
-            Sembunyikan dari feed
+            Hapus dari feed
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+/** Pembungkus sortable: seluruh tile jadi pegangan drag (klik tetap jalan berkat jarak aktivasi). */
+function SortableFeedTile({
+  row,
+  disabled,
+  ...actions
+}: TileActions & { row: ContentPlanTableRow; disabled: boolean }) {
+  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({
+    id: row.id,
+    disabled,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isDragging ? { zIndex: 30, position: "relative" as const } : null),
+      }}
+      className={cn(!disabled && "touch-none", isDragging && "opacity-90 shadow-xl")}
+      {...listeners}
+    >
+      <FeedTile row={row} reelsAspect={false} dragging={isDragging} {...actions} />
     </div>
   );
 }
@@ -857,6 +937,7 @@ export function ContentPlanFeedSimulation({
   onEdit,
   onAddRow,
   onRowPatched,
+  onRowsPatched,
 }: {
   roomId: string;
   /** Semua baris (aktif + arsip) yang sudah lolos filter toolbar. */
@@ -868,6 +949,7 @@ export function ContentPlanFeedSimulation({
   onEdit: (row: ContentPlanTableRow) => void;
   onAddRow: () => void;
   onRowPatched: (rowId: string, patch: Partial<ContentPlanTableRow>) => void;
+  onRowsPatched: (patches: ContentPlanFeedRowPatch[]) => void;
 }) {
   const router = useRouter();
   const [profile, setProfile] = useState<ContentPlanFeedProfileData>(() =>
@@ -876,34 +958,46 @@ export function ContentPlanFeedSimulation({
   const [tab, setTab] = useState<FeedTab>("grid");
   const [coverRowId, setCoverRowId] = useState<string | null>(null);
   const [togglePending, startToggle] = useTransition();
+  const [orderPending, startOrder] = useTransition();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+  );
 
   const coverRow = useMemo(
     () => (coverRowId ? (rows.find((r) => r.id === coverRowId) ?? null) : null),
     [coverRowId, rows],
   );
 
-  const hiddenRows = useMemo(() => rows.filter((r) => r.hiddenFromFeed), [rows]);
+  const prefs = useMemo(
+    () => ({
+      includeArchived: profile.includeArchived,
+      instagramOnly: profile.instagramOnly,
+      includeUndated: profile.includeUndated,
+    }),
+    [profile.includeArchived, profile.instagramOnly, profile.includeUndated],
+  );
 
-  const feedRows = useMemo(() => {
-    const visible = rows.filter((r) => {
-      if (r.hiddenFromFeed) return false;
-      if (!profile.includeArchived && r.archivedAt) return false;
-      if (profile.instagramOnly && !isInstagramRow(r)) return false;
-      if (!profile.includeUndated && feedPostingTime(r) == null) return false;
-      return true;
-    });
-    // Terbaru di kiri atas (seperti Instagram). Tanpa tanggal = rencana paling
-    // depan, ditaruh paling atas; urutan antar-mereka mengikuti urutan tabel.
-    const keyed = visible.map((r, i) => ({ r, i, t: feedPostingTime(r) }));
-    keyed.sort((a, b) => {
-      if (a.t == null && b.t == null) return a.i - b.i;
-      if (a.t == null) return -1;
-      if (b.t == null) return 1;
-      if (b.t !== a.t) return b.t - a.t;
-      return a.i - b.i;
-    });
-    return keyed.map((k) => k.r);
-  }, [rows, profile.includeArchived, profile.instagramOnly, profile.includeUndated]);
+  /** Baris yang tampil (urut grid) dan yang di luar feed (dengan alasannya). */
+  const { feedRows, excludedRows } = useMemo(() => {
+    const shown: ContentPlanTableRow[] = [];
+    const excluded: { row: ContentPlanTableRow; reason: FeedExclusionReason }[] = [];
+    for (const r of rows) {
+      const reason = contentPlanFeedExclusionReason(r, prefs);
+      if (reason) excluded.push({ row: r, reason });
+      else shown.push(r);
+    }
+    const ordered = mergeContentPlanFeedOrder(
+      shown.map((r) => ({
+        id: r.id,
+        feedPosition: r.feedPosition,
+        postingTime: contentPlanFeedPostingTime(r),
+        row: r,
+      })),
+    ).map((k) => k.row);
+    return { feedRows: ordered, excludedRows: excluded };
+  }, [rows, prefs]);
 
   const tabRows = useMemo(
     () =>
@@ -912,10 +1006,15 @@ export function ContentPlanFeedSimulation({
         : feedRows,
     [feedRows, tab],
   );
+  const tabIds = useMemo(() => tabRows.map((r) => r.id), [tabRows]);
 
   const scheduledCount = useMemo(
-    () => feedRows.filter((r) => !isPublished(r)).length,
+    () => feedRows.filter((r) => !contentPlanFeedIsPublished(r)).length,
     [feedRows],
+  );
+  const hasManualOrder = useMemo(
+    () => rows.some((r) => r.feedPosition != null),
+    [rows],
   );
 
   const updateToggle = useCallback(
@@ -938,28 +1037,85 @@ export function ContentPlanFeedSimulation({
     [profile, roomId, router],
   );
 
-  const setHidden = useCallback(
-    (row: ContentPlanTableRow, hidden: boolean) => {
-      onRowPatched(row.id, { hiddenFromFeed: hidden });
+  const setVisibility = useCallback(
+    (row: ContentPlanTableRow, next: ContentPlanFeedVisibility) => {
+      const prev = row.feedVisibility;
+      if (prev === next) return;
+      onRowPatched(row.id, { feedVisibility: next });
       startToggle(async () => {
         try {
-          await setContentPlanFeedHidden(roomId, row.id, hidden);
+          await setContentPlanFeedVisibility(roomId, row.id, next);
           toast.success(
-            hidden ? "Disembunyikan dari feed." : "Ditampilkan lagi di feed.",
+            next === ContentPlanFeedVisibility.HIDDEN
+              ? "Dihapus dari feed."
+              : next === ContentPlanFeedVisibility.SHOWN
+                ? "Ditambahkan ke feed."
+                : "Kembali mengikuti aturan otomatis.",
           );
           router.refresh();
         } catch (e) {
-          onRowPatched(row.id, { hiddenFromFeed: !hidden });
-          toast.error(actionErrorMessage(e, "Gagal mengubah tampilan feed."));
+          onRowPatched(row.id, { feedVisibility: prev });
+          toast.error(actionErrorMessage(e, "Gagal mengubah keikutsertaan feed."));
         }
       });
     },
     [onRowPatched, roomId, router],
   );
 
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const from = tabIds.indexOf(String(active.id));
+      const to = tabIds.indexOf(String(over.id));
+      if (from < 0 || to < 0) return;
+      const nextIds = arrayMove(tabIds, from, to);
+      const rollback: ContentPlanFeedRowPatch[] = tabRows.map((r) => ({
+        id: r.id,
+        patch: { feedPosition: r.feedPosition },
+      }));
+      onRowsPatched(nextIds.map((id, i) => ({ id, patch: { feedPosition: i } })));
+      startOrder(async () => {
+        try {
+          await reorderContentPlanFeed(roomId, nextIds);
+          router.refresh();
+        } catch (e) {
+          onRowsPatched(rollback);
+          toast.error(actionErrorMessage(e, "Gagal menyimpan urutan feed."));
+        }
+      });
+    },
+    [tabIds, tabRows, onRowsPatched, roomId, router],
+  );
+
+  const resetOrder = useCallback(() => {
+    const rollback: ContentPlanFeedRowPatch[] = rows
+      .filter((r) => r.feedPosition != null)
+      .map((r) => ({ id: r.id, patch: { feedPosition: r.feedPosition } }));
+    onRowsPatched(rollback.map((p) => ({ id: p.id, patch: { feedPosition: null } })));
+    startOrder(async () => {
+      try {
+        await resetContentPlanFeedOrder(roomId);
+        toast.success("Urutan feed kembali mengikuti tanggal posting.");
+        router.refresh();
+      } catch (e) {
+        onRowsPatched(rollback);
+        toast.error(actionErrorMessage(e, "Gagal mereset urutan feed."));
+      }
+    });
+  }, [rows, onRowsPatched, roomId, router]);
+
+  const tileActions: TileActions = {
+    onPreview,
+    onEdit,
+    onPickCover: (r) => setCoverRowId(r.id),
+    onSetVisibility: setVisibility,
+  };
+
   const avatar = profile.avatarPath ?? defaults.avatarPath;
   /** Bio tampil apa adanya baris per baris; dibatasi agar header profil tidak melar. */
   const bioLines = profile.bio.trim() ? profile.bio.split("\n").slice(0, 8) : [];
+  const dragEnabled = tab === "grid" && tabRows.length > 1 && !orderPending;
 
   return (
     <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -973,9 +1129,30 @@ export function ContentPlanFeedSimulation({
             {scheduledCount > 0 ? `, ${scheduledCount} belum tayang` : ""}.
             {hasActiveFilters ? " Filter toolbar ikut diterapkan." : ""}
           </p>
-          <p className="text-muted-foreground text-[11px]">
-            Urutan: tanggal &amp; jam posting terbaru di kiri atas.
-          </p>
+          <div className="flex items-center gap-2">
+            {hasManualOrder ? (
+              <>
+                <Badge variant="outline" className="text-[10px]">
+                  Urutan manual
+                </Badge>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  disabled={orderPending}
+                  title="Hapus semua posisi manual; grid kembali mengikuti tanggal & jam posting."
+                  onClick={resetOrder}
+                >
+                  <RotateCcw className="size-3" />
+                  Reset ke urutan tanggal
+                </Button>
+              </>
+            ) : (
+              <p className="text-muted-foreground text-[11px]">
+                Seret tile untuk mengatur posisi. Tanpa geser: terbaru di kiri atas.
+              </p>
+            )}
+          </div>
         </div>
 
         <div
@@ -1118,7 +1295,7 @@ export function ContentPlanFeedSimulation({
                   ? "Belum ada baris berjenis Reels yang masuk feed."
                   : rows.length === 0
                     ? "Belum ada baris content plan."
-                    : "Tidak ada baris yang lolos pengaturan feed di panel kanan."}
+                    : "Tidak ada post di feed. Tambahkan dari panel kanan."}
               </p>
               {rows.length === 0 ? (
                 <Button type="button" size="xs" variant="outline" onClick={onAddRow}>
@@ -1127,18 +1304,25 @@ export function ContentPlanFeedSimulation({
                 </Button>
               ) : null}
             </div>
+          ) : tab === "grid" ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={tabIds} strategy={rectSortingStrategy}>
+                <div className="bg-border grid grid-cols-3 gap-px">
+                  {tabRows.map((row) => (
+                    <SortableFeedTile
+                      key={row.id}
+                      row={row}
+                      disabled={!dragEnabled}
+                      {...tileActions}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           ) : (
             <div className="bg-border grid grid-cols-3 gap-px">
               {tabRows.map((row) => (
-                <FeedTile
-                  key={row.id}
-                  row={row}
-                  reelsAspect={tab === "reels"}
-                  onPreview={onPreview}
-                  onEdit={onEdit}
-                  onPickCover={(r) => setCoverRowId(r.id)}
-                  onHide={(r) => setHidden(r, true)}
-                />
+                <FeedTile key={row.id} row={row} reelsAspect {...tileActions} />
               ))}
             </div>
           )}
@@ -1150,20 +1334,66 @@ export function ContentPlanFeedSimulation({
       {/* ------------------------------------------------------------ */}
       <aside className="min-w-0 space-y-4 lg:self-start">
         <section className="border-border bg-card rounded-xl border p-3">
-          <h3 className="text-sm font-semibold">Profil simulasi</h3>
-          <p className="text-muted-foreground mb-3 text-[11px]">
-            Berlaku untuk semua anggota ruangan. Tidak mengubah akun Instagram asli.
-          </p>
-          <FeedProfileForm
-            roomId={roomId}
-            profile={profile}
-            defaults={defaults}
-            onProfileChange={setProfile}
-          />
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">
+              Di luar feed
+              {excludedRows.length > 0 ? (
+                <span className="bg-muted text-muted-foreground ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
+                  {excludedRows.length}
+                </span>
+              ) : null}
+            </h3>
+            <Button type="button" size="xs" variant="outline" onClick={onAddRow}>
+              <Plus className="size-3" />
+              Baris baru
+            </Button>
+          </div>
+          {excludedRows.length === 0 ? (
+            <p className="text-muted-foreground text-[11px]">
+              Semua baris sudah tampil di feed. Pakai tombol X di tile (saat hover) untuk
+              mengeluarkan post, atau buat baris baru.
+            </p>
+          ) : (
+            <>
+              <p className="text-muted-foreground mb-1.5 text-[11px]">
+                Klik Tambah untuk memasukkan post ke grid (selalu tampil, mengabaikan aturan
+                otomatis).
+              </p>
+              <ul className="flex max-h-72 flex-col gap-0.5 overflow-y-auto pr-0.5">
+                {excludedRows.map(({ row: r, reason }) => (
+                  <li
+                    key={r.id}
+                    className="hover:bg-muted/40 flex items-center gap-2 rounded-md px-1.5 py-1"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs">{rowTitle(r)}</p>
+                      <p className="text-muted-foreground text-[10px]">
+                        {FEED_EXCLUSION_LABEL[reason]}
+                        {r.tanggalPosting ? ` · ${feedDateLabel(r)}` : ""}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      disabled={togglePending}
+                      onClick={() => setVisibility(r, ContentPlanFeedVisibility.SHOWN)}
+                    >
+                      <Plus className="size-3" />
+                      Tambah
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
 
         <section className="border-border bg-card rounded-xl border p-3">
-          <h3 className="mb-1 text-sm font-semibold">Isi feed</h3>
+          <h3 className="mb-1 text-sm font-semibold">Aturan otomatis</h3>
+          <p className="text-muted-foreground mb-1 text-[11px]">
+            Berlaku untuk baris yang belum diatur manual lewat Tambah / Hapus.
+          </p>
           <div className="-mx-1.5 flex flex-col">
             <FeedToggleRow
               id="cp-feed-include-archived"
@@ -1193,43 +1423,16 @@ export function ContentPlanFeedSimulation({
         </section>
 
         <section className="border-border bg-card rounded-xl border p-3">
-          <h3 className="text-sm font-semibold">
-            Disembunyikan
-            {hiddenRows.length > 0 ? (
-              <span className="bg-muted text-muted-foreground ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
-                {hiddenRows.length}
-              </span>
-            ) : null}
-          </h3>
-          {hiddenRows.length === 0 ? (
-            <p className="text-muted-foreground mt-1 text-[11px]">
-              Pakai menu titik tiga di tile untuk menyembunyikan konten dari simulasi
-              (mis. story atau konten non-grid).
-            </p>
-          ) : (
-            <ul className="mt-2 flex flex-col gap-1">
-              {hiddenRows.map((r) => (
-                <li
-                  key={r.id}
-                  className="hover:bg-muted/40 flex items-center gap-2 rounded-md px-1.5 py-1"
-                >
-                  <span className="min-w-0 flex-1 truncate text-xs">
-                    {r.konten?.trim() || JENIS_LABEL[r.jenisKonten]}
-                  </span>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="ghost"
-                    disabled={togglePending}
-                    onClick={() => setHidden(r, false)}
-                  >
-                    <Eye className="size-3" />
-                    Tampilkan
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <h3 className="text-sm font-semibold">Profil simulasi</h3>
+          <p className="text-muted-foreground mb-3 text-[11px]">
+            Berlaku untuk semua anggota ruangan. Tidak mengubah akun Instagram asli.
+          </p>
+          <FeedProfileForm
+            roomId={roomId}
+            profile={profile}
+            defaults={defaults}
+            onProfileChange={setProfile}
+          />
         </section>
       </aside>
 
