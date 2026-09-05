@@ -1,5 +1,6 @@
 import {
   ContentPlanJenis,
+  ContentPlanPlatform,
   ContentPlanStatusKerja,
   ContentPlanUsage,
 } from "@prisma/client";
@@ -29,6 +30,63 @@ export const USAGE_LABEL: Record<ContentPlanUsage, string> = {
   [ContentPlanUsage.CONSIDERATION]: "Consideration",
   [ContentPlanUsage.CONVERSION]: "Conversion",
 };
+
+/** Urutan tampil platform (tabel, form, filter): yang paling sering dipakai di depan. */
+export const PLATFORM_ORDER: ContentPlanPlatform[] = [
+  ContentPlanPlatform.INSTAGRAM,
+  ContentPlanPlatform.TIKTOK,
+  ContentPlanPlatform.THREADS,
+  ContentPlanPlatform.FACEBOOK,
+  ContentPlanPlatform.YOUTUBE,
+  ContentPlanPlatform.X,
+  ContentPlanPlatform.LINKEDIN,
+];
+
+export const PLATFORM_LABEL: Record<ContentPlanPlatform, string> = {
+  [ContentPlanPlatform.INSTAGRAM]: "Instagram",
+  [ContentPlanPlatform.TIKTOK]: "TikTok",
+  [ContentPlanPlatform.THREADS]: "Threads",
+  [ContentPlanPlatform.FACEBOOK]: "Facebook",
+  [ContentPlanPlatform.YOUTUBE]: "YouTube",
+  [ContentPlanPlatform.X]: "X",
+  [ContentPlanPlatform.LINKEDIN]: "LinkedIn",
+};
+
+/** Singkatan untuk badge sempit di tabel. */
+export const PLATFORM_SHORT_LABEL: Record<ContentPlanPlatform, string> = {
+  [ContentPlanPlatform.INSTAGRAM]: "IG",
+  [ContentPlanPlatform.TIKTOK]: "TT",
+  [ContentPlanPlatform.THREADS]: "TH",
+  [ContentPlanPlatform.FACEBOOK]: "FB",
+  [ContentPlanPlatform.YOUTUBE]: "YT",
+  [ContentPlanPlatform.X]: "X",
+  [ContentPlanPlatform.LINKEDIN]: "IN",
+};
+
+export const PLATFORM_BADGE_CLASS: Record<ContentPlanPlatform, string> = {
+  [ContentPlanPlatform.INSTAGRAM]:
+    "border-pink-500/35 bg-pink-500/12 text-pink-700 dark:text-pink-300",
+  [ContentPlanPlatform.TIKTOK]:
+    "border-slate-700/40 bg-slate-700/12 text-slate-800 dark:border-slate-300/40 dark:text-slate-200",
+  [ContentPlanPlatform.THREADS]:
+    "border-zinc-500/35 bg-zinc-500/12 text-zinc-700 dark:text-zinc-300",
+  [ContentPlanPlatform.FACEBOOK]:
+    "border-blue-600/35 bg-blue-600/12 text-blue-700 dark:text-blue-300",
+  [ContentPlanPlatform.YOUTUBE]:
+    "border-red-500/35 bg-red-500/12 text-red-700 dark:text-red-300",
+  [ContentPlanPlatform.X]:
+    "border-neutral-600/35 bg-neutral-600/12 text-neutral-800 dark:text-neutral-200",
+  [ContentPlanPlatform.LINKEDIN]:
+    "border-sky-700/35 bg-sky-700/12 text-sky-800 dark:text-sky-300",
+};
+
+/** Urutkan daftar platform sesuai PLATFORM_ORDER, buang duplikat dan nilai asing. */
+export function sortPlatforms(
+  list: readonly ContentPlanPlatform[] | null | undefined,
+): ContentPlanPlatform[] {
+  const set = new Set(list ?? []);
+  return PLATFORM_ORDER.filter((p) => set.has(p));
+}
 
 export const JENIS_BADGE_CLASS: Record<ContentPlanJenis, string> = {
   [ContentPlanJenis.REELS]:

@@ -6,10 +6,12 @@ import path from "node:path";
 import { revalidatePath } from "next/cache";
 import {
   ContentPlanJenis,
+  ContentPlanPlatform,
   ContentPlanStatusKerja,
   ContentPlanUsage,
 } from "@prisma/client";
 import { z } from "zod";
+import { sortPlatforms } from "@/lib/content-plan-ui";
 import { prisma } from "@/lib/prisma";
 import {
   absolutePathFromStoredPublicPath,
@@ -109,6 +111,7 @@ const upsertSchema = z.object({
   konten: z.string().min(1),
   jenisKonten: z.nativeEnum(ContentPlanJenis),
   usage: z.nativeEnum(ContentPlanUsage),
+  platforms: z.array(z.nativeEnum(ContentPlanPlatform)).optional().default([]),
   detailKonten: z.string().optional().nullable(),
   copywritingLink: z.string().optional().nullable(),
   designLink: z.string().optional().nullable(),
@@ -145,6 +148,7 @@ export async function upsertRoomContentPlanItem(
     normalizedPicIds[0] ?? (data.picUserId && data.picUserId.trim() ? data.picUserId : null);
   await assertPicInRoom(data.roomId, fallbackPicId);
   await assertPicsInRoom(data.roomId, normalizedPicIds);
+  const platforms = sortPlatforms(data.platforms);
 
   if (data.id) {
     const existing = await prisma.roomContentPlanItem.findUniqueOrThrow({
@@ -160,6 +164,7 @@ export async function upsertRoomContentPlanItem(
         konten: data.konten,
         jenisKonten: data.jenisKonten,
         usage: data.usage,
+        platforms,
         detailKonten: data.detailKonten ?? null,
         copywritingLink: data.copywritingLink?.trim() || null,
         designLink: data.designLink?.trim() || null,
@@ -189,6 +194,7 @@ export async function upsertRoomContentPlanItem(
       konten: data.konten,
       jenisKonten: data.jenisKonten,
       usage: data.usage,
+      platforms,
       detailKonten: data.detailKonten ?? null,
       copywritingLink: data.copywritingLink?.trim() || null,
       designLink: data.designLink?.trim() || null,
@@ -249,6 +255,32 @@ export async function reorderRoomContentPlanItems(
     ),
   );
   revalidatePath(`/room/${roomId}/content-planning`);
+}
+
+const archiveSchema = z.object({
+  roomId: z.string().min(1),
+  itemIds: z.array(z.string().min(1)).min(1).max(2000),
+  archived: z.boolean(),
+});
+
+/**
+ * Arsipkan / pulihkan baris content plan. Baris arsip tidak dihapus, hanya
+ * disembunyikan dari tabel utama, Gantt, saran jam posting, dan daftar kerja
+ * PIC, jadi riwayat konten yang sudah selesai tetap bisa dibuka lewat tab Arsip.
+ */
+export async function setRoomContentPlanItemsArchived(
+  input: z.infer<typeof archiveSchema>,
+): Promise<{ updated: number }> {
+  const session = await requireTasksRoomHubSession();
+  const data = archiveSchema.parse(input);
+  await assertRoomMember(data.roomId, session.user.id);
+  const ids = [...new Set(data.itemIds)];
+  const result = await prisma.roomContentPlanItem.updateMany({
+    where: { id: { in: ids }, roomId: data.roomId },
+    data: { archivedAt: data.archived ? new Date() : null },
+  });
+  revalidateContentPlanPaths(data.roomId);
+  return { updated: result.count };
 }
 
 export async function deleteRoomContentPlanItem(roomId: string, itemId: string) {

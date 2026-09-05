@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-05-content-plan-platform-arsip",
+    date: "2026-09-05",
+    title: "Content Plan: kolom Platform dan arsip konten selesai",
+    category: "new",
+    description:
+      "Tabel Content Plan sekarang punya kolom Platform untuk mencatat di mana konten tayang (Instagram, TikTok, Threads, Facebook, YouTube, X, LinkedIn), dan satu baris boleh punya lebih dari satu platform. Konten yang sudah selesai kini bisa diarsipkan supaya tidak memenuhi tabel utama, tanpa menghapus datanya.",
+    highlights: [
+      "Kolom Platform bisa diisi langsung dari tabel (centang beberapa sekaligus) maupun dari form tambah/edit baris",
+      "Filter baru: tampilkan hanya konten untuk platform tertentu",
+      "Menu baris (titik tiga) punya pilihan Arsipkan; baris arsip hilang dari tabel utama, Gantt, saran jam AI, dan daftar tugas PIC di My Work",
+      "Tombol Arsip di toolbar membuka daftar arsip; dari sana baris bisa dipulihkan kembali",
+      "Tombol Arsipkan selesai muncul otomatis bila ada baris yang copy dan design-nya sudah Dipublikasikan, untuk mengarsipkan semuanya sekaligus",
+    ],
+  },
+  {
     id: "2026-09-03-logistik-akses-ruang-kerja-studio",
     date: "2026-09-03",
     title: "Tim Logistik kini punya seluruh ruang kerja studio",
