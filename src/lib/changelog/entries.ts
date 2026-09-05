@@ -45,10 +45,12 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
       "Tab baru Feed di Content Plan menampilkan tiruan profil Instagram lengkap dengan grid 3 kolom, supaya tim bisa melihat bagaimana rencana konten akan terlihat setelah semuanya tayang. Urutan tile mengikuti tanggal dan jam posting (terbaru di kiri atas), dan profilnya bisa disesuaikan per ruangan.",
     highlights: [
       "Tombol Feed di sebelah Tabel dan Gantt; tile memakai file design baris sebagai thumbnail, dengan ikon carousel/reels seperti Instagram",
+      "Seret tile untuk mengatur posisi post secara manual; tombol Reset mengembalikan ke urutan tanggal & jam posting",
+      "Tambah atau keluarkan post dari feed: tombol X di tile (saat hover) mengeluarkan, panel Di luar feed memasukkan kembali, tombol Baris baru membuat konten baru",
       "Konten yang belum tayang diberi chip tanggal, baris tanpa tanggal ditaruh paling atas dengan chip kuning",
       "Panel kanan untuk menyesuaikan username, nama, bio, avatar, dan angka pengikut (default dari brand/logo ruangan)",
       "Pilih slide mana yang jadi cover grid, atau unggah cover khusus (mis. thumbnail reels) lewat menu titik tiga di tile",
-      "Baris tertentu bisa disembunyikan dari feed; arsip, platform non-Instagram, dan baris tanpa tanggal bisa disertakan atau tidak",
+      "Aturan otomatis untuk baris yang belum diatur manual: arsip, platform non-Instagram, dan baris tanpa tanggal bisa disertakan atau tidak",
       "Klik tile untuk membuka preview Reels/Carousel/Single Feed yang sudah ada; tab Reels menampilkan hanya konten reels",
     ],
   },

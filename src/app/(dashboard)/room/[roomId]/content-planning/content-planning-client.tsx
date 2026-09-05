@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ContentPlanFeedVisibility,
   ContentPlanJenis,
   ContentPlanPlatform,
   ContentPlanStatusKerja,
@@ -90,6 +91,7 @@ import {
   ContentPlanFeedSimulation,
   type ContentPlanFeedDefaults,
   type ContentPlanFeedProfileData,
+  type ContentPlanFeedRowPatch,
 } from "./content-plan-feed";
 import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
@@ -182,8 +184,10 @@ export type ContentPlanTableRow = {
   feedCoverIndex: number;
   /** Simulasi feed: cover kustom (mengalahkan feedCoverIndex bila terisi). */
   feedCoverPath: string | null;
-  /** Simulasi feed: true = baris tidak ditampilkan di grid. */
-  hiddenFromFeed: boolean;
+  /** Simulasi feed: AUTO ikut aturan profil, SHOWN selalu tampil, HIDDEN tidak pernah. */
+  feedVisibility: ContentPlanFeedVisibility;
+  /** Simulasi feed: posisi manual di grid (0 = kiri atas); null = otomatis ikut tanggal. */
+  feedPosition: number | null;
   /** Dipakai Gantt sebagai titik awal bar copywriting. */
   createdAt?: Date | string | null;
   pic: Pick<User, "id" | "name" | "email" | "image"> | null;
@@ -1191,7 +1195,8 @@ export function ContentPlanningClient({
         archivedAt: row.archivedAt ?? null,
         feedCoverIndex: row.feedCoverIndex ?? 0,
         feedCoverPath: row.feedCoverPath ?? null,
-        hiddenFromFeed: row.hiddenFromFeed ?? false,
+        feedVisibility: row.feedVisibility ?? ContentPlanFeedVisibility.AUTO,
+        feedPosition: row.feedPosition ?? null,
         picUserIds: ids,
         pics: pics.length ? pics : row.pic ? [row.pic] : [],
       };
@@ -1742,13 +1747,25 @@ export function ContentPlanningClient({
     [tableRows, openEdit],
   );
 
-  /** Patch optimistik satu baris di state lokal (dipakai simulasi feed: cover & sembunyi). */
+  /** Patch optimistik satu baris di state lokal (dipakai simulasi feed: cover & keikutsertaan). */
   const patchRowLocal = useCallback(
     (rowId: string, patch: Partial<ContentPlanTableRow>) => {
       setTableRows((rows) => rows.map((r) => (r.id === rowId ? { ...r, ...patch } : r)));
     },
     [],
   );
+
+  /** Patch optimistik banyak baris sekaligus (urutan manual feed). */
+  const patchRowsLocal = useCallback((patches: ContentPlanFeedRowPatch[]) => {
+    if (patches.length === 0) return;
+    const byId = new Map(patches.map((p) => [p.id, p.patch]));
+    setTableRows((rows) =>
+      rows.map((r) => {
+        const patch = byId.get(r.id);
+        return patch ? { ...r, ...patch } : r;
+      }),
+    );
+  }, []);
 
   /** Gantt: geser bar/milestone → simpan tanggal baru lewat jalur inline save. */
   const onGanttReschedule = useCallback(
@@ -3331,6 +3348,7 @@ export function ContentPlanningClient({
             onEdit={openEdit}
             onAddRow={openCreate}
             onRowPatched={patchRowLocal}
+            onRowsPatched={patchRowsLocal}
           />
         </div>
       ) : view === "gantt" ? (

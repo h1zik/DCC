@@ -230,6 +230,15 @@ enum ContentPlanPlatform {
   LINKEDIN
 }
 
+/**
+ * Keikutsertaan baris content plan di simulasi feed Instagram.
+ */
+enum ContentPlanFeedVisibility {
+  AUTO
+  SHOWN
+  HIDDEN
+}
+
 enum ScheduleRecurrence {
   NONE
   DAILY
@@ -1143,9 +1152,15 @@ model RoomContentPlanItem {
    */
   feedCoverPath        String?
   /**
-   * true = baris tidak ditampilkan di simulasi feed (mis. story / konten non-grid).
+   * Simulasi feed: AUTO ikut aturan profil (arsip/platform/tanpa tanggal),
+   * SHOWN selalu tampil, HIDDEN tidak pernah tampil (mis. story / non-grid).
    */
-  hiddenFromFeed       Boolean                @default(false)
+  feedVisibility       ContentPlanFeedVisibility @default(AUTO)
+  /**
+   * Simulasi feed: posisi manual di grid (0 = kiri atas). Null = otomatis
+   * mengikuti tanggal & jam posting. Diisi saat pengguna menggeser tile.
+   */
+  feedPosition         Int?
   createdById          String
   createdBy            User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt            DateTime               @default(now())
