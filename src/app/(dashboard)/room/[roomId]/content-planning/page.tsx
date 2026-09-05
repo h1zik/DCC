@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
 import { ContentPlanningClient } from "./content-planning-client";
+import type { ContentPlanFeedDefaults } from "./content-plan-feed";
 
 type PageProps = { params: Promise<{ roomId: string }> };
 
@@ -13,7 +14,7 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
     redirect(`/room/${roomId}/tasks`);
   }
 
-  const [items, memberRows, projects] = await Promise.all([
+  const [items, memberRows, projects, feedProfileRow] = await Promise.all([
     prisma.roomContentPlanItem.findMany({
       where: { roomId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -32,10 +33,31 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
       orderBy: { createdAt: "asc" },
       select: { id: true },
     }),
+    prisma.roomContentPlanFeedProfile.findUnique({
+      where: { roomId },
+      select: {
+        username: true,
+        displayName: true,
+        bio: true,
+        avatarPath: true,
+        followersLabel: true,
+        followingLabel: true,
+        includeArchived: true,
+        instagramOnly: true,
+        includeUndated: true,
+      },
+    }),
   ]);
 
   const picUserOptions = memberRows.map((m) => m.user);
   const kanbanProjectId = projects[0]?.id ?? null;
+
+  /** Simulasi feed: identitas awal diambil dari brand ruangan (fallback nama ruangan). */
+  const feedDefaults: ContentPlanFeedDefaults = {
+    username: room.brand?.name?.trim() || room.name,
+    displayName: room.brand?.name?.trim() || room.name,
+    avatarPath: room.logoImage ?? room.brand?.logo ?? null,
+  };
 
   return (
     <ContentPlanningClient
@@ -43,6 +65,8 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
       items={items}
       picUserOptions={picUserOptions}
       kanbanProjectId={kanbanProjectId}
+      feedProfile={feedProfileRow}
+      feedDefaults={feedDefaults}
     />
   );
 }

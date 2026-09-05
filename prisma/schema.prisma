@@ -664,6 +664,7 @@ model Room {
   documentFolderShares RoomDocumentFolderShare[]
   members              RoomMember[]
   contentPlanItems     RoomContentPlanItem[]
+  contentPlanFeed      RoomContentPlanFeedProfile?
   /**
    * Judul & urutan kolom Kanban per fase proses (diatur manager ruangan).
    */
@@ -1131,6 +1132,20 @@ model RoomContentPlanItem {
    * dari tabel utama, jadwal, dan daftar kerja PIC, tapi datanya tetap ada.
    */
   archivedAt           DateTime?
+  /**
+   * Simulasi feed Instagram: indeks slide design yang dipakai sebagai cover
+   * di grid profil (carousel bisa memilih slide selain yang pertama).
+   */
+  feedCoverIndex       Int                    @default(0)
+  /**
+   * Cover kustom untuk grid feed (mis. thumbnail reels). Mengalahkan
+   * `feedCoverIndex` bila terisi. Path publik di /uploads/room-content-plan/{itemId}/.
+   */
+  feedCoverPath        String?
+  /**
+   * true = baris tidak ditampilkan di simulasi feed (mis. story / konten non-grid).
+   */
+  hiddenFromFeed       Boolean                @default(false)
   createdById          String
   createdBy            User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt            DateTime               @default(now())
@@ -1138,6 +1153,40 @@ model RoomContentPlanItem {
   tasksFromContentPlan Task[]
 
   @@index([roomId, archivedAt])
+}
+
+/**
+ * Pengaturan simulasi feed Instagram per ruangan: identitas profil tiruan
+ * (username, nama, bio, avatar, angka pengikut) dan preferensi baris mana
+ * yang ikut ditampilkan. Satu ruangan = satu profil.
+ */
+model RoomContentPlanFeedProfile {
+  id              String   @id @default(cuid())
+  roomId          String   @unique
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  username        String   @default("") @db.VarChar(60)
+  displayName     String   @default("") @db.VarChar(80)
+  bio             String   @default("") @db.VarChar(400)
+  /**
+   * Path publik avatar (/uploads/room-content-plan-feed/{roomId}/...). Kosong = pakai logo ruangan/brand.
+   */
+  avatarPath      String?
+  followersLabel  String   @default("12,4K") @db.VarChar(20)
+  followingLabel  String   @default("180") @db.VarChar(20)
+  /**
+   * Sertakan baris arsip (konten yang sudah tayang) supaya feed terlihat lengkap.
+   */
+  includeArchived Boolean  @default(true)
+  /**
+   * true = hanya baris berplatform Instagram (atau belum diisi) yang ikut tampil.
+   */
+  instagramOnly   Boolean  @default(true)
+  /**
+   * Sertakan baris tanpa tanggal posting (ditaruh paling atas sebagai rencana berikutnya).
+   */
+  includeUndated  Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model RoomMember {
