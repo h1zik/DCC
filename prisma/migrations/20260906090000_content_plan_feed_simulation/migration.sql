@@ -1,11 +1,8 @@
--- Simulasi feed Instagram di Content Plan: profil tiruan per ruangan + cover/keikutsertaan/posisi per baris.
-CREATE TYPE "ContentPlanFeedVisibility" AS ENUM ('AUTO', 'SHOWN', 'HIDDEN');
-
+-- Simulasi feed Instagram di Content Plan: profil tiruan per ruangan + cover/sembunyi per baris.
 ALTER TABLE "RoomContentPlanItem"
   ADD COLUMN "feedCoverIndex" INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN "feedCoverPath" TEXT,
-  ADD COLUMN "feedVisibility" "ContentPlanFeedVisibility" NOT NULL DEFAULT 'AUTO',
-  ADD COLUMN "feedPosition" INTEGER;
+  ADD COLUMN "hiddenFromFeed" BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE "RoomContentPlanFeedProfile" (
   "id" TEXT NOT NULL,
