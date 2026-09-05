@@ -68,6 +68,8 @@ import {
   contentPlanHasStoredFiles,
 } from "@/lib/content-plan-files";
 import {
+  isContentPlanImagePath,
+  isContentPlanVideoPath,
   JENIS_BADGE_CLASS,
   JENIS_LABEL,
   PLATFORM_BADGE_CLASS,
@@ -84,6 +86,11 @@ import {
   ContentPlanGantt,
   type ContentPlanGanttField,
 } from "./content-plan-gantt";
+import {
+  ContentPlanFeedSimulation,
+  type ContentPlanFeedDefaults,
+  type ContentPlanFeedProfileData,
+} from "./content-plan-feed";
 import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
@@ -116,6 +123,7 @@ import {
   Plus,
   Search,
   Send,
+  Smartphone,
   Sparkles,
   Trash2,
   UserCircle,
@@ -170,6 +178,12 @@ export type ContentPlanTableRow = {
   catatan: string | null;
   /** Terisi bila baris sudah diarsipkan (disembunyikan dari tabel utama). */
   archivedAt: Date | string | null;
+  /** Simulasi feed: indeks slide design yang dipakai sebagai cover grid. */
+  feedCoverIndex: number;
+  /** Simulasi feed: cover kustom (mengalahkan feedCoverIndex bila terisi). */
+  feedCoverPath: string | null;
+  /** Simulasi feed: true = baris tidak ditampilkan di grid. */
+  hiddenFromFeed: boolean;
   /** Dipakai Gantt sebagai titik awal bar copywriting. */
   createdAt?: Date | string | null;
   pic: Pick<User, "id" | "name" | "email" | "image"> | null;
@@ -262,15 +276,8 @@ function CpColumnHeader({
   );
 }
 
-function isImagePath(publicPath: string): boolean {
-  const lower = publicPath.split("?")[0]?.toLowerCase() ?? "";
-  return /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(lower);
-}
-
-function isVideoPath(publicPath: string): boolean {
-  const lower = publicPath.split("?")[0]?.toLowerCase() ?? "";
-  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(lower);
-}
+const isImagePath = isContentPlanImagePath;
+const isVideoPath = isContentPlanVideoPath;
 
 /** Semua jenis konten memakai frame yang sama dengan preview carousel. */
 const PREVIEW_MEDIA_ASPECT = "aspect-[4/5]";
@@ -1116,11 +1123,16 @@ export function ContentPlanningClient({
   items,
   picUserOptions,
   kanbanProjectId,
+  feedProfile,
+  feedDefaults,
 }: {
   roomId: string;
   items: ContentPlanTableRow[];
   picUserOptions: PicOption[];
   kanbanProjectId: string | null;
+  /** Profil simulasi feed Instagram ruangan (null = belum pernah disesuaikan). */
+  feedProfile: ContentPlanFeedProfileData | null;
+  feedDefaults: ContentPlanFeedDefaults;
 }) {
   const router = useRouter();
   const copyFileRef = useRef<HTMLInputElement>(null);
@@ -1177,6 +1189,9 @@ export function ContentPlanningClient({
         usage: row.usage ?? ContentPlanUsage.AWARENESS,
         platforms: sortPlatforms(row.platforms),
         archivedAt: row.archivedAt ?? null,
+        feedCoverIndex: row.feedCoverIndex ?? 0,
+        feedCoverPath: row.feedCoverPath ?? null,
+        hiddenFromFeed: row.hiddenFromFeed ?? false,
         picUserIds: ids,
         pics: pics.length ? pics : row.pic ? [row.pic] : [],
       };
@@ -1207,7 +1222,7 @@ export function ContentPlanningClient({
   const [picFilter, setPicFilter] = useState<string>("all");
   const [platformFilter, setPlatformFilter] = useState<ContentPlanPlatform | "all">("all");
   const [showFilters, setShowFilters] = useState(false);
-  const [view, setView] = useState<"table" | "gantt">("table");
+  const [view, setView] = useState<"table" | "gantt" | "feed">("table");
   /** true = tabel menampilkan baris arsip (konten selesai), bukan baris aktif. */
   const [showArchived, setShowArchived] = useState(false);
   const [archivePending, startArchive] = useTransition();
@@ -1258,10 +1273,10 @@ export function ContentPlanningClient({
     return n;
   }, [jenisFilter, statusCwFilter, statusDesignFilter, picFilter, platformFilter]);
 
-  const filteredRows = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    const base = showArchived ? archivedRows : activeRows;
-    return base.filter((row) => {
+  /** Predikat filter toolbar (pencarian + filter kolom) — dipakai tabel, Gantt, dan feed. */
+  const matchesFilters = useCallback(
+    (row: ContentPlanTableRow): boolean => {
+      const q = searchQuery.trim().toLowerCase();
       if (q) {
         const haystack = `${row.konten ?? ""} ${row.detailKonten ?? ""}`.toLowerCase();
         if (!haystack.includes(q)) return false;
@@ -1281,18 +1296,23 @@ export function ContentPlanningClient({
         if (!ids.includes(picFilter)) return false;
       }
       return true;
-    });
-  }, [
-    activeRows,
-    archivedRows,
-    showArchived,
-    searchQuery,
-    jenisFilter,
-    platformFilter,
-    statusCwFilter,
-    statusDesignFilter,
-    picFilter,
-  ]);
+    },
+    [searchQuery, jenisFilter, platformFilter, statusCwFilter, statusDesignFilter, picFilter],
+  );
+
+  const filteredRows = useMemo(() => {
+    const base = showArchived ? archivedRows : activeRows;
+    return base.filter(matchesFilters);
+  }, [activeRows, archivedRows, showArchived, matchesFilters]);
+
+  /**
+   * Simulasi feed melihat baris aktif + arsip sekaligus (toggle arsipnya ada di
+   * panel feed sendiri), tapi tetap menghormati pencarian & filter toolbar.
+   */
+  const feedSourceRows = useMemo(
+    () => [...activeRows, ...archivedRows].filter(matchesFilters),
+    [activeRows, archivedRows, matchesFilters],
+  );
 
   const resetFilters = useCallback(() => {
     setSearchQuery("");
@@ -1720,6 +1740,14 @@ export function ContentPlanningClient({
       if (row) openEdit(row);
     },
     [tableRows, openEdit],
+  );
+
+  /** Patch optimistik satu baris di state lokal (dipakai simulasi feed: cover & sembunyi). */
+  const patchRowLocal = useCallback(
+    (rowId: string, patch: Partial<ContentPlanTableRow>) => {
+      setTableRows((rows) => rows.map((r) => (r.id === rowId ? { ...r, ...patch } : r)));
+    },
+    [],
   );
 
   /** Gantt: geser bar/milestone → simpan tanggal baru lewat jalur inline save. */
@@ -2459,6 +2487,7 @@ export function ContentPlanningClient({
             [
               { key: "table", label: "Tabel", icon: LayoutList },
               { key: "gantt", label: "Gantt", icon: ChartGantt },
+              { key: "feed", label: "Feed", icon: Smartphone },
             ] as const
           ).map((v) => (
             <button
@@ -2478,6 +2507,7 @@ export function ContentPlanningClient({
             </button>
           ))}
         </div>
+        {view !== "feed" ? (
         <Button
           type="button"
           size="sm"
@@ -2501,6 +2531,7 @@ export function ContentPlanningClient({
             </span>
           ) : null}
         </Button>
+        ) : null}
         <Button
           type="button"
           size="sm"
@@ -3284,7 +3315,24 @@ export function ContentPlanningClient({
         </div>
       ) : null}
 
-      {view === "gantt" ? (
+      {view === "feed" ? (
+        <div className="min-w-0 max-w-full">
+          <ContentPlanFeedSimulation
+            roomId={roomId}
+            rows={feedSourceRows}
+            profile={feedProfile}
+            defaults={feedDefaults}
+            hasActiveFilters={hasActiveFilters}
+            onPreview={(row) => {
+              setPreviewRow(row);
+              setPreviewIndex(0);
+            }}
+            onEdit={openEdit}
+            onAddRow={openCreate}
+            onRowPatched={patchRowLocal}
+          />
+        </div>
+      ) : view === "gantt" ? (
         <div className="flex min-w-0 max-w-full flex-col md:min-h-0 md:flex-1">
           <ContentPlanGantt
             rows={filteredRows}

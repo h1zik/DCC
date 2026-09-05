@@ -292,12 +292,14 @@ export async function deleteRoomContentPlanItem(roomId: string, itemId: string) 
       roomId: true,
       copywritingFilePath: true,
       designFilePaths: true,
+      feedCoverPath: true,
     },
   });
   if (item.roomId !== roomId) {
     throw new Error("Item tidak termasuk ruangan ini.");
   }
   await unlinkIfSafe(item.copywritingFilePath);
+  await unlinkIfSafe(item.feedCoverPath);
   for (const p of item.designFilePaths) {
     await unlinkIfSafe(p);
   }

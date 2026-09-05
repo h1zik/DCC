@@ -80,6 +80,35 @@ export const PLATFORM_BADGE_CLASS: Record<ContentPlanPlatform, string> = {
     "border-sky-700/35 bg-sky-700/12 text-sky-800 dark:text-sky-300",
 };
 
+/** Path publik file design yang bisa dirender sebagai gambar di preview/feed. */
+export function isContentPlanImagePath(publicPath: string): boolean {
+  const lower = publicPath.split("?")[0]?.toLowerCase() ?? "";
+  return /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(lower);
+}
+
+/** Path publik file design yang bisa dirender sebagai video di preview/feed. */
+export function isContentPlanVideoPath(publicPath: string): boolean {
+  const lower = publicPath.split("?")[0]?.toLowerCase() ?? "";
+  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(lower);
+}
+
+/**
+ * Cover yang dipakai di grid simulasi feed: cover kustom menang, lalu slide
+ * design ke-`feedCoverIndex` (di-clamp bila slide sudah dihapus), lalu null.
+ */
+export function contentPlanFeedCoverPath(row: {
+  designFilePaths: string[];
+  feedCoverIndex: number;
+  feedCoverPath: string | null;
+}): string | null {
+  const custom = row.feedCoverPath?.trim();
+  if (custom) return custom;
+  const slides = row.designFilePaths ?? [];
+  if (slides.length === 0) return null;
+  const idx = Math.max(0, Math.min(row.feedCoverIndex ?? 0, slides.length - 1));
+  return slides[idx] ?? null;
+}
+
 /** Urutkan daftar platform sesuai PLATFORM_ORDER, buang duplikat dan nilai asing. */
 export function sortPlatforms(
   list: readonly ContentPlanPlatform[] | null | undefined,
