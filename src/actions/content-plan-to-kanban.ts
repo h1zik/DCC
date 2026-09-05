@@ -66,7 +66,7 @@ export async function createKanbanTasksFromContentPlanDesign(params: {
     : RoomTaskProcess.BRAND_AND_DESIGN;
 
   const rows = await prisma.roomContentPlanItem.findMany({
-    where: { roomId: params.roomId, id: { in: requested } },
+    where: { roomId: params.roomId, id: { in: requested }, archivedAt: null },
     select: {
       id: true,
       konten: true,

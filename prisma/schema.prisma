@@ -217,6 +217,19 @@ enum ContentPlanStatusKerja {
   DIJEDA
 }
 
+/**
+ * Platform tayang konten di content planning (bisa lebih dari satu per baris).
+ */
+enum ContentPlanPlatform {
+  INSTAGRAM
+  TIKTOK
+  THREADS
+  FACEBOOK
+  YOUTUBE
+  X
+  LINKEDIN
+}
+
 enum ScheduleRecurrence {
   NONE
   DAILY
@@ -1083,6 +1096,10 @@ model RoomContentPlanItem {
   konten               String                 @default("")
   jenisKonten          ContentPlanJenis       @default(REELS)
   usage                ContentPlanUsage       @default(AWARENESS)
+  /**
+   * Platform tayang (Instagram, TikTok, dst). Kosong = belum ditentukan.
+   */
+  platforms            ContentPlanPlatform[]  @default([])
   detailKonten         String?
   copywritingFilePath  String?
   copywritingLink      String?
@@ -1109,11 +1126,18 @@ model RoomContentPlanItem {
   jamPosting           String?
   catatan              String?
   sortOrder            Int                    @default(0)
+  /**
+   * Terisi saat baris diarsipkan (konten selesai). Baris arsip disembunyikan
+   * dari tabel utama, jadwal, dan daftar kerja PIC, tapi datanya tetap ada.
+   */
+  archivedAt           DateTime?
   createdById          String
   createdBy            User                   @relation("ContentPlanItemCreator", fields: [createdById], references: [id], onDelete: Cascade)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   tasksFromContentPlan Task[]
+
+  @@index([roomId, archivedAt])
 }
 
 model RoomMember {

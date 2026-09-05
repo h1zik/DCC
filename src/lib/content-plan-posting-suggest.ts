@@ -60,6 +60,7 @@ export async function suggestPostingTimesCore(
   const items = await prisma.roomContentPlanItem.findMany({
     where: {
       roomId,
+      archivedAt: null,
       tanggalPosting: { gte: startOfTodayWibUtc(now) },
     },
     orderBy: [{ tanggalPosting: "asc" }, { createdAt: "asc" }],

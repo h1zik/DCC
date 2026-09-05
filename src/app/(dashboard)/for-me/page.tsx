@@ -103,6 +103,7 @@ export default async function MyTasksPage() {
     }),
     prisma.roomContentPlanItem.findMany({
       where: {
+        archivedAt: null,
         OR: [
           { picUserId: session.user.id },
           { picUserIds: { has: session.user.id } },

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import {
   ContentPlanJenis,
+  ContentPlanPlatform,
   ContentPlanStatusKerja,
   ContentPlanUsage,
   type User,
@@ -23,6 +24,7 @@ import {
   deleteRoomContentPlanItem,
   removeContentPlanDesignSlide,
   reorderRoomContentPlanItems,
+  setRoomContentPlanItemsArchived,
   uploadContentPlanCopywritingFile,
   uploadContentPlanDesignFile,
   upsertRoomContentPlanItem,
@@ -33,8 +35,10 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -66,6 +70,11 @@ import {
 import {
   JENIS_BADGE_CLASS,
   JENIS_LABEL,
+  PLATFORM_BADGE_CLASS,
+  PLATFORM_LABEL,
+  PLATFORM_ORDER,
+  PLATFORM_SHORT_LABEL,
+  sortPlatforms,
   STATUS_BADGE_CLASS,
   STATUS_LABEL,
   USAGE_BADGE_CLASS,
@@ -78,6 +87,8 @@ import {
 import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
+  Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -142,6 +153,7 @@ export type ContentPlanTableRow = {
   konten: string;
   jenisKonten: ContentPlanJenis;
   usage: ContentPlanUsage;
+  platforms: ContentPlanPlatform[];
   detailKonten: string | null;
   copywritingFilePath: string | null;
   copywritingLink: string | null;
@@ -156,6 +168,8 @@ export type ContentPlanTableRow = {
   tanggalPosting: Date | string | null;
   jamPosting: string | null;
   catatan: string | null;
+  /** Terisi bila baris sudah diarsipkan (disembunyikan dari tabel utama). */
+  archivedAt: Date | string | null;
   /** Dipakai Gantt sebagai titik awal bar copywriting. */
   createdAt?: Date | string | null;
   pic: Pick<User, "id" | "name" | "email" | "image"> | null;
@@ -415,6 +429,48 @@ function UsageBadge({ usage }: { usage: ContentPlanUsage }) {
     >
       {USAGE_LABEL[usage]}
     </Badge>
+  );
+}
+
+function PlatformBadge({
+  platform,
+  short,
+}: {
+  platform: ContentPlanPlatform;
+  short?: boolean;
+}) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "h-5 shrink-0 rounded-md border px-1.5 text-[11px] font-semibold",
+        PLATFORM_BADGE_CLASS[platform],
+      )}
+      title={PLATFORM_LABEL[platform]}
+    >
+      {short ? PLATFORM_SHORT_LABEL[platform] : PLATFORM_LABEL[platform]}
+    </Badge>
+  );
+}
+
+/** Deretan badge platform; kosong = tanda strip agar sel tetap bisa diklik. */
+function PlatformList({
+  platforms,
+  short,
+}: {
+  platforms: ContentPlanPlatform[] | null | undefined;
+  short?: boolean;
+}) {
+  const list = sortPlatforms(platforms);
+  if (list.length === 0) {
+    return <span className="text-muted-foreground text-xs">—</span>;
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {list.map((p) => (
+        <PlatformBadge key={p} platform={p} short={short} />
+      ))}
+    </div>
   );
 }
 
@@ -1077,6 +1133,7 @@ export function ContentPlanningClient({
     ContentPlanJenis.REELS,
   );
   const [usage, setUsage] = useState<ContentPlanUsage>(ContentPlanUsage.AWARENESS);
+  const [platforms, setPlatforms] = useState<ContentPlanPlatform[]>([]);
   const [detailKonten, setDetailKonten] = useState("");
   const [copywritingLink, setCopywritingLink] = useState("");
   const [designLink, setDesignLink] = useState("");
@@ -1118,6 +1175,8 @@ export function ContentPlanningClient({
       return {
         ...row,
         usage: row.usage ?? ContentPlanUsage.AWARENESS,
+        platforms: sortPlatforms(row.platforms),
+        archivedAt: row.archivedAt ?? null,
         picUserIds: ids,
         pics: pics.length ? pics : row.pic ? [row.pic] : [],
       };
@@ -1146,17 +1205,43 @@ export function ContentPlanningClient({
   const [statusCwFilter, setStatusCwFilter] = useState<ContentPlanStatusKerja | "all">("all");
   const [statusDesignFilter, setStatusDesignFilter] = useState<ContentPlanStatusKerja | "all">("all");
   const [picFilter, setPicFilter] = useState<string>("all");
+  const [platformFilter, setPlatformFilter] = useState<ContentPlanPlatform | "all">("all");
   const [showFilters, setShowFilters] = useState(false);
   const [view, setView] = useState<"table" | "gantt">("table");
+  /** true = tabel menampilkan baris arsip (konten selesai), bukan baris aktif. */
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivePending, startArchive] = useTransition();
+
+  /** Baris aktif = belum diarsipkan; semua statistik & jadwal hanya menghitung ini. */
+  const activeRows = useMemo(
+    () => tableRows.filter((r) => !r.archivedAt),
+    [tableRows],
+  );
+  const archivedRows = useMemo(
+    () => tableRows.filter((r) => Boolean(r.archivedAt)),
+    [tableRows],
+  );
+  /** Baris aktif yang copy & design-nya sudah Dipublikasikan: kandidat arsip massal. */
+  const archiveReadyIds = useMemo(
+    () =>
+      activeRows
+        .filter(
+          (r) =>
+            r.statusCopywriting === ContentPlanStatusKerja.DIPUBLIKASIKAN &&
+            r.statusDesign === ContentPlanStatusKerja.DIPUBLIKASIKAN,
+        )
+        .map((r) => r.id),
+    [activeRows],
+  );
 
   const kanbanSet = useMemo(() => new Set(kanbanSelectedIds), [kanbanSelectedIds]);
 
   const kanbanEligibleIds = useMemo(
     () =>
-      tableRows
+      activeRows
         .filter((r) => r.statusDesign === ContentPlanStatusKerja.BARU)
         .map((r) => r.id),
-    [tableRows],
+    [activeRows],
   );
 
   const kanbanEligibleCount = kanbanEligibleIds.length;
@@ -1169,17 +1254,21 @@ export function ContentPlanningClient({
     if (statusCwFilter !== "all") n += 1;
     if (statusDesignFilter !== "all") n += 1;
     if (picFilter !== "all") n += 1;
+    if (platformFilter !== "all") n += 1;
     return n;
-  }, [jenisFilter, statusCwFilter, statusDesignFilter, picFilter]);
+  }, [jenisFilter, statusCwFilter, statusDesignFilter, picFilter, platformFilter]);
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return tableRows.filter((row) => {
+    const base = showArchived ? archivedRows : activeRows;
+    return base.filter((row) => {
       if (q) {
         const haystack = `${row.konten ?? ""} ${row.detailKonten ?? ""}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       if (jenisFilter !== "all" && row.jenisKonten !== jenisFilter) return false;
+      if (platformFilter !== "all" && !(row.platforms ?? []).includes(platformFilter))
+        return false;
       if (statusCwFilter !== "all" && row.statusCopywriting !== statusCwFilter) return false;
       if (statusDesignFilter !== "all" && row.statusDesign !== statusDesignFilter)
         return false;
@@ -1194,9 +1283,12 @@ export function ContentPlanningClient({
       return true;
     });
   }, [
-    tableRows,
+    activeRows,
+    archivedRows,
+    showArchived,
     searchQuery,
     jenisFilter,
+    platformFilter,
     statusCwFilter,
     statusDesignFilter,
     picFilter,
@@ -1208,30 +1300,31 @@ export function ContentPlanningClient({
     setStatusCwFilter("all");
     setStatusDesignFilter("all");
     setPicFilter("all");
+    setPlatformFilter("all");
   }, []);
 
   const stats = useMemo(() => {
-    const total = tableRows.length;
-    const published = tableRows.filter(
+    const total = activeRows.length;
+    const published = activeRows.filter(
       (r) => r.statusDesign === ContentPlanStatusKerja.DIPUBLIKASIKAN,
     ).length;
-    const inProgress = tableRows.filter(
+    const inProgress = activeRows.filter(
       (r) =>
         r.statusCopywriting === ContentPlanStatusKerja.DALAM_PROSES ||
         r.statusDesign === ContentPlanStatusKerja.DALAM_PROSES ||
         r.statusCopywriting === ContentPlanStatusKerja.DALAM_PENINJAUAN ||
         r.statusDesign === ContentPlanStatusKerja.DALAM_PENINJAUAN,
     ).length;
-    const fresh = tableRows.filter(
+    const fresh = activeRows.filter(
       (r) => r.statusDesign === ContentPlanStatusKerja.BARU,
     ).length;
     return { total, published, inProgress, fresh };
-  }, [tableRows]);
+  }, [activeRows]);
 
   /** Info per hari posting: jumlah konten + apakah pembagian jamnya masih bermasalah. */
   const postingDayInfo = useMemo(() => {
     const map = new Map<string, { count: number; missingJam: number; dupJam: boolean }>();
-    for (const row of tableRows) {
+    for (const row of activeRows) {
       const key = cpPostingDayKey(row.tanggalPosting);
       if (!key) continue;
       const info = map.get(key) ?? { count: 0, missingJam: 0, dupJam: false };
@@ -1240,7 +1333,7 @@ export function ContentPlanningClient({
       map.set(key, info);
     }
     const seenJam = new Map<string, Set<string>>();
-    for (const row of tableRows) {
+    for (const row of activeRows) {
       const key = cpPostingDayKey(row.tanggalPosting);
       if (!key || !row.jamPosting) continue;
       const set = seenJam.get(key) ?? new Set<string>();
@@ -1252,11 +1345,11 @@ export function ContentPlanningClient({
       seenJam.set(key, set);
     }
     return map;
-  }, [tableRows]);
+  }, [activeRows]);
 
   const hasScheduledPosting = useMemo(
-    () => tableRows.some((r) => cpDateSortValue(r.tanggalPosting) !== null),
-    [tableRows],
+    () => activeRows.some((r) => cpDateSortValue(r.tanggalPosting) !== null),
+    [activeRows],
   );
 
   useEffect(() => {
@@ -1266,7 +1359,7 @@ export function ContentPlanningClient({
   useEffect(() => {
     const eligible = new Set(
       tableRows
-        .filter((r) => r.statusDesign === ContentPlanStatusKerja.BARU)
+        .filter((r) => !r.archivedAt && r.statusDesign === ContentPlanStatusKerja.BARU)
         .map((r) => r.id),
     );
     setKanbanSelectedIds((prev) => {
@@ -1314,6 +1407,13 @@ export function ContentPlanningClient({
     return [{ value: "all", label: "Semua status" }, ...statusKerjaSelectItems];
   }, [statusKerjaSelectItems]);
 
+  const platformFilterItems = useMemo((): SelectItemDef[] => {
+    return [
+      { value: "all", label: "Semua platform" },
+      ...PLATFORM_ORDER.map((p) => ({ value: p, label: PLATFORM_LABEL[p] })),
+    ];
+  }, []);
+
   const picFilterItems = useMemo((): SelectItemDef[] => {
     return [
       { value: "all", label: "Semua PIC" },
@@ -1329,6 +1429,7 @@ export function ContentPlanningClient({
     setKonten("");
     setJenisKonten(ContentPlanJenis.REELS);
     setUsage(ContentPlanUsage.AWARENESS);
+    setPlatforms([]);
     setDetailKonten("");
     setCopywritingLink("");
     setDesignLink("");
@@ -1355,6 +1456,7 @@ export function ContentPlanningClient({
     setKonten(row.konten);
     setJenisKonten(row.jenisKonten);
     setUsage(row.usage ?? ContentPlanUsage.AWARENESS);
+    setPlatforms(sortPlatforms(row.platforms));
     setDetailKonten(row.detailKonten ?? "");
     setCopywritingLink(row.copywritingLink ?? "");
     setDesignLink(row.designLink ?? "");
@@ -1383,6 +1485,47 @@ export function ContentPlanningClient({
       }
     },
     [roomId, router],
+  );
+
+  /**
+   * Arsipkan / pulihkan baris. Optimistik: baris langsung pindah antara tabel
+   * utama dan tab Arsip, dikembalikan bila server menolak.
+   */
+  const onArchive = useCallback(
+    (ids: string[], archived: boolean) => {
+      const targets = ids.filter((id) => tableRows.some((r) => r.id === id));
+      if (targets.length === 0) return;
+      const targetSet = new Set(targets);
+      const rollback = tableRows;
+      const stamp = archived ? new Date().toISOString() : null;
+      setTableRows((rows) =>
+        rows.map((r) => (targetSet.has(r.id) ? { ...r, archivedAt: stamp } : r)),
+      );
+      startArchive(async () => {
+        try {
+          const { updated } = await setRoomContentPlanItemsArchived({
+            roomId,
+            itemIds: targets,
+            archived,
+          });
+          toast.success(
+            archived
+              ? `${updated} baris diarsipkan.`
+              : `${updated} baris dipulihkan ke tabel utama.`,
+          );
+          router.refresh();
+        } catch (e) {
+          setTableRows(rollback);
+          toast.error(
+            actionErrorMessage(
+              e,
+              archived ? "Gagal mengarsipkan baris." : "Gagal memulihkan baris.",
+            ),
+          );
+        }
+      });
+    },
+    [roomId, router, tableRows],
   );
 
   async function onSave() {
@@ -1416,6 +1559,7 @@ export function ContentPlanningClient({
         konten: konten.trim(),
         jenisKonten,
         usage,
+        platforms,
         detailKonten: detailKonten.trim() || null,
         copywritingLink: copywritingLink.trim() || null,
         designLink: designLink.trim() || null,
@@ -1468,6 +1612,7 @@ export function ContentPlanningClient({
       konten: row.konten,
       jenisKonten: row.jenisKonten,
       usage: row.usage ?? ContentPlanUsage.AWARENESS,
+      platforms: row.platforms ?? [],
       detailKonten: row.detailKonten ?? null,
       copywritingLink: row.copywritingLink ?? null,
       designLink: row.designLink ?? null,
@@ -1840,6 +1985,61 @@ export function ContentPlanningClient({
         },
       },
       {
+        id: "platform",
+        accessorFn: (row) => sortPlatforms(row.platforms).length,
+        sortUndefined: "last",
+        size: 132,
+        minSize: 110,
+        maxSize: 180,
+        header: ({ column }) => (
+          <CpColumnHeader column={column}>
+            <span title="Platform tayang (bisa lebih dari satu)">Platform</span>
+          </CpColumnHeader>
+        ),
+        cell: ({ row }) => {
+          const cellKey = `${row.original.id}:platform`;
+          const current = sortPlatforms(row.original.platforms);
+          const saving = inlineSavingCellRef.current === cellKey;
+          return (
+            <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  disabled={saving}
+                  className={cn(
+                    INLINE_SELECT_TRIGGER,
+                    "flex items-center rounded-md text-left disabled:opacity-60",
+                  )}
+                  aria-label="Pilih platform"
+                >
+                  <PlatformList platforms={current} short />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-40">
+                  {PLATFORM_ORDER.map((p) => (
+                    <DropdownMenuCheckboxItem
+                      key={p}
+                      checked={current.includes(p)}
+                      closeOnClick={false}
+                      onCheckedChange={(checked) => {
+                        const next = checked
+                          ? [...current, p]
+                          : current.filter((x) => x !== p);
+                        void saveInlineRow(
+                          row.original.id,
+                          { platforms: sortPlatforms(next) },
+                          cellKey,
+                        );
+                      }}
+                    >
+                      <PlatformBadge platform={p} />
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        },
+      },
+      {
         id: "detail",
         accessorFn: (row) => (row.detailKonten ?? "").toLowerCase(),
         size: 200,
@@ -2159,6 +2359,18 @@ export function ContentPlanningClient({
                   <Pencil className="size-4" />
                   Edit
                 </DropdownMenuItem>
+                {row.original.archivedAt ? (
+                  <DropdownMenuItem onClick={() => onArchive([row.original.id], false)}>
+                    <ArchiveRestore className="size-4" />
+                    Pulihkan dari arsip
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => onArchive([row.original.id], true)}>
+                    <Archive className="size-4" />
+                    Arsipkan
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
                   onClick={() => onDelete(row.original.id)}
@@ -2179,6 +2391,7 @@ export function ContentPlanningClient({
       kanbanEligibleCount,
       kanbanEligibleIds,
       kanbanSet,
+      onArchive,
       onDelete,
       openEdit,
       postingDayInfo,
@@ -2268,6 +2481,29 @@ export function ContentPlanningClient({
         <Button
           type="button"
           size="sm"
+          variant={showArchived ? "secondary" : "outline"}
+          aria-pressed={showArchived}
+          title={
+            showArchived
+              ? "Kembali ke baris aktif."
+              : "Lihat konten yang sudah diarsipkan (tidak tampil di tabel utama)."
+          }
+          onClick={() => {
+            setShowArchived((v) => !v);
+            setKanbanSelectedIds([]);
+          }}
+        >
+          <Archive className="size-3.5" />
+          Arsip
+          {archivedRows.length > 0 ? (
+            <span className="bg-muted text-muted-foreground ml-1 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
+              {archivedRows.length}
+            </span>
+          ) : null}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           variant={showFilters || activeFilterCount > 0 ? "secondary" : "outline"}
           onClick={() => setShowFilters((v) => !v)}
           aria-expanded={showFilters}
@@ -2297,6 +2533,28 @@ export function ContentPlanningClient({
           </span>
         ) : null}
         <span className="ml-auto" />
+        {!showArchived && archiveReadyIds.length > 0 ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={archivePending}
+            title="Arsipkan semua baris aktif yang copy dan design-nya sudah Dipublikasikan."
+            onClick={() => {
+              if (
+                !confirm(
+                  `Arsipkan ${archiveReadyIds.length} baris yang sudah selesai (copy & design Dipublikasikan)? Baris bisa dipulihkan lagi dari tab Arsip.`,
+                )
+              ) {
+                return;
+              }
+              onArchive(archiveReadyIds, true);
+            }}
+          >
+            <Archive className="size-4" />
+            {archivePending ? "Mengarsipkan…" : `Arsipkan selesai (${archiveReadyIds.length})`}
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"
@@ -2441,6 +2699,42 @@ export function ContentPlanningClient({
                         )}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Platform</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PLATFORM_ORDER.map((p) => {
+                        const checked = platforms.includes(p);
+                        return (
+                          <button
+                            key={p}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={checked}
+                            onClick={() =>
+                              setPlatforms((prev) =>
+                                sortPlatforms(
+                                  prev.includes(p)
+                                    ? prev.filter((x) => x !== p)
+                                    : [...prev, p],
+                                ),
+                              )
+                            }
+                            className={cn(
+                              "rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors",
+                              checked
+                                ? PLATFORM_BADGE_CLASS[p]
+                                : "border-border bg-background text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {PLATFORM_LABEL[p]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      Boleh pilih lebih dari satu. Kosongkan bila belum ditentukan.
+                    </p>
                   </div>
                   <div className="space-y-2 sm:col-span-2">
                     <Label className="inline-flex items-center gap-1.5">
@@ -2844,7 +3138,35 @@ export function ContentPlanningClient({
 
       {/* Filter pills (collapsible) */}
       {showFilters ? (
-        <div className="border-border bg-muted/30 grid shrink-0 gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="border-border bg-muted/30 grid shrink-0 gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+              Platform
+            </Label>
+            <Select
+              value={platformFilter}
+              items={platformFilterItems}
+              onValueChange={(v) =>
+                setPlatformFilter((v ?? "all") as ContentPlanPlatform | "all")
+              }
+            >
+              <SelectTrigger className="h-9 w-full">
+                <span>
+                  {platformFilter === "all"
+                    ? "Semua platform"
+                    : PLATFORM_LABEL[platformFilter]}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua platform</SelectItem>
+                {PLATFORM_ORDER.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {PLATFORM_LABEL[p]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5">
             <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
               Jenis
@@ -2979,7 +3301,9 @@ export function ContentPlanningClient({
             <div className="text-muted-foreground rounded-xl border border-border px-4 py-8 text-center text-sm">
               {hasActiveFilters
                 ? "Tidak ada baris yang cocok dengan filter / pencarian."
-                : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."}
+                : showArchived
+                  ? "Belum ada baris yang diarsipkan."
+                  : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."}
             </div>
           ) : (
             <div className="space-y-3">
@@ -3010,6 +3334,9 @@ export function ContentPlanningClient({
                         <div className="flex flex-wrap items-center gap-1.5">
                           <JenisBadge jenis={row.jenisKonten} />
                           <UsageBadge usage={row.usage ?? ContentPlanUsage.AWARENESS} />
+                          {sortPlatforms(row.platforms).map((p) => (
+                            <PlatformBadge key={p} platform={p} short />
+                          ))}
                           {(row.pics?.length ?? 0) > 0 ? (
                             <span className="text-muted-foreground text-xs">
                               PIC: {(row.pics ?? [])
@@ -3050,6 +3377,18 @@ export function ContentPlanningClient({
                               <ArrowDown className="size-4" />
                               Pindah ke bawah
                             </DropdownMenuItem>
+                            {row.archivedAt ? (
+                              <DropdownMenuItem onClick={() => onArchive([row.id], false)}>
+                                <ArchiveRestore className="size-4" />
+                                Pulihkan dari arsip
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => onArchive([row.id], true)}>
+                                <Archive className="size-4" />
+                                Arsipkan
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               variant="destructive"
                               onClick={() => onDelete(row.id)}
@@ -3141,7 +3480,9 @@ export function ContentPlanningClient({
             empty={
               hasActiveFilters
                 ? "Tidak ada baris yang cocok dengan filter / pencarian."
-                : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."
+                : showArchived
+                  ? "Belum ada baris yang diarsipkan."
+                  : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."
             }
             fitViewport
             sortable
