@@ -37,6 +37,18 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-07-finance-bukti-jurnal-hilang",
+    date: "2026-09-07",
+    title: "Bukti pembayaran jurnal tidak lagi hilang setelah update aplikasi",
+    category: "fixed",
+    description:
+      "File bukti yang diunggah pada baris jurnal Keuangan sebelumnya tersimpan di penyimpanan sementara server, sehingga hilang setiap kali aplikasi di-update dan muncul error \"File fisik hilang\" saat dibuka. Sekarang file disimpan di penyimpanan permanen.",
+    highlights: [
+      "Bukti yang sudah telanjur hilang ditandai jelas di daftar lampiran dengan keterangan \"File hilang dari server\" dan perlu diunggah ulang.",
+      "Unggahan baru aman dan tetap tersedia setelah update aplikasi.",
+    ],
+  },
+  {
     id: "2026-09-06-content-plan-simulasi-feed-instagram",
     date: "2026-09-06",
     title: "Content Plan: simulasi feed Instagram",

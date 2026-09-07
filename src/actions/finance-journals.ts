@@ -63,6 +63,7 @@ export async function getFinanceJournalEntry(entryId: string) {
               fileName: true,
               mimeType: true,
               size: true,
+              url: true,
               uploadedAt: true,
             },
           },

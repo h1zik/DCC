@@ -10,6 +10,7 @@ import {
   getFinanceJournalReversals,
 } from "@/actions/finance-journals";
 import { findPeriodLockForDate } from "@/lib/finance-period-lock";
+import { attachmentFileExists } from "@/lib/finance-uploads";
 import { prisma } from "@/lib/prisma";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import {
@@ -43,6 +44,18 @@ export default async function FinanceJournalDetailPage({
     findPeriodLockForDate(entry.entryDate),
   ]);
 
+  // Tandai lampiran yang barisnya ada di DB tetapi filenya sudah tidak ada di
+  // disk (mis. tersimpan di filesystem sementara sebelum pindah ke volume),
+  // agar pengguna tahu mana yang perlu di-upload ulang.
+  const missingFileIds = new Set<string>();
+  await Promise.all(
+    entry.lines.flatMap((l) =>
+      l.attachments.map(async (a) => {
+        if (!(await attachmentFileExists(a.url))) missingFileIds.add(a.id);
+      }),
+    ),
+  );
+
   const lines: JournalEditorLine[] = entry.lines.map((l) => ({
     id: l.id,
     accountId: l.accountId,
@@ -63,6 +76,7 @@ export default async function FinanceJournalDetailPage({
       mimeType: a.mimeType,
       size: a.size,
       uploadedAtIso: a.uploadedAt.toISOString(),
+      fileMissing: missingFileIds.has(a.id),
     })),
     link: l.link
       ? {
