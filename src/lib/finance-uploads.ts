@@ -6,14 +6,38 @@ import path from "node:path";
 
 /**
  * Direktori akar untuk menyimpan lampiran finance.
+ *
  * Bukan di `public/` agar file tidak dapat diakses tanpa autentikasi —
  * file di-stream oleh route handler `/api/finance/line-attachments/[id]`.
+ *
+ * WAJIB berada di volume persisten saat di Railway: filesystem container
+ * bersifat sementara dan dikosongkan tiap deploy/restart, sehingga file
+ * yang disimpan relatif ke `process.cwd()` hilang meski barisnya masih ada
+ * di DB (gejala: "File fisik hilang" saat bukti dibuka). Pola resolusi
+ * mengikuti `getUploadPublicDir()` dan `getPersonalUploadRoot()`.
  */
-export const FINANCE_UPLOAD_ROOT = path.resolve(
-  process.cwd(),
-  "uploads",
-  "finance",
-);
+export function getFinanceUploadRoot(): string {
+  const fromEnv = process.env.FINANCE_UPLOAD_DIR?.trim();
+  if (fromEnv) {
+    return path.resolve(/* turbopackIgnore: true */ fromEnv);
+  }
+  const railwayMount = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
+  if (railwayMount) {
+    return path.resolve(
+      /* turbopackIgnore: true */
+      path.join(/* turbopackIgnore: true */ railwayMount, "finance"),
+    );
+  }
+  if (process.env.NODE_ENV === "production" && process.env.RAILWAY_ENVIRONMENT) {
+    // Sibling dari default "/data/uploads" & "/data/personal".
+    return "/data/finance";
+  }
+  return path.join(
+    /* turbopackIgnore: true */ process.cwd(),
+    "uploads",
+    "finance",
+  );
+}
 
 export const FINANCE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -27,7 +51,7 @@ export const FINANCE_ATTACHMENT_ALLOWED_MIME = new Set<string>([
 ]);
 
 export type SavedAttachment = {
-  /** Nama file pada disk, relatif terhadap FINANCE_UPLOAD_ROOT. */
+  /** Nama file pada disk, relatif terhadap `getFinanceUploadRoot()`. */
   storagePath: string;
   /** SHA-256 hex isi file. */
   hash: string;
@@ -51,7 +75,7 @@ export async function saveFinanceAttachment(params: {
   fileName: string;
   bytes: Buffer | Uint8Array;
 }): Promise<SavedAttachment> {
-  const dir = path.join(FINANCE_UPLOAD_ROOT, params.entryId);
+  const dir = path.join(getFinanceUploadRoot(), params.entryId);
   await mkdir(dir, { recursive: true });
 
   const safe = safeFileName(params.fileName);
@@ -72,7 +96,7 @@ export async function saveFinanceAttachment(params: {
 
 /** Hapus file fisik. Dianggap berhasil jika file sudah tidak ada. */
 export async function removeFinanceAttachment(storagePath: string) {
-  const full = path.join(FINANCE_UPLOAD_ROOT, storagePath);
+  const full = path.join(getFinanceUploadRoot(), storagePath);
   try {
     await unlink(full);
   } catch (e: unknown) {
@@ -100,17 +124,18 @@ export async function removeFinanceAttachmentsBestEffort(
 
 /** Hapus seluruh direktori lampiran finance (dipakai reset data demo). */
 export async function removeAllFinanceAttachmentFiles() {
-  await rm(FINANCE_UPLOAD_ROOT, { recursive: true, force: true });
+  await rm(getFinanceUploadRoot(), { recursive: true, force: true });
 }
 
 /** Resolve absolute path (untuk route handler streaming). */
 export function resolveFinanceAttachmentPath(storagePath: string): string {
-  // Defense in depth: pastikan tidak keluar dari FINANCE_UPLOAD_ROOT.
+  // Defense in depth: pastikan tidak keluar dari root lampiran finance.
+  const root = getFinanceUploadRoot();
   const normalized = path
     .normalize(storagePath)
     .replace(/^([\\/])+/, "");
-  const full = path.resolve(FINANCE_UPLOAD_ROOT, normalized);
-  const rel = path.relative(FINANCE_UPLOAD_ROOT, full);
+  const full = path.resolve(root, normalized);
+  const rel = path.relative(root, full);
   if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
     throw new Error("Path lampiran tidak valid.");
   }

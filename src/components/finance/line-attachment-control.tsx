@@ -4,6 +4,7 @@ import { actionErrorMessage } from "@/lib/action-error-message";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   FileText,
   ImageIcon,
   Loader2,
@@ -41,6 +42,11 @@ export type LineAttachmentItem = {
   mimeType: string;
   size: number;
   uploadedAtIso: string;
+  /**
+   * Baris ada di DB tetapi file fisiknya tidak ditemukan di server —
+   * link download akan gagal (410). Pengguna perlu upload ulang.
+   */
+  fileMissing?: boolean;
 };
 
 type Props = {
@@ -58,6 +64,7 @@ export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
 
   const count = attachments.length;
   const hasAny = count > 0;
+  const missingCount = attachments.filter((a) => a.fileMissing).length;
 
   function pick() {
     inputRef.current?.click();
@@ -118,14 +125,21 @@ export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
             className={cn(
               "relative",
               hasAny &&
-                "text-emerald-700 dark:text-emerald-300",
+                (missingCount > 0
+                  ? "text-amber-700 dark:text-amber-300"
+                  : "text-emerald-700 dark:text-emerald-300"),
             )}
           />
         }
       >
         <Paperclip className="size-3.5" />
         {hasAny ? (
-          <span className="bg-emerald-500 text-[9px] absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 font-bold leading-none text-white">
+          <span
+            className={cn(
+              "text-[9px] absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 font-bold leading-none text-white",
+              missingCount > 0 ? "bg-amber-500" : "bg-emerald-500",
+            )}
+          >
             {count}
           </span>
         ) : null}
@@ -175,30 +189,44 @@ export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
           <ul className="divide-border/60 max-h-64 divide-y overflow-auto">
             {attachments.map((a) => {
               const isImage = a.mimeType.startsWith("image/");
+              const Icon = isImage ? ImageIcon : FileText;
               return (
                 <li
                   key={a.id}
                   className="flex items-center gap-2 py-2 text-xs"
                 >
-                  <a
-                    href={`/api/finance/line-attachments/${a.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:bg-muted/40 flex flex-1 items-center gap-2 rounded-md px-1.5 py-1"
-                    title={a.fileName}
-                  >
-                    {isImage ? (
-                      <ImageIcon className="text-muted-foreground size-4 shrink-0" />
-                    ) : (
-                      <FileText className="text-muted-foreground size-4 shrink-0" />
-                    )}
-                    <span className="line-clamp-1 flex-1 font-medium">
-                      {a.fileName}
-                    </span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {prettyBytes(a.size)}
-                    </span>
-                  </a>
+                  {a.fileMissing ? (
+                    <div
+                      className="flex flex-1 items-center gap-2 rounded-md px-1.5 py-1"
+                      title="File tidak ditemukan di server. Upload ulang bukti ini."
+                    >
+                      <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span className="flex flex-1 flex-col">
+                        <span className="text-muted-foreground line-clamp-1 font-medium line-through">
+                          {a.fileName}
+                        </span>
+                        <span className="text-[10px] text-amber-700 dark:text-amber-300">
+                          File hilang dari server — upload ulang.
+                        </span>
+                      </span>
+                    </div>
+                  ) : (
+                    <a
+                      href={`/api/finance/line-attachments/${a.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:bg-muted/40 flex flex-1 items-center gap-2 rounded-md px-1.5 py-1"
+                      title={a.fileName}
+                    >
+                      <Icon className="text-muted-foreground size-4 shrink-0" />
+                      <span className="line-clamp-1 flex-1 font-medium">
+                        {a.fileName}
+                      </span>
+                      <span className="text-muted-foreground tabular-nums">
+                        {prettyBytes(a.size)}
+                      </span>
+                    </a>
+                  )}
                   {canEdit ? (
                     <Button
                       type="button"
