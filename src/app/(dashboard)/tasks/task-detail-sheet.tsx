@@ -119,6 +119,8 @@ function contentPlanJenisLabel(j: ContentPlanJenis) {
       return "Reels";
     case ContentPlanJenis.SINGLE_FEED:
       return "Single feed";
+    case ContentPlanJenis.STORY:
+      return "Story";
     default:
       return j;
   }
@@ -436,6 +438,13 @@ export function TaskDetailSheet({
           accept: "image/*,video/*",
           helper:
             "Single feed: satu aset utama (gambar atau video). Batas ukuran mengikuti pengaturan server.",
+        };
+      case ContentPlanJenis.STORY:
+        return {
+          multiple: false,
+          accept: "image/*,video/*",
+          helper:
+            "Story: satu aset vertikal 9:16 (gambar atau video pendek). Batas ukuran mengikuti pengaturan server.",
         };
       default:
         return {

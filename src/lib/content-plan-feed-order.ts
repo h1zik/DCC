@@ -1,5 +1,6 @@
 import {
   ContentPlanFeedVisibility,
+  ContentPlanJenis,
   ContentPlanPlatform,
   ContentPlanStatusKerja,
 } from "@prisma/client";
@@ -16,6 +17,7 @@ export type FeedPrefs = {
 };
 
 export type FeedMembershipRow = {
+  jenisKonten: ContentPlanJenis;
   feedVisibility: ContentPlanFeedVisibility;
   archivedAt: Date | string | null;
   platforms: ContentPlanPlatform[];
@@ -23,14 +25,23 @@ export type FeedMembershipRow = {
   jamPosting: string | null;
 };
 
-export type FeedExclusionReason = "hidden" | "archived" | "platform" | "undated";
+export type FeedExclusionReason = "story" | "hidden" | "archived" | "platform" | "undated";
 
 export const FEED_EXCLUSION_LABEL: Record<FeedExclusionReason, string> = {
+  story: "Story tidak tampil di feed",
   hidden: "Dihapus dari feed",
   archived: "Arsip",
   platform: "Bukan Instagram",
   undated: "Tanpa tanggal",
 };
+
+/**
+ * Jenis konten yang secara desain tidak pernah masuk grid feed (Story hilang
+ * setelah 24 jam, tidak menempati grid profil). Tidak bisa dipaksa lewat SHOWN.
+ */
+export function contentPlanJenisAllowedInFeed(jenis: ContentPlanJenis): boolean {
+  return jenis !== ContentPlanJenis.STORY;
+}
 
 function toDate(v: Date | string | null | undefined): Date | null {
   if (!v) return null;
@@ -65,12 +76,14 @@ export function contentPlanFeedIsPublished(row: {
 
 /**
  * Alasan baris TIDAK tampil di feed, atau null bila tampil.
- * HIDDEN selalu keluar, SHOWN selalu masuk, AUTO mengikuti preferensi profil.
+ * Story selalu keluar (apa pun visibilitasnya), HIDDEN selalu keluar,
+ * SHOWN selalu masuk, AUTO mengikuti preferensi profil.
  */
 export function contentPlanFeedExclusionReason(
   row: FeedMembershipRow,
   prefs: FeedPrefs,
 ): FeedExclusionReason | null {
+  if (!contentPlanJenisAllowedInFeed(row.jenisKonten)) return "story";
   if (row.feedVisibility === ContentPlanFeedVisibility.HIDDEN) return "hidden";
   if (row.feedVisibility === ContentPlanFeedVisibility.SHOWN) return null;
   if (!prefs.includeArchived && row.archivedAt) return "archived";

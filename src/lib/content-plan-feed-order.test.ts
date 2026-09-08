@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ContentPlanFeedVisibility,
+  ContentPlanJenis,
   ContentPlanPlatform,
 } from "@prisma/client";
 import {
@@ -99,12 +100,29 @@ describe("contentPlanFeedPostingTime", () => {
 describe("contentPlanFeedExclusionReason", () => {
   const prefs = { includeArchived: false, instagramOnly: true, includeUndated: false };
   const base = {
+    jenisKonten: ContentPlanJenis.SINGLE_FEED,
     feedVisibility: ContentPlanFeedVisibility.AUTO,
     archivedAt: null,
     platforms: [ContentPlanPlatform.INSTAGRAM],
     tanggalPosting: new Date(2026, 8, 3),
     jamPosting: null,
   };
+
+  it("Story selalu keluar, bahkan saat SHOWN", () => {
+    expect(
+      contentPlanFeedExclusionReason({ ...base, jenisKonten: ContentPlanJenis.STORY }, prefs),
+    ).toBe("story");
+    expect(
+      contentPlanFeedExclusionReason(
+        {
+          ...base,
+          jenisKonten: ContentPlanJenis.STORY,
+          feedVisibility: ContentPlanFeedVisibility.SHOWN,
+        },
+        { includeArchived: true, instagramOnly: false, includeUndated: true },
+      ),
+    ).toBe("story");
+  });
 
   it("HIDDEN selalu keluar, SHOWN selalu masuk", () => {
     expect(

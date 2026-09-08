@@ -13,6 +13,7 @@ const JENIS_LABEL: Record<ContentPlanJenis, string> = {
   [ContentPlanJenis.REELS]: "Reels",
   [ContentPlanJenis.CAROUSEL]: "Carousel",
   [ContentPlanJenis.SINGLE_FEED]: "Single Feed",
+  [ContentPlanJenis.STORY]: "Story",
 };
 
 const USAGE_LABEL: Record<ContentPlanUsage, string> = {
