@@ -194,6 +194,7 @@ enum ContentPlanJenis {
   REELS
   CAROUSEL
   SINGLE_FEED
+  STORY
 }
 
 /**

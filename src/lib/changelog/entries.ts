@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-08-content-plan-jenis-story",
+    date: "2026-09-08",
+    title: "Content Plan: jenis konten Story",
+    category: "new",
+    description:
+      "Jenis konten Story kini bisa dipilih di Content Plan, di samping Reels, Carousel, dan Single Feed. Karena Story tidak menempati grid profil Instagram, baris Story tidak pernah masuk simulasi Feed.",
+    highlights: [
+      "Story memakai satu file design (gambar atau video vertikal); preview menampilkan simulasi tampilan story 9:16",
+      "Di tab Feed, baris Story tercantum di panel \"Di luar feed\" dengan keterangan dan tidak bisa ditambahkan ke grid",
+      "Tugas Kanban dari baris Story ikut diberi label jenis Story dan menerima satu file gambar/video",
+    ],
+  },
+  {
     id: "2026-09-07-finance-bukti-jurnal-hilang",
     date: "2026-09-07",
     title: "Bukti pembayaran jurnal tidak lagi hilang setelah update aplikasi",

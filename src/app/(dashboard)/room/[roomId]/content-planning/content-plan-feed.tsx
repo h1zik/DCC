@@ -187,6 +187,10 @@ const PLACEHOLDER_CLASS: Record<ContentPlanJenis, string> = {
     "from-sky-500/25 via-cyan-500/15 to-transparent text-sky-900 dark:text-sky-100",
   [ContentPlanJenis.SINGLE_FEED]:
     "from-amber-500/25 via-orange-500/15 to-transparent text-amber-900 dark:text-amber-100",
+  // Story tidak pernah jadi tile (lihat contentPlanJenisAllowedInFeed); entri ini
+  // hanya menjaga Record tetap lengkap secara tipe.
+  [ContentPlanJenis.STORY]:
+    "from-orange-500/25 via-rose-500/15 to-transparent text-orange-900 dark:text-orange-100",
 };
 
 /* ------------------------------------------------------------------ */
@@ -1357,7 +1361,7 @@ export function ContentPlanFeedSimulation({
             <>
               <p className="text-muted-foreground mb-1.5 text-[11px]">
                 Klik Tambah untuk memasukkan post ke grid (selalu tampil, mengabaikan aturan
-                otomatis).
+                otomatis). Baris berjenis Story tidak pernah masuk feed.
               </p>
               <ul className="flex max-h-72 flex-col gap-0.5 overflow-y-auto pr-0.5">
                 {excludedRows.map(({ row: r, reason }) => (
@@ -1372,16 +1376,25 @@ export function ContentPlanFeedSimulation({
                         {r.tanggalPosting ? ` · ${feedDateLabel(r)}` : ""}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      disabled={togglePending}
-                      onClick={() => setVisibility(r, ContentPlanFeedVisibility.SHOWN)}
-                    >
-                      <Plus className="size-3" />
-                      Tambah
-                    </Button>
+                    {reason === "story" ? (
+                      <span
+                        className="text-muted-foreground shrink-0 text-[10px]"
+                        title="Story tidak menempati grid profil Instagram, jadi tidak bisa dimasukkan ke feed."
+                      >
+                        Tidak bisa
+                      </span>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        disabled={togglePending}
+                        onClick={() => setVisibility(r, ContentPlanFeedVisibility.SHOWN)}
+                      >
+                        <Plus className="size-3" />
+                        Tambah
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>

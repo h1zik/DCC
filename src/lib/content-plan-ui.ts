@@ -14,6 +14,7 @@ export const JENIS_LABEL: Record<ContentPlanJenis, string> = {
   [ContentPlanJenis.REELS]: "Reels",
   [ContentPlanJenis.CAROUSEL]: "Carousel",
   [ContentPlanJenis.SINGLE_FEED]: "Single Feed",
+  [ContentPlanJenis.STORY]: "Story",
 };
 
 export const STATUS_LABEL: Record<ContentPlanStatusKerja, string> = {
@@ -124,6 +125,8 @@ export const JENIS_BADGE_CLASS: Record<ContentPlanJenis, string> = {
     "border-sky-500/35 bg-sky-500/12 text-sky-700 dark:text-sky-300",
   [ContentPlanJenis.SINGLE_FEED]:
     "border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-300",
+  [ContentPlanJenis.STORY]:
+    "border-orange-500/35 bg-orange-500/12 text-orange-700 dark:text-orange-300",
 };
 
 export const USAGE_BADGE_CLASS: Record<ContentPlanUsage, string> = {

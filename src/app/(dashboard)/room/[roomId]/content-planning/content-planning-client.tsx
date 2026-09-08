@@ -294,6 +294,8 @@ function previewDialogTitle(jenis: ContentPlanJenis): string {
       return "Preview Reels";
     case ContentPlanJenis.SINGLE_FEED:
       return "Preview Single Feed";
+    case ContentPlanJenis.STORY:
+      return "Preview Story";
     default:
       return "Preview";
   }
@@ -307,6 +309,8 @@ function previewSimulationHint(jenis: ContentPlanJenis): string {
       return "Simulasi tampilan reels saat sudah diposting.";
     case ContentPlanJenis.SINGLE_FEED:
       return "Simulasi tampilan single feed saat sudah diposting.";
+    case ContentPlanJenis.STORY:
+      return "Simulasi tampilan story saat sudah diposting. Story tidak masuk simulasi feed.";
     default:
       return "Simulasi tampilan konten saat sudah diposting.";
   }
@@ -942,6 +946,95 @@ function ReelsInstagramPreview({
   );
 }
 
+/** Frame 9:16 ala Instagram Story: bar progres di atas, balasan di bawah. */
+function StoryInstagramPreview({
+  path,
+  creator,
+  kontenTitle,
+}: {
+  path: string;
+  creator: string;
+  kontenTitle: string;
+}) {
+  const username =
+    creator
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[^a-z0-9._]/g, "")
+      .slice(0, 24) || "brandaccount";
+
+  return (
+    <div
+      className="relative mx-auto h-[min(72vh,580px)] w-auto max-w-full aspect-[9/16] overflow-hidden rounded-2xl bg-black text-white shadow-lg"
+      aria-label="Simulasi tampilan Instagram Story"
+    >
+      <div className="absolute inset-0">
+        {isVideoPath(path) ? (
+          <div className="relative h-full w-full">
+            <ReelsPreviewVideo path={path} />
+          </div>
+        ) : isImagePath(path) ? (
+          <div className="relative h-full w-full">
+            <Image
+              src={path}
+              alt="Pratinjau story"
+              fill
+              className="object-cover"
+              unoptimized
+            />
+          </div>
+        ) : (
+          <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 bg-zinc-900">
+            <FileText className="size-10 text-white/70" />
+            <a
+              href={path}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-white/90 underline"
+            >
+              Buka file
+            </a>
+          </div>
+        )}
+      </div>
+
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[16%] bg-gradient-to-b from-black/55 to-transparent"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[14%] bg-gradient-to-t from-black/60 to-transparent"
+        aria-hidden
+      />
+
+      {/* Bar progres story */}
+      <div className="absolute inset-x-2 top-2 z-20 h-0.5 overflow-hidden rounded-full bg-white/35">
+        <div className="h-full w-2/5 rounded-full bg-white" aria-hidden />
+      </div>
+
+      {/* Header: avatar, username, waktu */}
+      <div className="absolute top-4 right-2.5 left-2.5 z-20 flex items-center gap-2">
+        <div className="bg-muted flex size-7 shrink-0 items-center justify-center rounded-full border border-white/40 text-[10px] font-bold text-black">
+          {creator.slice(0, 1).toUpperCase()}
+        </div>
+        <span className="truncate text-[11px] font-semibold drop-shadow-md">{username}</span>
+        <span className="shrink-0 text-[10px] text-white/80 drop-shadow-md">2j</span>
+        <MoreHorizontal className="ml-auto size-4 shrink-0 drop-shadow-md" aria-hidden />
+        <X className="size-4 shrink-0 drop-shadow-md" aria-hidden />
+      </div>
+
+      {/* Footer: kolom balasan + aksi */}
+      <div className="absolute right-2.5 bottom-2.5 left-2.5 z-20 flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center rounded-full border border-white/60 px-3 py-1.5 text-[11px] text-white/85">
+          <span className="truncate">Balas ke {kontenTitle}…</span>
+        </div>
+        <Heart className="size-5 shrink-0 drop-shadow-md" strokeWidth={1.75} aria-hidden />
+        <Send className="size-5 shrink-0 drop-shadow-md" strokeWidth={1.75} aria-hidden />
+      </div>
+    </div>
+  );
+}
+
 function DesignPreviewMedia({
   path,
   slideLabel,
@@ -1015,6 +1108,18 @@ function ContentPlanPreviewDialog({
   const creator = row.createdBy.name?.trim() || row.createdBy.email;
   const kontenFallback = row.konten || JENIS_LABEL[row.jenisKonten];
   const isReels = row.jenisKonten === ContentPlanJenis.REELS;
+  const isStory = row.jenisKonten === ContentPlanJenis.STORY;
+
+  if (isStory) {
+    return (
+      <div className="mx-auto w-full max-w-sm space-y-3">
+        <StoryInstagramPreview path={current} creator={creator} kontenTitle={kontenFallback} />
+        <p className="text-muted-foreground text-center text-xs">
+          {previewSimulationHint(row.jenisKonten)}
+        </p>
+      </div>
+    );
+  }
 
   if (isReels) {
     return (
@@ -3575,7 +3680,8 @@ export function ContentPlanningClient({
         <DialogContent
           className={cn(
             "max-w-md",
-            previewRow?.jenisKonten === ContentPlanJenis.REELS &&
+            (previewRow?.jenisKonten === ContentPlanJenis.REELS ||
+              previewRow?.jenisKonten === ContentPlanJenis.STORY) &&
               "max-w-[min(100vw-2rem,380px)] gap-3 p-4",
           )}
         >

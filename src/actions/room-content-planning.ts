@@ -494,7 +494,8 @@ export async function syncContentPlanRowFromCompletedKanbanTask(params: {
       nextPaths = v?.publicPath ? [v.publicPath] : [];
       break;
     }
-    case ContentPlanJenis.SINGLE_FEED: {
+    case ContentPlanJenis.SINGLE_FEED:
+    case ContentPlanJenis.STORY: {
       const f = fileRows.find(
         (a) => a.mimeType.startsWith("image/") || a.mimeType.startsWith("video/"),
       );
