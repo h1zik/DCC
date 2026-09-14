@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-14-overdue-selesai-terlambat-filter-waktu",
+    date: "2026-09-14",
+    title: "Tugas Overdue: filter waktu di tab Diselesaikan terlambat",
+    category: "improved",
+    description:
+      "Tab \"Diselesaikan terlambat\" di halaman Tugas Overdue CEO kini punya filter waktu penyelesaian: Hari ini, Kemarin, 7 hari, 30 hari, 90 hari, atau 1 tahun terakhir. Tiap pilihan menampilkan jumlah tugasnya, dan angka di tab serta kartu ringkasan mengikuti rentang yang dipilih.",
+    highlights: [
+      "Rentang default 30 hari terakhir; riwayat tersedia hingga 1 tahun ke belakang",
+      "Perhitungan hari mengikuti kalender WIB, sama seperti label keterlambatan",
+      "Filter waktu bisa dipadukan dengan pencarian dan filter ruangan",
+    ],
+  },
+  {
     id: "2026-09-14-ceo-tugas-overdue",
     date: "2026-09-14",
     title: "CEO: halaman Tugas Overdue lintas ruangan",
@@ -46,7 +59,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     highlights: [
       "Kartu \"Tugas overdue\" di Executive Overview dan menu samping mengarah ke halaman ini",
       "Menyelesaikan dari sini memindahkan kartu ke kolom Selesai di papan ruangannya dan mencatat komentar jejak audit berisi jumlah hari terlambat",
-      "Tab \"Diselesaikan terlambat\" merekap tugas yang ditutup melewati tenggat selama 60 hari terakhir",
+      "Tab \"Diselesaikan terlambat\" merekap tugas yang ditutup melewati tenggat",
       "Tugas yang masih menunggu persetujuan CEO otomatis disetujui saat CEO menutupnya",
     ],
   },
