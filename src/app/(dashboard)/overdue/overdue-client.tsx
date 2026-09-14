@@ -50,6 +50,8 @@ export type OverdueTaskRow = {
   archived: boolean;
   /** Hari kalender WIB melewati tenggat (saat ini, atau saat selesai). */
   lateDays: number;
+  /** Hari kalender WIB sejak selesai (0 = hari ini); null bila belum selesai. */
+  completedAgoDays: number | null;
   /** Butuh persetujuan CEO & belum disetujui — akan otomatis disetujui saat CEO menutupnya. */
   needsApproval: boolean;
   phaseLabel: string;
@@ -90,6 +92,94 @@ function formatDate(iso: string | null): string {
 
 function lateLabel(days: number): string {
   return days > 0 ? `${days} hari terlambat` : "Ditandai overdue manual";
+}
+
+/** Rentang waktu tab "Diselesaikan terlambat" — berdasarkan hari kalender WIB penyelesaian. */
+export type CompletedLateRangeId =
+  | "today"
+  | "yesterday"
+  | "7d"
+  | "30d"
+  | "90d"
+  | "all";
+
+export const COMPLETED_LATE_RANGES: {
+  id: CompletedLateRangeId;
+  label: string;
+  /** Frasa untuk kalimat: "…melewati tenggat {phrase}". */
+  phrase: string;
+  matches: (agoDays: number) => boolean;
+}[] = [
+  { id: "today", label: "Hari ini", phrase: "hari ini", matches: (d) => d === 0 },
+  { id: "yesterday", label: "Kemarin", phrase: "kemarin", matches: (d) => d === 1 },
+  { id: "7d", label: "7 hari", phrase: "7 hari terakhir", matches: (d) => d < 7 },
+  { id: "30d", label: "30 hari", phrase: "30 hari terakhir", matches: (d) => d < 30 },
+  { id: "90d", label: "90 hari", phrase: "90 hari terakhir", matches: (d) => d < 90 },
+  { id: "all", label: "1 tahun", phrase: "1 tahun terakhir", matches: () => true },
+];
+
+export const DEFAULT_COMPLETED_LATE_RANGE: CompletedLateRangeId = "30d";
+
+function rangeById(id: CompletedLateRangeId) {
+  return (
+    COMPLETED_LATE_RANGES.find((r) => r.id === id) ??
+    COMPLETED_LATE_RANGES[COMPLETED_LATE_RANGES.length - 1]
+  );
+}
+
+function inCompletedRange(row: OverdueTaskRow, id: CompletedLateRangeId): boolean {
+  return (
+    row.completedAgoDays != null && rangeById(id).matches(row.completedAgoDays)
+  );
+}
+
+function RangeChips({
+  rows,
+  active,
+  onChange,
+}: {
+  rows: OverdueTaskRow[];
+  active: CompletedLateRangeId;
+  onChange: (id: CompletedLateRangeId) => void;
+}) {
+  const counts = React.useMemo(() => {
+    const m = new Map<CompletedLateRangeId, number>();
+    for (const r of COMPLETED_LATE_RANGES) {
+      m.set(r.id, rows.filter((row) => inCompletedRange(row, r.id)).length);
+    }
+    return m;
+  }, [rows]);
+  return (
+    <div
+      role="group"
+      aria-label="Filter waktu penyelesaian"
+      className="flex flex-wrap items-center gap-1.5"
+    >
+      <span className="text-muted-foreground mr-0.5 inline-flex items-center gap-1 text-[11px]">
+        <CalendarDays className="size-3" aria-hidden />
+        Selesai
+      </span>
+      {COMPLETED_LATE_RANGES.map((r) => (
+        <button
+          key={r.id}
+          type="button"
+          onClick={() => onChange(r.id)}
+          aria-pressed={active === r.id}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+            active === r.id
+              ? "border-foreground/20 bg-foreground text-background"
+              : "border-border bg-card text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {r.label}
+          <span className="font-mono text-[10px] tabular-nums opacity-80">
+            {counts.get(r.id) ?? 0}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function matchesQuery(row: OverdueTaskRow, q: string): boolean {
@@ -508,21 +598,28 @@ function OverdueList({
 }
 
 function CompletedLateList({
+  allRows,
   rows,
-  windowDays,
+  range,
+  onRangeChange,
 }: {
+  /** Semua baris dalam jendela maksimum (untuk hitungan per chip rentang). */
+  allRows: OverdueTaskRow[];
+  /** Baris yang sudah lolos filter rentang aktif. */
   rows: OverdueTaskRow[];
-  windowDays: number;
+  range: CompletedLateRangeId;
+  onRangeChange: (id: CompletedLateRangeId) => void;
 }) {
   const { roomId, setRoomId, query, setQuery, rooms, filtered } =
     useRoomFilter(rows);
+  const rangePhrase = rangeById(range).phrase;
 
-  if (rows.length === 0) {
+  if (allRows.length === 0) {
     return (
       <EmptyState
         icon={History}
         title="Belum ada tugas yang diselesaikan terlambat"
-        description={`Tidak ada tugas yang ditutup melewati tenggat dalam ${windowDays} hari terakhir.`}
+        description={`Tidak ada tugas yang ditutup melewati tenggat dalam ${rangeById("all").phrase}.`}
       />
     );
   }
@@ -530,6 +627,7 @@ function CompletedLateList({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
+        <RangeChips rows={allRows} active={range} onChange={onRangeChange} />
         <div className="relative min-w-[220px] sm:max-w-xs">
           <Search
             className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
@@ -551,7 +649,13 @@ function CompletedLateList({
         />
       </div>
 
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={History}
+          title="Tidak ada di rentang ini"
+          description={`Tidak ada tugas yang ditutup melewati tenggat ${rangePhrase}. Coba rentang waktu yang lebih panjang.`}
+        />
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={Search}
           title="Tidak ada yang cocok"
@@ -605,14 +709,21 @@ function CompletedLateList({
 export function OverdueClient({
   overdue,
   completedLate,
-  completedLateWindowDays,
 }: {
   overdue: OverdueTaskRow[];
+  /** Tugas selesai terlambat dalam jendela maksimum (1 tahun); disaring per rentang di sini. */
   completedLate: OverdueTaskRow[];
-  completedLateWindowDays: number;
 }) {
   const router = useRouter();
   const roomCount = new Set(overdue.map((r) => r.room.id)).size;
+  const [range, setRange] = React.useState<CompletedLateRangeId>(
+    DEFAULT_COMPLETED_LATE_RANGE,
+  );
+  const completedInRange = React.useMemo(
+    () => completedLate.filter((r) => inCompletedRange(r, range)),
+    [completedLate, range],
+  );
+  const activeRange = rangeById(range);
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -640,9 +751,9 @@ export function OverdueClient({
             <PageHeroChip>
               <History className="size-3 text-amber-500" aria-hidden />
               <span className="text-foreground font-semibold tabular-nums">
-                {completedLate.length}
+                {completedInRange.length}
               </span>
-              Selesai terlambat
+              Selesai terlambat · {activeRange.label}
             </PageHeroChip>
           </>
         }
@@ -666,7 +777,7 @@ export function OverdueClient({
               <History className="size-4" aria-hidden />
               Diselesaikan terlambat
               <span className="ml-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
-                {completedLate.length}
+                {completedInRange.length}
               </span>
             </TabsTrigger>
           </TabsList>
@@ -676,11 +787,14 @@ export function OverdueClient({
         </TabsContent>
         <TabsContent value="completed" className="pt-5">
           <p className="text-muted-foreground mb-3 text-xs">
-            Tugas berstatus Selesai yang ditutup melewati tenggatnya, {completedLateWindowDays} hari terakhir.
+            Tugas berstatus Selesai yang ditutup melewati tenggatnya,{" "}
+            {activeRange.phrase}. Riwayat tersedia hingga 1 tahun ke belakang.
           </p>
           <CompletedLateList
-            rows={completedLate}
-            windowDays={completedLateWindowDays}
+            allRows={completedLate}
+            rows={completedInRange}
+            range={range}
+            onRangeChange={setRange}
           />
         </TabsContent>
       </Tabs>

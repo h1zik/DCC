@@ -7,8 +7,11 @@ import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import { taskLateDays, toJakartaDayKey } from "@/lib/task-effective-status";
 import { OverdueClient, type OverdueTaskRow } from "./overdue-client";
 
-/** Jendela riwayat "diselesaikan terlambat" yang ditampilkan (hari). */
-const COMPLETED_LATE_WINDOW_DAYS = 60;
+/**
+ * Jendela riwayat "diselesaikan terlambat" maksimum yang diambil (hari).
+ * Rentang yang lebih pendek (hari ini, kemarin, 7/30/90 hari) disaring di klien.
+ */
+const COMPLETED_LATE_WINDOW_DAYS = 365;
 
 const taskRowSelect = {
   id: true,
@@ -78,6 +81,10 @@ function toRow(t: TaskRowSource, now: Date): OverdueTaskRow {
     completedAtIso: t.completedAt ? t.completedAt.toISOString() : null,
     archived: t.archivedAt != null,
     lateDays,
+    completedAgoDays:
+      t.status === TaskStatus.DONE && t.completedAt
+        ? taskLateDays(t.completedAt, now)
+        : null,
     needsApproval: t.isApprovalRequired && !t.isApproved,
     phaseLabel: phase.name,
     boardHref: `/room/${t.project.room.id}/tasks?process=${encodeURIComponent(phase.id)}`,
@@ -127,10 +134,6 @@ export default async function CeoOverdueTasksPage() {
     .map((t) => toRow(t, now));
 
   return (
-    <OverdueClient
-      overdue={overdue}
-      completedLate={completedLate}
-      completedLateWindowDays={COMPLETED_LATE_WINDOW_DAYS}
-    />
+    <OverdueClient overdue={overdue} completedLate={completedLate} />
   );
 }
