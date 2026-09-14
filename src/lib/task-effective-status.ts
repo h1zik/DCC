@@ -59,3 +59,18 @@ export function effectiveTaskStatus(
   }
   return bucket;
 }
+
+/**
+ * Selisih hari kalender WIB antara tenggat dan `now` (positif = sudah lewat).
+ * Dipakai untuk label "X hari terlambat"; 0 bila belum lewat atau tanpa tenggat.
+ */
+export function taskLateDays(
+  dueDate: Date | null | undefined,
+  now: Date = new Date(),
+): number {
+  if (!dueDate) return 0;
+  const dueMs = Date.parse(`${toJakartaDayKey(dueDate)}T00:00:00Z`);
+  const nowMs = Date.parse(`${toJakartaDayKey(now)}T00:00:00Z`);
+  const diff = Math.round((nowMs - dueMs) / 86_400_000);
+  return diff > 0 ? diff : 0;
+}

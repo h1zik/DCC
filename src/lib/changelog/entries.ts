@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-14-ceo-tugas-overdue",
+    date: "2026-09-14",
+    title: "CEO: halaman Tugas Overdue lintas ruangan",
+    category: "new",
+    description:
+      "CEO kini punya halaman Tugas Overdue yang menampilkan semua tugas melewati tenggat dari seluruh ruangan dan proyek, lengkap dengan PIC, tenggat, dan lama keterlambatan. Tugas bisa langsung ditandai selesai (terlambat) satu per satu atau sekaligus tanpa membuka papan tiap ruangan.",
+    highlights: [
+      "Kartu \"Tugas overdue\" di Executive Overview dan menu samping mengarah ke halaman ini",
+      "Menyelesaikan dari sini memindahkan kartu ke kolom Selesai di papan ruangannya dan mencatat komentar jejak audit berisi jumlah hari terlambat",
+      "Tab \"Diselesaikan terlambat\" merekap tugas yang ditutup melewati tenggat selama 60 hari terakhir",
+      "Tugas yang masih menunggu persetujuan CEO otomatis disetujui saat CEO menutupnya",
+    ],
+  },
+  {
     id: "2026-09-08-content-plan-jenis-story",
     date: "2026-09-08",
     title: "Content Plan: jenis konten Story",

@@ -357,10 +357,12 @@ export default async function ExecutiveDashboardPage() {
         <ExecutiveKpiCard
           label="Tugas overdue"
           value={overdueTasks}
-          description="Seluruh proyek (Tahap 2)"
+          description="Seluruh ruangan & proyek"
           icon={<Clock className="size-4" />}
           tone={overdueTasks > 0 ? "danger" : "success"}
           indicator={overdueTasks > 0 ? 100 : 0}
+          href="/overdue"
+          ctaLabel="Lihat & selesaikan"
         />
         <ExecutiveKpiCard
           label="Siap peluncuran"

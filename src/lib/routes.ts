@@ -175,6 +175,7 @@ export function isCeoAppRoute(pathname: string): boolean {
     isAttendanceRoute(pathname) ||
     isAgentRoute(pathname) ||
     pathname.startsWith("/for-me") ||
+    pathname.startsWith("/overdue") ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/room") ||

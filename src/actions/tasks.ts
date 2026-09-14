@@ -12,7 +12,7 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
+import { requireCeo, requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { isProfileGamificationEnabled, onTaskDone } from "@/lib/gamification";
 import { notifyCeo, notifyTaskCompletedForCeo } from "@/lib/notify";
 import {
@@ -28,7 +28,11 @@ import {
   isSimpleHubRoom,
   taskProjectContextLabel,
 } from "@/lib/room-simple-hub";
-import { effectiveTaskStatus } from "@/lib/task-effective-status";
+import {
+  effectiveTaskStatus,
+  isTaskLate,
+  taskLateDays,
+} from "@/lib/task-effective-status";
 import {
   kanbanColumnBucket as columnBucket,
   taskBoardColumnWhere,
@@ -659,6 +663,101 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   if (notificationJobs.length > 0) {
     void Promise.allSettled(notificationJobs);
   }
+}
+
+const ceoCompleteOverdueSchema = z.object({
+  taskIds: z.array(z.string().min(1)).min(1).max(200),
+});
+
+export type CeoCompleteOverdueResult = {
+  taskId: string;
+  ok: boolean;
+  error?: string;
+};
+
+/**
+ * CEO menutup tugas yang sedang overdue sebagai "selesai terlambat" dari
+ * halaman Tugas Overdue (lintas ruangan, tanpa perlu jadi anggota ruangan).
+ *
+ * - Hanya tugas berstatus OVERDUE (atau yang tenggatnya sudah lewat) yang
+ *   boleh ditutup lewat jalur ini; tugas lain tetap lewat papan Kanban.
+ * - Tugas yang butuh persetujuan CEO otomatis disetujui — CEO sendiri pihak
+ *   yang menyetujui, jadi penutupan olehnya sekaligus persetujuan.
+ * - Penulisan status/kolom tetap lewat `moveTaskStatus` (bucket DONE +
+ *   `completedAt`), sehingga XP gamifikasi mendeteksinya sebagai selesai
+ *   terlambat dan kartu berpindah ke kolom "Selesai" di papan ruangan.
+ * - Jejak audit: komentar sistem di tugas mencatat berapa hari terlambat.
+ *
+ * Diproses per tugas; kegagalan satu tugas tidak membatalkan tugas lain.
+ */
+export async function completeOverdueTasksAsCeo(
+  input: z.infer<typeof ceoCompleteOverdueSchema>,
+): Promise<CeoCompleteOverdueResult[]> {
+  const session = await requireCeo();
+  const { taskIds } = ceoCompleteOverdueSchema.parse(input);
+  const now = new Date();
+  const results: CeoCompleteOverdueResult[] = [];
+
+  for (const taskId of [...new Set(taskIds)]) {
+    try {
+      const task = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: {
+          id: true,
+          status: true,
+          dueDate: true,
+          archivedAt: true,
+          isApprovalRequired: true,
+          isApproved: true,
+        },
+      });
+      if (!task) throw new Error("Tugas tidak ditemukan.");
+      if (task.archivedAt) {
+        throw new Error("Tugas sudah diarsipkan.");
+      }
+      if (task.status === TaskStatus.DONE) {
+        throw new Error("Tugas sudah selesai.");
+      }
+      if (task.status !== TaskStatus.OVERDUE && !isTaskLate(task.dueDate, now)) {
+        throw new Error("Tugas ini tidak sedang overdue.");
+      }
+
+      if (task.isApprovalRequired && !task.isApproved) {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: { isApproved: true },
+        });
+      }
+
+      await moveTaskStatus({ taskId, status: TaskStatus.DONE });
+
+      const lateDays = taskLateDays(task.dueDate, now);
+      const lateLabel =
+        lateDays > 0
+          ? `${lateDays} hari melewati tenggat`
+          : "tanpa tenggat, ditandai overdue manual";
+      await prisma.taskComment.create({
+        data: {
+          taskId,
+          authorId: session.user.id,
+          body: `Ditandai selesai terlambat (${lateLabel}) oleh CEO dari halaman Tugas Overdue.`,
+        },
+      });
+
+      results.push({ taskId, ok: true });
+    } catch (e) {
+      results.push({
+        taskId,
+        ok: false,
+        error: e instanceof Error ? e.message : "Gagal menyelesaikan tugas.",
+      });
+    }
+  }
+
+  revalidatePath("/overdue");
+  revalidatePath("/");
+  revalidatePath("/for-me");
+  return results;
 }
 
 export async function archiveTask(taskId: string) {
