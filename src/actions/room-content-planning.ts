@@ -8,6 +8,7 @@ import {
   ContentPlanJenis,
   ContentPlanPlatform,
   ContentPlanStatusKerja,
+  ContentPlanTaskKind,
   ContentPlanUsage,
 } from "@prisma/client";
 import { z } from "zod";
@@ -460,16 +461,24 @@ export async function clearContentPlanDesignFiles(roomId: string, itemId: string
 
 /**
  * Tugas Kanban dari Content Planning: saat tugas **Selesai**, salin lampiran file dari
- * tugas ke `designFilePaths` baris CP (urutan = urutan unggah di tugas) dan set
- * `statusDesign` ke Dipublikasikan. File design lama di folder CP
- * (`/uploads/room-content-plan/...`) dihapus dari disk; path `/uploads/tasks/...`
- * disimpan apa adanya agar carousel/reels tetap bisa dibuka dari CP.
+ * tugas ke baris CP dan set status sisi pekerjaan itu ke Dipublikasikan.
+ *
+ * - Tugas **design**: lampiran gambar/video → `designFilePaths` (urutan = urutan
+ *   unggah di tugas), `statusDesign` → Dipublikasikan.
+ * - Tugas **copy**: lampiran dokumen pertama (PDF/Word/teks; fallback file apa pun)
+ *   → `copywritingFilePath`, `statusCopywriting` → Dipublikasikan.
+ *
+ * File lama di folder CP (`/uploads/room-content-plan/...`) dihapus dari disk hanya
+ * bila ada file pengganti dari tugas; tugas tanpa lampiran tidak menghapus file
+ * yang sudah ada di baris. Path `/uploads/tasks/...` disimpan apa adanya agar
+ * file tetap bisa dibuka dari CP.
  */
 export async function syncContentPlanRowFromCompletedKanbanTask(params: {
   roomId: string;
   itemId: string;
   taskId: string;
   jenisKonten: ContentPlanJenis;
+  kind: ContentPlanTaskKind;
 }) {
   const attachments = await prisma.taskAttachment.findMany({
     where: { taskId: params.taskId, publicPath: { not: null } },
@@ -479,6 +488,15 @@ export async function syncContentPlanRowFromCompletedKanbanTask(params: {
   const fileRows = attachments.filter((a) =>
     Boolean(a.publicPath?.startsWith("/uploads/tasks/")),
   );
+
+  if (params.kind === ContentPlanTaskKind.COPYWRITING) {
+    await syncCopywritingFromCompletedTask({
+      roomId: params.roomId,
+      itemId: params.itemId,
+      fileRows,
+    });
+    return;
+  }
 
   let nextPaths: string[] = [];
   switch (params.jenisKonten) {
@@ -512,15 +530,58 @@ export async function syncContentPlanRowFromCompletedKanbanTask(params: {
   });
   if (!row || row.roomId !== params.roomId) return;
 
-  for (const p of row.designFilePaths) {
-    await unlinkIfSafe(p);
+  const replaceFiles = nextPaths.length > 0;
+  if (replaceFiles) {
+    for (const p of row.designFilePaths) {
+      await unlinkIfSafe(p);
+    }
   }
 
   await prisma.roomContentPlanItem.update({
     where: { id: params.itemId },
     data: {
-      designFilePaths: nextPaths,
+      ...(replaceFiles ? { designFilePaths: nextPaths } : {}),
       statusDesign: ContentPlanStatusKerja.DIPUBLIKASIKAN,
+    },
+  });
+  revalidateTasksAndRoomHub();
+  revalidatePath(`/room/${params.roomId}/content-planning`);
+}
+
+function isDocumentMime(mime: string): boolean {
+  const m = mime.toLowerCase();
+  return (
+    m.startsWith("application/pdf") ||
+    m.startsWith("text/") ||
+    m.startsWith("application/msword") ||
+    m.startsWith("application/vnd.openxmlformats-officedocument")
+  );
+}
+
+async function syncCopywritingFromCompletedTask(params: {
+  roomId: string;
+  itemId: string;
+  fileRows: { publicPath: string | null; mimeType: string }[];
+}) {
+  const picked =
+    params.fileRows.find((a) => isDocumentMime(a.mimeType)) ?? params.fileRows[0];
+  const nextPath = picked?.publicPath ?? null;
+
+  const row = await prisma.roomContentPlanItem.findUnique({
+    where: { id: params.itemId },
+    select: { roomId: true, copywritingFilePath: true },
+  });
+  if (!row || row.roomId !== params.roomId) return;
+
+  if (nextPath) {
+    await unlinkIfSafe(row.copywritingFilePath);
+  }
+
+  await prisma.roomContentPlanItem.update({
+    where: { id: params.itemId },
+    data: {
+      ...(nextPath ? { copywritingFilePath: nextPath } : {}),
+      statusCopywriting: ContentPlanStatusKerja.DIPUBLIKASIKAN,
     },
   });
   revalidateTasksAndRoomHub();
