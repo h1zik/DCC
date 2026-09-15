@@ -8,12 +8,15 @@ import {
   AlertOctagon,
   ArrowUpRight,
   CalendarDays,
+  CalendarX,
   CheckCheck,
   CheckCircle2,
   History,
+  ListTodo,
   Loader2,
   Search,
   ShieldAlert,
+  UserX,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +50,9 @@ export type OverdueTaskRow = {
   roomProcess: RoomTaskProcess;
   dueDateIso: string | null;
   completedAtIso: string | null;
+  createdAtIso: string;
+  /** Hari kalender WIB sejak tugas dibuat (0 = hari ini). */
+  ageDays: number;
   archived: boolean;
   /** Hari kalender WIB melewati tenggat (saat ini, atau saat selesai). */
   lateDays: number;
@@ -59,6 +65,17 @@ export type OverdueTaskRow = {
   room: { id: string; name: string };
   contextLabel: string;
   assignees: { id: string; name: string }[];
+};
+
+export type OverdueTab = "overdue" | "completed" | "incomplete";
+
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  [TaskStatus.TODO]: "Belum mulai",
+  [TaskStatus.IN_PROGRESS]: "Berjalan",
+  [TaskStatus.OVERDUE]: "Overdue",
+  [TaskStatus.DONE]: "Selesai",
+  [TaskStatus.BLOCKED]: "Tertunda",
+  [TaskStatus.IN_REVIEW]: "Ditinjau",
 };
 
 const PRIORITY_CHIP: Record<TaskPriority, { label: string; className: string }> =
@@ -93,6 +110,30 @@ function formatDate(iso: string | null): string {
 function lateLabel(days: number): string {
   return days > 0 ? `${days} hari terlambat` : "Ditandai overdue manual";
 }
+
+function ageLabel(days: number): string {
+  if (days <= 0) return "Dibuat hari ini";
+  if (days === 1) return "Dibuat kemarin";
+  return `Dibuat ${days} hari lalu`;
+}
+
+/** Filter tab "Belum lengkap": kekurangan apa yang ditampilkan. */
+type IncompleteKind = "all" | "no-due" | "no-pic" | "both";
+
+const INCOMPLETE_KINDS: {
+  id: IncompleteKind;
+  label: string;
+  matches: (row: OverdueTaskRow) => boolean;
+}[] = [
+  { id: "all", label: "Semua", matches: () => true },
+  { id: "no-due", label: "Tanpa tenggat", matches: (r) => r.dueDateIso == null },
+  { id: "no-pic", label: "Tanpa PIC", matches: (r) => r.assignees.length === 0 },
+  {
+    id: "both",
+    label: "Tanpa keduanya",
+    matches: (r) => r.dueDateIso == null && r.assignees.length === 0,
+  },
+];
 
 /** Rentang waktu tab "Diselesaikan terlambat" — berdasarkan hari kalender WIB penyelesaian. */
 export type CompletedLateRangeId =
@@ -706,13 +747,203 @@ function CompletedLateList({
   );
 }
 
+function MissingBadges({ row }: { row: OverdueTaskRow }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {row.dueDateIso == null ? (
+        <Badge
+          variant="outline"
+          className="h-5 gap-1 border-amber-500/30 bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
+        >
+          <CalendarX className="size-3" aria-hidden />
+          Tanpa tenggat
+        </Badge>
+      ) : null}
+      {row.assignees.length === 0 ? (
+        <Badge
+          variant="outline"
+          className="h-5 gap-1 border-orange-500/30 bg-orange-500/10 px-1.5 text-[10px] text-orange-700 dark:text-orange-300"
+        >
+          <UserX className="size-3" aria-hidden />
+          Tanpa PIC
+        </Badge>
+      ) : null}
+    </div>
+  );
+}
+
+function IncompleteList({ rows }: { rows: OverdueTaskRow[] }) {
+  const [kind, setKind] = React.useState<IncompleteKind>("all");
+  const kindDef =
+    INCOMPLETE_KINDS.find((k) => k.id === kind) ?? INCOMPLETE_KINDS[0];
+  const inKind = React.useMemo(
+    () => rows.filter((r) => kindDef.matches(r)),
+    [rows, kindDef],
+  );
+  const { roomId, setRoomId, query, setQuery, rooms, filtered } =
+    useRoomFilter(inKind);
+  const counts = React.useMemo(() => {
+    const m = new Map<IncompleteKind, number>();
+    for (const k of INCOMPLETE_KINDS) {
+      m.set(k.id, rows.filter((r) => k.matches(r)).length);
+    }
+    return m;
+  }, [rows]);
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={CheckCircle2}
+        title="Semua tugas aktif sudah lengkap"
+        description="Setiap tugas yang belum selesai sudah punya tenggat dan PIC."
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
+        <div
+          role="group"
+          aria-label="Filter kekurangan tugas"
+          className="flex flex-wrap items-center gap-1.5"
+        >
+          <span className="text-muted-foreground mr-0.5 inline-flex items-center gap-1 text-[11px]">
+            <ListTodo className="size-3" aria-hidden />
+            Kekurangan
+          </span>
+          {INCOMPLETE_KINDS.map((k) => (
+            <button
+              key={k.id}
+              type="button"
+              onClick={() => setKind(k.id)}
+              aria-pressed={kind === k.id}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                kind === k.id
+                  ? "border-foreground/20 bg-foreground text-background"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {k.label}
+              <span className="font-mono text-[10px] tabular-nums opacity-80">
+                {counts.get(k.id) ?? 0}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="relative min-w-[220px] sm:max-w-xs">
+          <Search
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+            aria-hidden
+          />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari judul, ruangan, PIC…"
+            aria-label="Cari tugas belum lengkap"
+            className="h-8 pl-8 text-sm"
+          />
+        </div>
+        <RoomChips
+          rooms={rooms}
+          active={roomId}
+          onChange={setRoomId}
+          total={inKind.length}
+        />
+      </div>
+
+      {inKind.length === 0 ? (
+        <EmptyState
+          icon={CheckCircle2}
+          title="Tidak ada di kategori ini"
+          description="Pilih kategori kekurangan lain untuk melihat tugas lainnya."
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="Tidak ada yang cocok"
+          description="Ubah kata kunci atau pilih ruangan lain."
+        />
+      ) : (
+        <div className="border-border bg-card overflow-hidden rounded-xl border shadow-sm">
+          <div className="border-border/70 bg-muted/40 flex items-center gap-3 border-b px-3 py-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+            <span className="flex-1">Tugas</span>
+            <span className="hidden w-44 sm:block">Kekurangan</span>
+            <span className="hidden w-32 sm:block">Dibuat</span>
+            <span className="w-24 text-right">Aksi</span>
+          </div>
+          <ul className="divide-border/70 divide-y">
+            {filtered.map((row) => (
+              <li key={row.id} className="flex items-start gap-3 px-3 py-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <p className="text-foreground min-w-0 text-sm font-medium leading-snug">
+                      {row.title}
+                    </p>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                      {STATUS_LABEL[row.status]}
+                    </Badge>
+                  </div>
+                  <TaskMeta row={row} />
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {row.assignees.length > 0 ? (
+                      <Assignees list={row.assignees} />
+                    ) : null}
+                    {row.dueDateIso ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <CalendarDays className="size-3" aria-hidden />
+                        Tenggat {formatDate(row.dueDateIso)}
+                      </span>
+                    ) : null}
+                    <span className="text-[11px] text-muted-foreground sm:hidden">
+                      {ageLabel(row.ageDays)}
+                    </span>
+                    <div className="sm:hidden">
+                      <MissingBadges row={row} />
+                    </div>
+                  </div>
+                </div>
+                <div className="hidden w-44 shrink-0 pt-0.5 sm:block">
+                  <MissingBadges row={row} />
+                </div>
+                <span className="text-foreground/80 hidden w-32 shrink-0 pt-0.5 text-xs tabular-nums sm:block">
+                  {formatDate(row.createdAtIso)}
+                  <span className="text-muted-foreground block text-[11px]">
+                    {ageLabel(row.ageDays)}
+                  </span>
+                </span>
+                <div className="flex w-24 shrink-0 justify-end pt-0.5">
+                  <Link
+                    href={row.boardHref}
+                    className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 text-[11px] underline-offset-2 hover:underline"
+                  >
+                    Buka papan
+                    <ArrowUpRight className="size-3" aria-hidden />
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OverdueClient({
   overdue,
   completedLate,
+  incomplete,
+  initialTab = "overdue",
 }: {
   overdue: OverdueTaskRow[];
   /** Tugas selesai terlambat dalam jendela maksimum (1 tahun); disaring per rentang di sini. */
   completedLate: OverdueTaskRow[];
+  /** Tugas aktif tanpa tenggat dan/atau tanpa PIC. */
+  incomplete: OverdueTaskRow[];
+  /** Tab awal (dari `?tab=`), mis. tautan dari dashboard CEO. */
+  initialTab?: OverdueTab;
 }) {
   const router = useRouter();
   const roomCount = new Set(overdue.map((r) => r.room.id)).size;
@@ -731,7 +962,7 @@ export function OverdueClient({
         icon={AlertOctagon}
         variant="compact"
         title="Tugas Overdue"
-        subtitle="Semua tugas lintas ruangan yang melewati tenggat. Tandai selesai (terlambat) langsung dari sini, atau buka papan ruangannya."
+        subtitle="Semua tugas lintas ruangan yang melewati tenggat, plus tugas aktif yang belum punya tenggat atau PIC. Tandai selesai (terlambat) langsung dari sini, atau buka papan ruangannya."
         right={
           <>
             <PageHeroChip>
@@ -755,11 +986,18 @@ export function OverdueClient({
               </span>
               Selesai terlambat · {activeRange.label}
             </PageHeroChip>
+            <PageHeroChip>
+              <ListTodo className="size-3 text-orange-500" aria-hidden />
+              <span className="text-foreground font-semibold tabular-nums">
+                {incomplete.length}
+              </span>
+              Belum lengkap
+            </PageHeroChip>
           </>
         }
       />
 
-      <Tabs defaultValue="overdue" className="gap-0">
+      <Tabs defaultValue={initialTab} className="gap-0">
         <div className="overflow-x-auto border-b border-border/70">
           <TabsList
             variant="line"
@@ -780,6 +1018,13 @@ export function OverdueClient({
                 {completedInRange.length}
               </span>
             </TabsTrigger>
+            <TabsTrigger value="incomplete" className="px-1.5">
+              <ListTodo className="size-4" aria-hidden />
+              Belum lengkap
+              <span className="ml-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+                {incomplete.length}
+              </span>
+            </TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="overdue" className="pt-5">
@@ -796,6 +1041,14 @@ export function OverdueClient({
             range={range}
             onRangeChange={setRange}
           />
+        </TabsContent>
+        <TabsContent value="incomplete" className="pt-5">
+          <p className="text-muted-foreground mb-3 text-xs">
+            Tugas aktif (belum selesai, belum diarsipkan) yang belum diberi
+            tenggat dan/atau PIC. Gunakan sebagai daftar pengingat agar tim
+            melengkapinya lewat papan ruangan masing-masing.
+          </p>
+          <IncompleteList rows={incomplete} />
         </TabsContent>
       </Tabs>
     </div>
