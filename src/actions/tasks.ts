@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   ContentPlanJenis,
+  ContentPlanTaskKind,
   NotificationType,
   type Prisma,
   RoomMemberRole,
@@ -12,6 +13,7 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { contentPlanTaskKindOrDefault } from "@/lib/content-plan-task-kind";
 import { requireCeo, requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { isProfileGamificationEnabled, onTaskDone } from "@/lib/gamification";
 import { notifyCeo, notifyTaskCompletedForCeo } from "@/lib/notify";
@@ -222,11 +224,12 @@ async function assertKanbanReorderTasks(
   }
 }
 
-async function markContentPlanDesignPublishedIfTaskDone(params: {
+async function markContentPlanPublishedIfTaskDone(params: {
   roomId: string;
   taskId: string;
   contentPlanItemId: string | null;
   contentPlanJenis: ContentPlanJenis | null;
+  contentPlanKind: ContentPlanTaskKind | null;
 }) {
   const { roomId, taskId, contentPlanItemId, contentPlanJenis } = params;
   if (!contentPlanItemId || !contentPlanJenis) return;
@@ -236,6 +239,7 @@ async function markContentPlanDesignPublishedIfTaskDone(params: {
     itemId: contentPlanItemId,
     taskId,
     jenisKonten: contentPlanJenis,
+    kind: contentPlanTaskKindOrDefault(params.contentPlanKind),
   });
 }
 
@@ -432,6 +436,7 @@ export async function moveTaskToColumn(
       dueDate: true,
       contentPlanItemId: true,
       contentPlanJenis: true,
+      contentPlanKind: true,
       isApprovalRequired: true,
       isApproved: true,
       archivedAt: true,
@@ -504,11 +509,12 @@ export async function moveTaskToColumn(
   }
 
   if (markingDone) {
-    await markContentPlanDesignPublishedIfTaskDone({
+    await markContentPlanPublishedIfTaskDone({
       roomId: task.project.room.id,
       taskId: task.id,
       contentPlanItemId: task.contentPlanItemId,
       contentPlanJenis: task.contentPlanJenis,
+      contentPlanKind: task.contentPlanKind,
     });
   }
 
@@ -557,6 +563,7 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
       dueDate: true,
       contentPlanItemId: true,
       contentPlanJenis: true,
+      contentPlanKind: true,
       isApprovalRequired: true,
       isApproved: true,
       archivedAt: true,
@@ -626,11 +633,12 @@ export async function moveTaskStatus(input: z.infer<typeof moveSchema>) {
   }
 
   if (markingDone) {
-    await markContentPlanDesignPublishedIfTaskDone({
+    await markContentPlanPublishedIfTaskDone({
       roomId: task.project.room.id,
       taskId: task.id,
       contentPlanItemId: task.contentPlanItemId,
       contentPlanJenis: task.contentPlanJenis,
+      contentPlanKind: task.contentPlanKind,
     });
   }
 
@@ -846,6 +854,8 @@ const createSchema = z
     customProcessPhaseId: z.string().min(1).optional().nullable(),
     contentPlanItemId: z.string().min(1).optional().nullable(),
     contentPlanJenis: z.nativeEnum(ContentPlanJenis).optional().nullable(),
+    /** Sisi pekerjaan CP (copy/design). Kosong + ada itemId = dianggap DESIGN. */
+    contentPlanKind: z.nativeEnum(ContentPlanTaskKind).optional().nullable(),
   })
   .superRefine((val, ctx) => {
     const hasId = Boolean(val.contentPlanItemId);
@@ -1015,6 +1025,9 @@ export async function createTask(
       leadTimeDays: data.leadTimeDays ?? undefined,
       contentPlanItemId: data.contentPlanItemId ?? undefined,
       contentPlanJenis: data.contentPlanJenis ?? undefined,
+      contentPlanKind: data.contentPlanItemId
+        ? contentPlanTaskKindOrDefault(data.contentPlanKind)
+        : undefined,
       sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
       assignees: {
         create: assigneeIds.map((userId) => ({ userId })),
@@ -1090,6 +1103,7 @@ export async function updateTask(
       },
       contentPlanItemId: true,
       contentPlanJenis: true,
+      contentPlanKind: true,
       isApprovalRequired: true,
       isApproved: true,
       assignees: { select: { userId: true } },
@@ -1350,11 +1364,12 @@ export async function updateTask(
   }
 
   if (markingDone) {
-    await markContentPlanDesignPublishedIfTaskDone({
+    await markContentPlanPublishedIfTaskDone({
       roomId,
       taskId: data.taskId,
       contentPlanItemId: prev.contentPlanItemId,
       contentPlanJenis: prev.contentPlanJenis,
+      contentPlanKind: prev.contentPlanKind,
     });
   }
 

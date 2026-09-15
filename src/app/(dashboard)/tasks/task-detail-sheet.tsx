@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ContentPlanJenis,
+  ContentPlanTaskKind,
   RoomTaskProcess,
   TaskPriority,
   TaskStatus,
@@ -12,6 +13,10 @@ import {
   type Project,
   type User,
 } from "@prisma/client";
+import {
+  contentPlanTaskKindLabel,
+  contentPlanTaskKindOrDefault,
+} from "@/lib/content-plan-task-kind";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -408,6 +413,9 @@ export function TaskDetailSheet({
     ],
     [taskGroups],
   );
+  const contentPlanKind = task?.contentPlanItemId
+    ? contentPlanTaskKindOrDefault(task.contentPlanKind)
+    : null;
   const contentPlanAttachmentHint = useMemo(() => {
     if (!task?.contentPlanItemId || !task.contentPlanJenis) {
       return {
@@ -415,6 +423,14 @@ export function TaskDetailSheet({
         accept: undefined as string | undefined,
         helper:
           "Satu atau beberapa file sekaligus. Pratinjau gambar ditampilkan di bawah. Batas ukuran mengikuti pengaturan server.",
+      };
+    }
+    if (contentPlanKind === ContentPlanTaskKind.COPYWRITING) {
+      return {
+        multiple: false,
+        accept: ".pdf,.doc,.docx,.txt,.md,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*",
+        helper:
+          "Copy: satu dokumen naskah (PDF, Word, atau teks). Dokumen pertama yang diunggah disalin ke kolom file copywriting baris Content Planning saat tugas selesai. Batas ukuran mengikuti pengaturan server.",
       };
     }
     switch (task.contentPlanJenis) {
@@ -454,7 +470,7 @@ export function TaskDetailSheet({
             "Satu atau beberapa file sekaligus. Pratinjau gambar ditampilkan di bawah. Batas ukuran mengikuti pengaturan server.",
         };
     }
-  }, [task?.contentPlanItemId, task?.contentPlanJenis]);
+  }, [task?.contentPlanItemId, task?.contentPlanJenis, contentPlanKind]);
 
   async function persistSave() {
     if (!task) return;
@@ -726,16 +742,26 @@ export function TaskDetailSheet({
             {task.contentPlanItemId && task.contentPlanJenis ? (
               <div className="border-border bg-muted/40 shrink-0 border-b px-4 py-3 text-sm">
                 <p className="text-foreground font-medium">
-                  Tugas dari Content Planning ·{" "}
-                  {contentPlanJenisLabel(task.contentPlanJenis)}
+                  Tugas {contentPlanTaskKindLabel(contentPlanKind ?? ContentPlanTaskKind.DESIGN)}{" "}
+                  dari Content Planning · {contentPlanJenisLabel(task.contentPlanJenis)}
                 </p>
-                <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                  Lampiran di bagian bawah disesuaikan dengan jenis konten. Saat status
-                  tugas menjadi <span className="text-foreground font-medium">Selesai</span>
-                  , file design dari lampiran tugas disalin ke baris Content Planning
-                  (urutan slide = urutan unggah), lalu status design menjadi{" "}
-                  <span className="text-foreground font-medium">Dipublikasikan</span>.
-                </p>
+                {contentPlanKind === ContentPlanTaskKind.COPYWRITING ? (
+                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    Unggah naskah copy sebagai lampiran. Saat status tugas menjadi{" "}
+                    <span className="text-foreground font-medium">Selesai</span>, dokumen
+                    pertama dari lampiran tugas disalin ke file copywriting baris Content
+                    Planning, lalu status copy menjadi{" "}
+                    <span className="text-foreground font-medium">Dipublikasikan</span>.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    Lampiran di bagian bawah disesuaikan dengan jenis konten. Saat status
+                    tugas menjadi <span className="text-foreground font-medium">Selesai</span>
+                    , file design dari lampiran tugas disalin ke baris Content Planning
+                    (urutan slide = urutan unggah), lalu status design menjadi{" "}
+                    <span className="text-foreground font-medium">Dipublikasikan</span>.
+                  </p>
+                )}
               </div>
             ) : null}
 

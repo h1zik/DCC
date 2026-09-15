@@ -9,11 +9,13 @@ import {
   ContentPlanJenis,
   ContentPlanPlatform,
   ContentPlanStatusKerja,
+  ContentPlanTaskKind,
   ContentPlanUsage,
   type User,
 } from "@prisma/client";
 import { toast } from "sonner";
-import { createKanbanTasksFromContentPlanDesign } from "@/actions/content-plan-to-kanban";
+import { createKanbanTasksFromContentPlan } from "@/actions/content-plan-to-kanban";
+import { contentPlanTaskKindLabel } from "@/lib/content-plan-task-kind";
 import {
   applyContentPlanPostingTimes,
   suggestContentPlanPostingTimes,
@@ -120,7 +122,9 @@ import {
   MessageCircle,
   Music2,
   MoreHorizontal,
+  Palette,
   Pencil,
+  PenLine,
   Play,
   Plus,
   Search,
@@ -193,9 +197,60 @@ export type ContentPlanTableRow = {
   pic: Pick<User, "id" | "name" | "email" | "image"> | null;
   pics?: Pick<User, "id" | "name" | "email" | "image">[];
   createdBy: Pick<User, "id" | "name" | "email">;
+  /**
+   * Sisi pekerjaan (copy/design) yang sudah punya tugas Kanban aktif. Diisi
+   * server; kosong = belum ada tugas. Dipakai agar sisi yang sama tidak
+   * ditawarkan dua kali.
+   */
+  kanbanTaskKinds?: ContentPlanTaskKind[];
 };
 
 type PicOption = Pick<User, "id" | "name" | "email" | "image">;
+
+/** Status sisi pekerjaan (copy/design) sebuah baris. */
+function rowStatusForKind(
+  row: Pick<ContentPlanTableRow, "statusCopywriting" | "statusDesign">,
+  kind: ContentPlanTaskKind,
+): ContentPlanStatusKerja {
+  return kind === ContentPlanTaskKind.COPYWRITING
+    ? row.statusCopywriting
+    : row.statusDesign;
+}
+
+/**
+ * Baris boleh dibuatkan tugas Kanban untuk sisi `kind` bila status sisi itu
+ * masih Baru dan belum ada tugas aktif sisi tersebut.
+ */
+function rowKanbanEligibleForKind(
+  row: Pick<
+    ContentPlanTableRow,
+    "statusCopywriting" | "statusDesign" | "kanbanTaskKinds" | "archivedAt"
+  >,
+  kind: ContentPlanTaskKind,
+): boolean {
+  if (row.archivedAt) return false;
+  if (rowStatusForKind(row, kind) !== ContentPlanStatusKerja.BARU) return false;
+  return !(row.kanbanTaskKinds ?? []).includes(kind);
+}
+
+/** Baris bisa dicentang untuk Kanban bila minimal satu sisi (copy/design) masih tersedia. */
+function rowKanbanEligible(
+  row: Parameters<typeof rowKanbanEligibleForKind>[0],
+): boolean {
+  return (
+    rowKanbanEligibleForKind(row, ContentPlanTaskKind.COPYWRITING) ||
+    rowKanbanEligibleForKind(row, ContentPlanTaskKind.DESIGN)
+  );
+}
+
+/** Keterangan singkat kenapa baris tidak bisa dicentang untuk Kanban. */
+function rowKanbanIneligibleHint(
+  row: Parameters<typeof rowKanbanEligibleForKind>[0],
+): string {
+  const kinds = row.kanbanTaskKinds ?? [];
+  if (kinds.length === 2) return "Tugas Copy dan Design sudah ada di Kanban.";
+  return "Hanya sisi (copy/design) berstatus Baru yang belum punya tugas yang bisa ditambahkan ke Kanban.";
+}
 
 /** Pakai komponen tanggal lokal agar konsisten dengan formatDateShort (bukan UTC). */
 function toDateInput(v: Date | string | null | undefined): string {
@@ -1302,6 +1357,7 @@ export function ContentPlanningClient({
         feedCoverPath: row.feedCoverPath ?? null,
         feedVisibility: row.feedVisibility ?? ContentPlanFeedVisibility.AUTO,
         feedPosition: row.feedPosition ?? null,
+        kanbanTaskKinds: row.kanbanTaskKinds ?? [],
         picUserIds: ids,
         pics: pics.length ? pics : row.pic ? [row.pic] : [],
       };
@@ -1362,16 +1418,29 @@ export function ContentPlanningClient({
   const kanbanSet = useMemo(() => new Set(kanbanSelectedIds), [kanbanSelectedIds]);
 
   const kanbanEligibleIds = useMemo(
-    () =>
-      activeRows
-        .filter((r) => r.statusDesign === ContentPlanStatusKerja.BARU)
-        .map((r) => r.id),
+    () => activeRows.filter(rowKanbanEligible).map((r) => r.id),
     [activeRows],
   );
 
   const kanbanEligibleCount = kanbanEligibleIds.length;
   const allKanbanSelected =
     kanbanEligibleCount > 0 && kanbanEligibleIds.every((id) => kanbanSet.has(id));
+
+  /**
+   * Dari baris yang dicentang: berapa yang masih bisa dibuatkan tugas per sisi.
+   * Dipakai untuk label & enable/disable pilihan di menu "Tambahkan ke Kanban".
+   */
+  const kanbanSelectedByKind = useMemo(() => {
+    const selected = activeRows.filter((r) => kanbanSet.has(r.id));
+    return {
+      [ContentPlanTaskKind.COPYWRITING]: selected.filter((r) =>
+        rowKanbanEligibleForKind(r, ContentPlanTaskKind.COPYWRITING),
+      ).length,
+      [ContentPlanTaskKind.DESIGN]: selected.filter((r) =>
+        rowKanbanEligibleForKind(r, ContentPlanTaskKind.DESIGN),
+      ).length,
+    };
+  }, [activeRows, kanbanSet]);
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
@@ -1487,11 +1556,7 @@ export function ContentPlanningClient({
   }, [serverRows]);
 
   useEffect(() => {
-    const eligible = new Set(
-      tableRows
-        .filter((r) => !r.archivedAt && r.statusDesign === ContentPlanStatusKerja.BARU)
-        .map((r) => r.id),
-    );
+    const eligible = new Set(tableRows.filter(rowKanbanEligible).map((r) => r.id));
     setKanbanSelectedIds((prev) => {
       const next = prev.filter((id) => eligible.has(id));
       if (next.length === prev.length && next.every((id, i) => id === prev[i])) {
@@ -1506,6 +1571,46 @@ export function ContentPlanningClient({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   }, []);
+
+  /**
+   * Buat tugas Kanban (Copy / Design / keduanya) untuk baris yang dicentang.
+   * Hasil parsial tetap dilaporkan: yang berhasil dibuat, dilewati, dan gagal.
+   */
+  const runKanbanCreate = useCallback(
+    (kinds: ContentPlanTaskKind[]) => {
+      if (!kanbanProjectId || kanbanSelectedIds.length === 0) return;
+      const kindLabel = kinds.map((k) => contentPlanTaskKindLabel(k)).join(" + ");
+      startKanban(async () => {
+        try {
+          const { created, skipped, failed } = await createKanbanTasksFromContentPlan({
+            roomId,
+            projectId: kanbanProjectId,
+            itemIds: kanbanSelectedIds,
+            kinds,
+          });
+          const parts = [
+            `${created} tugas ${kindLabel} dibuat`,
+            skipped ? `${skipped} dilewati (bukan Baru / sudah ada tugas)` : null,
+            failed.length ? `${failed.length} gagal` : null,
+          ].filter(Boolean);
+          const summary = `Kanban: ${parts.join(", ")}.`;
+          if (failed.length > 0) {
+            toast.error(`${summary} ${failed[0].title}: ${failed[0].reason}`);
+          } else if (created === 0) {
+            toast.info(summary);
+          } else {
+            toast.success(summary);
+          }
+          if (created > 0) setKanbanSelectedIds([]);
+        } catch (e) {
+          toast.error(actionErrorMessage(e, "Gagal menambahkan ke Kanban."));
+        } finally {
+          router.refresh();
+        }
+      });
+    },
+    [kanbanProjectId, kanbanSelectedIds, roomId, router],
+  );
 
   const isCarousel = jenisKonten === ContentPlanJenis.CAROUSEL;
 
@@ -1967,7 +2072,7 @@ export function ContentPlanningClient({
             <Checkbox
               checked={kanbanEligibleCount > 0 && allKanbanSelected}
               disabled={kanbanEligibleCount === 0}
-              aria-label="Pilih semua baris (status design Baru) untuk Kanban"
+              aria-label="Pilih semua baris yang bisa ditambahkan ke Kanban (copy/design berstatus Baru)"
               onCheckedChange={(v) => {
                 if (v === true) setKanbanSelectedIds([...kanbanEligibleIds]);
                 else setKanbanSelectedIds([]);
@@ -1976,10 +2081,14 @@ export function ContentPlanningClient({
           </div>
         ),
         cell: ({ row }) => {
-          const eligible = row.original.statusDesign === ContentPlanStatusKerja.BARU;
-          if (!eligible) {
+          if (!rowKanbanEligible(row.original)) {
             return (
-              <span className="text-muted-foreground flex justify-center text-xs">—</span>
+              <span
+                className="text-muted-foreground flex justify-center text-xs"
+                title={rowKanbanIneligibleHint(row.original)}
+              >
+                —
+              </span>
             );
           }
           return (
@@ -2723,41 +2832,69 @@ export function ContentPlanningClient({
           <Sparkles className="size-4" />
           {aiSuggestPending ? "Menganalisis…" : "Saran Jam AI"}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!kanbanProjectId || kanbanPending || kanbanSelectedIds.length === 0}
-          title={
-            !kanbanProjectId
-              ? "Butuh minimal satu proyek di ruangan ini untuk membuat tugas Kanban."
-              : kanbanSelectedIds.length === 0
-                ? "Centang satu atau lebih baris (status design Baru), lalu tambahkan ke Kanban."
-                : "Buat tugas design di Kanban untuk baris yang dicentang."
-          }
-          onClick={() => {
-            if (!kanbanProjectId || kanbanSelectedIds.length === 0) return;
-            startKanban(async () => {
-              try {
-                const { created, skipped } = await createKanbanTasksFromContentPlanDesign({
-                  roomId,
-                  projectId: kanbanProjectId,
-                  itemIds: kanbanSelectedIds,
-                });
-                toast.success(
-                  `Kanban: ${created} tugas design dibuat${skipped ? `, ${skipped} dilewati (bukan Baru / sudah ada tugas).` : "."}`,
-                );
-                setKanbanSelectedIds([]);
-                router.refresh();
-              } catch (e) {
-                toast.error(actionErrorMessage(e, "Gagal menambahkan ke Kanban."));
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            disabled={!kanbanProjectId || kanbanPending || kanbanSelectedIds.length === 0}
+            title={
+              !kanbanProjectId
+                ? "Butuh minimal satu proyek di ruangan ini untuk membuat tugas Kanban."
+                : kanbanSelectedIds.length === 0
+                  ? "Centang satu atau lebih baris (copy/design berstatus Baru), lalu pilih jenis tugas yang dibuat."
+                  : "Pilih tugas Copy, Design, atau keduanya untuk baris yang dicentang."
+            }
+          >
+            <LayoutGrid className="size-4" />
+            {kanbanPending ? "Memproses…" : "Tambahkan ke Kanban"}
+            {kanbanSelectedIds.length > 0 && !kanbanPending ? (
+              <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[10px] tabular-nums">
+                {kanbanSelectedIds.length}
+              </span>
+            ) : null}
+            <ChevronDown className="size-3.5 opacity-70" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem
+              disabled={kanbanSelectedByKind.COPYWRITING === 0}
+              onClick={() => runKanbanCreate([ContentPlanTaskKind.COPYWRITING])}
+            >
+              <PenLine className="size-4" />
+              <span className="flex-1">Tugas Copy</span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {kanbanSelectedByKind.COPYWRITING}
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={kanbanSelectedByKind.DESIGN === 0}
+              onClick={() => runKanbanCreate([ContentPlanTaskKind.DESIGN])}
+            >
+              <Palette className="size-4" />
+              <span className="flex-1">Tugas Design</span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {kanbanSelectedByKind.DESIGN}
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={
+                kanbanSelectedByKind.COPYWRITING === 0 && kanbanSelectedByKind.DESIGN === 0
               }
-            });
-          }}
-        >
-          <LayoutGrid className="size-4" />
-          {kanbanPending ? "Memproses…" : "Tambahkan ke Kanban"}
-        </Button>
+              onClick={() =>
+                runKanbanCreate([ContentPlanTaskKind.COPYWRITING, ContentPlanTaskKind.DESIGN])
+              }
+            >
+              <LayoutGrid className="size-4" />
+              <span className="flex-1">Copy + Design</span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {kanbanSelectedByKind.COPYWRITING + kanbanSelectedByKind.DESIGN}
+              </span>
+            </DropdownMenuItem>
+            <p className="text-muted-foreground px-2 pt-1 pb-1.5 text-[11px] leading-snug">
+              Angka = jumlah tugas yang akan dibuat. Sisi yang statusnya bukan Baru atau
+              sudah punya tugas dilewati. Tenggat mengikuti DL Copy / DL Design baris.
+            </p>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button type="button" size="sm" onClick={openCreate}>
           <Plus className="size-4" />
           Baris baru
@@ -3483,7 +3620,7 @@ export function ContentPlanningClient({
                 <Card key={row.id} size="sm" className="shadow-none ring-border/60">
                   <div className="space-y-3 px-4 py-3">
                     <div className="flex items-start justify-between gap-2">
-                      {row.statusDesign === ContentPlanStatusKerja.BARU ? (
+                      {rowKanbanEligible(row) ? (
                         <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={kanbanSet.has(row.id)}
@@ -3492,7 +3629,10 @@ export function ContentPlanningClient({
                           />
                         </div>
                       ) : (
-                        <span className="text-muted-foreground w-5 shrink-0 text-center text-xs" title="Hanya status design Baru yang bisa ditambahkan ke Kanban">
+                        <span
+                          className="text-muted-foreground w-5 shrink-0 text-center text-xs"
+                          title={rowKanbanIneligibleHint(row)}
+                        >
                           —
                         </span>
                       )}

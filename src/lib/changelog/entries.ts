@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-14-content-plan-tugas-copy-ke-kanban",
+    date: "2026-09-14",
+    title: "Content Plan: tugas Copy bisa dikirim ke Kanban",
+    category: "new",
+    description:
+      "Tombol \"Tambahkan ke Kanban\" di Content Plan kini menawarkan pilihan Tugas Copy, Tugas Design, atau keduanya untuk baris yang dicentang. Tugas copy memakai DL Copy sebagai tenggat dan, saat selesai, dokumen naskah dari lampiran tugas disalin ke file copywriting baris lalu status copy menjadi Dipublikasikan.",
+    highlights: [
+      "Baris bisa dicentang selama sisi copy atau design-nya masih berstatus Baru dan belum punya tugas; angka di menu menunjukkan jumlah tugas yang akan dibuat",
+      "Deskripsi tugas kini memuat jenis, tujuan, platform, rencana tayang, detail konten, tautan referensi, dan tautan balik ke halaman Content Plan",
+      "Kegagalan satu baris tidak membatalkan baris lain; hasilnya dilaporkan (dibuat, dilewati, gagal)",
+      "Tugas design yang diselesaikan tanpa lampiran tidak lagi menghapus file design yang sudah ada di baris",
+    ],
+  },
+  {
     id: "2026-09-14-overdue-selesai-terlambat-filter-waktu",
     date: "2026-09-14",
     title: "Tugas Overdue: filter waktu di tab Diselesaikan terlambat",

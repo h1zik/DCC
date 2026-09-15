@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
+import { contentPlanTaskKindOrDefault } from "@/lib/content-plan-task-kind";
 import { ContentPlanningClient } from "./content-planning-client";
 import type { ContentPlanFeedDefaults } from "./content-plan-feed";
 
@@ -21,6 +22,12 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
         pic: { select: { id: true, name: true, email: true, image: true } },
+        // Tugas Kanban aktif per baris: dipakai UI untuk tahu sisi mana (copy/
+        // design) yang sudah punya tugas sehingga tidak ditawarkan lagi.
+        tasksFromContentPlan: {
+          where: { archivedAt: null },
+          select: { contentPlanKind: true },
+        },
       },
     }),
     prisma.roomMember.findMany({
@@ -51,6 +58,14 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
 
   const picUserOptions = memberRows.map((m) => m.user);
   const kanbanProjectId = projects[0]?.id ?? null;
+  const rows = items.map(({ tasksFromContentPlan, ...row }) => ({
+    ...row,
+    kanbanTaskKinds: [
+      ...new Set(
+        tasksFromContentPlan.map((t) => contentPlanTaskKindOrDefault(t.contentPlanKind)),
+      ),
+    ],
+  }));
 
   /** Simulasi feed: identitas awal diambil dari brand ruangan (fallback nama ruangan). */
   const feedDefaults: ContentPlanFeedDefaults = {
@@ -62,7 +77,7 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
   return (
     <ContentPlanningClient
       roomId={roomId}
-      items={items}
+      items={rows}
       picUserOptions={picUserOptions}
       kanbanProjectId={kanbanProjectId}
       feedProfile={feedProfileRow}

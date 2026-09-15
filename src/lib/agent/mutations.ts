@@ -35,6 +35,7 @@ import {
   resolveBoardColumnIdForBucket,
 } from "@/lib/task-kanban-sync";
 import { syncContentPlanRowFromCompletedKanbanTask } from "@/actions/room-content-planning";
+import { contentPlanTaskKindOrDefault } from "@/lib/content-plan-task-kind";
 import {
   assertAgentRoomAccess,
   assertAgentRoomManager,
@@ -357,6 +358,7 @@ export async function agentUpdateTask(
       archivedAt: true,
       contentPlanItemId: true,
       contentPlanJenis: true,
+      contentPlanKind: true,
       assignees: { select: { userId: true } },
       project: { select: { roomId: true } },
     },
@@ -512,6 +514,7 @@ export async function agentUpdateTask(
         itemId: prev.contentPlanItemId,
         taskId: prev.id,
         jenisKonten: prev.contentPlanJenis,
+        kind: contentPlanTaskKindOrDefault(prev.contentPlanKind),
       });
     }
     void notifyTaskCompletedForCeo(
@@ -698,6 +701,7 @@ export async function agentMoveTaskStatus(
       },
       contentPlanItemId: true,
       contentPlanJenis: true,
+      contentPlanKind: true,
       isApprovalRequired: true,
       isApproved: true,
       archivedAt: true,
@@ -761,6 +765,7 @@ export async function agentMoveTaskStatus(
         itemId: task.contentPlanItemId,
         taskId: task.id,
         jenisKonten: task.contentPlanJenis,
+        kind: contentPlanTaskKindOrDefault(task.contentPlanKind),
       });
     }
 

@@ -190,6 +190,15 @@ enum RoomTaskProcess {
   PRODUCTION
 }
 
+/**
+ * Sisi pekerjaan Content Planning yang diwakili sebuah tugas Kanban:
+ * COPYWRITING = tugas copy (deadline & status copy), DESIGN = tugas design.
+ */
+enum ContentPlanTaskKind {
+  COPYWRITING
+  DESIGN
+}
+
 enum ContentPlanJenis {
   REELS
   CAROUSEL
@@ -1700,6 +1709,11 @@ model Task {
   contentPlanItemId        String?
   contentPlanItem          RoomContentPlanItem?    @relation(fields: [contentPlanItemId], references: [id], onDelete: SetNull)
   contentPlanJenis         ContentPlanJenis?
+  /**
+   * Sisi pekerjaan baris Content Planning (copy / design). Tugas lama tanpa
+   * nilai dianggap DESIGN (satu-satunya jenis sebelum tugas copy ada).
+   */
+  contentPlanKind          ContentPlanTaskKind?
   /**
    * Waktu tugas PERTAMA kali berpindah ke status DONE. Ditulis oleh domain Task
    * (actions/tasks.ts) pada transisi DONE, hanya DIBACA oleh XP engine gamifikasi
