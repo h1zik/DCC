@@ -37,6 +37,18 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-15-voice-livekit-self-hosted",
+    date: "2026-09-15",
+    title: "Voice channel pindah ke server LiveKit milik sendiri",
+    category: "improved",
+    description:
+      "Panggilan suara/video di ruangan kini dijalankan lewat server LiveKit yang di-host sendiri di VPS DCC, bukan lagi LiveKit Cloud. Tidak ada perubahan cara pakai; sesi voice yang sedang berjalan saat rilis perlu join ulang.",
+    highlights: [
+      "Tidak lagi bergantung kuota/limit LiveKit Cloud.",
+      "Konfigurasi cukup lewat tiga variabel env LIVEKIT_* (tanpa ubah kode).",
+    ],
+  },
+  {
     id: "2026-09-15-overdue-tab-tugas-belum-lengkap",
     date: "2026-09-15",
     title: "Tugas Overdue: tab Belum lengkap (tanpa tenggat / tanpa PIC)",
