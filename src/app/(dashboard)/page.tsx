@@ -91,6 +91,7 @@ const getExecutiveDashboardData = unstable_cache(
       salesLogs,
       activeSuppliers,
       overdueTasks,
+      incompleteTasks,
       pendingTaskApprovals,
     ] = await Promise.all([
       prisma.product.findMany({
@@ -130,6 +131,14 @@ const getExecutiveDashboardData = unstable_cache(
       prisma.vendor.count(),
       prisma.task.count({
         where: { status: TaskStatus.OVERDUE, archivedAt: null },
+      }),
+      // Tugas aktif tanpa tenggat dan/atau tanpa PIC — bahan pengingat CEO.
+      prisma.task.count({
+        where: {
+          archivedAt: null,
+          status: { not: TaskStatus.DONE },
+          OR: [{ dueDate: null }, { assignees: { none: {} } }],
+        },
       }),
       prisma.task.count({
         where: { isApprovalRequired: true, isApproved: false },
@@ -216,6 +225,7 @@ const getExecutiveDashboardData = unstable_cache(
       activeSuppliers,
       attentionCount,
       overdueTasks,
+      incompleteTasks,
       readyLaunchProjects,
       pendingApprovals,
       critical,
@@ -239,6 +249,7 @@ export default async function ExecutiveDashboardPage() {
     activeSuppliers,
     attentionCount,
     overdueTasks,
+    incompleteTasks,
     readyLaunchProjects,
     pendingApprovals,
     critical,
@@ -357,7 +368,18 @@ export default async function ExecutiveDashboardPage() {
         <ExecutiveKpiCard
           label="Tugas overdue"
           value={overdueTasks}
-          description="Seluruh ruangan & proyek"
+          description={
+            incompleteTasks > 0 ? (
+              <>
+                Seluruh ruangan ·{" "}
+                <span className="font-medium text-amber-600 dark:text-amber-400">
+                  {incompleteTasks} belum ada tenggat/PIC
+                </span>
+              </>
+            ) : (
+              "Seluruh ruangan & proyek"
+            )
+          }
           icon={<Clock className="size-4" />}
           tone={overdueTasks > 0 ? "danger" : "success"}
           indicator={overdueTasks > 0 ? 100 : 0}

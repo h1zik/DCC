@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-15-overdue-tab-tugas-belum-lengkap",
+    date: "2026-09-15",
+    title: "Tugas Overdue: tab Belum lengkap (tanpa tenggat / tanpa PIC)",
+    category: "new",
+    description:
+      "Halaman Tugas Overdue CEO kini punya tab \"Belum lengkap\" yang mendaftar semua tugas aktif lintas ruangan yang belum diberi tenggat dan/atau belum punya PIC. CEO bisa memakainya sebagai daftar pengingat agar tim melengkapi tugas sebelum jadi masalah.",
+    highlights: [
+      "Filter kekurangan: Semua, Tanpa tenggat, Tanpa PIC, atau Tanpa keduanya, lengkap dengan jumlah per kategori",
+      "Tiap baris menampilkan status, ruangan, fase, prioritas, PIC, tanggal dibuat, dan tautan Buka papan",
+      "Pencarian dan filter ruangan sama seperti tab Overdue",
+      "Kartu Tugas overdue di dashboard CEO menampilkan jumlah tugas belum lengkap dan menautkan langsung ke tab ini",
+    ],
+  },
+  {
     id: "2026-09-14-content-plan-tugas-copy-ke-kanban",
     date: "2026-09-14",
     title: "Content Plan: tugas Copy bisa dikirim ke Kanban",

@@ -5,7 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { taskToPhaseRef } from "@/lib/room-process-phase";
 import { taskProjectContextLabel } from "@/lib/room-simple-hub";
 import { taskLateDays, toJakartaDayKey } from "@/lib/task-effective-status";
-import { OverdueClient, type OverdueTaskRow } from "./overdue-client";
+import {
+  OverdueClient,
+  type OverdueTab,
+  type OverdueTaskRow,
+} from "./overdue-client";
 
 /**
  * Jendela riwayat "diselesaikan terlambat" maksimum yang diambil (hari).
@@ -21,6 +25,7 @@ const taskRowSelect = {
   dueDate: true,
   completedAt: true,
   archivedAt: true,
+  createdAt: true,
   roomProcess: true,
   customProcessPhaseId: true,
   isApprovalRequired: true,
@@ -47,6 +52,7 @@ type TaskRowSource = {
   dueDate: Date | null;
   completedAt: Date | null;
   archivedAt: Date | null;
+  createdAt: Date;
   roomProcess: OverdueTaskRow["roomProcess"];
   customProcessPhaseId: string | null;
   isApprovalRequired: boolean;
@@ -79,6 +85,8 @@ function toRow(t: TaskRowSource, now: Date): OverdueTaskRow {
     roomProcess: t.roomProcess,
     dueDateIso: t.dueDate ? t.dueDate.toISOString() : null,
     completedAtIso: t.completedAt ? t.completedAt.toISOString() : null,
+    createdAtIso: t.createdAt.toISOString(),
+    ageDays: taskLateDays(t.createdAt, now),
     archived: t.archivedAt != null,
     lateDays,
     completedAgoDays:
@@ -97,15 +105,35 @@ function toRow(t: TaskRowSource, now: Date): OverdueTaskRow {
   };
 }
 
-export default async function CeoOverdueTasksPage() {
+const OVERDUE_TABS: readonly OverdueTab[] = [
+  "overdue",
+  "completed",
+  "incomplete",
+];
+
+function parseTab(raw: string | string[] | undefined): OverdueTab {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return OVERDUE_TABS.includes(value as OverdueTab)
+    ? (value as OverdueTab)
+    : "overdue";
+}
+
+export default async function CeoOverdueTasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string | string[] }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== UserRole.CEO) redirect("/");
 
+  const { tab } = await searchParams;
+  const initialTab = parseTab(tab);
+
   const now = new Date();
   const since = new Date(now.getTime() - COMPLETED_LATE_WINDOW_DAYS * 86_400_000);
 
-  const [overdueRaw, doneRaw] = await Promise.all([
+  const [overdueRaw, doneRaw, incompleteRaw] = await Promise.all([
     prisma.task.findMany({
       where: { status: TaskStatus.OVERDUE, archivedAt: null },
       select: taskRowSelect,
@@ -120,6 +148,17 @@ export default async function CeoOverdueTasksPage() {
       select: taskRowSelect,
       orderBy: { completedAt: "desc" },
     }),
+    // Tugas aktif yang belum lengkap: tanpa tenggat dan/atau tanpa PIC.
+    // Bahan CEO untuk mengingatkan tim melengkapinya sebelum jadi masalah.
+    prisma.task.findMany({
+      where: {
+        archivedAt: null,
+        status: { not: TaskStatus.DONE },
+        OR: [{ dueDate: null }, { assignees: { none: {} } }],
+      },
+      select: taskRowSelect,
+      orderBy: [{ createdAt: "asc" }],
+    }),
   ]);
 
   const overdue = overdueRaw.map((t) => toRow(t, now));
@@ -132,8 +171,14 @@ export default async function CeoOverdueTasksPage() {
         toJakartaDayKey(t.completedAt) > toJakartaDayKey(t.dueDate),
     )
     .map((t) => toRow(t, now));
+  const incomplete = incompleteRaw.map((t) => toRow(t, now));
 
   return (
-    <OverdueClient overdue={overdue} completedLate={completedLate} />
+    <OverdueClient
+      overdue={overdue}
+      completedLate={completedLate}
+      incomplete={incomplete}
+      initialTab={initialTab}
+    />
   );
 }
