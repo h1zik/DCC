@@ -1,5 +1,6 @@
 import { UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canUseDirectChat } from "@/lib/roles";
@@ -41,6 +42,45 @@ export async function assertDirectConversationMember(
   if (!member) {
     throw new Error("Percakapan tidak ditemukan atau Anda bukan peserta.");
   }
+}
+
+/**
+ * Guard bersama route API chat pribadi: sesi, peran, dan keanggotaan percakapan.
+ * Mengembalikan `response` siap kirim bila permintaan harus ditolak.
+ */
+export async function authorizeDirectChatRequest(
+  conversationId: string | undefined,
+): Promise<
+  { ok: true; userId: string } | { ok: false; response: NextResponse }
+> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  if (!canUseDirectChat(session.user.role)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+  if (!conversationId) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Bad request" }, { status: 400 }),
+    };
+  }
+  try {
+    await assertDirectConversationMember(conversationId, session.user.id);
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+  return { ok: true, userId: session.user.id };
 }
 
 export async function listDirectChatEligibleUsers(excludeUserId: string) {

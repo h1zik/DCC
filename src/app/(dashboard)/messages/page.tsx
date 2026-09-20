@@ -10,13 +10,10 @@ export default async function MessagesPage() {
     listDirectChatEligibleUsers(session.user.id),
   ]);
 
-  const totalUnread = inbox.reduce((acc, i) => acc + i.unreadCount, 0);
-
   return (
     <MessagesPageClient
       currentUserId={session.user.id}
       inbox={inbox}
-      totalUnread={totalUnread}
       eligibleUsers={eligibleUsers.map((u) => ({
         ...u,
         lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
