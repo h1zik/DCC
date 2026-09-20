@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   ensureDefaultRoomKanbanColumnsForCustomPhase,
 } from "@/lib/room-kanban-columns";
+import { isSimpleHubRoom } from "@/lib/room-simple-hub";
 import { ROOM_TASK_PROCESS_ORDER, roomTaskProcessLabel } from "@/lib/room-task-process";
 
 export type RoomProcessPhaseRow = {
@@ -13,8 +14,8 @@ export type RoomProcessPhaseRow = {
 };
 
 /**
- * Pastikan fase bawaan ada sebagai baris DB per ruangan, lalu tautkan tugas/kolom
- * lama ke `customProcessPhaseId` agar edit/hapus konsisten.
+ * Seed fase bawaan sebagai baris DB (sekali, saat ruangan belum punya fase), lalu
+ * tautkan tugas/kolom lama ke `customProcessPhaseId` agar edit/hapus konsisten.
  */
 export async function ensureRoomProcessPhases(
   roomId: string,
@@ -30,6 +31,11 @@ export async function ensureRoomProcessPhases(
     },
   });
 
+  // Ruangan non-brand (HQ/Team) memakai baris ini sebagai kelompok tugas: tidak
+  // ada kelompok bawaan, dan tugas tab "Umum" (`customProcessPhaseId = null`)
+  // tidak boleh ditautkan ulang ke fase legacy. Kembalikan apa adanya.
+  if (await isSimpleHubRoom(roomId)) return existing;
+
   const byLegacy = new Map(
     existing
       .filter((p) => p.legacyProcessKey != null)
@@ -38,8 +44,13 @@ export async function ensureRoomProcessPhases(
 
   let sortOrder = existing.reduce((max, p) => Math.max(max, p.sortOrder), -1);
 
-  for (let i = 0; i < ROOM_TASK_PROCESS_ORDER.length; i++) {
-    const legacyKey = ROOM_TASK_PROCESS_ORDER[i]!;
+  // Seed fase bawaan hanya untuk ruangan yang belum punya fase sama sekali.
+  // Kalau sudah ada baris, fase bawaan yang hilang berarti sengaja dihapus
+  // manager — jangan dibuat ulang.
+  const legacyKeysToSeed = existing.length === 0 ? ROOM_TASK_PROCESS_ORDER : [];
+
+  for (let i = 0; i < legacyKeysToSeed.length; i++) {
+    const legacyKey = legacyKeysToSeed[i]!;
     if (byLegacy.has(legacyKey)) continue;
 
     sortOrder += 1;

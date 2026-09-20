@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-20-kelompok-fase-tidak-muncul-lagi",
+    date: "2026-09-20",
+    title: "Kelompok & fase yang dihapus tidak muncul lagi sendiri",
+    category: "fixed",
+    description:
+      "Di ruangan HQ/Team, kelompok seperti Market Research, Product Development, dst. bisa muncul kembali setelah dihapus — dipicu saat ada anggota ruangan yang ditambah atau diubah — dan tugas di tab \"Umum\" ikut berpindah ke kelompok Market Research. Sekarang kelompok yang dihapus tetap terhapus.",
+    highlights: [
+      "Ruangan HQ/Team tidak lagi dibuatkan kelompok bawaan secara otomatis, dan tugas di tab \"Umum\" tidak dipindahkan",
+      "Di ruangan brand, fase proses bawaan yang sengaja dihapus tidak dibuat ulang selama ruangan masih punya minimal satu fase",
+      "Jika kelompok bawaan terlanjur muncul, hapus sekali lagi — tugas di dalamnya otomatis kembali ke tab \"Umum\"",
+    ],
+  },
+  {
     id: "2026-09-20-executive-overview-diperkaya",
     date: "2026-09-20",
     title: "Executive overview lebih kaya: 4 kategori barang keluar, keuangan, tren & tim",
