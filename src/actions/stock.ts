@@ -1,11 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { Prisma, StockLogType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireLogisticsStaff } from "@/lib/auth-helpers";
 import { isSystemStockLog, parseSystemMeta } from "@/lib/stock-log-utils";
+import { EXEC_DASHBOARD_TAG } from "@/lib/executive-dashboard-tag";
 
 const salesCategorySchema = z.enum(["penjualan", "sampling", "retur", "rusak"]);
 
@@ -164,6 +165,7 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
   revalidatePath("/inventory");
   revalidatePath("/products");
   revalidatePath("/");
+  updateTag(EXEC_DASHBOARD_TAG);
 }
 
 export async function adjustProductStock(input: z.infer<typeof adjustStockSchema>) {
@@ -209,6 +211,7 @@ export async function adjustProductStock(input: z.infer<typeof adjustStockSchema
   revalidatePath("/inventory");
   revalidatePath("/products");
   revalidatePath("/");
+  updateTag(EXEC_DASHBOARD_TAG);
 }
 
 export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
@@ -283,6 +286,7 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
   revalidatePath("/inventory");
   revalidatePath("/products");
   revalidatePath("/");
+  updateTag(EXEC_DASHBOARD_TAG);
 }
 
 export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
@@ -336,4 +340,5 @@ export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
   revalidatePath("/inventory");
   revalidatePath("/products");
   revalidatePath("/");
+  updateTag(EXEC_DASHBOARD_TAG);
 }

@@ -2,7 +2,7 @@ import { z } from "zod";
 export function registerStrategicTools(server, deps) {
     const { dccFetch, buildQuery, asText, limitSchema, roomNameSchema } = deps;
     server.tool("get_company_executive_briefing", "Snapshot holistik kondisi perusahaan: KPI, overdue, approval, pipeline, stok kritis, outgoing sales, finance pulse, absensi.", {}, async () => asText(await dccFetch("/api/ai/executive/briefing")));
-    server.tool("get_sales_outgoing_by_brand", "Outgoing PCS per brand (sales + sampling) dalam N hari terakhir.", {
+    server.tool("get_sales_outgoing_by_brand", "Outgoing PCS per brand per kategori (penjualan, sampling, retur, rusak/expired, tanpa kategori) dalam N hari terakhir. salesPcs = penjualan murni.", {
         days: z
             .number()
             .int()

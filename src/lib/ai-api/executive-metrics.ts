@@ -5,65 +5,33 @@ import {
   summarizeProjectMilestones,
 } from "@/lib/ai-api/pipeline-milestones";
 import { getStockHealth, needsUrgentReorder } from "@/lib/stock-status";
-
-type SalesLogRow = {
-  id: string;
-  amount: number;
-  type: StockLogType;
-  salesCategory: string | null;
-  note: string | null;
-  product: { brand: { name: string } };
-};
-
-function isSystemLog(row: SalesLogRow): boolean {
-  return (row.note ?? "").startsWith("[SYS]");
-}
-
-function parseSystemMeta(row: SalesLogRow): {
-  action: "REVERSAL" | "REPLACEMENT" | "VOID" | null;
-  targetId: string | null;
-} {
-  const raw = (row.note ?? "").trim();
-  if (!raw.startsWith("[SYS]")) return { action: null, targetId: null };
-
-  if (raw.startsWith("[SYS] |")) {
-    const parts = raw.split("|").map((x) => x.trim());
-    const action = parts.find((p) => p.startsWith("action="))?.slice(7) ?? "";
-    const targetId = parts.find((p) => p.startsWith("target="))?.slice(7) ?? "";
-    return {
-      action:
-        action === "REVERSAL" || action === "REPLACEMENT" || action === "VOID"
-          ? action
-          : null,
-      targetId: targetId || null,
-    };
-  }
-
-  const m = raw
-    .replace(/^\[SYS\]\s*/i, "")
-    .match(/^(REVERSAL|REPLACEMENT|VOID)\s+untuk\s+(\S+)/i);
-  return {
-    action: m?.[1]
-      ? (m[1].toUpperCase() as "REVERSAL" | "REPLACEMENT" | "VOID")
-      : null,
-    targetId: m?.[2] ?? null,
-  };
-}
+import {
+  aggregateOutgoing,
+  type CategoryPcs,
+  type OutgoingAggregate,
+} from "@/lib/outgoing-metrics";
 
 export type OutgoingByBrandRow = {
   brandName: string;
   totalPcs: number;
+  /** Penjualan murni (tidak lagi memuat retur/rusak/tanpa kategori). */
   salesPcs: number;
   samplingPcs: number;
+  returPcs: number;
+  rusakPcs: number;
+  otherPcs: number;
 };
 
-/** Outgoing PCS per brand (sales + sampling) dengan koreksi [SYS]. */
-export async function computeOutgoingByBrand(days = 90): Promise<{
-  windowDays: number;
-  brands: OutgoingByBrandRow[];
-}> {
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  const salesLogs = await prisma.stockLog.findMany({
+/**
+ * Satu query StockLog OUT + agregasi per kategori. Memuat 2 × `days` agar
+ * delta terhadap periode sebelumnya bisa dihitung tanpa query kedua.
+ */
+export async function loadOutgoingAggregate(
+  days = 90,
+): Promise<OutgoingAggregate> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 2 * days * 24 * 60 * 60 * 1000);
+  const logs = await prisma.stockLog.findMany({
     where: { type: StockLogType.OUT, createdAt: { gte: since } },
     select: {
       id: true,
@@ -71,49 +39,43 @@ export async function computeOutgoingByBrand(days = 90): Promise<{
       type: true,
       salesCategory: true,
       note: true,
-      product: { select: { brand: { select: { name: true } } } },
+      createdAt: true,
+      productId: true,
+      product: {
+        select: { name: true, sku: true, brand: { select: { name: true } } },
+      },
     },
   });
+  return aggregateOutgoing(logs, {
+    windowDays: days,
+    now,
+    includesPreviousWindow: true,
+  });
+}
 
-  const businessLogs = salesLogs.filter((row): row is SalesLogRow => !isSystemLog(row));
-  const correctionLogs = salesLogs.filter((row): row is SalesLogRow => isSystemLog(row));
-
-  const replacementByTargetId = new Map<string, SalesLogRow>();
-  const voidTargetIds = new Set<string>();
-  for (const row of correctionLogs) {
-    const meta = parseSystemMeta(row);
-    if (!meta.targetId) continue;
-    if (meta.action === "REPLACEMENT") replacementByTargetId.set(meta.targetId, row);
-    if (meta.action === "VOID") voidTargetIds.add(meta.targetId);
-  }
-
-  const effectiveSalesLogs = businessLogs
-    .filter((row) => !voidTargetIds.has(row.id))
-    .map((row) => replacementByTargetId.get(row.id) ?? row)
-    .filter((row) => row.type === StockLogType.OUT);
-
-  const pcsByBrand = effectiveSalesLogs.reduce<
-    Record<string, { total: number; sales: number; sampling: number }>
-  >((acc, row) => {
-    const key = row.product.brand.name.trim() || "Tanpa brand";
-    const current = acc[key] ?? { total: 0, sales: 0, sampling: 0 };
-    current.total += row.amount;
-    if (row.salesCategory === "sampling") current.sampling += row.amount;
-    else current.sales += row.amount;
-    acc[key] = current;
-    return acc;
-  }, {});
-
-  const brands = Object.entries(pcsByBrand)
-    .sort((a, b) => b[1].total - a[1].total)
-    .map(([brandName, v]) => ({
-      brandName,
-      totalPcs: v.total,
-      salesPcs: v.sales,
-      samplingPcs: v.sampling,
-    }));
-
-  return { windowDays: days, brands };
+/** Outgoing PCS per brand per kategori, dengan koreksi [SYS]. */
+export async function computeOutgoingByBrand(days = 90): Promise<{
+  windowDays: number;
+  totals: CategoryPcs;
+  categoryNote: string;
+  brands: OutgoingByBrandRow[];
+}> {
+  const agg = await loadOutgoingAggregate(days);
+  return {
+    windowDays: agg.windowDays,
+    totals: agg.totals,
+    categoryNote:
+      "salesPcs = penjualan murni; retur, rusak/expired, dan log tanpa kategori (otherPcs) dipisah.",
+    brands: agg.brands.map((b) => ({
+      brandName: b.brandName,
+      totalPcs: b.totalPcs,
+      salesPcs: b.byCategory.penjualan,
+      samplingPcs: b.byCategory.sampling,
+      returPcs: b.byCategory.retur,
+      rusakPcs: b.byCategory.rusak,
+      otherPcs: b.byCategory.other,
+    })),
+  };
 }
 
 export async function computePipelineMilestoneSnapshot(limit = 12) {

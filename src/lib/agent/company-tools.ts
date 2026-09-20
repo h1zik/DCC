@@ -74,7 +74,7 @@ export const COMPANY_AGENT_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "get_sales_outgoing_by_brand",
     description:
-      "Penjualan/outgoing stok per brand dalam N hari terakhir (default 90).",
+      "Barang keluar (PCS) per brand per kategori — penjualan, sampling, retur, rusak/expired, tanpa kategori — dalam N hari terakhir (default 90). salesPcs = penjualan murni.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {

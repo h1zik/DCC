@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-20-executive-overview-diperkaya",
+    date: "2026-09-20",
+    title: "Executive overview lebih kaya: 4 kategori barang keluar, keuangan, tren & tim",
+    category: "improved",
+    description:
+      "Dashboard CEO kini memecah barang keluar menjadi Penjualan, Sampling, Retur, dan Rusak/expired (sebelumnya retur & rusak ikut terhitung sebagai penjualan), serta menambah ringkasan keuangan, tren mingguan, performa SKU, dan kesehatan tim dalam satu halaman.",
+    highlights: [
+      "Pilihan rentang 30 / 90 / 180 hari untuk data barang keluar, lengkap dengan perbandingan terhadap periode sebelumnya",
+      "Grafik tren mingguan per kategori + komposisi, dan breakdown per brand dengan rasio sampling",
+      "Ringkasan keuangan bulan berjalan: pendapatan, beban, laba bersih, kas & bank, piutang/tagihan jatuh tempo, pengajuan dana menunggu, anggaran terlampaui",
+      "SKU terlaris dan SKU dengan retur/rusak tertinggi",
+      "Kartu Tim & tugas: overdue, terblokir, tenggat 7 hari, kehadiran hari ini, dan tenggat terdekat",
+      "Strip \"perlu perhatian\" di bagian atas merangkum hal paling mendesak hari ini",
+      "Asisten AI/MCP memakai perhitungan yang sama, jadi angka penjualannya kini penjualan murni",
+    ],
+  },
+  {
     id: "2026-09-15-voice-livekit-self-hosted",
     date: "2026-09-15",
     title: "Voice channel pindah ke server LiveKit milik sendiri",
