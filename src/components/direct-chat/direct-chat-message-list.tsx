@@ -3,6 +3,7 @@
 import { memo, useMemo } from "react";
 import { ChevronUp } from "lucide-react";
 import type { DirectChatMessageView } from "@/lib/direct-chat-message-view";
+import { isSameCalendarDay } from "@/lib/direct-chat-format";
 import { DirectChatMessageBubble } from "@/components/direct-chat/direct-chat-message-bubble";
 import { Button } from "@/components/ui/button";
 
@@ -10,14 +11,6 @@ import { Button } from "@/components/ui/button";
 export const DIRECT_CHAT_WINDOW_SIZE = 40;
 /** Tambahan pesan lama per klik "Muat pesan lama". */
 export const DIRECT_CHAT_WINDOW_STEP = 40;
-
-function isSameCalendarDay(a: Date, b: Date) {
-  return (
-    a.getDate() === b.getDate() &&
-    a.getMonth() === b.getMonth() &&
-    a.getFullYear() === b.getFullYear()
-  );
-}
 
 function formatDateSeparator(iso: string) {
   const d = new Date(iso);
@@ -36,10 +29,12 @@ function formatDateSeparator(iso: string) {
 
 type DirectChatMessageItem =
   | { type: "date"; id: string; label: string }
+  | { type: "unread"; id: string }
   | { type: "message"; message: DirectChatMessageView; compact: boolean };
 
 function buildMessageItems(
   messages: DirectChatMessageView[],
+  unreadAnchorId: string | null,
 ): DirectChatMessageItem[] {
   const items: DirectChatMessageItem[] = [];
   let previous: DirectChatMessageView | null = null;
@@ -56,9 +51,12 @@ function buildMessageItems(
         label: formatDateSeparator(message.createdAt),
       });
     }
+    const showUnread = message.id === unreadAnchorId;
+    if (showUnread) items.push({ type: "unread", id: `unread-${message.id}` });
     const compact = Boolean(
       previous &&
         !showDate &&
+        !showUnread &&
         previous.author.id === message.author.id &&
         createdAt.getTime() - new Date(previous.createdAt).getTime() <
           5 * 60 * 1000,
@@ -83,6 +81,8 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
   currentUserId,
   readReceiptMessageId,
   readReceiptState,
+  highlightId,
+  unreadAnchorId,
   hiddenCount,
   hasMoreOlder,
   loadingOlder,
@@ -91,12 +91,17 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
   onEdit,
   onDelete,
   onScrollToReply,
+  onOpenImage,
 }: {
   messages: DirectChatMessageView[];
   currentUserId: string;
   /** Id pesan terakhir milik sendiri yang menampilkan status baca. */
   readReceiptMessageId: string | null;
   readReceiptState: "read" | "unread" | null;
+  /** Pesan tujuan lompatan yang sedang disorot. */
+  highlightId: string | null;
+  /** Pesan belum dibaca pertama saat percakapan dibuka — diberi pembatas. */
+  unreadAnchorId: string | null;
   /** Jumlah pesan lama yang belum dirender (di luar jendela). */
   hiddenCount: number;
   /** Masih ada riwayat lebih lama di server yang belum diambil. */
@@ -107,8 +112,12 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
   onEdit: (message: DirectChatMessageView) => void;
   onDelete: (messageId: string) => void;
   onScrollToReply: (messageId: string) => void;
+  onOpenImage: (attachmentId: string) => void;
 }) {
-  const items = useMemo(() => buildMessageItems(messages), [messages]);
+  const items = useMemo(
+    () => buildMessageItems(messages, unreadAnchorId),
+    [messages, unreadAnchorId],
+  );
 
   return (
     <div className="direct-chat-messages flex flex-col">
@@ -138,12 +147,26 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
       {items.map((item) => {
         if (item.type === "date") {
           return (
-            <div key={item.id} className="my-4 flex items-center gap-3">
-              <span className="bg-border h-px flex-1" />
-              <span className="border-border bg-background text-muted-foreground rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-sm">
+            <div
+              key={item.id}
+              className="pointer-events-none sticky top-0 z-[1] mt-5 mb-1 flex justify-center"
+            >
+              <span className="bg-background/90 text-muted-foreground ring-border rounded-full px-3 py-1 text-[11px] font-medium ring-1 backdrop-blur-sm">
                 {item.label}
               </span>
-              <span className="bg-border h-px flex-1" />
+            </div>
+          );
+        }
+        if (item.type === "unread") {
+          return (
+            <div
+              key={item.id}
+              role="separator"
+              className="text-primary mt-4 flex items-center gap-3 text-[11px] font-semibold"
+            >
+              <span className="bg-primary/40 h-px flex-1" />
+              Pesan baru
+              <span className="bg-primary/40 h-px flex-1" />
             </div>
           );
         }
@@ -152,7 +175,9 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
           <div
             key={message.id}
             data-message-id={message.id}
-            className="[content-visibility:auto] [contain-intrinsic-size:auto_80px]"
+            // Padding memberi ruang cincin sorotan — `content-visibility` memotong
+            // apa pun yang keluar dari kotak ini.
+            className="px-1.5 pb-1 [content-visibility:auto] [contain-intrinsic-size:auto_64px]"
           >
             <DirectChatMessageBubble
               message={message}
@@ -160,10 +185,12 @@ export const DirectChatMessageList = memo(function DirectChatMessageList({
               readReceipt={
                 message.id === readReceiptMessageId ? readReceiptState : null
               }
+              highlighted={message.id === highlightId}
               onReply={onReply}
               onEdit={onEdit}
               onDelete={onDelete}
               onScrollToReply={onScrollToReply}
+              onOpenImage={onOpenImage}
               compact={item.compact}
             />
           </div>
