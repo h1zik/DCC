@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useLocalParticipant } from "@livekit/components-react";
+import { useLocalParticipant, useRoomContext } from "@livekit/components-react";
 import {
+  Hand,
+  HeadphoneOff,
   Headphones,
   Mic,
   MicOff,
@@ -14,8 +16,11 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useVoice } from "./voice-provider";
-import { micCaptureOptions, readVoiceSettings } from "./use-voice-settings";
+import { toggleMicrophone } from "./use-voice-settings";
+import { sendVoiceEvent, useVoiceEvents } from "./voice-events-store";
+import { VoiceReactionPicker } from "./voice-reactions";
 import { VoiceSettingsMenu } from "./voice-settings-menu";
+import { VoiceSoundboard } from "./voice-soundboard";
 
 function supportsScreenShare(): boolean {
   return (
@@ -39,7 +44,9 @@ export function controlButtonClassName({
 }): string {
   return cn(
     "focus-visible:ring-ring inline-flex shrink-0 items-center justify-center rounded-full transition-all duration-150 focus-visible:ring-2 focus-visible:outline-none active:scale-95 disabled:opacity-50",
-    compact ? "size-8 [&_svg]:size-3.5" : "size-10 [&_svg]:size-4.5",
+    compact
+      ? "size-8 [&_svg]:size-3.5"
+      : "size-10 max-sm:size-8 [&_svg]:size-4.5 max-sm:[&_svg]:size-3.5",
     danger
       ? "bg-destructive shadow-destructive/30 text-white shadow-md hover:opacity-90"
       : active
@@ -82,9 +89,17 @@ function ControlButton({
   );
 }
 
+function Divider() {
+  return (
+    <span className="bg-border mx-0.5 h-5 w-px shrink-0 max-sm:hidden" aria-hidden />
+  );
+}
+
 /**
- * Deret tombol kontrol call ala Discord (mic / kamera / share screen / tuli /
- * keluar). Harus dirender di dalam RoomContext LiveKit, di atas latar gelap.
+ * Deret tombol kontrol call ala Discord: media (mic / kamera / share screen /
+ * tuli), interaksi (angkat tangan / reaksi / soundboard), lalu pengaturan dan
+ * keluar. Mode compact (overlay mengambang) hanya membawa soundboard dari
+ * kelompok interaksi. Harus dirender di dalam RoomContext LiveKit.
  */
 export function VoiceControlButtons({
   compact,
@@ -96,6 +111,7 @@ export function VoiceControlButtons({
   className?: string;
 }) {
   const { leave, deafened, setDeafened } = useVoice();
+  const room = useRoomContext();
   const {
     localParticipant,
     isMicrophoneEnabled,
@@ -103,6 +119,9 @@ export function VoiceControlButtons({
     isScreenShareEnabled,
   } = useLocalParticipant();
   const [busy, setBusy] = useState(false);
+  const handRaised = useVoiceEvents(
+    (s) => localParticipant.identity in s.hands,
+  );
 
   async function run(action: () => Promise<unknown>, failMessage: string) {
     if (busy) return;
@@ -123,24 +142,24 @@ export function VoiceControlButtons({
 
   return (
     <div
-      className={cn("flex items-center", compact ? "gap-1.5" : "gap-2", className)}
+      className={cn(
+        "flex items-center",
+        compact ? "gap-1.5" : "gap-2 max-sm:gap-1",
+        className,
+      )}
     >
       <ControlButton
-        label={isMicrophoneEnabled ? "Matikan mic" : "Nyalakan mic"}
+        label={
+          isMicrophoneEnabled
+            ? "Matikan mic (Ctrl+Shift+M)"
+            : "Nyalakan mic (Ctrl+Shift+M)"
+        }
         danger={!isMicrophoneEnabled}
         compact={compact}
         disabled={busy}
         onClick={() =>
           void run(
-            // Saat menyalakan, bawa opsi capture segar supaya toggle yang
-            // diubah ketika mic mati tetap berlaku tanpa rejoin.
-            () =>
-              localParticipant.setMicrophoneEnabled(
-                !isMicrophoneEnabled,
-                isMicrophoneEnabled
-                  ? undefined
-                  : micCaptureOptions(readVoiceSettings()),
-              ),
+            () => toggleMicrophone(localParticipant),
             "Gagal mengubah status mic.",
           )
         }
@@ -179,13 +198,34 @@ export function VoiceControlButtons({
         </ControlButton>
       ) : null}
       <ControlButton
-        label={deafened ? "Buka tuli" : "Tuli (senyapkan audio masuk)"}
+        label={
+          deafened
+            ? "Buka tuli (Ctrl+Shift+D)"
+            : "Tuli — senyapkan audio masuk (Ctrl+Shift+D)"
+        }
         danger={deafened}
         compact={compact}
         onClick={() => setDeafened(!deafened)}
       >
-        <Headphones aria-hidden />
+        {deafened ? <HeadphoneOff aria-hidden /> : <Headphones aria-hidden />}
       </ControlButton>
+      <Divider />
+      {compact ? null : (
+        <>
+          <ControlButton
+            label={handRaised ? "Turunkan tangan" : "Angkat tangan"}
+            active={handRaised}
+            onClick={() =>
+              void sendVoiceEvent(room, { t: "hand", up: !handRaised })
+            }
+          >
+            <Hand aria-hidden />
+          </ControlButton>
+          <VoiceReactionPicker />
+        </>
+      )}
+      <VoiceSoundboard compact={compact} />
+      <Divider />
       <VoiceSettingsMenu compact={compact} />
       <ControlButton
         label="Keluar dari voice"

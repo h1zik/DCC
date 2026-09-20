@@ -8,6 +8,7 @@ import {
   RoomContext,
   useRemoteParticipants,
 } from "@livekit/components-react";
+import { VoiceEventBridge } from "./voice-event-bridge";
 import { VoiceFloatingOverlay } from "./voice-floating-overlay";
 import { useVoiceSettings } from "./use-voice-settings";
 
@@ -28,6 +29,7 @@ export default function VoiceActiveSession({
     <RoomContext.Provider value={room}>
       <RoomAudioRenderer muted={deafened} />
       <VoiceVolumeApplier />
+      <VoiceEventBridge deafened={deafened} />
       {showOverlay ? <VoiceFloatingOverlay /> : null}
     </RoomContext.Provider>
   );

@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import {
+  useLocalParticipant,
   useMediaDeviceSelect,
   useRemoteParticipants,
   useRoomContext,
+  useTrackVolume,
 } from "@livekit/components-react";
 import { LocalAudioTrack, Track } from "livekit-client";
 import { Settings2, Volume1, Volume2, VolumeX } from "lucide-react";
@@ -98,6 +100,38 @@ function DeviceSection({
   );
 }
 
+/** Meter level mic langsung — cek cepat "suaraku masuk nggak?". */
+function MicLevelMeter() {
+  const { microphoneTrack, isMicrophoneEnabled } = useLocalParticipant();
+  const track = microphoneTrack?.track;
+  const volume = useTrackVolume(
+    track instanceof LocalAudioTrack ? track : undefined,
+  );
+  const level = isMicrophoneEnabled ? Math.min(1, Math.sqrt(volume) * 1.4) : 0;
+  return (
+    <div className="flex flex-col gap-1">
+      <div
+        role="meter"
+        aria-label="Level mikrofon"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(level * 100)}
+        className="bg-muted h-1.5 overflow-hidden rounded-full"
+      >
+        <div
+          className="bg-success h-full origin-left rounded-full transition-transform duration-75 ease-linear"
+          style={{ transform: `scaleX(${level})` }}
+        />
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {isMicrophoneEnabled
+          ? "Bicara untuk menguji — bar bergerak berarti suaramu masuk."
+          : "Mic sedang mati."}
+      </p>
+    </div>
+  );
+}
+
 function ProcessingToggle({
   id,
   label,
@@ -180,8 +214,8 @@ function ParticipantVolumeList({
 }
 
 /**
- * Tombol gear + popover "Pengaturan suara": picker mic/speaker, toggle
- * pemrosesan mic, dan volume per-peserta. Harus dirender di dalam
+ * Tombol gear + popover "Pengaturan suara": picker mic/speaker + meter level,
+ * toggle pemrosesan mic, preferensi soundboard/nada, dan volume per-peserta. Harus dirender di dalam
  * RoomContext LiveKit (dipasang di deret VoiceControlButtons).
  */
 export function VoiceSettingsMenu({ compact }: { compact?: boolean }) {
@@ -226,6 +260,7 @@ export function VoiceSettingsMenu({ compact }: { compact?: boolean }) {
           label="Mikrofon"
           onPicked={(deviceId) => update({ micDeviceId: deviceId })}
         />
+        {open ? <MicLevelMeter /> : null}
 
         {supportsSinkId() ? (
           <DeviceSection
@@ -270,6 +305,41 @@ export function VoiceSettingsMenu({ compact }: { compact?: boolean }) {
 
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs text-muted-foreground">
+            Soundboard dan nada
+          </Label>
+          <div className="flex items-center gap-2 [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-muted-foreground">
+            {volumeIcon(settings.soundboardMuted ? 0 : settings.soundboardVolume)}
+            <Slider
+              value={Math.round(settings.soundboardVolume * 100)}
+              min={0}
+              max={100}
+              step={1}
+              disabled={settings.soundboardMuted}
+              aria-label="Volume soundboard"
+              onValueChange={(value) =>
+                update({ soundboardVolume: value / 100 })
+              }
+            />
+            <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {Math.round(settings.soundboardVolume * 100)}%
+            </span>
+          </div>
+          <ProcessingToggle
+            id="voice-soundboard-muted"
+            label="Bisukan soundboard"
+            checked={settings.soundboardMuted}
+            onCheckedChange={(v) => update({ soundboardMuted: v })}
+          />
+          <ProcessingToggle
+            id="voice-cue-sounds"
+            label="Nada masuk, keluar, dan mic"
+            checked={settings.cueSounds}
+            onCheckedChange={(v) => update({ cueSounds: v })}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground">
             Volume peserta
           </Label>
           <ParticipantVolumeList
@@ -277,6 +347,11 @@ export function VoiceSettingsMenu({ compact }: { compact?: boolean }) {
             setParticipantVolume={setParticipantVolume}
           />
         </div>
+
+        <p className="border-t pt-2 text-[11px] text-muted-foreground">
+          Pintasan: <kbd className="font-sans font-medium">Ctrl+Shift+M</kbd>{" "}
+          mic, <kbd className="font-sans font-medium">Ctrl+Shift+D</kbd> tuli.
+        </p>
       </PopoverContent>
     </Popover>
   );

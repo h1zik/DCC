@@ -954,14 +954,104 @@
   min-height: 0;
   min-width: 0;
 }
-.voice-stage .lk-carousel .lk-participant-tile {
-  cursor: pointer;
-}
 @media (max-width: 600px) {
   /* LiveKit mobile: fokus di atas, carousel di bawah. Selector kita (2 kelas)
      mengalahkan rule media query LiveKit (1 kelas), jadi baris mobile harus
      dideklarasi ulang di sini. */
   .voice-stage .lk-focus-layout {
     grid-template-rows: 5fr minmax(0, 1fr);
+  }
+}
+
+/* Tile peserta kustom (voice-tile.tsx). Aura mengikuti level audio lewat inline
+   transform; transisi pendek menghaluskan update ~30 fps tanpa terasa telat. */
+.voice-aura {
+  transition:
+    transform 90ms linear,
+    opacity 200ms ease-out;
+  will-change: transform;
+}
+.voice-hand {
+  animation: voice-hand-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transform-origin: 60% 90%;
+}
+.voice-sound-chip {
+  animation: voice-chip-in 180ms ease-out both;
+}
+.voice-reaction {
+  animation: voice-reaction-float 3.2s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.voice-pad-progress {
+  animation: voice-pad-progress linear both;
+}
+@keyframes voice-hand-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-30deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+@keyframes voice-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes voice-reaction-float {
+  0% {
+    opacity: 0;
+    translate: 0 12px;
+    scale: 0.5;
+  }
+  12% {
+    opacity: 1;
+    scale: 1.15;
+  }
+  22% {
+    scale: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: 0 -38vh;
+  }
+}
+@keyframes voice-pad-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-aura {
+    /* Tanpa denyut: cukup bingkai "sedang bicara" pada tile. */
+    display: none;
+  }
+  .voice-hand,
+  .voice-sound-chip {
+    animation: none;
+  }
+  .voice-reaction {
+    animation: voice-reaction-fade 3.2s linear both;
+  }
+  @keyframes voice-reaction-fade {
+    0%,
+    80% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
   }
 }

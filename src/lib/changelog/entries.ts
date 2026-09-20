@@ -37,6 +37,24 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-20-voice-call-soundboard",
+    date: "2026-09-20",
+    title: "Voice call: soundboard, reaksi, angkat tangan, dan tampilan baru",
+    category: "new",
+    description:
+      "Voice call di Team Chat kini punya soundboard ala Discord — tekan satu pad dan semua orang di call mendengarnya — plus reaksi emoji, angkat tangan, dan tampilan peserta yang lebih hidup.",
+    highlights: [
+      "Soundboard: 9 suara bawaan (airhorn, ba dum tss, sad trombone, tepuk tangan, dst.) dan suara khas ruangan yang bisa diunggah sendiri (MP3/WAV, maks. 10 detik)",
+      "Volume soundboard diatur per orang, bisa dibisukan, dan otomatis senyap saat Anda memakai mode Tuli; mode Pratinjau untuk mendengar suara tanpa mengirimnya",
+      "Tile peserta baru: foto profil dengan aura yang membesar mengikuti suara, tanda mic mati, koneksi lemah, dan siapa yang sedang memutar suara",
+      "Reaksi emoji yang melayang di layar dan tombol angkat tangan untuk minta giliran bicara",
+      "Durasi call, jumlah orang, kualitas koneksi, dan peringatan saat sambungan terputus sementara",
+      "Klik tile siapa pun untuk memperbesarnya, dan tombol layar penuh untuk share screen/kamera",
+      "Nada saat ada yang masuk/keluar dan saat mic dinyalakan/dimatikan (bisa dimatikan di Pengaturan suara), plus meter level mic untuk uji suara",
+      "Pintasan keyboard: Ctrl+Shift+M untuk mic, Ctrl+Shift+D untuk tuli",
+    ],
+  },
+  {
     id: "2026-09-20-kelompok-fase-tidak-muncul-lagi",
     date: "2026-09-20",
     title: "Kelompok & fase yang dihapus tidak muncul lagi sendiri",
