@@ -23,7 +23,7 @@ export function registerStrategicTools(server: McpServer, deps: Deps) {
 
   server.tool(
     "get_sales_outgoing_by_brand",
-    "Outgoing PCS per brand (sales + sampling) dalam N hari terakhir.",
+    "Outgoing PCS per brand per kategori (penjualan, sampling, retur, rusak/expired, tanpa kategori) dalam N hari terakhir. salesPcs = penjualan murni.",
     {
       days: z
         .number()

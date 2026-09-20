@@ -181,6 +181,20 @@
   }
 }
 
+/*
+ * Warna kategori barang keluar (Executive overview). Sengaja tidak memakai
+ * --chart-1..5: itu ramp satu-hue per tema (sekuensial), bukan kategorikal.
+ * Nilai = emerald/sky/amber/rose-600, lolos cek kontras & buta warna di
+ * permukaan terang maupun gelap, jadi sama untuk semua tema.
+ */
+:root {
+  --outgoing-penjualan: oklch(0.596 0.145 163.2);
+  --outgoing-sampling: oklch(0.588 0.158 241.97);
+  --outgoing-retur: oklch(0.666 0.179 58.32);
+  --outgoing-rusak: oklch(0.586 0.253 17.59);
+  --outgoing-other: var(--muted-foreground);
+}
+
 /* Login page — animasi ringan (respects reduced motion) */
 :root {
   --login-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);

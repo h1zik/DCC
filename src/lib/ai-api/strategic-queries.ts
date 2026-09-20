@@ -613,6 +613,8 @@ export async function aiGetBudgetVsActual(
       actual: formatIdr(actual),
       variance: formatIdr(b.amountLimit.minus(actual)),
       overBudget: actual.greaterThan(b.amountLimit),
+      limitRaw: Number(b.amountLimit.toString()),
+      actualRaw: Number(actual.toString()),
     };
   });
 
@@ -1272,6 +1274,9 @@ export async function aiGetBrandOverview(role: AiApiRole, brandNameOrId: string)
       totalPcs: outgoingRow?.totalPcs ?? 0,
       salesPcs: outgoingRow?.salesPcs ?? 0,
       samplingPcs: outgoingRow?.samplingPcs ?? 0,
+      returPcs: outgoingRow?.returPcs ?? 0,
+      rusakPcs: outgoingRow?.rusakPcs ?? 0,
+      otherPcs: outgoingRow?.otherPcs ?? 0,
     },
   };
 }
