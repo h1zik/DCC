@@ -7,6 +7,7 @@ import { Track } from "livekit-client";
 import {
   VideoTrack,
   isTrackReference,
+  useParticipants,
   useSpeakingParticipants,
   useTracks,
   type TrackReference,
@@ -15,6 +16,7 @@ import { GripHorizontal, Maximize2, MicOff, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useVoice } from "./voice-provider";
 import { VoiceControlButtons } from "./voice-controls";
+import { VoiceAvatar, participantImage } from "./voice-tile";
 
 /**
  * Pilih track video yang paling menarik untuk PiP:
@@ -42,6 +44,52 @@ function usePipTrack(): TrackReference | null {
       }) ?? null
     );
   }, [tracks]);
+}
+
+/** Tanpa video: deret avatar peserta, yang sedang bicara diberi cincin. */
+function OverlayRoster({ connected }: { connected: boolean }) {
+  const participants = useParticipants();
+  const speakers = useSpeakingParticipants();
+  const speakingIds = new Set(speakers.map((p) => p.identity));
+  const shown = participants.slice(0, 5);
+  const firstSpeaker = speakers[0];
+  const status = !connected
+    ? "Menyambungkan…"
+    : firstSpeaker
+      ? `${firstSpeaker.isLocal ? "Kamu" : firstSpeaker.name || "Seseorang"} sedang bicara`
+      : participants.length > 1
+        ? `${participants.length} orang di call`
+        : "Baru kamu di sini";
+  return (
+    <div className="flex size-full flex-col items-center justify-center gap-2">
+      <div className="flex items-center gap-1.5">
+        {shown.map((p) => (
+          <span
+            key={p.identity}
+            title={p.name || p.identity}
+            className={cn(
+              "inline-flex rounded-full ring-2 transition-shadow duration-150",
+              speakingIds.has(p.identity) ? "ring-success" : "ring-transparent",
+            )}
+          >
+            <VoiceAvatar
+              name={p.name || p.identity}
+              image={participantImage(p.metadata)}
+              className="size-9 text-sm"
+            />
+          </span>
+        ))}
+        {participants.length > shown.length ? (
+          <span className="bg-muted text-muted-foreground inline-flex size-9 items-center justify-center rounded-full text-xs font-semibold">
+            +{participants.length - shown.length}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-muted-foreground max-w-full truncate px-2 text-[11px]">
+        {status}
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -74,7 +122,7 @@ export function VoiceFloatingOverlay() {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 380, damping: 30 }}
         className={cn(
-          "pointer-events-auto absolute right-0 bottom-0 w-72 overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-md transition-shadow",
+          "pointer-events-auto absolute right-0 bottom-0 w-80 max-w-full overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-md transition-shadow",
           "border-border bg-card/95 text-card-foreground",
           someoneSpeaking && "ring-success/70 ring-2",
         )}
@@ -132,25 +180,7 @@ export function VoiceFloatingOverlay() {
               </div>
             </>
           ) : (
-            <div className="flex size-full flex-col items-center justify-center gap-1.5">
-              <span className="relative inline-flex">
-                <span
-                  className={cn(
-                    "bg-success/40 absolute inline-flex size-full rounded-full",
-                    someoneSpeaking && "animate-ping",
-                  )}
-                  aria-hidden
-                />
-                <span className="bg-success/15 relative inline-flex size-10 items-center justify-center rounded-full">
-                  <Volume2 className="text-success size-5" aria-hidden />
-                </span>
-              </span>
-              <p className="text-muted-foreground text-[11px]">
-                {connectionState === "connected"
-                  ? "Suara tersambung"
-                  : "Menyambungkan…"}
-              </p>
-            </div>
+            <OverlayRoster connected={connectionState === "connected"} />
           )}
         </div>
 

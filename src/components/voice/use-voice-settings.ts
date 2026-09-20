@@ -2,11 +2,12 @@
 
 /**
  * Preferensi audio voice call (per-perangkat, localStorage): device mic/speaker,
- * toggle pemrosesan mic, dan volume per-partisipan (key = identity/userId).
+ * toggle pemrosesan mic, preferensi soundboard/nada isyarat, dan volume
+ * per-partisipan (key = identity/userId).
  * Sinkron antar tab/komponen via event "storage" + custom event.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { AudioCaptureOptions } from "livekit-client";
+import type { AudioCaptureOptions, LocalParticipant } from "livekit-client";
 
 const KEY = "dcc:voice-settings";
 const EVENT = "dcc:voice-settings-change";
@@ -19,6 +20,12 @@ export type VoiceSettings = {
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGainControl: boolean;
+  /** Volume soundboard 0..1 — hanya memengaruhi yang kamu dengar. */
+  soundboardVolume: number;
+  /** Jangan bunyikan soundboard di perangkat ini (pad tetap bisa dikirim). */
+  soundboardMuted: boolean;
+  /** Nada isyarat: peserta masuk/keluar, mic, tuli. */
+  cueSounds: boolean;
   /** identity -> volume 0..1; entri absen berarti 1 (100%). */
   volumes: Record<string, number>;
 };
@@ -29,6 +36,9 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   noiseSuppression: true,
   echoCancellation: true,
   autoGainControl: true,
+  soundboardVolume: 0.6,
+  soundboardMuted: false,
+  cueSounds: true,
   volumes: {},
 };
 
@@ -68,6 +78,18 @@ export function micCaptureOptions(s: VoiceSettings): AudioCaptureOptions {
     echoCancellation: s.echoCancellation,
     autoGainControl: s.autoGainControl,
   };
+}
+
+/**
+ * Toggle mic. Saat menyalakan, bawa opsi capture segar supaya toggle pemrosesan
+ * yang diubah ketika mic mati tetap berlaku tanpa rejoin.
+ */
+export function toggleMicrophone(local: LocalParticipant): Promise<unknown> {
+  const enabled = local.isMicrophoneEnabled;
+  return local.setMicrophoneEnabled(
+    !enabled,
+    enabled ? undefined : micCaptureOptions(readVoiceSettings()),
+  );
 }
 
 export function useVoiceSettings(): {

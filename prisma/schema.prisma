@@ -416,6 +416,7 @@ model User {
   roomDocumentFolderSharesReceived   RoomDocumentFolderShare[]      @relation("RoomDocumentFolderShareRecipient")
   roomMessages                       RoomMessage[]
   roomChannelReads                   RoomChannelRead[]
+  roomSounds                         RoomSound[]
   directConversationMembers          DirectConversationMember[]
   directMessages                     DirectMessage[]
   roomDocuments                      RoomDocument[]
@@ -676,6 +677,7 @@ model Room {
   projects             Project[]
   messages             RoomMessage[]
   channels             RoomChannel[]
+  sounds               RoomSound[]
   documents            RoomDocument[]
   documentFolders      RoomDocumentFolder[]
   documentActivities   RoomDocumentActivity[]
@@ -1301,6 +1303,27 @@ model RoomChannel {
   reads     RoomChannelRead[]
 
   @@index([roomId, sortOrder])
+}
+
+/**
+ * Suara kustom soundboard voice call, milik satu ruangan. Berkas audio pendek
+ * disimpan di /uploads/room-sounds/{roomId}/...; suara bawaan tidak disimpan di
+ * sini (disintesis di klien).
+ */
+model RoomSound {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name        String   @db.VarChar(32)
+  emoji       String?  @db.VarChar(16)
+  publicPath  String
+  sizeBytes   Int
+  durationMs  Int
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([roomId, createdAt])
 }
 
 /**
