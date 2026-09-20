@@ -116,11 +116,15 @@ export function canUseAgent(role: UserRole | undefined): boolean {
   return false;
 }
 
-/** Pesan pribadi 1:1 — CEO, administrator, studio/PM, market analyst, logistik. */
+/**
+ * Pesan pribadi 1:1 — CEO, administrator, studio/PM, market analyst, logistik,
+ * finance.
+ */
 export function canUseDirectChat(role: UserRole | undefined): boolean {
   if (!role) return false;
   if (role === UserRole.CEO) return true;
   if (isAdministrator(role)) return true;
+  if (isFinanceRole(role)) return true;
   if (isMarketAnalystOrStudio(role)) return true;
   return false;
 }
