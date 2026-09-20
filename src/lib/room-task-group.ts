@@ -6,9 +6,9 @@
  * filter tugas yang sudah ada tetap jalan lewat `Task.customProcessPhaseId`.
  * Dua perbedaan penting dari fase:
  *
- * 1. TIDAK ada kelompok bawaan. `ensureRoomProcessPhases()` sengaja tidak
- *    pernah dipanggil untuk ruangan non-brand — fungsi itu menulis ulang
- *    `customProcessPhaseId` pada tugas yang sudah ada.
+ * 1. TIDAK ada kelompok bawaan. `ensureRoomProcessPhases()` tidak menyeed dan
+ *    tidak menulis ulang `customProcessPhaseId` tugas untuk ruangan non-brand —
+ *    ia hanya mengembalikan kelompok yang ada.
  * 2. Kolom Kanban TIDAK dipecah per kelompok. Satu ruangan = satu set kolom
  *    (lihat `getSimpleHubKanbanColumns`), supaya tampilan lintas kelompok
  *    (List, Gantt, Kalender) memakai status yang sejajar.
