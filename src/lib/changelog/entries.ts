@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-20-finance-pesan-pribadi",
+    date: "2026-09-20",
+    title: "Pesan pribadi kini tersedia untuk akun Finance",
+    category: "new",
+    description:
+      "Sebelumnya akun Finance tidak punya akses ke pesan pribadi dan tidak muncul di daftar kontak. Sekarang tim Finance bisa berkirim pesan 1:1 dengan seluruh tim — misalnya untuk menanyakan pengajuan dana atau bukti transaksi — langsung dari tombol pesan di pojok kanan atas.",
+    highlights: [
+      "Tombol Pesan pribadi (dengan penanda belum dibaca) muncul di header semua halaman Finance",
+      "Akun Finance kini bisa dipilih sebagai kontak saat memulai percakapan baru",
+      "Semua fitur chat ikut tersedia: lampiran, pencarian riwayat, arsip media/file/tautan, dan notifikasi",
+      "Diperbaiki: akun Market Analyst kini juga muncul di daftar kontak — sebelumnya mereka bisa memakai chat tetapi tidak bisa dihubungi lebih dulu oleh orang lain",
+    ],
+  },
+  {
     id: "2026-09-20-voice-call-soundboard",
     date: "2026-09-20",
     title: "Voice call: soundboard, reaksi, angkat tangan, dan tampilan baru",

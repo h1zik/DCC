@@ -57,11 +57,12 @@ export function isLogisticsAppRoute(pathname: string): boolean {
   return isLogisticsRoute(pathname) || isStudioWorkspaceRoute(pathname);
 }
 
-/** Modul keuangan — hanya peran Finance (plus profil & absensi). */
+/** Modul keuangan — hanya peran Finance (plus profil, absensi & pesan pribadi). */
 export function isFinanceAppRoute(pathname: string): boolean {
   return (
     isProfileRoute(pathname) ||
     isAttendanceRoute(pathname) ||
+    isDirectChatRoute(pathname) ||
     pathname === "/finance" ||
     pathname.startsWith("/finance/")
   );
