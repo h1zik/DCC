@@ -55,6 +55,61 @@ export function focusDirectChatComposer() {
     ?.focus();
 }
 
+const ADD_FILES_EVENT = "direct-chat-add-files";
+
+/** Titipkan file ke composer aktif dari luar (mis. seret & lepas ke area chat). */
+export function addFilesToDirectChatComposer(files: File[]) {
+  if (files.length === 0) return;
+  window.dispatchEvent(new CustomEvent<File[]>(ADD_FILES_EVENT, { detail: files }));
+}
+
+/** Chip lampiran yang belum dikirim; gambar diberi pratinjau kecil. */
+function PendingFileChip({
+  file,
+  onRemove,
+}: {
+  file: File;
+  onRemove: () => void;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const isImage = file.type.startsWith("image/");
+
+  useEffect(() => {
+    if (!isImage) return;
+    const url = URL.createObjectURL(file);
+    queueMicrotask(() => setPreviewUrl(url));
+    return () => URL.revokeObjectURL(url);
+  }, [file, isImage]);
+
+  return (
+    <li className="bg-background flex max-w-full items-center gap-2 rounded-full border py-1 pr-1 pl-1">
+      {isImage && previewUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={previewUrl}
+          alt=""
+          className="size-6 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <span className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full">
+          <Paperclip className="size-3" aria-hidden />
+        </span>
+      )}
+      <span className="max-w-[12rem] truncate">{file.name}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        className="rounded-full"
+        aria-label={`Hapus ${file.name}`}
+        onClick={onRemove}
+      >
+        <X className="size-3" />
+      </Button>
+    </li>
+  );
+}
+
 export type DirectChatComposerPayload = {
   body: string;
   gifUrl: string | null;
@@ -163,6 +218,22 @@ export function DirectChatComposer({
     setPendingFiles((prev) => mergePendingChatFiles(prev, incoming));
   }, []);
 
+  const acceptsFiles = !pending && !editingId;
+  useEffect(() => {
+    function onAddFiles(e: Event) {
+      const files = (e as CustomEvent<File[]>).detail;
+      if (!Array.isArray(files)) return;
+      if (!acceptsFiles) {
+        toast.error("Selesaikan edit pesan dulu sebelum melampirkan file.");
+        return;
+      }
+      onPickFiles(files);
+      taRef.current?.focus();
+    }
+    window.addEventListener(ADD_FILES_EVENT, onAddFiles);
+    return () => window.removeEventListener(ADD_FILES_EVENT, onAddFiles);
+  }, [acceptsFiles, onPickFiles]);
+
   function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     if (editingId || pending) return;
     const images = readClipboardImageFiles(e.clipboardData);
@@ -230,7 +301,7 @@ export function DirectChatComposer({
   );
 
   return (
-    <div className="border-border/70 bg-card/95 supports-[backdrop-filter]:bg-card/90 sticky bottom-0 z-20 shrink-0 space-y-2 border-t p-2.5 shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.12)] backdrop-blur-sm sm:p-3 dark:shadow-[0_-6px_20px_-6px_rgba(0,0,0,0.45)]">
+    <div className="border-border/70 bg-card/95 supports-[backdrop-filter]:bg-card/90 sticky bottom-0 z-20 shrink-0 space-y-2 border-t p-2.5 backdrop-blur-sm sm:p-3">
       <DirectChatPushSetup className="mb-0.5 rounded-xl" />
       {editing ? (
         <div className="border-primary/25 bg-primary/10 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs">
@@ -291,23 +362,13 @@ export function DirectChatComposer({
       {pendingFiles.length > 0 ? (
         <ul className="border-border bg-muted/40 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-xl border p-2 text-xs">
           {pendingFiles.map((f, idx) => (
-            <li
-              key={`${f.name}-${idx}`}
-              className="bg-background/80 flex max-w-full items-center justify-between gap-2 rounded-full border px-2 py-1"
-            >
-              <span className="max-w-[12rem] truncate">{f.name}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Hapus ${f.name}`}
-                onClick={() =>
-                  setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
-                }
-              >
-                <X className="size-3" />
-              </Button>
-            </li>
+            <PendingFileChip
+              key={`${f.name}-${f.size}-${f.lastModified}-${idx}`}
+              file={f}
+              onRemove={() =>
+                setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
+              }
+            />
           ))}
         </ul>
       ) : null}
@@ -497,7 +558,7 @@ export function DirectChatComposer({
           )}
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground hidden text-[10px] sm:inline">
-              Enter kirim · Shift+Enter baris baru
+              Enter untuk kirim, Shift+Enter baris baru
             </span>
             <Button
               type="button"

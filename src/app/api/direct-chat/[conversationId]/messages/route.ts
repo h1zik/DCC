@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { canUseDirectChat } from "@/lib/direct-chat-access";
 import {
-  assertDirectConversationMember,
+  authorizeDirectChatRequest,
   getDirectChatPeerLastReadAt,
 } from "@/lib/direct-chat-access";
 import {
@@ -11,34 +9,46 @@ import {
   loadDirectChatMessagesSince,
   DIRECT_CHAT_INITIAL_MESSAGE_LIMIT,
 } from "@/lib/direct-chat-message-view";
+import { loadDirectChatMessagesUntil } from "@/lib/direct-chat-shared";
 
 export async function GET(
   request: Request,
   context: { params: Promise<{ conversationId: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canUseDirectChat(session.user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const { conversationId } = await context.params;
-  if (!conversationId) {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  }
-
-  try {
-    await assertDirectConversationMember(conversationId, session.user.id);
-  } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const guard = await authorizeDirectChatRequest(conversationId);
+  if (!guard.ok) return guard.response;
 
   const url = new URL(request.url);
   const beforeParam = url.searchParams.get("before");
+  const untilParam = url.searchParams.get("until");
   const sinceParam = url.searchParams.get("since");
   const since = sinceParam ? new Date(sinceParam) : null;
+
+  // Mode "jump": lompat ke pesan lama (hasil pencarian, berkas, kutipan balasan).
+  // Memuat rentang target → pesan tertua milik klien agar riwayat tetap utuh.
+  if (untilParam) {
+    const page = await loadDirectChatMessagesUntil(
+      conversationId,
+      untilParam,
+      beforeParam,
+    );
+    if (!page) {
+      return NextResponse.json(
+        { error: "Pesan terlalu jauh di riwayat atau sudah tidak ada." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    return NextResponse.json(
+      {
+        messages: page.messages,
+        hasMore: page.hasMore,
+        mode: "jump",
+        serverTime: new Date().toISOString(),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   // Mode "older": paginasi riwayat ke belakang. Tidak perlu status baca lawan
   // bicara — ini bukan polling, hanya penelusuran riwayat.
@@ -60,7 +70,7 @@ export async function GET(
     isDelta
       ? loadDirectChatMessagesSince(conversationId, since!)
       : loadDirectChatMessages(conversationId),
-    getDirectChatPeerLastReadAt(conversationId, session.user.id),
+    getDirectChatPeerLastReadAt(conversationId, guard.userId),
   ]);
 
   const messages = Array.isArray(result) ? result : result.messages;

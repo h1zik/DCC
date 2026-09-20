@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-20-pesan-pribadi-cari-arsip",
+    date: "2026-09-20",
+    title: "Pesan pribadi: cari riwayat chat & arsip media, file, tautan",
+    category: "new",
+    description:
+      "Pesan pribadi kini bisa dicari sampai pesan paling lama, dan semua foto, dokumen, serta tautan yang pernah dikirim terkumpul di satu panel — tidak perlu lagi menggulir ke atas. Tampilan chat juga dirapikan agar lebih nyaman dibaca.",
+    highlights: [
+      "Cari di percakapan (tombol kaca pembesar atau Ctrl+F): mencari isi pesan dan nama file di seluruh riwayat, lalu klik hasil untuk melompat ke pesannya",
+      "Arsip percakapan: tab Media, File, dan Tautan yang dikelompokkan per bulan, masing-masing dengan tombol \"Lihat di chat\"",
+      "Klik kutipan balasan kini selalu membawa ke pesan aslinya, termasuk pesan yang sangat lama",
+      "Gambar terbuka di penampil dalam aplikasi (geser antar gambar, unduh) dan video bisa diputar langsung di chat",
+      "Tombol ke pesan terbaru dengan jumlah pesan baru saat Anda sedang membaca riwayat, plus pembatas \"Pesan baru\" ketika membuka chat",
+      "Seret & lepas file ke area chat untuk melampirkan, dan salin teks pesan dari menu pesan",
+      "Gelembung chat lebih ringkas: jam di tiap pesan, aksi muncul saat kursor diarahkan, status Terkirim/Dibaca di bawah pesan terakhir",
+    ],
+  },
+  {
     id: "2026-09-20-executive-overview-diperkaya",
     date: "2026-09-20",
     title: "Executive overview lebih kaya: 4 kategori barang keluar, keuangan, tren & tim",

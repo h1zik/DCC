@@ -1,8 +1,6 @@
 "use client";
 
 import { actionErrorMessage } from "@/lib/action-error-message";
-import Image from "next/image";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
@@ -23,19 +21,37 @@ import {
 } from "@/actions/direct-messages";
 import type { DirectChatMessageView } from "@/lib/direct-chat-message-view";
 import type { DirectInboxItem } from "@/lib/direct-chat-inbox";
-import { previewText } from "@/lib/direct-chat-inbox";
+import { isDirectChatImageMime } from "@/lib/direct-chat-attachments-shared";
+import {
+  directChatAuthorLabel,
+  formatDirectChatPresence,
+  isDirectChatUserOnline,
+} from "@/lib/direct-chat-format";
 import { directChatReplySnippet } from "@/lib/direct-chat-reply-snippet";
 import { toast } from "sonner";
 import {
+  DirectChatArchivePanel,
+  type DirectChatArchiveTab,
+} from "@/components/direct-chat/direct-chat-archive-panel";
+import { DirectChatAvatar } from "@/components/direct-chat/direct-chat-avatar";
+import {
+  addFilesToDirectChatComposer,
   DirectChatComposer,
   focusDirectChatComposer,
   type DirectChatComposerPayload,
 } from "@/components/direct-chat/direct-chat-composer";
+import { DirectChatInbox } from "@/components/direct-chat/direct-chat-inbox";
+import {
+  DirectChatLightbox,
+  type DirectChatLightboxImage,
+  type DirectChatLightboxState,
+} from "@/components/direct-chat/direct-chat-lightbox";
 import {
   DirectChatMessageList,
   DIRECT_CHAT_WINDOW_SIZE,
   DIRECT_CHAT_WINDOW_STEP,
 } from "@/components/direct-chat/direct-chat-message-list";
+import { DirectChatThreadHeader } from "@/components/direct-chat/direct-chat-thread-header";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -45,8 +61,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, MessageCircle, Search, X } from "lucide-react";
+import { ArrowDown, Paperclip, Search, X } from "lucide-react";
 
 type EligibleUser = {
   id: string;
@@ -56,44 +73,19 @@ type EligibleUser = {
   lastSeenAt: Date | string | null;
 };
 
-type InboxFilter = "all" | "unread";
+/** Di bawah lebar ini arsip tampil sebagai sheet, bukan kolom ketiga. */
+const WIDE_LAYOUT_QUERY = "(min-width: 1280px)";
 
-function authorLabel(name: string | null, email: string) {
-  return name?.trim() || email;
-}
-
-function authorInitial(name: string | null, email: string) {
-  return (name?.trim() || email).slice(0, 1).toUpperCase() || "?";
-}
-
-function isOnline(lastSeenAt: string | null): boolean {
-  if (!lastSeenAt) return false;
-  return Date.now() - new Date(lastSeenAt).getTime() < 2 * 60 * 1000;
-}
-
-function isSameCalendarDay(a: Date, b: Date) {
-  return (
-    a.getDate() === b.getDate() &&
-    a.getMonth() === b.getMonth() &&
-    a.getFullYear() === b.getFullYear()
-  );
-}
-
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  return d.toLocaleString("id-ID", {
-    ...(isSameCalendarDay(d, now) ? {} : { day: "numeric", month: "short" }),
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatPresence(lastSeenAt: Date | string | null) {
-  if (!lastSeenAt) return "Belum ada aktivitas";
-  const iso = typeof lastSeenAt === "string" ? lastSeenAt : lastSeenAt.toISOString();
-  if (isOnline(iso)) return "Online sekarang";
-  return `Terakhir aktif ${formatTime(iso)}`;
+function useWideLayout() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(WIDE_LAYOUT_QUERY);
+    const onChange = () => setWide(mql.matches);
+    mql.addEventListener("change", onChange);
+    queueMicrotask(onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return wide;
 }
 
 function messageActivityMs(m: DirectChatMessageView): number {
@@ -138,6 +130,28 @@ function inboxSignature(items: DirectInboxItem[]): string {
     .join("|");
 }
 
+/** Pesan lawan bicara tertua di antara `unreadCount` pesan belum dibaca terakhir. */
+function findUnreadAnchorId(
+  list: DirectChatMessageView[],
+  currentUserId: string,
+  unreadCount: number,
+): string | null {
+  if (unreadCount <= 0) return null;
+  let anchor: string | null = null;
+  let seen = 0;
+  for (let i = list.length - 1; i >= 0 && seen < unreadCount; i--) {
+    const m = list[i]!;
+    if (m.author.id === currentUserId || m.deletedAt) continue;
+    anchor = m.id;
+    seen++;
+  }
+  return anchor;
+}
+
+function dragHasFiles(e: React.DragEvent) {
+  return Array.from(e.dataTransfer.types).includes("Files");
+}
+
 export function DirectChatExperience({
   className,
   currentUserId,
@@ -152,6 +166,7 @@ export function DirectChatExperience({
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeId = searchParams.get("c");
+  const isWide = useWideLayout();
 
   const [inbox, setInbox] = useState(initialInbox);
   const [messages, setMessages] = useState<DirectChatMessageView[]>([]);
@@ -167,8 +182,6 @@ export function DirectChatExperience({
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [userQuery, setUserQuery] = useState("");
   const [startingUserId, setStartingUserId] = useState<string | null>(null);
-  const [inboxQuery, setInboxQuery] = useState("");
-  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("all");
   const [editingMessage, setEditingMessage] = useState<{
     id: string;
     body: string;
@@ -177,49 +190,73 @@ export function DirectChatExperience({
   const [pending, startTransition] = useTransition();
   const [loadingThread, setLoadingThread] = useState(false);
 
+  /** Arsip percakapan (cari / media / file / tautan); `null` = tertutup. */
+  const [archiveTab, setArchiveTab] = useState<DirectChatArchiveTab | null>(null);
+  const [searchFocusToken, setSearchFocusToken] = useState(0);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [unreadAnchorId, setUnreadAnchorId] = useState<string | null>(null);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
+  /** Pesan lawan bicara yang masuk selagi pengguna membaca riwayat di atas. */
+  const [newBelowCount, setNewBelowCount] = useState(0);
+  const [lightbox, setLightbox] = useState<DirectChatLightboxState | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastSyncedAtRef = useRef<string>("");
   const nearBottomRef = useRef(true);
+  const awayFromBottomRef = useRef(false);
   const suppressNearBottomCheckRef = useRef(true);
   const shouldScrollToEndRef = useRef(true);
   const messagesRef = useRef<DirectChatMessageView[]>(messages);
   const windowSizeRef = useRef(windowSize);
+  const inboxRef = useRef(inbox);
+  const activeIdRef = useRef(activeId);
+  const isWideRef = useRef(isWide);
   const inboxSignatureRef = useRef(inboxSignature(initialInbox));
   const olderAnchorRef = useRef<{ height: number; top: number } | null>(null);
+  /** Jumlah belum dibaca saat percakapan dibuka — dipakai sekali untuk pembatas "Pesan baru". */
+  const pendingUnreadRef = useRef(0);
+  const highlightTimerRef = useRef<number | null>(null);
+  const jumpingRef = useRef(false);
+  const dragDepthRef = useRef(0);
 
   /** Cermin state untuk dibaca handler tanpa membuat ulang callback tiap poll. */
   useEffect(() => {
     messagesRef.current = messages;
     windowSizeRef.current = windowSize;
-  }, [messages, windowSize]);
+    inboxRef.current = inbox;
+    activeIdRef.current = activeId;
+    isWideRef.current = isWide;
+  }, [messages, windowSize, inbox, activeId, isWide]);
 
-  /** Reset jendela render tiap ganti percakapan — disesuaikan saat render agar tidak berantai. */
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+    },
+    [],
+  );
+
+  /** Reset state per-percakapan tiap ganti percakapan — disesuaikan saat render agar tidak berantai. */
   const [windowedConversationId, setWindowedConversationId] = useState(activeId);
   if (windowedConversationId !== activeId) {
     setWindowedConversationId(activeId);
+    setMessages([]);
     setWindowSize(DIRECT_CHAT_WINDOW_SIZE);
     setHasMoreOlder(false);
     setLoadingOlder(false);
+    setPeerLastReadAt(null);
+    setReply(null);
+    setEditingMessage(null);
+    setHighlightId(null);
+    setUnreadAnchorId(null);
+    setAwayFromBottom(false);
+    setNewBelowCount(0);
+    setLightbox(null);
   }
 
   const activeItem = useMemo(
     () => inbox.find((i) => i.conversationId === activeId) ?? null,
     [inbox, activeId],
-  );
-
-  const filteredInbox = useMemo(() => {
-    const q = inboxQuery.trim().toLowerCase();
-    return inbox.filter((i) => {
-      if (inboxFilter === "unread" && i.unreadCount === 0) return false;
-      if (!q) return true;
-      const name = (i.otherUser.name ?? i.otherUser.email).toLowerCase();
-      return name.includes(q) || i.otherUser.email.toLowerCase().includes(q);
-    });
-  }, [inbox, inboxFilter, inboxQuery]);
-
-  const unreadConversationCount = useMemo(
-    () => inbox.filter((i) => i.unreadCount > 0).length,
-    [inbox],
   );
 
   const filteredUsers = useMemo(() => {
@@ -230,11 +267,6 @@ export function DirectChatExperience({
       return name.includes(q) || u.email.toLowerCase().includes(q);
     });
   }, [eligibleUsers, userQuery]);
-
-  const totalUnread = useMemo(
-    () => inbox.reduce((acc, i) => acc + i.unreadCount, 0),
-    [inbox],
-  );
 
   /**
    * Jendela render: hanya pesan terbaru yang masuk DOM. Riwayat panjang tidak
@@ -269,17 +301,6 @@ export function DirectChatExperience({
       new Date(peerLastReadAt).getTime()
       ? "read"
       : "unread";
-  }, [lastOwnMessage, peerLastReadAt]);
-
-  const peerReadSubtitle = useMemo(() => {
-    if (!lastOwnMessage || !peerLastReadAt) return null;
-    if (
-      new Date(lastOwnMessage.createdAt).getTime() >
-      new Date(peerLastReadAt).getTime()
-    ) {
-      return null;
-    }
-    return `Dibaca ${formatTime(peerLastReadAt)}`;
   }, [lastOwnMessage, peerLastReadAt]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
@@ -323,10 +344,18 @@ export function DirectChatExperience({
         peerLastReadAt?: string | null;
         mode: "delta" | "initial";
       };
+      if (activeIdRef.current !== activeId) return;
       if (typeof data.peerLastReadAt !== "undefined") {
         setPeerLastReadAt(data.peerLastReadAt);
       }
       if (data.mode === "initial") {
+        const unread = pendingUnreadRef.current;
+        pendingUnreadRef.current = 0;
+        if (unread > 0) {
+          setUnreadAnchorId(
+            findUnreadAnchorId(data.messages, currentUserId, unread),
+          );
+        }
         setHasMoreOlder(Boolean(data.hasMore));
         setMessages(data.messages);
         syncLastActivityRef(lastSyncedAtRef, data.messages);
@@ -338,6 +367,14 @@ export function DirectChatExperience({
         const fromPeer = data.messages.some(
           (m) => m.author.id !== currentUserId,
         );
+        if (!nearBottomRef.current) {
+          const known = new Set(messagesRef.current.map((m) => m.id));
+          const fresh = data.messages.filter(
+            (m) =>
+              m.author.id !== currentUserId && !m.deletedAt && !known.has(m.id),
+          ).length;
+          if (fresh > 0) setNewBelowCount((n) => n + fresh);
+        }
         setMessages((prev) => mergeMessageLists(prev, data.messages));
         syncLastActivityRef(lastSyncedAtRef, data.messages);
         if (fromPeer && activeId) {
@@ -359,6 +396,7 @@ export function DirectChatExperience({
   useLayoutEffect(() => {
     shouldScrollToEndRef.current = true;
     nearBottomRef.current = true;
+    awayFromBottomRef.current = false;
     suppressNearBottomCheckRef.current = true;
     olderAnchorRef.current = null;
   }, [activeId]);
@@ -442,6 +480,10 @@ export function DirectChatExperience({
     let cancelled = false;
     lastSyncedAtRef.current = "";
     nearBottomRef.current = true;
+    activeIdRef.current = activeId;
+    pendingUnreadRef.current =
+      inboxRef.current.find((i) => i.conversationId === activeId)?.unreadCount ??
+      0;
     void (async () => {
       await Promise.resolve();
       if (cancelled) return;
@@ -468,9 +510,18 @@ export function DirectChatExperience({
     };
   }, [activeId, pollMessages, scrollToBottom]);
 
-  function openConversation(conversationId: string) {
-    router.replace(`/messages?c=${conversationId}`, { scroll: false });
-  }
+  const openConversation = useCallback(
+    (conversationId: string) => {
+      router.replace(`/messages?c=${conversationId}`, { scroll: false });
+    },
+    [router],
+  );
+
+  const backToInbox = useCallback(() => {
+    router.replace("/messages", { scroll: false });
+  }, [router]);
+
+  const openNewChat = useCallback(() => setNewChatOpen(true), []);
 
   function startChatWithUser(userId: string) {
     setStartingUserId(userId);
@@ -494,7 +545,7 @@ export function DirectChatExperience({
     setEditingMessage(null);
     setReply({
       id: message.id,
-      authorLabel: authorLabel(message.author.name, message.author.email),
+      authorLabel: directChatAuthorLabel(message.author.name, message.author.email),
       snippet: directChatReplySnippet({
         body: message.body,
         gifUrl: message.gifUrl,
@@ -559,6 +610,7 @@ export function DirectChatExperience({
           messages: DirectChatMessageView[];
           hasMore?: boolean;
         };
+        if (activeIdRef.current !== activeId) return;
         setHasMoreOlder(Boolean(data.hasMore));
         if (data.messages.length > 0) {
           captureScrollAnchor();
@@ -579,24 +631,181 @@ export function DirectChatExperience({
     loadingOlder,
   ]);
 
-  const scrollToMessage = useCallback((messageId: string) => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const focus = () => {
-      const el = container.querySelector<HTMLElement>(
-        `[data-message-id="${CSS.escape(messageId)}"]`,
-      );
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return Boolean(el);
-    };
-    if (focus()) return;
-    /** Target masih di luar jendela render — lebarkan dulu, baru lompat. */
-    const all = messagesRef.current;
-    const index = all.findIndex((m) => m.id === messageId);
-    if (index < 0) return;
-    setWindowSize((n) => Math.max(n, all.length - index + 5));
-    requestAnimationFrame(() => requestAnimationFrame(focus));
+  const flashMessage = useCallback((messageId: string) => {
+    setHighlightId(messageId);
+    if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = window.setTimeout(
+      () => setHighlightId(null),
+      2200,
+    );
   }, []);
+
+  /**
+   * Lompat ke pesan mana pun di riwayat — dari kutipan balasan, hasil cari,
+   * atau arsip. Tiga kemungkinan: sudah di DOM; sudah diambil tapi di luar
+   * jendela render; atau belum pernah diambil (minta rentangnya ke server).
+   */
+  const scrollToMessage = useCallback(
+    async (messageId: string) => {
+      const container = scrollRef.current;
+      if (!container) return;
+      const focus = (behavior: ScrollBehavior) => {
+        const el = container.querySelector<HTMLElement>(
+          `[data-message-id="${CSS.escape(messageId)}"]`,
+        );
+        el?.scrollIntoView({ behavior, block: "center" });
+        return Boolean(el);
+      };
+
+      suppressAutoScrollToEnd();
+      if (focus("smooth")) {
+        flashMessage(messageId);
+        return;
+      }
+
+      let all = messagesRef.current;
+      let index = all.findIndex((m) => m.id === messageId);
+
+      if (index < 0) {
+        if (!activeId || jumpingRef.current) return;
+        jumpingRef.current = true;
+        const toastId = toast.loading("Membuka pesan lama…");
+        try {
+          const oldest = all[0];
+          const res = await fetch(
+            `/api/direct-chat/${activeId}/messages?until=${encodeURIComponent(messageId)}${
+              oldest ? `&before=${encodeURIComponent(oldest.id)}` : ""
+            }`,
+            { credentials: "include" },
+          );
+          if (!res.ok) {
+            toast.error(
+              "Pesan itu terlalu jauh di riwayat atau sudah tidak ada.",
+              { id: toastId },
+            );
+            return;
+          }
+          const data = (await res.json()) as {
+            messages: DirectChatMessageView[];
+            hasMore?: boolean;
+          };
+          if (activeIdRef.current !== activeId) {
+            toast.dismiss(toastId);
+            return;
+          }
+          all = mergeMessageLists(messagesRef.current, data.messages);
+          messagesRef.current = all;
+          setHasMoreOlder(Boolean(data.hasMore));
+          setMessages(all);
+          toast.dismiss(toastId);
+          index = all.findIndex((m) => m.id === messageId);
+        } catch {
+          toast.error("Gagal membuka pesan. Coba lagi.", { id: toastId });
+          return;
+        } finally {
+          jumpingRef.current = false;
+        }
+      }
+      if (index < 0) return;
+
+      /** Target masih di luar jendela render — lebarkan dulu, baru lompat. */
+      const needed = all.length - index + 5;
+      setWindowSize((n) => Math.max(n, needed));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (!focus("auto")) return;
+          flashMessage(messageId);
+          /** Tinggi asli bubble baru diketahui setelah dirender — koreksi sekali. */
+          window.setTimeout(() => focus("auto"), 140);
+        }),
+      );
+    },
+    [activeId, flashMessage, suppressAutoScrollToEnd],
+  );
+
+  const scrollToReply = useCallback(
+    (messageId: string) => void scrollToMessage(messageId),
+    [scrollToMessage],
+  );
+
+  /** Lompatan dari arsip / lightbox: singkirkan dulu lapisan yang menutupi chat. */
+  const jumpFromOverlay = useCallback(
+    (messageId: string) => {
+      setLightbox(null);
+      if (!isWideRef.current) setArchiveTab(null);
+      void scrollToMessage(messageId);
+    },
+    [scrollToMessage],
+  );
+
+  const jumpToLatest = useCallback(() => {
+    nearBottomRef.current = true;
+    awayFromBottomRef.current = false;
+    setAwayFromBottom(false);
+    setNewBelowCount(0);
+    scrollToBottom("smooth");
+  }, [scrollToBottom]);
+
+  const openThreadImage = useCallback((attachmentId: string) => {
+    const images: DirectChatLightboxImage[] = messagesRef.current.flatMap((m) =>
+      m.attachments
+        .filter((a) => isDirectChatImageMime(a.mimeType))
+        .map((a) => ({
+          id: a.id,
+          src: a.publicPath,
+          fileName: a.fileName,
+          messageId: m.id,
+        })),
+    );
+    const index = images.findIndex((img) => img.id === attachmentId);
+    if (index >= 0) setLightbox({ images, index });
+  }, []);
+
+  const openArchiveImages = useCallback(
+    (images: DirectChatLightboxImage[], index: number) =>
+      setLightbox({ images, index }),
+    [],
+  );
+
+  const setLightboxIndex = useCallback(
+    (index: number) => setLightbox((prev) => (prev ? { ...prev, index } : prev)),
+    [],
+  );
+  const closeLightbox = useCallback(() => setLightbox(null), []);
+
+  const openSearch = useCallback(() => {
+    setArchiveTab("search");
+    setSearchFocusToken((n) => n + 1);
+  }, []);
+
+  const toggleSearch = useCallback(() => {
+    if (archiveTab === "search") setArchiveTab(null);
+    else openSearch();
+  }, [archiveTab, openSearch]);
+
+  const toggleArchive = useCallback(() => {
+    setArchiveTab((tab) => (tab && tab !== "search" ? null : "media"));
+  }, []);
+
+  const closeArchive = useCallback(() => setArchiveTab(null), []);
+
+  /** Ctrl/⌘+F mencari di percakapan yang sedang dibuka, bukan di halaman. */
+  useEffect(() => {
+    if (!activeId) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "f"
+      ) {
+        e.preventDefault();
+        openSearch();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeId, openSearch]);
 
   const handleComposerSubmit = useCallback(
     (payload: DirectChatComposerPayload) =>
@@ -638,6 +847,9 @@ export function DirectChatExperience({
             }
 
             setReply(null);
+            /** Membalas berarti semua pesan di atasnya sudah terbaca. */
+            setUnreadAnchorId(null);
+            setNewBelowCount(0);
             nearBottomRef.current = true;
             setMessages((prev) => mergeMessageLists(prev, [created]));
             syncLastActivityRef(lastSyncedAtRef, [created]);
@@ -695,204 +907,56 @@ export function DirectChatExperience({
     [],
   );
 
+  function onThreadScroll() {
+    if (suppressNearBottomCheckRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottomRef.current = distance < 80;
+    const away = distance > 320;
+    if (away !== awayFromBottomRef.current) {
+      awayFromBottomRef.current = away;
+      setAwayFromBottom(away);
+    }
+    if (nearBottomRef.current) setNewBelowCount(0);
+  }
+
+  const archivePanel = activeItem ? (
+    <DirectChatArchivePanel
+      key={activeItem.conversationId}
+      conversationId={activeItem.conversationId}
+      currentUserId={currentUserId}
+      peerLabel={directChatAuthorLabel(
+        activeItem.otherUser.name,
+        activeItem.otherUser.email,
+      )}
+      tab={archiveTab ?? "media"}
+      onTabChange={setArchiveTab}
+      onClose={closeArchive}
+      onJump={jumpFromOverlay}
+      onOpenImages={openArchiveImages}
+      refreshToken={lastMessageId}
+      searchFocusToken={searchFocusToken}
+    />
+  ) : null;
+
+  const archiveInline = Boolean(archiveTab) && isWide && Boolean(activeItem);
+
   return (
     <div className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}>
-      <div className="border-border/70 bg-card/95 flex h-full min-h-0 flex-1 overflow-hidden rounded-xl border shadow-sm">
-        {/* Inbox */}
-        <aside
+      <div className="border-border/70 bg-card flex h-full min-h-0 flex-1 overflow-hidden rounded-xl border shadow-sm">
+        <DirectChatInbox
+          inbox={inbox}
+          activeId={activeId}
+          currentUserId={currentUserId}
+          onOpenConversation={openConversation}
+          onNewChat={openNewChat}
           className={cn(
-            "border-border/70 flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden border-r md:w-[300px] lg:w-[340px]",
+            "border-border/70 w-full shrink-0 border-r md:w-[300px]",
+            archiveInline ? "lg:w-[300px]" : "lg:w-[340px]",
             activeId ? "hidden md:flex" : "flex",
           )}
-        >
-          <div className="border-border/70 bg-card/95 shrink-0 space-y-3 border-b p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold tracking-tight">Inbox</h2>
-                <p className="text-muted-foreground mt-0.5 text-xs">
-                  {totalUnread > 0
-                    ? `${totalUnread} pesan belum dibaca`
-                    : "Semua percakapan terbaca"}
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 shrink-0 rounded-full px-3"
-                onClick={() => setNewChatOpen(true)}
-              >
-                Pesan baru
-              </Button>
-            </div>
-            <div className="relative">
-              <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-3.5" />
-              <Input
-                value={inboxQuery}
-                onChange={(e) => setInboxQuery(e.target.value)}
-                placeholder="Cari nama atau email…"
-                className="h-9 rounded-full bg-background/70 pl-8 pr-8 text-sm"
-              />
-              {inboxQuery ? (
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground absolute top-2 right-2 inline-flex size-5 items-center justify-center rounded-full"
-                  onClick={() => setInboxQuery("")}
-                  aria-label="Hapus pencarian"
-                >
-                  <X className="size-3.5" />
-                </button>
-              ) : null}
-            </div>
-            <div className="bg-muted/50 flex rounded-full p-1 text-xs font-medium">
-              <button
-                type="button"
-                className={cn(
-                  "flex-1 rounded-full px-3 py-1.5 transition-colors",
-                  inboxFilter === "all"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setInboxFilter("all")}
-              >
-                Semua
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  "flex-1 rounded-full px-3 py-1.5 transition-colors",
-                  inboxFilter === "unread"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setInboxFilter("unread")}
-              >
-                Belum dibaca{unreadConversationCount > 0 ? ` (${unreadConversationCount})` : ""}
-              </button>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
-            {filteredInbox.length === 0 ? (
-              <div className="text-muted-foreground flex h-full min-h-[220px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-5 text-center text-sm">
-                <div className="bg-primary/10 text-primary flex size-10 items-center justify-center rounded-full">
-                  <MessageCircle className="size-5" aria-hidden />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-foreground font-medium">
-                    {inbox.length === 0
-                      ? "Belum ada percakapan"
-                      : inboxFilter === "unread"
-                        ? "Tidak ada pesan belum dibaca"
-                        : "Percakapan tidak ditemukan"}
-                  </p>
-                  <p className="text-xs leading-relaxed">
-                    {inbox.length === 0
-                      ? "Mulai percakapan pribadi dengan anggota tim yang tersedia."
-                      : inboxFilter === "unread"
-                        ? "Semua pesan sudah terbaca. Ubah filter untuk melihat semua percakapan."
-                        : "Coba kata kunci lain atau mulai pesan baru."}
-                  </p>
-                </div>
-                {inbox.length === 0 ? (
-                  <Button type="button" size="sm" onClick={() => setNewChatOpen(true)}>
-                    Mulai pesan baru
-                  </Button>
-                ) : null}
-              </div>
-            ) : (
-              <ul className="space-y-1">
-                {filteredInbox.map((item) => {
-                  const active = item.conversationId === activeId;
-                  const online = isOnline(item.otherUser.lastSeenAt);
-                  const unread = item.unreadCount > 0;
-                  return (
-                    <li key={item.conversationId}>
-                      <button
-                        type="button"
-                        onClick={() => openConversation(item.conversationId)}
-                        className={cn(
-                          "group hover:bg-muted/60 flex w-full gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors",
-                          active && "border-primary/25 bg-primary/10 shadow-sm",
-                          unread && !active && "bg-primary/5",
-                        )}
-                      >
-                        <div className="relative shrink-0">
-                          {item.otherUser.image ? (
-                            <Image
-                              src={item.otherUser.image}
-                              alt=""
-                              width={44}
-                              height={44}
-                              className="border-border size-11 rounded-full border object-cover"
-                              unoptimized
-                            />
-                          ) : (
-                            <div className="border-border bg-accent/40 text-accent-foreground flex size-11 items-center justify-center rounded-full border text-sm font-semibold">
-                              {authorInitial(
-                                item.otherUser.name,
-                                item.otherUser.email,
-                              )}
-                            </div>
-                          )}
-                          {online ? (
-                            <span
-                              className="border-background absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 bg-emerald-500"
-                              aria-label="Online"
-                            />
-                          ) : null}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span
-                              className={cn(
-                                "truncate text-sm",
-                                unread ? "font-bold" : "font-semibold",
-                              )}
-                            >
-                              {authorLabel(
-                                item.otherUser.name,
-                                item.otherUser.email,
-                              )}
-                            </span>
-                            {item.lastMessage ? (
-                              <time
-                                className={cn(
-                                  "shrink-0 text-[10px] tabular-nums",
-                                  unread ? "text-primary font-semibold" : "text-muted-foreground",
-                                )}
-                              >
-                                {formatTime(item.lastMessage.createdAt)}
-                              </time>
-                            ) : null}
-                          </div>
-                          <p
-                            className={cn(
-                              "mt-0.5 truncate text-xs",
-                              unread ? "text-foreground font-medium" : "text-muted-foreground",
-                            )}
-                          >
-                            {previewText(
-                              item.lastMessage,
-                              item.lastMessage?.authorId ?? "",
-                              currentUserId,
-                            )}
-                          </p>
-                          <p className="text-muted-foreground mt-1 text-[10px]">
-                            {online ? "Online" : "Pesan pribadi"}
-                          </p>
-                        </div>
-                        {unread ? (
-                          <span className="bg-primary text-primary-foreground mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums shadow-sm">
-                            {item.unreadCount > 9 ? "9+" : item.unreadCount}
-                          </span>
-                        ) : null}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </aside>
+        />
 
         {/* Thread */}
         <section
@@ -900,108 +964,77 @@ export function DirectChatExperience({
             "relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
             !activeId ? "hidden md:flex" : "flex",
           )}
+          onDragEnter={(e) => {
+            if (!activeItem || !dragHasFiles(e)) return;
+            dragDepthRef.current += 1;
+            setDragActive(true);
+          }}
+          onDragOver={(e) => {
+            if (activeItem && dragHasFiles(e)) e.preventDefault();
+          }}
+          onDragLeave={(e) => {
+            if (!activeItem || !dragHasFiles(e)) return;
+            dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+            if (dragDepthRef.current === 0) setDragActive(false);
+          }}
+          onDrop={(e) => {
+            if (!activeItem || !dragHasFiles(e)) return;
+            e.preventDefault();
+            dragDepthRef.current = 0;
+            setDragActive(false);
+            addFilesToDirectChatComposer(Array.from(e.dataTransfer.files));
+          }}
         >
           {!activeId ? (
-            <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center p-8 text-center">
-              <div className="border-border/70 bg-background/70 max-w-sm rounded-2xl border p-6 shadow-sm">
-                <div className="bg-primary/10 text-primary mx-auto flex size-14 items-center justify-center rounded-2xl">
-                  <MessageCircle className="size-7" aria-hidden />
-                </div>
-                <h3 className="text-foreground mt-4 text-base font-semibold">
-                  Pilih percakapan
-                </h3>
-                <p className="mt-2 text-xs leading-relaxed">
-                  Buka percakapan dari inbox, atau mulai chat pribadi baru dengan anggota tim yang tersedia.
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => setNewChatOpen(true)}
-                >
-                  Mulai pesan baru
-                </Button>
-              </div>
+            <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+              <h2 className="text-base font-semibold">Pilih percakapan</h2>
+              <p className="text-muted-foreground mt-1.5 max-w-[34ch] text-sm leading-relaxed">
+                Buka percakapan dari daftar di kiri, atau tulis pesan baru ke
+                anggota tim.
+              </p>
+              <Button type="button" className="mt-5" onClick={openNewChat}>
+                Tulis pesan baru
+              </Button>
             </div>
           ) : activeItem ? (
             <>
-              <header className="border-border/70 bg-card/95 z-10 flex shrink-0 items-center gap-3 border-b px-3 py-3 backdrop-blur-sm sm:px-4">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="md:hidden"
-                  aria-label="Kembali"
-                  onClick={() => router.replace("/messages", { scroll: false })}
+              <DirectChatThreadHeader
+                peer={activeItem.otherUser}
+                searchOpen={archiveTab === "search"}
+                archiveOpen={Boolean(archiveTab) && archiveTab !== "search"}
+                onBack={backToInbox}
+                onToggleSearch={toggleSearch}
+                onToggleArchive={toggleArchive}
+              />
+
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <div
+                  ref={scrollRef}
+                  className="bg-muted/25 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-3 sm:px-3.5"
+                  onScroll={onThreadScroll}
                 >
-                  <ArrowLeft className="size-4" />
-                </Button>
-                <Link
-                  href={`/profile/${activeItem.otherUser.id}`}
-                  className="flex min-w-0 flex-1 items-center gap-3"
-                >
-                  <div className="relative shrink-0">
-                    {activeItem.otherUser.image ? (
-                      <Image
-                        src={activeItem.otherUser.image}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="border-border size-10 rounded-full border object-cover"
-                        unoptimized
+                  {loadingThread && messages.length === 0 ? (
+                    <div className="text-muted-foreground flex min-h-[200px] items-center justify-center text-sm">
+                      Memuat pesan…
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
+                      <DirectChatAvatar
+                        name={activeItem.otherUser.name}
+                        email={activeItem.otherUser.email}
+                        image={activeItem.otherUser.image}
+                        size={64}
                       />
-                    ) : (
-                      <div className="border-border bg-accent/40 flex size-10 items-center justify-center rounded-full border text-sm font-semibold">
-                        {authorInitial(
+                      <p className="mt-4 text-sm font-semibold">
+                        Belum ada pesan dengan{" "}
+                        {directChatAuthorLabel(
                           activeItem.otherUser.name,
                           activeItem.otherUser.email,
                         )}
-                      </div>
-                    )}
-                    {isOnline(activeItem.otherUser.lastSeenAt) ? (
-                      <span
-                        className="border-background absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 bg-emerald-500"
-                        aria-hidden
-                      />
-                    ) : null}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">
-                      {authorLabel(
-                        activeItem.otherUser.name,
-                        activeItem.otherUser.email,
-                      )}
-                    </p>
-                    <p className="text-muted-foreground truncate text-xs">
-                      {peerReadSubtitle ?? formatPresence(activeItem.otherUser.lastSeenAt)}
-                    </p>
-                  </div>
-                </Link>
-              </header>
-
-              <div
-                ref={scrollRef}
-                className="bg-muted/15 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
-                onScroll={() => {
-                  if (suppressNearBottomCheckRef.current) return;
-                  const el = scrollRef.current;
-                  if (!el) return;
-                  nearBottomRef.current =
-                    el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-                }}
-              >
-                {loadingThread && messages.length === 0 ? (
-                  <div className="text-muted-foreground flex min-h-[200px] items-center justify-center text-sm">
-                    Memuat pesan…
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="flex min-h-[260px] items-center justify-center">
-                    <div className="border-border/70 bg-background/70 max-w-sm rounded-2xl border p-5 text-center shadow-sm">
-                      <p className="text-foreground text-sm font-semibold">
-                        Mulai percakapan dengan {authorLabel(activeItem.otherUser.name, activeItem.otherUser.email)}
                       </p>
-                      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-                        Belum ada pesan di percakapan ini. Tulis pesan pertama di composer bawah.
+                      <p className="text-muted-foreground mt-1 max-w-[34ch] text-xs leading-relaxed">
+                        Pesan, file, dan tautan yang kalian kirim akan tersimpan
+                        di arsip percakapan ini.
                       </p>
                       <Button
                         type="button"
@@ -1010,26 +1043,50 @@ export function DirectChatExperience({
                         className="mt-4"
                         onClick={focusDirectChatComposer}
                       >
-                        Tulis pesan
+                        Tulis pesan pertama
                       </Button>
                     </div>
-                  </div>
-                ) : (
-                  <DirectChatMessageList
-                    messages={visibleMessages}
-                    currentUserId={currentUserId}
-                    readReceiptMessageId={lastOwnMessage?.id ?? null}
-                    readReceiptState={readReceiptState}
-                    hiddenCount={hiddenCount}
-                    hasMoreOlder={hasMoreOlder}
-                    loadingOlder={loadingOlder}
-                    onLoadOlder={loadOlderMessages}
-                    onReply={startReplyTo}
-                    onEdit={startEdit}
-                    onDelete={confirmDeleteMessage}
-                    onScrollToReply={scrollToMessage}
-                  />
-                )}
+                  ) : (
+                    <DirectChatMessageList
+                      messages={visibleMessages}
+                      currentUserId={currentUserId}
+                      readReceiptMessageId={lastOwnMessage?.id ?? null}
+                      readReceiptState={readReceiptState}
+                      highlightId={highlightId}
+                      unreadAnchorId={unreadAnchorId}
+                      hiddenCount={hiddenCount}
+                      hasMoreOlder={hasMoreOlder}
+                      loadingOlder={loadingOlder}
+                      onLoadOlder={loadOlderMessages}
+                      onReply={startReplyTo}
+                      onEdit={startEdit}
+                      onDelete={confirmDeleteMessage}
+                      onScrollToReply={scrollToReply}
+                      onOpenImage={openThreadImage}
+                    />
+                  )}
+                </div>
+
+                {awayFromBottom || newBelowCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={jumpToLatest}
+                    className="bg-background text-foreground ring-border hover:bg-muted focus-visible:ring-ring absolute right-4 bottom-3 z-10 inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium shadow-md ring-1 outline-none focus-visible:ring-2"
+                    aria-label={
+                      newBelowCount > 0
+                        ? `${newBelowCount} pesan baru, ke pesan terbaru`
+                        : "Ke pesan terbaru"
+                    }
+                  >
+                    {newBelowCount > 0 ? (
+                      <span className="bg-primary text-primary-foreground -ml-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums">
+                        {newBelowCount > 99 ? "99+" : newBelowCount}
+                      </span>
+                    ) : null}
+                    {newBelowCount > 0 ? "Pesan baru" : null}
+                    <ArrowDown className="size-4" aria-hidden />
+                  </button>
+                ) : null}
               </div>
 
               <DirectChatComposer
@@ -1040,26 +1097,71 @@ export function DirectChatExperience({
                 onCancelEdit={cancelEdit}
                 onSubmit={handleComposerSubmit}
               />
+
+              {dragActive ? (
+                <div className="border-primary bg-background/90 pointer-events-none absolute inset-2 z-30 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed text-center">
+                  <Paperclip className="size-6" aria-hidden />
+                  <p className="text-sm font-semibold">Lepas untuk melampirkan</p>
+                  <p className="text-muted-foreground text-xs">
+                    File masuk ke kolom pesan dan baru terkirim setelah Anda
+                    menekan Kirim.
+                  </p>
+                </div>
+              ) : null}
             </>
-          ) : null}
+          ) : (
+            <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
+              Membuka percakapan…
+            </div>
+          )}
         </section>
+
+        {archiveInline ? (
+          <aside className="border-border/70 h-full w-[340px] shrink-0 border-l">
+            {archivePanel}
+          </aside>
+        ) : null}
       </div>
+
+      <Sheet
+        open={Boolean(archiveTab) && !isWide && Boolean(activeItem)}
+        onOpenChange={(open) => {
+          if (!open) setArchiveTab(null);
+        }}
+      >
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
+        >
+          <SheetTitle className="sr-only">Arsip percakapan</SheetTitle>
+          {archivePanel}
+        </SheetContent>
+      </Sheet>
+
+      <DirectChatLightbox
+        state={lightbox}
+        onIndexChange={setLightboxIndex}
+        onClose={closeLightbox}
+        onShowInChat={jumpFromOverlay}
+      />
 
       <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
         <DialogContent className="max-w-md gap-3">
           <DialogHeader>
             <DialogTitle>Pesan baru</DialogTitle>
             <DialogDescription>
-              Cari anggota tim yang punya akses pesan pribadi, lalu pilih untuk membuka percakapan 1:1.
+              Pilih anggota tim untuk membuka percakapan berdua.
             </DialogDescription>
           </DialogHeader>
           <div className="relative">
-            <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-3.5" />
+            <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 size-3.5" />
             <Input
               value={userQuery}
               onChange={(e) => setUserQuery(e.target.value)}
               placeholder="Cari nama atau email…"
-              className="rounded-full pl-8 pr-8"
+              aria-label="Cari anggota tim"
+              className="rounded-full pr-8 pl-8.5"
             />
             {userQuery ? (
               <button
@@ -1073,65 +1175,51 @@ export function DirectChatExperience({
             ) : null}
           </div>
           {filteredUsers.length === 0 ? (
-            <div className="text-muted-foreground rounded-xl border border-dashed p-5 text-center text-sm">
-              <p className="text-foreground font-medium">
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm font-medium">
                 {eligibleUsers.length === 0
-                  ? "Belum ada pengguna tersedia"
-                  : "Pengguna tidak ditemukan"}
+                  ? "Belum ada anggota tim yang bisa dikirimi pesan"
+                  : "Tidak ada yang cocok"}
               </p>
-              <p className="mt-1 text-xs leading-relaxed">
-                {eligibleUsers.length === 0
-                  ? "Tidak ada anggota tim lain yang bisa dikirimi pesan saat ini."
-                  : "Coba cari dengan nama atau email lain."}
-              </p>
+              {eligibleUsers.length > 0 ? (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Coba nama atau email lain.
+                </p>
+              ) : null}
             </div>
           ) : (
-            <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
+            <ul className="-mx-1 max-h-80 space-y-0.5 overflow-y-auto px-1">
               {filteredUsers.map((u) => {
-                const online = isOnline(typeof u.lastSeenAt === "string" ? u.lastSeenAt : u.lastSeenAt?.toISOString() ?? null);
+                const lastSeenIso =
+                  typeof u.lastSeenAt === "string"
+                    ? u.lastSeenAt
+                    : (u.lastSeenAt?.toISOString() ?? null);
                 const starting = startingUserId === u.id;
                 return (
                   <li key={u.id}>
                     <button
                       type="button"
-                      className="hover:bg-muted/60 flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors disabled:cursor-wait disabled:opacity-70"
+                      className="hover:bg-muted/60 focus-visible:ring-ring/50 flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left outline-none transition-colors focus-visible:ring-3 disabled:cursor-wait disabled:opacity-70"
                       disabled={pending}
                       onClick={() => startChatWithUser(u.id)}
                     >
-                      <div className="relative shrink-0">
-                        {u.image ? (
-                          <Image
-                            src={u.image}
-                            alt=""
-                            width={36}
-                            height={36}
-                            className="border-border size-9 rounded-full border object-cover"
-                            unoptimized
-                          />
-                        ) : (
-                          <div className="border-border bg-muted flex size-9 items-center justify-center rounded-full border text-xs font-semibold">
-                            {authorInitial(u.name, u.email)}
-                          </div>
-                        )}
-                        {online ? (
-                          <span
-                            className="border-background absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 bg-emerald-500"
-                            aria-hidden
-                          />
-                        ) : null}
-                      </div>
+                      <DirectChatAvatar
+                        name={u.name}
+                        email={u.email}
+                        image={u.image}
+                        size={38}
+                        online={isDirectChatUserOnline(lastSeenIso)}
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
-                          {authorLabel(u.name, u.email)}
+                          {directChatAuthorLabel(u.name, u.email)}
                         </p>
-                        <p className="text-muted-foreground truncate text-xs">{u.email}</p>
-                        <p className="text-muted-foreground mt-0.5 text-[10px]">
-                          {formatPresence(u.lastSeenAt)}
+                        <p className="text-muted-foreground truncate text-xs">
+                          {starting
+                            ? "Membuka percakapan…"
+                            : formatDirectChatPresence(u.lastSeenAt)}
                         </p>
                       </div>
-                      {starting ? (
-                        <span className="text-muted-foreground text-xs">Membuka…</span>
-                      ) : null}
                     </button>
                   </li>
                 );
