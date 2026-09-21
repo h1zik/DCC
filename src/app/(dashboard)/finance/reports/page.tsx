@@ -79,6 +79,12 @@ export default async function FinanceReportsPage({
         debit: trialBalance.totals.debit.toString(),
         credit: trialBalance.totals.credit.toString(),
       },
+      subtotalsByType: Object.fromEntries(
+        Object.entries(trialBalance.subtotalsByType).map(([type, s]) => [
+          type,
+          { debit: s.debit.toString(), credit: s.credit.toString() },
+        ]),
+      ),
       rows: trialBalance.rows.map((r) => ({
         accountId: r.accountId,
         code: r.code,

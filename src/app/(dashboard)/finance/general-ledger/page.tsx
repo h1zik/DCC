@@ -1,6 +1,7 @@
 import { BookOpen } from "lucide-react";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { queryGeneralLedger } from "@/actions/finance-ledger";
+import { jakartaCurrentMonthRange, utcDateOnly } from "@/lib/finance-dates";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { GeneralLedgerClient } from "./general-ledger-client";
 
@@ -10,9 +11,9 @@ export default async function GeneralLedgerPage({
   searchParams: Promise<{ accountId?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
-  const now = new Date();
-  const from = sp.from ? new Date(sp.from) : new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = sp.to ? new Date(sp.to) : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const current = jakartaCurrentMonthRange();
+  const from = sp.from ? new Date(sp.from) : current.from;
+  const to = sp.to ? new Date(sp.to) : utcDateOnly(current.to);
   const selectedAccountId =
     sp.accountId && sp.accountId !== "__all__" ? sp.accountId : null;
 

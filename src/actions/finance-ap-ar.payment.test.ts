@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => {
   const tx = {
     financeApBill: { findUniqueOrThrow: vi.fn(), update: vi.fn() },
     financeApPayment: { create: vi.fn() },
-    financeLedgerAccount: { findUnique: vi.fn() },
+    financeLedgerAccount: { findUnique: vi.fn(), findMany: vi.fn() },
+    financeJournalLineLink: { findFirst: vi.fn() },
     financeBankAccount: { findUniqueOrThrow: vi.fn() },
   };
   const prisma = {
@@ -54,7 +55,9 @@ beforeEach(() => {
   mocks.tx.financeApBill.findUniqueOrThrow.mockResolvedValue(bill);
   mocks.tx.financeApBill.update.mockResolvedValue({});
   mocks.tx.financeApPayment.create.mockResolvedValue({});
-  mocks.tx.financeLedgerAccount.findUnique.mockResolvedValue({ id: "acc-2000" });
+  mocks.tx.financeLedgerAccount.findUnique.mockResolvedValue({ id: "acc-2000", code: "2000" });
+  mocks.tx.financeLedgerAccount.findMany.mockResolvedValue([{ id: "acc-2000", code: "2000" }]);
+  mocks.tx.financeJournalLineLink.findFirst.mockResolvedValue(null);
   mocks.tx.financeBankAccount.findUniqueOrThrow.mockResolvedValue({
     id: "bank-1",
     ledgerAccountId: "acc-bank",
@@ -113,6 +116,23 @@ describe("recordApBillPayment — atomik + row-lock (H-03/M-05)", () => {
     );
     expect(mocks.createPostedEntryInTx).not.toHaveBeenCalled();
     expect(mocks.tx.financeApPayment.create).not.toHaveBeenCalled();
+  });
+
+  it("mendebit akun kontrol tempat bill diakui, bukan kode literal 2000", async () => {
+    mocks.tx.financeJournalLineLink.findFirst.mockResolvedValue({
+      line: { accountId: "acc-ap-lain" },
+    });
+    await recordApBillPayment(payload("600000"));
+
+    const posted = mocks.createPostedEntryInTx.mock.calls[0][1];
+    expect(posted.lines[0].accountId).toBe("acc-ap-lain");
+    expect(mocks.tx.financeLedgerAccount.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("bill lama tanpa link → akun ber-flag AP control", async () => {
+    await recordApBillPayment(payload("600000"));
+    const posted = mocks.createPostedEntryInTx.mock.calls[0][1];
+    expect(posted.lines[0].accountId).toBe("acc-2000");
   });
 
   it("bill VOID → ditolak", async () => {

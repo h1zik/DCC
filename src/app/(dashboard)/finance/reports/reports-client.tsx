@@ -40,6 +40,9 @@ export type SerializedReports = {
     asOf: string;
     isBalanced: boolean;
     totals: { debit: string; credit: string };
+    subtotalsByType: Partial<
+      Record<FinanceLedgerType, { debit: string; credit: string }>
+    >;
     rows: {
       accountId: string;
       code: string;
@@ -222,8 +225,8 @@ function TrialBalanceView({ tb }: { tb: SerializedReports["trialBalance"] }) {
             </TableHeader>
             <TableBody>
               {grouped.map((g) => {
-                const sumD = g.rows.reduce((a, r) => a + Number(r.debit), 0);
-                const sumC = g.rows.reduce((a, r) => a + Number(r.credit), 0);
+                const sumD = tb.subtotalsByType[g.type]?.debit ?? "0";
+                const sumC = tb.subtotalsByType[g.type]?.credit ?? "0";
                 const tone = FINANCE_TYPE_TONE[g.type];
                 return (
                   <FragmentRows key={g.type}>

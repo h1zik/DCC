@@ -37,6 +37,25 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-21-keuangan-perbaikan-akurasi",
+    date: "2026-09-21",
+    title: "Keuangan: perbaikan akurasi laporan & form hutang-piutang",
+    category: "fixed",
+    description:
+      "Serangkaian perbaikan hasil audit modul Keuangan. Tidak ada data jurnal, tagihan, invoice, atau pembayaran lama yang diubah — hanya cara sistem membaca dan menampilkannya. Beberapa angka TAMPILAN bisa bergeser (lihat poin bertanda ⚠️), tetapi saldo akun, laba rugi, dan neraca tetap sama.",
+    highlights: [
+      "⚠️ Laporan Arus Kas: pelunasan hutang usaha dan penerimaan piutang kini masuk “Aktivitas operasi”. Sebelumnya keliru tampil sebagai “pendanaan” dan “investasi”. Total kas masuk/keluar tidak berubah, hanya pengelompokannya",
+      "⚠️ “Bulan berjalan” dan batas tanggal laporan kini seragam memakai kalender WIB — sebelumnya antara pukul 00.00–07.00 WIB tanggal 1, sebagian layar masih menganggap bulan lalu",
+      "⚠️ Anggaran vs realisasi di halaman Anggaran, PDF bulanan, dashboard CEO, dan asisten AI kini dihitung oleh satu rumus yang sama; PDF per-brand hanya menampilkan anggaran brand itu",
+      "Impor mutasi bank: tanggal format dd/mm/yyyy dengan hari 1–12 (mis. 05/01/2026) kini terbaca 5 Januari, bukan 1 Mei. Mutasi yang SUDAH diimpor tidak diubah — mohon cek ulang impor lama bila perlu",
+      "Hutang & piutang: kini bisa mengisi nomor dan tanggal tagihan/invoice, serta tanggal pembayaran/penerimaan (sebelumnya selalu tercatat “hari ini”)",
+      "Aging piutang kini tampil di tab Piutang; label aging diperjelas (“Belum jatuh tempo”, “Lewat 1–30 hari”, dst.)",
+      "Chart of Accounts: tipe akun yang sudah punya jurnal terposting tidak bisa diubah lagi, agar histori tidak berpindah antara Neraca dan Laba Rugi",
+      "Akun kontrol hutang/piutang kini dikenali dari tandanya di Chart of Accounts, bukan dari kode 2000/1200 — mengganti kode akun tidak lagi mematikan pencatatan tagihan",
+      "Dashboard: status “Rekonsiliasi Pending” disembunyikan sementara karena fitur pencocokan mutasi belum tersedia",
+    ],
+  },
+  {
     id: "2026-09-21-laporan-keuangan-bulanan-pdf",
     date: "2026-09-21",
     title: "Laporan keuangan bulanan siap presentasi (PDF)",

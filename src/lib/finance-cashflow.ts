@@ -6,6 +6,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { utcDateOnly, utcEndOfDay } from "@/lib/finance-dates";
 import { zeroDecimal } from "@/lib/finance-money";
 
 export type CashFlowCategory = "operating" | "investing" | "financing";
@@ -52,6 +53,9 @@ const CATEGORY_LABEL: Record<CashFlowCategory, string> = {
  * lihat akun **lawan** pada baris-baris jurnal yang sama → klasifikasikan
  * berdasarkan tipe akun lawan:
  *   - REVENUE / EXPENSE  → operasi
+ *   - akun kontrol AP/AR → operasi (pelunasan hutang usaha & penerimaan
+ *     piutang adalah arus kas operasi; dulu ikut tipe akunnya sehingga bayar
+ *     supplier tampil sebagai "pendanaan" dan terima piutang sebagai "investasi")
  *   - ASSET (non-cash)   → investasi (mis. beli aset tetap)
  *   - LIABILITY / EQUITY → pendanaan (mis. setoran modal, pinjaman)
  *
@@ -64,8 +68,10 @@ export async function buildCashFlowStatement(options: {
   to: Date;
   brandId?: string | null;
 }): Promise<CashFlowStatement> {
-  const start = startOfDay(options.from);
-  const end = endOfDay(options.to);
+  // entryDate tersimpan UTC-midnight — batas hari harus UTC juga (dulu
+  // setHours lokal-server, bergeser sehari di server non-UTC).
+  const start = utcDateOnly(options.from);
+  const end = utcEndOfDay(options.to);
 
   const entries = await prisma.financeJournalEntry.findMany({
     where: {
@@ -93,6 +99,8 @@ export async function buildCashFlowStatement(options: {
               name: true,
               type: true,
               tracksCashflow: true,
+              isApControl: true,
+              isArControl: true,
             },
           },
         },
@@ -161,7 +169,7 @@ export async function buildCashFlowStatement(options: {
       if (mag.isZero()) continue;
       const share = cashDelta.mul(mag).dividedBy(counterMagnitude);
 
-      const cat = categoryFor(cl.account.type);
+      const cat = cashFlowCategoryFor(cl.account);
       const bucket = buckets[cat];
       const cur = bucket.get(cl.account.id) ?? {
         accountId: cl.account.id,
@@ -216,8 +224,13 @@ export async function buildCashFlowStatement(options: {
   };
 }
 
-function categoryFor(t: FinanceLedgerType): CashFlowCategory {
-  switch (t) {
+export function cashFlowCategoryFor(account: {
+  type: FinanceLedgerType;
+  isApControl: boolean;
+  isArControl: boolean;
+}): CashFlowCategory {
+  if (account.isApControl || account.isArControl) return "operating";
+  switch (account.type) {
     case FinanceLedgerType.REVENUE:
     case FinanceLedgerType.EXPENSE:
       return "operating";
@@ -227,15 +240,4 @@ function categoryFor(t: FinanceLedgerType): CashFlowCategory {
     case FinanceLedgerType.EQUITY:
       return "financing";
   }
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
 }

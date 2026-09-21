@@ -145,7 +145,8 @@ export async function composeMonthlyFinanceReport(
     }),
     buildTrialBalance({ asOf: effectiveDay, brandId, hideZero: true }),
     reportTaxBuckets({ from, to: effectiveTo, brandId }),
-    financeBudgetVsActual({ year, month }),
+    // Laporan per-brand hanya memuat baris budget brand itu (dulu selalu se-perusahaan).
+    financeBudgetVsActual({ year, month, brandId }),
     loadMonthlyTrend({
       endYear: year,
       endMonth: month,

@@ -1,8 +1,9 @@
 import { Wallet } from "lucide-react";
-import { financeApAgingBuckets, listFinanceApBills, listFinanceArInvoices } from "@/actions/finance-ap-ar";
+import { financeApArAging, listFinanceApBills, listFinanceArInvoices } from "@/actions/finance-ap-ar";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { listFinanceBankAccounts } from "@/actions/finance-bank";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
+import { jakartaTodayUtcDate } from "@/lib/finance-dates";
 import { prisma } from "@/lib/prisma";
 import { ApArClient } from "./ap-ar-client";
 
@@ -14,15 +15,8 @@ export default async function ApArPage() {
     prisma.vendor.findMany({ orderBy: { name: "asc" } }),
     prisma.brand.findMany({ orderBy: { name: "asc" } }),
     listFinanceAccounts(),
-    financeApAgingBuckets(),
+    financeApArAging(),
   ]);
-
-  const agingProps = {
-    current: aging.current.toString(),
-    d1_30: aging.d1_30.toString(),
-    d31_60: aging.d31_60.toString(),
-    over60: aging.over60.toString(),
-  };
 
   return (
     <FinancePageShell
@@ -60,7 +54,8 @@ export default async function ApArPage() {
           name: a.name,
           type: a.type,
         }))}
-        aging={agingProps}
+        aging={aging}
+        todayIso={jakartaTodayUtcDate().toISOString().slice(0, 10)}
       />
     </FinancePageShell>
   );

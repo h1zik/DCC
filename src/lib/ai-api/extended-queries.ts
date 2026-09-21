@@ -20,6 +20,7 @@ import {
 import { matchAgentRoom } from "@/lib/agent/room-match";
 import { getTodayDateString } from "@/lib/attendance";
 import { getLatestAttendanceSession } from "@/lib/attendance-state";
+import { jakartaToday } from "@/lib/finance-dates";
 import { loadFinanceDashboard } from "@/lib/finance-dashboard";
 import { formatIdr } from "@/lib/finance-money";
 import { PIPELINE_LABELS } from "@/lib/pipeline";
@@ -543,10 +544,10 @@ export async function aiGetFinanceSummary(
     return accessDenied("Akses ringkasan finance tidak tersedia untuk peran ini.");
   }
 
-  const now = new Date();
+  const today = jakartaToday();
   const period = {
-    year: params?.year ?? now.getFullYear(),
-    month: params?.month ?? now.getMonth() + 1,
+    year: params?.year ?? today.year,
+    month: params?.month ?? today.month,
   };
 
   const [dashboard, pendingSpendCount] = await Promise.all([

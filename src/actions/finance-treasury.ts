@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { utcEndOfDay } from "@/lib/finance-dates";
 import { createPostedFinanceJournal } from "@/actions/finance-journals";
 
 const transferSchema = z.object({
@@ -62,8 +63,7 @@ export async function financeCashflowLines(options: {
   brandId?: string | null;
 }) {
   await requireFinance();
-  const end = new Date(options.to);
-  end.setHours(23, 59, 59, 999);
+  const end = utcEndOfDay(options.to);
 
   return prisma.financeJournalLine.findMany({
     where: {

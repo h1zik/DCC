@@ -21,7 +21,7 @@ import {
   lockArInvoiceForUpdate,
 } from "@/lib/finance-journal-post";
 import { logFinanceAudit } from "@/lib/finance-audit";
-import { utcDateOnly } from "@/lib/finance-dates";
+import { jakartaTodayUtcDate, utcDateOnly } from "@/lib/finance-dates";
 import { removeFinanceAttachmentsBestEffort } from "@/lib/finance-uploads";
 import { FinanceAuditAction } from "@prisma/client";
 
@@ -685,7 +685,11 @@ export async function reverseFinanceJournal(
 ) {
   const session = await requireFinance();
   const data = reverseSchema.parse(input);
-  const reversalDate = data.reversalDate ?? new Date();
+  // Tanggal kalender (UTC-midnight) seperti entryDate lain — dulu timestamp
+  // penuh, yang sebelum 07:00 WIB jatuh ke tanggal/periode UTC kemarin.
+  const reversalDate = data.reversalDate
+    ? utcDateOnly(data.reversalDate)
+    : jakartaTodayUtcDate();
 
   // Seluruh guard berada DI DALAM transaksi; unique constraint
   // `reversesEntryId` menjadi penahan terakhir bila dua reversal berlomba.

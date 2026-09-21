@@ -1,29 +1,39 @@
 "use server";
 
-import { FinanceLedgerType, Prisma } from "@prisma/client";
+import { FinanceLedgerType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
-import { defaultCoaCreateMany } from "@/lib/finance-default-coa";
-import { signedBalanceForAccount } from "@/lib/finance-money";
+import {
+  defaultCoaCreateMany,
+  SYSTEM_REFERENCED_ACCOUNT_CODES,
+} from "@/lib/finance-default-coa";
 
 export async function ensureFinanceCoaReady() {
   await requireFinance();
   const count = await prisma.financeLedgerAccount.count();
   if (count > 0) {
-    // Backfill: jika kolom flag baru (isApControl/isArControl) belum di-set
-    // pada akun standar 2000 / 1200, isi sekali. Idempotent.
-    await prisma.$transaction([
-      prisma.financeLedgerAccount.updateMany({
-        where: { code: "2000", isApControl: false },
-        data: { isApControl: true },
-      }),
-      prisma.financeLedgerAccount.updateMany({
-        where: { code: "1200", isArControl: false },
-        data: { isArControl: true },
-      }),
+    // Backfill: jika BELUM ADA akun ber-flag kontrol sama sekali, tandai akun
+    // standar 2000 / 1200 sekali. Idempotent. Dulu backfill ini jalan tanpa
+    // syarat di setiap render sehingga flag yang sengaja dipindah user ke akun
+    // lain terus-menerus dipasang ulang di 2000/1200.
+    const [apFlagged, arFlagged] = await Promise.all([
+      prisma.financeLedgerAccount.count({ where: { isApControl: true } }),
+      prisma.financeLedgerAccount.count({ where: { isArControl: true } }),
     ]);
+    if (apFlagged === 0) {
+      await prisma.financeLedgerAccount.updateMany({
+        where: { code: "2000" },
+        data: { isApControl: true },
+      });
+    }
+    if (arFlagged === 0) {
+      await prisma.financeLedgerAccount.updateMany({
+        where: { code: "1200" },
+        data: { isArControl: true },
+      });
+    }
     return { seeded: false as const };
   }
   await prisma.financeLedgerAccount.createMany({
@@ -71,6 +81,31 @@ export async function upsertFinanceLedgerAccount(
   }
 
   if (data.id) {
+    const existing = await prisma.financeLedgerAccount.findUniqueOrThrow({
+      where: { id: data.id },
+      select: { code: true, type: true },
+    });
+    // Tipe menentukan saldo normal dan letak akun (Neraca vs Laba Rugi).
+    // Mengubahnya setelah ada jurnal terposting memindahkan seluruh histori
+    // akun itu di semua laporan — kunci, seperti Xero/Odoo.
+    if (existing.type !== data.type) {
+      const postedLines = await prisma.financeJournalLine.count({
+        where: { accountId: data.id, entry: { status: "POSTED" } },
+      });
+      if (postedLines > 0) {
+        throw new Error(
+          `Tipe akun tidak bisa diubah: sudah ada ${postedLines} baris jurnal terposting. Buat akun baru lalu pindahkan saldonya lewat jurnal.`,
+        );
+      }
+    }
+    if (
+      existing.code !== data.code &&
+      SYSTEM_REFERENCED_ACCOUNT_CODES.has(existing.code)
+    ) {
+      throw new Error(
+        `Kode ${existing.code} dipakai sistem (saldo awal rekening / rekap pajak) dan belum bisa diubah. Nama akun tetap boleh diganti.`,
+      );
+    }
     await prisma.financeLedgerAccount.update({
       where: { id: data.id },
       data: {
@@ -103,20 +138,6 @@ export async function upsertFinanceLedgerAccount(
   revalidatePath("/finance/chart-of-accounts");
 }
 
-export async function getFinanceLedgerAccountByCode(code: string) {
-  await requireFinance();
-  return prisma.financeLedgerAccount.findUnique({ where: { code } });
-}
-
-export async function deactivateFinanceAccount(accountId: string) {
-  await requireFinance();
-  await prisma.financeLedgerAccount.update({
-    where: { id: accountId },
-    data: { isActive: false },
-  });
-  revalidatePath("/finance/chart-of-accounts");
-}
-
 export async function setFinanceAccountActive(
   accountId: string,
   isActive: boolean,
@@ -129,46 +150,3 @@ export async function setFinanceAccountActive(
   revalidatePath("/finance/chart-of-accounts");
 }
 
-/** Referensi untuk laporan (saldo per akun). */
-export async function getFinanceAccountBalanceMap(asOf: Date) {
-  await requireFinance();
-  const lines = await prisma.financeJournalLine.findMany({
-    where: {
-      entry: {
-        status: "POSTED",
-        entryDate: { lte: endOfUtcDay(asOf) },
-      },
-    },
-    include: { account: true },
-  });
-
-  const map = new Map<
-    string,
-    { account: (typeof lines)[0]["account"]; balance: Prisma.Decimal }
-  >();
-
-  for (const line of lines) {
-    const prev = map.get(line.accountId);
-    const delta = signedBalanceForAccount(
-      line.account.type,
-      line.debitBase,
-      line.creditBase,
-    );
-    if (!prev) {
-      map.set(line.accountId, { account: line.account, balance: delta });
-    } else {
-      map.set(line.accountId, {
-        account: line.account,
-        balance: prev.balance.plus(delta),
-      });
-    }
-  }
-
-  return map;
-}
-
-function endOfUtcDay(d: Date): Date {
-  const x = new Date(d);
-  x.setUTCHours(23, 59, 59, 999);
-  return x;
-}

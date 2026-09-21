@@ -4,6 +4,7 @@ import { FinanceLedgerType, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { utcEndOfDay } from "@/lib/finance-dates";
 import { signedBalanceForAccount } from "@/lib/finance-money";
 
 const querySchema = z.object({
@@ -21,7 +22,7 @@ export async function queryGeneralLedger(input: z.infer<typeof querySchema>) {
     where: {
       entry: {
         status: "POSTED",
-        entryDate: { gte: q.from, lte: endOfDay(q.to) },
+        entryDate: { gte: q.from, lte: utcEndOfDay(q.to) },
       },
       ...(q.accountId ? { accountId: q.accountId } : {}),
       ...(q.brandId ? { brandId: q.brandId } : {}),
@@ -65,10 +66,4 @@ export async function queryGeneralLedger(input: z.infer<typeof querySchema>) {
   }
 
   return { lines, openingByAccount };
-}
-
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
 }
