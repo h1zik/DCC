@@ -14,6 +14,14 @@ import {
 } from "./reports-client";
 import { ReportFilterBar } from "@/components/finance/report-filter-bar";
 import { utcMonthEnd, utcMonthStart } from "@/lib/finance-dates";
+import { MonthlyReportButton } from "@/components/finance/monthly-report-button";
+import {
+  defaultReportMonth,
+  jakartaToday,
+} from "@/lib/finance-monthly-report/period";
+
+// Penyusunan PDF laporan bulanan (server action) butuh waktu lebih dari default.
+export const maxDuration = 120;
 
 type SearchParams = {
   from?: string;
@@ -154,9 +162,20 @@ export default async function FinanceReportsPage({
       title="Pelaporan keuangan"
       description="Neraca saldo, laba rugi, neraca, arus kas, dan rekap pajak — dari jurnal terposting (IDR)."
       actions={
-        <span className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full border border-primary/20 px-2.5 py-1 text-[11px] font-semibold">
-          <Sparkles className="size-3" /> Dengan perbandingan periode lalu
-        </span>
+        <>
+          <span className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full border border-primary/20 px-2.5 py-1 text-[11px] font-semibold">
+            <Sparkles className="size-3" /> Dengan perbandingan periode lalu
+          </span>
+          <MonthlyReportButton
+            brands={brands.map((b) => ({ id: b.id, name: b.name }))}
+            currentMonth={jakartaToday()}
+            defaultMonth={defaultReportMonth({
+              year: to.getUTCFullYear(),
+              month: to.getUTCMonth() + 1,
+            })}
+            defaultBrandId={brandId}
+          />
+        </>
       }
     >
       <ReportFilterBar
