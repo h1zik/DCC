@@ -2,6 +2,7 @@
 
 import {
   FinanceApArDocStatus,
+  FinanceAuditAction,
   FinanceJournalLineLinkMode,
   Prisma,
 } from "@prisma/client";
@@ -14,6 +15,7 @@ import {
   lockApBillForUpdate,
   lockArInvoiceForUpdate,
 } from "@/lib/finance-journal-post";
+import { logFinanceAudit } from "@/lib/finance-audit";
 import {
   resolveControlAccount,
   resolveDocControlAccountId,
@@ -181,6 +183,12 @@ export async function createFinanceApBill(input: z.infer<typeof billSchema>) {
         createdBillId: bill.id,
       },
     });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.BILL_CREATE,
+      actorId: session.user.id,
+      entityId: bill.id,
+      detail: `Tagihan ${data.vendorName.trim()}${data.billNumber?.trim() ? ` #${data.billNumber.trim()}` : ""} — ${amt.toFixed(2)} (jurnal ${journalId})`,
+    });
   });
   paths();
 }
@@ -272,6 +280,12 @@ export async function createFinanceArInvoice(input: z.infer<typeof invSchema>) {
         createdInvoiceId: inv.id,
       },
     });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.INVOICE_CREATE,
+      actorId: session.user.id,
+      entityId: inv.id,
+      detail: `Invoice ${data.customerName.trim()}${data.invoiceNumber?.trim() ? ` #${data.invoiceNumber.trim()}` : ""} — ${amt.toFixed(2)} (jurnal ${journalId})`,
+    });
   });
   paths();
 }
@@ -359,6 +373,13 @@ export async function recordApBillPayment(input: z.infer<typeof payApSchema>) {
       where: { id: bill.id },
       data: { status },
     });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.AP_PAYMENT,
+      actorId: session.user.id,
+      entityId: bill.id,
+      detail: `Bayar ${bill.vendorName} — ${amt.toFixed(2)} via ${bank.name} (jurnal ${journalId})`,
+      meta: { before: { status: bill.status }, after: { status } },
+    });
   });
 
   paths();
@@ -443,6 +464,13 @@ export async function recordArInvoicePayment(input: z.infer<typeof payArSchema>)
     await tx.financeArInvoice.update({
       where: { id: inv.id },
       data: { status },
+    });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.AR_PAYMENT,
+      actorId: session.user.id,
+      entityId: inv.id,
+      detail: `Terima ${inv.customerName} — ${amt.toFixed(2)} via ${bank.name} (jurnal ${journalId})`,
+      meta: { before: { status: inv.status }, after: { status } },
     });
   });
 

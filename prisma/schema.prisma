@@ -2249,6 +2249,27 @@ enum FinanceAuditAction {
   PERIOD_UNLOCK
   FX_RATE_DELETE
   DEMO_RESET
+  // Cakupan diperluas (fase 1 audit) — dulu hanya 7 aksi di atas yang tercatat.
+  ACCOUNT_CREATE
+  ACCOUNT_UPDATE
+  BILL_CREATE
+  INVOICE_CREATE
+  AP_PAYMENT
+  AR_PAYMENT
+  BUDGET_UPSERT
+  BANK_ACCOUNT_CREATE
+  BANK_IMPORT
+  BANK_MATCH
+  TRANSFER
+  SPEND_SUBMIT
+  SPEND_APPROVE
+  SPEND_REJECT
+  SPEND_PAYOUT
+  ASSET_CREATE
+  DEPRECIATION_POST
+  FX_RATE_UPSERT
+  ATTACHMENT_ADD
+  ATTACHMENT_DELETE
 }
 
 /**
@@ -2264,12 +2285,18 @@ model FinanceAuditEvent {
    */
   entityId  String?            @db.VarChar(64)
   detail    String?            @db.VarChar(1000)
+  /**
+   * Nilai sebelum/sesudah untuk aksi yang mengubah data: `{ before, after }`.
+   * Null untuk event lama dan aksi tanpa perubahan nilai.
+   */
+  meta      Json?
   actorId   String
   actor     User               @relation("FinanceAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
   createdAt DateTime           @default(now())
 
   @@index([action, createdAt])
   @@index([entityId])
+  @@index([createdAt])
 }
 
 /**

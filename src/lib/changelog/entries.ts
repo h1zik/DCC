@@ -37,6 +37,22 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-21-keuangan-ekspor-jejak-audit",
+    date: "2026-09-21",
+    title: "Keuangan: ekspor CSV, jejak audit yang bisa dibaca, dan bukti susulan",
+    category: "new",
+    description:
+      "Tiga hal yang biasa diminta akuntan eksternal dan auditor kini tersedia di modul Keuangan. Tidak ada data lama yang diubah — semuanya penambahan.",
+    highlights: [
+      "Ekspor CSV: tombol “Ekspor CSV” di halaman Laporan dan Buku Besar — neraca saldo, laba rugi, neraca, buku besar, seluruh jurnal terposting, serta daftar hutang & piutang. Angkanya sama persis dengan yang tampil di layar dan bisa dibuka di Excel",
+      "Menu baru “Audit Log”: daftar siapa melakukan apa dan kapan, bisa difilter per tanggal dan jenis aksi, serta diekspor. Sebelumnya catatan ini tersimpan tetapi tidak bisa dilihat siapa pun",
+      "Jejak audit kini mencakup jauh lebih banyak aksi: perubahan akun (dengan nilai sebelum → sesudah), tagihan & invoice baru, pembayaran, anggaran, kurs, rekening & impor mutasi bank, transfer, aset tetap & penyusutan, serta pengajuan/persetujuan/pembayaran pengeluaran",
+      "Bukti susulan: lampiran kini bisa ditambahkan ke jurnal yang SUDAH diposting (mis. pembayaran hutang, transfer) — sebelumnya hanya bisa saat draf. Penambahan ini tercatat di jejak audit; menghapus lampiran tetap hanya bisa saat draf",
+      "Transfer antar rekening kini ditolak bila kedua rekening memakai akun buku yang sama, dan nominalnya divalidasi seperti form lain",
+      "Catatan: jejak audit yang lebih lengkap berlaku untuk aktivitas mulai sekarang; aktivitas lama tidak dibuat-buat catatannya",
+    ],
+  },
+  {
     id: "2026-09-21-keuangan-perbaikan-akurasi",
     date: "2026-09-21",
     title: "Keuangan: perbaikan akurasi laporan & form hutang-piutang",

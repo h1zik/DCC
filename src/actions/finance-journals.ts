@@ -16,7 +16,6 @@ import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { nextJournalNumber } from "@/lib/finance-journal-number";
 import {
   apArStatusForPaid,
-  createPostedEntryInTx,
   lockApBillForUpdate,
   lockArInvoiceForUpdate,
 } from "@/lib/finance-journal-post";
@@ -432,43 +431,6 @@ export async function deleteFinanceJournalDraft(entryId: string) {
     entry.lines.flatMap((l) => l.attachments.map((a) => a.url)),
   );
   journalPaths();
-}
-
-const postedLineInput = z.object({
-  accountId: z.string().min(1),
-  debit: z.string().default("0"),
-  credit: z.string().default("0"),
-  memo: z.string().optional().nullable(),
-  brandId: z.string().optional().nullable(),
-});
-
-const createPostedSchema = z.object({
-  entryDate: z.coerce.date(),
-  reference: z.string().max(120).optional().nullable(),
-  memo: z.string().max(2000).optional().nullable(),
-  lines: z.array(postedLineInput).min(2),
-});
-
-/** Jurnal langsung terposting (pembayaran AP/AR, transfer, depresiasi, payout). */
-export async function createPostedFinanceJournal(
-  input: z.infer<typeof createPostedSchema>,
-) {
-  const session = await requireFinance();
-  const data = createPostedSchema.parse(input);
-
-  const entryId = await prisma.$transaction(async (tx) => {
-    await ensurePeriodOpen(data.entryDate, tx);
-    return createPostedEntryInTx(tx, {
-      entryDate: data.entryDate,
-      reference: data.reference,
-      memo: data.memo,
-      createdById: session.user.id,
-      lines: data.lines,
-    });
-  });
-
-  journalPaths();
-  return entryId;
 }
 
 export async function postFinanceJournal(entryId: string) {

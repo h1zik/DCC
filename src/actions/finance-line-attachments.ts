@@ -1,9 +1,11 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { FinanceAuditAction } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { logFinanceAudit } from "@/lib/finance-audit";
 import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import {
   FINANCE_ATTACHMENT_ALLOWED_MIME,
@@ -44,12 +46,13 @@ export async function uploadFinanceLineAttachment(formData: FormData) {
     include: { entry: true },
   });
 
-  if (line.entry.status !== "DRAFT") {
-    throw new Error(
-      "Jurnal sudah diposting. Lampiran hanya bisa ditambah saat draf.",
-    );
-  }
-  await ensurePeriodOpen(line.entry.entryDate);
+  // Bukti susulan boleh ditambahkan ke jurnal POSTED — termasuk di periode
+  // terkunci — karena lampiran tidak mengubah angka pembukuan; dulu dilarang,
+  // padahal hampir semua jalur cepat (AP/AR, payout, transfer) langsung POSTED
+  // sehingga transaksi itu tidak akan pernah punya bukti. Penambahan pada
+  // jurnal POSTED dicatat di jejak audit; penghapusan tetap hanya saat draf.
+  const isPosted = line.entry.status === "POSTED";
+  if (!isPosted) await ensurePeriodOpen(line.entry.entryDate);
 
   const attachmentId = randomUUID();
   const arrayBuffer = await file.arrayBuffer();
@@ -71,17 +74,27 @@ export async function uploadFinanceLineAttachment(formData: FormData) {
     bytes,
   });
 
-  await prisma.financeJournalLineAttachment.create({
-    data: {
-      id: attachmentId,
-      lineId: line.id,
-      fileName: file.name,
-      mimeType: sniffedMime,
-      size: saved.size,
-      url: saved.storagePath,
-      hash: saved.hash,
-      uploadedById: session.user.id,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.financeJournalLineAttachment.create({
+      data: {
+        id: attachmentId,
+        lineId: line.id,
+        fileName: file.name,
+        mimeType: sniffedMime,
+        size: saved.size,
+        url: saved.storagePath,
+        hash: saved.hash,
+        uploadedById: session.user.id,
+      },
+    });
+    if (isPosted) {
+      await logFinanceAudit(tx, {
+        action: FinanceAuditAction.ATTACHMENT_ADD,
+        actorId: session.user.id,
+        entityId: line.entryId,
+        detail: `Lampiran susulan pada ${line.entry.entryNumber ?? "jurnal terposting"}: ${file.name} (sha256 ${saved.hash.slice(0, 12)}…)`,
+      });
+    }
   });
 
   paths(line.entryId);
@@ -92,7 +105,7 @@ export async function uploadFinanceLineAttachment(formData: FormData) {
  * File fisik dihapus dulu; gagal hapus disk diabaikan (file mungkin sudah hilang).
  */
 export async function deleteFinanceLineAttachment(attachmentId: string) {
-  await requireFinance();
+  const session = await requireFinance();
   const att = await prisma.financeJournalLineAttachment.findUniqueOrThrow({
     where: { id: attachmentId },
     include: { line: { include: { entry: true } } },
@@ -106,7 +119,15 @@ export async function deleteFinanceLineAttachment(attachmentId: string) {
   await ensurePeriodOpen(att.line.entry.entryDate);
 
   await removeFinanceAttachment(att.url);
-  await prisma.financeJournalLineAttachment.delete({ where: { id: att.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.financeJournalLineAttachment.delete({ where: { id: att.id } });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.ATTACHMENT_DELETE,
+      actorId: session.user.id,
+      entityId: att.line.entryId,
+      detail: `Hapus lampiran draf: ${att.fileName}`,
+    });
+  });
 
   paths(att.line.entryId);
 }

@@ -7,6 +7,7 @@ import {
   reportTrialBalance,
 } from "@/actions/finance-reports";
 import { prisma } from "@/lib/prisma";
+import { FinanceExportMenu } from "@/components/finance/export-menu";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import {
   ReportsClient,
@@ -172,6 +173,20 @@ export default async function FinanceReportsPage({
           <span className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full border border-primary/20 px-2.5 py-1 text-[11px] font-semibold">
             <Sparkles className="size-3" /> Dengan perbandingan periode lalu
           </span>
+          <FinanceExportMenu
+            from={from.toISOString().slice(0, 10)}
+            to={to.toISOString().slice(0, 10)}
+            brandId={brandId}
+            items={[
+              { report: "trial-balance", label: "Neraca saldo" },
+              { report: "profit-loss", label: "Laba rugi" },
+              { report: "balance-sheet", label: "Neraca" },
+              { report: "general-ledger", label: "Buku besar" },
+              { report: "journals", label: "Seluruh jurnal terposting" },
+              { report: "ap-bills", label: "Daftar hutang usaha" },
+              { report: "ar-invoices", label: "Daftar piutang usaha" },
+            ]}
+          />
           <MonthlyReportButton
             brands={brands.map((b) => ({ id: b.id, name: b.name }))}
             currentMonth={jakartaToday()}

@@ -6,22 +6,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * juga tidak boleh di-rename.
  */
 
-const mocks = vi.hoisted(() => ({
-  prisma: {
+const mocks = vi.hoisted(() => {
+  const prisma = {
     financeLedgerAccount: {
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       create: vi.fn(),
     },
     financeJournalLine: { count: vi.fn() },
-  },
-}));
+    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
+  };
+  return { prisma };
+});
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/auth-helpers", () => ({
   requireFinance: vi.fn(async () => ({ user: { id: "finance-1" } })),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/finance-audit", () => ({ logFinanceAudit: vi.fn(async () => {}) }));
 
 import { upsertFinanceLedgerAccount } from "./finance-accounts";
 
