@@ -46,9 +46,11 @@ describe("baselineCapabilitiesForRole", () => {
       "lab",
       "lab.content_studio",
     ]);
-    for (const role of [UserRole.CEO, UserRole.FINANCE] as const) {
-      expect(baselineCapabilitiesForRole(role)).toEqual([]);
-    }
+    // CEO mewarisi seluruh akses Administrator.
+    expect(baselineCapabilitiesForRole(UserRole.CEO)).toEqual(
+      baselineCapabilitiesForRole(UserRole.ADMINISTRATOR),
+    );
+    expect(baselineCapabilitiesForRole(UserRole.FINANCE)).toEqual([]);
     expect(baselineCapabilitiesForRole(undefined)).toEqual([]);
   });
 });
@@ -90,6 +92,18 @@ describe("resolveCapabilities", () => {
       NOW,
     );
     expect(caps.size).toBe(0);
+  });
+
+  it("CEO selalu memakai matriks tier, mengabaikan peran kustom yang ter-seed kosong", () => {
+    // Baris peran "CEO" di DB di-backfill kosong sebelum CEO punya Lab dan
+    // tidak bisa diedit dari UI admin — resolver tidak boleh terkunci olehnya.
+    const caps = resolveCapabilities(
+      inputs({ role: UserRole.CEO, customRole: { capabilities: [] } }),
+      NOW,
+    );
+    expect([...caps].sort()).toEqual(
+      [...baselineCapabilitiesForRole(UserRole.ADMINISTRATOR)].sort(),
+    );
   });
 
   it("ALLOW per-user menambah akses di atas peran", () => {

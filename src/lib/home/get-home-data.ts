@@ -12,7 +12,7 @@ import { hrefForNotificationType } from "@/lib/notification-link";
 import { PIPELINE_LABELS } from "@/lib/pipeline";
 import { getNavRooms, type NavRoom } from "@/lib/room-nav-data";
 import { roomTaskProcessLabel } from "@/lib/room-task-process";
-import { isStudioOrProjectManager } from "@/lib/roles";
+import { hasAdministratorAccess, isStudioOrProjectManager } from "@/lib/roles";
 
 const FOR_ME_STATUSES: TaskStatus[] = [
   TaskStatus.TODO,
@@ -302,5 +302,5 @@ export async function getHomeData(session: {
 
 export function canAccessHome(role: UserRole | undefined): boolean {
   if (!role) return false;
-  return role === UserRole.ADMINISTRATOR || isStudioOrProjectManager(role);
+  return hasAdministratorAccess(role) || isStudioOrProjectManager(role);
 }

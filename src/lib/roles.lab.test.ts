@@ -6,8 +6,9 @@ import {
   canAccessLabContentStudio,
   canAccessLabResearchHub,
   canAccessLabSeo,
+  hasAdministratorAccess,
 } from "./roles";
-import { isAdministratorAppRoute } from "./routes";
+import { isAdministratorAppRoute, isCeoAppRoute } from "./routes";
 
 const LAB_GUARDS = [
   ["shell Lab", canAccessLab],
@@ -49,14 +50,54 @@ describe("akses Dominatus Lab", () => {
     expect(canAccessLabSeo(UserRole.LOGISTICS)).toBe(false);
   });
 
+  // CEO mewarisi seluruh akses Administrator, termasuk semua modul Lab.
+  it.each(LAB_GUARDS)("membuka %s untuk CEO", (_label, guard) => {
+    expect(guard(UserRole.CEO)).toBe(true);
+  });
+
   it("menolak peran di luar Lab", () => {
-    for (const role of [UserRole.CEO, UserRole.FINANCE] as const) {
-      expect(canAccessLab(role)).toBe(false);
-      expect(canAccessLabBrandHub(role)).toBe(false);
-      expect(canAccessLabResearchHub(role)).toBe(false);
-      expect(canAccessLabSeo(role)).toBe(false);
-      expect(canAccessLabContentStudio(role)).toBe(false);
+    expect(canAccessLab(UserRole.FINANCE)).toBe(false);
+    expect(canAccessLabBrandHub(UserRole.FINANCE)).toBe(false);
+    expect(canAccessLabResearchHub(UserRole.FINANCE)).toBe(false);
+    expect(canAccessLabSeo(UserRole.FINANCE)).toBe(false);
+    expect(canAccessLabContentStudio(UserRole.FINANCE)).toBe(false);
+  });
+});
+
+describe("akses setara Administrator", () => {
+  it("hanya Administrator & CEO", () => {
+    expect(hasAdministratorAccess(UserRole.ADMINISTRATOR)).toBe(true);
+    expect(hasAdministratorAccess(UserRole.CEO)).toBe(true);
+    expect(hasAdministratorAccess(UserRole.PROJECT_MANAGER)).toBe(false);
+    expect(hasAdministratorAccess(UserRole.FINANCE)).toBe(false);
+    expect(hasAdministratorAccess(undefined)).toBe(false);
+  });
+});
+
+describe("isCeoAppRoute", () => {
+  it("mencakup seluruh rute administrator + rute eksekutif CEO", () => {
+    for (const pathname of [
+      "/",
+      "/overdue",
+      "/approvals",
+      "/home",
+      "/brands",
+      "/admin/users",
+      "/admin/roles",
+      "/admin/branding",
+      "/admin/gamification",
+      "/dominatus-lab",
+      "/seo/rank-tracker",
+      "/tasks",
+      "/room/abc",
+    ]) {
+      expect(isCeoAppRoute(pathname)).toBe(true);
     }
+  });
+
+  it("tetap menolak modul Finance & Logistik", () => {
+    expect(isCeoAppRoute("/finance")).toBe(false);
+    expect(isCeoAppRoute("/inventory")).toBe(false);
   });
 });
 

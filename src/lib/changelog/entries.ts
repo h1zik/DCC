@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-21-ceo-akses-administrator",
+    date: "2026-09-21",
+    title: "CEO kini punya semua menu & fitur Administrator",
+    category: "improved",
+    description:
+      "Sebelumnya beberapa menu hanya bisa dibuka akun Administrator, sehingga CEO harus meminta bantuan admin untuk hal seperti menambah pengguna atau mengatur brand. Sekarang akun CEO mewarisi seluruh akses Administrator, di samping menu eksekutifnya sendiri.",
+    highlights: [
+      "Menu baru di sidebar CEO: Home, Dominatus Lab, Brands, Users, Roles & Access, dan App Settings",
+      "CEO bisa menambah, mengubah, mereset kata sandi, dan menghapus pengguna, serta mengelola peran & akses Lab per orang",
+      "Seluruh modul Dominatus Lab (Brand & Creative Hub, Research Hub, SEO Toolkit, Content Studio) terbuka untuk CEO",
+      "Diperbaiki: menu Gamifikasi di sidebar CEO sebelumnya memantul kembali ke Executive Overview — kini terbuka normal",
+      "Perlindungan lama tetap berlaku: akun CEO tidak bisa dihapus atau diubah perannya, dan tidak ada yang bisa mengubah akses akunnya sendiri",
+    ],
+  },
+  {
     id: "2026-09-20-finance-pesan-pribadi",
     date: "2026-09-20",
     title: "Pesan pribadi kini tersedia untuk akun Finance",

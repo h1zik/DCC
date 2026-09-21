@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import {
+  hasAdministratorAccess,
   isAdministrator,
   isFinanceRole,
   isProjectManager,
@@ -141,14 +142,17 @@ export async function requireCeo() {
   return session;
 }
 
-/** Master brand & ruang kerja — administrator. */
+/**
+ * Fitur administrator (pengguna, peran & akses, master brand, pengaturan
+ * aplikasi) — administrator, plus CEO yang mewarisi seluruh aksesnya.
+ */
 export async function requireAdministrator() {
   const session = await auth();
   if (!session?.user?.id) {
     throw new Error("Belum masuk.");
   }
-  if (session.user.role !== UserRole.ADMINISTRATOR) {
-    throw new Error("Hanya administrator yang dapat melakukan aksi ini.");
+  if (!hasAdministratorAccess(session.user.role)) {
+    throw new Error("Hanya administrator atau CEO yang dapat melakukan aksi ini.");
   }
   return session;
 }

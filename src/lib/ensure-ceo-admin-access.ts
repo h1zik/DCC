@@ -1,12 +1,12 @@
-import { UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { hasAdministratorAccess } from "@/lib/roles";
 
-/** Kelola pengguna & hak akses — hanya administrator. */
+/** Kelola pengguna & hak akses — administrator & CEO. */
 export async function ensureAdminUserAccess() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.role !== UserRole.ADMINISTRATOR) {
+  if (!hasAdministratorAccess(session.user.role)) {
     redirect("/home");
   }
   return session;
