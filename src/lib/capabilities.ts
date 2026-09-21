@@ -1,4 +1,4 @@
-import type { UserRole } from "@/lib/user-role";
+import { UserRole } from "@/lib/user-role";
 import {
   canAccessLab,
   canAccessLabBrandHub,
@@ -114,6 +114,22 @@ export function baselineCapabilitiesForRole(
   return caps;
 }
 
+/**
+ * Kapabilitas yang diwarisi user dari perannya, sebelum override per-user.
+ *
+ * Tier CEO selalu memakai matriks tier (akses penuh), bukan isi
+ * `CustomRole.capabilities`: peran ber-tier CEO sengaja tidak dikelola dari UI
+ * admin, dan baris "CEO" di DB sudah ter-seed kosong sejak CEO belum punya Lab
+ * — tanpa pengecualian ini aksesnya tidak akan pernah bisa dibuka.
+ */
+export function inheritedCapabilities(
+  role: UserRole | undefined,
+  customRole: { capabilities: string[] } | null,
+): string[] {
+  if (customRole && role !== UserRole.CEO) return customRole.capabilities;
+  return baselineCapabilitiesForRole(role);
+}
+
 export type CapabilityInputs = {
   role: UserRole | undefined;
   /** Peran kustom user, bila ada. `capabilities`-nya jadi basis. */
@@ -141,9 +157,7 @@ export function resolveCapabilities(
   inputs: CapabilityInputs,
   now: Date = new Date(),
 ): Set<string> {
-  const base = inputs.customRole
-    ? inputs.customRole.capabilities
-    : baselineCapabilitiesForRole(inputs.role);
+  const base = inheritedCapabilities(inputs.role, inputs.customRole);
   const effective = new Set<string>(base);
 
   for (const grant of inputs.capabilities) {

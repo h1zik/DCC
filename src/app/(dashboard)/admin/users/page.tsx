@@ -3,7 +3,7 @@ import { UserRole } from "@prisma/client";
 import { Users } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureAdminUserAccess } from "@/lib/ensure-ceo-admin-access";
-import { baselineCapabilitiesForRole } from "@/lib/capabilities";
+import { inheritedCapabilities } from "@/lib/capabilities";
 import { ensureCustomRolesSeeded } from "@/lib/custom-roles";
 import { PageHero, PageHeroChip } from "@/components/page-hero";
 import { AdminUsersClient } from "./admin-users-client";
@@ -97,9 +97,7 @@ export default async function AdminUsersPage() {
             isProtected: customRole.isProtected,
           }
         : null,
-      inheritedCapabilities: customRole
-        ? customRole.capabilities
-        : baselineCapabilitiesForRole(u.role),
+      inheritedCapabilities: inheritedCapabilities(u.role, customRole),
       capabilityOverrides: capabilities,
       online:
         lastSeenAt != null &&

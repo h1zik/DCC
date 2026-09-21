@@ -8,6 +8,7 @@ import { UserRole } from "@prisma/client";
 import {
   ArrowLeftRight,
   BadgeCent,
+  BadgeCheck,
   Boxes,
   Calculator,
   CalendarDays,
@@ -79,16 +80,27 @@ const labItem = {
   icon: FlaskConical,
 } as const;
 
+/**
+ * CEO = menu eksekutif miliknya sendiri (Executive Overview, Tugas Overdue,
+ * Approvals) + SELURUH menu `navAdministrator`. Kalau menambah item ke
+ * `navAdministrator`, tambahkan juga di sini.
+ */
 const navCeo = [
   { href: "/", label: "Executive Overview", icon: LayoutDashboard },
+  labItem,
+  { href: "/home", label: "Home", icon: Home },
   { href: "/tasks", label: "Workspaces", icon: LayoutGrid },
   { href: "/for-me", label: "My Work", icon: Focus },
   { href: "/overdue", label: "Tugas Overdue", icon: AlertOctagon },
   { href: "/projects", label: "Projects", icon: GitBranch },
-  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
+  { href: "/approvals", label: "Approvals", icon: BadgeCheck },
   { href: "/schedule", label: "Calendar", icon: CalendarDays },
   { href: "/attendance", label: "Attendance", icon: ScanFace },
   { href: "/attendance/rekap", label: "Attendance Reports", icon: ClipboardList },
+  { href: "/brands", label: "Brands", icon: Tags },
+  { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/roles", label: "Roles & Access", icon: ShieldCheck },
+  { href: "/admin/branding", label: "App Settings", icon: WandSparkles },
   { href: "/admin/gamification", label: "Gamifikasi", icon: Trophy },
 ] as const;
 

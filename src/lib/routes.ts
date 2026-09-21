@@ -167,20 +167,17 @@ export function isStudioWorkspaceRoute(pathname: string): boolean {
   );
 }
 
-/** Rute yang boleh diakses CEO (mode pemantauan). */
+/**
+ * Rute yang boleh diakses CEO: dasbor eksekutif, overdue & approvals miliknya
+ * sendiri, DITAMBAH seluruh rute administrator — CEO mewarisi semua
+ * menu/fitur administrator.
+ */
 export function isCeoAppRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
-    isScheduleRoute(pathname) ||
-    isDirectChatRoute(pathname) ||
-    isAttendanceRoute(pathname) ||
-    isAgentRoute(pathname) ||
-    pathname.startsWith("/for-me") ||
     pathname.startsWith("/overdue") ||
-    pathname.startsWith("/projects") ||
-    pathname.startsWith("/tasks") ||
-    pathname.startsWith("/room") ||
-    pathname.startsWith("/approvals")
+    pathname.startsWith("/approvals") ||
+    isAdministratorAppRoute(pathname)
   );
 }
 

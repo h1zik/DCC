@@ -80,6 +80,17 @@ export function isAdministrator(role: UserRole | undefined): boolean {
   return role === UserRole.ADMINISTRATOR;
 }
 
+/**
+ * Akses setara Administrator — Administrator sendiri DITAMBAH CEO. CEO adalah
+ * tier "akses penuh", jadi semua menu/fitur administrator (pengguna, peran &
+ * akses, brand, pengaturan aplikasi, Home, Dominatus Lab) ikut terbuka untuknya.
+ * Pakai ini untuk gate fitur; `isAdministrator` hanya untuk hal yang memang
+ * spesifik peran (mis. halaman tujuan login).
+ */
+export function hasAdministratorAccess(role: UserRole | undefined): boolean {
+  return role === UserRole.CEO || isAdministrator(role);
+}
+
 export function isStudioTeamRole(role: UserRole | undefined): boolean {
   if (!role) return false;
   if (role === UserRole.NORMAL_USER) return true;
@@ -134,26 +145,27 @@ export function canUseDirectChat(role: UserRole | undefined): boolean {
  *
  * Administrator adalah peran lintas-modul (dukungan, audit, penyiapan data),
  * jadi seluruh modul Lab terbuka untuknya di samping peran fungsional
- * masing-masing modul. Semua guard Lab — layout, halaman, server action, dan
+ * masing-masing modul — begitu juga CEO, yang mewarisi seluruh akses
+ * Administrator. Semua guard Lab — layout, halaman, server action, dan
  * route handler — memakai helper di bawah ini supaya aturannya satu pintu.
  * ---------------------------------------------------------------------- */
 
-/** Masuk ke shell Dominatus Lab — studio/PM, Market Analyst, Logistik, Administrator. */
+/** Masuk ke shell Dominatus Lab — studio/PM, Market Analyst, Logistik, Administrator, CEO. */
 export function canAccessLab(role: UserRole | undefined): boolean {
   if (!role) return false;
-  return isAdministrator(role) || isMarketAnalystOrStudio(role);
+  return hasAdministratorAccess(role) || isMarketAnalystOrStudio(role);
 }
 
-/** Brand & Creative Hub — Brand Manager (Project Manager) + Administrator. */
+/** Brand & Creative Hub — Brand Manager (Project Manager) + Administrator & CEO. */
 export function canAccessLabBrandHub(role: UserRole | undefined): boolean {
   if (!role) return false;
-  return isAdministrator(role) || isBrandManager(role);
+  return hasAdministratorAccess(role) || isBrandManager(role);
 }
 
-/** Research Hub — Market Analyst, Project Manager + Administrator. */
+/** Research Hub — Market Analyst, Project Manager + Administrator & CEO. */
 export function canAccessLabResearchHub(role: UserRole | undefined): boolean {
   if (!role) return false;
-  return isAdministrator(role) || canAccessResearchHub(role);
+  return hasAdministratorAccess(role) || canAccessResearchHub(role);
 }
 
 /** SEO Toolkit — akses sama dengan Research Hub. */
@@ -161,8 +173,8 @@ export function canAccessLabSeo(role: UserRole | undefined): boolean {
   return canAccessLabResearchHub(role);
 }
 
-/** Content & Creator Studio — studio/PM, Market Analyst, Logistik + Administrator. */
+/** Content & Creator Studio — studio/PM, Market Analyst, Logistik + Administrator & CEO. */
 export function canAccessLabContentStudio(role: UserRole | undefined): boolean {
   if (!role) return false;
-  return isAdministrator(role) || isMarketAnalystOrStudio(role);
+  return hasAdministratorAccess(role) || isMarketAnalystOrStudio(role);
 }
