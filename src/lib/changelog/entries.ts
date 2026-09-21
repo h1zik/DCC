@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-21-laporan-keuangan-bulanan-pdf",
+    date: "2026-09-21",
+    title: "Laporan keuangan bulanan siap presentasi (PDF)",
+    category: "new",
+    description:
+      "Tim Finance kini bisa membuat laporan keuangan per bulan dengan satu tombol. Hasilnya dokumen PDF A4 yang rapi — lengkap dengan sampul, ringkasan, tabel, dan grafik — sehingga bisa langsung dipresentasikan atau dicetak tanpa perlu disusun ulang di aplikasi lain.",
+    highlights: [
+      "Tombol “Laporan Bulanan (PDF)” ada di Dashboard Keuangan dan halaman Laporan — pilih bulan dan cakupan (semua brand atau satu brand), lalu unduh",
+      "Isi lengkap: ringkasan eksekutif, laba rugi, neraca, arus kas, laba rugi per brand, anggaran vs realisasi, umur piutang & hutang, rekap pajak, dan lampiran neraca saldo",
+      "Sorotan otomatis: kalimat ringkas seperti “Pendapatan naik 12,4% dibanding bulan lalu” atau “2 pos anggaran terlampaui”, dihitung langsung dari angka",
+      "Setiap angka dibandingkan dengan bulan sebelumnya, dilengkapi grafik tren 6 bulan",
+      "Laporan ditandai FINAL bila periode sudah dikunci, atau DRAFT bila belum — plus lembar pengesahan untuk tanda tangan",
+    ],
+  },
+  {
     id: "2026-09-21-ceo-akses-administrator",
     date: "2026-09-21",
     title: "CEO kini punya semua menu & fitur Administrator",

@@ -21,6 +21,15 @@ import { periodLabel } from "@/lib/finance-period";
 import { PeriodSelector } from "./period-selector";
 import { PeriodLockPanel } from "./period-lock-panel";
 import { listFinancePeriodLocks } from "@/actions/finance-period-lock";
+import { prisma } from "@/lib/prisma";
+import { MonthlyReportButton } from "@/components/finance/monthly-report-button";
+import {
+  defaultReportMonth,
+  jakartaToday,
+} from "@/lib/finance-monthly-report/period";
+
+// Penyusunan PDF laporan bulanan (server action) butuh waktu lebih dari default.
+export const maxDuration = 120;
 
 type SearchParams = { period?: string | string[] };
 
@@ -63,9 +72,13 @@ function pctText(p: number | null): string {
 export default async function FinanceDashboardPage({ searchParams }: Props) {
   const sp = await searchParams;
   const period = parsePeriod(sp.period);
-  const [data, periodLocks] = await Promise.all([
+  const [data, periodLocks, reportBrands] = await Promise.all([
     loadFinanceDashboard(period),
     listFinancePeriodLocks(8),
+    prisma.brand.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
   const isCurrentPeriodLocked = periodLocks.some(
     (l) => l.year === period.year && l.month === period.month,
@@ -135,6 +148,12 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
             <ScrollText className="size-3.5" aria-hidden />
             Laporan
           </Button>
+          <MonthlyReportButton
+            variant="outline"
+            brands={reportBrands}
+            currentMonth={jakartaToday()}
+            defaultMonth={defaultReportMonth(period)}
+          />
           <Button
             type="button"
             size="sm"
