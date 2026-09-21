@@ -2,6 +2,7 @@ import { BookOpen } from "lucide-react";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { queryGeneralLedger } from "@/actions/finance-ledger";
 import { jakartaCurrentMonthRange, utcDateOnly } from "@/lib/finance-dates";
+import { FinanceExportMenu } from "@/components/finance/export-menu";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { GeneralLedgerClient } from "./general-ledger-client";
 
@@ -57,6 +58,14 @@ export default async function GeneralLedgerPage({
       icon={<BookOpen className="size-5" />}
       title="Buku besar"
       description="Mutasi seluruh akun yang sudah diposting. Pilih satu akun untuk melihat saldo berjalan dan filter periode untuk drill-down."
+      actions={
+        <FinanceExportMenu
+          from={from.toISOString().slice(0, 10)}
+          to={to.toISOString().slice(0, 10)}
+          accountId={selectedAccountId}
+          items={[{ report: "general-ledger", label: "Buku besar (filter ini)" }]}
+        />
+      }
     >
       <GeneralLedgerClient
         accounts={accounts.map((a) => ({

@@ -19,6 +19,11 @@ export async function logFinanceAudit(
     actorId: string;
     entityId?: string | null;
     detail?: string | null;
+    /** Nilai sebelum/sesudah (JSON-serializable; Decimal/Date kirim sebagai string). */
+    meta?: {
+      before?: Prisma.InputJsonValue | null;
+      after?: Prisma.InputJsonValue | null;
+    } | null;
   },
 ): Promise<void> {
   await db.financeAuditEvent.create({
@@ -27,6 +32,7 @@ export async function logFinanceAudit(
       actorId: event.actorId,
       entityId: event.entityId?.slice(0, 64) ?? null,
       detail: event.detail?.slice(0, 1000) ?? null,
+      ...(event.meta ? { meta: event.meta as Prisma.InputJsonValue } : {}),
     },
   });
 }

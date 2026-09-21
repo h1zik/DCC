@@ -1,9 +1,11 @@
 "use server";
 
+import { FinanceAuditAction } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { logFinanceAudit } from "@/lib/finance-audit";
 import { toDecimal } from "@/lib/finance-money";
 import { parseFlexibleBankCsv } from "@/lib/finance-bank-csv";
 import { createPostedEntryInTx } from "@/lib/finance-journal-post";
@@ -87,6 +89,12 @@ export async function createFinanceBankAccount(
             ],
       });
     }
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.BANK_ACCOUNT_CREATE,
+      actorId: session.user.id,
+      entityId: account.id,
+      detail: `Rekening ${data.name} — saldo awal ${opening.toFixed(2)}`,
+    });
   });
   paths();
 }
@@ -107,25 +115,34 @@ const importSchema = z.object({
 export async function importBankStatementCsv(
   input: z.infer<typeof importSchema>,
 ) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = importSchema.parse(input);
   const rows = parseFlexibleBankCsv(data.csvText);
   if (rows.length === 0) {
     throw new Error("Tidak ada baris yang dapat dibaca. Periksa format CSV.");
   }
 
-  const imp = await prisma.bankStatementImport.create({
-    data: {
-      bankAccountId: data.bankAccountId,
-      fileName: data.fileName,
-      lines: {
-        create: rows.map((r) => ({
-          txnDate: r.txnDate,
-          description: r.description,
-          amount: r.amount,
-        })),
+  const imp = await prisma.$transaction(async (tx) => {
+    const created = await tx.bankStatementImport.create({
+      data: {
+        bankAccountId: data.bankAccountId,
+        fileName: data.fileName,
+        lines: {
+          create: rows.map((r) => ({
+            txnDate: r.txnDate,
+            description: r.description,
+            amount: r.amount,
+          })),
+        },
       },
-    },
+    });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.BANK_IMPORT,
+      actorId: session.user.id,
+      entityId: created.id,
+      detail: `Impor mutasi "${data.fileName}" — ${rows.length} baris`,
+    });
+    return created;
   });
   paths();
   return { importId: imp.id, count: rows.length };
@@ -137,7 +154,7 @@ const matchSchema = z.object({
 });
 
 export async function matchBankStatementLine(input: z.infer<typeof matchSchema>) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = matchSchema.parse(input);
 
   // Validasi konsistensi sebelum match (unmatch = journalLineId null, bebas):
@@ -167,9 +184,25 @@ export async function matchBankStatementLine(input: z.infer<typeof matchSchema>)
     }
   }
 
-  await prisma.bankStatementLine.update({
-    where: { id: data.statementLineId },
-    data: { matchedJournalLineId: data.journalLineId },
+  await prisma.$transaction(async (tx) => {
+    const prev = await tx.bankStatementLine.findUniqueOrThrow({
+      where: { id: data.statementLineId },
+      select: { matchedJournalLineId: true },
+    });
+    await tx.bankStatementLine.update({
+      where: { id: data.statementLineId },
+      data: { matchedJournalLineId: data.journalLineId },
+    });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.BANK_MATCH,
+      actorId: session.user.id,
+      entityId: data.statementLineId,
+      detail: data.journalLineId ? "Cocokkan mutasi dengan baris jurnal" : "Lepas pencocokan mutasi",
+      meta: {
+        before: { matchedJournalLineId: prev.matchedJournalLineId },
+        after: { matchedJournalLineId: data.journalLineId },
+      },
+    });
   });
   paths();
 }

@@ -27,6 +27,7 @@ vi.mock("@/lib/auth-helpers", () => ({
   requireFinance: vi.fn(async () => ({ user: { id: "payer-1" } })),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/finance-audit", () => ({ logFinanceAudit: vi.fn(async () => {}) }));
 vi.mock("@/lib/finance-period-lock", () => ({
   ensurePeriodOpen: vi.fn(async () => {}),
 }));

@@ -1,10 +1,15 @@
 "use server";
 
-import { FinanceDepreciationMethod, Prisma } from "@prisma/client";
+import {
+  FinanceAuditAction,
+  FinanceDepreciationMethod,
+  Prisma,
+} from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { logFinanceAudit } from "@/lib/finance-audit";
 import { createPostedEntryInTx } from "@/lib/finance-journal-post";
 import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { utcDateOnly } from "@/lib/finance-dates";
@@ -92,6 +97,12 @@ export async function createFinanceFixedAsset(input: z.infer<typeof assetSchema>
         ],
       });
     }
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.ASSET_CREATE,
+      actorId: session.user.id,
+      entityId: asset.id,
+      detail: `Aset ${data.name.trim()} — perolehan ${cost.toFixed(2)}, umur ${data.usefulLifeMonths} bln${data.fundingAccountId ? "" : " (tanpa jurnal perolehan)"}`,
+    });
   });
   paths();
 }
@@ -194,12 +205,18 @@ export async function postFinanceDepreciationForMonth(
       throw new Error("Tidak ada penyusutan untuk diposting.");
     }
 
-    await createPostedEntryInTx(tx, {
+    const depJournalId = await createPostedEntryInTx(tx, {
       entryDate,
       reference,
       memo: `Penyusutan bulanan ${data.year}-${data.month}`,
       createdById: session.user.id,
       lines,
+    });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.DEPRECIATION_POST,
+      actorId: session.user.id,
+      entityId: depJournalId,
+      detail: `Penyusutan ${data.year}-${String(data.month).padStart(2, "0")} — ${updates.length} aset`,
     });
 
     for (const u of updates) {

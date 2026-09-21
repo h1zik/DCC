@@ -6,20 +6,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * diam-diam.
  */
 
-const mocks = vi.hoisted(() => ({
-  prisma: {
+const mocks = vi.hoisted(() => {
+  const prisma = {
     financeSpendRequest: {
       findUniqueOrThrow: vi.fn(),
       updateMany: vi.fn(),
     },
-  },
-}));
+    // Transisi kini berjalan dalam transaksi (keputusan + jejak audit atomik).
+    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
+  };
+  return { prisma };
+});
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/auth-helpers", () => ({
   requireFinance: vi.fn(async () => ({ user: { id: "approver-1" } })),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/finance-audit", () => ({ logFinanceAudit: vi.fn(async () => {}) }));
 vi.mock("@/lib/finance-period-lock", () => ({
   ensurePeriodOpen: vi.fn(async () => {}),
 }));
@@ -27,6 +31,7 @@ vi.mock("@/lib/finance-journal-post", () => ({
   createPostedEntryInTx: vi.fn(),
 }));
 
+import { Prisma } from "@prisma/client";
 import {
   approveFinanceSpendRequest,
   rejectFinanceSpendRequest,
@@ -42,6 +47,8 @@ describe("transisi status spend request — CAS (L-01)", () => {
   it("approve memakai kondisi status SUBMITTED di where", async () => {
     mocks.prisma.financeSpendRequest.findUniqueOrThrow.mockResolvedValue({
       id: "req-1",
+      title: "Sewa booth",
+      amount: new Prisma.Decimal("1500000"),
       status: "SUBMITTED",
       requestedById: "requester-1",
     });
@@ -57,6 +64,8 @@ describe("transisi status spend request — CAS (L-01)", () => {
   it("kalah race (count 0) → error ramah, bukan menimpa keputusan pertama", async () => {
     mocks.prisma.financeSpendRequest.findUniqueOrThrow.mockResolvedValue({
       id: "req-1",
+      title: "Sewa booth",
+      amount: new Prisma.Decimal("1500000"),
       status: "SUBMITTED",
       requestedById: "requester-1",
     });
@@ -70,6 +79,8 @@ describe("transisi status spend request — CAS (L-01)", () => {
   it("submit hanya dari DRAFT (CAS)", async () => {
     mocks.prisma.financeSpendRequest.findUniqueOrThrow.mockResolvedValue({
       id: "req-1",
+      title: "Sewa booth",
+      amount: new Prisma.Decimal("1500000"),
       status: "DRAFT",
       requestedById: "approver-1",
     });
@@ -83,6 +94,8 @@ describe("transisi status spend request — CAS (L-01)", () => {
   it("approve oleh requester sendiri tetap ditolak sebelum CAS", async () => {
     mocks.prisma.financeSpendRequest.findUniqueOrThrow.mockResolvedValue({
       id: "req-1",
+      title: "Sewa booth",
+      amount: new Prisma.Decimal("1500000"),
       status: "SUBMITTED",
       requestedById: "approver-1",
     });

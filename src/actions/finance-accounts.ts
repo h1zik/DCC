@@ -1,10 +1,11 @@
 "use server";
 
-import { FinanceLedgerType } from "@prisma/client";
+import { FinanceAuditAction, FinanceLedgerType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { logFinanceAudit } from "@/lib/finance-audit";
 import {
   defaultCoaCreateMany,
   SYSTEM_REFERENCED_ACCOUNT_CODES,
@@ -65,7 +66,7 @@ const upsertSchema = z.object({
 export async function upsertFinanceLedgerAccount(
   input: z.infer<typeof upsertSchema>,
 ) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = upsertSchema.parse(input);
 
   // Sanity guard: AP control hanya untuk LIABILITY, AR control hanya untuk ASSET.
@@ -83,7 +84,15 @@ export async function upsertFinanceLedgerAccount(
   if (data.id) {
     const existing = await prisma.financeLedgerAccount.findUniqueOrThrow({
       where: { id: data.id },
-      select: { code: true, type: true },
+      select: {
+        code: true,
+        name: true,
+        type: true,
+        isActive: true,
+        tracksCashflow: true,
+        isApControl: true,
+        isArControl: true,
+      },
     });
     // Tipe menentukan saldo normal dan letak akun (Neraca vs Laba Rugi).
     // Mengubahnya setelah ada jurnal terposting memindahkan seluruh histori
@@ -106,31 +115,59 @@ export async function upsertFinanceLedgerAccount(
         `Kode ${existing.code} dipakai sistem (saldo awal rekening / rekap pajak) dan belum bisa diubah. Nama akun tetap boleh diganti.`,
       );
     }
-    await prisma.financeLedgerAccount.update({
-      where: { id: data.id },
-      data: {
-        code: data.code,
-        name: data.name,
-        type: data.type,
-        sortOrder: data.sortOrder ?? undefined,
-        tracksCashflow: data.tracksCashflow ?? undefined,
-        isActive: data.isActive ?? undefined,
-        isApControl: data.isApControl ?? undefined,
-        isArControl: data.isArControl ?? undefined,
-      },
+    const accountId = data.id;
+    await prisma.$transaction(async (tx) => {
+      const after = await tx.financeLedgerAccount.update({
+        where: { id: accountId },
+        data: {
+          code: data.code,
+          name: data.name,
+          type: data.type,
+          sortOrder: data.sortOrder ?? undefined,
+          tracksCashflow: data.tracksCashflow ?? undefined,
+          isActive: data.isActive ?? undefined,
+          isApControl: data.isApControl ?? undefined,
+          isArControl: data.isArControl ?? undefined,
+        },
+        select: {
+          code: true,
+          name: true,
+          type: true,
+          isActive: true,
+          tracksCashflow: true,
+          isApControl: true,
+          isArControl: true,
+        },
+      });
+      await logFinanceAudit(tx, {
+        action: FinanceAuditAction.ACCOUNT_UPDATE,
+        actorId: session.user.id,
+        entityId: accountId,
+        detail: `Ubah akun ${existing.code} ${existing.name}`,
+        meta: { before: existing, after },
+      });
     });
   } else {
-    await prisma.financeLedgerAccount.create({
-      data: {
-        code: data.code,
-        name: data.name,
-        type: data.type,
-        sortOrder: data.sortOrder ?? 0,
-        tracksCashflow: data.tracksCashflow ?? false,
-        isActive: data.isActive ?? true,
-        isApControl: data.isApControl ?? false,
-        isArControl: data.isArControl ?? false,
-      },
+    await prisma.$transaction(async (tx) => {
+      const created = await tx.financeLedgerAccount.create({
+        data: {
+          code: data.code,
+          name: data.name,
+          type: data.type,
+          sortOrder: data.sortOrder ?? 0,
+          tracksCashflow: data.tracksCashflow ?? false,
+          isActive: data.isActive ?? true,
+          isApControl: data.isApControl ?? false,
+          isArControl: data.isArControl ?? false,
+        },
+        select: { id: true },
+      });
+      await logFinanceAudit(tx, {
+        action: FinanceAuditAction.ACCOUNT_CREATE,
+        actorId: session.user.id,
+        entityId: created.id,
+        detail: `Akun baru ${data.code} ${data.name} (${data.type})`,
+      });
     });
   }
 
@@ -142,10 +179,20 @@ export async function setFinanceAccountActive(
   accountId: string,
   isActive: boolean,
 ) {
-  await requireFinance();
-  await prisma.financeLedgerAccount.update({
-    where: { id: accountId },
-    data: { isActive },
+  const session = await requireFinance();
+  await prisma.$transaction(async (tx) => {
+    const acc = await tx.financeLedgerAccount.update({
+      where: { id: accountId },
+      data: { isActive },
+      select: { code: true, name: true },
+    });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.ACCOUNT_UPDATE,
+      actorId: session.user.id,
+      entityId: accountId,
+      detail: `${isActive ? "Aktifkan" : "Nonaktifkan"} akun ${acc.code} ${acc.name}`,
+      meta: { before: { isActive: !isActive }, after: { isActive } },
+    });
   });
   revalidatePath("/finance/chart-of-accounts");
 }
