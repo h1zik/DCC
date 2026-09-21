@@ -3,13 +3,12 @@ import { reportProfitLossByBrand } from "@/actions/finance-reports";
 import { FinanceEmptyState } from "@/components/finance/empty-state";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { Money } from "@/components/finance/money";
+import { jakartaCurrentMonthRange } from "@/lib/finance-dates";
 import { FinanceSectionCard } from "@/components/finance/section-card";
 import { CogsCalculator } from "./cogs-calculator";
 
 export default async function BrandsCostingPage() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const { from, to } = jakartaCurrentMonthRange();
 
   const rows = await reportProfitLossByBrand({
     from,

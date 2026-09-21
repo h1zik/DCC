@@ -39,6 +39,8 @@ type Bill = {
   status: string;
 };
 
+type AgingBuckets = { current: string; d1_30: string; d31_60: string; over60: string };
+
 type Inv = {
   id: string;
   customerName: string;
@@ -55,7 +57,9 @@ export function ApArClient(props: {
   vendors: { id: string; name: string }[];
   brands: { id: string; name: string }[];
   accounts: { id: string; code: string; name: string; type: string }[];
-  aging: Record<string, string>;
+  aging: { ap: AgingBuckets; ar: AgingBuckets };
+  /** Hari ini menurut kalender Jakarta (yyyy-mm-dd), dari server agar SSR = klien. */
+  todayIso: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -63,12 +67,18 @@ export function ApArClient(props: {
   const [apVendorId, setApVendorId] = useState<string>("");
   const [apVendorName, setApVendorName] = useState("");
   const [apAmount, setApAmount] = useState("");
-  const [apDue, setApDue] = useState(() => new Date().toISOString().slice(0, 10));
+  const [apBillNumber, setApBillNumber] = useState("");
+  const [apBillDate, setApBillDate] = useState(props.todayIso);
+  const [apDue, setApDue] = useState(props.todayIso);
+  const [apPayDate, setApPayDate] = useState(props.todayIso);
   const [apBrand, setApBrand] = useState("");
 
   const [arCustomer, setArCustomer] = useState("");
   const [arAmount, setArAmount] = useState("");
-  const [arDue, setArDue] = useState(() => new Date().toISOString().slice(0, 10));
+  const [arInvNumber, setArInvNumber] = useState("");
+  const [arInvDate, setArInvDate] = useState(props.todayIso);
+  const [arDue, setArDue] = useState(props.todayIso);
+  const [arPayDate, setArPayDate] = useState(props.todayIso);
   const [arBrand, setArBrand] = useState("");
 
   // Akun lawan untuk jurnal pengakuan: AP -> beban, AR -> pendapatan.
@@ -141,8 +151,8 @@ export function ApArClient(props: {
         await createFinanceApBill({
           vendorId: apVendorId || null,
           vendorName,
-          billNumber: null,
-          billDate: new Date(),
+          billNumber: apBillNumber.trim() || null,
+          billDate: new Date(apBillDate),
           dueDate: new Date(apDue),
           amount: apAmount,
           memo: null,
@@ -152,6 +162,7 @@ export function ApArClient(props: {
         toast.success("Tagihan hutang dicatat.");
         setApVendorName("");
         setApAmount("");
+        setApBillNumber("");
         router.refresh();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal."));
@@ -169,8 +180,8 @@ export function ApArClient(props: {
         }
         await createFinanceArInvoice({
           customerName: arCustomer,
-          invoiceNumber: null,
-          invoiceDate: new Date(),
+          invoiceNumber: arInvNumber.trim() || null,
+          invoiceDate: new Date(arInvDate),
           dueDate: new Date(arDue),
           amount: arAmount,
           memo: null,
@@ -180,6 +191,7 @@ export function ApArClient(props: {
         toast.success("Invoice piutang dicatat.");
         setArCustomer("");
         setArAmount("");
+        setArInvNumber("");
         router.refresh();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal."));
@@ -195,17 +207,7 @@ export function ApArClient(props: {
       </TabsList>
 
       <TabsContent value="ap" className="flex flex-col gap-8 pt-4">
-        <div className="grid gap-4 rounded-xl border border-border p-4 sm:grid-cols-3">
-          <div className="sm:col-span-3">
-            <h3 className="text-sm font-medium">Aging hutang terbuka</h3>
-            <div className="text-muted-foreground mt-2 grid gap-2 text-xs sm:grid-cols-4">
-              <span>Jatuh tempo: {idr(props.aging.current)}</span>
-              <span>1–30 hari: {idr(props.aging.d1_30)}</span>
-              <span>31–60 hari: {idr(props.aging.d31_60)}</span>
-              <span>&gt;60 hari: {idr(props.aging.over60)}</span>
-            </div>
-          </div>
-        </div>
+        <AgingSummary title="Aging hutang terbuka" buckets={props.aging.ap} />
 
         <form onSubmit={createBill} className="grid gap-3 rounded-xl border border-dashed border-border p-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
@@ -239,6 +241,18 @@ export function ApArClient(props: {
           <div className="space-y-2 sm:col-span-2">
             <Label>Nama vendor (jika manual)</Label>
             <Input value={apVendorName} onChange={(e) => setApVendorName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>No. tagihan vendor</Label>
+            <Input
+              value={apBillNumber}
+              onChange={(e) => setApBillNumber(e.target.value)}
+              placeholder="Opsional — mencegah tagihan tercatat ganda"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Tanggal tagihan</Label>
+            <Input type="date" value={apBillDate} onChange={(e) => setApBillDate(e.target.value)} required />
           </div>
           <div className="space-y-2">
             <Label>Jumlah</Label>
@@ -292,6 +306,7 @@ export function ApArClient(props: {
           </div>
         </form>
 
+        <PayDateField label="Tanggal pembayaran" value={apPayDate} onChange={setApPayDate} />
         <BillTable
           bills={props.bills}
           banks={props.banks}
@@ -302,7 +317,7 @@ export function ApArClient(props: {
                   billId,
                   amount,
                   bankAccountId: bankId,
-                  paidAt: new Date(),
+                  paidAt: new Date(apPayDate),
                 });
                 toast.success("Pembayaran dicatat.");
                 router.refresh();
@@ -315,10 +330,23 @@ export function ApArClient(props: {
       </TabsContent>
 
       <TabsContent value="ar" className="flex flex-col gap-8 pt-4">
+        <AgingSummary title="Aging piutang terbuka" buckets={props.aging.ar} />
         <form onSubmit={createInv} className="grid gap-3 rounded-xl border border-dashed border-border p-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label>Pelanggan</Label>
             <Input value={arCustomer} onChange={(e) => setArCustomer(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>No. invoice</Label>
+            <Input
+              value={arInvNumber}
+              onChange={(e) => setArInvNumber(e.target.value)}
+              placeholder="Opsional"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Tanggal invoice</Label>
+            <Input type="date" value={arInvDate} onChange={(e) => setArInvDate(e.target.value)} required />
           </div>
           <div className="space-y-2">
             <Label>Jumlah</Label>
@@ -372,6 +400,7 @@ export function ApArClient(props: {
           </div>
         </form>
 
+        <PayDateField label="Tanggal penerimaan" value={arPayDate} onChange={setArPayDate} />
         <InvTable
           invoices={props.invoices}
           banks={props.banks}
@@ -382,7 +411,7 @@ export function ApArClient(props: {
                   invoiceId,
                   amount,
                   bankAccountId: bankId,
-                  receivedAt: new Date(),
+                  receivedAt: new Date(arPayDate),
                 });
                 toast.success("Penerimaan dicatat.");
                 router.refresh();
@@ -394,6 +423,41 @@ export function ApArClient(props: {
         />
       </TabsContent>
     </Tabs>
+  );
+}
+
+function AgingSummary({ title, buckets }: { title: string; buckets: AgingBuckets }) {
+  return (
+    <div className="rounded-xl border border-border p-4">
+      <h3 className="text-sm font-medium">{title}</h3>
+      <div className="text-muted-foreground mt-2 grid gap-2 text-xs sm:grid-cols-4">
+        <span>Belum jatuh tempo: {idr(buckets.current)}</span>
+        <span>Lewat 1–30 hari: {idr(buckets.d1_30)}</span>
+        <span>Lewat 31–60 hari: {idr(buckets.d31_60)}</span>
+        <span>Lewat &gt;60 hari: {idr(buckets.over60)}</span>
+      </div>
+    </div>
+  );
+}
+
+function PayDateField(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Label className="text-sm">{props.label}</Label>
+      <Input
+        type="date"
+        className="w-44"
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+      />
+      <span className="text-muted-foreground text-xs">
+        Dipakai untuk tombol di tabel bawah — ubah bila transaksi terjadi di hari lain.
+      </span>
+    </div>
   );
 }
 

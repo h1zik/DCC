@@ -1,18 +1,9 @@
-const JAKARTA_OFFSET_MS = 7 * 3_600_000;
+import { jakartaToday } from "@/lib/finance-dates";
 
 export type YearMonth = { year: number; month: number };
 
-/** Tanggal kalender Jakarta (WIB, tanpa DST) dari sebuah instant. */
-export function jakartaToday(
-  now: Date = new Date(),
-): YearMonth & { day: number } {
-  const d = new Date(now.getTime() + JAKARTA_OFFSET_MS);
-  return {
-    year: d.getUTCFullYear(),
-    month: d.getUTCMonth() + 1,
-    day: d.getUTCDate(),
-  };
-}
+/** Tanggal kalender Jakarta — satu definisi untuk seluruh modul finance. */
+export { jakartaToday };
 
 export function monthIndex(p: YearMonth): number {
   return p.year * 12 + (p.month - 1);

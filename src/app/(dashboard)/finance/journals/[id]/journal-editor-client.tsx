@@ -599,6 +599,7 @@ export function JournalEditorClient(props: Props) {
                         lineId={line.id}
                         attachments={line.attachments}
                         canEdit={canEdit}
+                        canUpload={canEdit || isPosted}
                       />
                     </TableCell>
                     {canEdit ? (

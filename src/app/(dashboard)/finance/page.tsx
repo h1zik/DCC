@@ -9,7 +9,6 @@ import {
   Lock,
   Plus,
   ScrollText,
-  Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FinanceClearDemoButton } from "@/components/finance/finance-clear-demo-button";
@@ -40,8 +39,10 @@ type Props = {
 function parsePeriod(raw: string | string[] | undefined) {
   const value = Array.isArray(raw) ? raw[0] : raw;
   const m = value?.match(/^(\d{4})-(\d{1,2})$/);
-  const now = new Date();
-  if (!m) return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  if (!m) {
+    const today = jakartaToday();
+    return { year: today.year, month: today.month };
+  }
   const year = Number(m[1]);
   const month = Math.min(12, Math.max(1, Number(m[2])));
   return { year, month };
@@ -170,7 +171,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
       {/* Alerts */}
       <section
         aria-label="Peringatan keuangan"
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        className="grid gap-3 sm:grid-cols-2"
       >
         <AlertCard
           tone="danger"
@@ -202,21 +203,8 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
           }
           href="/finance/ap-ar"
         />
-        <AlertCard
-          tone="info"
-          icon={<Workflow className="size-4" />}
-          title={
-            data.alerts.reconPendingCount > 0
-              ? `${data.alerts.reconPendingCount} Rekonsiliasi Pending`
-              : "Semua rekonsiliasi selesai"
-          }
-          subtitle={
-            data.alerts.reconPendingNames.length > 0
-              ? `${data.alerts.reconPendingNames.slice(0, 3).join(", ")} belum selesai`
-              : "Tidak ada bank yang perlu disesuaikan."
-          }
-          href="/finance/bank"
-        />
+        {/* Alert "Rekonsiliasi Pending" disembunyikan: pencocokan mutasi belum
+            punya UI, jadi statusnya tak akan pernah bisa diselesaikan user. */}
       </section>
 
       {/* KPI cards */}
@@ -241,7 +229,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
           progress={pendapatanProgress}
           hint={
             pendapatanProgress
-              ? `Target (per. lalu): ${formatIdr(data.kpis.revenue.previous)}`
+              ? `Periode lalu: ${formatIdr(data.kpis.revenue.previous)}`
               : "Belum ada periode pembanding"
           }
         />
@@ -253,7 +241,7 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
           progress={bebanProgress}
           hint={
             bebanProgress
-              ? `Budget ref. (per. lalu): ${formatIdr(data.kpis.expense.previous)}`
+              ? `Periode lalu: ${formatIdr(data.kpis.expense.previous)}`
               : "Belum ada periode pembanding"
           }
         />
@@ -350,13 +338,9 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
         className="grid gap-3 lg:grid-cols-3"
       >
         <Panel
-          title="Rekonsiliasi Bank"
+          title="Mutasi Bank"
           accent="sky"
-          right={
-            data.banks.length > 0
-              ? `${data.banks.filter((b) => b.totalLines > 0 && b.progress >= 100).length}/${data.banks.length} selesai`
-              : "—"
-          }
+          right={data.banks.length > 0 ? `${data.banks.length} rekening` : "—"}
           href="/finance/bank"
         >
           {data.banks.length === 0 ? (
@@ -375,31 +359,10 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
                     <span className="text-muted-foreground tabular-nums">
                       {bank.totalLines === 0
                         ? "Belum impor"
-                        : `${bank.matchedLines}/${bank.totalLines}`}
+                        : `${bank.totalLines} baris diimpor`}
                     </span>
                   </div>
-                  <div className="bg-muted/60 relative h-2 w-full overflow-hidden rounded-full">
-                    <div
-                      className={cn(
-                        "absolute inset-y-0 left-0 rounded-full transition-all",
-                        bank.totalLines === 0
-                          ? "bg-muted-foreground/30"
-                          : bank.progress >= 100
-                            ? "bg-emerald-500"
-                            : bank.progress >= 50
-                              ? "bg-amber-500"
-                              : "bg-rose-500",
-                      )}
-                      style={{ width: `${Math.max(2, bank.progress)}%` }}
-                    />
-                  </div>
-                  <p className="text-muted-foreground text-[11px]">
-                    {bank.totalLines === 0
-                      ? "Tidak ada baris mutasi"
-                      : bank.progress >= 100
-                        ? "Selesai"
-                        : `${bank.progress}% ter-rekonsiliasi`}
-                  </p>
+                  {/* Progres pencocokan disembunyikan sampai UI rekonsiliasi tersedia. */}
                 </li>
               ))}
             </ul>

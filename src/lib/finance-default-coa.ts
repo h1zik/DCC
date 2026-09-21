@@ -32,6 +32,17 @@ export const DEFAULT_COA: DefaultCoaRow[] = [
   { code: "6200", name: "Beban penyusutan", type: FinanceLedgerType.EXPENSE, sortOrder: 520, tracksCashflow: false },
 ];
 
+/**
+ * Kode yang masih dirujuk LITERAL oleh kode aplikasi: ekuitas saldo awal
+ * rekening (`finance-bank.ts`) dan rekap pajak (`finance-reports.ts`).
+ * Kodenya tidak boleh di-rename sampai rujukan itu pindah ke flag/setting.
+ */
+export const SYSTEM_REFERENCED_ACCOUNT_CODES: ReadonlySet<string> = new Set([
+  "2100",
+  "2200",
+  "3000",
+]);
+
 export function defaultCoaCreateMany(): Prisma.FinanceLedgerAccountCreateManyInput[] {
   return DEFAULT_COA.map((row) => ({
     code: row.code,

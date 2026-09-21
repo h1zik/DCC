@@ -52,11 +52,21 @@ export type LineAttachmentItem = {
 type Props = {
   lineId: string;
   attachments: LineAttachmentItem[];
-  /** Editable hanya saat draft & periode terbuka. */
+  /** Hapus lampiran: hanya saat draft & periode terbuka. */
   canEdit: boolean;
+  /**
+   * Tambah lampiran. Default = `canEdit`. Jurnal POSTED tetap boleh menerima
+   * bukti susulan (tidak mengubah angka); menghapusnya tidak boleh.
+   */
+  canUpload?: boolean;
 };
 
-export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
+export function LineAttachmentControl({
+  lineId,
+  attachments,
+  canEdit,
+  canUpload = canEdit,
+}: Props) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [pending, startTransition] = useTransition();
@@ -149,7 +159,7 @@ export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
           <p className="text-xs font-semibold uppercase tracking-wide">
             Bukti / lampiran
           </p>
-          {canEdit ? (
+          {canUpload ? (
             <Button
               type="button"
               size="xs"
@@ -178,10 +188,10 @@ export function LineAttachmentControl({ lineId, attachments, canEdit }: Props) {
         {attachments.length === 0 ? (
           <p className="text-muted-foreground border-border/60 rounded-md border border-dashed py-3 text-center text-xs">
             Belum ada lampiran.
-            {canEdit ? null : (
+            {canUpload ? null : (
               <>
                 <br />
-                Upload tersedia hanya saat jurnal masih draf.
+                Upload tidak tersedia untuk jurnal draf di periode terkunci.
               </>
             )}
           </p>

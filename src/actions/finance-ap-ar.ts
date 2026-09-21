@@ -2,6 +2,7 @@
 
 import {
   FinanceApArDocStatus,
+  FinanceAuditAction,
   FinanceJournalLineLinkMode,
   Prisma,
 } from "@prisma/client";
@@ -14,6 +15,13 @@ import {
   lockApBillForUpdate,
   lockArInvoiceForUpdate,
 } from "@/lib/finance-journal-post";
+import { logFinanceAudit } from "@/lib/finance-audit";
+import {
+  resolveControlAccount,
+  resolveDocControlAccountId,
+} from "@/lib/finance-control-accounts";
+import { jakartaTodayUtcDate, utcDateOnly } from "@/lib/finance-dates";
+import { bucketAging } from "@/lib/finance-monthly-report/aging";
 import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { positiveMoneyString, toDecimal, zeroDecimal } from "@/lib/finance-money";
 
@@ -100,6 +108,9 @@ const billSchema = z.object({
 export async function createFinanceApBill(input: z.infer<typeof billSchema>) {
   const session = await requireFinance();
   const data = billSchema.parse(input);
+  // Tanggal dokumen = tanggal kalender (UTC-midnight), sama dengan entryDate jurnal.
+  data.billDate = utcDateOnly(data.billDate);
+  data.dueDate = utcDateOnly(data.dueDate);
   const amt = toDecimal(data.amount);
 
   // Bill wajib lahir bersama jurnalnya (debit akun lawan / kredit akun
@@ -108,10 +119,7 @@ export async function createFinanceApBill(input: z.infer<typeof billSchema>) {
   await prisma.$transaction(async (tx) => {
     await ensurePeriodOpen(data.billDate, tx);
 
-    const apControl = await tx.financeLedgerAccount.findUnique({
-      where: { code: "2000" },
-    });
-    if (!apControl) throw new Error('Akun "2000 Hutang usaha" tidak ada — inisialisasi CoA.');
+    const apControl = await resolveControlAccount(tx, "AP");
     if (data.counterAccountId === apControl.id) {
       throw new Error("Akun lawan tidak boleh akun kontrol hutang itu sendiri.");
     }
@@ -175,6 +183,12 @@ export async function createFinanceApBill(input: z.infer<typeof billSchema>) {
         createdBillId: bill.id,
       },
     });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.BILL_CREATE,
+      actorId: session.user.id,
+      entityId: bill.id,
+      detail: `Tagihan ${data.vendorName.trim()}${data.billNumber?.trim() ? ` #${data.billNumber.trim()}` : ""} — ${amt.toFixed(2)} (jurnal ${journalId})`,
+    });
   });
   paths();
 }
@@ -195,6 +209,8 @@ const invSchema = z.object({
 export async function createFinanceArInvoice(input: z.infer<typeof invSchema>) {
   const session = await requireFinance();
   const data = invSchema.parse(input);
+  data.invoiceDate = utcDateOnly(data.invoiceDate);
+  data.dueDate = utcDateOnly(data.dueDate);
   const amt = toDecimal(data.amount);
 
   // Lihat catatan di createFinanceApBill — pola yang sama untuk piutang:
@@ -202,10 +218,7 @@ export async function createFinanceArInvoice(input: z.infer<typeof invSchema>) {
   await prisma.$transaction(async (tx) => {
     await ensurePeriodOpen(data.invoiceDate, tx);
 
-    const arControl = await tx.financeLedgerAccount.findUnique({
-      where: { code: "1200" },
-    });
-    if (!arControl) throw new Error('Akun "1200 Piutang usaha" tidak ada — inisialisasi CoA.');
+    const arControl = await resolveControlAccount(tx, "AR");
     if (data.counterAccountId === arControl.id) {
       throw new Error("Akun lawan tidak boleh akun kontrol piutang itu sendiri.");
     }
@@ -267,6 +280,12 @@ export async function createFinanceArInvoice(input: z.infer<typeof invSchema>) {
         createdInvoiceId: inv.id,
       },
     });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.INVOICE_CREATE,
+      actorId: session.user.id,
+      entityId: inv.id,
+      detail: `Invoice ${data.customerName.trim()}${data.invoiceNumber?.trim() ? ` #${data.invoiceNumber.trim()}` : ""} — ${amt.toFixed(2)} (jurnal ${journalId})`,
+    });
   });
   paths();
 }
@@ -281,6 +300,7 @@ const payApSchema = z.object({
 export async function recordApBillPayment(input: z.infer<typeof payApSchema>) {
   const session = await requireFinance();
   const data = payApSchema.parse(input);
+  data.paidAt = utcDateOnly(data.paidAt);
   const amt = toDecimal(data.amount);
 
   // Satu transaksi untuk: kunci bill -> cek sisa -> jurnal -> payment ->
@@ -306,10 +326,8 @@ export async function recordApBillPayment(input: z.infer<typeof payApSchema>) {
     const remaining = bill.amount.minus(paidBefore);
     if (amt.gt(remaining)) throw new Error("Melebihi sisa hutang.");
 
-    const apAccount = await tx.financeLedgerAccount.findUnique({
-      where: { code: "2000" },
-    });
-    if (!apAccount) throw new Error('Akun "2000 Hutang usaha" tidak ada — inisialisasi CoA.');
+    // Debit akun kontrol tempat bill ini diakui — bukan selalu "2000".
+    const apAccountId = await resolveDocControlAccountId(tx, "AP", bill.id);
 
     const bank = await tx.financeBankAccount.findUniqueOrThrow({
       where: { id: data.bankAccountId },
@@ -322,7 +340,7 @@ export async function recordApBillPayment(input: z.infer<typeof payApSchema>) {
       createdById: session.user.id,
       lines: [
         {
-          accountId: apAccount.id,
+          accountId: apAccountId,
           debit: amt.toFixed(2),
           credit: "0",
           memo: "Pelunasan hutang usaha",
@@ -355,6 +373,13 @@ export async function recordApBillPayment(input: z.infer<typeof payApSchema>) {
       where: { id: bill.id },
       data: { status },
     });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.AP_PAYMENT,
+      actorId: session.user.id,
+      entityId: bill.id,
+      detail: `Bayar ${bill.vendorName} — ${amt.toFixed(2)} via ${bank.name} (jurnal ${journalId})`,
+      meta: { before: { status: bill.status }, after: { status } },
+    });
   });
 
   paths();
@@ -370,6 +395,7 @@ const payArSchema = z.object({
 export async function recordArInvoicePayment(input: z.infer<typeof payArSchema>) {
   const session = await requireFinance();
   const data = payArSchema.parse(input);
+  data.receivedAt = utcDateOnly(data.receivedAt);
   const amt = toDecimal(data.amount);
 
   // Lihat catatan atomisitas di recordApBillPayment — pola yang sama.
@@ -392,10 +418,8 @@ export async function recordArInvoicePayment(input: z.infer<typeof payArSchema>)
     const remaining = inv.amount.minus(paidBefore);
     if (amt.gt(remaining)) throw new Error("Melebihi sisa piutang.");
 
-    const arAccount = await tx.financeLedgerAccount.findUnique({
-      where: { code: "1200" },
-    });
-    if (!arAccount) throw new Error('Akun "1200 Piutang usaha" tidak ada — inisialisasi CoA.');
+    // Kredit akun kontrol tempat invoice ini diakui — bukan selalu "1200".
+    const arAccountId = await resolveDocControlAccountId(tx, "AR", inv.id);
 
     const bank = await tx.financeBankAccount.findUniqueOrThrow({
       where: { id: data.bankAccountId },
@@ -415,7 +439,7 @@ export async function recordArInvoicePayment(input: z.infer<typeof payArSchema>)
           brandId: inv.brandId,
         },
         {
-          accountId: arAccount.id,
+          accountId: arAccountId,
           debit: "0",
           credit: amt.toFixed(2),
           memo: "Pelunasan piutang",
@@ -441,48 +465,62 @@ export async function recordArInvoicePayment(input: z.infer<typeof payArSchema>)
       where: { id: inv.id },
       data: { status },
     });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.AR_PAYMENT,
+      actorId: session.user.id,
+      entityId: inv.id,
+      detail: `Terima ${inv.customerName} — ${amt.toFixed(2)} via ${bank.name} (jurnal ${journalId})`,
+      meta: { before: { status: inv.status }, after: { status } },
+    });
   });
 
   paths();
 }
 
-/** Aging bucket dalam hari sampai jatuh tempo (negatif = overdue). */
-export async function financeApAgingBuckets() {
+/**
+ * Aging hutang & piutang terbuka per hari ini (kalender Jakarta). Memakai
+ * `bucketAging` yang sama dengan laporan PDF bulanan — dulu halaman ini punya
+ * hitungan sendiri berbasis jam lokal server dan hanya untuk sisi AP.
+ */
+export async function financeApArAging() {
   await requireFinance();
-  const bills = await prisma.financeApBill.findMany({
-    where: {
-      status: { in: [FinanceApArDocStatus.OPEN, FinanceApArDocStatus.PARTIAL] },
-    },
-    include: { payments: true },
-  });
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  type Bucket = "current" | "d1_30" | "d31_60" | "over60";
-  const sums: Record<Bucket, Prisma.Decimal> = {
-    current: zeroDecimal(),
-    d1_30: zeroDecimal(),
-    d31_60: zeroDecimal(),
-    over60: zeroDecimal(),
+  const openStatus = {
+    in: [FinanceApArDocStatus.OPEN, FinanceApArDocStatus.PARTIAL],
   };
+  const [bills, invoices] = await Promise.all([
+    prisma.financeApBill.findMany({
+      where: { status: openStatus },
+      include: { payments: true },
+    }),
+    prisma.financeArInvoice.findMany({
+      where: { status: openStatus },
+      include: { payments: true },
+    }),
+  ]);
+  const remaining = (amount: Prisma.Decimal, payments: { amount: Prisma.Decimal }[]) =>
+    amount
+      .minus(payments.reduce((s, p) => s.plus(p.amount), zeroDecimal()))
+      .toString();
 
-  for (const b of bills) {
-    const paid = b.payments.reduce((s, p) => s.plus(p.amount), zeroDecimal());
-    const open = b.amount.minus(paid);
-    if (open.lte(0)) continue;
-
-    const due = new Date(b.dueDate);
-    due.setHours(0, 0, 0, 0);
-    const diff = Math.floor(
-      (due.getTime() - today.getTime()) / (24 * 3600 * 1000),
-    );
-    let key: Bucket = "current";
-    if (diff < -60) key = "over60";
-    else if (diff < -30) key = "d31_60";
-    else if (diff < 0) key = "d1_30";
-
-    sums[key] = sums[key].plus(open);
-  }
-
-  return sums;
+  const refDate = jakartaTodayUtcDate();
+  return {
+    ap: bucketAging(
+      bills.map((b) => ({
+        name: b.vendorName,
+        docNumber: b.billNumber,
+        dueDate: b.dueDate,
+        remaining: remaining(b.amount, b.payments),
+      })),
+      refDate,
+    ).buckets,
+    ar: bucketAging(
+      invoices.map((i) => ({
+        name: i.customerName,
+        docNumber: i.invoiceNumber,
+        dueDate: i.dueDate,
+        remaining: remaining(i.amount, i.payments),
+      })),
+      refDate,
+    ).buckets,
+  };
 }

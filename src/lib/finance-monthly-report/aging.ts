@@ -22,8 +22,9 @@ export function daysOverdue(dueDate: Date, refDate: Date): number {
 }
 
 /**
- * Kelompokkan dokumen terbuka ke bucket umur — batas sama dengan
- * `financeApAgingBuckets` (belum jatuh tempo / 1–30 / 31–60 / >60 hari).
+ * Kelompokkan dokumen terbuka ke bucket umur (belum jatuh tempo / 1–30 /
+ * 31–60 / >60 hari). Satu-satunya mesin aging: dipakai PDF bulanan dan
+ * halaman Hutang & piutang (`financeApArAging`).
  */
 export function bucketAging(docs: OpenDoc[], refDate: Date): AgingSide {
   const zero = () => new Prisma.Decimal(0);

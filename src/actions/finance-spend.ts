@@ -1,10 +1,12 @@
 "use server";
 
-import { FinanceSpendRequestStatus } from "@prisma/client";
+import { FinanceAuditAction, FinanceSpendRequestStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
+import { logFinanceAudit } from "@/lib/finance-audit";
+import { utcDateOnly } from "@/lib/finance-dates";
 import { createPostedEntryInTx } from "@/lib/finance-journal-post";
 import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { positiveMoneyString, toDecimal } from "@/lib/finance-money";
@@ -41,7 +43,7 @@ export async function createFinanceSpendRequest(
 }
 
 export async function submitFinanceSpendRequest(requestId: string) {
-  await requireFinance();
+  const session = await requireFinance();
   const r = await prisma.financeSpendRequest.findUniqueOrThrow({
     where: { id: requestId },
   });
@@ -50,13 +52,21 @@ export async function submitFinanceSpendRequest(requestId: string) {
   }
   // Compare-and-set: kondisi status di where menutup race dua transisi
   // bersamaan (pola yang sama untuk approve/reject di bawah).
-  const updated = await prisma.financeSpendRequest.updateMany({
-    where: { id: requestId, status: FinanceSpendRequestStatus.DRAFT },
-    data: { status: FinanceSpendRequestStatus.SUBMITTED },
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.financeSpendRequest.updateMany({
+      where: { id: requestId, status: FinanceSpendRequestStatus.DRAFT },
+      data: { status: FinanceSpendRequestStatus.SUBMITTED },
+    });
+    if (updated.count === 0) {
+      throw new Error("Status pengajuan sudah berubah — muat ulang halaman.");
+    }
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.SPEND_SUBMIT,
+      actorId: session.user.id,
+      entityId: requestId,
+      detail: `${r.title} — ${r.amount.toFixed(2)}`,
+    });
   });
-  if (updated.count === 0) {
-    throw new Error("Status pengajuan sudah berubah — muat ulang halaman.");
-  }
   paths();
 }
 
@@ -77,18 +87,27 @@ export async function approveFinanceSpendRequest(
       "Anda tidak dapat menyetujui pengajuan yang Anda buat sendiri (segregation of duties).",
     );
   }
-  const updated = await prisma.financeSpendRequest.updateMany({
-    where: { id: requestId, status: FinanceSpendRequestStatus.SUBMITTED },
-    data: {
-      status: FinanceSpendRequestStatus.APPROVED,
-      decidedById: session.user.id,
-      decidedAt: new Date(),
-      decisionNote: note?.trim() || null,
-    },
+  // Keputusan + jejak audit satu transaksi: tidak ada keputusan tanpa jejak.
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.financeSpendRequest.updateMany({
+      where: { id: requestId, status: FinanceSpendRequestStatus.SUBMITTED },
+      data: {
+        status: FinanceSpendRequestStatus.APPROVED,
+        decidedById: session.user.id,
+        decidedAt: new Date(),
+        decisionNote: note?.trim() || null,
+      },
+    });
+    if (updated.count === 0) {
+      throw new Error("Pengajuan sudah diputuskan pengguna lain — muat ulang halaman.");
+    }
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.SPEND_APPROVE,
+      actorId: session.user.id,
+      entityId: requestId,
+      detail: `Disetujui: ${r.title} — ${r.amount.toFixed(2)}${note?.trim() ? ` (${note.trim()})` : ""}`,
+    });
   });
-  if (updated.count === 0) {
-    throw new Error("Pengajuan sudah diputuskan pengguna lain — muat ulang halaman.");
-  }
   paths();
 }
 
@@ -108,18 +127,27 @@ export async function rejectFinanceSpendRequest(
       "Anda tidak dapat menolak pengajuan yang Anda buat sendiri (segregation of duties).",
     );
   }
-  const updated = await prisma.financeSpendRequest.updateMany({
-    where: { id: requestId, status: FinanceSpendRequestStatus.SUBMITTED },
-    data: {
-      status: FinanceSpendRequestStatus.REJECTED,
-      decidedById: session.user.id,
-      decidedAt: new Date(),
-      decisionNote: note?.trim() || null,
-    },
+  // Keputusan + jejak audit satu transaksi: tidak ada keputusan tanpa jejak.
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.financeSpendRequest.updateMany({
+      where: { id: requestId, status: FinanceSpendRequestStatus.SUBMITTED },
+      data: {
+        status: FinanceSpendRequestStatus.REJECTED,
+        decidedById: session.user.id,
+        decidedAt: new Date(),
+        decisionNote: note?.trim() || null,
+      },
+    });
+    if (updated.count === 0) {
+      throw new Error("Pengajuan sudah diputuskan pengguna lain — muat ulang halaman.");
+    }
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.SPEND_REJECT,
+      actorId: session.user.id,
+      entityId: requestId,
+      detail: `Ditolak: ${r.title} — ${r.amount.toFixed(2)}${note?.trim() ? ` (${note.trim()})` : ""}`,
+    });
   });
-  if (updated.count === 0) {
-    throw new Error("Pengajuan sudah diputuskan pengguna lain — muat ulang halaman.");
-  }
   paths();
 }
 
@@ -133,6 +161,7 @@ const payoutSchema = z.object({
 export async function recordFinanceSpendPayout(input: z.infer<typeof payoutSchema>) {
   const session = await requireFinance();
   const data = payoutSchema.parse(input);
+  data.paidAt = utcDateOnly(data.paidAt);
 
   await prisma.$transaction(async (tx) => {
     const req = await tx.financeSpendRequest.findUniqueOrThrow({
@@ -207,6 +236,12 @@ export async function recordFinanceSpendPayout(input: z.infer<typeof payoutSchem
     await tx.financeSpendRequest.update({
       where: { id: req.id },
       data: { payoutEntryId: journalId },
+    });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.SPEND_PAYOUT,
+      actorId: session.user.id,
+      entityId: req.id,
+      detail: `Dibayar: ${req.title} — ${amt} via ${bank.name} (jurnal ${journalId})`,
     });
   });
 

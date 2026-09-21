@@ -1,0 +1,32 @@
+import type { FinanceAuditAction } from "@prisma/client";
+
+/** Label aksi jejak audit untuk UI — satu sumber agar filter & tabel seragam. */
+export const FINANCE_AUDIT_ACTION_LABEL: Record<FinanceAuditAction, string> = {
+  JOURNAL_POST: "Posting jurnal",
+  JOURNAL_REVERSE: "Balik jurnal",
+  DRAFT_DELETE: "Hapus draf jurnal",
+  PERIOD_LOCK: "Kunci periode",
+  PERIOD_UNLOCK: "Buka kunci periode",
+  FX_RATE_DELETE: "Hapus kurs",
+  DEMO_RESET: "Reset data demo",
+  ACCOUNT_CREATE: "Akun baru",
+  ACCOUNT_UPDATE: "Ubah akun",
+  BILL_CREATE: "Tagihan hutang baru",
+  INVOICE_CREATE: "Invoice piutang baru",
+  AP_PAYMENT: "Bayar hutang",
+  AR_PAYMENT: "Terima piutang",
+  BUDGET_UPSERT: "Ubah anggaran",
+  BANK_ACCOUNT_CREATE: "Rekening bank baru",
+  BANK_IMPORT: "Impor mutasi bank",
+  BANK_MATCH: "Pencocokan mutasi",
+  TRANSFER: "Transfer antar rekening",
+  SPEND_SUBMIT: "Ajukan pengeluaran",
+  SPEND_APPROVE: "Setujui pengeluaran",
+  SPEND_REJECT: "Tolak pengeluaran",
+  SPEND_PAYOUT: "Bayar pengeluaran",
+  ASSET_CREATE: "Aset tetap baru",
+  DEPRECIATION_POST: "Posting penyusutan",
+  FX_RATE_UPSERT: "Ubah kurs",
+  ATTACHMENT_ADD: "Lampiran susulan",
+  ATTACHMENT_DELETE: "Hapus lampiran",
+};

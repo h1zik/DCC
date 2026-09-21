@@ -1,13 +1,12 @@
 import { Coins } from "lucide-react";
 import { listFinanceBankAccounts } from "@/actions/finance-bank";
 import { financeCashflowLines } from "@/actions/finance-treasury";
+import { jakartaCurrentMonthRange } from "@/lib/finance-dates";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { TreasuryClient } from "./treasury-client";
 
 export default async function TreasuryPage() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const { from, to } = jakartaCurrentMonthRange();
 
   const [banks, cf] = await Promise.all([
     listFinanceBankAccounts(),

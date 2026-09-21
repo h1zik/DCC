@@ -2,13 +2,13 @@ import { Target } from "lucide-react";
 import { FinanceLedgerType } from "@prisma/client";
 import { financeBudgetVsActual } from "@/actions/finance-budget";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
+import { jakartaToday } from "@/lib/finance-dates";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { prisma } from "@/lib/prisma";
 import { BudgetClient } from "./budget-client";
 
 export default async function BudgetPage() {
-  const year = new Date().getFullYear();
-  const month = new Date().getMonth() + 1;
+  const { year, month } = jakartaToday();
 
   const [accounts, brands, vs] = await Promise.all([
     listFinanceAccounts(),

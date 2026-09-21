@@ -16,12 +16,11 @@ import { ensurePeriodOpen } from "@/lib/finance-period-lock";
 import { nextJournalNumber } from "@/lib/finance-journal-number";
 import {
   apArStatusForPaid,
-  createPostedEntryInTx,
   lockApBillForUpdate,
   lockArInvoiceForUpdate,
 } from "@/lib/finance-journal-post";
 import { logFinanceAudit } from "@/lib/finance-audit";
-import { utcDateOnly } from "@/lib/finance-dates";
+import { jakartaTodayUtcDate, utcDateOnly } from "@/lib/finance-dates";
 import { removeFinanceAttachmentsBestEffort } from "@/lib/finance-uploads";
 import { FinanceAuditAction } from "@prisma/client";
 
@@ -434,43 +433,6 @@ export async function deleteFinanceJournalDraft(entryId: string) {
   journalPaths();
 }
 
-const postedLineInput = z.object({
-  accountId: z.string().min(1),
-  debit: z.string().default("0"),
-  credit: z.string().default("0"),
-  memo: z.string().optional().nullable(),
-  brandId: z.string().optional().nullable(),
-});
-
-const createPostedSchema = z.object({
-  entryDate: z.coerce.date(),
-  reference: z.string().max(120).optional().nullable(),
-  memo: z.string().max(2000).optional().nullable(),
-  lines: z.array(postedLineInput).min(2),
-});
-
-/** Jurnal langsung terposting (pembayaran AP/AR, transfer, depresiasi, payout). */
-export async function createPostedFinanceJournal(
-  input: z.infer<typeof createPostedSchema>,
-) {
-  const session = await requireFinance();
-  const data = createPostedSchema.parse(input);
-
-  const entryId = await prisma.$transaction(async (tx) => {
-    await ensurePeriodOpen(data.entryDate, tx);
-    return createPostedEntryInTx(tx, {
-      entryDate: data.entryDate,
-      reference: data.reference,
-      memo: data.memo,
-      createdById: session.user.id,
-      lines: data.lines,
-    });
-  });
-
-  journalPaths();
-  return entryId;
-}
-
 export async function postFinanceJournal(entryId: string) {
   const session = await requireFinance();
   await prisma.$transaction(async (tx) => {
@@ -685,7 +647,11 @@ export async function reverseFinanceJournal(
 ) {
   const session = await requireFinance();
   const data = reverseSchema.parse(input);
-  const reversalDate = data.reversalDate ?? new Date();
+  // Tanggal kalender (UTC-midnight) seperti entryDate lain — dulu timestamp
+  // penuh, yang sebelum 07:00 WIB jatuh ke tanggal/periode UTC kemarin.
+  const reversalDate = data.reversalDate
+    ? utcDateOnly(data.reversalDate)
+    : jakartaTodayUtcDate();
 
   // Seluruh guard berada DI DALAM transaksi; unique constraint
   // `reversesEntryId` menjadi penahan terakhir bila dua reversal berlomba.

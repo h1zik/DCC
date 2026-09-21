@@ -25,16 +25,24 @@ describe("splitCsvLine", () => {
 });
 
 describe("parseLooseDate", () => {
-  it("menerima ISO dan dd/mm/yyyy", () => {
-    expect(parseLooseDate("2026-01-31")).not.toBeNull();
-    const d = parseLooseDate("31/01/2026");
-    expect(d?.getFullYear()).toBe(2026);
-    expect(d?.getMonth()).toBe(0);
-    expect(d?.getDate()).toBe(31);
+  it("menerima ISO dan dd/mm/yyyy sebagai UTC-midnight", () => {
+    expect(parseLooseDate("2026-01-31")?.toISOString()).toBe("2026-01-31T00:00:00.000Z");
+    expect(parseLooseDate("31/01/2026")?.toISOString()).toBe("2026-01-31T00:00:00.000Z");
+  });
+
+  it("hari ≤ 12 tetap dibaca dd/mm, bukan mm/dd", () => {
+    // Dulu Date.parse membaca "05/01/2026" sebagai 1 Mei.
+    expect(parseLooseDate("05/01/2026")?.toISOString()).toBe("2026-01-05T00:00:00.000Z");
+    expect(parseLooseDate("01-12-2026")?.toISOString()).toBe("2026-12-01T00:00:00.000Z");
   });
 
   it("tahun 2 digit dianggap 20xx", () => {
-    expect(parseLooseDate("05/01/26")?.getFullYear()).toBe(2026);
+    expect(parseLooseDate("05/01/26")?.toISOString()).toBe("2026-01-05T00:00:00.000Z");
+  });
+
+  it("menolak tanggal kalender yang tidak sah", () => {
+    expect(parseLooseDate("31/02/2026")).toBeNull();
+    expect(parseLooseDate("2026-13-01")).toBeNull();
   });
 
   it("mengembalikan null untuk teks non-tanggal", () => {

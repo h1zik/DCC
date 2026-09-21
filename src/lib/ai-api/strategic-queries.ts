@@ -1,5 +1,4 @@
 import {
-  FinanceLedgerType,
   RoomTimelineStatus,
   TaskStatus,
 } from "@prisma/client";
@@ -14,11 +13,9 @@ import {
 } from "@/lib/ai-api/executive-metrics";
 import { aiGetUsersTaskOverview } from "@/lib/ai-api/user-tasks";
 import { loadFinanceDashboard } from "@/lib/finance-dashboard";
-import {
-  formatIdr,
-  signedBalanceForAccount,
-  zeroDecimal,
-} from "@/lib/finance-money";
+import { computeBudgetVsActual } from "@/lib/finance-budget-actual";
+import { jakartaToday } from "@/lib/finance-dates";
+import { formatIdr } from "@/lib/finance-money";
 import {
   formatMilestoneNode,
   groupProjectsByCurrentMilestone,
@@ -70,7 +67,8 @@ export async function aiGetCompanyExecutiveBriefing(role: AiApiRole) {
   }
 
   const now = new Date();
-  const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
+  const today = jakartaToday();
+  const period = { year: today.year, month: today.month };
   const user = createAiApiAgentUser(role);
 
   const [
@@ -523,13 +521,13 @@ export async function aiGetApArAging(role: AiApiRole) {
     return denied("Akses AP/AR aging tidak tersedia untuk peran ini.");
   }
 
-  const now = new Date();
-  const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
+  const today = jakartaToday();
+  const period = { year: today.year, month: today.month };
   const dash = await loadFinanceDashboard(period);
 
   return {
     accessible: true as const,
-    asOf: now.toISOString(),
+    asOf: new Date().toISOString(),
     ap: {
       totalOutstanding: formatIdr(dash.aging.apTotal),
       overdueCount: dash.aging.apOverdueCount,
@@ -566,57 +564,22 @@ export async function aiGetBudgetVsActual(
     return denied("Akses budget vs aktual tidak tersedia untuk peran ini.");
   }
 
-  const now = new Date();
-  const year = params?.year ?? now.getFullYear();
-  const month = params?.month ?? now.getMonth() + 1;
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 0, 23, 59, 59, 999);
+  // Bulan berjalan = kalender Jakarta; angka dari fungsi yang sama dengan
+  // halaman Anggaran & PDF bulanan (dulu hitungan sendiri berbatas jam lokal).
+  const today = jakartaToday();
+  const year = params?.year ?? today.year;
+  const month = params?.month ?? today.month;
 
-  const budgets = await prisma.financeBudgetLine.findMany({
-    where: { year, month },
-    include: { brand: true, account: true },
-  });
-
-  // Agregasi di DB (bukan memuat semua baris jurnal lalu loop O(budget×baris)
-  // di JS) — jumlah grup (akun×brand) kecil walau volume transaksi besar.
-  const grouped = await prisma.financeJournalLine.groupBy({
-    by: ["accountId", "brandId"],
-    where: {
-      entry: { status: "POSTED", entryDate: { gte: start, lte: end } },
-      account: { type: FinanceLedgerType.EXPENSE },
-    },
-    _sum: { debitBase: true, creditBase: true },
-  });
-
-  const rows = budgets.map((b) => {
-    let actual = zeroDecimal();
-    for (const g of grouped) {
-      if (b.accountId && g.accountId !== b.accountId) continue;
-      if (b.brandId && g.brandId !== b.brandId) continue;
-      // Semua grup berjenis EXPENSE (sudah difilter di where).
-      actual = actual.plus(
-        signedBalanceForAccount(
-          FinanceLedgerType.EXPENSE,
-          g._sum.debitBase ?? zeroDecimal(),
-          g._sum.creditBase ?? zeroDecimal(),
-        ),
-      );
-    }
-    const label = [
-      b.account?.code ?? "SEMUA_BEBAN",
-      b.brand?.name ?? "Semua brand",
-    ].join(" · ");
-    return {
-      budgetId: b.id,
-      label,
-      limit: formatIdr(b.amountLimit),
-      actual: formatIdr(actual),
-      variance: formatIdr(b.amountLimit.minus(actual)),
-      overBudget: actual.greaterThan(b.amountLimit),
-      limitRaw: Number(b.amountLimit.toString()),
-      actualRaw: Number(actual.toString()),
-    };
-  });
+  const rows = (await computeBudgetVsActual({ year, month })).map((r) => ({
+    budgetId: r.budgetId,
+    label: r.label,
+    limit: formatIdr(r.limit),
+    actual: formatIdr(r.actual),
+    variance: formatIdr(r.variance),
+    overBudget: r.actual.greaterThan(r.limit),
+    limitRaw: Number(r.limit.toString()),
+    actualRaw: Number(r.actual.toString()),
+  }));
 
   return {
     accessible: true as const,

@@ -37,6 +37,41 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-21-keuangan-ekspor-jejak-audit",
+    date: "2026-09-21",
+    title: "Keuangan: ekspor CSV, jejak audit yang bisa dibaca, dan bukti susulan",
+    category: "new",
+    description:
+      "Tiga hal yang biasa diminta akuntan eksternal dan auditor kini tersedia di modul Keuangan. Tidak ada data lama yang diubah — semuanya penambahan.",
+    highlights: [
+      "Ekspor CSV: tombol “Ekspor CSV” di halaman Laporan dan Buku Besar — neraca saldo, laba rugi, neraca, buku besar, seluruh jurnal terposting, serta daftar hutang & piutang. Angkanya sama persis dengan yang tampil di layar dan bisa dibuka di Excel",
+      "Menu baru “Audit Log”: daftar siapa melakukan apa dan kapan, bisa difilter per tanggal dan jenis aksi, serta diekspor. Sebelumnya catatan ini tersimpan tetapi tidak bisa dilihat siapa pun",
+      "Jejak audit kini mencakup jauh lebih banyak aksi: perubahan akun (dengan nilai sebelum → sesudah), tagihan & invoice baru, pembayaran, anggaran, kurs, rekening & impor mutasi bank, transfer, aset tetap & penyusutan, serta pengajuan/persetujuan/pembayaran pengeluaran",
+      "Bukti susulan: lampiran kini bisa ditambahkan ke jurnal yang SUDAH diposting (mis. pembayaran hutang, transfer) — sebelumnya hanya bisa saat draf. Penambahan ini tercatat di jejak audit; menghapus lampiran tetap hanya bisa saat draf",
+      "Transfer antar rekening kini ditolak bila kedua rekening memakai akun buku yang sama, dan nominalnya divalidasi seperti form lain",
+      "Catatan: jejak audit yang lebih lengkap berlaku untuk aktivitas mulai sekarang; aktivitas lama tidak dibuat-buat catatannya",
+    ],
+  },
+  {
+    id: "2026-09-21-keuangan-perbaikan-akurasi",
+    date: "2026-09-21",
+    title: "Keuangan: perbaikan akurasi laporan & form hutang-piutang",
+    category: "fixed",
+    description:
+      "Serangkaian perbaikan hasil audit modul Keuangan. Tidak ada data jurnal, tagihan, invoice, atau pembayaran lama yang diubah — hanya cara sistem membaca dan menampilkannya. Beberapa angka TAMPILAN bisa bergeser (lihat poin bertanda ⚠️), tetapi saldo akun, laba rugi, dan neraca tetap sama.",
+    highlights: [
+      "⚠️ Laporan Arus Kas: pelunasan hutang usaha dan penerimaan piutang kini masuk “Aktivitas operasi”. Sebelumnya keliru tampil sebagai “pendanaan” dan “investasi”. Total kas masuk/keluar tidak berubah, hanya pengelompokannya",
+      "⚠️ “Bulan berjalan” dan batas tanggal laporan kini seragam memakai kalender WIB — sebelumnya antara pukul 00.00–07.00 WIB tanggal 1, sebagian layar masih menganggap bulan lalu",
+      "⚠️ Anggaran vs realisasi di halaman Anggaran, PDF bulanan, dashboard CEO, dan asisten AI kini dihitung oleh satu rumus yang sama; PDF per-brand hanya menampilkan anggaran brand itu",
+      "Impor mutasi bank: tanggal format dd/mm/yyyy dengan hari 1–12 (mis. 05/01/2026) kini terbaca 5 Januari, bukan 1 Mei. Mutasi yang SUDAH diimpor tidak diubah — mohon cek ulang impor lama bila perlu",
+      "Hutang & piutang: kini bisa mengisi nomor dan tanggal tagihan/invoice, serta tanggal pembayaran/penerimaan (sebelumnya selalu tercatat “hari ini”)",
+      "Aging piutang kini tampil di tab Piutang; label aging diperjelas (“Belum jatuh tempo”, “Lewat 1–30 hari”, dst.)",
+      "Chart of Accounts: tipe akun yang sudah punya jurnal terposting tidak bisa diubah lagi, agar histori tidak berpindah antara Neraca dan Laba Rugi",
+      "Akun kontrol hutang/piutang kini dikenali dari tandanya di Chart of Accounts, bukan dari kode 2000/1200 — mengganti kode akun tidak lagi mematikan pencatatan tagihan",
+      "Dashboard: status “Rekonsiliasi Pending” disembunyikan sementara karena fitur pencocokan mutasi belum tersedia",
+    ],
+  },
+  {
     id: "2026-09-21-laporan-keuangan-bulanan-pdf",
     date: "2026-09-21",
     title: "Laporan keuangan bulanan siap presentasi (PDF)",

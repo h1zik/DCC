@@ -40,6 +40,44 @@ export function utcPreviousMonthEnd(asOf: Date): Date {
   );
 }
 
+const JAKARTA_OFFSET_MS = 7 * 3_600_000;
+
+/**
+ * "Hari ini" menurut kalender Jakarta (WIB, tanpa DST). Dipakai untuk default
+ * "bulan berjalan" dan tanggal acuan aging — dulu memakai jam lokal server,
+ * sehingga di server UTC antara 00:00–07:00 WIB tanggal 1 masih dianggap
+ * bulan sebelumnya.
+ */
+export function jakartaToday(now: Date = new Date()): {
+  year: number;
+  month: number;
+  day: number;
+} {
+  const d = new Date(now.getTime() + JAKARTA_OFFSET_MS);
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+  };
+}
+
+/** Tanggal kalender Jakarta hari ini sebagai UTC-midnight (sebanding dengan `entryDate`/`dueDate`). */
+export function jakartaTodayUtcDate(now: Date = new Date()): Date {
+  const t = jakartaToday(now);
+  return new Date(Date.UTC(t.year, t.month - 1, t.day));
+}
+
+/** Bulan berjalan (kalender Jakarta) beserta rentang UTC-nya — default halaman laporan. */
+export function jakartaCurrentMonthRange(now: Date = new Date()): {
+  year: number;
+  month: number;
+  from: Date;
+  to: Date;
+} {
+  const { year, month } = jakartaToday(now);
+  return { year, month, from: utcMonthStart(year, month), to: utcMonthEnd(year, month) };
+}
+
 /** (tahun, bulan 1–12) menurut UTC — untuk pengecekan kunci periode. */
 export function utcYearMonth(d: Date): { year: number; month: number } {
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };

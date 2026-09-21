@@ -18,7 +18,8 @@ export async function nextJournalNumber(
   tx: Prisma.TransactionClient,
   entryDate: Date,
 ): Promise<string> {
-  const year = entryDate.getFullYear();
+  // UTC: entryDate tersimpan UTC-midnight, dan kunci periode juga UTC.
+  const year = entryDate.getUTCFullYear();
   const prefix = `JE-${year}-`;
   const tailFrom = prefix.length + 1; // SUBSTRING 1-indexed
 

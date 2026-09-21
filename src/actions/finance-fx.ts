@@ -25,7 +25,7 @@ const upsertSchema = z.object({
 
 /** `rateToBase`: 1 unit foreign = rateToBase IDR. */
 export async function upsertFinanceFxRate(input: z.infer<typeof upsertSchema>) {
-  await requireFinance();
+  const session = await requireFinance();
   const data = upsertSchema.parse(input);
   const rate = toDecimal(data.rateToBase);
   if (rate.lte(0)) throw new Error("Kurs harus positif.");
@@ -33,19 +33,37 @@ export async function upsertFinanceFxRate(input: z.infer<typeof upsertSchema>) {
     throw new Error("Gunakan valuta asing (bukan IDR) sebagai kode.");
   }
 
-  await prisma.financeFxRate.upsert({
-    where: {
-      currencyCode_validFrom: {
-        currencyCode: data.currencyCode,
-        validFrom: data.validFrom,
-      },
-    },
-    create: {
+  const key = {
+    currencyCode_validFrom: {
       currencyCode: data.currencyCode,
-      rateToBase: rate,
       validFrom: data.validFrom,
     },
-    update: { rateToBase: rate },
+  };
+  await prisma.$transaction(async (tx) => {
+    const prev = await tx.financeFxRate.findUnique({
+      where: key,
+      select: { rateToBase: true },
+    });
+    const saved = await tx.financeFxRate.upsert({
+      where: key,
+      create: {
+        currencyCode: data.currencyCode,
+        rateToBase: rate,
+        validFrom: data.validFrom,
+      },
+      update: { rateToBase: rate },
+      select: { id: true },
+    });
+    await logFinanceAudit(tx, {
+      action: FinanceAuditAction.FX_RATE_UPSERT,
+      actorId: session.user.id,
+      entityId: saved.id,
+      detail: `Kurs ${data.currencyCode} berlaku ${data.validFrom.toISOString().slice(0, 10)}: ${prev ? prev.rateToBase.toString() : "—"} → ${rate.toString()}`,
+      meta: {
+        before: prev ? { rateToBase: prev.rateToBase.toString() } : null,
+        after: { rateToBase: rate.toString() },
+      },
+    });
   });
 
   revalidatePath("/finance/currencies");

@@ -6,6 +6,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { utcEndOfDay } from "@/lib/finance-dates";
 import { zeroDecimal } from "@/lib/finance-money";
 
 export type TrialBalanceRow = {
@@ -20,6 +21,10 @@ export type TrialBalanceRow = {
 export type TrialBalanceResult = {
   rows: TrialBalanceRow[];
   totals: { debit: Prisma.Decimal; credit: Prisma.Decimal };
+  /** Subtotal per tipe akun — dihitung Decimal di server, bukan float di klien. */
+  subtotalsByType: Partial<
+    Record<FinanceLedgerType, { debit: Prisma.Decimal; credit: Prisma.Decimal }>
+  >;
   isBalanced: boolean;
   asOf: Date;
 };
@@ -41,7 +46,7 @@ export async function buildTrialBalance(options: {
   /** Bila true, hanya tampilkan akun yang mempunyai mutasi (lebih ringkas). */
   hideZero?: boolean;
 }): Promise<TrialBalanceResult> {
-  const end = endOfDay(options.asOf);
+  const end = utcEndOfDay(options.asOf);
 
   const [accounts, lines] = await Promise.all([
     prisma.financeLedgerAccount.findMany({
@@ -82,6 +87,7 @@ export async function buildTrialBalance(options: {
   const rows: TrialBalanceRow[] = [];
   let totalDebit = zeroDecimal();
   let totalCredit = zeroDecimal();
+  const subtotalsByType: TrialBalanceResult["subtotalsByType"] = {};
 
   for (const acc of accounts) {
     const t = totalsByAccount.get(acc.id) ?? {
@@ -111,11 +117,20 @@ export async function buildTrialBalance(options: {
     });
     totalDebit = totalDebit.plus(debit);
     totalCredit = totalCredit.plus(credit);
+    const sub = subtotalsByType[acc.type] ?? {
+      debit: zeroDecimal(),
+      credit: zeroDecimal(),
+    };
+    subtotalsByType[acc.type] = {
+      debit: sub.debit.plus(debit),
+      credit: sub.credit.plus(credit),
+    };
   }
 
   return {
     rows,
     totals: { debit: totalDebit, credit: totalCredit },
+    subtotalsByType,
     isBalanced: totalDebit.equals(totalCredit),
     asOf: end,
   };
@@ -123,10 +138,4 @@ export async function buildTrialBalance(options: {
 
 function isDebitNormal(t: FinanceLedgerType): boolean {
   return t === FinanceLedgerType.ASSET || t === FinanceLedgerType.EXPENSE;
-}
-
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
 }

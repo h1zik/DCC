@@ -9,6 +9,7 @@ import {
   Calculator,
   Coins,
   FileBarChart,
+  History,
   Landmark,
   LayoutDashboard,
   PiggyBank,
@@ -41,6 +42,7 @@ const NAV_ITEMS: SubNavItem[] = [
   { href: "/finance/fixed-assets", label: "Fixed Assets", icon: Calculator, group: "planning" },
   { href: "/finance/brands-costing", label: "Brand & Costing", icon: Building2, group: "report" },
   { href: "/finance/reports", label: "Reports", icon: FileBarChart, group: "report" },
+  { href: "/finance/audit-log", label: "Audit Log", icon: History, group: "report" },
 ];
 
 function isItemActive(itemHref: string, pathname: string): boolean {

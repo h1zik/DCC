@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  jakartaCurrentMonthRange,
+  jakartaTodayUtcDate,
   utcDateOnly,
   utcEndOfDay,
   utcMonthEnd,
@@ -42,5 +44,17 @@ describe("finance-dates (UTC, M-10/M-11)", () => {
       year: 2026,
       month: 6,
     });
+  });
+});
+
+describe("kalender Jakarta", () => {
+  it("dini hari WIB tanggal 1 sudah dihitung bulan baru walau UTC masih bulan lalu", () => {
+    // 1 Feb 2026 00:30 WIB = 31 Jan 2026 17:30Z.
+    const now = new Date("2026-01-31T17:30:00Z");
+    expect(jakartaTodayUtcDate(now).toISOString()).toBe("2026-02-01T00:00:00.000Z");
+    const range = jakartaCurrentMonthRange(now);
+    expect(range).toMatchObject({ year: 2026, month: 2 });
+    expect(range.from.toISOString()).toBe("2026-02-01T00:00:00.000Z");
+    expect(range.to.toISOString()).toBe("2026-02-28T23:59:59.999Z");
   });
 });

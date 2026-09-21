@@ -161,43 +161,6 @@ export async function reportBalanceSheet(asOf: Date, brandId?: string | null) {
   };
 }
 
-export async function reportCashFlow(input: z.infer<typeof rangeSchema>) {
-  await requireFinance();
-  const q = rangeSchema.parse(input);
-  const lines = await prisma.financeJournalLine.findMany({
-    where: {
-      entry: {
-        status: "POSTED",
-        entryDate: { gte: q.from, lte: endOfDay(q.to) },
-      },
-      account: { tracksCashflow: true },
-      ...(q.brandId ? { brandId: q.brandId } : {}),
-    },
-    include: { account: true, entry: true },
-    orderBy: [{ entry: { entryDate: "asc" } }],
-  });
-
-  let net = new Prisma.Decimal(0);
-  const detail = lines.map((line) => {
-    const delta = signedBalanceForAccount(
-      FinanceLedgerType.ASSET,
-      line.debitBase,
-      line.creditBase,
-    );
-    net = net.plus(delta);
-    return {
-      id: line.id,
-      date: line.entry.entryDate,
-      reference: line.entry.reference,
-      account: line.account.name,
-      memo: line.memo,
-      delta,
-    };
-  });
-
-  return { detail, netOperatingCashApprox: net };
-}
-
 export async function reportTaxBuckets(input: z.infer<typeof rangeSchema>) {
   await requireFinance();
   const q = rangeSchema.parse(input);

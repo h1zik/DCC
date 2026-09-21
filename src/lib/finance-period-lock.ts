@@ -44,12 +44,3 @@ export async function listPeriodLocks(limit = 24) {
     include: { lockedBy: { select: { id: true, name: true, email: true } } },
   });
 }
-
-/** Cek tanpa throw — dipakai di UI client untuk menyembunyikan tombol. */
-export async function isPeriodLocked(year: number, month: number): Promise<boolean> {
-  const lock = await prisma.financePeriodLock.findUnique({
-    where: { year_month: { year, month } },
-    select: { id: true },
-  });
-  return Boolean(lock);
-}

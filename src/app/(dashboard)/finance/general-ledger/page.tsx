@@ -1,6 +1,8 @@
 import { BookOpen } from "lucide-react";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import { queryGeneralLedger } from "@/actions/finance-ledger";
+import { jakartaCurrentMonthRange, utcDateOnly } from "@/lib/finance-dates";
+import { FinanceExportMenu } from "@/components/finance/export-menu";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { GeneralLedgerClient } from "./general-ledger-client";
 
@@ -10,9 +12,9 @@ export default async function GeneralLedgerPage({
   searchParams: Promise<{ accountId?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
-  const now = new Date();
-  const from = sp.from ? new Date(sp.from) : new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = sp.to ? new Date(sp.to) : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const current = jakartaCurrentMonthRange();
+  const from = sp.from ? new Date(sp.from) : current.from;
+  const to = sp.to ? new Date(sp.to) : utcDateOnly(current.to);
   const selectedAccountId =
     sp.accountId && sp.accountId !== "__all__" ? sp.accountId : null;
 
@@ -56,6 +58,14 @@ export default async function GeneralLedgerPage({
       icon={<BookOpen className="size-5" />}
       title="Buku besar"
       description="Mutasi seluruh akun yang sudah diposting. Pilih satu akun untuk melihat saldo berjalan dan filter periode untuk drill-down."
+      actions={
+        <FinanceExportMenu
+          from={from.toISOString().slice(0, 10)}
+          to={to.toISOString().slice(0, 10)}
+          accountId={selectedAccountId}
+          items={[{ report: "general-ledger", label: "Buku besar (filter ini)" }]}
+        />
+      }
     >
       <GeneralLedgerClient
         accounts={accounts.map((a) => ({

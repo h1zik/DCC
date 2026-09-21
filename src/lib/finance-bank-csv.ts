@@ -18,18 +18,35 @@ export function splitCsvLine(line: string): string[] {
   return line.split(delim).map((s) => s.trim().replace(/^"|"$/g, ""));
 }
 
+/** Tanggal murni UTC; null bila komponennya bukan tanggal kalender yang sah (mis. 31/02). */
+function utcDateFromParts(y: number, mo: number, d: number): Date | null {
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== mo - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return dt;
+}
+
+/**
+ * Tanggal rekening koran: `yyyy-mm-dd` (ISO) atau `dd/mm/yyyy` (format bank
+ * Indonesia). Pola dicocokkan EKSPLISIT — dulu `Date.parse` dicoba lebih dulu
+ * sehingga V8 membaca "05/01/2026" sebagai mm/dd (1 Mei) sementara
+ * "13/01/2026" jatuh ke cabang dd/mm: satu file, dua tafsir. Hasil selalu
+ * UTC-midnight, sama dengan `entryDate` jurnal.
+ */
 export function parseLooseDate(s: string): Date | null {
   const t = s.trim();
-  const iso = Date.parse(t);
-  if (!Number.isNaN(iso)) return new Date(iso);
-  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$/);
+  if (iso) return utcDateFromParts(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
   if (!m) return null;
-  const d = Number(m[1]);
-  const mo = Number(m[2]) - 1;
   let y = Number(m[3]);
   if (y < 100) y += 2000;
-  const dt = new Date(y, mo, d);
-  return Number.isNaN(dt.getTime()) ? null : dt;
+  return utcDateFromParts(y, Number(m[2]), Number(m[1]));
 }
 
 /**

@@ -2142,6 +2142,7 @@ model FinanceLedgerAccount {
   code           String                 @unique
   name           String
   type           FinanceLedgerType
+  // @deprecated Hierarki CoA tidak pernah dipakai kode mana pun. Kolom dibiarkan (data produksi) — jangan di-drop.
   parentId       String?
   parent         FinanceLedgerAccount?  @relation("CoaHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children       FinanceLedgerAccount[] @relation("CoaHierarchy")
@@ -2248,6 +2249,27 @@ enum FinanceAuditAction {
   PERIOD_UNLOCK
   FX_RATE_DELETE
   DEMO_RESET
+  // Cakupan diperluas (fase 1 audit) — dulu hanya 7 aksi di atas yang tercatat.
+  ACCOUNT_CREATE
+  ACCOUNT_UPDATE
+  BILL_CREATE
+  INVOICE_CREATE
+  AP_PAYMENT
+  AR_PAYMENT
+  BUDGET_UPSERT
+  BANK_ACCOUNT_CREATE
+  BANK_IMPORT
+  BANK_MATCH
+  TRANSFER
+  SPEND_SUBMIT
+  SPEND_APPROVE
+  SPEND_REJECT
+  SPEND_PAYOUT
+  ASSET_CREATE
+  DEPRECIATION_POST
+  FX_RATE_UPSERT
+  ATTACHMENT_ADD
+  ATTACHMENT_DELETE
 }
 
 /**
@@ -2263,12 +2285,18 @@ model FinanceAuditEvent {
    */
   entityId  String?            @db.VarChar(64)
   detail    String?            @db.VarChar(1000)
+  /**
+   * Nilai sebelum/sesudah untuk aksi yang mengubah data: `{ before, after }`.
+   * Null untuk event lama dan aksi tanpa perubahan nilai.
+   */
+  meta      Json?
   actorId   String
   actor     User               @relation("FinanceAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
   createdAt DateTime           @default(now())
 
   @@index([action, createdAt])
   @@index([entityId])
+  @@index([createdAt])
 }
 
 /**
@@ -2405,6 +2433,7 @@ model FinanceBankAccount {
   ledgerAccount   FinanceLedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
   institution     String?
   accountMask     String?
+  // @deprecated Hanya info form. Saldo awal dijurnal saat rekening dibuat; angka kas TIDAK membaca kolom ini. Jangan di-drop.
   openingBalance  Decimal              @default(0) @db.Decimal(18, 2)
   openingAsOf     DateTime
   createdAt       DateTime             @default(now())
@@ -2496,6 +2525,7 @@ model FinanceArInvoice {
   memo          String?
   brandId       String?
   brand         Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  // @deprecated Belum pernah ditulis (fitur kirim invoice via email belum ada). Jangan di-drop.
   emailSentAt   DateTime?
   payments      FinanceArPayment[]
   /**
@@ -2585,6 +2615,7 @@ model FinanceFixedAsset {
   expenseAccountId        String
   expenseAccount          FinanceLedgerAccount      @relation("FaExpenseCoa", fields: [expenseAccountId], references: [id], onDelete: Restrict)
   accumulatedDepreciation Decimal                   @default(0) @db.Decimal(18, 2)
+  // @deprecated Belum pernah ditulis (pelepasan aset belum ada); hanya dibaca sebagai filter. Jangan di-drop.
   disposedAt              DateTime?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
