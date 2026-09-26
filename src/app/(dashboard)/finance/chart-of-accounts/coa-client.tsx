@@ -68,6 +68,8 @@ type Row = {
   tracksCashflow: boolean;
   isApControl: boolean;
   isArControl: boolean;
+  /** Sudah terdaftar sebagai rekening (bisa dipilih di pembayaran/transfer). */
+  hasBankAccount: boolean;
 };
 
 export function CoaClient({ initialRows }: { initialRows: Row[] }) {
@@ -298,9 +300,19 @@ function CoaGroups({
                     </TableCell>
                     <TableCell>
                       {r.tracksCashflow ? (
-                        <span className="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300">
-                          Dilacak
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+                            Dilacak
+                          </span>
+                          {r.hasBankAccount ? (
+                            <span
+                              className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                              title="Bisa dipilih sebagai rekening di pembayaran hutang/piutang, pencairan dana, dan transfer."
+                            >
+                              Rekening
+                            </span>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
@@ -377,6 +389,10 @@ function CoaEditDialog({
   const [isApControl, setIsApControl] = useState(row?.isApControl ?? false);
   const [isArControl, setIsArControl] = useState(row?.isArControl ?? false);
   const [sortOrder, setSortOrder] = useState(row?.sortOrder ?? 900);
+  const [institution, setInstitution] = useState("");
+  const [accountMask, setAccountMask] = useState("");
+  const [opening, setOpening] = useState("0");
+  const [openingAsOf, setOpeningAsOf] = useState(todayIso);
 
   // Reset when `row` changes (Dialog reopens for different row)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -388,7 +404,19 @@ function CoaEditDialog({
     setIsApControl(row?.isApControl ?? false);
     setIsArControl(row?.isArControl ?? false);
     setSortOrder(row?.sortOrder ?? 900);
+    setInstitution("");
+    setAccountMask("");
+    setOpening("0");
+    setOpeningAsOf(todayIso());
   }, [row?.id]);
+
+  // Akun Aktiva aktif ber-flag arus kas yang belum punya rekening akan
+  // didaftarkan sebagai rekening saat disimpan.
+  const willRegisterBank =
+    type === FinanceLedgerType.ASSET &&
+    tracksCashflow &&
+    (row?.isActive ?? true) &&
+    !row?.hasBankAccount;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -404,6 +432,14 @@ function CoaEditDialog({
           isArControl,
           sortOrder,
           isActive: row?.isActive ?? true,
+          bank: willRegisterBank
+            ? {
+                institution: institution.trim() || null,
+                accountMask: accountMask.trim() || null,
+                openingBalance: opening.trim() || "0",
+                openingAsOf: new Date(openingAsOf),
+              }
+            : undefined,
         });
         toast.success(row ? "Akun diperbarui." : "Akun ditambahkan.");
         onClose();
@@ -487,10 +523,63 @@ function CoaEditDialog({
             </Label>
             <p className="text-muted-foreground text-xs">
               Centang untuk akun Kas, Bank, atau e-wallet operasional. Saldo
-              akun ini ikut dilaporkan di Arus Kas.
+              akun ini ikut dilaporkan di Arus Kas. Untuk akun Aktiva, akun ini
+              juga bisa dipilih sebagai rekening di pembayaran hutang/piutang,
+              pencairan dana, dan transfer.
             </p>
           </div>
         </div>
+        {willRegisterBank ? (
+          <div className="border-border/60 grid gap-3 rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">Detail rekening</p>
+              <p className="text-muted-foreground text-xs">
+                Saldo awal dijurnal otomatis (lawan akun 3000 Modal pemilik).
+                Biarkan 0 bila saldo awalnya sudah pernah dijurnal.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="coa-bank-inst">Institusi</Label>
+                <Input
+                  id="coa-bank-inst"
+                  value={institution}
+                  onChange={(e) => setInstitution(e.target.value)}
+                  placeholder="mis. BCA"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="coa-bank-mask">No. rekening (akhir)</Label>
+                <Input
+                  id="coa-bank-mask"
+                  value={accountMask}
+                  onChange={(e) => setAccountMask(e.target.value)}
+                  placeholder="mis. 1234"
+                  maxLength={32}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="coa-bank-opening">Saldo awal</Label>
+                <Input
+                  id="coa-bank-opening"
+                  value={opening}
+                  onChange={(e) => setOpening(e.target.value)}
+                  inputMode="decimal"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="coa-bank-asof">Per tanggal</Label>
+                <Input
+                  id="coa-bank-asof"
+                  type="date"
+                  value={openingAsOf}
+                  onChange={(e) => setOpeningAsOf(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
         {type === FinanceLedgerType.LIABILITY ? (
           <div className="border-border/60 flex items-start gap-3 rounded-lg border p-3">
             <Checkbox
@@ -546,6 +635,10 @@ function CoaEditDialog({
       </form>
     </DialogContent>
   );
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 /** Sinkronkan state sederhana saat deps berubah, tanpa effect cascade. */

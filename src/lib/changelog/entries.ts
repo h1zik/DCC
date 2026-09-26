@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-26-keuangan-rekening-dari-coa",
+    date: "2026-09-26",
+    title: "Rekening bank kini diatur dari Chart of Accounts",
+    category: "improved",
+    description:
+      "Menu “Rekonsiliasi bank” dihapus. Akun Aktiva yang dicentang “Akun kas / arus kas” di Chart of Accounts kini otomatis jadi rekening yang bisa dipilih saat bayar hutang, terima piutang, mencairkan pengajuan dana, dan transfer. Rekening dan data yang sudah ada tidak berubah.",
+    highlights: [
+      "Saat menambah akun kas/bank baru, isi institusi, nomor rekening, dan saldo awal langsung di form akun — saldo awal dijurnal otomatis ke Modal pemilik",
+      "Akun kas lama yang belum terdaftar sebagai rekening cukup dibuka lalu disimpan ulang (biarkan saldo awal 0 bila sudah pernah dijurnal)",
+      "Label “Rekening” di kolom Arus kas menandai akun yang sudah bisa dipilih di pembayaran",
+      "Impor mutasi CSV ikut dihapus karena pencocokannya belum pernah tersedia; mutasi yang sudah diimpor tetap tersimpan",
+    ],
+  },
+  {
     id: "2026-09-26-content-plan-usage-tofu-mofu-bofu",
     date: "2026-09-26",
     title: "Content Plan: label Usage jadi TOFU / MOFU / BOFU",
