@@ -27,9 +27,9 @@ export const STATUS_LABEL: Record<ContentPlanStatusKerja, string> = {
 };
 
 export const USAGE_LABEL: Record<ContentPlanUsage, string> = {
-  [ContentPlanUsage.AWARENESS]: "Awareness",
-  [ContentPlanUsage.CONSIDERATION]: "Consideration",
-  [ContentPlanUsage.CONVERSION]: "Conversion",
+  [ContentPlanUsage.AWARENESS]: "TOFU",
+  [ContentPlanUsage.CONSIDERATION]: "MOFU",
+  [ContentPlanUsage.CONVERSION]: "BOFU",
 };
 
 /** Urutan tampil platform (tabel, form, filter): yang paling sering dipakai di depan. */

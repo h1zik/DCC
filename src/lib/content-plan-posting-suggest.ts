@@ -17,9 +17,9 @@ const JENIS_LABEL: Record<ContentPlanJenis, string> = {
 };
 
 const USAGE_LABEL: Record<ContentPlanUsage, string> = {
-  [ContentPlanUsage.AWARENESS]: "Awareness",
-  [ContentPlanUsage.CONSIDERATION]: "Consideration",
-  [ContentPlanUsage.CONVERSION]: "Conversion",
+  [ContentPlanUsage.AWARENESS]: "TOFU",
+  [ContentPlanUsage.CONSIDERATION]: "MOFU",
+  [ContentPlanUsage.CONVERSION]: "BOFU",
 };
 
 export type PostingTimeSuggestion = {
