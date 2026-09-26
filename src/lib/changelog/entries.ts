@@ -37,6 +37,18 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-26-content-plan-usage-tofu-mofu-bofu",
+    date: "2026-09-26",
+    title: "Content Plan: label Usage jadi TOFU / MOFU / BOFU",
+    category: "improved",
+    description:
+      "Kolom Usage di Content Planning kini memakai istilah funnel TOFU, MOFU, dan BOFU menggantikan Awareness, Consideration, dan Conversion. Data lama tidak berubah, hanya tampilannya.",
+    highlights: [
+      "TOFU = Awareness, MOFU = Consideration, BOFU = Conversion.",
+      "Berlaku di tabel, form, filter, badge, dan saran jam posting.",
+    ],
+  },
+  {
     id: "2026-09-21-keuangan-ekspor-jejak-audit",
     date: "2026-09-21",
     title: "Keuangan: ekspor CSV, jejak audit yang bisa dibaca, dan bukti susulan",
