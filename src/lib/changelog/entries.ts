@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-26-keuangan-tampilan-overview-coa-jurnal",
+    date: "2026-09-26",
+    title: "Tampilan baru Financial Overview, Chart of Accounts, dan Jurnal",
+    category: "improved",
+    description:
+      "Tiga halaman keuangan ditata ulang agar lebih cepat dibaca dan dipakai. Menu modul di atas konten dihapus karena sudah ada di sidebar. Data dan cara kerja pembukuan tidak berubah.",
+    highlights: [
+      "Financial Overview menampilkan laba rugi bulan ini sebagai Pendapatan − Beban = Laba bersih, lengkap dengan margin, posisi kas, dan daftar hal yang perlu ditindaklanjuti",
+      "Chart of Accounts kini menampilkan saldo tiap akun dan subtotal per kelompok; klik Aktiva, Kewajiban, Ekuitas, Pendapatan, atau Beban untuk menyaring",
+      "Daftar jurnal bisa dicari dan disaring per status atau bulan; draf tampil di atas dan jurnal posted dikelompokkan per hari",
+      "Editor jurnal punya bar keseimbangan debit–kredit di bawah layar, dan posting maupun hapus draf kini meminta konfirmasi",
+      "Audit Log kini ada di sidebar",
+    ],
+  },
+  {
     id: "2026-09-26-keuangan-rekening-dari-coa",
     date: "2026-09-26",
     title: "Rekening bank kini diatur dari Chart of Accounts",

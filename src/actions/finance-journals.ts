@@ -3,6 +3,7 @@
 import {
   FinanceApArDocStatus,
   FinanceJournalLineLinkMode,
+  FinanceJournalStatus,
   FinanceSpendRequestStatus,
   Prisma,
 } from "@prisma/client";
@@ -31,14 +32,45 @@ function journalPaths() {
   revalidatePath("/finance");
 }
 
-export async function listFinanceJournalEntries(options?: { take?: number }) {
+export async function listFinanceJournalEntries(options?: {
+  take?: number;
+  status?: FinanceJournalStatus;
+  /** Cari di nomor jurnal, memo, atau referensi. */
+  q?: string;
+  /** Batasi ke satu bulan kalender (UTC, sama dengan penyimpanan `entryDate`). */
+  period?: { year: number; month: number };
+}) {
   await requireFinance();
   const take = Math.min(options?.take ?? 80, 200);
+  const q = options?.q?.trim();
+  const where: Prisma.FinanceJournalEntryWhereInput = {
+    ...(options?.status ? { status: options.status } : {}),
+    ...(q
+      ? {
+          OR: [
+            { entryNumber: { contains: q, mode: "insensitive" } },
+            { memo: { contains: q, mode: "insensitive" } },
+            { reference: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+    ...(options?.period
+      ? {
+          entryDate: {
+            gte: new Date(Date.UTC(options.period.year, options.period.month - 1, 1)),
+            lt: new Date(Date.UTC(options.period.year, options.period.month, 1)),
+          },
+        }
+      : {}),
+  };
   return prisma.financeJournalEntry.findMany({
+    where,
     take,
     orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
     include: {
       createdBy: { select: { name: true, email: true } },
+      reversedBy: { select: { id: true, entryNumber: true } },
+      reversesEntry: { select: { id: true, entryNumber: true } },
       _count: { select: { lines: true } },
     },
   });
@@ -50,6 +82,7 @@ export async function getFinanceJournalEntry(entryId: string) {
     where: { id: entryId },
     include: {
       createdBy: { select: { id: true, name: true, email: true } },
+      postedBy: { select: { name: true, email: true } },
       lines: {
         orderBy: { id: "asc" },
         include: {

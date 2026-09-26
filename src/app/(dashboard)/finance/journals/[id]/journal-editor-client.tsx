@@ -2,12 +2,13 @@
 import { actionErrorMessage } from "@/lib/action-error-message";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   Lock,
+  MoreHorizontal,
+  Plus,
   RotateCcw,
   Send,
   Trash2,
@@ -33,6 +34,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -50,14 +57,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BalancePill } from "@/components/finance/balance-pill";
 import {
   LineAttachmentControl,
   type LineAttachmentItem,
 } from "@/components/finance/line-attachment-control";
 import { Money } from "@/components/finance/money";
-import { FinanceSectionCard } from "@/components/finance/section-card";
-import { FinanceEmptyState } from "@/components/finance/empty-state";
 import { formatIdrShort } from "@/lib/finance-format";
 import { cn } from "@/lib/utils";
 
@@ -230,6 +234,7 @@ export function JournalEditorClient(props: Props) {
     | "PAY_BILL"
     | "CREATE_INVOICE"
     | "RECEIVE_INVOICE";
+  const addFormRef = useRef<HTMLFormElement>(null);
   const [linkMode, setLinkMode] = useState<LinkMode>("NONE");
   const [linkVendorId, setLinkVendorId] = useState("");
   const [linkPartyName, setLinkPartyName] = useState("");
@@ -377,6 +382,8 @@ export function JournalEditorClient(props: Props) {
         setLineMemo("");
         resetLink();
         toast.success("Baris ditambahkan.");
+        // Kembali ke pilihan akun untuk baris berikutnya.
+        addFormRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
         router.refresh();
       } catch (e) {
         toast.error(actionErrorMessage(e, "Gagal menambah baris."));
@@ -422,336 +429,367 @@ export function JournalEditorClient(props: Props) {
     });
   }
 
+  const [confirmPost, setConfirmPost] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const headerDirty =
+    entryDate !== props.entryDateIso.slice(0, 10) ||
+    reference !== (props.reference ?? "") ||
+    memo !== (props.memo ?? "");
+
+  function resetHeader() {
+    setEntryDate(props.entryDateIso.slice(0, 10));
+    setReference(props.reference ?? "");
+    setMemo(props.memo ?? "");
+  }
+
+  const canAddLine =
+    !pending && !!accountId && safeAccountId !== "__none__" && (!!debit || !!credit);
+  const balanced = totalDebit > 0 && totalDebit === totalCredit;
+
   return (
-    <div className="flex flex-col gap-5">
-      {/* Banner: locked / reversed-by / reverses-entry */}
-      <div className="flex flex-col gap-2">
-        {isLocked ? (
-          <Banner tone="amber" icon={<Lock className="size-4" />}>
-            <strong>Periode terkunci.</strong> {props.periodLockedReason}
-          </Banner>
-        ) : null}
-        {props.reversedBy ? (
-          <Banner tone="rose" icon={<RotateCcw className="size-4" />}>
-            <strong>Sudah dibalik</strong> oleh{" "}
-            <Link
-              href={`/finance/journals/${props.reversedBy.id}`}
-              className="font-medium underline underline-offset-2"
-            >
-              {props.reversedBy.entryNumber ?? "jurnal pembalik"}
-            </Link>
-            .
-          </Banner>
-        ) : null}
-        {props.reversesEntry ? (
-          <Banner tone="violet" icon={<RotateCcw className="size-4" />}>
-            Jurnal pembalik untuk{" "}
-            <Link
-              href={`/finance/journals/${props.reversesEntry.id}`}
-              className="font-medium underline underline-offset-2"
-            >
-              {props.reversesEntry.entryNumber ?? "jurnal sumber"}
-            </Link>
-            .
-          </Banner>
-        ) : null}
-      </div>
-
-      {/* Header card */}
-      <FinanceSectionCard
-        title="Identitas jurnal"
-        accent="violet"
-        right={
-          <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
-            {isPosted ? (
-              <>
-                <CheckCircle2 className="size-3.5 text-emerald-600" />
-                <span>POSTED</span>
-              </>
-            ) : (
-              <>
-                <span className="size-1.5 rounded-full bg-amber-500" />
-                <span>DRAFT</span>
-              </>
-            )}
-            {props.entryNumber ? (
-              <span className="font-mono">· {props.entryNumber}</span>
-            ) : null}
-          </span>
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="jd">Tanggal</Label>
-            <Input
-              id="jd"
-              type="date"
-              value={entryDate}
-              disabled={!canEdit}
-              onChange={(e) => setEntryDate(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="jr">Referensi (opsional)</Label>
-            <Input
-              id="jr"
-              value={reference}
-              disabled={!canEdit}
-              placeholder="mis. INV-2026-001"
-              onChange={(e) => setReference(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="jm">Memo</Label>
-            <Input
-              id="jm"
-              value={memo}
-              disabled={!canEdit}
-              placeholder="Keterangan singkat"
-              onChange={(e) => setMemo(e.target.value)}
-            />
-          </div>
-          {canEdit ? (
-            <div className="sm:col-span-2">
-              <Button type="button" size="sm" disabled={pending} onClick={saveHeader}>
-                Simpan header
-              </Button>
-            </div>
+    <div className="flex flex-col gap-4">
+      {/* Catatan status: periode terkunci & relasi pembalikan */}
+      {isLocked || props.reversedBy || props.reversesEntry ? (
+        <ul className="text-muted-foreground flex flex-col gap-1.5 text-sm">
+          {isLocked ? (
+            <li className="flex items-start gap-2">
+              <Lock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+              <span>
+                {props.periodLockedReason} Jurnal di periode ini tidak bisa
+                diubah, diposting, atau dibalik.
+              </span>
+            </li>
           ) : null}
-        </div>
-      </FinanceSectionCard>
+          {props.reversedBy ? (
+            <li className="flex items-start gap-2">
+              <RotateCcw className="mt-0.5 size-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />
+              <span>
+                Sudah dibalik oleh{" "}
+                <Link
+                  href={`/finance/journals/${props.reversedBy.id}`}
+                  className="text-foreground font-medium underline underline-offset-2"
+                >
+                  {props.reversedBy.entryNumber ?? "jurnal pembalik"}
+                </Link>
+                .
+              </span>
+            </li>
+          ) : null}
+          {props.reversesEntry ? (
+            <li className="flex items-start gap-2">
+              <RotateCcw className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                Jurnal ini membalik{" "}
+                <Link
+                  href={`/finance/journals/${props.reversesEntry.id}`}
+                  className="text-foreground font-medium underline underline-offset-2"
+                >
+                  {props.reversesEntry.entryNumber ?? "jurnal sumber"}
+                </Link>
+                .
+              </span>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
 
-      {/* Lines table */}
-      <FinanceSectionCard
-        title="Baris jurnal"
-        accent={
-          totalDebit === totalCredit && totalDebit > 0
-            ? "emerald"
-            : props.lines.length === 0
-              ? "neutral"
-              : "rose"
-        }
-        description="Setiap baris hanya boleh berisi nominal di salah satu kolom (debit ATAU kredit)."
-        right={<BalancePill debit={totalDebit} credit={totalCredit} />}
+      {/* Header jurnal */}
+      <section
+        aria-label="Informasi jurnal"
+        className="border-border bg-card rounded-2xl border p-4 shadow-sm sm:p-5"
       >
-        {props.lines.length === 0 ? (
-          <FinanceEmptyState
-            icon={<AlertTriangle className="size-5" />}
-            title="Belum ada baris"
-            description="Tambah minimal dua baris (debit & kredit) sebelum memposting jurnal."
-          />
+        {canEdit ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (headerDirty) saveHeader();
+            }}
+            className="grid gap-3 sm:grid-cols-[10rem_12rem_minmax(0,1fr)]"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="jd">Tanggal</Label>
+              <Input
+                id="jd"
+                type="date"
+                value={entryDate}
+                onChange={(e) => setEntryDate(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="jr">Referensi</Label>
+              <Input
+                id="jr"
+                value={reference}
+                placeholder="INV-2026-001"
+                onChange={(e) => setReference(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="jm">Memo</Label>
+              <Input
+                id="jm"
+                value={memo}
+                placeholder="Apa yang dicatat jurnal ini"
+                onChange={(e) => setMemo(e.target.value)}
+              />
+            </div>
+            {headerDirty ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 sm:col-span-3">
+                <span className="mr-auto text-xs text-amber-700 dark:text-amber-400">
+                  Perubahan belum disimpan
+                </span>
+                <Button type="button" variant="ghost" size="sm" onClick={resetHeader}>
+                  Batalkan
+                </Button>
+                <Button type="submit" size="sm" disabled={pending}>
+                  Simpan
+                </Button>
+              </div>
+            ) : null}
+          </form>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Akun</TableHead>
-                  <TableHead className="w-32 text-right">Debit</TableHead>
-                  <TableHead className="w-32 text-right">Kredit</TableHead>
-                  <TableHead>Brand</TableHead>
-                  <TableHead>Memo</TableHead>
-                  <TableHead className="w-12 text-center">Bukti</TableHead>
-                  {canEdit ? <TableHead className="w-12" /> : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {props.lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell className="text-sm">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-muted-foreground font-mono text-xs">
-                          {line.account.code}
-                        </span>{" "}
-                        <span>{line.account.name}</span>
-                        {line.link ? (
-                          <span
-                            className="rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300"
-                            title={modeLabel(line.link.mode)}
-                          >
-                            {line.link.mode === "CREATE_BILL" ||
-                            line.link.mode === "PAY_BILL"
-                              ? "AP"
-                              : "AR"}
-                          </span>
-                        ) : null}
-                      </div>
-                      {line.link?.partyName ? (
-                        <p className="text-muted-foreground text-[11px]">
-                          {line.link.partyName}
-                          {line.link.docNumber ? ` · ${line.link.docNumber}` : ""}
-                        </p>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      <Money value={line.debitBase} zeroAsDash />
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      <Money value={line.creditBase} zeroAsDash />
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {line.brand?.name ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground line-clamp-1">
-                      {line.memo ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <LineAttachmentControl
-                        lineId={line.id}
-                        attachments={line.attachments}
-                        canEdit={canEdit}
-                        canUpload={canEdit || isPosted}
-                      />
-                    </TableCell>
-                    {canEdit ? (
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label="Hapus baris"
-                          disabled={pending}
-                          onClick={() => removeLine(line.id)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
-                <TableRow className="bg-muted/30 border-t-2 border-foreground/30">
-                  <TableCell className="text-xs font-semibold uppercase">
-                    Total
-                  </TableCell>
-                  <TableCell className="text-right text-sm font-bold">
-                    <Money value={totalDebit} />
-                  </TableCell>
-                  <TableCell className="text-right text-sm font-bold">
-                    <Money value={totalCredit} />
-                  </TableCell>
-                  <TableCell colSpan={canEdit ? 4 : 3} />
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
+          <dl className="grid gap-3 sm:grid-cols-[10rem_12rem_minmax(0,1fr)]">
+            <div className="space-y-0.5">
+              <dt className="text-muted-foreground text-xs">Tanggal</dt>
+              <dd className="text-foreground text-sm font-medium tabular-nums">
+                {entryDateLabel.format(new Date(props.entryDateIso))}
+              </dd>
+            </div>
+            <div className="space-y-0.5">
+              <dt className="text-muted-foreground text-xs">Referensi</dt>
+              <dd className="text-foreground text-sm">{props.reference || "—"}</dd>
+            </div>
+            <div className="space-y-0.5">
+              <dt className="text-muted-foreground text-xs">Memo</dt>
+              <dd className="text-foreground text-sm">{props.memo || "—"}</dd>
+            </div>
+          </dl>
         )}
-      </FinanceSectionCard>
+      </section>
 
-      {/* Add-line panel */}
-      {canEdit ? (
-        <FinanceSectionCard
-          title="Tambah baris"
-          accent="sky"
-          description="Pilih akun, isi salah satu kolom debit/kredit, lalu Tambahkan."
-        >
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
-            <div className="space-y-1.5 sm:col-span-2 lg:col-span-5">
-              <Label>Akun</Label>
-              <Select
-                value={safeAccountId}
-                items={accountItems}
-                onValueChange={(v) =>
-                  setAccountId(!v || v === "__none__" ? "" : v)
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <span className="line-clamp-1">
-                    {safeAccountId === "__none__"
-                      ? "Pilih akun"
-                      : (() => {
-                          const a = props.accounts.find(
-                            (x) => x.id === safeAccountId,
-                          );
-                          return a ? `${a.code} — ${a.name}` : "Pilih akun";
-                        })()}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  {props.accounts.length === 0 ? (
-                    <SelectItem value="__none__">Belum ada akun</SelectItem>
+      {/* Baris jurnal + form tambah */}
+      <section
+        aria-labelledby="lines-heading"
+        className="border-border bg-card overflow-hidden rounded-2xl border shadow-sm"
+      >
+        <div className="flex items-baseline justify-between gap-2 px-4 pt-4 pb-3 sm:px-5">
+          <h2 id="lines-heading" className="text-foreground text-base font-semibold">
+            Baris jurnal
+          </h2>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {props.lines.length} baris
+          </span>
+        </div>
+
+        {props.lines.length === 0 ? (
+          <p className="text-muted-foreground px-4 pb-4 text-sm sm:px-5">
+            {canEdit
+              ? "Belum ada baris. Tambahkan baris debit dan kredit di bawah; totalnya harus sama sebelum diposting."
+              : "Jurnal ini tidak punya baris."}
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-4 sm:pl-5">Akun</TableHead>
+                <TableHead className="w-36 text-right">Debit</TableHead>
+                <TableHead className="w-36 text-right">Kredit</TableHead>
+                <TableHead className="hidden w-36 md:table-cell">Brand</TableHead>
+                <TableHead className="w-14 text-center">Bukti</TableHead>
+                {canEdit ? (
+                  <TableHead className="w-12 pr-4 sm:pr-5">
+                    <span className="sr-only">Hapus</span>
+                  </TableHead>
+                ) : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {props.lines.map((line) => (
+                <TableRow key={line.id}>
+                  <TableCell className="pl-4 align-top whitespace-normal sm:pl-5">
+                    <div className="flex items-baseline gap-2 text-sm">
+                      <span className="text-muted-foreground shrink-0 text-xs font-medium tabular-nums">
+                        {line.account.code}
+                      </span>
+                      <span className="text-foreground font-medium">
+                        {line.account.name}
+                      </span>
+                    </div>
+                    {line.link ? (
+                      <p className="text-muted-foreground mt-0.5 text-xs">
+                        {modeLabel(line.link.mode)}
+                        {line.link.partyName ? `: ${line.link.partyName}` : ""}
+                        {line.link.docNumber ? ` (${line.link.docNumber})` : ""}
+                      </p>
+                    ) : null}
+                    {line.memo ? (
+                      <p className="text-muted-foreground mt-0.5 text-xs">{line.memo}</p>
+                    ) : null}
+                    {line.brand ? (
+                      <p className="text-muted-foreground mt-0.5 text-xs md:hidden">
+                        Brand {line.brand.name}
+                      </p>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-right align-top text-sm">
+                    <Money value={line.debitBase} zeroAsDash />
+                  </TableCell>
+                  <TableCell className="text-right align-top text-sm">
+                    <Money value={line.creditBase} zeroAsDash />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground hidden align-top text-xs md:table-cell">
+                    {line.brand?.name ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-center align-top">
+                    <LineAttachmentControl
+                      lineId={line.id}
+                      attachments={line.attachments}
+                      canEdit={canEdit}
+                      canUpload={canEdit || isPosted}
+                    />
+                  </TableCell>
+                  {canEdit ? (
+                    <TableCell className="pr-4 text-right align-top sm:pr-5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Hapus baris ${line.account.code} ${line.account.name}`}
+                        disabled={pending}
+                        onClick={() => removeLine(line.id)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </TableCell>
                   ) : null}
-                  {props.accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.code} — {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5 lg:col-span-2">
-              <Label>Debit (IDR)</Label>
-              <Input
-                value={debit}
-                onChange={(e) => {
-                  setDebit(e.target.value);
-                  if (e.target.value) setCredit("");
-                }}
-                placeholder="0"
-                className={cn("text-right tabular-nums", debit && "bg-emerald-500/5")}
-              />
-            </div>
-            <div className="space-y-1.5 lg:col-span-2">
-              <Label>Kredit (IDR)</Label>
-              <Input
-                value={credit}
-                onChange={(e) => {
-                  setCredit(e.target.value);
-                  if (e.target.value) setDebit("");
-                }}
-                placeholder="0"
-                className={cn("text-right tabular-nums", credit && "bg-rose-500/5")}
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
-              <Label>Brand (opsional)</Label>
-              <Select
-                value={safeBrandId}
-                items={brandItems}
-                onValueChange={(v) => setBrandId(!v || v === "__none__" ? "" : v)}
-              >
-                <SelectTrigger className="w-full">
-                  <span className="line-clamp-1">
-                    {safeBrandId === "__none__"
-                      ? "Tanpa tag"
-                      : props.brands.find((b) => b.id === safeBrandId)?.name ??
-                        "Tanpa tag"}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Tanpa tag brand</SelectItem>
-                  {props.brands.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5 sm:col-span-2 lg:col-span-9">
-              <Label>Memo baris (opsional)</Label>
-              <Input value={lineMemo} onChange={(e) => setLineMemo(e.target.value)} />
-            </div>
-            <div className="flex items-end sm:col-span-2 lg:col-span-3">
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {canEdit ? (
+          <form
+            ref={addFormRef}
+            aria-label="Tambah baris"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (canAddLine) addLine();
+            }}
+            className="border-border bg-muted/20 flex flex-col gap-3 border-t border-dashed p-4 sm:p-5"
+          >
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_auto] lg:items-end">
+              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+                <Label>Akun</Label>
+                <Select
+                  value={safeAccountId}
+                  items={accountItems}
+                  onValueChange={(v) => setAccountId(!v || v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger className="bg-background w-full">
+                    <span className="line-clamp-1">
+                      {safeAccountId === "__none__"
+                        ? "Pilih akun"
+                        : (() => {
+                            const a = props.accounts.find((x) => x.id === safeAccountId);
+                            return a ? `${a.code} ${a.name}` : "Pilih akun";
+                          })()}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {props.accounts.length === 0 ? (
+                      <SelectItem value="__none__">Belum ada akun</SelectItem>
+                    ) : null}
+                    {props.accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.code} {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="jl-debit">Debit</Label>
+                <Input
+                  id="jl-debit"
+                  value={debit}
+                  inputMode="decimal"
+                  onChange={(e) => {
+                    setDebit(e.target.value);
+                    if (e.target.value) setCredit("");
+                  }}
+                  placeholder="0"
+                  className="bg-background text-right tabular-nums"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="jl-credit">Kredit</Label>
+                <Input
+                  id="jl-credit"
+                  value={credit}
+                  inputMode="decimal"
+                  onChange={(e) => {
+                    setCredit(e.target.value);
+                    if (e.target.value) setDebit("");
+                  }}
+                  placeholder="0"
+                  className="bg-background text-right tabular-nums"
+                />
+              </div>
               <Button
-                type="button"
-                disabled={
-                  pending ||
-                  !accountId ||
-                  safeAccountId === "__none__" ||
-                  (!debit && !credit)
-                }
-                onClick={addLine}
-                className="w-full"
+                type="submit"
+                disabled={!canAddLine}
+                className="sm:col-span-2 lg:col-span-1"
               >
-                Tambahkan baris
+                <Plus className="size-3.5" aria-hidden />
+                Tambah baris
               </Button>
             </div>
-          </div>
+            <div className="grid gap-3 sm:grid-cols-[14rem_minmax(0,1fr)]">
+              <div className="space-y-1.5">
+                <Label>Brand</Label>
+                <Select
+                  value={safeBrandId}
+                  items={brandItems}
+                  onValueChange={(v) => setBrandId(!v || v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger className="bg-background w-full">
+                    <span className="line-clamp-1">
+                      {safeBrandId === "__none__"
+                        ? "Tanpa brand"
+                        : props.brands.find((b) => b.id === safeBrandId)?.name ??
+                          "Tanpa brand"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Tanpa brand</SelectItem>
+                    {props.brands.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="jl-memo">Memo baris</Label>
+                <Input
+                  id="jl-memo"
+                  value={lineMemo}
+                  onChange={(e) => setLineMemo(e.target.value)}
+                  placeholder="Opsional"
+                  className="bg-background"
+                />
+              </div>
+            </div>
 
-          {/* Dynamic AP/AR sub-form */}
-          {showLinkPanel ? (
-            <div className="border-violet-500/30 bg-violet-500/5 mt-4 rounded-lg border p-3">
+            {/* Sub-form AP/AR dinamis */}
+            {showLinkPanel ? (
+              <div className="border-border bg-background rounded-xl border p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                <span className="text-foreground text-sm font-medium">
                   {isApAccount ? "Hutang usaha (AP)" : "Piutang usaha (AR)"}
                 </span>
                 <Select
@@ -772,7 +810,7 @@ export function JournalEditorClient(props: Props) {
                     ) : null}
                     {isApAccount && sideIsDebit ? (
                       <SelectItem value="PAY_BILL">
-                        Lunasi tagihan existing
+                        Lunasi tagihan yang ada
                       </SelectItem>
                     ) : null}
                     {isArAccount && sideIsDebit ? (
@@ -973,7 +1011,7 @@ export function JournalEditorClient(props: Props) {
                 </div>
               ) : null}
 
-              <p className="text-muted-foreground mt-2 text-[11px]">
+              <p className="text-muted-foreground mt-3 text-xs">
                 Saat baris ini di-posting, sistem akan otomatis{" "}
                 {effectiveLinkMode === "CREATE_BILL"
                   ? "membuat tagihan baru di sub-ledger AP."
@@ -985,47 +1023,115 @@ export function JournalEditorClient(props: Props) {
                         ? "mencatat penerimaan ke invoice yang dipilih."
                         : "—"}
               </p>
-            </div>
-          ) : null}
-        </FinanceSectionCard>
-      ) : null}
+              </div>
+            ) : null}
+          </form>
+        ) : null}
+      </section>
 
-      {/* Action footer */}
-      <div className="border-border/60 sticky bottom-0 z-10 -mx-2 flex flex-wrap items-center justify-between gap-3 border-t bg-background/95 p-3 backdrop-blur supports-backdrop-filter:bg-background/70 sm:-mx-4 sm:px-4">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          render={<Link href="/finance/journals" />}
-        >
-          <ArrowLeft className="size-3.5" /> Daftar jurnal
-        </Button>
-        <div className="flex flex-wrap items-center gap-2">
-          {canPost ? (
+      <BalanceBar debit={totalDebit} credit={totalCredit} lineCount={props.lines.length}>
+        {canPost ? (
+          <>
             <Button
               type="button"
               size="sm"
-              disabled={pending || totalDebit === 0 || totalDebit !== totalCredit}
-              onClick={post}
+              disabled={pending || !balanced}
+              onClick={() => setConfirmPost(true)}
             >
-              <Send className="size-3.5" /> Posting jurnal
+              <Send className="size-3.5" aria-hidden /> Posting jurnal
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="Aksi lain"
+                disabled={pending}
+                className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50 inline-flex size-8 items-center justify-center rounded-md outline-none focus-visible:ring-2 disabled:opacity-50"
+              >
+                <MoreHorizontal className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top">
+                <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
+                  <Trash2 className="size-3.5" />
+                  Hapus draf
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        ) : null}
+        {canReverse ? <ReverseDialog entryId={props.entryId} /> : null}
+      </BalanceBar>
+
+      <Dialog open={confirmPost} onOpenChange={setConfirmPost}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Posting jurnal ini?</DialogTitle>
+            <DialogDescription>
+              Setelah diposting, jurnal masuk ke buku besar dan laporan. Koreksi
+              hanya bisa lewat jurnal pembalik.
+            </DialogDescription>
+          </DialogHeader>
+          <dl className="bg-muted/50 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-lg p-3 text-sm">
+            <dt className="text-muted-foreground">Tanggal</dt>
+            <dd className="text-foreground tabular-nums">
+              {entryDateLabel.format(new Date(`${entryDate}T00:00:00Z`))}
+            </dd>
+            <dt className="text-muted-foreground">Baris</dt>
+            <dd className="text-foreground tabular-nums">{props.lines.length}</dd>
+            <dt className="text-muted-foreground">Total</dt>
+            <dd className="text-foreground font-medium tabular-nums">
+              {idr.format(totalDebit)}
+            </dd>
+          </dl>
+          {headerDirty ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Perubahan tanggal, referensi, atau memo belum disimpan dan tidak
+              ikut diposting.
+            </p>
           ) : null}
-          {canEdit ? (
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmPost(false)}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setConfirmPost(false);
+                post();
+              }}
+            >
+              Posting jurnal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Hapus draf ini?</DialogTitle>
+            <DialogDescription>
+              Semua baris ({props.lines.length}) dan lampirannya ikut terhapus.
+              Tindakan ini tidak bisa dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
+              Batal
+            </Button>
             <Button
               type="button"
               variant="destructive"
-              size="sm"
               disabled={pending}
-              onClick={removeDraft}
+              onClick={() => {
+                setConfirmDelete(false);
+                removeDraft();
+              }}
             >
-              <Trash2 className="size-3.5" /> Hapus draf
+              Hapus draf
             </Button>
-          ) : null}
-          {canReverse ? <ReverseDialog entryId={props.entryId} /> : null}
-        </div>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1069,9 +1175,8 @@ function ReverseDialog({ entryId }: { entryId: string }) {
         <DialogHeader>
           <DialogTitle>Balik jurnal terposting</DialogTitle>
           <DialogDescription>
-            Best practice akuntansi: jangan edit/hapus jurnal terposting. Jurnal
-            pembalik baru akan dibuat dengan menukar debit ↔ kredit, sehingga
-            audit trail tetap utuh.
+            Jurnal baru dibuat dengan debit dan kredit ditukar, sehingga efeknya
+            batal tanpa menghapus jurnal ini dari riwayat.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={run} className="grid gap-3">
@@ -1116,7 +1221,7 @@ function modeLabel(mode: string): string {
     case "CREATE_BILL":
       return "Buat tagihan baru";
     case "PAY_BILL":
-      return "Lunasi tagihan existing";
+      return "Lunasi tagihan yang ada";
     case "CREATE_INVOICE":
       return "Buat invoice baru";
     case "RECEIVE_INVOICE":
@@ -1126,31 +1231,110 @@ function modeLabel(mode: string): string {
   }
 }
 
-function Banner({
-  tone,
-  icon,
+const idr = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 0,
+});
+
+// `entryDate` disimpan sebagai tanggal murni UTC.
+const entryDateLabel = new Intl.DateTimeFormat("id-ID", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/**
+ * Bar keseimbangan sticky: total debit vs kredit, timbangan sederhana
+ * (garis tengah = seimbang), dan aksi utama jurnal.
+ */
+function BalanceBar({
+  debit,
+  credit,
+  lineCount,
   children,
 }: {
-  tone: "amber" | "rose" | "violet";
-  icon: React.ReactNode;
+  debit: number;
+  credit: number;
+  lineCount: number;
   children: React.ReactNode;
 }) {
-  const toneClass: Record<typeof tone, string> = {
-    amber:
-      "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    rose: "border-rose-500/35 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-    violet:
-      "border-violet-500/35 bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  };
+  const sum = debit + credit;
+  const empty = sum === 0;
+  const diff = Math.round((debit - credit) * 100) / 100;
+  const balanced = !empty && diff === 0;
+  const debitPct = empty ? 50 : (debit / sum) * 100;
+
+  const status = empty
+    ? lineCount === 0
+      ? "Tambah baris debit dan kredit"
+      : "Nilai baris masih nol"
+    : balanced
+      ? "Seimbang"
+      : diff > 0
+        ? `Kredit kurang ${idr.format(diff)}`
+        : `Debit kurang ${idr.format(-diff)}`;
+
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
-        toneClass[tone],
-      )}
-    >
-      <span aria-hidden>{icon}</span>
-      <span>{children}</span>
+    <div className="border-border/60 bg-background/95 supports-backdrop-filter:bg-background/80 sticky bottom-0 z-10 -mx-2 border-t px-3 py-3 backdrop-blur sm:-mx-4 sm:px-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <dl className="flex items-center gap-4 text-sm">
+          <div>
+            <dt className="text-muted-foreground text-xs">Debit</dt>
+            <dd className="text-foreground font-semibold tabular-nums">
+              {idr.format(debit)}
+            </dd>
+          </div>
+          <div
+            role="img"
+            aria-label={`Porsi debit ${debitPct.toFixed(0)}%, kredit ${(100 - debitPct).toFixed(0)}%`}
+            className="relative hidden h-2 w-28 sm:block"
+          >
+            <div className="bg-muted absolute inset-0 overflow-hidden rounded-full">
+              {!empty ? (
+                <div
+                  className={cn(
+                    "absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 motion-reduce:transition-none",
+                    balanced ? "bg-emerald-500" : "bg-foreground/35",
+                  )}
+                  style={{ width: `${debitPct}%` }}
+                />
+              ) : null}
+            </div>
+            <span
+              aria-hidden
+              className="bg-foreground/60 absolute -top-1 left-1/2 h-4 w-px -translate-x-1/2"
+            />
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-xs">Kredit</dt>
+            <dd className="text-foreground font-semibold tabular-nums">
+              {idr.format(credit)}
+            </dd>
+          </div>
+        </dl>
+        <p
+          aria-live="polite"
+          className={cn(
+            "inline-flex items-center gap-1.5 text-sm font-medium",
+            balanced
+              ? "text-emerald-700 dark:text-emerald-400"
+              : empty
+                ? "text-muted-foreground"
+                : "text-rose-700 dark:text-rose-400",
+          )}
+        >
+          {balanced ? (
+            <CheckCircle2 className="size-4" aria-hidden />
+          ) : empty ? null : (
+            <AlertTriangle className="size-4" aria-hidden />
+          )}
+          {status}
+        </p>
+        <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div>
+      </div>
     </div>
   );
 }
