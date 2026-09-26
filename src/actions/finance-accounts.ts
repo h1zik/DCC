@@ -6,6 +6,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireFinance } from "@/lib/auth-helpers";
 import { logFinanceAudit } from "@/lib/finance-audit";
+import { createBankAccountInTx } from "@/lib/finance-bank-account";
+import { type FinanceTx } from "@/lib/finance-journal-post";
+import { toDecimal } from "@/lib/finance-money";
 import {
   defaultCoaCreateMany,
   SYSTEM_REFERENCED_ACCOUNT_CODES,
@@ -61,7 +64,53 @@ const upsertSchema = z.object({
   isActive: z.boolean().optional(),
   isApControl: z.boolean().optional(),
   isArControl: z.boolean().optional(),
+  /**
+   * Detail rekening — dipakai hanya ketika akun Aktiva ber-flag arus kas belum
+   * punya rekening terdaftar (lihat ensureBankAccountForCashLedger).
+   */
+  bank: z
+    .object({
+      institution: z.string().max(200).optional().nullable(),
+      accountMask: z.string().max(32).optional().nullable(),
+      openingBalance: z.string().default("0"),
+      openingAsOf: z.coerce.date(),
+    })
+    .optional(),
 });
+
+/**
+ * Akun Aktiva aktif yang ditandai "arus kas" otomatis terdaftar sebagai
+ * rekening, agar langsung bisa dipilih di pembayaran hutang/piutang, pencairan
+ * dana, dan transfer. Hanya jalan saat user menyimpan akun — tidak ada backfill,
+ * dan rekening yang sudah ada tidak diubah.
+ */
+async function ensureBankAccountForCashLedger(
+  tx: FinanceTx,
+  ledger: { id: string; name: string; type: FinanceLedgerType; isActive: boolean; tracksCashflow: boolean },
+  bank: z.infer<typeof upsertSchema>["bank"],
+  actorId: string,
+) {
+  if (
+    ledger.type !== FinanceLedgerType.ASSET ||
+    !ledger.tracksCashflow ||
+    !ledger.isActive
+  ) {
+    return;
+  }
+  const existing = await tx.financeBankAccount.count({
+    where: { ledgerAccountId: ledger.id },
+  });
+  if (existing > 0) return;
+  await createBankAccountInTx(tx, {
+    name: ledger.name,
+    ledgerAccountId: ledger.id,
+    institution: bank?.institution,
+    accountMask: bank?.accountMask,
+    opening: toDecimal(bank?.openingBalance ?? "0"),
+    openingAsOf: bank?.openingAsOf ?? new Date(),
+    actorId,
+  });
+}
 
 export async function upsertFinanceLedgerAccount(
   input: z.infer<typeof upsertSchema>,
@@ -146,6 +195,12 @@ export async function upsertFinanceLedgerAccount(
         detail: `Ubah akun ${existing.code} ${existing.name}`,
         meta: { before: existing, after },
       });
+      await ensureBankAccountForCashLedger(
+        tx,
+        { id: accountId, ...after },
+        data.bank,
+        session.user.id,
+      );
     });
   } else {
     await prisma.$transaction(async (tx) => {
@@ -160,7 +215,13 @@ export async function upsertFinanceLedgerAccount(
           isApControl: data.isApControl ?? false,
           isArControl: data.isArControl ?? false,
         },
-        select: { id: true },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          isActive: true,
+          tracksCashflow: true,
+        },
       });
       await logFinanceAudit(tx, {
         action: FinanceAuditAction.ACCOUNT_CREATE,
@@ -168,11 +229,20 @@ export async function upsertFinanceLedgerAccount(
         entityId: created.id,
         detail: `Akun baru ${data.code} ${data.name} (${data.type})`,
       });
+      await ensureBankAccountForCashLedger(
+        tx,
+        created,
+        data.bank,
+        session.user.id,
+      );
     });
   }
 
   revalidatePath("/finance");
   revalidatePath("/finance/chart-of-accounts");
+  revalidatePath("/finance/ap-ar");
+  revalidatePath("/finance/approvals");
+  revalidatePath("/finance/treasury");
 }
 
 export async function setFinanceAccountActive(

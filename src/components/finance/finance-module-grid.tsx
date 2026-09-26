@@ -10,7 +10,6 @@ import {
   PiggyBank,
   Scale,
   ScrollText,
-  Wallet,
 } from "lucide-react";
 import {
   Card,
@@ -40,13 +39,6 @@ const LINKS = [
     title: "Buku besar",
     desc: "Mutasi per akun dan saldo berjalan.",
     icon: Landmark,
-    section: "Core accounting",
-  },
-  {
-    href: "/finance/bank",
-    title: "Rekonsiliasi bank",
-    desc: "Rekening bank & impor mutasi CSV.",
-    icon: Wallet,
     section: "Core accounting",
   },
   {

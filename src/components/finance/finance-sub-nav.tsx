@@ -16,7 +16,6 @@ import {
   Scale,
   ScrollText,
   ShieldCheck,
-  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +32,6 @@ const NAV_ITEMS: SubNavItem[] = [
   { href: "/finance/chart-of-accounts", label: "Chart of Accounts", icon: Scale, group: "core" },
   { href: "/finance/journals", label: "Journals", icon: ScrollText, group: "core" },
   { href: "/finance/general-ledger", label: "General Ledger", icon: Landmark, group: "core" },
-  { href: "/finance/bank", label: "Bank Reconciliation", icon: Wallet, group: "ops" },
   { href: "/finance/treasury", label: "Cash & Treasury", icon: ArrowLeftRight, group: "ops" },
   { href: "/finance/ap-ar", label: "AP & AR", icon: BadgeCent, group: "ops" },
   { href: "/finance/currencies", label: "Exchange Rates", icon: Coins, group: "ops" },

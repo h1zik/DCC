@@ -1,10 +1,15 @@
 import { Scale } from "lucide-react";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
+import { listFinanceBankAccounts } from "@/actions/finance-bank";
 import { FinancePageShell } from "@/components/finance/finance-page-shell";
 import { CoaClient } from "./coa-client";
 
 export default async function ChartOfAccountsPage() {
-  const rows = await listFinanceAccounts({ includeInactive: true });
+  const [rows, banks] = await Promise.all([
+    listFinanceAccounts({ includeInactive: true }),
+    listFinanceBankAccounts(),
+  ]);
+  const ledgerIdsWithBank = new Set(banks.map((b) => b.ledgerAccountId));
 
   return (
     <FinancePageShell
@@ -14,7 +19,7 @@ export default async function ChartOfAccountsPage() {
         { label: "Chart of accounts" },
       ]}
       title="Chart of accounts"
-      description="Daftar akun untuk jurnal & laporan. Strukturkan kode-akun mengikuti kelompok Aktiva, Kewajiban, Ekuitas, Pendapatan, dan Beban."
+      description="Daftar akun untuk jurnal & laporan. Strukturkan kode-akun mengikuti kelompok Aktiva, Kewajiban, Ekuitas, Pendapatan, dan Beban. Akun Aktiva bertanda arus kas otomatis jadi rekening untuk pembayaran & transfer."
     >
       <CoaClient
         initialRows={rows.map((r) => ({
@@ -27,6 +32,7 @@ export default async function ChartOfAccountsPage() {
           tracksCashflow: r.tracksCashflow,
           isApControl: r.isApControl,
           isArControl: r.isArControl,
+          hasBankAccount: ledgerIdsWithBank.has(r.id),
         }))}
       />
     </FinancePageShell>

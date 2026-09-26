@@ -338,13 +338,13 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
         className="grid gap-3 lg:grid-cols-3"
       >
         <Panel
-          title="Mutasi Bank"
+          title="Rekening Bank"
           accent="sky"
           right={data.banks.length > 0 ? `${data.banks.length} rekening` : "—"}
-          href="/finance/bank"
+          href="/finance/chart-of-accounts"
         >
           {data.banks.length === 0 ? (
-            <EmptyRow message="Belum ada rekening bank yang dikonfigurasi." />
+            <EmptyRow message="Belum ada rekening. Centang “Akun kas / arus kas” pada akun Aktiva di Chart of Accounts." />
           ) : (
             <ul className="flex flex-col gap-3">
               {data.banks.map((bank) => (
@@ -356,13 +356,10 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
                         <span className="text-muted-foreground"> ··{bank.mask}</span>
                       ) : null}
                     </span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {bank.totalLines === 0
-                        ? "Belum impor"
-                        : `${bank.totalLines} baris diimpor`}
+                    <span className="text-muted-foreground truncate">
+                      {bank.institution ?? "—"}
                     </span>
                   </div>
-                  {/* Progres pencocokan disembunyikan sampai UI rekonsiliasi tersedia. */}
                 </li>
               ))}
             </ul>
