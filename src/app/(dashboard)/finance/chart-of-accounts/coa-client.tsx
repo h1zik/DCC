@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { FinanceLedgerType } from "@prisma/client";
 import {
+  BookOpen,
+  ChevronDown,
   Eye,
   EyeOff,
+  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -20,14 +23,25 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Collapsible,
+  CollapsiblePanel,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -45,11 +59,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FINANCE_TYPE_GROUP_ORDER,
   FINANCE_TYPE_LABEL,
   FINANCE_TYPE_TONE,
+  formatIdrShort,
 } from "@/lib/finance-format";
 import { cn } from "@/lib/utils";
 import { FinanceEmptyState } from "@/components/finance/empty-state";
@@ -70,44 +84,135 @@ type Row = {
   isArControl: boolean;
   /** Sudah terdaftar sebagai rekening (bisa dipilih di pembayaran/transfer). */
   hasBankAccount: boolean;
+  /** Mis. "BCA ··1234" — null bila bukan rekening atau tanpa detail. */
+  bankLabel: string | null;
+  /** Saldo bertanda sesuai sifat akun (string Decimal). */
+  balance: string;
 };
+
+type StatusFilter = "active" | "inactive" | "all";
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "active", label: "Aktif" },
+  { value: "inactive", label: "Nonaktif" },
+  { value: "all", label: "Semua" },
+];
+
+/** Operator di depan tiap suku persamaan akuntansi (suku pertama tanpa operator). */
+const EQUATION_OPERATOR: Record<FinanceLedgerType, string | null> = {
+  ASSET: null,
+  LIABILITY: "=",
+  EQUITY: "+",
+  REVENUE: null,
+  EXPENSE: "−",
+};
+
+const idrFormatter = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 0,
+});
+
+function formatBalance(n: number): string {
+  return n === 0 ? "—" : idrFormatter.format(n);
+}
+
+/** Tebakan tipe dari digit pertama kode (konvensi 1xxx aktiva, dst.). */
+function typeFromCode(code: string): FinanceLedgerType | null {
+  switch (code.trim()[0]) {
+    case "1":
+      return FinanceLedgerType.ASSET;
+    case "2":
+      return FinanceLedgerType.LIABILITY;
+    case "3":
+      return FinanceLedgerType.EQUITY;
+    case "4":
+      return FinanceLedgerType.REVENUE;
+    case "5":
+    case "6":
+    case "7":
+    case "8":
+    case "9":
+      return FinanceLedgerType.EXPENSE;
+    default:
+      return null;
+  }
+}
+
+function rolesFor(r: Row): string[] {
+  const roles: string[] = [];
+  if (r.hasBankAccount) {
+    roles.push(r.bankLabel ? `Rekening ${r.bankLabel}` : "Rekening");
+  }
+  if (r.tracksCashflow) roles.push("Arus kas");
+  if (r.isApControl) roles.push("Kontrol hutang (AP)");
+  if (r.isArControl) roles.push("Kontrol piutang (AR)");
+  return roles;
+}
 
 export function CoaClient({ initialRows }: { initialRows: Row[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
-  const [showInactive, setShowInactive] = useState(false);
+  const [status, setStatus] = useState<StatusFilter>("active");
+  const [typeFilter, setTypeFilter] = useState<FinanceLedgerType | null>(null);
   const [editing, setEditing] = useState<Row | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogKey, setDialogKey] = useState(0);
 
-  const filteredGrouped = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const map = new Map<FinanceLedgerType, Row[]>();
-    for (const r of initialRows) {
-      if (!showInactive && !r.isActive) continue;
-      if (q) {
-        const hay = `${r.code} ${r.name}`.toLowerCase();
-        if (!hay.includes(q)) continue;
-      }
-      const cur = map.get(r.type) ?? [];
-      cur.push(r);
-      map.set(r.type, cur);
-    }
-    return FINANCE_TYPE_GROUP_ORDER.map((t) => ({
-      type: t,
-      rows: (map.get(t) ?? []).sort((a, b) =>
-        a.sortOrder === b.sortOrder
-          ? a.code.localeCompare(b.code)
-          : a.sortOrder - b.sortOrder,
+  const statusCounts = useMemo(() => {
+    const active = initialRows.filter((r) => r.isActive).length;
+    return {
+      active,
+      inactive: initialRows.length - active,
+      all: initialRows.length,
+    };
+  }, [initialRows]);
+
+  // Baris sesuai filter status — dasar strip persamaan (tidak ikut pencarian
+  // agar angka ringkasan tetap stabil selama user mengetik).
+  const statusRows = useMemo(
+    () =>
+      initialRows.filter((r) =>
+        status === "all" ? true : status === "active" ? r.isActive : !r.isActive,
       ),
-    }));
-  }, [initialRows, search, showInactive]);
+    [initialRows, status],
+  );
 
-  const totalActive = initialRows.filter((r) => r.isActive).length;
-  const totalInactive = initialRows.filter((r) => !r.isActive).length;
+  const typeSummary = useMemo(() => {
+    const summary = new Map<FinanceLedgerType, { count: number; total: number }>();
+    for (const t of FINANCE_TYPE_GROUP_ORDER) summary.set(t, { count: 0, total: 0 });
+    for (const r of statusRows) {
+      const s = summary.get(r.type)!;
+      s.count += 1;
+      s.total += Number(r.balance);
+    }
+    return summary;
+  }, [statusRows]);
+
+  const groups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return FINANCE_TYPE_GROUP_ORDER.filter(
+      (t) => typeFilter == null || typeFilter === t,
+    )
+      .map((t) => {
+        const rows = statusRows
+          .filter((r) => r.type === t)
+          .filter((r) => !q || `${r.code} ${r.name}`.toLowerCase().includes(q))
+          .sort((a, b) =>
+            a.sortOrder === b.sortOrder
+              ? a.code.localeCompare(b.code)
+              : a.sortOrder - b.sortOrder,
+          );
+        const total = rows.reduce((a, r) => a + Number(r.balance), 0);
+        return { type: t, rows, total };
+      })
+      .filter((g) => g.rows.length > 0);
+  }, [statusRows, search, typeFilter]);
 
   function openEdit(row: Row | null) {
     setEditing(row);
+    setDialogKey((k) => k + 1);
     setDialogOpen(true);
   }
 
@@ -115,251 +220,239 @@ export function CoaClient({ initialRows }: { initialRows: Row[] }) {
     startTransition(async () => {
       try {
         await setFinanceAccountActive(row.id, !row.isActive);
-        toast.success(`Akun ${row.isActive ? "dinonaktifkan" : "diaktifkan"}.`);
+        toast.success(
+          `${row.code} ${row.name} ${row.isActive ? "dinonaktifkan" : "diaktifkan"}.`,
+        );
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal."));
+        toast.error(actionErrorMessage(err, "Gagal mengubah status akun."));
       }
     });
   }
 
+  function resetFilters() {
+    setSearch("");
+    setTypeFilter(null);
+    setStatus("active");
+  }
+
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
+      <EquationStrip
+        summary={typeSummary}
+        selected={typeFilter}
+        onSelect={(t) => setTypeFilter((cur) => (cur === t ? null : t))}
+      />
+
       {/* Toolbar */}
-      <div className="border-border bg-card flex flex-wrap items-center gap-3 rounded-xl border p-3">
-        <div className="relative min-w-[14rem] flex-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[14rem] flex-1 sm:max-w-sm">
           <Search
-            className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2"
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
             aria-hidden
           />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari kode atau nama akun…"
+            placeholder="Cari kode atau nama akun"
+            aria-label="Cari akun"
             className="h-8 pl-8 text-sm"
           />
           {search ? (
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="hover:text-foreground text-muted-foreground absolute right-2 top-1/2 -translate-y-1/2"
-              aria-label="Kosongkan pencarian"
+              className="hover:text-foreground text-muted-foreground absolute top-1/2 right-2 -translate-y-1/2"
+              aria-label="Hapus pencarian"
             >
               <X className="size-3.5" />
             </button>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="show-inactive"
-            checked={showInactive}
-            onCheckedChange={(c) => setShowInactive(!!c)}
-          />
-          <Label htmlFor="show-inactive" className="text-xs">
-            Tampilkan nonaktif ({totalInactive})
-          </Label>
+
+        <div
+          role="group"
+          aria-label="Filter status akun"
+          className="bg-muted inline-flex rounded-lg p-0.5"
+        >
+          {STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              aria-pressed={status === opt.value}
+              onClick={() => setStatus(opt.value)}
+              className={cn(
+                "focus-visible:ring-ring/50 rounded-md px-2.5 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2",
+                status === opt.value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {opt.label}
+              <span className="text-muted-foreground ml-1 tabular-nums">
+                {statusCounts[opt.value]}
+              </span>
+            </button>
+          ))}
         </div>
-        <div className="text-muted-foreground text-xs">
-          {totalActive} akun aktif
-        </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger
-            render={
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => openEdit(null)}
-                className="ml-auto"
-              />
-            }
-          >
-            <Plus className="size-3.5" /> Akun baru
-          </DialogTrigger>
-          <CoaEditDialog
-            row={editing}
-            onClose={() => setDialogOpen(false)}
-          />
-        </Dialog>
+
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => openEdit(null)}
+          className="ml-auto"
+        >
+          <Plus className="size-3.5" aria-hidden />
+          Akun baru
+        </Button>
       </div>
 
-      {/* Tabs by type for quick navigation */}
-      <Tabs defaultValue="ALL" className="gap-3">
-        <TabsList variant="line">
-          <TabsTrigger value="ALL">Semua</TabsTrigger>
-          {FINANCE_TYPE_GROUP_ORDER.map((t) => (
-            <TabsTrigger key={t} value={t}>
-              <span
-                className={cn("mr-1.5 size-2 rounded-full", FINANCE_TYPE_TONE[t].dot)}
-                aria-hidden
-              />
-              {FINANCE_TYPE_LABEL[t]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+      {groups.length === 0 ? (
+        <FinanceEmptyState
+          icon={<Search className="size-5" />}
+          title={
+            search.trim()
+              ? `Tidak ada akun dengan kode atau nama "${search.trim()}"`
+              : "Tidak ada akun di filter ini"
+          }
+          description="Ubah kata kunci, tipe, atau status untuk melihat akun lain."
+          action={
+            <Button type="button" variant="outline" size="sm" onClick={resetFilters}>
+              Hapus semua filter
+            </Button>
+          }
+        />
+      ) : (
+        <div className="border-border bg-card overflow-hidden rounded-2xl border shadow-sm">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-20 pl-4">Kode</TableHead>
+                <TableHead>Akun</TableHead>
+                <TableHead className="w-48 text-right">Saldo</TableHead>
+                <TableHead className="w-12 pr-4">
+                  <span className="sr-only">Aksi</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            {groups.map((g) => (
+              <TableBody key={g.type} className="border-border/60 border-t first:border-t-0">
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableCell colSpan={2} className="py-2 pl-4">
+                    <span className="text-foreground inline-flex items-center gap-2 text-sm font-semibold">
+                      <span
+                        className={cn("size-2 rounded-full", FINANCE_TYPE_TONE[g.type].dot)}
+                        aria-hidden
+                      />
+                      {FINANCE_TYPE_LABEL[g.type]}
+                      <span className="text-muted-foreground text-xs font-normal tabular-nums">
+                        {g.rows.length} akun
+                      </span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-foreground py-2 text-right text-sm font-semibold tabular-nums">
+                    {formatBalance(g.total)}
+                  </TableCell>
+                  <TableCell className="pr-4" />
+                </TableRow>
+                {g.rows.map((r) => (
+                  <AccountRow
+                    key={r.id}
+                    row={r}
+                    pending={pending}
+                    onEdit={() => openEdit(r)}
+                    onToggle={() => toggleActive(r)}
+                    onOpenLedger={() =>
+                      router.push(`/finance/general-ledger?accountId=${r.id}`)
+                    }
+                  />
+                ))}
+              </TableBody>
+            ))}
+          </Table>
+        </div>
+      )}
 
-        <TabsContent value="ALL">
-          <CoaGroups
-            groups={filteredGrouped}
-            pending={pending}
-            onEdit={openEdit}
-            onToggle={toggleActive}
-          />
-        </TabsContent>
-        {FINANCE_TYPE_GROUP_ORDER.map((t) => (
-          <TabsContent key={t} value={t}>
-            <CoaGroups
-              groups={filteredGrouped.filter((g) => g.type === t)}
-              pending={pending}
-              onEdit={openEdit}
-              onToggle={toggleActive}
-            />
-          </TabsContent>
-        ))}
-      </Tabs>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <CoaEditDialog
+          key={dialogKey}
+          row={editing}
+          existingCodes={initialRows}
+          onClose={() => setDialogOpen(false)}
+        />
+      </Dialog>
     </div>
   );
 }
 
-function CoaGroups({
-  groups,
-  pending,
-  onEdit,
-  onToggle,
+/* ---------------- Strip persamaan akuntansi ---------------- */
+
+function EquationStrip({
+  summary,
+  selected,
+  onSelect,
 }: {
-  groups: { type: FinanceLedgerType; rows: Row[] }[];
-  pending: boolean;
-  onEdit: (r: Row) => void;
-  onToggle: (r: Row) => void;
+  summary: Map<FinanceLedgerType, { count: number; total: number }>;
+  selected: FinanceLedgerType | null;
+  onSelect: (t: FinanceLedgerType) => void;
 }) {
-  const totalAccounts = groups.reduce((a, g) => a + g.rows.length, 0);
-  if (totalAccounts === 0) {
-    return (
-      <FinanceEmptyState
-        icon={<Search className="size-5" />}
-        title="Tidak ada akun cocok"
-        description="Coba ubah kata kunci pencarian atau aktifkan opsi 'Tampilkan nonaktif'."
-      />
-    );
-  }
   return (
-    <div className="flex flex-col gap-4">
-      {groups.map((g) => {
-        if (g.rows.length === 0) return null;
-        const tone = FINANCE_TYPE_TONE[g.type];
+    <div
+      role="group"
+      aria-label="Filter menurut tipe akun"
+      className="border-border bg-card flex items-stretch gap-1 overflow-x-auto rounded-2xl border p-1.5 shadow-sm [scrollbar-width:thin]"
+    >
+      {FINANCE_TYPE_GROUP_ORDER.map((t) => {
+        const s = summary.get(t)!;
+        const op = EQUATION_OPERATOR[t];
+        const active = selected === t;
+        const startsNominal = t === FinanceLedgerType.REVENUE;
         return (
-          <div
-            key={g.type}
-            className="border-border bg-card overflow-hidden rounded-xl border shadow-sm"
-          >
-            <header className="border-border/60 flex items-center justify-between gap-3 border-b px-4 py-2.5">
-              <h3 className="text-foreground inline-flex items-center gap-2 text-sm font-semibold tracking-tight">
+          <div key={t} className="flex shrink-0 items-stretch gap-1 sm:flex-1">
+            {startsNominal ? (
+              <span
+                aria-hidden
+                className="bg-border mx-1.5 my-2 hidden w-px shrink-0 sm:block"
+              />
+            ) : null}
+            {op ? (
+              <span
+                aria-hidden
+                className="text-muted-foreground hidden w-4 shrink-0 items-center justify-center text-base sm:flex"
+              >
+                {op}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              aria-pressed={active}
+              onClick={() => onSelect(t)}
+              title={
+                active ? "Tampilkan semua tipe" : `Tampilkan akun ${FINANCE_TYPE_LABEL[t]} saja`
+              }
+              className={cn(
+                "focus-visible:ring-ring/50 flex min-w-[8.5rem] flex-1 flex-col gap-0.5 rounded-xl px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2",
+                active ? "bg-muted ring-border ring-1" : "hover:bg-muted/60",
+                selected && !active && "opacity-60",
+              )}
+            >
+              <span className="text-foreground inline-flex items-center gap-1.5 text-sm font-medium">
                 <span
-                  className={cn("size-2.5 rounded-full", tone.dot)}
+                  className={cn("size-2 rounded-full", FINANCE_TYPE_TONE[t].dot)}
                   aria-hidden
                 />
-                {FINANCE_TYPE_LABEL[g.type]}
-              </h3>
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {g.rows.length} akun
+                {FINANCE_TYPE_LABEL[t]}
               </span>
-            </header>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">Kode</TableHead>
-                  <TableHead>Nama</TableHead>
-                  <TableHead className="w-32">Arus kas</TableHead>
-                  <TableHead className="w-24">Status</TableHead>
-                  <TableHead className="w-28 text-right">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {g.rows.map((r) => (
-                  <TableRow key={r.id} className={cn(!r.isActive && "opacity-60")}>
-                    <TableCell className="font-mono text-xs">{r.code}</TableCell>
-                    <TableCell className="text-sm font-medium">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span>{r.name}</span>
-                        {r.isApControl ? (
-                          <span
-                            className="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-300"
-                            title="Akun ini AP control — form jurnal akan dinamis."
-                          >
-                            AP
-                          </span>
-                        ) : null}
-                        {r.isArControl ? (
-                          <span
-                            className="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-300"
-                            title="Akun ini AR control — form jurnal akan dinamis."
-                          >
-                            AR
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {r.tracksCashflow ? (
-                        <div className="flex flex-wrap items-center gap-1">
-                          <span className="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300">
-                            Dilacak
-                          </span>
-                          {r.hasBankAccount ? (
-                            <span
-                              className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
-                              title="Bisa dipilih sebagai rekening di pembayaran hutang/piutang, pencairan dana, dan transfer."
-                            >
-                              Rekening
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {r.isActive ? (
-                        <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                          Aktif
-                        </span>
-                      ) : (
-                        <span className="bg-muted text-muted-foreground inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
-                          Nonaktif
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex gap-1">
-                        <Button
-                          type="button"
-                          size="icon-xs"
-                          variant="ghost"
-                          aria-label={r.isActive ? "Nonaktifkan" : "Aktifkan"}
-                          disabled={pending}
-                          onClick={() => onToggle(r)}
-                        >
-                          {r.isActive ? (
-                            <EyeOff className="size-3.5" />
-                          ) : (
-                            <Eye className="size-3.5" />
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon-xs"
-                          variant="ghost"
-                          aria-label="Edit akun"
-                          disabled={pending}
-                          onClick={() => onEdit(r)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              <span
+                className="text-foreground text-base font-semibold tracking-tight tabular-nums"
+                title={idrFormatter.format(s.total)}
+              >
+                {s.total === 0 ? "Rp 0" : formatIdrShort(s.total)}
+              </span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {s.count} akun
+              </span>
+            </button>
           </div>
         );
       })}
@@ -367,13 +460,111 @@ function CoaGroups({
   );
 }
 
+/* ---------------- Baris akun ---------------- */
+
+function AccountRow({
+  row: r,
+  pending,
+  onEdit,
+  onToggle,
+  onOpenLedger,
+}: {
+  row: Row;
+  pending: boolean;
+  onEdit: () => void;
+  onToggle: () => void;
+  onOpenLedger: () => void;
+}) {
+  const balance = Number(r.balance);
+  const roles = rolesFor(r);
+  return (
+    <TableRow className={cn("group", !r.isActive && "text-muted-foreground")}>
+      <TableCell className="pl-4 align-top text-sm font-semibold tabular-nums">
+        {r.code}
+      </TableCell>
+      <TableCell className="align-top whitespace-normal">
+        <button
+          type="button"
+          onClick={onEdit}
+          className={cn(
+            "hover:text-primary focus-visible:ring-ring/50 rounded-sm text-left text-sm font-medium outline-none focus-visible:ring-2",
+            r.isActive ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {r.name}
+        </button>
+        {!r.isActive ? (
+          <span className="bg-muted text-muted-foreground ml-2 rounded px-1.5 py-0.5 text-[11px] font-medium">
+            Nonaktif
+          </span>
+        ) : null}
+        {roles.length > 0 ? (
+          <p className="text-muted-foreground mt-0.5 text-xs">{roles.join(", ")}</p>
+        ) : null}
+      </TableCell>
+      <TableCell
+        className={cn(
+          "text-right align-top text-sm tabular-nums",
+          balance < 0
+            ? "text-rose-700 dark:text-rose-400"
+            : balance === 0
+              ? "text-muted-foreground"
+              : r.isActive
+                ? "text-foreground"
+                : undefined,
+        )}
+        title={
+          balance < 0 ? "Saldo berlawanan dengan sifat normal akun ini" : undefined
+        }
+      >
+        {formatBalance(balance)}
+      </TableCell>
+      <TableCell className="pr-4 text-right align-top">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            disabled={pending}
+            aria-label={`Aksi untuk ${r.code} ${r.name}`}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50 inline-flex size-7 items-center justify-center rounded-md outline-none focus-visible:ring-2 disabled:opacity-50"
+          >
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-44">
+            <DropdownMenuItem onClick={onEdit}>
+              <Pencil className="size-3.5" />
+              Edit akun
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onOpenLedger}>
+              <BookOpen className="size-3.5" />
+              Buka buku besar
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant={r.isActive ? "destructive" : "default"}
+              onClick={onToggle}
+            >
+              {r.isActive ? (
+                <EyeOff className="size-3.5" />
+              ) : (
+                <Eye className="size-3.5" />
+              )}
+              {r.isActive ? "Nonaktifkan akun" : "Aktifkan akun"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 /* ---------------- Edit dialog ---------------- */
 
 function CoaEditDialog({
   row,
+  existingCodes,
   onClose,
 }: {
   row: Row | null;
+  existingCodes: Pick<Row, "id" | "code" | "name">[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -383,6 +574,8 @@ function CoaEditDialog({
   const [type, setType] = useState<FinanceLedgerType>(
     row?.type ?? FinanceLedgerType.EXPENSE,
   );
+  // Selama tipe belum dipilih manual, akun baru mengikuti tebakan dari kode.
+  const [typeTouched, setTypeTouched] = useState(row != null);
   const [tracksCashflow, setTracksCashflow] = useState(
     row?.tracksCashflow ?? false,
   );
@@ -394,21 +587,11 @@ function CoaEditDialog({
   const [opening, setOpening] = useState("0");
   const [openingAsOf, setOpeningAsOf] = useState(todayIso);
 
-  // Reset when `row` changes (Dialog reopens for different row)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemoSync(() => {
-    setCode(row?.code ?? "");
-    setName(row?.name ?? "");
-    setType(row?.type ?? FinanceLedgerType.EXPENSE);
-    setTracksCashflow(row?.tracksCashflow ?? false);
-    setIsApControl(row?.isApControl ?? false);
-    setIsArControl(row?.isArControl ?? false);
-    setSortOrder(row?.sortOrder ?? 900);
-    setInstitution("");
-    setAccountMask("");
-    setOpening("0");
-    setOpeningAsOf(todayIso());
-  }, [row?.id]);
+  const duplicate = useMemo(() => {
+    const c = code.trim();
+    if (!c) return null;
+    return existingCodes.find((r) => r.code === c && r.id !== row?.id) ?? null;
+  }, [code, existingCodes, row?.id]);
 
   // Akun Aktiva aktif ber-flag arus kas yang belum punya rekening akan
   // didaftarkan sebagai rekening saat disimpan.
@@ -418,8 +601,17 @@ function CoaEditDialog({
     (row?.isActive ?? true) &&
     !row?.hasBankAccount;
 
+  function onCodeChange(value: string) {
+    setCode(value);
+    if (!typeTouched) {
+      const guess = typeFromCode(value);
+      if (guess) setType(guess);
+    }
+  }
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (duplicate) return;
     startTransition(async () => {
       try {
         await upsertFinanceLedgerAccount({
@@ -441,11 +633,11 @@ function CoaEditDialog({
               }
             : undefined,
         });
-        toast.success(row ? "Akun diperbarui." : "Akun ditambahkan.");
+        toast.success(row ? "Perubahan akun disimpan." : "Akun ditambahkan.");
         onClose();
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal menyimpan."));
+        toast.error(actionErrorMessage(err, "Gagal menyimpan akun."));
       }
     });
   }
@@ -453,54 +645,63 @@ function CoaEditDialog({
   return (
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
-        <DialogTitle>{row ? "Edit akun" : "Akun baru"}</DialogTitle>
+        <DialogTitle>{row ? `Edit akun ${row.code}` : "Akun baru"}</DialogTitle>
         <DialogDescription>
-          Pakai kode konsisten (mis. 1xxx aktiva, 2xxx kewajiban). Akun yang
-          sudah dipakai jurnal sebaiknya tidak ganti tipe.
+          Kode menentukan urutan dan kelompok: 1 aktiva, 2 kewajiban, 3 ekuitas,
+          4 pendapatan, 5 ke atas beban.
         </DialogDescription>
       </DialogHeader>
-      <form onSubmit={onSubmit} className="grid gap-3">
-        <div className="grid grid-cols-2 gap-3">
+      <form onSubmit={onSubmit} className="grid gap-4">
+        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="coa-code">Kode</Label>
             <Input
               id="coa-code"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => onCodeChange(e.target.value)}
               required
-              className="font-mono"
+              aria-invalid={duplicate ? true : undefined}
+              aria-describedby={duplicate ? "coa-code-error" : undefined}
+              className="tabular-nums"
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="coa-sort">Urutan</Label>
+            <Label htmlFor="coa-name">Nama akun</Label>
             <Input
-              id="coa-sort"
-              type="number"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(Number(e.target.value || 0))}
+              id="coa-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
             />
           </div>
+          {duplicate ? (
+            <p
+              id="coa-code-error"
+              className="text-destructive col-span-2 -mt-1 text-xs"
+            >
+              Kode {duplicate.code} sudah dipakai {duplicate.name}. Pilih kode lain.
+            </p>
+          ) : null}
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="coa-name">Nama</Label>
-          <Input
-            id="coa-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </div>
+
         <div className="space-y-1.5">
           <Label>Tipe</Label>
           <Select
             value={type}
             items={FINANCE_TYPE_ITEMS}
-            onValueChange={(v) =>
-              setType((v ?? "EXPENSE") as FinanceLedgerType)
-            }
+            onValueChange={(v) => {
+              setTypeTouched(true);
+              setType((v ?? "EXPENSE") as FinanceLedgerType);
+            }}
           >
             <SelectTrigger className="w-full">
-              <span>{FINANCE_TYPE_LABEL[type]}</span>
+              <span className="inline-flex items-center gap-2">
+                <span
+                  className={cn("size-2 rounded-full", FINANCE_TYPE_TONE[type].dot)}
+                  aria-hidden
+                />
+                {FINANCE_TYPE_LABEL[type]}
+              </span>
             </SelectTrigger>
             <SelectContent>
               {FINANCE_TYPE_GROUP_ORDER.map((t) => (
@@ -510,52 +711,81 @@ function CoaEditDialog({
               ))}
             </SelectContent>
           </Select>
+          {row ? (
+            <p className="text-muted-foreground text-xs">
+              Hindari mengganti tipe akun yang sudah dipakai jurnal.
+            </p>
+          ) : !typeTouched && typeFromCode(code) ? (
+            <p className="text-muted-foreground text-xs">
+              Dipilih otomatis dari kode. Ubah bila perlu.
+            </p>
+          ) : null}
         </div>
-        <div className="border-border/60 flex items-start gap-3 rounded-lg border p-3">
-          <Checkbox
+
+        <div className="border-border/60 divide-border/60 divide-y rounded-lg border">
+          <OptionRow
             id="coa-cf"
             checked={tracksCashflow}
-            onCheckedChange={(c) => setTracksCashflow(!!c)}
+            onChange={setTracksCashflow}
+            label="Akun kas atau bank"
+            hint={
+              type === FinanceLedgerType.ASSET
+                ? "Ikut dilaporkan di arus kas dan bisa dipilih sebagai rekening untuk pembayaran dan transfer."
+                : "Saldo akun ini ikut dilaporkan di arus kas."
+            }
           />
-          <div className="flex flex-col">
-            <Label htmlFor="coa-cf" className="text-sm font-medium">
-              Akun kas / arus kas
-            </Label>
-            <p className="text-muted-foreground text-xs">
-              Centang untuk akun Kas, Bank, atau e-wallet operasional. Saldo
-              akun ini ikut dilaporkan di Arus Kas. Untuk akun Aktiva, akun ini
-              juga bisa dipilih sebagai rekening di pembayaran hutang/piutang,
-              pencairan dana, dan transfer.
-            </p>
-          </div>
+          {type === FinanceLedgerType.LIABILITY ? (
+            <OptionRow
+              id="coa-ap"
+              checked={isApControl}
+              onChange={(c) => {
+                setIsApControl(c);
+                if (c) setIsArControl(false);
+              }}
+              label="Kontrol hutang usaha (AP)"
+              hint="Saat dipilih di baris jurnal, muncul form untuk membuat atau melunasi tagihan vendor."
+            />
+          ) : null}
+          {type === FinanceLedgerType.ASSET ? (
+            <OptionRow
+              id="coa-ar"
+              checked={isArControl}
+              onChange={(c) => {
+                setIsArControl(c);
+                if (c) setIsApControl(false);
+              }}
+              label="Kontrol piutang usaha (AR)"
+              hint="Saat dipilih di baris jurnal, muncul form untuk membuat invoice atau menerima pembayaran."
+            />
+          ) : null}
         </div>
+
         {willRegisterBank ? (
-          <div className="border-border/60 grid gap-3 rounded-lg border p-3">
-            <div>
-              <p className="text-sm font-medium">Detail rekening</p>
-              <p className="text-muted-foreground text-xs">
-                Saldo awal dijurnal otomatis (lawan akun 3000 Modal pemilik).
-                Biarkan 0 bila saldo awalnya sudah pernah dijurnal.
-              </p>
-            </div>
+          <fieldset className="border-border/60 grid gap-3 rounded-lg border p-3">
+            <legend className="px-1 text-sm font-medium">Detail rekening</legend>
+            <p className="text-muted-foreground -mt-1 text-xs">
+              Saldo awal dijurnal otomatis dengan lawan akun 3000 Modal pemilik.
+              Isi 0 bila saldo awalnya sudah pernah dijurnal.
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="coa-bank-inst">Institusi</Label>
+                <Label htmlFor="coa-bank-inst">Bank atau e-wallet</Label>
                 <Input
                   id="coa-bank-inst"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
-                  placeholder="mis. BCA"
+                  placeholder="BCA"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="coa-bank-mask">No. rekening (akhir)</Label>
+                <Label htmlFor="coa-bank-mask">4 digit akhir rekening</Label>
                 <Input
                   id="coa-bank-mask"
                   value={accountMask}
                   onChange={(e) => setAccountMask(e.target.value)}
-                  placeholder="mis. 1234"
+                  placeholder="1234"
                   maxLength={32}
+                  className="tabular-nums"
                 />
               </div>
               <div className="space-y-1.5">
@@ -565,6 +795,7 @@ function CoaEditDialog({
                   value={opening}
                   onChange={(e) => setOpening(e.target.value)}
                   inputMode="decimal"
+                  className="tabular-nums"
                 />
               </div>
               <div className="space-y-1.5">
@@ -578,57 +809,40 @@ function CoaEditDialog({
                 />
               </div>
             </div>
-          </div>
+          </fieldset>
         ) : null}
-        {type === FinanceLedgerType.LIABILITY ? (
-          <div className="border-border/60 flex items-start gap-3 rounded-lg border p-3">
-            <Checkbox
-              id="coa-ap"
-              checked={isApControl}
-              onCheckedChange={(c) => {
-                setIsApControl(!!c);
-                if (c) setIsArControl(false);
-              }}
+
+        <Collapsible>
+          <CollapsibleTrigger className="text-muted-foreground hover:text-foreground group inline-flex items-center gap-1 text-xs font-medium">
+            <ChevronDown
+              className="size-3.5 transition-transform group-data-[panel-open]:rotate-180"
+              aria-hidden
             />
-            <div className="flex flex-col">
-              <Label htmlFor="coa-ap" className="text-sm font-medium">
-                Akun AP control (Hutang Usaha)
-              </Label>
+            Pengaturan lanjutan
+          </CollapsibleTrigger>
+          <CollapsiblePanel>
+            <div className="space-y-1.5 pt-3">
+              <Label htmlFor="coa-sort">Urutan tampil</Label>
+              <Input
+                id="coa-sort"
+                type="number"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(Number(e.target.value || 0))}
+                className="w-32 tabular-nums"
+              />
               <p className="text-muted-foreground text-xs">
-                Centang agar saat akun ini dipilih di baris jurnal, muncul
-                form dinamis untuk membuat tagihan baru atau melunasi tagihan
-                yang ada (sub-ledger AP otomatis ter-update).
+                Angka kecil tampil lebih dulu di dalam kelompoknya. Akun dengan
+                urutan sama diurutkan menurut kode.
               </p>
             </div>
-          </div>
-        ) : null}
-        {type === FinanceLedgerType.ASSET ? (
-          <div className="border-border/60 flex items-start gap-3 rounded-lg border p-3">
-            <Checkbox
-              id="coa-ar"
-              checked={isArControl}
-              onCheckedChange={(c) => {
-                setIsArControl(!!c);
-                if (c) setIsApControl(false);
-              }}
-            />
-            <div className="flex flex-col">
-              <Label htmlFor="coa-ar" className="text-sm font-medium">
-                Akun AR control (Piutang Usaha)
-              </Label>
-              <p className="text-muted-foreground text-xs">
-                Centang agar saat akun ini dipilih di baris jurnal, muncul
-                form dinamis untuk membuat invoice baru atau menerima
-                pembayaran (sub-ledger AR otomatis ter-update).
-              </p>
-            </div>
-          </div>
-        ) : null}
+          </CollapsiblePanel>
+        </Collapsible>
+
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Batal
           </Button>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" disabled={pending || Boolean(duplicate)}>
             {pending ? "Menyimpan…" : row ? "Simpan perubahan" : "Tambah akun"}
           </Button>
         </DialogFooter>
@@ -637,14 +851,37 @@ function CoaEditDialog({
   );
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+function OptionRow({
+  id,
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 p-3">
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={(c) => onChange(!!c)}
+        className="mt-0.5"
+      />
+      <div className="flex flex-col gap-0.5">
+        <Label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </Label>
+        <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>
+      </div>
+    </div>
+  );
 }
 
-/** Sinkronkan state sederhana saat deps berubah, tanpa effect cascade. */
-function useMemoSync(fn: () => void, deps: unknown[]) {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => {
-    fn();
-  }, deps);
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
 }

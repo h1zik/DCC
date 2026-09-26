@@ -1,4 +1,4 @@
-import { ScrollText } from "lucide-react";
+import { CheckCircle2, ScrollText } from "lucide-react";
 import { notFound } from "next/navigation";
 import { listFinanceAccounts } from "@/actions/finance-accounts";
 import {
@@ -95,11 +95,18 @@ export default async function FinanceJournalDetailPage({
       : null,
   }));
 
-  const titleSuffix = entry.entryNumber
-    ? ` · ${entry.entryNumber}`
-    : entry.reference
-      ? ` · ${entry.reference}`
-      : "";
+  const isPosted = entry.status === "POSTED";
+  const poster = entry.postedBy?.name ?? entry.postedBy?.email ?? null;
+  const postedAtLabel = entry.postedAt
+    ? new Intl.DateTimeFormat("id-ID", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Jakarta",
+      }).format(entry.postedAt)
+    : null;
 
   return (
     <FinancePageShell
@@ -109,11 +116,26 @@ export default async function FinanceJournalDetailPage({
         { label: "Jurnal", href: "/finance/journals" },
         { label: entry.entryNumber ?? "Draf" },
       ]}
-      title={`Jurnal${titleSuffix}`}
+      title={
+        isPosted ? `Jurnal ${entry.entryNumber ?? ""}`.trim() : "Draf jurnal"
+      }
       description={
-        entry.status === "POSTED"
-          ? `Status: Posted${entry.postedAt ? " • " + new Date(entry.postedAt).toLocaleString("id-ID") : ""}`
-          : "Status: Draf — sunting baris, lalu posting bila sudah seimbang."
+        isPosted ? (
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <CheckCircle2
+              className="size-3.5 text-emerald-600 dark:text-emerald-400"
+              aria-hidden
+            />
+            Diposting
+            {postedAtLabel ? ` ${postedAtLabel} WIB` : ""}
+            {poster ? ` oleh ${poster}` : ""}
+          </span>
+        ) : (
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <span className="size-2 rounded-full bg-amber-500" aria-hidden />
+            Draf. Isi baris sampai debit dan kredit seimbang, lalu posting.
+          </span>
+        )
       }
     >
       <JournalEditorClient

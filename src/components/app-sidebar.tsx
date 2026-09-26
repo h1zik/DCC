@@ -19,6 +19,7 @@ import {
   FlaskConical,
   Focus,
   GitBranch,
+  History,
   AlertOctagon,
   Home,
   LayoutDashboard,
@@ -150,6 +151,7 @@ const navFinance = [
   { href: "/finance/approvals", label: "Expense Approvals", icon: ShieldCheck },
   { href: "/finance/reports", label: "Reports", icon: FileBarChart },
   { href: "/finance/fixed-assets", label: "Fixed Assets", icon: Calculator },
+  { href: "/finance/audit-log", label: "Audit Log", icon: History },
   { href: "/attendance", label: "Attendance", icon: ScanFace },
 ] as const;
 

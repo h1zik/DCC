@@ -1,12 +1,12 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
-  CheckCircle2,
   Clock,
-  Landmark,
   Lock,
+  Minus,
   Plus,
   ScrollText,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import { isFinanceDemoResetAllowed } from "@/lib/finance-demo-policy";
 import { formatIdr } from "@/lib/finance-money";
 import { cn } from "@/lib/utils";
 import { loadFinanceDashboard } from "@/lib/finance-dashboard";
-import { periodLabel } from "@/lib/finance-period";
+import { FINANCE_MONTH_LABELS, periodLabel } from "@/lib/finance-period";
 import { PeriodSelector } from "./period-selector";
 import { PeriodLockPanel } from "./period-lock-panel";
 import { listFinancePeriodLocks } from "@/actions/finance-period-lock";
@@ -35,6 +35,12 @@ type SearchParams = { period?: string | string[] };
 type Props = {
   searchParams: Promise<SearchParams>;
 };
+
+type AgingStatus =
+  | { kind: "overdue"; days: number }
+  | { kind: "due-soon"; days: number }
+  | { kind: "on-track" }
+  | { kind: "paid" };
 
 function parsePeriod(raw: string | string[] | undefined) {
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -66,8 +72,12 @@ function formatDateShort(d: Date) {
 
 function pctText(p: number | null): string {
   if (p == null) return "—";
-  const sign = p > 0 ? "+" : p < 0 ? "" : "";
-  return `${sign}${p.toFixed(p >= 100 ? 0 : 1)}%`;
+  const sign = p > 0 ? "+" : "";
+  return `${sign}${p.toFixed(Math.abs(p) >= 100 ? 0 : 1)}%`;
+}
+
+function num(d: Prisma.Decimal): number {
+  return Number(d.toString());
 }
 
 export default async function FinanceDashboardPage({ searchParams }: Props) {
@@ -85,57 +95,34 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
     (l) => l.year === period.year && l.month === period.month,
   );
 
-  const pendapatanProgress = (() => {
-    const target = data.kpis.revenue.previous;
-    const current = data.kpis.revenue.current;
-    const t = Number(target.toString());
-    const c = Number(current.toString());
-    if (t <= 0) return null;
-    return { current: c, target: t, pct: Math.min(120, (c / t) * 100) };
-  })();
+  const monthName = FINANCE_MONTH_LABELS[period.month - 1];
+  const prevMonthName = FINANCE_MONTH_LABELS[(period.month + 10) % 12];
 
-  const bebanProgress = (() => {
-    const budget = data.kpis.expense.previous;
-    const current = data.kpis.expense.current;
-    const b = Number(budget.toString());
-    const c = Number(current.toString());
-    if (b <= 0) return null;
-    return { current: c, target: b, pct: Math.min(120, (c / b) * 100) };
-  })();
+  const revenue = num(data.kpis.revenue.current);
+  const expense = num(data.kpis.expense.current);
+  const net = num(data.kpis.net.current);
+  const margin = revenue > 0 ? (net / revenue) * 100 : null;
 
-  const margin = (() => {
-    const rev = Number(data.kpis.revenue.current.toString());
-    if (rev <= 0) return null;
-    return (Number(data.kpis.net.current.toString()) / rev) * 100;
-  })();
+  const overdueCount = data.alerts.overdueArCount + data.alerts.overdueApCount;
+  const hasActions = overdueCount > 0 || data.alerts.dueSoonCount > 0;
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-6">
+    <div className="flex w-full flex-col gap-5 pb-6">
       {/* Header */}
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex items-start gap-3">
-          <span
-            className="border-primary/30 bg-primary/10 text-primary mt-1 flex size-10 shrink-0 items-center justify-center rounded-xl border"
-            aria-hidden
-          >
-            <Landmark className="size-5" />
-          </span>
-          <div className="space-y-1">
-            <h1 className="text-foreground text-2xl font-semibold tracking-tight">
-              Dashboard Keuangan
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {formatDateLong(data.today)} — Periode berjalan{" "}
-              <span className="text-foreground font-medium">
-                {periodLabel(period.year, period.month)}
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight">
+            Financial Overview
+          </h1>
+          <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <span>{formatDateLong(data.today)}</span>
+            {isCurrentPeriodLocked ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                <Lock className="size-3" aria-hidden />
+                {periodLabel(period.year, period.month)} sudah dikunci
               </span>
-              {isCurrentPeriodLocked ? (
-                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                  <Lock className="size-3" /> Periode terkunci
-                </span>
-              ) : null}
-            </p>
-          </div>
+            ) : null}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <PeriodSelector year={period.year} month={period.month} />
@@ -162,295 +149,235 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
             render={<Link href="/finance/journals" />}
           >
             <Plus className="size-3.5" aria-hidden />
-            Jurnal Baru
+            Jurnal baru
           </Button>
           {isFinanceDemoResetAllowed() ? <FinanceClearDemoButton /> : null}
         </div>
       </header>
 
-      {/* Alerts */}
+      {/* Hero: laba rugi sebagai persamaan + posisi kas */}
       <section
-        aria-label="Peringatan keuangan"
-        className="grid gap-3 sm:grid-cols-2"
+        aria-label="Laba rugi dan posisi kas"
+        className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
       >
-        <AlertCard
-          tone="danger"
-          icon={<AlertTriangle className="size-4" />}
-          title={
-            data.alerts.overdueArCount + data.alerts.overdueApCount > 0
-              ? `${data.alerts.overdueArCount + data.alerts.overdueApCount} Invoice Overdue`
-              : "Tidak ada invoice overdue"
-          }
-          subtitle={
-            data.alerts.overdueArCount + data.alerts.overdueApCount > 0
-              ? `Total ${formatIdr(data.alerts.overdueArTotal.plus(data.alerts.overdueApTotal))} — perlu follow-up`
-              : "Semua tagihan masih dalam jadwal."
-          }
-          href="/finance/ap-ar"
-        />
-        <AlertCard
-          tone="warning"
-          icon={<Clock className="size-4" />}
-          title={
-            data.alerts.dueSoonCount > 0
-              ? `${data.alerts.dueSoonCount} Jatuh Tempo 7 Hari`
-              : "Tidak ada yang jatuh tempo minggu ini"
-          }
-          subtitle={
-            data.alerts.dueSoonCount > 0
-              ? `AP ${formatIdr(data.alerts.dueSoonAp)} · AR ${formatIdr(data.alerts.dueSoonAr)}`
-              : "Aman untuk minggu ini."
-          }
-          href="/finance/ap-ar"
-        />
-        {/* Alert "Rekonsiliasi Pending" disembunyikan: pencocokan mutasi belum
-            punya UI, jadi statusnya tak akan pernah bisa diselesaikan user. */}
+        <div className="border-border bg-card flex flex-col gap-5 rounded-2xl border p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-foreground text-base font-semibold">
+              Laba rugi {monthName}
+            </h2>
+            <p className="text-muted-foreground text-xs">
+              Dibanding {prevMonthName}
+            </p>
+          </div>
+
+          <dl className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] md:items-start md:gap-3">
+            <EquationTerm
+              label="Pendapatan"
+              value={formatIdr(data.kpis.revenue.current)}
+              delta={data.kpis.revenue.deltaPct}
+              previous={formatIdr(data.kpis.revenue.previous)}
+            />
+            <Operator>
+              <Minus className="size-4" />
+            </Operator>
+            <EquationTerm
+              label="Beban"
+              value={formatIdr(data.kpis.expense.current)}
+              delta={data.kpis.expense.deltaPct}
+              deltaInverse
+              previous={formatIdr(data.kpis.expense.previous)}
+            />
+            <Operator>
+              <span className="text-lg leading-none font-medium">=</span>
+            </Operator>
+            <EquationTerm
+              label={net < 0 ? "Rugi bersih" : "Laba bersih"}
+              value={formatIdr(data.kpis.net.current)}
+              delta={data.kpis.net.deltaPct}
+              previous={formatIdr(data.kpis.net.previous)}
+              emphasis={net < 0 ? "loss" : "profit"}
+            />
+          </dl>
+
+          <MarginBar revenue={revenue} expense={expense} margin={margin} />
+        </div>
+
+        <div className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-5 shadow-sm sm:p-6">
+          <div className="space-y-1">
+            <h2 className="text-foreground text-base font-semibold">
+              Kas & bank
+            </h2>
+            <p className="text-foreground text-3xl font-semibold tracking-tight tabular-nums break-words">
+              {formatIdr(data.kpis.cashAndBank)}
+            </p>
+            <p className="text-muted-foreground text-xs">
+              Saldo per {formatDateShort(data.asOf)}
+            </p>
+          </div>
+
+          <CashFlowSplit
+            inflow={data.kpis.cash.inflow}
+            outflow={data.kpis.cash.outflow}
+            net={data.kpis.cash.current}
+            monthName={monthName}
+          />
+
+          <div className="border-border/60 mt-auto border-t pt-3">
+            {data.banks.length === 0 ? (
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Belum ada rekening.{" "}
+                <Link
+                  href="/finance/chart-of-accounts"
+                  className="text-primary font-medium hover:underline"
+                >
+                  Tandai akun kas di Chart of Accounts
+                </Link>
+              </p>
+            ) : (
+              <Link
+                href="/finance/chart-of-accounts"
+                className="group flex flex-wrap gap-1.5"
+                aria-label={`${data.banks.length} rekening, kelola di Chart of Accounts`}
+              >
+                {data.banks.map((bank) => (
+                  <span
+                    key={bank.id}
+                    className="bg-muted text-foreground group-hover:bg-muted/70 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                  >
+                    {bank.name}
+                    {bank.mask ? (
+                      <span className="text-muted-foreground tabular-nums">
+                        {" "}
+                        ··{bank.mask}
+                      </span>
+                    ) : null}
+                  </span>
+                ))}
+              </Link>
+            )}
+          </div>
+        </div>
       </section>
 
-      {/* KPI cards */}
-      <section
-        aria-label="Indikator keuangan utama"
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
-      >
-        <KpiCard
-          label="Saldo Kas & Bank"
-          value={formatIdr(data.kpis.cashAndBank)}
-          delta={null}
-          hint={
-            data.bankAccountsCount > 0
-              ? `${data.bankAccountsCount} rekening aktif`
-              : "Belum ada rekening"
-          }
-        />
-        <KpiCard
-          label="Pendapatan MTD"
-          value={formatIdr(data.kpis.revenue.current)}
-          delta={data.kpis.revenue.deltaPct}
-          progress={pendapatanProgress}
-          hint={
-            pendapatanProgress
-              ? `Periode lalu: ${formatIdr(data.kpis.revenue.previous)}`
-              : "Belum ada periode pembanding"
-          }
-        />
-        <KpiCard
-          label="Total Beban MTD"
-          value={formatIdr(data.kpis.expense.current)}
-          delta={data.kpis.expense.deltaPct}
-          deltaInverse
-          progress={bebanProgress}
-          hint={
-            bebanProgress
-              ? `Periode lalu: ${formatIdr(data.kpis.expense.previous)}`
-              : "Belum ada periode pembanding"
-          }
-        />
-        <KpiCard
-          label="Laba Bersih"
-          value={formatIdr(data.kpis.net.current)}
-          delta={data.kpis.net.deltaPct}
-          hint={margin != null ? `Margin ${margin.toFixed(1)}%` : "—"}
-        />
-        <KpiCard
-          label="Arus Kas Bersih"
-          value={formatIdr(data.kpis.cash.current)}
-          delta={data.kpis.cash.deltaPct}
-          hint={`Inflow ${formatIdr(data.kpis.cash.inflow)} · Outflow ${formatIdr(data.kpis.cash.outflow)}`}
-        />
+      {/* Perlu tindakan */}
+      <section aria-label="Perlu tindakan">
+        {hasActions ? (
+          <div className="border-border bg-card flex flex-col divide-y rounded-2xl border shadow-sm sm:flex-row sm:divide-x sm:divide-y-0">
+            {overdueCount > 0 ? (
+              <ActionItem
+                href="/finance/ap-ar"
+                tone="danger"
+                icon={<AlertTriangle className="size-4" />}
+                title={`${overdueCount} tagihan lewat jatuh tempo`}
+                detail={`Hutang ${formatIdr(data.alerts.overdueApTotal)}, piutang ${formatIdr(data.alerts.overdueArTotal)}`}
+              />
+            ) : null}
+            {data.alerts.dueSoonCount > 0 ? (
+              <ActionItem
+                href="/finance/ap-ar"
+                tone="warning"
+                icon={<Clock className="size-4" />}
+                title={`${data.alerts.dueSoonCount} jatuh tempo dalam 7 hari`}
+                detail={`Hutang ${formatIdr(data.alerts.dueSoonAp)}, piutang ${formatIdr(data.alerts.dueSoonAr)}`}
+              />
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-muted-foreground px-1 text-sm">
+            Tidak ada tagihan yang lewat atau mendekati jatuh tempo.
+          </p>
+        )}
       </section>
 
-      {/* Aging tables */}
+      {/* Hutang & piutang */}
       <section
-        aria-label="Aging hutang & piutang"
+        aria-label="Hutang dan piutang"
         className="grid gap-3 lg:grid-cols-2"
       >
-        <Panel
-          title="Aging Hutang (AP)"
-          accent="rose"
-          right={`Total ${formatIdr(data.aging.apTotal)}`}
-          href="/finance/ap-ar"
-        >
-          {data.aging.ap.length === 0 ? (
-            <EmptyRow message="Tidak ada hutang aktif." />
-          ) : (
-            <MiniTable
-              head={["Vendor", "Jumlah", "Umur", "Status"]}
-              widths={["minmax(0,1.6fr)", "minmax(0,1fr)", "auto", "auto"]}
-            >
-              {data.aging.ap.map((row) => (
-                <MiniRow
-                  key={row.id}
-                  cells={[
-                    <span key="v" className="text-foreground truncate text-sm font-medium">
-                      {row.vendorName}
-                    </span>,
-                    <span key="a" className="text-foreground text-sm tabular-nums">
-                      {formatIdr(row.remaining)}
-                    </span>,
-                    <span key="u" className="text-muted-foreground text-xs">
-                      {agingHumanLabel(row.status)}
-                    </span>,
-                    <StatusChip key="s" status={row.status} />,
-                  ]}
-                />
-              ))}
-            </MiniTable>
-          )}
-        </Panel>
-        <Panel
-          title="Aging Piutang (AR)"
-          accent="emerald"
-          right={`Total ${formatIdr(data.aging.arTotal)}`}
-          href="/finance/ap-ar"
-        >
-          {data.aging.ar.length === 0 ? (
-            <EmptyRow message="Tidak ada piutang aktif." />
-          ) : (
-            <MiniTable
-              head={["Customer", "Jumlah", "Umur", "Status"]}
-              widths={["minmax(0,1.6fr)", "minmax(0,1fr)", "auto", "auto"]}
-            >
-              {data.aging.ar.map((row) => (
-                <MiniRow
-                  key={row.id}
-                  cells={[
-                    <span key="c" className="text-foreground truncate text-sm font-medium">
-                      {row.customerName}
-                    </span>,
-                    <span key="a" className="text-foreground text-sm tabular-nums">
-                      {formatIdr(row.remaining)}
-                    </span>,
-                    <span key="u" className="text-muted-foreground text-xs">
-                      {agingHumanLabel(row.status)}
-                    </span>,
-                    <StatusChip key="s" status={row.status} />,
-                  ]}
-                />
-              ))}
-            </MiniTable>
-          )}
-        </Panel>
+        <AgingPanel
+          title="Hutang (AP)"
+          partyLabel="Vendor"
+          total={data.aging.apTotal}
+          overdueTotal={data.aging.apOverdueTotal}
+          overdueCount={data.aging.apOverdueCount}
+          rows={data.aging.ap.map((r) => ({
+            id: r.id,
+            party: r.vendorName,
+            doc: r.billNumber,
+            remaining: r.remaining,
+            status: r.status,
+          }))}
+          emptyMessage="Tidak ada hutang yang belum dibayar."
+        />
+        <AgingPanel
+          title="Piutang (AR)"
+          partyLabel="Customer"
+          total={data.aging.arTotal}
+          overdueTotal={data.aging.arOverdueTotal}
+          overdueCount={data.aging.arOverdueCount}
+          rows={data.aging.ar.map((r) => ({
+            id: r.id,
+            party: r.customerName,
+            doc: r.invoiceNumber,
+            remaining: r.remaining,
+            status: r.status,
+          }))}
+          emptyMessage="Tidak ada piutang yang belum tertagih."
+        />
       </section>
 
-      {/* Bank reconciliation, recent journals, P&L per brand */}
+      {/* Brand & jurnal */}
       <section
-        aria-label="Status bank, jurnal terakhir & P&L per brand"
-        className="grid gap-3 lg:grid-cols-3"
+        aria-label="P&L per brand dan jurnal terakhir"
+        className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
       >
         <Panel
-          title="Rekening Bank"
-          accent="sky"
-          right={data.banks.length > 0 ? `${data.banks.length} rekening` : "—"}
-          href="/finance/chart-of-accounts"
+          title={`P&L per brand, ${monthName}`}
+          action={{ href: "/finance/brands-costing", label: "Brand & Costing" }}
         >
-          {data.banks.length === 0 ? (
-            <EmptyRow message="Belum ada rekening. Centang “Akun kas / arus kas” pada akun Aktiva di Chart of Accounts." />
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {data.banks.map((bank) => (
-                <li key={bank.id} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-foreground truncate font-medium">
-                      {bank.name}
-                      {bank.mask ? (
-                        <span className="text-muted-foreground"> ··{bank.mask}</span>
-                      ) : null}
-                    </span>
-                    <span className="text-muted-foreground truncate">
-                      {bank.institution ?? "—"}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <BrandPnl rows={data.brandPnl.slice(0, 6)} />
         </Panel>
 
         <Panel
-          title="Jurnal Terakhir"
-          accent="violet"
-          right={
-            <Link
-              href="/finance/journals"
-              className="text-primary hover:underline"
-            >
-              Lihat semua →
-            </Link>
-          }
+          title="Jurnal terakhir"
+          action={{ href: "/finance/journals", label: "Semua jurnal" }}
         >
           {data.recentJournals.length === 0 ? (
-            <EmptyRow message="Belum ada jurnal yang diposting." />
+            <EmptyState>
+              Belum ada jurnal yang diposting.{" "}
+              <Link
+                href="/finance/journals"
+                className="text-primary font-medium hover:underline"
+              >
+                Buat jurnal
+              </Link>
+            </EmptyState>
           ) : (
-            <ul className="flex flex-col">
+            <ul className="-my-1 flex flex-col">
               {data.recentJournals.map((row) => (
                 <li
                   key={row.id}
-                  className="border-border/60 flex items-center justify-between gap-3 border-b py-2 last:border-0"
+                  className="border-border/60 border-b last:border-0"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-muted-foreground text-[11px] tabular-nums">
+                  <Link
+                    href={`/finance/journals/${row.id}`}
+                    className="hover:bg-muted/50 -mx-2 grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-baseline gap-3 rounded-md px-2 py-2.5 transition-colors"
+                  >
+                    <span className="text-muted-foreground text-xs tabular-nums">
                       {formatDateShort(row.date)}
-                    </p>
-                    <Link
-                      href={`/finance/journals/${row.id}`}
-                      className="text-foreground hover:text-primary line-clamp-1 text-sm font-medium"
-                    >
+                    </span>
+                    <span className="text-foreground truncate text-sm">
                       {row.memo?.trim() ||
                         row.reference?.trim() ||
                         "Tanpa keterangan"}
-                    </Link>
-                  </div>
-                  <span className="text-foreground shrink-0 text-sm font-semibold tabular-nums">
-                    {formatIdr(row.total)}
-                  </span>
+                    </span>
+                    <span className="text-foreground text-sm font-medium tabular-nums">
+                      {formatIdr(row.total)}
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>
-          )}
-        </Panel>
-
-        <Panel
-          title="P&L per Brand"
-          accent="amber"
-          right={periodLabel(period.year, period.month)}
-          href="/finance/brands-costing"
-        >
-          {data.brandPnl.length === 0 ? (
-            <EmptyRow message="Belum ada aktivitas brand untuk periode ini." />
-          ) : (
-            <MiniTable
-              head={["Brand", "Revenue", "Margin"]}
-              widths={["minmax(0,1.4fr)", "minmax(0,1fr)", "auto"]}
-            >
-              {data.brandPnl.slice(0, 6).map((row) => (
-                <MiniRow
-                  key={row.id ?? "untagged"}
-                  cells={[
-                    <span key="n" className="text-foreground truncate text-sm font-medium">
-                      {row.name}
-                    </span>,
-                    <span key="r" className="text-foreground text-sm tabular-nums">
-                      {formatIdr(row.revenue)}
-                    </span>,
-                    <span
-                      key="m"
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums",
-                        row.margin == null
-                          ? "bg-muted text-muted-foreground"
-                          : row.margin >= 20
-                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                            : row.margin >= 0
-                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                              : "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-                      )}
-                    >
-                      {row.margin == null ? "—" : `${row.margin.toFixed(0)}%`}
-                    </span>,
-                  ]}
-                />
-              ))}
-            </MiniTable>
           )}
         </Panel>
       </section>
@@ -473,178 +400,287 @@ export default async function FinanceDashboardPage({ searchParams }: Props) {
 
 /* ---------- Sub-components ---------- */
 
-function KpiCard({
+function DeltaBadge({
+  delta,
+  inverse = false,
+}: {
+  delta: number | null;
+  /** Untuk beban: kenaikan = jelek (merah), penurunan = bagus (hijau). */
+  inverse?: boolean;
+}) {
+  if (delta == null) {
+    return <span className="text-muted-foreground text-xs">Tanpa pembanding</span>;
+  }
+  const good = delta === 0 ? null : inverse ? delta < 0 : delta > 0;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
+        good == null
+          ? "text-muted-foreground"
+          : good
+            ? "text-emerald-700 dark:text-emerald-400"
+            : "text-rose-700 dark:text-rose-400",
+      )}
+    >
+      {delta > 0 ? (
+        <ArrowUpRight className="size-3.5" aria-hidden />
+      ) : delta < 0 ? (
+        <ArrowDownRight className="size-3.5" aria-hidden />
+      ) : null}
+      {pctText(delta)}
+    </span>
+  );
+}
+
+function EquationTerm({
   label,
   value,
   delta,
-  hint,
-  progress,
+  previous,
   deltaInverse = false,
+  emphasis,
 }: {
   label: string;
   value: string;
   delta: number | null;
-  hint?: string;
-  progress?: { current: number; target: number; pct: number } | null;
-  /** Untuk metric beban: kenaikan = jelek (merah), penurunan = bagus (hijau). */
+  previous: string;
   deltaInverse?: boolean;
+  emphasis?: "profit" | "loss";
 }) {
-  const tone = (() => {
-    if (delta == null) return "neutral" as const;
-    if (delta === 0) return "neutral" as const;
-    const positive = delta > 0;
-    const isGood = deltaInverse ? !positive : positive;
-    return isGood ? ("up" as const) : ("down" as const);
-  })();
-
   return (
-    <div className="border-border bg-card relative isolate flex flex-col gap-2 overflow-hidden rounded-xl border p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.06em] uppercase">
-          {label}
-        </p>
-        {delta != null ? (
-          <span
-            className={cn(
-              "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-              tone === "up"
-                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                : tone === "down"
-                  ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
-                  : "bg-muted text-muted-foreground",
-            )}
-          >
-            {tone === "up" ? (
-              <ArrowUpRight className="size-3" aria-hidden />
-            ) : tone === "down" ? (
-              <ArrowDownRight className="size-3" aria-hidden />
-            ) : null}
-            {pctText(delta)}
-          </span>
-        ) : null}
-      </div>
-      <p className="text-foreground text-xl font-semibold tracking-tight tabular-nums break-words sm:text-2xl">
+    <div
+      className={cn(
+        "flex min-w-0 flex-col gap-1.5",
+        emphasis && "bg-muted/50 -m-2 rounded-xl p-2 md:-my-3 md:px-3 md:py-3",
+      )}
+    >
+      <dt className="text-muted-foreground text-sm">{label}</dt>
+      <dd
+        className={cn(
+          "text-2xl font-semibold tracking-tight tabular-nums break-words 2xl:text-[1.75rem]",
+          emphasis === "loss"
+            ? "text-rose-700 dark:text-rose-400"
+            : "text-foreground",
+        )}
+      >
         {value}
-      </p>
-      {progress ? (
-        <div className="mt-1 space-y-1">
-          <div className="bg-muted/60 relative h-1.5 w-full overflow-hidden rounded-full">
-            <div
-              className={cn(
-                "absolute inset-y-0 left-0 rounded-full",
-                deltaInverse
-                  ? progress.pct > 100
-                    ? "bg-rose-500"
-                    : progress.pct > 80
-                      ? "bg-amber-500"
-                      : "bg-emerald-500"
-                  : progress.pct >= 100
-                    ? "bg-emerald-500"
-                    : progress.pct >= 60
-                      ? "bg-amber-500"
-                      : "bg-primary",
-              )}
-              style={{ width: `${Math.min(100, progress.pct)}%` }}
-            />
-          </div>
-        </div>
-      ) : null}
-      {hint ? (
-        <p className="text-muted-foreground text-[11px] leading-relaxed">
-          {hint}
-        </p>
-      ) : null}
+      </dd>
+      <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <DeltaBadge delta={delta} inverse={deltaInverse} />
+        <span className="text-muted-foreground text-xs tabular-nums">
+          dari {previous}
+        </span>
+      </dd>
     </div>
   );
 }
 
-function AlertCard({
+function Operator({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className="text-muted-foreground hidden size-7 items-center justify-center self-center rounded-full border md:flex"
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Satu bar pendapatan: porsi yang habis untuk beban vs yang tersisa sebagai laba.
+ * Saat beban melebihi pendapatan, bar penuh jadi beban dan kelebihannya disebut.
+ */
+function MarginBar({
+  revenue,
+  expense,
+  margin,
+}: {
+  revenue: number;
+  expense: number;
+  margin: number | null;
+}) {
+  if (revenue <= 0 || margin == null) {
+    return (
+      <p className="text-muted-foreground text-xs">
+        Margin belum bisa dihitung karena belum ada pendapatan di periode ini.
+      </p>
+    );
+  }
+  const expensePct = Math.min(100, Math.max(0, (expense / revenue) * 100));
+  const profitPct = 100 - expensePct;
+  const overspend = expense > revenue;
+  return (
+    <div className="space-y-2">
+      <div
+        role="img"
+        aria-label={`Beban ${expensePct.toFixed(0)}% dari pendapatan, margin ${margin.toFixed(1)}%`}
+        className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full"
+      >
+        {expensePct > 0 ? (
+          <div
+            className={cn(
+              "h-full rounded-full",
+              overspend ? "bg-rose-500" : "bg-foreground/25",
+            )}
+            style={{ width: `${expensePct}%` }}
+            title={`Beban ${((expense / revenue) * 100).toFixed(1)}% dari pendapatan`}
+          />
+        ) : null}
+        {profitPct > 0 ? (
+          <div
+            className="h-full rounded-full bg-emerald-500"
+            style={{ width: `${profitPct}%` }}
+            title={`Laba ${profitPct.toFixed(1)}% dari pendapatan`}
+          />
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
+        <span className="text-muted-foreground inline-flex items-center gap-1.5">
+          <span
+            className={cn(
+              "size-2 rounded-full",
+              overspend ? "bg-rose-500" : "bg-foreground/25",
+            )}
+            aria-hidden
+          />
+          Beban memakai {((expense / revenue) * 100).toFixed(0)}% pendapatan
+        </span>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 font-medium",
+            overspend ? "text-rose-700 dark:text-rose-400" : "text-foreground",
+          )}
+        >
+          {overspend ? null : (
+            <span className="size-2 rounded-full bg-emerald-500" aria-hidden />
+          )}
+          {overspend
+            ? `Beban melebihi pendapatan, margin ${margin.toFixed(1)}%`
+            : `Margin ${margin.toFixed(1)}%`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CashFlowSplit({
+  inflow,
+  outflow,
+  net,
+  monthName,
+}: {
+  inflow: Prisma.Decimal;
+  outflow: Prisma.Decimal;
+  net: Prisma.Decimal;
+  monthName: string;
+}) {
+  const i = num(inflow);
+  const o = num(outflow);
+  const max = Math.max(i, o, 1);
+  const rows = [
+    { label: "Masuk", value: inflow, width: (i / max) * 100, bar: "bg-emerald-500" },
+    { label: "Keluar", value: outflow, width: (o / max) * 100, bar: "bg-rose-500" },
+  ];
+  const n = num(net);
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-muted-foreground">Arus kas {monthName}</span>
+        <span
+          className={cn(
+            "font-medium tabular-nums",
+            n < 0 ? "text-rose-700 dark:text-rose-400" : "text-foreground",
+          )}
+        >
+          {n > 0 ? "+" : ""}
+          {formatIdr(net)}
+        </span>
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.label}
+          className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-2"
+        >
+          <span className="text-muted-foreground text-xs">{r.label}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="bg-muted h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
+              <div
+                className={cn("h-full rounded-full", r.bar)}
+                style={{ width: `${r.width}%` }}
+              />
+            </div>
+            <span className="text-foreground shrink-0 text-xs tabular-nums">
+              {formatIdr(r.value)}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ActionItem({
+  href,
   tone,
   icon,
   title,
-  subtitle,
-  href,
+  detail,
 }: {
-  tone: "danger" | "warning" | "info";
+  href: string;
+  tone: "danger" | "warning";
   icon: React.ReactNode;
   title: string;
-  subtitle: string;
-  href: string;
+  detail: string;
 }) {
-  const tones = {
-    danger:
-      "border-rose-500/35 bg-rose-500/8 text-rose-700 dark:text-rose-300",
-    warning:
-      "border-amber-500/35 bg-amber-500/8 text-amber-700 dark:text-amber-300",
-    info:
-      "border-sky-500/35 bg-sky-500/8 text-sky-700 dark:text-sky-300",
-  } as const;
   return (
     <Link
       href={href}
-      className={cn(
-        "flex items-start gap-3 rounded-xl border p-3 shadow-sm transition-colors hover:shadow-md",
-        tones[tone],
-      )}
+      className="hover:bg-muted/40 flex flex-1 items-start gap-3 p-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl sm:first:rounded-l-2xl sm:first:rounded-tr-none sm:last:rounded-r-2xl sm:last:rounded-bl-none"
     >
       <span
-        className={cn(
-          "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-background/40",
-        )}
         aria-hidden
+        className={cn(
+          "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full",
+          tone === "danger"
+            ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+            : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+        )}
       >
         {icon}
       </span>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold leading-tight">{title}</p>
-        <p className="text-foreground/80 break-words text-xs leading-relaxed">
-          {subtitle}
-        </p>
-      </div>
+      <span className="min-w-0 space-y-0.5">
+        <span className="text-foreground block text-sm font-semibold">
+          {title}
+        </span>
+        <span className="text-muted-foreground block text-xs tabular-nums break-words">
+          {detail}
+        </span>
+      </span>
     </Link>
   );
 }
 
 function Panel({
   title,
-  accent,
+  action,
   children,
-  right,
-  href,
 }: {
   title: string;
-  accent: "rose" | "emerald" | "sky" | "violet" | "amber";
+  action?: { href: string; label: string };
   children: React.ReactNode;
-  right?: React.ReactNode;
-  href?: string;
 }) {
-  const dot: Record<typeof accent, string> = {
-    rose: "bg-rose-500",
-    emerald: "bg-emerald-500",
-    sky: "bg-sky-500",
-    violet: "bg-violet-500",
-    amber: "bg-amber-500",
-  };
-  const titleEl = (
-    <span className="text-foreground inline-flex items-center gap-2 text-sm font-semibold">
-      <span className={cn("size-2 rounded-full", dot[accent])} aria-hidden />
-      {title}
-    </span>
-  );
   return (
-    <div className="border-border bg-card flex flex-col gap-3 rounded-xl border p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        {href ? (
-          <Link href={href} className="hover:text-primary transition-colors">
-            {titleEl}
+    <div className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-5 shadow-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-foreground text-base font-semibold">{title}</h2>
+        {action ? (
+          <Link
+            href={action.href}
+            className="text-muted-foreground hover:text-foreground shrink-0 text-xs font-medium underline-offset-4 hover:underline"
+          >
+            {action.label}
           </Link>
-        ) : (
-          titleEl
-        )}
-        {right ? (
-          <span className="text-muted-foreground text-[11px] font-medium">
-            {right}
-          </span>
         ) : null}
       </div>
       {children}
@@ -652,109 +688,205 @@ function Panel({
   );
 }
 
-function MiniTable({
-  head,
-  widths,
-  children,
-}: {
-  head: string[];
-  widths: string[];
-  children: React.ReactNode;
-}) {
+function EmptyState({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <div
-        role="row"
-        className="text-muted-foreground border-border/60 grid items-center gap-3 border-b pb-2 text-[10px] font-semibold tracking-wide uppercase"
-        style={{ gridTemplateColumns: widths.join(" ") }}
-      >
-        {head.map((h) => (
-          <span key={h}>{h}</span>
-        ))}
-      </div>
-      <ul className="flex flex-col">{children}</ul>
-    </div>
-  );
-}
-
-function MiniRow({ cells }: { cells: React.ReactNode[] }) {
-  const cols = cells.length;
-  return (
-    <li
-      className="border-border/60 grid items-center gap-3 border-b py-2 last:border-0"
-      style={{
-        gridTemplateColumns:
-          cols === 4
-            ? "minmax(0,1.6fr) minmax(0,1fr) auto auto"
-            : "minmax(0,1.4fr) minmax(0,1fr) auto",
-      }}
-    >
-      {cells}
-    </li>
-  );
-}
-
-function EmptyRow({ message }: { message: string }) {
-  return (
-    <p className="border-border/60 text-muted-foreground rounded-md border border-dashed px-3 py-4 text-center text-xs">
-      <CheckCircle2 className="text-muted-foreground/60 mx-auto mb-1 size-4" />
-      {message}
+    <p className="text-muted-foreground bg-muted/40 rounded-lg px-4 py-6 text-center text-sm">
+      {children}
     </p>
   );
 }
 
-function StatusChip({
-  status,
+function AgingPanel({
+  title,
+  partyLabel,
+  total,
+  overdueTotal,
+  overdueCount,
+  rows,
+  emptyMessage,
 }: {
-  status:
-    | { kind: "overdue"; days: number }
-    | { kind: "due-soon"; days: number }
-    | { kind: "on-track" }
-    | { kind: "paid" };
+  title: string;
+  partyLabel: string;
+  total: Prisma.Decimal;
+  overdueTotal: Prisma.Decimal;
+  overdueCount: number;
+  rows: Array<{
+    id: string;
+    party: string;
+    doc: string | null;
+    remaining: Prisma.Decimal;
+    status: AgingStatus;
+  }>;
+  emptyMessage: string;
 }) {
+  const t = num(total);
+  const overduePct = t > 0 ? Math.min(100, (num(overdueTotal) / t) * 100) : 0;
+  return (
+    <Panel title={title} action={{ href: "/finance/ap-ar", label: "Buka AP & AR" }}>
+      {rows.length === 0 ? (
+        <EmptyState>{emptyMessage}</EmptyState>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <p className="text-foreground text-xl font-semibold tracking-tight tabular-nums">
+                {formatIdr(total)}
+              </p>
+              <p
+                className={cn(
+                  "text-xs tabular-nums",
+                  overdueCount > 0
+                    ? "font-medium text-rose-700 dark:text-rose-400"
+                    : "text-muted-foreground",
+                )}
+              >
+                {overdueCount > 0
+                  ? `${formatIdr(overdueTotal)} lewat jatuh tempo`
+                  : "Belum ada yang lewat jatuh tempo"}
+              </p>
+            </div>
+            {overdueCount > 0 ? (
+              <div
+                role="img"
+                aria-label={`${overduePct.toFixed(0)}% dari total sudah lewat jatuh tempo`}
+                className="bg-muted h-1.5 w-full overflow-hidden rounded-full"
+              >
+                <div
+                  className="h-full rounded-full bg-rose-500"
+                  style={{ width: `${overduePct}%` }}
+                />
+              </div>
+            ) : null}
+          </div>
+          <table className="w-full table-fixed text-sm">
+            <caption className="sr-only">
+              {title}, diurutkan dari jatuh tempo terdekat
+            </caption>
+            <thead>
+              <tr className="text-muted-foreground border-border/60 border-b text-left text-xs">
+                <th scope="col" className="pb-2 font-medium">
+                  {partyLabel}
+                </th>
+                <th scope="col" className="w-[36%] pb-2 text-right font-medium">
+                  Sisa
+                </th>
+                <th scope="col" className="w-[30%] pb-2 pl-3 text-right font-medium">
+                  Jatuh tempo
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-border/60 border-b last:border-0">
+                  <td className="py-2.5 pr-2">
+                    <span className="text-foreground block truncate font-medium">
+                      {row.party}
+                    </span>
+                    {row.doc ? (
+                      <span className="text-muted-foreground block truncate text-xs">
+                        {row.doc}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="text-foreground py-2.5 text-right tabular-nums">
+                    {formatIdr(row.remaining)}
+                  </td>
+                  <td className="py-2.5 pl-3 text-right">
+                    <DueLabel status={row.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function DueLabel({ status }: { status: AgingStatus }) {
   switch (status.kind) {
     case "overdue":
       return (
-        <span className="inline-flex items-center rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:text-rose-300">
-          Overdue
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-700 dark:text-rose-400">
+          <AlertTriangle className="size-3" aria-hidden />
+          {status.days} hari lewat
         </span>
       );
     case "due-soon":
       return (
-        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-          {status.days <= 0 ? "Hari ini" : `${status.days} hr lagi`}
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+          <Clock className="size-3" aria-hidden />
+          {status.days <= 0 ? "Hari ini" : `${status.days} hari lagi`}
         </span>
       );
     case "on-track":
-      return (
-        <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-          On track
-        </span>
-      );
+      return <span className="text-muted-foreground text-xs">Lebih dari 7 hari</span>;
     case "paid":
-      return (
-        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-          Lunas
-        </span>
-      );
+      return <span className="text-muted-foreground text-xs">Lunas</span>;
   }
 }
 
-function agingHumanLabel(
-  status:
-    | { kind: "overdue"; days: number }
-    | { kind: "due-soon"; days: number }
-    | { kind: "on-track" }
-    | { kind: "paid" },
-): string {
-  switch (status.kind) {
-    case "overdue":
-      return `${status.days} hari lewat`;
-    case "due-soon":
-      return status.days <= 0 ? "hari ini" : `${status.days} hari lagi`;
-    case "on-track":
-      return "≥ 8 hari";
-    case "paid":
-      return "lunas";
+function BrandPnl({
+  rows,
+}: {
+  rows: Array<{
+    id: string | null;
+    name: string;
+    revenue: Prisma.Decimal;
+    net: Prisma.Decimal;
+    margin: number | null;
+  }>;
+}) {
+  if (rows.length === 0) {
+    return <EmptyState>Belum ada jurnal bertag brand di periode ini.</EmptyState>;
   }
+  const max = Math.max(...rows.map((r) => num(r.revenue)), 1);
+  return (
+    <div className="flex flex-col gap-4">
+      <ul className="flex flex-col gap-3.5">
+        {rows.map((row) => {
+          const rev = num(row.revenue);
+          const width = rev > 0 ? Math.max(2, (rev / max) * 100) : 0;
+          return (
+            <li key={row.id ?? "untagged"} className="space-y-1.5">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span
+                  className={cn(
+                    "truncate font-medium",
+                    row.id ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {row.name}
+                </span>
+                <span className="flex shrink-0 items-baseline gap-3 tabular-nums">
+                  <span className="text-foreground">{formatIdr(row.revenue)}</span>
+                  <span
+                    className={cn(
+                      "w-12 text-right text-xs font-medium",
+                      row.margin != null && row.margin < 0
+                        ? "text-rose-700 dark:text-rose-400"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {row.margin == null ? "—" : `${row.margin.toFixed(0)}%`}
+                  </span>
+                </span>
+              </div>
+              <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+                <div
+                  className="bg-primary h-full rounded-full"
+                  style={{ width: `${width}%` }}
+                  title={`${row.name}: pendapatan ${formatIdr(row.revenue)}, laba ${formatIdr(row.net)}`}
+                />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-muted-foreground text-xs">
+        Bar menunjukkan pendapatan; persentase di kanan adalah margin laba bersih.
+      </p>
+    </div>
+  );
 }

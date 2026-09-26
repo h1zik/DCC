@@ -1,7 +1,8 @@
 import { ensureFinanceCoaReady } from "@/actions/finance-accounts";
 import { ensureFinancePage } from "@/lib/ensure-finance-page";
-import { FinanceSubNav } from "@/components/finance/finance-sub-nav";
 
+// Navigasi antar-modul keuangan ada di sidebar (navFinance) — tidak perlu
+// sub-nav kedua di atas konten.
 export default async function FinanceLayout({
   children,
 }: {
@@ -9,10 +10,5 @@ export default async function FinanceLayout({
 }) {
   await ensureFinancePage();
   await ensureFinanceCoaReady();
-  return (
-    <div className="flex w-full min-w-0 flex-col gap-4">
-      <FinanceSubNav />
-      {children}
-    </div>
-  );
+  return <div className="flex w-full min-w-0 flex-col gap-4">{children}</div>;
 }
