@@ -22,6 +22,7 @@ import {
   type ScheduleOrderInput,
 } from "@/lib/kol/validation";
 import { toDecimal } from "@/lib/finance-money";
+import { withdrawSpendRequestInTx } from "@/lib/finance-spend-internal";
 import { prisma } from "@/lib/prisma";
 
 function revalidateSchedules(id?: string) {
@@ -298,7 +299,7 @@ const CANCELLABLE: KolScheduleStatus[] = [
 export async function cancelSchedule(scheduleId: string, reason: string) {
   const session = await requireKolUser();
   const note = z.string().trim().min(3, "Tulis alasan pembatalan.").max(500).parse(reason);
-  await prisma.$transaction(async (tx) => {
+  const paymentOutcome = await prisma.$transaction(async (tx) => {
     const updated = await tx.kolSchedule.updateMany({
       where: { id: scheduleId, status: { in: CANCELLABLE } },
       data: { status: KolScheduleStatus.CANCELLED, decisionNote: note },
@@ -306,15 +307,32 @@ export async function cancelSchedule(scheduleId: string, reason: string) {
     if (updated.count === 0) {
       throw new Error("Jadwal ini sudah tayang atau sudah diputus — tidak bisa dibatalkan.");
     }
+    // Pengajuan dana yang belum dibayar ditarik; yang sudah dibayar dibiarkan
+    // untuk ditangani Finance (refund).
+    const s = await tx.kolSchedule.findUniqueOrThrow({
+      where: { id: scheduleId },
+      select: { spendRequestId: true, subNumber: true },
+    });
+    const outcome = s.spendRequestId
+      ? await withdrawSpendRequestInTx(
+          tx,
+          s.spendRequestId,
+          session.user.id,
+          `jadwal KOL ${s.subNumber} dibatalkan — ${note}`,
+        )
+      : null;
     await logKolAudit(tx, {
       actorId: session.user.id,
       entityType: "schedule",
       entityId: scheduleId,
       action: "schedule.cancelled",
-      meta: { reason: note },
+      meta: { reason: note, payment: outcome },
     });
+    return outcome;
   });
   revalidateSchedules(scheduleId);
+  revalidatePath("/finance/approvals");
+  return { alreadyPaid: paymentOutcome === "PAID" };
 }
 
 /** Tandai jadwal yang sudah disetujui siap tayang (brief & produk beres). */

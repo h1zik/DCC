@@ -1,6 +1,8 @@
 import {
+  BarChart3,
   CalendarDays,
   ClipboardList,
+  FileSignature,
   FileText,
   Inbox,
   LayoutDashboard,
@@ -58,6 +60,12 @@ export const KOL_ZONES: KolNavZone[] = [
         label: "Kalender",
         icon: CalendarDays,
       },
+      {
+        key: "analytics",
+        href: "/kol-hub/analytics",
+        label: "Analytics",
+        icon: BarChart3,
+      },
     ],
   },
   {
@@ -106,6 +114,12 @@ export const KOL_ZONES: KolNavZone[] = [
         href: "/kol-hub/settings/rate-card",
         label: "Rate card & FYP",
         icon: Scale,
+      },
+      {
+        key: "spk-templates",
+        href: "/kol-hub/settings/spk-templates",
+        label: "Template SPK",
+        icon: FileSignature,
       },
     ],
   },

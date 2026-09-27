@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { InfluencerVerdict } from "@prisma/client";
 import { ArrowUpRight, ClipboardList, UserRound } from "lucide-react";
-import { compactNumber, VerdictBadge } from "@/components/brand-hub/influencer-badges";
+import { VerdictBadge } from "@/components/brand-hub/influencer-badges";
+import { compactCount as compactNumber } from "@/lib/kol/format";
 import {
   KolBadge,
   KolStatusBadge,

@@ -3,14 +3,19 @@ import { Inbox } from "lucide-react";
 import { LabModulePage } from "@/components/lab/lab-module-page";
 import { LabStatChip } from "@/components/lab/lab-primitives";
 import { canApproveKol, ensureKolHubPage } from "@/lib/kol/auth";
-import { listApprovalQueue } from "@/lib/kol/readers";
+import { countSchedulesMissingSpendRequest, listApprovalQueue } from "@/lib/kol/readers";
 import { ApprovalsClient } from "./approvals-client";
+import { BackfillSpendButton } from "./backfill-button";
 
 export const metadata: Metadata = { title: "Approval · KOL Hub" };
 
 export default async function KolApprovalsPage() {
   const { session } = await ensureKolHubPage();
-  const [queue, approver] = await Promise.all([listApprovalQueue(), canApproveKol()]);
+  const [queue, approver, missingSpend] = await Promise.all([
+    listApprovalQueue(),
+    canApproveKol(),
+    countSchedulesMissingSpendRequest(),
+  ]);
   const slotCount = queue.orders.reduce((a, o) => a + o.slots.length, 0);
 
   return (
@@ -34,6 +39,7 @@ export default async function KolApprovalsPage() {
         </div>
       }
     >
+      {approver && missingSpend > 0 ? <BackfillSpendButton count={missingSpend} /> : null}
       <ApprovalsClient queue={queue} approver={approver} currentUserId={session.user.id} />
     </LabModulePage>
   );

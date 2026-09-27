@@ -25,6 +25,22 @@ export function rupiahShort(value: number | null | undefined): string {
   return `${sign}Rp ${fmt(abs, 0)}`;
 }
 
+/**
+ * Angka ringkas (12,3rb / 1,2jt). Salinan server-safe dari helper Brand Hub —
+ * yang itu tinggal di modul "use client" sehingga tidak bisa dipanggil dari
+ * server component.
+ */
+export function compactCount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  if (Math.abs(value) >= 1_000_000) {
+    return `${(value / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}jt`;
+  }
+  if (Math.abs(value) >= 1_000) {
+    return `${(value / 1_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}rb`;
+  }
+  return Math.round(value).toLocaleString("id-ID");
+}
+
 /** Ketik "1.500.000" / "1500000" → "1500000" (string angka mentah). */
 export function parseRupiahInput(raw: string): string {
   return raw.replace(/[^\d]/g, "");

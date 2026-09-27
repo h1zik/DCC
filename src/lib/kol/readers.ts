@@ -10,6 +10,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { computeBudgetUsage, COMMITTED_STATUSES } from "@/lib/kol/budget";
 import { maskAccountNumber, maskPhone } from "@/lib/kol/banks";
+import { paymentStatusOf } from "@/lib/kol/finance-link";
 
 /* ------------------------------------------------------------------------ */
 /* Tipe tampilan (serializable)                                              */
@@ -689,6 +690,8 @@ const scheduleListInclude = {
   requestedBy: { select: { id: true, name: true, email: true } },
   order: { select: { id: true, orderNumber: true } },
   products: { include: { product: { select: { name: true, sku: true } } } },
+  spendRequest: { select: { id: true, status: true, decisionNote: true, updatedAt: true } },
+  spk: { select: { id: true, status: true, docNumber: true } },
 } satisfies Prisma.KolScheduleInclude;
 
 type ScheduleRowRaw = Prisma.KolScheduleGetPayload<{
@@ -743,6 +746,12 @@ function toScheduleRow(s: ScheduleRowRaw) {
     metricsSyncedAt: s.metricsSyncedAt?.toISOString() ?? null,
     metricsError: s.metricsError,
     followersAtBooking: s.followersAtBooking,
+    paymentStatus: paymentStatusOf(s.spendRequest?.status),
+    spendRequestId: s.spendRequest?.id ?? null,
+    paymentNote: s.spendRequest?.decisionNote ?? null,
+    spkId: s.spk?.id ?? null,
+    spkStatus: s.spk?.status ?? null,
+    spkNumber: s.spk?.docNumber ?? null,
     courier: s.courier,
     trackingNumber: s.trackingNumber,
     decisionNote: s.decisionNote,
@@ -1015,6 +1024,64 @@ export async function listApprovalQueue() {
 }
 
 export type ApprovalQueue = Awaited<ReturnType<typeof listApprovalQueue>>;
+
+export async function getSpkForSchedule(scheduleId: string) {
+  const d = await prisma.kolSpkDocument.findUnique({
+    where: { scheduleId },
+    select: { id: true, docNumber: true, status: true, templateId: true, signedFileKey: true },
+  });
+  return d
+    ? {
+        id: d.id,
+        docNumber: d.docNumber,
+        status: d.status,
+        templateId: d.templateId,
+        hasSigned: d.signedFileKey != null,
+      }
+    : null;
+}
+
+/** Template SPK aktif; dengan `brandId` → template organisasi + khusus brand itu. */
+export async function listSpkTemplates(brandId?: string | null) {
+  const rows = await prisma.kolSpkTemplate.findMany({
+    where: {
+      archivedAt: null,
+      ...(brandId !== undefined
+        ? { OR: [{ scope: "ORGANIZATION" }, { scope: "BRAND", brandId: brandId ?? "__none" }] }
+        : {}),
+    },
+    orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+    include: {
+      brand: { select: { name: true } },
+      _count: { select: { documents: true } },
+    },
+  });
+  return rows.map((t) => ({
+    id: t.id,
+    name: t.name,
+    scope: t.scope,
+    brandId: t.brandId,
+    brandName: t.brand?.name ?? null,
+    body: t.body,
+    isDefault: t.isDefault,
+    documentCount: t._count.documents,
+    updatedAt: t.updatedAt.toISOString(),
+  }));
+}
+
+export type SpkTemplateRow = Awaited<ReturnType<typeof listSpkTemplates>>[number];
+
+/** Jadwal disetujui berbiaya yang belum punya pengajuan dana Finance. */
+export async function countSchedulesMissingSpendRequest() {
+  const rows = await prisma.kolSchedule.findMany({
+    where: {
+      spendRequestId: null,
+      status: { in: [KolScheduleStatus.APPROVED, KolScheduleStatus.SCHEDULED, KolScheduleStatus.POSTED] },
+    },
+    select: { rate: true, additionalCost: true },
+  });
+  return rows.filter((r) => Number(r.rate) + Number(r.additionalCost) > 0).length;
+}
 
 export async function getApprovalCount() {
   const [changes, schedules] = await Promise.all([

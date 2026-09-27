@@ -1059,6 +1059,15 @@ async function buildServer(): Promise<McpServer> {
     limitSchema,
   });
 
+  // KOL Hub — hanya toolset `full` (profil research sudah return di atas).
+  const { registerKolTools } = await import("./register-kol-tools.js");
+  registerKolTools(server, {
+    dccFetch,
+    buildQuery,
+    asText,
+    limitSchema,
+  });
+
 
 
   return server;

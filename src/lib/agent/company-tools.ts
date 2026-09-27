@@ -38,6 +38,14 @@ import {
   aiGetUserTasks,
   aiGetUsersTaskOverview,
 } from "@/lib/ai-api/user-tasks";
+import {
+  aiGetKolCampaignPerformance,
+  aiGetKolPendingApprovals,
+  aiGetKolProfile,
+  aiListKolProfiles,
+  aiListKolSchedules,
+} from "@/lib/ai-api/kol-queries";
+import type { UserRole } from "@prisma/client";
 import { userRoleToAiRole } from "./queries";
 import type { AgentToolResult, AgentUser } from "./types";
 
@@ -344,6 +352,75 @@ export const COMPANY_AGENT_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["documentId"],
     },
   },
+  {
+    name: "list_kol_profiles",
+    description:
+      "KOL Hub: daftar KOL/influencer (status, kategori, akun IG/TikTok dengan follower, tier, rate card, hasil audit Brand Hub, median views, jumlah jadwal & yang sudah tayang). Hanya CEO/Administrator/Brand Manager.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        status: {
+          type: SchemaType.STRING,
+          description: "WAITING_APPROVAL | ACTIVE | BLACKLISTED | REJECTED",
+        },
+        platform: { type: SchemaType.STRING, description: "INSTAGRAM | TIKTOK" },
+        categoryName: { type: SchemaType.STRING, description: "Nama kategori KOL" },
+        q: { type: SchemaType.STRING, description: "Cari nama atau handle" },
+        limit: { type: SchemaType.NUMBER, description: "Default 30" },
+      },
+    },
+  },
+  {
+    name: "get_kol_profile",
+    description:
+      "KOL Hub: detail satu KOL (kolId dari list_kol_profiles) + ringkasan performa dan 20 jadwal terbaru (brand, campaign, status, biaya, views, FYP, CPM).",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: { kolId: { type: SchemaType.STRING } },
+      required: ["kolId"],
+    },
+  },
+  {
+    name: "list_kol_schedules",
+    description:
+      "KOL Hub: jadwal/slot konten KOL dengan biaya, views, CPM, FYP, dan status pembayaran Finance. Filter status/brand/campaign/KOL/rentang tanggal tayang.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        status: {
+          type: SchemaType.STRING,
+          description:
+            "DRAFT | PENDING_APPROVAL | APPROVED | SCHEDULED | POSTED | REJECTED | CANCELLED",
+        },
+        brandId: { type: SchemaType.STRING },
+        campaignId: { type: SchemaType.STRING },
+        kolId: { type: SchemaType.STRING },
+        from: { type: SchemaType.STRING, description: "YYYY-MM-DD (scheduledAt ≥)" },
+        to: { type: SchemaType.STRING, description: "YYYY-MM-DD (scheduledAt ≤)" },
+        limit: { type: SchemaType.NUMBER, description: "Default 50" },
+      },
+    },
+  },
+  {
+    name: "get_kol_campaign_performance",
+    description:
+      "KOL Hub: performa per campaign — jumlah slot, tayang, total biaya, total views, FYP rate, rata-rata CPM, dan pemakaian budget (awal/terpakai/sisa).",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        campaignId: { type: SchemaType.STRING },
+        brandId: { type: SchemaType.STRING },
+        from: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
+        to: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
+      },
+    },
+  },
+  {
+    name: "get_kol_pending_approvals",
+    description:
+      "KOL Hub: antrean approval — pengajuan perubahan profil KOL dan jadwal PENDING_APPROVAL dikelompokkan per order (slot & total nilai).",
+    parameters: { type: SchemaType.OBJECT, properties: {} },
+  },
 ];
 
 const COMPANY_AGENT_TOOL_NAMES = new Set(
@@ -367,6 +444,9 @@ export async function executeAgentCompanyTool(
   if (!COMPANY_AGENT_TOOL_NAMES.has(name)) return null;
 
   const role = userRoleToAiRole(user.role);
+  // KOL Hub di-gate per UserRole asli: PROJECT_MANAGER (Brand Manager) boleh,
+  // sedangkan pemetaan AiApiRole menyamakannya dengan STUDIO (member umum).
+  const kolRole = user.role as UserRole;
 
   try {
     let data: unknown;
@@ -493,6 +573,40 @@ export async function executeAgentCompanyTool(
         break;
       case "get_room_document":
         data = await aiGetRoomDocumentContent(role, String(args.documentId));
+        break;
+      case "list_kol_profiles":
+        data = await aiListKolProfiles(kolRole, {
+          status: str(args.status),
+          platform: str(args.platform),
+          categoryName: str(args.categoryName),
+          q: str(args.q),
+          limit: num(args.limit),
+        });
+        break;
+      case "get_kol_profile":
+        data = await aiGetKolProfile(kolRole, String(args.kolId));
+        break;
+      case "list_kol_schedules":
+        data = await aiListKolSchedules(kolRole, {
+          status: str(args.status),
+          brandId: str(args.brandId),
+          campaignId: str(args.campaignId),
+          kolId: str(args.kolId),
+          from: str(args.from),
+          to: str(args.to),
+          limit: num(args.limit),
+        });
+        break;
+      case "get_kol_campaign_performance":
+        data = await aiGetKolCampaignPerformance(kolRole, {
+          campaignId: str(args.campaignId),
+          brandId: str(args.brandId),
+          from: str(args.from),
+          to: str(args.to),
+        });
+        break;
+      case "get_kol_pending_approvals":
+        data = await aiGetKolPendingApprovals(kolRole);
         break;
       default:
         return { ok: false, error: `Tool tidak dikenal: ${name}` };

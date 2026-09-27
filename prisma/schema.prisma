@@ -480,6 +480,8 @@ model User {
   kolSchedulesRequested              KolSchedule[]                  @relation("KolScheduleRequester")
   kolSchedulesDecided                KolSchedule[]                  @relation("KolScheduleDecider")
   kolAuditEvents                     KolAuditEvent[]                @relation("KolAuditActor")
+  kolSpkTemplatesCreated             KolSpkTemplate[]               @relation("KolSpkTemplateCreator")
+  kolSpkDocumentsGenerated           KolSpkDocument[]               @relation("KolSpkGenerator")
   brandUspAnalysesCreated            BrandUspAnalysis[]             @relation("BrandUspAnalysisCreator")
   brandVisualCollectionsCreated      BrandVisualCollection[]        @relation("BrandVisualCollectionCreator")
   brandStrategyDocumentsCreated      BrandStrategyDocument[]        @relation("BrandStrategyDocumentCreator")
@@ -674,6 +676,7 @@ model Brand {
   kolCampaigns            KolCampaign[]
   kolScheduleOrders       KolScheduleOrder[]
   kolSchedules            KolSchedule[]
+  kolSpkTemplates         KolSpkTemplate[]
 }
 
 /**
@@ -2624,6 +2627,8 @@ model FinanceSpendRequest {
   payoutEntry      FinanceJournalEntry?      @relation(fields: [payoutEntryId], references: [id], onDelete: SetNull)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
+  /** Jadwal KOL Hub asal pengajuan ini (bila dibuat otomatis dari KOL Hub). */
+  kolSchedule      KolSchedule?
 
   @@index([status])
 }
@@ -7065,8 +7070,18 @@ model KolSchedule {
   /** Follower akun saat jadwal disetujui — pembanding performa. */
   followersAtBooking Int?
 
+  // ── Fase 3: pembayaran lewat Finance ─────────────────────────────────
+  /**
+   * Pengajuan dana Finance untuk fee jadwal ini (dibuat saat disetujui).
+   * Status bayar SELALU dibaca dari relasi ini, tidak disalin — reversal
+   * payout di Finance otomatis tercermin di KOL Hub.
+   */
+  spendRequestId String?              @unique
+  spendRequest   FinanceSpendRequest? @relation(fields: [spendRequestId], references: [id], onDelete: SetNull)
+
   products  KolScheduleProduct[]
   snapshots KolPostSnapshot[]
+  spk       KolSpkDocument?
 
   @@index([status])
   @@index([scheduledAt])
@@ -7197,4 +7212,70 @@ model KolReferenceCpm {
   updatedAt DateTime           @updatedAt
 
   @@id([platform, tier])
+}
+
+// ── KOL Hub fase 3: SPK (surat perjanjian kerja sama) ─────────────────────
+
+enum KolSpkScope {
+  ORGANIZATION
+  BRAND
+}
+
+enum KolSpkStatus {
+  /** Dokumen sudah dibuat dari template, belum dikirim. */
+  GENERATED
+  /** Sudah dikirim ke KOL untuk ditandatangani. */
+  SENT
+  /** Salinan bertanda tangan sudah diunggah. */
+  SIGNED
+}
+
+/**
+ * Template SPK. Isi berupa teks dengan variabel `{{nama_variabel}}` yang
+ * diisi dari data KOL, campaign, jadwal, dan brand saat dokumen dibuat.
+ */
+model KolSpkTemplate {
+  id          String           @id @default(cuid())
+  name        String
+  scope       KolSpkScope      @default(ORGANIZATION)
+  brandId     String?
+  brand       Brand?           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  body        String           @db.Text
+  isDefault   Boolean          @default(false)
+  archivedAt  DateTime?
+  createdById String?
+  createdBy   User?            @relation("KolSpkTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  documents   KolSpkDocument[]
+
+  @@index([brandId])
+}
+
+/**
+ * SPK satu jadwal. `renderedBody` dibekukan saat dibuat supaya perubahan
+ * template/data kemudian tidak mengubah dokumen yang sudah dikirim.
+ */
+model KolSpkDocument {
+  id             String          @id @default(cuid())
+  scheduleId     String          @unique
+  schedule       KolSchedule     @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  templateId     String?
+  template       KolSpkTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  docNumber      String          @unique
+  renderedBody   String          @db.Text
+  status         KolSpkStatus    @default(GENERATED)
+  generatedById  String?
+  generatedBy    User?           @relation("KolSpkGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
+  generatedAt    DateTime        @default(now())
+  sentAt         DateTime?
+  signedAt       DateTime?
+  /** Path relatif di storage privat KOL Hub (bukan folder publik). */
+  signedFileKey  String?
+  signedFileName String?
+  signedMime     String?
+  signedSize     Int?
+  updatedAt      DateTime        @updatedAt
+
+  @@index([status])
 }

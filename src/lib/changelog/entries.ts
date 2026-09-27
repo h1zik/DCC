@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-27-kol-hub-analytics-spk-finance",
+    date: "2026-09-27",
+    title: "KOL Hub: analytics, SPK otomatis, dan pembayaran lewat Finance",
+    category: "new",
+    description:
+      "Fee KOL kini mengalir ke Finance secara otomatis, kontrak kerja sama (SPK) terisi sendiri dari data jadwal, dan performa endorsement bisa dibedah per KOL, campaign, produk, kategori, brief, PIC, tier, dan platform.",
+    highlights: [
+      "Jadwal yang disetujui otomatis menjadi pengajuan dana di Finance › Expense Approvals (akun Beban pemasaran & iklan); status bayar di KOL Hub selalu mengikuti Finance",
+      "Jadwal yang dibatalkan menarik pengajuan dananya bila belum dibayar",
+      "Halaman Analytics: views, FYP rate, CPM, CPV, views per Rp1.000, biaya & yang sudah dibayar, dibanding periode sebelumnya, plus KOL baru / repeat / tidak terpakai",
+      "Template SPK dengan 35 variabel (data KOL, rekening, campaign, jadwal, fee + terbilang); buat PDF, tandai terkirim, dan unggah salinan bertanda tangan — jadwal otomatis jadi Siap tayang",
+      "Data KOL Hub bisa ditanyakan ke AI Agent & MCP (tanpa data pribadi KOL)",
+    ],
+  },
+  {
     id: "2026-09-27-kol-hub-tracking-rate-card",
     date: "2026-09-27",
     title: "KOL Hub: performa post otomatis & rekomendasi rate card",

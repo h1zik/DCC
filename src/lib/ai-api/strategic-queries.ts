@@ -37,6 +37,7 @@ import {
   canViewExecutive,
   canViewFinanceSummary,
   canViewInventory,
+  canViewKol,
   canViewOrgUsers,
   canViewResearchHub,
   canViewTasks,
@@ -849,6 +850,7 @@ export function aiGetMcpCapabilities(role: AiApiRole) {
       orgUsers: canViewOrgUsers(role),
       contentPlanning: canViewBrandPipeline(role),
       researchHub: canViewResearchHub(role),
+      kolHub: canViewKol(role),
     },
     note: "Semua tool read-only. Gunakan header x-dcc-role untuk simulasi peran.",
   };
@@ -1257,7 +1259,8 @@ type ActivityEvent = {
     | "document_added"
     | "stock_movement"
     | "schedule_created"
-    | "finance_entry";
+    | "finance_entry"
+    | "kol_activity";
   at: string;
   title: string;
   context?: string | null;
@@ -1291,6 +1294,7 @@ export async function aiGetRecentActivity(
   const showPipeline = canViewBrandPipeline(role);
   const showInventory = canViewInventory(role);
   const showFinance = canViewFinanceSummary(role);
+  const showKol = canViewKol(role);
 
   const [
     tasksCreated,
@@ -1300,6 +1304,7 @@ export async function aiGetRecentActivity(
     stockLogs,
     scheduleEvents,
     financeEntries,
+    kolEvents,
   ] = await Promise.all([
     showTasks
       ? prisma.task.findMany({
@@ -1421,9 +1426,23 @@ export async function aiGetRecentActivity(
           take: limit,
         })
       : Promise.resolve([]),
+    showKol
+      ? prisma.kolAuditEvent.findMany({
+          where: { createdAt: { gte: since } },
+          select: {
+            id: true,
+            entityType: true,
+            action: true,
+            createdAt: true,
+            actor: { select: { name: true, email: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        })
+      : Promise.resolve([]),
   ]);
 
-  const actorOf = (u: { name: string | null; email: string } | null) =>
+  const actorOf =(u: { name: string | null; email: string } | null) =>
     u ? u.name?.trim() || u.email : undefined;
 
   const events: ActivityEvent[] = [];
@@ -1488,6 +1507,15 @@ export async function aiGetRecentActivity(
       at: f.createdAt.toISOString(),
       title: `Jurnal ${f.status}: ${f.entryNumber || f.memo?.slice(0, 60) || "—"}`,
       actor: actorOf(f.createdBy),
+    });
+  }
+  for (const k of kolEvents) {
+    events.push({
+      type: "kol_activity",
+      at: k.createdAt.toISOString(),
+      title: `KOL Hub: ${k.action}`,
+      context: k.entityType,
+      actor: actorOf(k.actor),
     });
   }
 

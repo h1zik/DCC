@@ -109,6 +109,8 @@ export function ScheduleTable({
                   postStatus={s.postStatus}
                   shipmentStatus={s.shipmentStatus}
                   scheduledAt={s.scheduledAt}
+                  paymentStatus={s.paymentStatus}
+                  spkStatus={s.spkStatus}
                 />
               </td>
             </tr>

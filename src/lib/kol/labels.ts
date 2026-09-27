@@ -141,6 +141,25 @@ export const POST_STATUS_META: Record<
   TAKEN_DOWN: { label: "Diturunkan", tone: "danger" },
 };
 
+export type KolPaymentStatusValue = "NONE" | "WAITING" | "APPROVED" | "PAID" | "REJECTED";
+
+/** Status bayar — dibaca live dari pengajuan dana Finance. */
+export const PAYMENT_META: Record<KolPaymentStatusValue, { label: string; tone: Tone }> = {
+  NONE: { label: "Tanpa pembayaran", tone: "muted" },
+  WAITING: { label: "Menunggu Finance", tone: "warning" },
+  APPROVED: { label: "Siap dibayar", tone: "info" },
+  PAID: { label: "Dibayar", tone: "success" },
+  REJECTED: { label: "Pembayaran ditolak", tone: "danger" },
+};
+
+export type KolSpkStatusValue = "GENERATED" | "SENT" | "SIGNED";
+
+export const SPK_META: Record<KolSpkStatusValue, { label: string; tone: Tone }> = {
+  GENERATED: { label: "SPK dibuat", tone: "neutral" },
+  SENT: { label: "SPK dikirim", tone: "info" },
+  SIGNED: { label: "SPK ditandatangani", tone: "success" },
+};
+
 export const PLATFORM_LABEL: Record<KolPlatformValue, string> = {
   INSTAGRAM: "Instagram",
   TIKTOK: "TikTok",

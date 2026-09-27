@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import {
   KOL_STATUS_META,
+  PAYMENT_META,
   PLATFORM_LABEL,
+  SPK_META,
+  type KolPaymentStatusValue,
+  type KolSpkStatusValue,
   POST_STATUS_META,
   SCHEDULE_STATUS_META,
   SHIPMENT_META,
@@ -65,11 +69,15 @@ export function ScheduleStatusStack({
   postStatus,
   shipmentStatus,
   scheduledAt,
+  paymentStatus,
+  spkStatus,
 }: {
   status: KolScheduleStatusValue;
   postStatus: KolPostStatusValue;
   shipmentStatus: KolShipmentStatusValue;
   scheduledAt: string | null;
+  paymentStatus?: KolPaymentStatusValue;
+  spkStatus?: KolSpkStatusValue | null;
 }) {
   const live = status === "APPROVED" || status === "SCHEDULED";
   const late = live && isPast(scheduledAt);
@@ -89,6 +97,12 @@ export function ScheduleStatusStack({
         <KolBadge tone={SHIPMENT_META[shipmentStatus].tone}>
           {SHIPMENT_META[shipmentStatus].label}
         </KolBadge>
+      ) : null}
+      {spkStatus ? (
+        <KolBadge tone={SPK_META[spkStatus].tone}>{SPK_META[spkStatus].label}</KolBadge>
+      ) : null}
+      {paymentStatus && paymentStatus !== "NONE" ? (
+        <KolBadge tone={PAYMENT_META[paymentStatus].tone}>{PAYMENT_META[paymentStatus].label}</KolBadge>
       ) : null}
     </div>
   );
