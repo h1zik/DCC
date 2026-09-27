@@ -13,7 +13,8 @@ export type KolAuditEntity =
   | "brief"
   | "category"
   | "endorse_type"
-  | "product";
+  | "product"
+  | "settings";
 
 type Client = Prisma.TransactionClient | typeof prisma;
 

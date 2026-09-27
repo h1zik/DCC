@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { createKolProfile, updateKolProfile } from "@/actions/kol-profiles";
 import { Field, KolSelect, RupiahInput } from "@/components/kol-hub/kol-fields";
 import { PlatformMark } from "@/components/kol-hub/kol-badges";
+import { RateHint, type RateHintData } from "@/components/kol-hub/rate-hint";
 import { LabCard, lab } from "@/components/lab/lab-primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,6 +92,7 @@ export function KolForm({
   categories,
   status,
   masked,
+  rateHints,
 }: {
   mode: "create" | "edit";
   kolId?: string;
@@ -100,6 +102,8 @@ export function KolForm({
   status?: string;
   /** Nilai tersamar untuk non-approver — kosongkan field = tetap pakai nilai lama. */
   masked?: { phone: string | null; accountNumber: string | null };
+  /** Rekomendasi rate per id akun tersimpan (mode edit). */
+  rateHints?: Record<string, RateHintData>;
 }) {
   const router = useRouter();
   const [v, setV] = useState<KolFormValues>(initial);
@@ -258,6 +262,14 @@ export function KolForm({
                     </>
                   )}
                 </div>
+                {a.id && rateHints?.[a.id] ? (
+                  <RateHint
+                    className="sm:col-span-4"
+                    data={rateHints[a.id]}
+                    rate={Number(a.rateCard) || null}
+                    onApply={(fair) => patchAccount(i, { rateCard: String(fair) })}
+                  />
+                ) : null}
               </div>
             ))}
             {v.socialAccounts.length < 8 ? (

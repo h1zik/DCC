@@ -20,6 +20,8 @@ import {
   TIER_LABEL,
 } from "@/lib/kol/labels";
 import { getKolDetail } from "@/lib/kol/readers";
+import { getAccountRates } from "@/lib/kol/rate-context";
+import { RateHint } from "@/components/kol-hub/rate-hint";
 import { formatWibDate, formatWibDateTime } from "@/lib/kol/time";
 import { cn } from "@/lib/utils";
 import { AccountAuditButton, KolDetailActions, PendingChangeBanner } from "./kol-detail-client";
@@ -45,6 +47,7 @@ export default async function KolDetailPage({
   const approver = await canApproveKol();
   const k = await getKolDetail(kolId, { revealSensitive: approver });
   if (!k) notFound();
+  const rates = await getAccountRates(k.accounts.map((a) => a.id));
 
   const address = [k.address.line, k.address.district, k.address.city, k.address.province, k.address.postalCode]
     .filter(Boolean)
@@ -143,6 +146,10 @@ export default async function KolDetailPage({
                       </div>
                     ))}
                   </dl>
+                  <RateHint
+                    data={rates.get(a.id)}
+                    rate={a.rateCard}
+                  />
                   <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
                     <span>
                       {a.audit

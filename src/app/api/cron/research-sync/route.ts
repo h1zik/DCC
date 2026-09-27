@@ -10,6 +10,7 @@ import { pollBrandAdLibraryBatchesLight } from "@/lib/brand-research/scrape-meta
 import { pollRunningInfluencerAudits } from "@/lib/brand-research/influencer/run-audit";
 import { pollRunningDiscoveryRuns } from "@/lib/brand-research/influencer/discovery/run-discovery";
 import { pollRunningEnrichmentBatches } from "@/lib/brand-research/influencer/discovery/enrich-batch";
+import { pollRunningKolPostSyncs, syncDueKolPosts } from "@/lib/kol/post-sync";
 
 /**
  * Cron Research Hub: poll job Apify yang masih berjalan + scrape harian kompetitor.
@@ -21,6 +22,8 @@ import { pollRunningEnrichmentBatches } from "@/lib/brand-research/influencer/di
  * - Trend Radar digest: Senin jam 06:00 WIB (`mode=trends`)
  * - Social Listening sync: harian jam 06:00 WIB (`mode=social`)
  * - Research Reports weekly: Senin jam 06:00 WIB (`mode=reports`)
+ * - KOL Hub metrik post: harian jam 07:00 WIB (`mode=kol-posts`) — run Apify
+ *   dimajukan oleh `mode=poll`
  *
  * Setiap eksekusi dicatat ke `ResearchCronRun` — dipakai panel kesehatan data
  * di dashboard untuk mendeteksi cron yang tidak terpasang / mati (data basi).
@@ -93,6 +96,10 @@ export async function GET(request: Request) {
     return runLogged(mode, () => syncWeeklyReports());
   }
 
+  if (mode === "kol-posts") {
+    return runLogged(mode, () => syncDueKolPosts());
+  }
+
   if (mode === "full") {
     return runLogged(mode, async () => {
       await Promise.all([
@@ -101,6 +108,7 @@ export async function GET(request: Request) {
         pollRunningInfluencerAudits(),
         pollRunningDiscoveryRuns(),
         pollRunningEnrichmentBatches(),
+      pollRunningKolPostSyncs(),
       ]);
       const [competitors, brandCompetitors, competitorProducts, trends, social, reports] =
         await Promise.all([
@@ -129,6 +137,7 @@ export async function GET(request: Request) {
       pollRunningInfluencerAudits(),
       pollRunningDiscoveryRuns(),
       pollRunningEnrichmentBatches(),
+      pollRunningKolPostSyncs(),
     ]);
     return { polled: true };
   });

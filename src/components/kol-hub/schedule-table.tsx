@@ -6,6 +6,7 @@ import { compactNumber } from "@/components/brand-hub/influencer-badges";
 import { PlatformMark, ScheduleStatusStack } from "@/components/kol-hub/kol-badges";
 import { LabCard } from "@/components/lab/lab-primitives";
 import { rupiahShort } from "@/lib/kol/format";
+import { cpm } from "@/lib/kol/metrics";
 import { OBJECTIVE_META, PLACEMENT_LABEL } from "@/lib/kol/labels";
 import type { ScheduleRow } from "@/lib/kol/readers";
 import { formatWibDate, formatWibTime } from "@/lib/kol/time";
@@ -24,7 +25,7 @@ export function ScheduleTable({
   const router = useRouter();
   return (
     <LabCard className={cn("overflow-x-auto p-0", dimmed && "opacity-70")}>
-      <table className="w-full min-w-[920px] text-sm">
+      <table className="w-full min-w-[1040px] text-sm">
         <thead>
           <tr className="text-muted-foreground border-b border-border/70 text-left text-[11px]">
             <th className="px-4 py-2.5 font-medium">Tayang (WIB)</th>
@@ -32,6 +33,8 @@ export function ScheduleTable({
             <th className="px-3 py-2.5 font-medium">Konten</th>
             {hideCampaign ? null : <th className="px-3 py-2.5 font-medium">Campaign</th>}
             <th className="px-3 py-2.5 text-right font-medium">Biaya</th>
+            <th className="px-3 py-2.5 text-right font-medium">Views</th>
+            <th className="px-3 py-2.5 text-right font-medium">CPM</th>
             <th className="px-3 py-2.5 font-medium">PIC</th>
             <th className="px-4 py-2.5 font-medium">Status</th>
           </tr>
@@ -86,6 +89,18 @@ export function ScheduleTable({
                 {s.isBarter ? (
                   <p className="text-muted-foreground text-[11px]">Barter</p>
                 ) : null}
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums">
+                {s.latestViews != null ? compactNumber(s.latestViews) : "—"}
+                {s.isFyp ? (
+                  <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">FYP</p>
+                ) : null}
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums">
+                {(() => {
+                  const v = cpm(s.rate + s.additionalCost, s.latestViews);
+                  return v != null ? rupiahShort(v) : "—";
+                })()}
               </td>
               <td className="text-muted-foreground px-3 py-3 text-xs">{s.picName ?? "—"}</td>
               <td className="px-4 py-3">

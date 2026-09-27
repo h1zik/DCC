@@ -12,6 +12,8 @@ import { z } from "zod";
 import { requireKolUser } from "@/lib/kol/auth";
 import { logKolAudit } from "@/lib/kol/audit";
 import { assertBudgetFits } from "@/lib/kol/budget";
+import { enqueueKolPostSync } from "@/lib/kol/post-sync";
+import { parsePostUrl } from "@/lib/kol/post-url";
 import { notifyKolApprovers } from "@/lib/kol/notify";
 import { kolSubNumber, nextKolOrderNumber } from "@/lib/kol/numbering";
 import { wibInputToDate } from "@/lib/kol/time";
@@ -334,21 +336,30 @@ export async function markScheduleReady(scheduleId: string) {
 
 const postSchema = z.object({
   scheduleId: z.string().min(1),
-  postUrl: z
-    .string()
-    .trim()
-    .url("Tempel link post lengkap (https://…).")
-    .refine((u) => /(^https?:\/\/)?([a-z0-9-]+\.)*(instagram\.com|tiktok\.com)\//i.test(u), {
-      message: "Link post harus dari Instagram atau TikTok.",
-    }),
+  postUrl: z.string().trim().min(1, "Tempel link post."),
   /** `datetime-local` WIB; kosong = sekarang. */
   postedAt: z.string().optional().nullable(),
 });
 
-/** Catat link post → jadwal jadi Tayang. Bisa dipanggil ulang untuk koreksi link. */
+/**
+ * Catat link post → jadwal jadi Tayang, lalu ambil metrik pertamanya.
+ * Bisa dipanggil ulang untuk koreksi link.
+ */
 export async function recordSchedulePost(input: z.input<typeof postSchema>) {
   const session = await requireKolUser();
-  const data = postSchema.parse(input);
+  const raw = postSchema.parse(input);
+  const parsed = parsePostUrl(raw.postUrl);
+  const schedule = await prisma.kolSchedule.findUniqueOrThrow({
+    where: { id: raw.scheduleId },
+    select: { postUrl: true, socialAccount: { select: { platform: true } } },
+  });
+  if (schedule.socialAccount.platform !== parsed.platform) {
+    throw new Error(
+      `Jadwal ini untuk akun ${schedule.socialAccount.platform === "TIKTOK" ? "TikTok" : "Instagram"} — link post harus dari platform yang sama.`,
+    );
+  }
+  const data = { ...raw, postUrl: parsed.url };
+  const linkChanged = schedule.postUrl !== parsed.url;
   const postedAt = data.postedAt ? wibInputToDate(data.postedAt) : new Date();
   const updated = await prisma.kolSchedule.updateMany({
     where: {
@@ -374,6 +385,16 @@ export async function recordSchedulePost(input: z.input<typeof postSchema>) {
     action: "schedule.posted",
     meta: { postUrl: data.postUrl },
   });
+  if (linkChanged) {
+    // Link baru = post lain: snapshot lama tidak berlaku lagi.
+    await prisma.kolPostSnapshot.deleteMany({ where: { scheduleId: data.scheduleId } });
+  }
+  try {
+    await enqueueKolPostSync({ scheduleIds: [data.scheduleId], force: true });
+  } catch (err) {
+    // Gagal mengantre bukan alasan menggagalkan pencatatan link — cron akan menyusul.
+    console.error("[kol] enqueue first sync", err);
+  }
   revalidateSchedules(data.scheduleId);
 }
 

@@ -7042,7 +7042,31 @@ model KolSchedule {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  products KolScheduleProduct[]
+  // ── Cache metrik post (fase 2) ────────────────────────────────────────
+  // Sumber kebenaran tetap `KolPostSnapshot`; kolom ini hanya cache agar
+  // daftar & analitik tidak perlu agregasi snapshot tiap render.
+  latestViews       Int?
+  latestLikes       Int?
+  latestComments    Int?
+  latestShares      Int?
+  /** Views pernah melewati ambang FYP (`KolPlatformConfig.fypThreshold`). */
+  isFyp             Boolean   @default(false)
+  /** Snapshot pertama yang melewati ambang FYP. */
+  fypReachedAt      DateTime?
+  /** Kenaikan views harian terbesar. */
+  peakVelocity      Int?
+  /** Jam dari tayang sampai views mencapai puncak kenaikan hariannya. */
+  timeToPeakHours   Int?
+  /** (puncak kenaikan − kenaikan terakhir) ÷ puncak × 100. */
+  decayRate         Float?
+  metricsSyncedAt   DateTime?
+  /** Pesan galat sinkronisasi terakhir (mis. link tidak terbaca). */
+  metricsError      String?
+  /** Follower akun saat jadwal disetujui — pembanding performa. */
+  followersAtBooking Int?
+
+  products  KolScheduleProduct[]
+  snapshots KolPostSnapshot[]
 
   @@index([status])
   @@index([scheduledAt])
@@ -7093,4 +7117,84 @@ model KolAuditEvent {
 model KolCounter {
   key     String @id
   lastSeq Int    @default(0)
+}
+
+// ── KOL Hub fase 2: tracking post & rate card ──────────────────────────────
+
+/**
+ * Satu tangkapan metrik post per hari (WIB). Unik per (jadwal, hari) supaya
+ * sinkronisasi yang berjalan dua kali sehari tidak menggandakan data.
+ */
+model KolPostSnapshot {
+  id         String      @id @default(cuid())
+  scheduleId String
+  schedule   KolSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  capturedOn DateTime    @db.Date
+  views      Int         @default(0)
+  likes      Int         @default(0)
+  comments   Int         @default(0)
+  shares     Int         @default(0)
+  saves      Int         @default(0)
+  capturedAt DateTime    @default(now())
+
+  @@unique([scheduleId, capturedOn])
+  @@index([capturedOn])
+}
+
+enum KolSyncStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+/**
+ * Satu run Apify untuk mengambil metrik banyak post sekaligus (per platform).
+ */
+model KolPostSyncRun {
+  id          String             @id @default(cuid())
+  platform    InfluencerPlatform
+  status      KolSyncStatus      @default(QUEUED)
+  apifyRunId  String?
+  /** Id jadwal yang ikut run ini. */
+  scheduleIds String[]
+  postUrls    String[]
+  updated     Int                @default(0)
+  missing     Int                @default(0)
+  error       String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime           @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+/**
+ * Aturan per platform: band harga wajar, ambang FYP, lama pelacakan.
+ */
+model KolPlatformConfig {
+  platform     InfluencerPlatform @id
+  /** Rate di bawah floor% × fair price = Good deal. */
+  floorPct     Int                @default(80)
+  /** Rate di atas ceiling% × fair price = Overpriced. */
+  ceilingPct   Int                @default(120)
+  /** Views minimal agar konten dianggap masuk FYP. */
+  fypThreshold Int                @default(1000000)
+  /** Berapa hari setelah tayang metrik post terus diambil. */
+  trackingDays Int                @default(30)
+  updatedAt    DateTime           @updatedAt
+}
+
+/**
+ * CPM acuan per tier follower & platform — dasar rekomendasi rate card:
+ * fair price = median views ÷ 1000 × CPM acuan.
+ */
+model KolReferenceCpm {
+  platform  InfluencerPlatform
+  tier      InfluencerTier
+  cpm       Decimal            @db.Decimal(18, 2)
+  updatedAt DateTime           @updatedAt
+
+  @@id([platform, tier])
 }

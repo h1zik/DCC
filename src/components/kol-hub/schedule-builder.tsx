@@ -9,6 +9,7 @@ import { createScheduleOrder } from "@/actions/kol-schedules";
 import { compactNumber } from "@/components/brand-hub/influencer-badges";
 import { BudgetMeter } from "@/components/kol-hub/budget-meter";
 import { PlatformMark } from "@/components/kol-hub/kol-badges";
+import { RateHint, type RateHintData } from "@/components/kol-hub/rate-hint";
 import { Field, KolSelect, RupiahInput } from "@/components/kol-hub/kol-fields";
 import { LabCard, lab } from "@/components/lab/lab-primitives";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ export function ScheduleBuilder({
   briefs,
   products,
   users,
+  rateHints,
 }: {
   currentUserId: string;
   initialBrandId: string;
@@ -69,6 +71,8 @@ export function ScheduleBuilder({
   briefs: { id: string; title: string; brandId: string }[];
   products: { id: string; name: string; brandId: string; retailPrice: number | null }[];
   users: { id: string; name: string }[];
+  /** Rekomendasi rate per id akun. */
+  rateHints: Record<string, RateHintData>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -481,6 +485,13 @@ export function ScheduleBuilder({
                         disabled={barter}
                         onChange={(v) => patchSlot(s.key, { rate: v })}
                       />
+                      {!barter && account ? (
+                        <RateHint
+                          data={rateHints[account.id]}
+                          rate={Number(s.rate) || null}
+                          onApply={(fair) => patchSlot(s.key, { rate: String(fair) })}
+                        />
+                      ) : null}
                     </Field>
                     <Field label="Biaya tambahan" optional hint="Mis. produksi, transport.">
                       <RupiahInput

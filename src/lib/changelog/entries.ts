@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-27-kol-hub-tracking-rate-card",
+    date: "2026-09-27",
+    title: "KOL Hub: performa post otomatis & rekomendasi rate card",
+    category: "new",
+    description:
+      "Setelah link post dicatat, views, likes, komentar, dan share diambil otomatis setiap hari. KOL Hub juga menghitung harga wajar tiap akun dari median views-nya, sehingga rate yang diminta KOL langsung terlihat wajar atau kemahalan.",
+    highlights: [
+      "Grafik views per hari, puncak kenaikan, momentum, dan penanda FYP (views melewati ambang, default 1 juta)",
+      "CPV, CPM, dan views per Rp1.000 untuk setiap jadwal, juga di kolom daftar jadwal",
+      "Harga wajar = median views ÷ 1.000 × CPM acuan per tier; tampil di profil KOL, form KOL, dan schedule builder lengkap dengan tombol “Pakai harga wajar”",
+      "Approver bisa mengatur CPM acuan, batas bawah/atas, ambang FYP, dan lama pelacakan di Master data › Rate card & FYP",
+      "Tombol “Sinkron sekarang” untuk mengambil metrik terbaru tanpa menunggu jadwal harian",
+    ],
+  },
+  {
     id: "2026-09-27-kol-hub-fondasi",
     date: "2026-09-27",
     title: "KOL Hub: kelola endorsement KOL dari database sampai jadwal tayang",
