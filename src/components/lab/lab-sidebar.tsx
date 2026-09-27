@@ -8,6 +8,7 @@ import {
   Gauge,
   Home,
   Lock,
+  Megaphone,
   Microscope,
   Palette,
   PanelLeftClose,
@@ -66,6 +67,13 @@ const LAB_NAV: LabNavItem[] = [
     href: "/content-studio",
     label: "Content Studio",
     icon: Sparkles,
+    lockedLabel: LOCKED_LABEL,
+  },
+  {
+    key: "kolHub",
+    href: "/kol-hub",
+    label: "KOL Hub",
+    icon: Megaphone,
     lockedLabel: LOCKED_LABEL,
   },
 ];

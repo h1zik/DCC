@@ -27,10 +27,19 @@ describe("baselineCapabilitiesForRole", () => {
       "lab.research_hub",
       "lab.seo",
       "lab.content_studio",
+      "lab.kol",
+      "lab.kol.approve",
     ]);
     expect(baselineCapabilitiesForRole(UserRole.PROJECT_MANAGER)).toContain(
       "lab.brand_hub",
     );
+    // KOL Hub mengikuti Brand Hub; hak approve bawaan hanya Admin & CEO.
+    expect(baselineCapabilitiesForRole(UserRole.PROJECT_MANAGER)).toContain(
+      "lab.kol",
+    );
+    expect(
+      baselineCapabilitiesForRole(UserRole.PROJECT_MANAGER),
+    ).not.toContain("lab.kol.approve");
     expect(baselineCapabilitiesForRole(UserRole.MARKET_ANALYST)).toEqual([
       "lab",
       "lab.research_hub",
@@ -199,6 +208,7 @@ describe("toLabAccess", () => {
       researchHub: false,
       seo: false,
       contentStudio: false,
+      kolHub: false,
     });
   });
 });

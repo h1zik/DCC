@@ -167,6 +167,29 @@ html[data-theme="dominatus-lab"].dark .lab-hue-pink {
   --lab-accent-2: #f472b6;
 }
 
+/* ---- KOL Hub: cobalt (tidak bentrok dengan warna status amber/hijau/merah) ---- */
+html[data-theme="dominatus-lab"] .lab-hue-cobalt {
+  --primary: oklch(0.52 0.2 266); /* cobalt #2f5bea */
+  --primary-foreground: oklch(0.985 0.005 90);
+  --accent: oklch(0.93 0.035 266);
+  --accent-foreground: oklch(0.32 0.1 266);
+  --ring: oklch(0.6 0.16 266);
+  --chart-1: oklch(0.52 0.2 266);
+  --lab-accent: #2f5bea;
+  --lab-accent-2: #5b7cf5;
+}
+
+html[data-theme="dominatus-lab"].dark .lab-hue-cobalt {
+  --primary: oklch(0.74 0.13 268);
+  --primary-foreground: oklch(0.18 0.03 266);
+  --accent: oklch(0.31 0.06 266);
+  --accent-foreground: oklch(0.93 0.04 266);
+  --ring: oklch(0.68 0.12 268);
+  --chart-1: oklch(0.74 0.13 268);
+  --lab-accent: #8ea6ff;
+  --lab-accent-2: #5b7cf5;
+}
+
 /* ---- Content Studio: amber (foreground tinta agar kontras) ---- */
 html[data-theme="dominatus-lab"] .lab-hue-amber {
   --primary: oklch(0.62 0.13 65);

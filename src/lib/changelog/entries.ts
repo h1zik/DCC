@@ -37,6 +37,22 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-09-27-kol-hub-fondasi",
+    date: "2026-09-27",
+    title: "KOL Hub: kelola endorsement KOL dari database sampai jadwal tayang",
+    category: "new",
+    description:
+      "Modul baru di Dominatus Lab untuk mengurus kerja sama KOL tanpa spreadsheet: database KOL milik sendiri, campaign dengan budget, jadwal endorsement per konten, approval, dan kalender tayang. Akses diatur di menu Roles & Access: centang “KOL Hub”, dan “KOL Hub — Approver” untuk yang boleh menyetujui.",
+    highlights: [
+      "Database KOL dengan banyak akun Instagram/TikTok per orang, rate card per akun, rekening, dan status aktif/blacklist — perubahan pada KOL aktif menunggu approval",
+      "Hasil Audit Influencer Brand Hub (verdict keaslian, follower, median views) langsung tampil di profil KOL dan di kartu approval",
+      "Buat jadwal sekali untuk brand + campaign + KOL, lalu tambahkan beberapa slot konten; total biaya dicek terhadap sisa budget secara langsung",
+      "Approver menyetujui atau menolak per slot atau sekaligus; pengaju tidak bisa menyetujui pengajuannya sendiri",
+      "Catat link post, status kirim produk, dan lihat semua jadwal di kalender WIB",
+      "Tombol “Tambah ke KOL Hub” di KOL Radar dan Audit Influencer",
+    ],
+  },
+  {
     id: "2026-09-26-keuangan-tampilan-overview-coa-jurnal",
     date: "2026-09-26",
     title: "Tampilan baru Financial Overview, Chart of Accounts, dan Jurnal",

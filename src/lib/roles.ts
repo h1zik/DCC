@@ -178,3 +178,17 @@ export function canAccessLabContentStudio(role: UserRole | undefined): boolean {
   if (!role) return false;
   return hasAdministratorAccess(role) || isMarketAnalystOrStudio(role);
 }
+
+/** KOL Hub — akses sama dengan Brand Hub (Brand Manager + Administrator & CEO). */
+export function canAccessLabKolHub(role: UserRole | undefined): boolean {
+  return canAccessLabBrandHub(role);
+}
+
+/**
+ * Approver KOL Hub bawaan — hanya Administrator & CEO. Peran lain diberi lewat
+ * matriks akses Lab (kunci `lab.kol.approve`).
+ */
+export function canApproveLabKolHub(role: UserRole | undefined): boolean {
+  if (!role) return false;
+  return hasAdministratorAccess(role);
+}
