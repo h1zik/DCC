@@ -8,6 +8,7 @@ import {
   FlaskConical,
   Gauge,
   Lock,
+  Megaphone,
   Microscope,
   Palette,
   Sparkles,
@@ -26,6 +27,7 @@ type LabAccess = {
   researchHub: boolean;
   seo: boolean;
   contentStudio: boolean;
+  kolHub: boolean;
 };
 
 type LabStats = {
@@ -37,6 +39,8 @@ type LabStats = {
   seoTracked: number;
   contentIdeas: number;
   contentIdeaSets: number;
+  kolActive: number;
+  kolUpcoming: number;
 };
 
 type LabModule = {
@@ -52,6 +56,8 @@ type LabModule = {
   lockedLabel: string;
   stats: { label: string; value: number }[];
   links: { label: string; href: string }[];
+  /** Kelas grid tambahan (mis. tile terakhir membentang penuh). */
+  spanClass?: string;
 };
 
 function buildModules(stats: LabStats): LabModule[] {
@@ -131,6 +137,27 @@ function buildModules(stats: LabStats): LabModule[] {
       ],
       links: [{ label: "Ide Konten", href: "/content-studio/ideas" }],
     },
+    {
+      key: "kolHub",
+      title: "KOL Hub",
+      description:
+        "Database KOL, campaign & budget, jadwal endorsement, dan approval dalam satu alur.",
+      href: "/kol-hub",
+      icon: Megaphone,
+      tileClass: "border-transparent bg-[#e3e9fd] dark:bg-blue-400/10",
+      capsuleClass: "bg-blue-600/15 text-blue-700 dark:text-blue-300",
+      lockedLabel: "Khusus Brand Manager",
+      stats: [
+        { label: "KOL aktif", value: stats.kolActive },
+        { label: "jadwal 14 hari ke depan", value: stats.kolUpcoming },
+      ],
+      links: [
+        { label: "Database KOL", href: "/kol-hub/kols" },
+        { label: "Jadwal", href: "/kol-hub/schedules" },
+        { label: "Kalender", href: "/kol-hub/calendar" },
+      ],
+      spanClass: "md:col-span-2",
+    },
   ];
 }
 
@@ -151,6 +178,7 @@ function ModuleTile({
       className={cn(
         "bento-tile group relative justify-start gap-0 p-6 sm:p-7",
         module.tileClass,
+        module.spanClass,
         locked && "opacity-70 saturate-50",
       )}
       aria-disabled={locked || undefined}
@@ -236,6 +264,7 @@ const WORKFLOW_STEPS = [
   "Riset pasar",
   "Strategi brand",
   "Produksi konten",
+  "Endorsement KOL",
   "Optimasi SEO",
 ] as const;
 

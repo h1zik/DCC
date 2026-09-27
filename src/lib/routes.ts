@@ -92,7 +92,12 @@ export function isContentStudioRoute(pathname: string): boolean {
   );
 }
 
-/** Dominatus Lab — launcher 4 modul riset & kreatif. Studio, PM, & Market Analyst. */
+/** Modul KOL Hub — manajemen endorsement KOL (Brand Manager). */
+export function isKolHubRoute(pathname: string): boolean {
+  return pathname === "/kol-hub" || pathname.startsWith("/kol-hub/");
+}
+
+/** Dominatus Lab — launcher modul riset & kreatif. Studio, PM, & Market Analyst. */
 export function isDominatusLabRoute(pathname: string): boolean {
   return pathname === "/dominatus-lab" || pathname.startsWith("/dominatus-lab/");
 }
@@ -108,7 +113,8 @@ export function isLabPathname(pathname: string): boolean {
     isBrandHubRoute(pathname) ||
     isResearchHubRoute(pathname) ||
     isSeoRoute(pathname) ||
-    isContentStudioRoute(pathname)
+    isContentStudioRoute(pathname) ||
+    isKolHubRoute(pathname)
   );
 }
 
@@ -156,6 +162,7 @@ export function isStudioWorkspaceRoute(pathname: string): boolean {
     isResearchHubRoute(pathname) ||
     isSeoRoute(pathname) ||
     isContentStudioRoute(pathname) ||
+    isKolHubRoute(pathname) ||
     isScheduleRoute(pathname) ||
     isDirectChatRoute(pathname) ||
     isAttendanceRoute(pathname) ||

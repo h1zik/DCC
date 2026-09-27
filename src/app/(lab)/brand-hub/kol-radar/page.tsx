@@ -7,6 +7,7 @@ import {
 } from "@/lib/brand-research/influencer/discovery/radar-readers";
 import { parseRadarFilters } from "@/lib/brand-research/influencer/discovery/radar-query";
 import { fetchDiscoveryRuns } from "@/actions/brand-influencer-discovery";
+import { hasLabCapability } from "@/lib/lab-access";
 import { ensureBrandHubPage } from "../layout";
 import { KolRadarClient } from "./kol-radar-client";
 
@@ -27,11 +28,12 @@ export default async function KolRadarPage({
   }
   const filters = parseRadarFilters(params);
 
-  const [page, stats, categories, runs] = await Promise.all([
+  const [page, stats, categories, runs, kolHub] = await Promise.all([
     listRadarCreators(filters),
     getRadarStats(),
     listPopulatedCategories(),
     fetchDiscoveryRuns(10),
+    hasLabCapability("lab.kol"),
   ]);
 
   return (
@@ -46,6 +48,7 @@ export default async function KolRadarPage({
         page={page}
         stats={stats}
         categories={categories}
+        kolHub={kolHub}
         runs={runs.map((r) => ({
           id: r.id,
           status: r.status,

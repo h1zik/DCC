@@ -141,6 +141,14 @@ enum NotificationType {
    * Alert modul SEO Toolkit (perubahan ranking, isu crawl baru, ringkasan mingguan).
    */
   SEO_ALERT
+  /**
+   * KOL Hub: ada pengajuan profil KOL / jadwal yang menunggu approver.
+   */
+  KOL_APPROVAL_REQUEST
+  /**
+   * KOL Hub: pengajuan milik user disetujui / ditolak.
+   */
+  KOL_APPROVAL_DECIDED
 }
 
 /**
@@ -461,6 +469,17 @@ model User {
   brandSocialMonitorsCreated         BrandSocialMonitor[]           @relation("BrandSocialMonitorCreator")
   influencerProfilesCreated          InfluencerProfile[]            @relation("InfluencerProfileCreator")
   influencerDiscoveryRunsCreated     InfluencerDiscoveryRun[]       @relation("InfluencerDiscoveryCreator")
+  kolProfilesCreated                 KolProfile[]                   @relation("KolProfileCreator")
+  kolProfilesApproved                KolProfile[]                   @relation("KolProfileApprover")
+  kolChangeRequests                  KolProfileChangeRequest[]      @relation("KolChangeRequester")
+  kolChangeDecisions                 KolProfileChangeRequest[]      @relation("KolChangeDecider")
+  kolBudgetsCreated                  KolBudget[]                    @relation("KolBudgetCreator")
+  kolCampaignsPic                    KolCampaign[]                  @relation("KolCampaignPic")
+  kolOrdersRequested                 KolScheduleOrder[]             @relation("KolOrderRequester")
+  kolSchedulesPic                    KolSchedule[]                  @relation("KolSchedulePic")
+  kolSchedulesRequested              KolSchedule[]                  @relation("KolScheduleRequester")
+  kolSchedulesDecided                KolSchedule[]                  @relation("KolScheduleDecider")
+  kolAuditEvents                     KolAuditEvent[]                @relation("KolAuditActor")
   brandUspAnalysesCreated            BrandUspAnalysis[]             @relation("BrandUspAnalysisCreator")
   brandVisualCollectionsCreated      BrandVisualCollection[]        @relation("BrandVisualCollectionCreator")
   brandStrategyDocumentsCreated      BrandStrategyDocument[]        @relation("BrandStrategyDocumentCreator")
@@ -650,6 +669,11 @@ model Brand {
   brandAdLibraryMonitors  BrandAdLibraryMonitor[]
   influencerProfiles      InfluencerProfile[]
   contentStudioIdeaSets   ContentStudioIdeaSet[]
+  kolBriefs               KolBrief[]
+  kolBudgets              KolBudget[]
+  kolCampaigns            KolCampaign[]
+  kolScheduleOrders       KolScheduleOrder[]
+  kolSchedules            KolSchedule[]
 }
 
 /**
@@ -1955,10 +1979,15 @@ model Product {
    * Override safety stock buffer per SKU (hari demand). Jika null, pakai vendor.safetyStockDays.
    */
   safetyStockDaysOverride Int?
+  /**
+   * Harga jual (IDR) — opsional. Dipakai KOL Hub sebagai nilai barter produk.
+   */
+  retailPrice             Decimal?        @db.Decimal(18, 2)
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
   stockLogs               StockLog[]
   productVendors          ProductVendor[]
+  kolScheduleProducts     KolScheduleProduct[]
 
   @@index([brandId])
   @@index([preferredVendorId])
@@ -4541,6 +4570,8 @@ model InfluencerProfile {
 
   snapshots     InfluencerSnapshot[]
   discoveryHits InfluencerDiscoveryHit[]
+  /** Akun KOL Hub yang memakai profil ini (bila sudah masuk database KOL). */
+  kolSocialAccount KolSocialAccount?
 
   @@unique([platform, handle])
   @@index([ownerBrandId])
@@ -6680,4 +6711,386 @@ model PersonalFile {
   createdAt   DateTime            @default(now())
 
   @@index([ownerId, folderId, createdAt(sort: Desc)])
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// KOL Hub — manajemen endorsement KOL (modul Lab `lab.kol`)
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Status profil KOL. Hanya ACTIVE yang boleh dijadwalkan.
+ */
+enum KolStatus {
+  WAITING_APPROVAL
+  ACTIVE
+  BLACKLISTED
+  REJECTED
+}
+
+enum KolChangeType {
+  /** Pengajuan profil baru. */
+  CREATE
+  /** Perubahan data profil yang sudah aktif — payload berisi data usulan. */
+  EDIT
+  BLACKLIST
+  UNBLACKLIST
+}
+
+enum KolChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum KolPlacement {
+  FEED
+  REELS
+  STORY
+  CAROUSEL
+  VIDEO
+  LIVE
+}
+
+enum KolObjective {
+  AWARENESS
+  CONSIDERATION
+  CONVERSION
+}
+
+/**
+ * Siklus hidup satu slot konten. Budget dihitung dari slot berstatus
+ * PENDING_APPROVAL, APPROVED, SCHEDULED, dan POSTED.
+ */
+enum KolScheduleStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  POSTED
+  REJECTED
+  CANCELLED
+}
+
+enum KolPostStatus {
+  NOT_POSTED
+  POSTED
+  TAKEN_DOWN
+}
+
+enum KolShipmentStatus {
+  NOT_REQUIRED
+  PENDING
+  SHIPPED
+  DELIVERED
+}
+
+/**
+ * Orang di balik akun — level organisasi, lintas brand. Data khusus brand
+ * (rate yang disepakati, campaign) hidup di jadwal.
+ */
+model KolProfile {
+  id              String    @id @default(cuid())
+  fullName        String
+  email           String?
+  phone           String?
+  birthDate       DateTime? @db.Date
+  notes           String?   @db.Text
+  addressLine     String?
+  district        String?
+  city            String?
+  province        String?
+  postalCode      String?
+  /** Kode bank dari daftar statis `src/lib/kol/banks.ts`; nama ikut disalin. */
+  bankCode        String?
+  bankName        String?
+  bankBranch      String?
+  accountHolder   String?
+  accountNumber   String?
+  status          KolStatus @default(WAITING_APPROVAL)
+  blacklistReason String?
+  createdById     String?
+  createdBy       User?     @relation("KolProfileCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById    String?
+  approvedBy      User?     @relation("KolProfileApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  categories     KolProfileCategory[]
+  socialAccounts KolSocialAccount[]
+  changeRequests KolProfileChangeRequest[]
+  orders         KolScheduleOrder[]
+  schedules      KolSchedule[]
+
+  @@index([status])
+  @@index([fullName])
+  @@index([createdById])
+}
+
+model KolCategory {
+  id          String               @id @default(cuid())
+  name        String               @unique
+  description String?
+  archivedAt  DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  profiles    KolProfileCategory[]
+  briefs      KolBrief[]
+}
+
+model KolProfileCategory {
+  kolId      String
+  kol        KolProfile  @relation(fields: [kolId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   KolCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([kolId, categoryId])
+  @@index([categoryId])
+}
+
+/**
+ * Akun sosmed milik KOL. Tertaut ke `InfluencerProfile` (global per
+ * platform+handle) supaya hasil audit, follower, dan median views dari Brand
+ * Hub terbaca tanpa disalin.
+ */
+model KolSocialAccount {
+  id                  String             @id @default(cuid())
+  kolId               String
+  kol                 KolProfile         @relation(fields: [kolId], references: [id], onDelete: Cascade)
+  platform            InfluencerPlatform
+  /** Lowercase, tanpa "@". */
+  handle              String
+  profileUrl          String
+  /** Rate card yang diajukan KOL untuk akun ini (IDR). */
+  rateCard            Decimal?           @db.Decimal(18, 2)
+  isPrimary           Boolean            @default(false)
+  influencerProfileId String?            @unique
+  influencerProfile   InfluencerProfile? @relation(fields: [influencerProfileId], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  schedules           KolSchedule[]
+
+  @@unique([platform, handle])
+  @@index([kolId])
+}
+
+/**
+ * Pengajuan perubahan profil yang menunggu approver (`lab.kol.approve`).
+ * Maksimal satu PENDING per KOL — dijaga di transaksi, bukan partial index.
+ */
+model KolProfileChangeRequest {
+  id            String          @id @default(cuid())
+  kolId         String
+  kol           KolProfile      @relation(fields: [kolId], references: [id], onDelete: Cascade)
+  type          KolChangeType
+  /** Data usulan untuk EDIT (bentuk `KolProfileInput`); null untuk tipe lain. */
+  payload       Json?
+  reason        String?
+  status        KolChangeStatus @default(PENDING)
+  requestedById String?
+  requestedBy   User?           @relation("KolChangeRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  decidedById   String?
+  decidedBy     User?           @relation("KolChangeDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime        @default(now())
+
+  @@index([status])
+  @@index([kolId, status])
+}
+
+/**
+ * Jenis keterlibatan KOL. `isBarter` memaksa rate 0 (dibayar produk).
+ */
+model KolEndorseType {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String?
+  isBarter    Boolean       @default(false)
+  archivedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  schedules   KolSchedule[]
+}
+
+model KolBrief {
+  id          String        @id @default(cuid())
+  brandId     String
+  brand       Brand         @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  categoryId  String?
+  category    KolCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  title       String
+  linkUrl     String?
+  description String?       @db.Text
+  archivedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  schedules   KolSchedule[]
+
+  @@index([brandId])
+}
+
+/**
+ * Pos anggaran endorsement per brand. Terpakai/sisa TIDAK disimpan — selalu
+ * dihitung dari jadwal (lihat `src/lib/kol/budget.ts`) supaya tidak pernah
+ * melenceng. Terpisah dari `FinanceBudgetLine` (rencana P&L bulanan).
+ */
+model KolBudget {
+  id               String        @id @default(cuid())
+  brandId          String
+  brand            Brand         @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  name             String
+  beginningBalance Decimal       @db.Decimal(18, 2)
+  notes            String?
+  archivedAt       DateTime?
+  createdById      String?
+  createdBy        User?         @relation("KolBudgetCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  campaigns        KolCampaign[]
+
+  @@index([brandId])
+}
+
+model KolCampaign {
+  id          String             @id @default(cuid())
+  brandId     String
+  brand       Brand              @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  budgetId    String
+  budget      KolBudget          @relation(fields: [budgetId], references: [id], onDelete: Restrict)
+  title       String
+  description String?            @db.Text
+  startDate   DateTime?          @db.Date
+  endDate     DateTime?          @db.Date
+  picUserId   String?
+  picUser     User?              @relation("KolCampaignPic", fields: [picUserId], references: [id], onDelete: SetNull)
+  archivedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  orders      KolScheduleOrder[]
+  schedules   KolSchedule[]
+
+  @@index([brandId])
+  @@index([budgetId])
+}
+
+/**
+ * Satu kolaborasi (brand + campaign + KOL) berisi beberapa slot konten.
+ */
+model KolScheduleOrder {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique
+  brandId       String
+  brand         Brand         @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  campaignId    String
+  campaign      KolCampaign   @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  kolId         String
+  kol           KolProfile    @relation(fields: [kolId], references: [id], onDelete: Restrict)
+  note          String?       @db.Text
+  requestedById String?
+  requestedBy   User?         @relation("KolOrderRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  schedules     KolSchedule[]
+
+  @@index([campaignId])
+  @@index([kolId])
+}
+
+/**
+ * Satu slot konten = satu jadwal. brand/campaign/kol disalin dari order untuk
+ * filter & analitik tanpa join.
+ */
+model KolSchedule {
+  id              String            @id @default(cuid())
+  orderId         String
+  order           KolScheduleOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subNumber       String            @unique
+  brandId         String
+  brand           Brand             @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  campaignId      String
+  campaign        KolCampaign       @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  kolId           String
+  kol             KolProfile        @relation(fields: [kolId], references: [id], onDelete: Restrict)
+  socialAccountId String
+  socialAccount   KolSocialAccount  @relation(fields: [socialAccountId], references: [id], onDelete: Restrict)
+  placement       KolPlacement
+  endorseTypeId   String
+  endorseType     KolEndorseType    @relation(fields: [endorseTypeId], references: [id], onDelete: Restrict)
+  objective       KolObjective
+  scheduledAt     DateTime?
+  briefId         String?
+  brief           KolBrief?         @relation(fields: [briefId], references: [id], onDelete: SetNull)
+  picUserId       String?
+  picUser         User?             @relation("KolSchedulePic", fields: [picUserId], references: [id], onDelete: SetNull)
+  rate            Decimal           @default(0) @db.Decimal(18, 2)
+  additionalCost  Decimal           @default(0) @db.Decimal(18, 2)
+  status          KolScheduleStatus @default(DRAFT)
+  requestedById   String?
+  requestedBy     User?             @relation("KolScheduleRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  submittedAt     DateTime?
+  decidedById     String?
+  decidedBy       User?             @relation("KolScheduleDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt       DateTime?
+  decisionNote    String?
+  postStatus      KolPostStatus     @default(NOT_POSTED)
+  postUrl         String?
+  postedAt        DateTime?
+  shipmentStatus  KolShipmentStatus @default(NOT_REQUIRED)
+  courier         String?
+  trackingNumber  String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  products KolScheduleProduct[]
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([campaignId])
+  @@index([kolId])
+  @@index([orderId])
+  @@index([brandId, scheduledAt])
+}
+
+/**
+ * Produk yang di-endorse di satu slot. `unitValue` = snapshot harga saat
+ * booking supaya perubahan harga produk tidak menulis ulang nilai barter lama.
+ */
+model KolScheduleProduct {
+  id         String      @id @default(cuid())
+  scheduleId String
+  schedule   KolSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity   Int         @default(1)
+  unitValue  Decimal?    @db.Decimal(18, 2)
+
+  @@unique([scheduleId, productId])
+  @@index([productId])
+}
+
+/**
+ * Jejak perubahan KOL Hub (append-only). `action` string bebas supaya aksi
+ * baru tidak butuh migrasi enum.
+ */
+model KolAuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("KolAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  entityType String
+  entityId   String
+  action     String
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/**
+ * Penomoran berurutan KOL Hub, mis. key `ORDER-2609` → KOL-2609-0001.
+ */
+model KolCounter {
+  key     String @id
+  lastSeq Int    @default(0)
 }

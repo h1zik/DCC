@@ -15,6 +15,7 @@ import {
   Sparkles,
   Tags,
   Trash2,
+  UserPlus,
   UserSearch,
 } from "lucide-react";
 import { InfluencerPlatform, InfluencerTier } from "@prisma/client";
@@ -174,12 +175,15 @@ export function KolRadarClient({
   stats,
   categories,
   runs,
+  kolHub = false,
 }: {
   filters: RadarFilterState;
   page: RadarPage;
   stats: RadarStats;
   categories: { category: string; count: number }[];
   runs: DiscoveryRunRow[];
+  /** User punya akses KOL Hub → tampilkan tombol "Tambah ke KOL Hub". */
+  kolHub?: boolean;
 }) {
   const router = useRouter();
   // Brand aktif dipilih di sidebar Brand Hub dan hidup di URL. Setiap navigasi
@@ -495,7 +499,7 @@ export function KolRadarClient({
       ) : (
         <div className="grid gap-3">
           {page.rows.map((row) => (
-            <CreatorCard key={row.id} row={row} brandId={brandId} />
+            <CreatorCard key={row.id} row={row} brandId={brandId} kolHub={kolHub} />
           ))}
         </div>
       )}
@@ -599,9 +603,11 @@ function FilterSelect({
 function CreatorCard({
   row,
   brandId,
+  kolHub,
 }: {
   row: RadarPage["rows"][number];
   brandId: string | null;
+  kolHub: boolean;
 }) {
   const router = useRouter();
   // Transisi per kartu, bukan satu untuk seluruh halaman: mengaudit satu orang
@@ -743,7 +749,24 @@ function CreatorCard({
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 sm:w-[150px] sm:justify-end">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-2 sm:justify-end",
+          kolHub ? "sm:w-[190px]" : "sm:w-[150px]",
+        )}
+      >
+        {kolHub ? (
+          // Halaman tujuan mengarahkan ke profil KOL bila akun ini sudah terdaftar.
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title="Tambah ke database KOL Hub"
+            aria-label={`Tambah @${row.handle} ke KOL Hub`}
+            render={<Link href={`/kol-hub/kols/new?from=${row.id}`} />}
+          >
+            <UserPlus className="size-4" aria-hidden />
+          </Button>
+        ) : null}
         {row.hasAudit ? (
           <Button
             variant="outline"

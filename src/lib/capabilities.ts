@@ -3,7 +3,9 @@ import {
   canAccessLab,
   canAccessLabBrandHub,
   canAccessLabContentStudio,
+  canAccessLabKolHub,
   canAccessLabResearchHub,
+  canApproveLabKolHub,
   canAccessLabSeo,
 } from "@/lib/roles";
 
@@ -29,6 +31,7 @@ export const LAB_MODULE_CAPABILITIES = [
   "lab.research_hub",
   "lab.seo",
   "lab.content_studio",
+  "lab.kol",
 ] as const;
 
 export type LabModuleCapability = (typeof LAB_MODULE_CAPABILITIES)[number];
@@ -36,9 +39,16 @@ export type LabModuleCapability = (typeof LAB_MODULE_CAPABILITIES)[number];
 /** Kunci shell Lab — memberi akses beranda launcher tanpa modul apa pun. */
 export const LAB_SHELL_CAPABILITY = "lab";
 
+/**
+ * Hak approver KOL Hub — menyetujui profil KOL & jadwal endorsement. Kunci
+ * turunan (bukan modul), jadi tidak memunculkan kartu launcher sendiri.
+ */
+export const KOL_APPROVE_CAPABILITY = "lab.kol.approve";
+
 export const CAPABILITIES = [
   LAB_SHELL_CAPABILITY,
   ...LAB_MODULE_CAPABILITIES,
+  KOL_APPROVE_CAPABILITY,
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -84,6 +94,18 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     description: "Idea generation & content planning level ruang kerja.",
     href: "/content-studio",
   },
+  "lab.kol": {
+    label: "KOL Hub",
+    description:
+      "Database KOL, campaign & budget, jadwal endorsement, kalender, dan approval pengajuan.",
+    href: "/kol-hub",
+  },
+  "lab.kol.approve": {
+    label: "KOL Hub — Approver",
+    description:
+      "Menyetujui atau menolak profil KOL dan jadwal endorsement yang diajukan orang lain.",
+    href: "/kol-hub/approvals",
+  },
 };
 
 export function capabilityLabel(capability: string): string {
@@ -111,6 +133,8 @@ export function baselineCapabilitiesForRole(
   if (canAccessLabResearchHub(role)) caps.push("lab.research_hub");
   if (canAccessLabSeo(role)) caps.push("lab.seo");
   if (canAccessLabContentStudio(role)) caps.push("lab.content_studio");
+  if (canAccessLabKolHub(role)) caps.push("lab.kol");
+  if (canApproveLabKolHub(role)) caps.push(KOL_APPROVE_CAPABILITY);
   return caps;
 }
 
@@ -175,6 +199,7 @@ export type LabModuleAccess = {
   researchHub: boolean;
   seo: boolean;
   contentStudio: boolean;
+  kolHub: boolean;
 };
 
 /** Akses modul + izin masuk shell Lab-nya. */
@@ -186,6 +211,7 @@ export const NO_LAB_ACCESS: LabAccess = {
   researchHub: false,
   seo: false,
   contentStudio: false,
+  kolHub: false,
 };
 
 /**
@@ -202,6 +228,7 @@ export function toLabAccess(capabilities: Iterable<string>): LabAccess {
     researchHub: set.has("lab.research_hub"),
     seo: set.has("lab.seo"),
     contentStudio: set.has("lab.content_studio"),
+    kolHub: set.has("lab.kol"),
   };
   return {
     shell:
@@ -219,4 +246,5 @@ export const LAB_MODULE_BY_ACCESS_KEY: Record<
   researchHub: "lab.research_hub",
   seo: "lab.seo",
   contentStudio: "lab.content_studio",
+  kolHub: "lab.kol",
 };

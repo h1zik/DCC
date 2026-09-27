@@ -1,5 +1,9 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { UserSearch } from "lucide-react";
+import { UserPlus, UserSearch } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { findKolIdForInfluencer } from "@/lib/kol/readers";
+import { hasLabCapability } from "@/lib/lab-access";
 import { BrandHubDetailPage } from "@/components/brand-hub/brand-hub-list-page";
 import { getInfluencerProfileDetail } from "@/lib/brand-research/influencer/readers";
 import {
@@ -24,8 +28,12 @@ export default async function BrandInfluencerDetailPage({
   const { profileId } = await params;
   const { brandId, [INFLUENCER_RETURN_PARAM]: from } = await searchParams;
 
-  const profile = await getInfluencerProfileDetail(profileId, brandId ?? null);
+  const [profile, kolHub] = await Promise.all([
+    getInfluencerProfileDetail(profileId, brandId ?? null),
+    hasLabCapability("lab.kol"),
+  ]);
   if (!profile) notFound();
+  const kolId = kolHub ? await findKolIdForInfluencer(profile.id) : null;
 
   const profileView: ProfileView = {
     id: profile.id,
@@ -120,6 +128,22 @@ export default async function BrandInfluencerDetailPage({
         "Audit engagement & keaslian audiens influencer."
       }
       backHref={backHref}
+      right={
+        kolHub ? (
+          <Button
+            size="sm"
+            variant="outline"
+            render={
+              <Link
+                href={kolId ? `/kol-hub/kols/${kolId}` : `/kol-hub/kols/new?from=${profile.id}`}
+              />
+            }
+          >
+            <UserPlus />
+            {kolId ? "Lihat di KOL Hub" : "Tambah ke KOL Hub"}
+          </Button>
+        ) : undefined
+      }
     >
       <InfluencerDetailClient profile={profileView} audits={audits} />
     </BrandHubDetailPage>
