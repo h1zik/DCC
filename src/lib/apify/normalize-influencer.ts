@@ -368,6 +368,24 @@ function normalizeApidojoTikTokPost(
   };
 }
 
+/**
+ * Normalisasi satu item dataset scraper POST TUNGGAL (bukan profil) — dipakai
+ * KOL Hub untuk melacak metrik post yang dijadwalkan. Mengenali bentuk
+ * clockworks maupun apidojo untuk TikTok.
+ */
+export function normalizePostItem(
+  platform: "INSTAGRAM" | "TIKTOK",
+  raw: Record<string, unknown>,
+): (NormalizedInfluencerPost & { shortCode?: string }) | null {
+  if (platform === "INSTAGRAM") {
+    const post = normalizeInstagramPost(raw, "reels");
+    return post ? { ...post, shortCode: str(raw.shortCode) } : null;
+  }
+  return isApidojoTikTokItem(raw)
+    ? normalizeApidojoTikTokPost(raw)
+    : normalizeTikTokPost(raw);
+}
+
 /** TikTok hanya mengizinkan tiga video dipin. */
 const MAX_TIKTOK_PINS = 3;
 

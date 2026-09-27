@@ -282,6 +282,42 @@ export function buildInfluencerBatchActorInput(
   };
 }
 
+/**
+ * Actor untuk metrik POST tunggal (KOL Hub). Dipisah dari actor profil karena
+ * env actor profil bisa diarahkan ke actor yang tidak menerima URL post.
+ */
+export function getPostMetricsActorId(platform: InfluencerPlatform): string {
+  return platform === InfluencerPlatform.INSTAGRAM
+    ? (process.env.APIFY_ACTOR_KOL_POST_INSTAGRAM?.trim() || "apify~instagram-scraper")
+    : (process.env.APIFY_ACTOR_KOL_POST_TIKTOK?.trim() || "clockworks~tiktok-scraper");
+}
+
+/** Input actor untuk mengambil metrik banyak post sekaligus lewat URL-nya. */
+export function buildPostMetricsActorInput(
+  platform: InfluencerPlatform,
+  postUrls: string[],
+): Record<string, unknown> {
+  if (platform === InfluencerPlatform.INSTAGRAM) {
+    return {
+      directUrls: postUrls,
+      resultsType: "posts",
+      resultsLimit: 1,
+      addParentData: false,
+    };
+  }
+  return {
+    postURLs: postUrls,
+    resultsPerPage: 1,
+    proxyCountryCode: "ID",
+    shouldDownloadVideos: false,
+    shouldDownloadCovers: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadSlideshowImages: false,
+    shouldDownloadAvatars: false,
+    shouldDownloadMusicCovers: false,
+  };
+}
+
 export function buildInfluencerActorInput(
   platform: InfluencerPlatform,
   handle: string,

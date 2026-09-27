@@ -156,6 +156,9 @@ export async function decideSchedules(
         subNumber: true,
         requestedById: true,
         kol: { select: { fullName: true, status: true } },
+        socialAccount: {
+          select: { influencerProfile: { select: { latestFollowers: true } } },
+        },
       },
     });
     if (rows.length !== data.scheduleIds.length) throw new Error("Sebagian jadwal tidak ditemukan.");
@@ -178,6 +181,18 @@ export async function decideSchedules(
     });
     if (updated.count !== rows.length) {
       throw new Error("Sebagian jadwal sudah diputus orang lain — muat ulang halaman.");
+    }
+    if (input.approve) {
+      // Follower saat disetujui — pembanding performa setelah tayang.
+      for (const r of rows) {
+        const followers = r.socialAccount.influencerProfile?.latestFollowers;
+        if (followers != null) {
+          await tx.kolSchedule.update({
+            where: { id: r.id },
+            data: { followersAtBooking: followers },
+          });
+        }
+      }
     }
     for (const r of rows) {
       await logKolAudit(tx, {

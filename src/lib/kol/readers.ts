@@ -731,6 +731,18 @@ function toScheduleRow(s: ScheduleRowRaw) {
     additionalCost: num(s.additionalCost),
     postUrl: s.postUrl,
     postedAt: s.postedAt?.toISOString() ?? null,
+    latestViews: s.latestViews,
+    latestLikes: s.latestLikes,
+    latestComments: s.latestComments,
+    latestShares: s.latestShares,
+    isFyp: s.isFyp,
+    fypReachedAt: s.fypReachedAt?.toISOString() ?? null,
+    peakVelocity: s.peakVelocity,
+    timeToPeakHours: s.timeToPeakHours,
+    decayRate: s.decayRate,
+    metricsSyncedAt: s.metricsSyncedAt?.toISOString() ?? null,
+    metricsError: s.metricsError,
+    followersAtBooking: s.followersAtBooking,
     courier: s.courier,
     trackingNumber: s.trackingNumber,
     decisionNote: s.decisionNote,
@@ -843,22 +855,40 @@ export async function getScheduleDetail(id: string) {
     },
   });
   if (!s) return null;
-  const events = await prisma.kolAuditEvent.findMany({
-    where: {
-      OR: [
-        { entityType: "schedule", entityId: s.id },
-        { entityType: "order", entityId: s.orderId },
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-    include: { actor: { select: { name: true, email: true } } },
-  });
+  const [events, snapshots, inFlight] = await Promise.all([
+    prisma.kolAuditEvent.findMany({
+      where: {
+        OR: [
+          { entityType: "schedule", entityId: s.id },
+          { entityType: "order", entityId: s.orderId },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      include: { actor: { select: { name: true, email: true } } },
+    }),
+    prisma.kolPostSnapshot.findMany({
+      where: { scheduleId: s.id },
+      orderBy: { capturedOn: "asc" },
+      select: { capturedOn: true, views: true, likes: true, comments: true, shares: true },
+    }),
+    prisma.kolPostSyncRun.count({
+      where: { status: { in: ["QUEUED", "RUNNING"] }, scheduleIds: { has: s.id } },
+    }),
+  ]);
   return {
     ...toScheduleRow(s),
     orderNote: s.order.note,
     decidedBy: s.decidedBy ? (s.decidedBy.name ?? s.decidedBy.email) : null,
     decidedAt: s.decidedAt?.toISOString() ?? null,
+    snapshots: snapshots.map((x) => ({
+      day: x.capturedOn.toISOString().slice(0, 10),
+      views: x.views,
+      likes: x.likes,
+      comments: x.comments,
+      shares: x.shares,
+    })),
+    syncInFlight: inFlight > 0,
     siblings: s.order.schedules.map((x) => ({
       id: x.id,
       subNumber: x.subNumber,

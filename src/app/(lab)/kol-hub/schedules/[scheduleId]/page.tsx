@@ -13,6 +13,8 @@ import { LabCard, lab } from "@/components/lab/lab-primitives";
 import { ensureKolHubPage } from "@/lib/kol/auth";
 import { rupiah, rupiahShort } from "@/lib/kol/format";
 import { OBJECTIVE_META, PLACEMENT_LABEL, TIER_LABEL } from "@/lib/kol/labels";
+import { PostMetricsPanel } from "@/components/kol-hub/post-metrics-panel";
+import { getKolRateSettings } from "@/lib/kol/rate-context";
 import { getScheduleDetail, listBriefs, listUserOptions } from "@/lib/kol/readers";
 import { dateToWibInput, formatWibDateTime } from "@/lib/kol/time";
 import { cn } from "@/lib/utils";
@@ -93,7 +95,11 @@ export default async function ScheduleDetailPage({
   const { session } = await ensureKolHubPage();
   const s = await getScheduleDetail(scheduleId);
   if (!s) notFound();
-  const [briefs, users] = await Promise.all([listBriefs(s.brandId), listUserOptions()]);
+  const [briefs, users, settings] = await Promise.all([
+    listBriefs(s.brandId),
+    listUserOptions(),
+    getKolRateSettings(),
+  ]);
   const total = s.rate + s.additionalCost;
   const productValue = s.products.reduce((a, p) => a + (p.unitValue ?? 0) * p.quantity, 0);
 
@@ -205,6 +211,19 @@ export default async function ScheduleDetailPage({
             postStatus={s.postStatus}
             postUrl={s.postUrl}
             postedAt={s.postedAt}
+          />
+
+          <PostMetricsPanel
+            scheduleId={s.id}
+            canSync={s.status === "POSTED" && !!s.postUrl && s.postStatus !== "TAKEN_DOWN"}
+            snapshots={s.snapshots}
+            cost={total}
+            fypThreshold={settings.configs[s.platform].fypThreshold}
+            postedAt={s.postedAt}
+            followersAtBooking={s.followersAtBooking}
+            syncedAt={s.metricsSyncedAt}
+            error={s.metricsError}
+            syncing={s.syncInFlight}
           />
 
           {s.shipmentStatus !== "NOT_REQUIRED" || s.products.length ? (

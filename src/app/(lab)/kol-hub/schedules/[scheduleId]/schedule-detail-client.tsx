@@ -259,7 +259,7 @@ export function PostPanel({
             <Input
               id="post-url"
               type="url"
-              placeholder="https://www.tiktok.com/@username/video/…"
+              placeholder="https://www.tiktok.com/@username/video/… atau instagram.com/reel/…"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               required
@@ -293,9 +293,6 @@ export function PostPanel({
           ) : null}
         </p>
       ) : null}
-      <p className="text-muted-foreground mt-3 text-[11px]">
-        Pelacakan views, CPM, dan deteksi FYP otomatis dari link ini hadir di tahap berikutnya.
-      </p>
     </LabCard>
   );
 }

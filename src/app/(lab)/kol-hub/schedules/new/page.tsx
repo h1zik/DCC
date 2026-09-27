@@ -3,6 +3,7 @@ import { CalendarPlus } from "lucide-react";
 import { ScheduleBuilder } from "@/components/kol-hub/schedule-builder";
 import { LabDetailPage } from "@/components/lab/lab-module-page";
 import { ensureKolHubPage } from "@/lib/kol/auth";
+import { getAccountRates } from "@/lib/kol/rate-context";
 import {
   listBrandOptions,
   listBriefs,
@@ -36,6 +37,13 @@ export default async function NewSchedulePage({
     ]);
 
   const preCampaign = campaigns.find((c) => c.id === sp.campaign);
+  const rates = await getAccountRates(kols.flatMap((k) => k.accounts.map((a) => a.id)));
+  const rateHints = Object.fromEntries(
+    [...rates.entries()].map(([id, r]) => [
+      id,
+      { band: r.band, medianViews: r.medianViews, tier: r.tier },
+    ]),
+  );
 
   return (
     <LabDetailPage
@@ -73,6 +81,7 @@ export default async function NewSchedulePage({
           retailPrice: p.retailPrice,
         }))}
         users={users}
+        rateHints={rateHints}
       />
     </LabDetailPage>
   );
