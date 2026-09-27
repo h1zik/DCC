@@ -207,6 +207,18 @@ export function canViewResearchHub(role: UserRole | AiApiRole): boolean {
   return canViewResearch(role as AiApiRole);
 }
 
+/**
+ * Akses baca KOL Hub — MCP (AiApiRole) + AI Agent in-app (UserRole).
+ * Mengikuti `canAccessLabKolHub` (= Brand Hub): CEO, Administrator, dan Brand
+ * Manager (PROJECT_MANAGER). Role API `STUDIO` sengaja TIDAK termasuk karena
+ * mencakup member umum (NORMAL_USER) — data rate & biaya KOL bersifat
+ * komersial. Token Research tidak pernah sampai ke sini (scope path).
+ */
+export function canViewKol(role: UserRole | AiApiRole): boolean {
+  if (role === UserRole.PROJECT_MANAGER) return true;
+  return role === "ALL" || role === "CEO" || role === "ADMINISTRATOR";
+}
+
 /** Map header role ke label Prisma (untuk logging). */
 export function aiRoleLabel(role: AiApiRole): string {
   if (role === "STUDIO") return UserRole.NORMAL_USER;

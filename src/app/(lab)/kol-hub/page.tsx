@@ -20,6 +20,8 @@ import {
   SCHEDULE_STATUS_ORDER,
 } from "@/lib/kol/labels";
 import { getKolHubOverview } from "@/lib/kol/readers";
+import { derived, getKolAnalytics, periodRange } from "@/lib/kol/analytics";
+import { compactCount as compactNumber } from "@/lib/kol/format";
 import { formatWibTime, wibDayKey } from "@/lib/kol/time";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +41,12 @@ const monthFmt = new Intl.DateTimeFormat("id-ID", {
 });
 
 export default async function KolHubOverviewPage() {
-  const o = await getKolHubOverview();
+  const range = periodRange("30d");
+  const [o, a] = await Promise.all([
+    getKolHubOverview(),
+    getKolAnalytics({ from: range.from, to: range.to }, "kol"),
+  ]);
+  const d = derived(a.totals);
 
   const actions = [
     {
@@ -120,6 +127,31 @@ export default async function KolHubOverviewPage() {
           ))}
         </div>
       ) : null}
+
+      <Link
+        href="/kol-hub/analytics"
+        className={cn(
+          lab.panel,
+          "grid grid-cols-2 gap-y-3 p-4 transition-colors hover:border-[color-mix(in_srgb,var(--lab-accent,var(--primary))_40%,var(--border))] sm:grid-cols-5",
+        )}
+        aria-label="Buka analytics 30 hari terakhir"
+      >
+        {[
+          { label: "Views 30 hari", value: compactNumber(a.totals.views) },
+          { label: "Konten tayang", value: `${a.totals.posted}/${a.totals.schedules}` },
+          {
+            label: "Masuk FYP",
+            value: `${a.totals.fyp}${d.fypRate != null ? ` · ${d.fypRate.toFixed(0)}%` : ""}`,
+          },
+          { label: "CPM", value: d.cpm != null ? rupiahShort(d.cpm) : "—" },
+          { label: "Biaya", value: rupiahShort(a.totals.cost) },
+        ].map((x) => (
+          <div key={x.label}>
+            <p className="text-muted-foreground text-[11px]">{x.label}</p>
+            <p className="text-lg font-bold tabular-nums">{x.value}</p>
+          </div>
+        ))}
+      </Link>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         {/* Run sheet: satu-satunya elemen "berani" di halaman ini. */}

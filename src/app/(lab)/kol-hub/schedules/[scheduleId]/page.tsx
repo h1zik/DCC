@@ -2,20 +2,28 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, ClipboardList } from "lucide-react";
-import { compactNumber } from "@/components/brand-hub/influencer-badges";
+import { compactCount as compactNumber } from "@/lib/kol/format";
 import {
+  KolBadge,
   PlatformMark,
   ScheduleStatusBadge,
   ScheduleStatusStack,
 } from "@/components/kol-hub/kol-badges";
 import { LabDetailPage } from "@/components/lab/lab-module-page";
 import { LabCard, lab } from "@/components/lab/lab-primitives";
-import { ensureKolHubPage } from "@/lib/kol/auth";
+import { canApproveKol, ensureKolHubPage } from "@/lib/kol/auth";
 import { rupiah, rupiahShort } from "@/lib/kol/format";
-import { OBJECTIVE_META, PLACEMENT_LABEL, TIER_LABEL } from "@/lib/kol/labels";
+import { OBJECTIVE_META, PAYMENT_META, PLACEMENT_LABEL, TIER_LABEL } from "@/lib/kol/labels";
 import { PostMetricsPanel } from "@/components/kol-hub/post-metrics-panel";
 import { getKolRateSettings } from "@/lib/kol/rate-context";
-import { getScheduleDetail, listBriefs, listUserOptions } from "@/lib/kol/readers";
+import {
+  getScheduleDetail,
+  getSpkForSchedule,
+  listBriefs,
+  listSpkTemplates,
+  listUserOptions,
+} from "@/lib/kol/readers";
+import { SpkPanel } from "@/components/kol-hub/spk-panel";
 import { dateToWibInput, formatWibDateTime } from "@/lib/kol/time";
 import { cn } from "@/lib/utils";
 import {
@@ -95,11 +103,16 @@ export default async function ScheduleDetailPage({
   const { session } = await ensureKolHubPage();
   const s = await getScheduleDetail(scheduleId);
   if (!s) notFound();
-  const [briefs, users, settings] = await Promise.all([
+  const [briefs, users, settings, spkTemplates, spkDoc, approver] = await Promise.all([
     listBriefs(s.brandId),
     listUserOptions(),
     getKolRateSettings(),
+    listSpkTemplates(s.brandId),
+    getSpkForSchedule(s.id),
+    canApproveKol(),
   ]);
+  const canAccessSpk =
+    approver || s.requestedById === session.user.id || s.picUserId === session.user.id;
   const total = s.rate + s.additionalCost;
   const productValue = s.products.reduce((a, p) => a + (p.unitValue ?? 0) * p.quantity, 0);
 
@@ -116,6 +129,8 @@ export default async function ScheduleDetailPage({
             postStatus={s.postStatus}
             shipmentStatus={s.shipmentStatus}
             scheduledAt={s.scheduledAt}
+            paymentStatus={s.paymentStatus}
+            spkStatus={s.spkStatus}
           />
         </span>
       }
@@ -226,6 +241,19 @@ export default async function ScheduleDetailPage({
             syncing={s.syncInFlight}
           />
 
+          <SpkPanel
+            scheduleId={s.id}
+            scheduleStatus={s.status}
+            canAccess={canAccessSpk}
+            templates={spkTemplates.map((t) => ({
+              id: t.id,
+              name: t.name,
+              isDefault: t.isDefault,
+              scope: t.scope,
+            }))}
+            doc={spkDoc}
+          />
+
           {s.shipmentStatus !== "NOT_REQUIRED" || s.products.length ? (
             <ShipmentPanel
               scheduleId={s.id}
@@ -282,6 +310,23 @@ export default async function ScheduleDetailPage({
                 </div>
               ) : null}
             </dl>
+            <div className="mt-4 border-t border-border/60 pt-3 text-xs">
+              <p className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Pembayaran</span>
+                <KolBadge tone={PAYMENT_META[s.paymentStatus].tone}>
+                  {PAYMENT_META[s.paymentStatus].label}
+                </KolBadge>
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                {s.paymentStatus === "NONE"
+                  ? total > 0
+                    ? "Pengajuan dana ke Finance dibuat otomatis saat jadwal disetujui."
+                    : "Barter — tidak ada fee yang dibayar."
+                  : s.paymentStatus === "REJECTED"
+                    ? `Finance menolak / menarik pengajuan${s.paymentNote ? `: “${s.paymentNote}”` : "."}`
+                    : "Diproses di Finance › Expense Approvals (akun Beban pemasaran & iklan). Status di sini selalu mengikuti Finance."}
+              </p>
+            </div>
           </LabCard>
 
           <LabCard className="p-5">

@@ -16,52 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { KOL_BANKS } from "@/lib/kol/banks";
 import type { KolPlatformValue } from "@/lib/kol/labels";
+import type { KolFormAccount, KolFormValues } from "@/lib/kol/form-defaults";
 import { cn } from "@/lib/utils";
-
-export type KolFormAccount = {
-  id?: string;
-  platform: KolPlatformValue;
-  handle: string;
-  rateCard: string;
-};
-
-export type KolFormValues = {
-  fullName: string;
-  email: string;
-  phone: string;
-  birthDate: string;
-  notes: string;
-  addressLine: string;
-  district: string;
-  city: string;
-  province: string;
-  postalCode: string;
-  bankCode: string;
-  bankBranch: string;
-  accountHolder: string;
-  accountNumber: string;
-  categoryIds: string[];
-  socialAccounts: KolFormAccount[];
-};
-
-export const EMPTY_KOL_FORM: KolFormValues = {
-  fullName: "",
-  email: "",
-  phone: "",
-  birthDate: "",
-  notes: "",
-  addressLine: "",
-  district: "",
-  city: "",
-  province: "",
-  postalCode: "",
-  bankCode: "",
-  bankBranch: "",
-  accountHolder: "",
-  accountNumber: "",
-  categoryIds: [],
-  socialAccounts: [{ platform: "INSTAGRAM", handle: "", rateCard: "" }],
-};
 
 function Section({
   title,

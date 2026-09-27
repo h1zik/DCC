@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { UserPlus } from "lucide-react";
-import { EMPTY_KOL_FORM, KolForm } from "@/components/kol-hub/kol-form";
+import { KolForm } from "@/components/kol-hub/kol-form";
+import { EMPTY_KOL_FORM } from "@/lib/kol/form-defaults";
 import { LabDetailPage } from "@/components/lab/lab-module-page";
 import { getInfluencerPrefill, listCategories } from "@/lib/kol/readers";
 

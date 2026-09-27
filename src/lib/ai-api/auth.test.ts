@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  canViewKol,
   isAiApiPathAllowed,
   resolveAiApiCredential,
   resolveAiApiRole,
@@ -86,6 +87,9 @@ describe("Research Team API credential", () => {
     expect(isAiApiPathAllowed("research", "/api/ai/finance/summary")).toBe(
       false,
     );
+    expect(isAiApiPathAllowed("research", "/api/ai/kol/profiles")).toBe(
+      false,
+    );
   });
 
   it("memilih scope Research bila kedua token tidak sengaja sama", () => {
@@ -121,5 +125,18 @@ describe("Research Team API credential", () => {
     );
     expect(denied.ok).toBe(false);
     if (!denied.ok) expect(denied.response.status).toBe(403);
+  });
+});
+
+describe("canViewKol", () => {
+  it("hanya CEO, Administrator, PM (UserRole), dan ALL", () => {
+    expect(canViewKol("CEO")).toBe(true);
+    expect(canViewKol("ADMINISTRATOR")).toBe(true);
+    expect(canViewKol("ALL")).toBe(true);
+    expect(canViewKol("PROJECT_MANAGER")).toBe(true);
+    expect(canViewKol("STUDIO")).toBe(false);
+    expect(canViewKol("FINANCE")).toBe(false);
+    expect(canViewKol("LOGISTICS")).toBe(false);
+    expect(canViewKol("MARKET_ANALYST")).toBe(false);
   });
 });

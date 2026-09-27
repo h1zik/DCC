@@ -11,6 +11,7 @@ import { z } from "zod";
 import { assertNotSelfApproval, requireKolApprover } from "@/lib/kol/auth";
 import { logKolAudit } from "@/lib/kol/audit";
 import { notifyKolRequester } from "@/lib/kol/notify";
+import { createSpendRequestsForSchedules } from "@/lib/kol/finance-link";
 import { applyKolProfileData } from "@/lib/kol/profile-apply";
 import { kolProfileInputSchema } from "@/lib/kol/validation";
 import { prisma } from "@/lib/prisma";
@@ -183,6 +184,9 @@ export async function decideSchedules(
       throw new Error("Sebagian jadwal sudah diputus orang lain — muat ulang halaman.");
     }
     if (input.approve) {
+      // Fee KOL masuk antrean Finance (SUBMITTED, akun 6100, brand terisi) —
+      // satu transaksi dengan approval: tidak ada jadwal disetujui tanpa pengajuan dana.
+      await createSpendRequestsForSchedules(tx, rows.map((r) => r.id), actorId);
       // Follower saat disetujui — pembanding performa setelah tayang.
       for (const r of rows) {
         const followers = r.socialAccount.influencerProfile?.latestFollowers;
@@ -221,4 +225,27 @@ export async function decideSchedules(
     );
   }
   revalidateAll();
+  if (input.approve) revalidatePath("/finance/approvals");
+}
+
+/**
+ * Buat pengajuan dana untuk jadwal yang sudah disetujui sebelum integrasi
+ * Finance ada (atau yang pengajuannya ditolak Finance lalu perlu diajukan
+ * ulang tidak termasuk — hanya yang belum pernah punya pengajuan).
+ */
+export async function backfillKolSpendRequests() {
+  const session = await requireKolApprover();
+  const ids = await prisma.kolSchedule.findMany({
+    where: {
+      spendRequestId: null,
+      status: { in: [KolScheduleStatus.APPROVED, KolScheduleStatus.SCHEDULED, KolScheduleStatus.POSTED] },
+    },
+    select: { id: true },
+  });
+  const created = await prisma.$transaction((tx) =>
+    createSpendRequestsForSchedules(tx, ids.map((i) => i.id), session.user.id),
+  );
+  revalidateAll();
+  revalidatePath("/finance/approvals");
+  return { created };
 }
