@@ -468,24 +468,20 @@ const editScheduleSchema = scheduleSlotInputSchema.extend({
 
 export type EditScheduleInput = z.input<typeof editScheduleSchema>;
 
-const EDITABLE: KolScheduleStatus[] = [
+/**
+ * Nominal hanya bisa diubah sebelum diputus. Setelah disetujui pengajuan dana
+ * ke Finance sudah terbit dari nominal ini; ditolak/dibatalkan = arsip.
+ */
+const MONEY_EDITABLE: KolScheduleStatus[] = [
   KolScheduleStatus.DRAFT,
   KolScheduleStatus.PENDING_APPROVAL,
-  KolScheduleStatus.APPROVED,
-  KolScheduleStatus.SCHEDULED,
-];
-
-/** Setelah disetujui, pengajuan dana sudah dibuat dari nominal ini. */
-const MONEY_LOCKED: KolScheduleStatus[] = [
-  KolScheduleStatus.APPROVED,
-  KolScheduleStatus.SCHEDULED,
 ];
 
 /**
  * Ubah isi satu jadwal (akun, placement, jenis endorse, tujuan, tanggal,
- * brief, PIC, produk, nominal) selama belum tayang. Nominal hanya bisa diubah
- * sebelum disetujui — sesudahnya pengajuan dana ke Finance sudah terbit,
- * jadi batalkan & ajukan ulang supaya approval tetap bermakna.
+ * brief, PIC, produk, nominal) di status apa pun. Dua kunci menjaga data
+ * tetap konsisten: nominal (lihat MONEY_EDITABLE) dan akun setelah link post
+ * dicatat — metrik & link post milik akun itu.
  */
 export async function updateScheduleContent(input: EditScheduleInput) {
   const session = await requireKolUser();
@@ -498,6 +494,8 @@ export async function updateScheduleContent(input: EditScheduleInput) {
         status: true,
         brandId: true,
         kolId: true,
+        socialAccountId: true,
+        postUrl: true,
         endorseTypeId: true,
         rate: true,
         additionalCost: true,
@@ -506,8 +504,8 @@ export async function updateScheduleContent(input: EditScheduleInput) {
         products: { select: { productId: true } },
       },
     });
-    if (!EDITABLE.includes(s.status)) {
-      throw new Error("Jadwal ini sudah tayang atau sudah diputus — isinya tidak bisa diubah lagi.");
+    if (s.postUrl && data.socialAccountId !== s.socialAccountId) {
+      throw new Error("Akun tidak bisa diganti setelah link post dicatat — link & metriknya milik akun ini.");
     }
 
     const [account, type, brief, products] = await Promise.all([
@@ -553,9 +551,9 @@ export async function updateScheduleContent(input: EditScheduleInput) {
     const oldTotal = Number(s.rate) + Number(s.additionalCost);
     const newTotal = Number(rate) + Number(additionalCost);
     const moneyChanged = !rate.equals(s.rate) || !additionalCost.equals(s.additionalCost);
-    if (moneyChanged && MONEY_LOCKED.includes(s.status)) {
+    if (moneyChanged && !MONEY_EDITABLE.includes(s.status)) {
       throw new Error(
-        "Nominal tidak bisa diubah setelah disetujui (pengajuan dana sudah ke Finance) — batalkan lalu ajukan ulang.",
+        "Nominal hanya bisa diubah sebelum jadwal diputus — setelah disetujui pengajuan dana sudah ke Finance. Batalkan lalu ajukan ulang bila nominalnya berubah.",
       );
     }
     // Jadwal yang menunggu approval sudah memakai budget — cek selisihnya saja.
