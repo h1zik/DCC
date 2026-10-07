@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-10-07-kol-hub-edit-schedule",
+    date: "2026-10-07",
+    title: "KOL Hub: isi jadwal bisa diedit",
+    category: "improved",
+    description:
+      "Jadwal KOL yang belum tayang kini bisa diedit lengkap — akun, placement, jenis endorse, tujuan, tanggal, brief, PIC, produk, dan nominal — langsung dari halaman detail jadwal.",
+    highlights: [
+      "Tombol baru \"Edit jadwal\" di halaman detail jadwal",
+      "Nominal masih bisa diubah selama belum disetujui; kenaikan dicek ke sisa budget",
+      "Setelah disetujui, nominal terkunci karena pengajuan dana sudah masuk Finance",
+    ],
+  },
+  {
     id: "2026-09-27-kol-hub-analytics-spk-finance",
     date: "2026-09-27",
     title: "KOL Hub: analytics, SPK otomatis, dan pembayaran lewat Finance",

@@ -668,6 +668,16 @@ export async function listSchedulableKols() {
 
 export type SchedulableKol = Awaited<ReturnType<typeof listSchedulableKols>>[number];
 
+/** Akun sosmed satu KOL — untuk mengganti akun di jadwal yang sudah ada. */
+export async function listKolAccounts(kolId: string) {
+  const rows = await prisma.kolSocialAccount.findMany({
+    where: { kolId },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    include: accountInclude,
+  });
+  return rows.map(toAccountView);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Jadwal                                                                    */
 /* ------------------------------------------------------------------------ */
@@ -718,6 +728,8 @@ function toScheduleRow(s: ScheduleRowRaw) {
     profileUrl: s.socialAccount.profileUrl,
     followers: s.socialAccount.influencerProfile?.latestFollowers ?? null,
     tier: s.socialAccount.influencerProfile?.latestTier ?? null,
+    socialAccountId: s.socialAccountId,
+    endorseTypeId: s.endorseTypeId,
     placement: s.placement,
     objective: s.objective,
     endorseType: s.endorseType.name,
