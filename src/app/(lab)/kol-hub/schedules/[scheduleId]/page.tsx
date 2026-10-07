@@ -147,6 +147,7 @@ export default async function ScheduleDetailPage({
           scheduleId={s.id}
           status={s.status}
           isRequester={s.requestedById === session.user.id}
+          hasPost={!!s.postUrl}
           initial={{
             socialAccountId: s.socialAccountId,
             placement: s.placement,

@@ -42,11 +42,12 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: "KOL Hub: isi jadwal bisa diedit",
     category: "improved",
     description:
-      "Jadwal KOL yang belum tayang kini bisa diedit lengkap — akun, placement, jenis endorse, tujuan, tanggal, brief, PIC, produk, dan nominal — langsung dari halaman detail jadwal.",
+      "Setiap jadwal KOL — termasuk yang sudah tayang — kini bisa diedit lengkap — akun, placement, jenis endorse, tujuan, tanggal, brief, PIC, produk, dan nominal — langsung dari halaman detail jadwal.",
     highlights: [
       "Tombol baru \"Edit jadwal\" di halaman detail jadwal",
       "Nominal masih bisa diubah selama belum disetujui; kenaikan dicek ke sisa budget",
       "Setelah disetujui, nominal terkunci karena pengajuan dana sudah masuk Finance",
+      "Setelah link post dicatat, akun terkunci karena metriknya milik akun itu",
     ],
   },
   {

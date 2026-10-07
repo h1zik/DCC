@@ -64,12 +64,14 @@ export function ScheduleActions({
   scheduleId,
   status,
   isRequester,
+  hasPost,
   initial,
   options,
 }: {
   scheduleId: string;
   status: string;
   isRequester: boolean;
+  hasPost: boolean;
   initial: ScheduleEditValues;
   options: ScheduleEditOptions;
 }) {
@@ -81,7 +83,6 @@ export function ScheduleActions({
   const [editKey, setEditKey] = useState(0);
 
   const cancellable = ["PENDING_APPROVAL", "APPROVED", "SCHEDULED"].includes(status);
-  const editable = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "SCHEDULED"].includes(status);
 
   return (
     <>
@@ -110,19 +111,17 @@ export function ScheduleActions({
           Siap tayang
         </Button>
       ) : null}
-      {editable ? (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            setEditKey((k) => k + 1);
-            setEditOpen(true);
-          }}
-        >
-          <Pencil />
-          Edit jadwal
-        </Button>
-      ) : null}
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setEditKey((k) => k + 1);
+          setEditOpen(true);
+        }}
+      >
+        <Pencil />
+        Edit jadwal
+      </Button>
       {cancellable && (isRequester || status !== "PENDING_APPROVAL") ? (
         <Button size="sm" variant="ghost" onClick={() => setCancelOpen(true)}>
           <XCircle />
@@ -157,17 +156,16 @@ export function ScheduleActions({
           )
         }
       />
-      {editable ? (
-        <ScheduleEditDialog
-          key={editKey}
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          scheduleId={scheduleId}
-          moneyLocked={status === "APPROVED" || status === "SCHEDULED"}
-          initial={initial}
-          options={options}
-        />
-      ) : null}
+      <ScheduleEditDialog
+        key={editKey}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        scheduleId={scheduleId}
+        moneyLocked={status !== "DRAFT" && status !== "PENDING_APPROVAL"}
+        accountLocked={hasPost}
+        initial={initial}
+        options={options}
+      />
     </>
   );
 }
@@ -198,13 +196,17 @@ function ScheduleEditDialog({
   onOpenChange,
   scheduleId,
   moneyLocked,
+  accountLocked,
   initial,
   options,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scheduleId: string;
+  /** Sudah diputus — nominal mengikuti pengajuan dana Finance / sudah arsip. */
   moneyLocked: boolean;
+  /** Link post sudah dicatat — link & metriknya milik akun ini. */
+  accountLocked: boolean;
   initial: ScheduleEditValues;
   options: ScheduleEditOptions;
 }) {
@@ -216,7 +218,7 @@ function ScheduleEditDialog({
   const placements = account ? PLACEMENTS_BY_PLATFORM[account.platform] : [];
   const barter = options.endorseTypes.find((t) => t.id === form.endorseTypeId)?.isBarter ?? false;
   const initialBarter = options.endorseTypes.find((t) => t.id === initial.endorseTypeId)?.isBarter;
-  // Setelah disetujui nominal terkunci — termasuk ganti jenis endorse barter ⇄ berbayar.
+  // Nominal terkunci — termasuk ganti jenis endorse barter ⇄ berbayar.
   const endorseOptions = moneyLocked
     ? options.endorseTypes.filter((t) => t.isBarter === initialBarter)
     : options.endorseTypes;
@@ -263,10 +265,11 @@ function ScheduleEditDialog({
           }}
         >
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Akun">
+            <Field label="Akun" hint={accountLocked ? "Terkunci — link post sudah dicatat." : undefined}>
               <KolSelect
                 ariaLabel="Akun"
                 value={form.socialAccountId}
+                disabled={accountLocked}
                 onChange={chooseAccount}
                 options={options.accounts.map((a) => ({
                   value: a.id,
@@ -416,7 +419,7 @@ function ScheduleEditDialog({
           <p className="text-muted-foreground text-xs">
             Total <span className="text-foreground font-semibold tabular-nums">{rupiah(total)}</span>
             {moneyLocked
-              ? " · Nominal terkunci karena jadwal sudah disetujui dan pengajuan dana sudah ke Finance — batalkan lalu ajukan ulang bila nominalnya berubah."
+              ? " · Nominal terkunci karena jadwal sudah diputus approver (pengajuan dana mengikuti nominal ini) — batalkan lalu ajukan ulang bila nominalnya berubah."
               : " · Bila jadwal sedang menunggu approval, kenaikan nominal dicek ke sisa budget."}
           </p>
 
