@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowUpRight, CalendarCog, CheckCircle2, Send, Trash2, XCircle } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Pencil, Send, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   cancelSchedule,
@@ -11,11 +11,12 @@ import {
   markScheduleReady,
   recordSchedulePost,
   submitDraftSchedules,
-  updateScheduleLogistics,
+  updateScheduleContent,
   updateScheduleShipment,
 } from "@/actions/kol-schedules";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Field, KolSelect } from "@/components/kol-hub/kol-fields";
+import { PlatformMark } from "@/components/kol-hub/kol-badges";
+import { Field, KolSelect, RupiahInput } from "@/components/kol-hub/kol-fields";
 import { ReasonDialog } from "@/components/kol-hub/reason-dialog";
 import { LabCard, lab } from "@/components/lab/lab-primitives";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { SHIPMENT_META, type KolShipmentStatusValue } from "@/lib/kol/labels";
+import { rupiah } from "@/lib/kol/format";
+import {
+  OBJECTIVE_META,
+  PLACEMENT_LABEL,
+  PLACEMENTS_BY_PLATFORM,
+  SHIPMENT_META,
+  type KolObjectiveValue,
+  type KolPlacementValue,
+  type KolPlatformValue,
+  type KolShipmentStatusValue,
+} from "@/lib/kol/labels";
 import { dateToWibInput, formatWibDateTime } from "@/lib/kol/time";
 import { cn } from "@/lib/utils";
 
@@ -53,22 +64,21 @@ export function ScheduleActions({
   scheduleId,
   status,
   isRequester,
-  logistics,
-  briefs,
-  users,
+  initial,
+  options,
 }: {
   scheduleId: string;
   status: string;
   isRequester: boolean;
-  logistics: { scheduledAt: string; briefId: string; picUserId: string };
-  briefs: { id: string; title: string }[];
-  users: { id: string; name: string }[];
+  initial: ScheduleEditValues;
+  options: ScheduleEditOptions;
 }) {
   const { pending, run, router } = useAction();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [form, setForm] = useState(logistics);
+  // Tiap buka = form baru dari data tersimpan, bukan sisa ketikan yang dibatalkan.
+  const [editKey, setEditKey] = useState(0);
 
   const cancellable = ["PENDING_APPROVAL", "APPROVED", "SCHEDULED"].includes(status);
   const editable = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "SCHEDULED"].includes(status);
@@ -101,9 +111,16 @@ export function ScheduleActions({
         </Button>
       ) : null}
       {editable ? (
-        <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-          <CalendarCog />
-          Ubah tanggal / brief
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setEditKey((k) => k + 1);
+            setEditOpen(true);
+          }}
+        >
+          <Pencil />
+          Edit jadwal
         </Button>
       ) : null}
       {cancellable && (isRequester || status !== "PENDING_APPROVAL") ? (
@@ -140,70 +157,280 @@ export function ScheduleActions({
           )
         }
       />
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Ubah tanggal, brief, atau PIC</DialogTitle>
-          </DialogHeader>
-          <form
-            className="grid gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              run(
-                () =>
-                  updateScheduleLogistics({
-                    scheduleId,
-                    scheduledAt: form.scheduledAt || null,
-                    briefId: form.briefId || null,
-                    picUserId: form.picUserId || null,
-                  }),
-                "Jadwal diperbarui.",
-                () => setEditOpen(false),
-              );
-            }}
-          >
-            <Field label="Tanggal & jam tayang (WIB)" htmlFor="lg-at">
+      {editable ? (
+        <ScheduleEditDialog
+          key={editKey}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          scheduleId={scheduleId}
+          moneyLocked={status === "APPROVED" || status === "SCHEDULED"}
+          initial={initial}
+          options={options}
+        />
+      ) : null}
+    </>
+  );
+}
+
+export type ScheduleEditValues = {
+  socialAccountId: string;
+  placement: KolPlacementValue;
+  endorseTypeId: string;
+  objective: KolObjectiveValue;
+  scheduledAt: string;
+  briefId: string;
+  picUserId: string;
+  productIds: string[];
+  rate: string;
+  additionalCost: string;
+};
+
+export type ScheduleEditOptions = {
+  accounts: { id: string; platform: KolPlatformValue; handle: string; rateCard: number | null }[];
+  endorseTypes: { id: string; name: string; isBarter: boolean }[];
+  briefs: { id: string; title: string }[];
+  products: { id: string; name: string }[];
+  users: { id: string; name: string }[];
+};
+
+function ScheduleEditDialog({
+  open,
+  onOpenChange,
+  scheduleId,
+  moneyLocked,
+  initial,
+  options,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  scheduleId: string;
+  moneyLocked: boolean;
+  initial: ScheduleEditValues;
+  options: ScheduleEditOptions;
+}) {
+  const { pending, run } = useAction();
+  const [form, setForm] = useState(initial);
+  const patch = (p: Partial<ScheduleEditValues>) => setForm((cur) => ({ ...cur, ...p }));
+
+  const account = options.accounts.find((a) => a.id === form.socialAccountId);
+  const placements = account ? PLACEMENTS_BY_PLATFORM[account.platform] : [];
+  const barter = options.endorseTypes.find((t) => t.id === form.endorseTypeId)?.isBarter ?? false;
+  const initialBarter = options.endorseTypes.find((t) => t.id === initial.endorseTypeId)?.isBarter;
+  // Setelah disetujui nominal terkunci — termasuk ganti jenis endorse barter ⇄ berbayar.
+  const endorseOptions = moneyLocked
+    ? options.endorseTypes.filter((t) => t.isBarter === initialBarter)
+    : options.endorseTypes;
+  const total = (barter ? 0 : Number(form.rate || 0)) + Number(form.additionalCost || 0);
+
+  function chooseAccount(id: string) {
+    const a = options.accounts.find((x) => x.id === id);
+    if (!a) return;
+    const allowed = PLACEMENTS_BY_PLATFORM[a.platform];
+    patch({
+      socialAccountId: id,
+      placement: allowed.includes(form.placement) ? form.placement : allowed[0],
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit jadwal</DialogTitle>
+        </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(
+              () =>
+                updateScheduleContent({
+                  scheduleId,
+                  socialAccountId: form.socialAccountId,
+                  placement: form.placement,
+                  endorseTypeId: form.endorseTypeId,
+                  objective: form.objective,
+                  scheduledAt: form.scheduledAt || null,
+                  briefId: form.briefId || null,
+                  picUserId: form.picUserId || null,
+                  productIds: form.productIds,
+                  rate: barter ? "0" : form.rate || "0",
+                  additionalCost: form.additionalCost || null,
+                }),
+              "Jadwal diperbarui.",
+              () => onOpenChange(false),
+            );
+          }}
+        >
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Akun">
+              <KolSelect
+                ariaLabel="Akun"
+                value={form.socialAccountId}
+                onChange={chooseAccount}
+                options={options.accounts.map((a) => ({
+                  value: a.id,
+                  label: (
+                    <span className="flex items-center gap-1.5">
+                      <PlatformMark platform={a.platform} />@{a.handle}
+                    </span>
+                  ),
+                }))}
+              />
+            </Field>
+            <Field label="Placement">
+              <KolSelect
+                ariaLabel="Placement"
+                value={form.placement}
+                onChange={(v) => patch({ placement: v as KolPlacementValue })}
+                options={placements.map((p) => ({ value: p, label: PLACEMENT_LABEL[p] }))}
+              />
+            </Field>
+            <Field label="Jenis endorse">
+              <KolSelect
+                ariaLabel="Jenis endorse"
+                value={form.endorseTypeId}
+                onChange={(v) => patch({ endorseTypeId: v })}
+                options={endorseOptions.map((t) => ({
+                  value: t.id,
+                  label: t.isBarter ? `${t.name} (tanpa fee)` : t.name,
+                }))}
+              />
+            </Field>
+          </div>
+
+          <fieldset className="grid gap-1.5">
+            <legend className="mb-1.5 text-xs font-medium">Tujuan konten</legend>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted/50 p-1">
+              {(Object.keys(OBJECTIVE_META) as KolObjectiveValue[]).map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  aria-pressed={form.objective === o}
+                  title={OBJECTIVE_META[o].hint}
+                  onClick={() => patch({ objective: o })}
+                  className={cn(
+                    "rounded-lg px-2 py-1.5 text-xs font-medium transition-colors",
+                    form.objective === o
+                      ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {OBJECTIVE_META[o].label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Tanggal & jam tayang (WIB)" htmlFor="ed-at" optional>
               <Input
-                id="lg-at"
+                id="ed-at"
                 type="datetime-local"
                 value={form.scheduledAt}
-                onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
+                onChange={(e) => patch({ scheduledAt: e.target.value })}
               />
             </Field>
             <Field label="Brief" optional>
               <KolSelect
                 ariaLabel="Brief"
                 value={form.briefId}
-                onChange={(briefId) => setForm({ ...form, briefId })}
+                onChange={(briefId) => patch({ briefId })}
                 emptyLabel="Tanpa brief"
-                options={briefs.map((b) => ({ value: b.id, label: b.title }))}
+                options={options.briefs.map((b) => ({ value: b.id, label: b.title }))}
               />
             </Field>
             <Field label="PIC" optional>
               <KolSelect
                 ariaLabel="PIC"
                 value={form.picUserId}
-                onChange={(picUserId) => setForm({ ...form, picUserId })}
+                onChange={(picUserId) => patch({ picUserId })}
                 emptyLabel="Tanpa PIC"
-                options={users.map((u) => ({ value: u.id, label: u.name }))}
+                options={options.users.map((u) => ({ value: u.id, label: u.name }))}
               />
             </Field>
-            <p className="text-muted-foreground text-xs">
-              Rate tidak bisa diubah setelah diajukan — batalkan lalu ajukan ulang bila
-              nominalnya berubah.
-            </p>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={pending}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={pending}>
-                Simpan
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
+          </div>
+
+          <Field
+            label="Produk yang di-endorse"
+            optional
+            hint={options.products.length === 0 ? "Brand ini belum punya produk di master Products." : undefined}
+          >
+            <div className="flex flex-wrap gap-1.5">
+              {options.products.map((p) => {
+                const on = form.productIds.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() =>
+                      patch({
+                        productIds: on
+                          ? form.productIds.filter((x) => x !== p.id)
+                          : [...form.productIds, p.id],
+                      })
+                    }
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-medium ring-1 transition-colors",
+                      on
+                        ? "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_14%,transparent)] text-[var(--lab-accent,var(--primary))] ring-[color-mix(in_srgb,var(--lab-accent,var(--primary))_35%,transparent)]"
+                        : "text-muted-foreground ring-border hover:text-foreground",
+                    )}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Rate KOL"
+              hint={
+                barter
+                  ? "Barter — tidak ada fee."
+                  : account?.rateCard != null
+                    ? `Rate card akun ini ${rupiah(account.rateCard)}.`
+                    : undefined
+              }
+            >
+              <RupiahInput
+                ariaLabel="Rate KOL"
+                value={barter ? "0" : form.rate}
+                disabled={barter || moneyLocked}
+                onChange={(rate) => patch({ rate })}
+              />
+            </Field>
+            <Field label="Biaya tambahan" optional>
+              <RupiahInput
+                ariaLabel="Biaya tambahan"
+                value={form.additionalCost}
+                disabled={moneyLocked}
+                onChange={(additionalCost) => patch({ additionalCost })}
+              />
+            </Field>
+          </div>
+
+          <p className="text-muted-foreground text-xs">
+            Total <span className="text-foreground font-semibold tabular-nums">{rupiah(total)}</span>
+            {moneyLocked
+              ? " · Nominal terkunci karena jadwal sudah disetujui dan pengajuan dana sudah ke Finance — batalkan lalu ajukan ulang bila nominalnya berubah."
+              : " · Bila jadwal sedang menunggu approval, kenaikan nominal dicek ke sisa budget."}
+          </p>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+              Batal
+            </Button>
+            <Button type="submit" disabled={pending || !form.placement}>
+              Simpan
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

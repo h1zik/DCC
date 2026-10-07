@@ -5,7 +5,6 @@ import {
   KolScheduleStatus,
   KolShipmentStatus,
   KolStatus,
-  Prisma,
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -16,9 +15,11 @@ import { enqueueKolPostSync } from "@/lib/kol/post-sync";
 import { parsePostUrl } from "@/lib/kol/post-url";
 import { notifyKolApprovers } from "@/lib/kol/notify";
 import { kolSubNumber, nextKolOrderNumber } from "@/lib/kol/numbering";
+import { PLACEMENTS_BY_PLATFORM } from "@/lib/kol/labels";
 import { wibInputToDate } from "@/lib/kol/time";
 import {
   scheduleOrderInputSchema,
+  scheduleSlotInputSchema,
   type ScheduleOrderInput,
 } from "@/lib/kol/validation";
 import { toDecimal } from "@/lib/finance-money";
@@ -461,50 +462,148 @@ export async function updateScheduleShipment(input: z.input<typeof shipmentSchem
   revalidateSchedules(data.scheduleId);
 }
 
-const logisticsSchema = z.object({
+const editScheduleSchema = scheduleSlotInputSchema.extend({
   scheduleId: z.string().min(1),
-  scheduledAt: z.string().optional().nullable(),
-  briefId: z.string().optional().nullable(),
-  picUserId: z.string().optional().nullable(),
 });
 
+export type EditScheduleInput = z.input<typeof editScheduleSchema>;
+
+const EDITABLE: KolScheduleStatus[] = [
+  KolScheduleStatus.DRAFT,
+  KolScheduleStatus.PENDING_APPROVAL,
+  KolScheduleStatus.APPROVED,
+  KolScheduleStatus.SCHEDULED,
+];
+
+/** Setelah disetujui, pengajuan dana sudah dibuat dari nominal ini. */
+const MONEY_LOCKED: KolScheduleStatus[] = [
+  KolScheduleStatus.APPROVED,
+  KolScheduleStatus.SCHEDULED,
+];
+
 /**
- * Ubah tanggal tayang / brief / PIC. Nominal tidak bisa diubah setelah
- * diajukan — batalkan & ajukan ulang supaya approval tetap bermakna.
+ * Ubah isi satu jadwal (akun, placement, jenis endorse, tujuan, tanggal,
+ * brief, PIC, produk, nominal) selama belum tayang. Nominal hanya bisa diubah
+ * sebelum disetujui — sesudahnya pengajuan dana ke Finance sudah terbit,
+ * jadi batalkan & ajukan ulang supaya approval tetap bermakna.
  */
-export async function updateScheduleLogistics(input: z.input<typeof logisticsSchema>) {
+export async function updateScheduleContent(input: EditScheduleInput) {
   const session = await requireKolUser();
-  const data = logisticsSchema.parse(input);
-  const s = await prisma.kolSchedule.findUniqueOrThrow({
-    where: { id: data.scheduleId },
-    select: { status: true, brandId: true },
-  });
-  const editable: KolScheduleStatus[] = [
-    KolScheduleStatus.DRAFT,
-    KolScheduleStatus.PENDING_APPROVAL,
-    KolScheduleStatus.APPROVED,
-    KolScheduleStatus.SCHEDULED,
-  ];
-  if (!editable.includes(s.status)) throw new Error("Jadwal ini sudah final.");
-  if (data.briefId) {
-    const brief = await prisma.kolBrief.findUnique({
-      where: { id: data.briefId },
-      select: { brandId: true },
+  const data = editScheduleSchema.parse(input);
+
+  await prisma.$transaction(async (tx) => {
+    const s = await tx.kolSchedule.findUniqueOrThrow({
+      where: { id: data.scheduleId },
+      select: {
+        status: true,
+        brandId: true,
+        kolId: true,
+        endorseTypeId: true,
+        rate: true,
+        additionalCost: true,
+        shipmentStatus: true,
+        campaign: { select: { budgetId: true } },
+        products: { select: { productId: true } },
+      },
     });
-    if (!brief || brief.brandId !== s.brandId) throw new Error("Brief bukan milik brand ini.");
-  }
-  const patch: Prisma.KolScheduleUncheckedUpdateInput = {
-    scheduledAt: data.scheduledAt ? wibInputToDate(data.scheduledAt) : null,
-    briefId: data.briefId || null,
-    picUserId: data.picUserId || null,
-  };
-  await prisma.kolSchedule.update({ where: { id: data.scheduleId }, data: patch });
-  await logKolAudit(prisma, {
-    actorId: session.user.id,
-    entityType: "schedule",
-    entityId: data.scheduleId,
-    action: "schedule.logistics",
-    meta: { scheduledAt: data.scheduledAt ?? null },
+    if (!EDITABLE.includes(s.status)) {
+      throw new Error("Jadwal ini sudah tayang atau sudah diputus — isinya tidak bisa diubah lagi.");
+    }
+
+    const [account, type, brief, products] = await Promise.all([
+      tx.kolSocialAccount.findUnique({
+        where: { id: data.socialAccountId },
+        select: { kolId: true, platform: true },
+      }),
+      tx.kolEndorseType.findUnique({
+        where: { id: data.endorseTypeId },
+        select: { id: true, isBarter: true, archivedAt: true },
+      }),
+      data.briefId
+        ? tx.kolBrief.findUnique({
+            where: { id: data.briefId },
+            select: { brandId: true },
+          })
+        : null,
+      tx.product.findMany({
+        where: { id: { in: data.productIds } },
+        select: { id: true, brandId: true, retailPrice: true },
+      }),
+    ]);
+    if (!account || account.kolId !== s.kolId) throw new Error("Akun sosmed bukan milik KOL ini.");
+    if (!PLACEMENTS_BY_PLATFORM[account.platform].includes(data.placement)) {
+      throw new Error("Placement itu tidak tersedia untuk platform akun ini.");
+    }
+    // Jenis endorse yang sudah diarsipkan tetap boleh dipertahankan, tapi tidak dipilih baru.
+    if (!type || (type.archivedAt && type.id !== s.endorseTypeId)) {
+      throw new Error("Jenis endorse tidak ditemukan.");
+    }
+    if (data.briefId && (!brief || brief.brandId !== s.brandId)) {
+      throw new Error("Brief bukan milik brand ini.");
+    }
+    const productById = new Map(products.map((p) => [p.id, p]));
+    for (const pid of data.productIds) {
+      if (productById.get(pid)?.brandId !== s.brandId) {
+        throw new Error("Produk bukan milik brand ini.");
+      }
+    }
+
+    const rate = type.isBarter ? toDecimal(0) : toDecimal(data.rate);
+    const additionalCost = toDecimal(data.additionalCost ?? "0");
+    const oldTotal = Number(s.rate) + Number(s.additionalCost);
+    const newTotal = Number(rate) + Number(additionalCost);
+    const moneyChanged = !rate.equals(s.rate) || !additionalCost.equals(s.additionalCost);
+    if (moneyChanged && MONEY_LOCKED.includes(s.status)) {
+      throw new Error(
+        "Nominal tidak bisa diubah setelah disetujui (pengajuan dana sudah ke Finance) — batalkan lalu ajukan ulang.",
+      );
+    }
+    // Jadwal yang menunggu approval sudah memakai budget — cek selisihnya saja.
+    if (s.status === KolScheduleStatus.PENDING_APPROVAL && newTotal > oldTotal) {
+      await assertBudgetFits(tx, s.campaign.budgetId, newTotal - oldTotal);
+    }
+
+    const oldProductIds = s.products.map((p) => p.productId);
+    const newProductIds = [...new Set(data.productIds)];
+    let shipmentStatus = s.shipmentStatus;
+    if (newProductIds.length && shipmentStatus === KolShipmentStatus.NOT_REQUIRED) {
+      shipmentStatus = KolShipmentStatus.PENDING;
+    } else if (!newProductIds.length && shipmentStatus === KolShipmentStatus.PENDING) {
+      shipmentStatus = KolShipmentStatus.NOT_REQUIRED;
+    }
+
+    await tx.kolSchedule.update({
+      where: { id: data.scheduleId },
+      data: {
+        socialAccountId: data.socialAccountId,
+        placement: data.placement,
+        endorseTypeId: data.endorseTypeId,
+        objective: data.objective,
+        scheduledAt: data.scheduledAt ? wibInputToDate(data.scheduledAt) : null,
+        briefId: data.briefId,
+        picUserId: data.picUserId,
+        rate,
+        additionalCost,
+        shipmentStatus,
+        products: {
+          deleteMany: { productId: { notIn: newProductIds } },
+          create: newProductIds
+            .filter((id) => !oldProductIds.includes(id))
+            .map((productId) => ({
+              productId,
+              quantity: 1,
+              unitValue: productById.get(productId)?.retailPrice ?? null,
+            })),
+        },
+      },
+    });
+    await logKolAudit(tx, {
+      actorId: session.user.id,
+      entityType: "schedule",
+      entityId: data.scheduleId,
+      action: "schedule.edited",
+      meta: moneyChanged ? { from: oldTotal, to: newTotal } : undefined,
+    });
   });
   revalidateSchedules(data.scheduleId);
 }

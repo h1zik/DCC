@@ -20,6 +20,9 @@ import {
   getScheduleDetail,
   getSpkForSchedule,
   listBriefs,
+  listEndorseTypes,
+  listKolAccounts,
+  listProductsForPricing,
   listSpkTemplates,
   listUserOptions,
 } from "@/lib/kol/readers";
@@ -46,6 +49,7 @@ const EVENT_LABEL: Record<string, string> = {
   "schedule.taken_down": "Konten diturunkan",
   "schedule.shipment": "Status kirim produk diubah",
   "schedule.logistics": "Tanggal / brief / PIC diubah",
+  "schedule.edited": "Isi jadwal diubah",
 };
 
 function Stepper({ status }: { status: string }) {
@@ -103,14 +107,18 @@ export default async function ScheduleDetailPage({
   const { session } = await ensureKolHubPage();
   const s = await getScheduleDetail(scheduleId);
   if (!s) notFound();
-  const [briefs, users, settings, spkTemplates, spkDoc, approver] = await Promise.all([
-    listBriefs(s.brandId),
-    listUserOptions(),
-    getKolRateSettings(),
-    listSpkTemplates(s.brandId),
-    getSpkForSchedule(s.id),
-    canApproveKol(),
-  ]);
+  const [briefs, users, settings, spkTemplates, spkDoc, approver, accounts, endorseTypes, products] =
+    await Promise.all([
+      listBriefs(s.brandId),
+      listUserOptions(),
+      getKolRateSettings(),
+      listSpkTemplates(s.brandId),
+      getSpkForSchedule(s.id),
+      canApproveKol(),
+      listKolAccounts(s.kolId),
+      listEndorseTypes({ includeArchived: true }),
+      listProductsForPricing(s.brandId),
+    ]);
   const canAccessSpk =
     approver || s.requestedById === session.user.id || s.picUserId === session.user.id;
   const total = s.rate + s.additionalCost;
@@ -139,13 +147,33 @@ export default async function ScheduleDetailPage({
           scheduleId={s.id}
           status={s.status}
           isRequester={s.requestedById === session.user.id}
-          logistics={{
+          initial={{
+            socialAccountId: s.socialAccountId,
+            placement: s.placement,
+            endorseTypeId: s.endorseTypeId,
+            objective: s.objective,
             scheduledAt: dateToWibInput(s.scheduledAt),
             briefId: s.briefId ?? "",
             picUserId: s.picUserId ?? "",
+            productIds: s.products.map((p) => p.id),
+            rate: String(s.rate),
+            additionalCost: s.additionalCost ? String(s.additionalCost) : "",
           }}
-          briefs={briefs.map((b) => ({ id: b.id, title: b.title }))}
-          users={users}
+          options={{
+            accounts: accounts.map((a) => ({
+              id: a.id,
+              platform: a.platform,
+              handle: a.handle,
+              rateCard: a.rateCard,
+            })),
+            // Jenis yang diarsipkan hanya muncul bila masih dipakai jadwal ini.
+            endorseTypes: endorseTypes
+              .filter((t) => !t.archived || t.id === s.endorseTypeId)
+              .map((t) => ({ id: t.id, name: t.name, isBarter: t.isBarter })),
+            briefs: briefs.map((b) => ({ id: b.id, title: b.title })),
+            products: products.map((p) => ({ id: p.id, name: p.name })),
+            users,
+          }}
         />
       }
     >
