@@ -1,0 +1,75 @@
+/*
+ * Influencer Audit — skala warna vonis.
+ *
+ * Satu skala yang dipakai di mana pun vonis muncul (daftar, detail, KOL Hub),
+ * sengaja menjauh dari hijau/merah lampu lalu lintas: "Perlu dicek" bukan
+ * tuduhan, jadi warnanya karat — bukan merah — dan "Mencurigakan" anggur tua.
+ *
+ *   go     moss   Sangat bagus / Bagus
+ *   fair   brass  Rata-rata
+ *   weak   slate  Lemah
+ *   review rust   Perlu dicek
+ *   fraud  wine   Mencurigakan
+ */
+
+:root {
+  --iv-go: #2f7d5b;
+  --iv-fair: #a07a1f;
+  --iv-weak: #6b7280;
+  --iv-review: #c2410c;
+  --iv-fraud: #9f1239;
+  --iv-track: color-mix(in srgb, var(--muted-foreground) 16%, transparent);
+}
+
+html.dark {
+  --iv-go: #6cc59a;
+  --iv-fair: #d6b259;
+  --iv-weak: #a3a9b3;
+  --iv-review: #f08a4b;
+  --iv-fraud: #f07a98;
+  --iv-track: color-mix(in srgb, var(--muted-foreground) 22%, transparent);
+}
+
+/* Tinta lembut dari satu warna vonis — dipakai untuk latar badge & pita. */
+.iv-tint {
+  background: color-mix(in srgb, var(--iv-tone) 14%, transparent);
+  color: var(--iv-tone);
+}
+
+/*
+ * Batang skor dengan rentang ketidakpastian: satu-satunya gerak di halaman
+ * ini, dan hanya sekali saat batang pertama kali muncul.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .iv-range-band {
+    transform-origin: left center;
+    animation: iv-band-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .iv-range-dot {
+    animation: iv-dot-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+
+@keyframes iv-band-in {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+
+@keyframes iv-dot-in {
+  from {
+    left: 0;
+    opacity: 0;
+  }
+}
+
+/* Faktor keandalan yang tidak penuh: arsir, bukan warna lain. */
+.iv-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--iv-tone, var(--muted-foreground)) 55%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}

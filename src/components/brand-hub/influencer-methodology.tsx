@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/collapsible";
 import { lab } from "@/components/lab/lab-primitives";
 import { TIER_LABEL } from "@/components/brand-hub/influencer-badges";
+import type { AuditTrustView } from "@/lib/brand-research/influencer/metrics-view";
 import { cn } from "@/lib/utils";
 
 /**
@@ -62,8 +63,9 @@ const COMMENT_RATIO_FLOOR: Record<InfluencerTier, number> = {
 
 type Components = {
   engagement: number;
-  consistency: number;
-  reach: number;
+  /** Null = tidak terukur (metode v2): bobotnya dibagi ulang. */
+  consistency: number | null;
+  reach: number | null;
   authenticity: number;
   performancePenalty: number;
 };
@@ -110,7 +112,7 @@ function ComponentRow({
   hint,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   weight: number;
   hint: string;
 }) {
@@ -120,12 +122,14 @@ function ComponentRow({
         <p className="text-foreground font-medium">{label}</p>
         <p className="text-muted-foreground text-[11px] leading-snug">{hint}</p>
       </td>
-      <td className="py-2 pr-3 text-right tabular-nums">{num(value)}</td>
+      <td className="py-2 pr-3 text-right tabular-nums">
+        {value === null ? "tidak terukur" : num(value)}
+      </td>
       <td className="text-muted-foreground py-2 pr-3 text-right tabular-nums">
-        ×{weight}
+        ×{num(weight, 2)}
       </td>
       <td className="text-foreground py-2 text-right font-semibold tabular-nums">
-        {num(value * weight)}
+        {value === null ? "—" : num(value * weight)}
       </td>
     </tr>
   );
@@ -134,17 +138,34 @@ function ComponentRow({
 export function InfluencerMethodology({
   audit,
   components,
+  trust,
+  defaultOpen = false,
 }: {
   audit: MethodologyAudit;
   components: Components | null;
+  /** Bagian metrics metode v2; audit lama tidak punya. */
+  trust?: AuditTrustView;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+  const v2 = (trust?.scoringVersion ?? 1) >= 2;
+
+  /**
+   * Bobot yang benar-benar dipakai. Metode v2 membagi ulang bobot komponen
+   * yang tidak terukur; audit lama memakai bobot tetap (dan nilai netral).
+   */
+  const weights = {
+    engagement: trust?.componentWeights?.engagement ?? WEIGHTS.engagement,
+    consistency: trust?.componentWeights?.consistency ?? WEIGHTS.consistency,
+    reach: trust?.componentWeights?.reach ?? WEIGHTS.reach,
+    authenticity: trust?.componentWeights?.authenticity ?? WEIGHTS.authenticity,
+  };
 
   const subtotal = components
-    ? components.engagement * WEIGHTS.engagement +
-      components.consistency * WEIGHTS.consistency +
-      components.reach * WEIGHTS.reach +
-      components.authenticity * WEIGHTS.authenticity
+    ? components.engagement * weights.engagement +
+      (components.consistency ?? 0) * weights.consistency +
+      (components.reach ?? 0) * weights.reach +
+      components.authenticity * weights.authenticity
     : null;
   const capped =
     subtotal !== null &&
@@ -388,8 +409,68 @@ export function InfluencerMethodology({
             </p>
           </Step>
 
+          {v2 && trust ? (
+            <Step n={8} title="Mengukur seberapa pasti angkanya">
+              <p>
+                Enam post dengan ER tiga kali median belum membuktikan akun itu
+                tiga kali lebih baik — bisa jadi hanya enam post yang kebetulan
+                bagus. Karena itu ER yang dipakai <strong>menilai</strong>{" "}
+                ditarik ke median tier sebanding dengan rapuhnya sampel
+                {trust.shrinkageWeight !== null &&
+                trust.adjustedEngagementRate !== null ? (
+                  <>
+                    {" "}
+                    (di audit ini {num(trust.shrinkageWeight * 100, 0)}%:{" "}
+                    {num(audit.engagementRate, 2)}% →{" "}
+                    {num(trust.adjustedEngagementRate, 2)}%)
+                  </>
+                ) : null}
+                . Angka ER yang ditampilkan tetap apa adanya.
+              </p>
+              <p>
+                Sampel post lalu <strong>diacak ulang 200 kali</strong>{" "}
+                (bootstrap) dan seluruh perhitungan diulang.
+                {trust.scoreInterval ? (
+                  <>
+                    {" "}
+                    Rentang skor {trust.scoreInterval[0]}–{trust.scoreInterval[1]}{" "}
+                    adalah 80% hasil tengahnya.
+                  </>
+                ) : null}{" "}
+                Vonis &ldquo;Sangat bagus&rdquo; menuntut batas bawahnya ≥ 70
+                dan &ldquo;Bagus&rdquo; ≥ 55 — vonis harus tetap berlaku walau
+                sampelnya sedikit berbeda.
+              </p>
+              <p>
+                Feed dan Reels baru dinilai terpisah bila selisihnya melewati
+                batas kebetulan. Kalau tidak, keduanya dinilai bersama: memilih
+                angka tertinggi dari dua taksiran yang goyah selalu melebihkan
+                hasil.
+                {trust.primaryMode === "blended"
+                  ? " Di audit ini selisihnya masih dalam batas itu."
+                  : ""}
+              </p>
+              <p>
+                Komponen tanpa data (mis. jangkauan tanpa view) tidak lagi diisi
+                nilai netral — bobotnya dibagi ulang ke komponen yang terukur.
+                {trust.dataCoverage !== null
+                  ? ` ${num(trust.dataCoverage * 100, 0)}% bobot penilaian audit ini berdiri di atas data terukur.`
+                  : ""}
+              </p>
+              <p>
+                Median tier dikalibrasi dengan{" "}
+                <strong>{trust.peerCount} akun sekelas</strong> yang pernah kita
+                ukur — makin banyak pembandingnya, makin jauh acuannya bergeser
+                dari angka default ke kenyataan pasar yang kita pilih.
+                {trust.staticBenchmarkEr !== null && audit.benchmarkEr !== null
+                  ? ` Acuan default ${num(trust.staticBenchmarkEr, 2)}%, yang dipakai ${num(audit.benchmarkEr, 2)}%.`
+                  : ""}
+              </p>
+            </Step>
+          ) : null}
+
           {components ? (
-            <Step n={8} title="Menjumlahkan skor akhir">
+            <Step n={v2 ? 9 : 8} title="Menjumlahkan skor akhir">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[380px] text-xs">
                   <thead>
@@ -405,29 +486,31 @@ export function InfluencerMethodology({
                       label="Engagement"
                       hint="ER dibanding median tier"
                       value={components.engagement}
-                      weight={WEIGHTS.engagement}
+                      weight={weights.engagement}
                     />
                     <ComponentRow
                       label="Konsistensi"
                       hint={`${num(audit.postsPerWeek)} post/minggu, terakhir ${audit.daysSinceLastPost ?? "?"} hari lalu`}
                       value={components.consistency}
-                      weight={WEIGHTS.consistency}
+                      weight={weights.consistency}
                     />
                     <ComponentRow
                       label="Jangkauan"
                       hint={
                         audit.viewRate !== null
                           ? `View ${num(audit.viewRate)}% dari follower`
-                          : "Tanpa data view — dinilai netral"
+                          : v2
+                            ? "Tanpa data view — dikeluarkan, bobotnya dibagi ulang"
+                            : "Tanpa data view — dinilai netral (metode lama)"
                       }
                       value={components.reach}
-                      weight={WEIGHTS.reach}
+                      weight={weights.reach}
                     />
                     <ComponentRow
                       label="Keaslian"
                       hint="Dari sinyal engagement palsu"
                       value={components.authenticity}
-                      weight={WEIGHTS.authenticity}
+                      weight={weights.authenticity}
                     />
                     {components.performancePenalty > 0 ? (
                       <tr className="border-border/50 border-t">
@@ -458,15 +541,16 @@ export function InfluencerMethodology({
               </div>
               {capped ? (
                 <p className="mt-2 rounded-lg border border-rose-300/60 bg-rose-50/60 p-2.5 text-[11px] leading-relaxed text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
-                  Skor dipotong ke maksimal 45 karena ada sinyal keaslian
-                  tingkat berat. Angka engagement yang tinggi justru itulah yang
-                  sedang dipertanyakan, jadi tidak boleh tertutup oleh bobot.
+                  Skor dibatasi di bawah jumlah komponennya — karena sinyal
+                  keaslian berat (maks. 60 untuk satu sinyal, 45 untuk dua) atau
+                  karena terlalu sedikit bobot yang berdiri di atas data
+                  terukur. Alasannya tercantum di bagian vonis.
                 </p>
               ) : null}
             </Step>
           ) : null}
 
-          <Step n={components ? 9 : 8} title="Menentukan vonis">
+          <Step n={(components ? 9 : 8) + (v2 ? 1 : 0)} title="Menentukan vonis">
             <ul className="list-disc space-y-0.5 pl-4">
               <li>
                 <strong>Dua atau lebih</strong> sinyal keaslian berat, atau skor
@@ -526,10 +610,9 @@ export function InfluencerMethodology({
                 Biaya per engagement (CPE) — butuh input rate card influencer.
               </li>
               <li>
-                Angka acuan tier adalah default yang masuk akal, belum
-                dikalibrasi dengan data kampanye Anda sendiri. Acuan yang sama
-                dipakai untuk feed dan Reels, padahal keduanya bisa punya
-                median industri yang berbeda.
+                Acuan tier dikalibrasi dengan akun yang pernah kita ukur, bukan
+                dengan hasil kampanye sungguhan. Acuan yang sama dipakai untuk
+                feed dan Reels, padahal keduanya bisa punya median berbeda.
               </li>
               <li>
                 Feed dan Reels bisa mencakup rentang waktu yang tidak sama bila
