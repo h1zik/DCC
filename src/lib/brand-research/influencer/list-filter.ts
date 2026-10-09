@@ -27,7 +27,9 @@ export type InfluencerSortKey =
   | "score"
   | "campaignEr"
   | "er"
-  | "followers";
+  | "followers"
+  | "reliability"
+  | "peer";
 
 export type InfluencerFilterState = {
   search: string;
@@ -56,6 +58,10 @@ export type FilterableInfluencer = {
   engagementRate: number | null;
   expectedCampaignEr: number | null;
   followers: number | null;
+  /** Indeks keandalan 0–100 (metode v2). Audit lama tidak punya. */
+  reliability?: number | null;
+  /** Persentil ER di antara akun sekelas (metode v2). */
+  peerPercentile?: number | null;
 };
 
 const USABLE_VERDICTS: InfluencerVerdict[] = [
@@ -140,6 +146,14 @@ export function sortInfluencers<T extends FilterableInfluencer>(
       );
     case "followers":
       return copy.sort((a, b) => byNumberDesc(a.followers, b.followers));
+    case "reliability":
+      return copy.sort((a, b) =>
+        byNumberDesc(a.reliability ?? null, b.reliability ?? null),
+      );
+    case "peer":
+      return copy.sort((a, b) =>
+        byNumberDesc(a.peerPercentile ?? null, b.peerPercentile ?? null),
+      );
     default:
       return copy;
   }
@@ -203,6 +217,8 @@ const SORT_KEYS: InfluencerSortKey[] = [
   "campaignEr",
   "er",
   "followers",
+  "reliability",
+  "peer",
 ];
 
 const VERDICT_VALUES: string[] = [

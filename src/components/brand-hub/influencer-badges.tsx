@@ -17,6 +17,7 @@ import {
 } from "@prisma/client";
 import { influencerImageSrc } from "@/lib/brand-research/influencer/image-proxy";
 import { cn } from "@/lib/utils";
+import "./influencer-audit.css";
 
 /**
  * Foto profil influencer.
@@ -168,6 +169,169 @@ export function compactNumber(value: number): string {
   return Math.round(value).toLocaleString("id-ID");
 }
 
+/** Warna skala vonis (token CSS di influencer-audit.css). */
+export function verdictTone(verdict: InfluencerVerdict | null): string {
+  switch (verdict) {
+    case InfluencerVerdict.EXCELLENT:
+    case InfluencerVerdict.GOOD:
+      return "var(--iv-go)";
+    case InfluencerVerdict.AVERAGE:
+      return "var(--iv-fair)";
+    case InfluencerVerdict.NEEDS_REVIEW:
+      return "var(--iv-review)";
+    case InfluencerVerdict.SUSPICIOUS:
+      return "var(--iv-fraud)";
+    default:
+      return "var(--iv-weak)";
+  }
+}
+
+/** Batas skor antar vonis — digambar sebagai garis halus di batang skor. */
+const VERDICT_THRESHOLDS = [45, 65, 80];
+
+/**
+ * Batang skor 0–100 dengan rentang ketidakpastian.
+ *
+ * Titik = skor; pita = rentang p10–p90 hasil mengacak ulang sampel post.
+ * Pita lebar berarti angkanya belum boleh dipegang — dua influencer dengan
+ * skor sama bisa berbeda jauh keandalannya, dan inilah yang membuatnya
+ * terlihat sekilas. Audit metode lama tidak punya rentang: hanya titiknya.
+ */
+export function ScoreRangeBar({
+  score,
+  interval,
+  verdict,
+  size = "sm",
+  className,
+}: {
+  score: number;
+  interval: [number, number] | null;
+  verdict: InfluencerVerdict | null;
+  size?: "sm" | "lg";
+  className?: string;
+}) {
+  const clampPct = (v: number) => Math.max(0, Math.min(100, v));
+  const lo = interval ? clampPct(Math.min(interval[0], score)) : null;
+  const hi = interval ? clampPct(Math.max(interval[1], score)) : null;
+  const lg = size === "lg";
+
+  return (
+    <div
+      role="img"
+      aria-label={
+        interval
+          ? `Skor ${score} dari 100, rentang ${interval[0]} sampai ${interval[1]}`
+          : `Skor ${score} dari 100`
+      }
+      className={cn("relative w-full", lg ? "h-4" : "h-3", className)}
+      style={{ "--iv-tone": verdictTone(verdict) } as React.CSSProperties}
+    >
+      <span
+        className={cn(
+          "absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full bg-[var(--iv-track)]",
+          lg ? "h-1.5" : "h-1",
+        )}
+        aria-hidden
+      />
+      {VERDICT_THRESHOLDS.map((t) => (
+        <span
+          key={t}
+          className={cn(
+            "bg-background absolute top-1/2 w-px -translate-y-1/2",
+            lg ? "h-1.5" : "h-1",
+          )}
+          style={{ left: `${t}%` }}
+          aria-hidden
+        />
+      ))}
+      {lo !== null && hi !== null ? (
+        <span
+          className={cn(
+            "iv-range-band absolute top-1/2 -translate-y-1/2 rounded-full bg-[color-mix(in_srgb,var(--iv-tone)_32%,transparent)]",
+            lg ? "h-3" : "h-2",
+          )}
+          style={{ left: `${lo}%`, width: `${Math.max(hi - lo, 1.5)}%` }}
+          aria-hidden
+        />
+      ) : null}
+      <span
+        className={cn(
+          "iv-range-dot ring-background absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--iv-tone)] ring-2",
+          lg ? "size-3.5" : "size-2.5",
+        )}
+        style={{ left: `${clampPct(score)}%` }}
+        aria-hidden
+      />
+    </div>
+  );
+}
+
+/**
+ * Keandalan 0–100 sebagai lima ruas: penuh = angka layak dipegang.
+ * Null = audit metode lama, yang belum menghitungnya.
+ */
+export function ReliabilityMeter({
+  value,
+  showLabel = true,
+  className,
+}: {
+  value: number | null;
+  showLabel?: boolean;
+  className?: string;
+}) {
+  if (value === null) {
+    return (
+      <span className={cn("text-muted-foreground text-xs", className)}>—</span>
+    );
+  }
+  const filled = Math.round(value / 20);
+  const tone =
+    value >= 75 ? "var(--foreground)" : value >= 45 ? "var(--iv-fair)" : "var(--iv-weak)";
+
+  return (
+    <span
+      className={cn("inline-flex items-center gap-2", className)}
+      title="Keandalan data: jumlah post terukur, like yang terlihat, data view, kesegaran sampel, contoh komentar, dan konsistensi dengan audit sebelumnya. Bukan kualitas influencer-nya."
+      style={{ "--iv-tone": tone } as React.CSSProperties}
+    >
+      <span className="flex gap-0.5" aria-hidden>
+        {Array.from({ length: 5 }, (_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "h-2.5 w-1.5 rounded-[2px]",
+              i < filled ? "bg-[var(--iv-tone)]" : "bg-[var(--iv-track)]",
+            )}
+          />
+        ))}
+      </span>
+      {showLabel ? (
+        <span className="text-foreground text-xs font-semibold tabular-nums">
+          {value}
+          <span className="sr-only"> dari 100</span>
+        </span>
+      ) : (
+        <span className="sr-only">Keandalan {value} dari 100</span>
+      )}
+    </span>
+  );
+}
+
+/** Penanda audit yang dihitung sebelum metode v2. */
+export function LegacyMethodBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "border-border text-muted-foreground inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[11px] font-medium",
+        className,
+      )}
+      title="Audit ini dihitung sebelum ada rentang ketidakpastian, keandalan, dan kalibrasi populasi. Jalankan audit ulang untuk skor dengan metode terbaru."
+    >
+      Metode lama
+    </span>
+  );
+}
+
 export function VerdictBadge({
   verdict,
   className,
@@ -200,23 +364,14 @@ export function VerdictBadge({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        "iv-tint inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        // "Sangat bagus" diberi garis tepi supaya terbedakan dari "Bagus"
+        // tanpa menambah warna kelima di skala yang sama.
         verdict === InfluencerVerdict.EXCELLENT &&
-          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-        verdict === InfluencerVerdict.GOOD &&
-          "bg-teal-500/15 text-teal-700 dark:text-teal-300",
-        verdict === InfluencerVerdict.AVERAGE &&
-          "bg-amber-500/15 text-amber-800 dark:text-amber-300",
-        verdict === InfluencerVerdict.POOR &&
-          "bg-orange-500/15 text-orange-700 dark:text-orange-300",
-        // Ungu, sengaja bukan merah: ini "ditahan untuk diperiksa",
-        // bukan tuduhan.
-        verdict === InfluencerVerdict.NEEDS_REVIEW &&
-          "bg-violet-500/15 text-violet-700 dark:text-violet-300",
-        verdict === InfluencerVerdict.SUSPICIOUS &&
-          "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+          "ring-1 ring-[color-mix(in_srgb,var(--iv-tone)_45%,transparent)] ring-inset",
         className,
       )}
+      style={{ "--iv-tone": verdictTone(verdict) } as React.CSSProperties}
       title={VERDICT_HINT[verdict]}
     >
       <Icon className="size-3.5" aria-hidden />
@@ -276,18 +431,7 @@ export function ScoreRing({
   const circumference = 2 * Math.PI * radius;
   const pct = Math.max(0, Math.min(100, score)) / 100;
 
-  const color =
-    verdict === InfluencerVerdict.SUSPICIOUS
-      ? "var(--color-rose-500)"
-      : verdict === InfluencerVerdict.NEEDS_REVIEW
-        ? "var(--color-violet-500)"
-        : verdict === InfluencerVerdict.EXCELLENT
-          ? "var(--color-emerald-500)"
-          : verdict === InfluencerVerdict.GOOD
-            ? "var(--color-teal-500)"
-            : verdict === InfluencerVerdict.AVERAGE
-              ? "var(--color-amber-500)"
-              : "var(--color-orange-500)";
+  const color = verdictTone(verdict);
 
   return (
     <div
@@ -485,7 +629,7 @@ export function FakeFlagList({ flags }: { flags: FakeFlag[] }) {
         list.length === 0 ? null : (
           <div key={impact} className="flex flex-col gap-2">
             <div>
-              <p className="text-foreground text-xs font-bold uppercase tracking-wide">
+              <p className="text-foreground text-sm font-semibold">
                 {IMPACT_HEADING[impact].title}
               </p>
               <p className="text-muted-foreground text-[11px] leading-snug">
