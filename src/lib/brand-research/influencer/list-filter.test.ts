@@ -230,6 +230,39 @@ describe("sorting", () => {
     sortInfluencers(rows, "score");
     expect(rows).toEqual(original);
   });
+
+  it("sorts by reliability, with old-method audits (no index) at the bottom", () => {
+    const withReliability = [
+      row({ handle: "legacy" }),
+      row({ handle: "shaky", reliability: 38 }),
+      row({ handle: "solid", reliability: 91 }),
+    ];
+    expect(
+      sortInfluencers(withReliability, "reliability").map((r) => r.handle),
+    ).toEqual(["solid", "shaky", "legacy"]);
+  });
+
+  it("sorts by peer percentile", () => {
+    const withPeers = [
+      row({ handle: "p40", peerPercentile: 40 }),
+      row({ handle: "none", peerPercentile: null }),
+      row({ handle: "p85", peerPercentile: 85 }),
+    ];
+    expect(sortInfluencers(withPeers, "peer").map((r) => r.handle)).toEqual([
+      "p85",
+      "p40",
+      "none",
+    ]);
+  });
+
+  it("accepts the new sort keys from the URL", () => {
+    expect(
+      parseInfluencerFilters(new URLSearchParams("sort=reliability")).sort,
+    ).toBe("reliability");
+    expect(parseInfluencerFilters(new URLSearchParams("sort=peer")).sort).toBe(
+      "peer",
+    );
+  });
 });
 
 describe("applyInfluencerFilters", () => {

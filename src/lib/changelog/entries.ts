@@ -54,6 +54,24 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     ],
   },
   {
+    id: "2026-10-09-influencer-audit-trust-v2",
+    date: "2026-10-09",
+    title: "Influencer Audit: skor lebih bisa dipercaya & tampilan baru",
+    category: "improved",
+    description:
+      "Penilaian influencer kini menunjukkan seberapa pasti angkanya — rentang skor, indeks keandalan data, dan posisi di antara akun sekelas — dan halaman daftar serta detail dirombak supaya kandidat mudah dibandingkan dan keputusannya terbaca lebih dulu. Skor audit baru bisa bergeser dibanding audit lama; audit lama ditandai \"Metode lama\" — jalankan Audit ulang untuk skor terbaru.",
+    highlights: [
+      "Rentang skor (kemungkinan terendah–tertinggi) dan vonis terbaik hanya untuk angka yang tetap bagus walau sampelnya diacak ulang",
+      "Indeks keandalan 0–100 dengan rincian faktornya",
+      "Data yang tidak ada (mis. view) tidak lagi diberi nilai netral — bobotnya dibagi ke komponen yang terukur",
+      "Sampel post yang tipis ditarik ke median tier; feed vs Reels hanya dipisah bila selisihnya nyata",
+      "Benchmark dikalibrasi dengan akun sekelas yang pernah diaudit, plus persentil ER",
+      "Sinyal baru: lonjakan follower tanpa konten yang menjelaskannya",
+      "Daftar berbentuk tabel peringkat, dengan fitur bandingkan 2–4 influencer",
+      "Detail: vonis & alasannya di atas, bukti di tab Performa, Keaslian, Keamanan merek, Post, Riwayat, Metodologi",
+    ],
+  },
+  {
     id: "2026-10-07-kol-hub-edit-schedule",
     date: "2026-10-07",
     title: "KOL Hub: isi jadwal bisa diedit",

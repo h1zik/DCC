@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { NormalizedInfluencerPost } from "@/lib/apify/normalize-influencer";
 import {
   benchmarkErFor,
+  computeReliability,
   resolveTier,
   scoreInfluencer,
   selectSample,
+  shrinkEngagementRate,
   type InfluencerScoreInput,
 } from "@/lib/brand-research/influencer/score";
 
@@ -273,10 +275,15 @@ describe("sponsored vs organic split", () => {
   it("predicts campaign ER from paid posts when the sample allows", () => {
     const r = scoreInfluencer(input({ followers: 100_000, posts: mixed() }));
     expect(r.metrics.expectedCampaignErSource).toBe("sponsored");
+    // Empat post berbayar masih rapuh: perkiraannya berpijak pada ER berbayar
+    // tapi ditarik sebagian ke ER umum (rata-rata geometris berbobot 4:4).
+    const paid = r.sponsored.sponsoredEr as number;
     expect(r.metrics.expectedCampaignEr).toBeCloseTo(
-      r.sponsored.sponsoredEr as number,
-      3,
+      Math.sqrt(paid * r.engagementRate),
+      2,
     );
+    expect(r.metrics.expectedCampaignEr).toBeGreaterThan(paid);
+    expect(r.metrics.expectedCampaignEr).toBeLessThan(r.engagementRate);
   });
 
   it("falls back to overall ER when there are no paid posts to learn from", () => {
@@ -344,7 +351,7 @@ describe("view rate is judged per platform", () => {
     expect(r.reelsEngagementRate as number).toBeLessThan(r.engagementRate);
   });
 
-  it("keeps reach neutral when most Reels report no view count", () => {
+  it("drops reach from the score when most Reels report no view count", () => {
     const posts = [
       ...Array.from({ length: 6 }, (_, i) =>
         post({ id: `c${i}`, daysAgo: i * 4, likes: 1_500 + i * 90, comments: 40, surface: "feed" }),
@@ -355,7 +362,10 @@ describe("view rate is judged per platform", () => {
     ];
     const r = scoreInfluencer(input({ followers: 49_667, posts }));
     expect(r.metrics.viewCoverage).toBeLessThan(0.8);
-    expect(r.metrics.components.reach).toBe(60);
+    // v2: tidak lagi diisi netral 60 — dikeluarkan, bobotnya dibagi ulang.
+    expect(r.metrics.components.reach).toBeNull();
+    expect(r.metrics.componentWeights.reach).toBe(0);
+    expect(r.metrics.dataCoverage).toBeLessThan(1);
   });
 
   it("still uses view rate for reach when videos cover the whole sample", () => {
@@ -750,7 +760,23 @@ describe("feed dan Reels dinilai sebagai dua produk terpisah", () => {
     expect(r.verdict).toBe(InfluencerVerdict.EXCELLENT);
   });
 
-  it("tetap menilai dari grid ketika grid yang lebih kuat", () => {
+  it("tetap menilai dari grid ketika grid yang jelas lebih kuat", () => {
+    const posts = weakFeedStrongReels().map((p) =>
+      p.surface === "feed"
+        ? { ...p, likes: p.likes * 30, comments: p.comments * 30 }
+        : p,
+    );
+    const r = scoreInfluencer(input({ followers: 50_000, posts }));
+
+    expect(r.primarySurface).toBe("feed");
+    expect(r.metrics.primaryMode).toBe("single");
+    expect(r.engagementRate).toBe(r.feedEngagementRate);
+    expect(r.reelsEngagementRate as number).toBeLessThan(r.engagementRate);
+  });
+
+  it("menilai kedua permukaan bersama saat selisihnya masih dalam noise", () => {
+    // Grid ~25% di atas Reels dengan 8 post per sisi: selisih sebesar ini bisa
+    // muncul dari kebetulan saja, jadi angka tertinggi tidak boleh dipilih.
     const posts = weakFeedStrongReels().map((p) =>
       p.surface === "feed"
         ? { ...p, likes: p.likes * 12, comments: p.comments * 12 }
@@ -759,8 +785,10 @@ describe("feed dan Reels dinilai sebagai dua produk terpisah", () => {
     const r = scoreInfluencer(input({ followers: 50_000, posts }));
 
     expect(r.primarySurface).toBe("feed");
-    expect(r.engagementRate).toBe(r.feedEngagementRate);
-    expect(r.reelsEngagementRate as number).toBeLessThan(r.engagementRate);
+    expect(r.metrics.primaryMode).toBe("blended");
+    expect(r.engagementRate).toBeLessThan(r.feedEngagementRate as number);
+    expect(r.engagementRate).toBeGreaterThan(r.reelsEngagementRate as number);
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("SURFACE_GAP");
   });
 
   it("melaporkan kedua permukaan dengan definisi ER yang sama persis", () => {
@@ -1212,7 +1240,7 @@ describe("jangkauan Reels tidak dipakai saat datanya tidak lengkap", () => {
     expect(r.metrics.viewDataRepresentative).toBe(false);
     expect(r.fakeFlags.map((f) => f.code)).not.toContain("LOW_REELS_REACH");
     expect(r.fakeFlags.map((f) => f.code)).toContain("PARTIAL_VIEW_DATA");
-    expect(r.metrics.components.reach).toBe(60);
+    expect(r.metrics.components.reach).toBeNull();
   });
 });
 
@@ -1282,5 +1310,217 @@ describe("risiko asosiasi merek", () => {
     const r = scoreInfluencer(input());
     expect(r.brandSafety.hits).toHaveLength(0);
     expect(r.metrics.brandSafetyWorstSeverity).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Metode v2: ketidakpastian, kalibrasi, dan riwayat
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Akun tanpa post viral: interaksi bervariasi wajar di sekitar nilai tengah. */
+function steadyPosts(count = 12, scale = 1): NormalizedInfluencerPost[] {
+  const series = [900, 1150, 980, 1320, 1040, 870, 1210, 1090, 950, 1280, 1010, 1160];
+  return Array.from({ length: count }, (_, i) => {
+    const likes = Math.round(series[i % series.length] * scale);
+    return post({
+      id: `s${i}`,
+      daysAgo: i * 3,
+      likes,
+      comments: Math.round(likes * 0.03),
+      views: likes * 12,
+    });
+  });
+}
+
+describe("v2: metadata metode", () => {
+  it("menandai hasil dengan versi metode", () => {
+    const r = scoreInfluencer(input());
+    expect(r.metrics.scoringVersion).toBe(2);
+  });
+});
+
+describe("v2: komponen tanpa data tidak diberi nilai netral", () => {
+  it("akun lemah tanpa data view tidak mendapat dongkrak dari jangkauan", () => {
+    // Grid-only, ER jauh di bawah median tier.
+    const posts = Array.from({ length: 12 }, (_, i) =>
+      post({ id: `f${i}`, daysAgo: i * 3, likes: 300 + (i % 4) * 60, comments: 10, surface: "feed" }),
+    );
+    const r = scoreInfluencer(input({ posts }));
+    const c = r.metrics.components;
+
+    expect(c.reach).toBeNull();
+    expect(r.metrics.componentWeights.reach).toBe(0);
+    const renormalized =
+      (c.engagement * 0.45 + (c.consistency as number) * 0.2 + c.authenticity * 0.15) / 0.8;
+    const oldNeutral =
+      c.engagement * 0.45 + (c.consistency as number) * 0.2 + 60 * 0.2 + c.authenticity * 0.15;
+    expect(Math.abs(r.score - renormalized)).toBeLessThanOrEqual(1);
+    expect(r.score).toBeLessThan(oldNeutral);
+    expect(r.metrics.verdictReasons.map((v) => v.code)).toContain("REWEIGHTED");
+  });
+
+  it("bobot komponen yang terukur selalu berjumlah 1", () => {
+    const w = scoreInfluencer(input()).metrics.componentWeights;
+    expect(w.engagement + w.consistency + w.reach + w.authenticity).toBeCloseTo(1, 2);
+  });
+});
+
+describe("v2: shrinkage sampel tipis", () => {
+  it("menarik ER enam post jauh lebih kuat daripada ER dua puluh empat post", () => {
+    const thin = scoreInfluencer(input({ posts: steadyPosts(6, 3) }));
+    const thick = scoreInfluencer(input({ posts: steadyPosts(24, 3) }));
+
+    expect(thin.metrics.adjustedEngagementRate).toBeLessThan(thin.engagementRate);
+    expect(thin.metrics.shrinkageWeight).toBeGreaterThan(thick.metrics.shrinkageWeight);
+    // Angka yang dilaporkan tetap apa adanya.
+    expect(thin.engagementRate).toBeCloseTo(thick.engagementRate, 0);
+  });
+
+  it("tidak menggeser ER yang sudah sama dengan benchmark", () => {
+    const r = shrinkEngagementRate(2.2, 2.2, 0.5, 6);
+    expect(r.value).toBeCloseTo(2.2, 6);
+  });
+
+  it("menarik ke atas sama jauhnya dengan menarik ke bawah (skala log)", () => {
+    const up = shrinkEngagementRate(4.4, 2.2, 0.6, 6);
+    const down = shrinkEngagementRate(1.1, 2.2, 0.6, 6);
+    expect(Math.log(up.value / 2.2)).toBeCloseTo(-Math.log(down.value / 2.2), 6);
+  });
+});
+
+describe("v2: rentang ketidakpastian", () => {
+  it("deterministik untuk input yang sama dan memuat skor titiknya", () => {
+    const a = scoreInfluencer(input());
+    const b = scoreInfluencer(input());
+    expect(a.metrics.scoreInterval).toEqual(b.metrics.scoreInterval);
+    expect(a.metrics.erInterval).toEqual(b.metrics.erInterval);
+
+    const [lo, hi] = a.metrics.scoreInterval as [number, number];
+    expect(lo).toBeLessThanOrEqual(a.score);
+    expect(hi).toBeGreaterThanOrEqual(a.score);
+    const [erLo, erHi] = a.metrics.erInterval as [number, number];
+    expect(erLo).toBeLessThanOrEqual(erHi);
+  });
+
+  it("tidak memberi 'sangat bagus' bila batas bawah rentangnya belum meyakinkan", () => {
+    const likes = [150, 200, 250, 4_000, 6_000, 8_000];
+    const posts = likes.map((n, i) =>
+      post({ id: `w${i}`, daysAgo: i * 3, likes: n, comments: Math.round(n * 0.03), views: n * 12 }),
+    );
+    const r = scoreInfluencer(input({ posts }));
+    const [lo] = r.metrics.scoreInterval as [number, number];
+
+    expect(r.score).toBeGreaterThanOrEqual(80);
+    expect(lo).toBeLessThan(70);
+    expect(r.verdict).not.toBe(InfluencerVerdict.EXCELLENT);
+    expect(r.metrics.verdictReasons.map((v) => v.code)).toContain("WIDE_INTERVAL");
+  });
+
+  it("rentangnya menyempit saat sampel bertambah", () => {
+    const width = (r: ReturnType<typeof scoreInfluencer>) => {
+      const [lo, hi] = r.metrics.erInterval as [number, number];
+      return hi - lo;
+    };
+    const small = scoreInfluencer(input({ posts: organicPosts(6) }));
+    const large = scoreInfluencer(input({ posts: organicPosts(24) }));
+    expect(width(large)).toBeLessThan(width(small));
+  });
+});
+
+describe("v2: indeks keandalan", () => {
+  it("turun saat sampel menipis", () => {
+    const full = scoreInfluencer(input({ posts: steadyPosts(12) }));
+    const thin = scoreInfluencer(input({ posts: steadyPosts(5) }));
+    expect(thin.metrics.reliability).toBeLessThan(full.metrics.reliability);
+    expect(thin.confidence).toBe("low");
+  });
+
+  it("turun saat sebagian like disembunyikan", () => {
+    const base = steadyPosts(12);
+    const hidden = base.map((p, i) =>
+      i % 2 === 0 ? { ...p, likes: -1, likesHidden: true } : p,
+    );
+    const a = scoreInfluencer(input({ posts: base }));
+    const b = scoreInfluencer(input({ posts: hidden }));
+    expect(b.metrics.reliability).toBeLessThan(a.metrics.reliability);
+  });
+
+  it("computeReliability adalah perkalian faktor", () => {
+    expect(
+      computeReliability({ sample: 1, measured: 1, views: 1, freshness: 1, comments: 1, stability: 1 }),
+    ).toBe(100);
+    expect(
+      computeReliability({ sample: 0.5, measured: 1, views: 1, freshness: 1, comments: 1, stability: 0.8 }),
+    ).toBe(40);
+  });
+});
+
+describe("v2: riwayat follower", () => {
+  const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000);
+
+  it("menandai lonjakan follower yang tidak membawa interaksi", () => {
+    const r = scoreInfluencer(
+      input({
+        posts: steadyPosts(12),
+        history: [{ at: daysAgo(20), followers: 30_000, engagementRate: 4 }],
+      }),
+    );
+    const flag = r.fakeFlags.find((f) => f.code === "FOLLOWER_SPIKE");
+    expect(flag?.impact).toBe("authenticity");
+    expect(flag?.severity).toBe("high");
+    expect(r.metrics.followerGrowth?.pct).toBeCloseTo(66.7, 0);
+  });
+
+  it("tidak menuduh pertumbuhan yang ditopang post viral", () => {
+    const r = scoreInfluencer(
+      input({
+        posts: organicPosts(12),
+        history: [{ at: daysAgo(20), followers: 30_000, engagementRate: 4 }],
+      }),
+    );
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("FOLLOWER_SPIKE");
+  });
+
+  it("tidak menuduh pertumbuhan yang wajar", () => {
+    const r = scoreInfluencer(
+      input({
+        posts: steadyPosts(12),
+        history: [{ at: daysAgo(30), followers: 47_000, engagementRate: 2.2 }],
+      }),
+    );
+    expect(r.fakeFlags.map((f) => f.code)).not.toContain("FOLLOWER_SPIKE");
+  });
+
+  it("menurunkan keandalan saat ER berubah jauh antar audit", () => {
+    const base = scoreInfluencer(input({ posts: steadyPosts(12) }));
+    const r = scoreInfluencer(
+      input({
+        posts: steadyPosts(12),
+        history: [{ at: daysAgo(40), followers: 50_000, engagementRate: base.engagementRate * 3 }],
+      }),
+    );
+    expect(r.fakeFlags.map((f) => f.code)).toContain("ER_UNSTABLE_ACROSS_AUDITS");
+    expect(r.metrics.reliabilityFactors.stability).toBeLessThan(1);
+    expect(r.metrics.reliability).toBeLessThan(base.metrics.reliability);
+  });
+});
+
+describe("v2: benchmark terkalibrasi populasi", () => {
+  it("memakai benchmark statis bila belum ada pembanding", () => {
+    const r = scoreInfluencer(input());
+    expect(r.metrics.peer.source).toBe("static");
+    expect(r.benchmarkEr).toBe(benchmarkErFor(InfluencerPlatform.INSTAGRAM, InfluencerTier.MICRO));
+    expect(r.metrics.peer.percentile).toBeNull();
+  });
+
+  it("menggeser benchmark ke median populasi sebanding jumlah pembanding", () => {
+    const peers = Array.from({ length: 40 }, (_, i) => 3 + (i % 5) * 0.5);
+    const r = scoreInfluencer(input({ peerEngagementRates: peers }));
+    const staticEr = benchmarkErFor(InfluencerPlatform.INSTAGRAM, InfluencerTier.MICRO);
+
+    expect(r.metrics.peer.source).toBe("peer");
+    expect(r.benchmarkEr).toBeGreaterThan(staticEr);
+    expect(r.benchmarkEr).toBeLessThan(r.metrics.peer.medianEr as number);
+    expect(r.metrics.peer.percentile).not.toBeNull();
   });
 });

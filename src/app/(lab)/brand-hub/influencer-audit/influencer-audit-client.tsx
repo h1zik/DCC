@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
-  ArrowUpRight,
-  BadgeCheck,
   FilterX,
   Link2,
   Plus,
@@ -13,8 +11,6 @@ import {
   RefreshCw,
   Search,
   SearchX,
-  ShieldAlert,
-  Trash2,
   UserSearch,
 } from "lucide-react";
 import {
@@ -24,11 +20,7 @@ import {
   InfluencerVerdict,
 } from "@prisma/client";
 import { toast } from "sonner";
-import {
-  addInfluencerForAudit,
-  deleteInfluencerProfile,
-  reauditInfluencer,
-} from "@/actions/brand-influencer";
+import { addInfluencerForAudit } from "@/actions/brand-influencer";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,13 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { SelectItemDef } from "@/lib/select-option-items";
-import {
-  lab,
-  LabCard,
-  LabEmptyState,
-  LabStatChip,
-  LabToolbar,
-} from "@/components/lab/lab-primitives";
+import { LabEmptyState, LabToolbar } from "@/components/lab/lab-primitives";
 import {
   applyInfluencerFilters,
   countActiveInfluencerFilters,
@@ -67,19 +53,17 @@ import {
   type InfluencerFilterState,
 } from "@/lib/brand-research/influencer/list-filter";
 import {
-  AuditStatusPill,
-  compactNumber,
-  ConfidenceBadge,
-  InfluencerAvatar,
   isAuditInProgress,
-  PLATFORM_LABEL,
   TIER_LABEL,
-  VerdictBadge,
 } from "@/components/brand-hub/influencer-badges";
 import { brandHubHref, useBrandHubBrandId } from "@/hooks/use-brand-hub-brand-id";
 import { useBrandJobProgress } from "../use-brand-job-progress";
 import { useInfluencerFilters } from "./use-influencer-filters";
-import { cn } from "@/lib/utils";
+import {
+  InfluencerCompactList,
+  InfluencerTable,
+} from "./influencer-list-views";
+import { CompareTray, MAX_COMPARE } from "./influencer-compare";
 
 export type InfluencerRow = {
   id: string;
@@ -109,6 +93,14 @@ export type InfluencerRow = {
   severeRisk: string | null;
   /** "Feed" atau "Reels" — permukaan yang jadi dasar ER di kartu ini. */
   primarySurface: string | null;
+  /** 1 = metode lama; null = belum ada audit selesai. */
+  scoringVersion: number | null;
+  /** Rentang skor p10–p90 (metode v2). */
+  scoreInterval: [number, number] | null;
+  /** Keandalan data 0–100 (metode v2). */
+  reliability: number | null;
+  /** Persentil ER di antara akun sekelas (metode v2, bila pembanding cukup). */
+  peerPercentile: number | null;
 };
 
 type HubStats = {
@@ -119,19 +111,6 @@ type HubStats = {
   suspicious: number;
   avgScore: number;
 };
-
-function CardStat({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-        {label}
-      </p>
-      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
-        {value}
-      </p>
-    </div>
-  );
-}
 
 function AddInfluencerDialog({ onAdded }: { onAdded: () => void }) {
   const [open, setOpen] = useState(false);
@@ -245,189 +224,6 @@ function AddInfluencerDialog({ onAdded }: { onAdded: () => void }) {
   );
 }
 
-function InfluencerCard({
-  row,
-  brandId,
-  filterQuery,
-  onChanged,
-}: {
-  row: InfluencerRow;
-  brandId: string | null;
-  /** Filter daftar saat ini, dititipkan ke detail agar tombol kembali utuh. */
-  filterQuery: string;
-  onChanged: () => void;
-}) {
-  const [pending, startTransition] = useTransition();
-  const running = isAuditInProgress(row.latestStatus);
-
-  function reaudit() {
-    startTransition(async () => {
-      try {
-        await reauditInfluencer(row.id);
-        toast.success(`Audit ulang @${row.handle} dijalankan.`);
-        onChanged();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal menjalankan audit ulang."));
-      }
-    });
-  }
-
-  function remove() {
-    startTransition(async () => {
-      try {
-        await deleteInfluencerProfile(row.id);
-        toast.success(`@${row.handle} dihapus.`);
-        onChanged();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal menghapus influencer."));
-      }
-    });
-  }
-
-  const erVsBenchmark =
-    row.engagementRate !== null && row.benchmarkEr
-      ? row.engagementRate / row.benchmarkEr
-      : null;
-
-  return (
-    <LabCard interactive className="flex flex-col">
-      <div className={cn(lab.cardBody, "flex flex-1 flex-col gap-4")}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <InfluencerAvatar
-              src={row.avatarUrl}
-              handle={row.handle}
-              className="size-11 text-sm"
-            />
-            <div className="min-w-0">
-              <p className="text-foreground flex items-center gap-1.5 truncate text-sm font-bold">
-                @{row.handle}
-                {row.isVerified ? (
-                  <BadgeCheck className="size-3.5 shrink-0 text-sky-500" aria-hidden />
-                ) : null}
-              </p>
-              <p className="text-muted-foreground truncate text-xs">
-                {PLATFORM_LABEL[row.platform]}
-                {row.displayName ? ` · ${row.displayName}` : ""}
-                {row.brandName ? ` · ${row.brandName}` : ""}
-              </p>
-            </div>
-          </div>
-          <VerdictBadge verdict={row.verdict} />
-        </div>
-
-        {row.latestStatus === InfluencerAuditStatus.FAILED && row.errorMessage ? (
-          <p className="rounded-lg border border-rose-300/60 bg-rose-50/60 p-2.5 text-xs leading-relaxed text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
-            {row.errorMessage}
-          </p>
-        ) : null}
-
-        {row.latestStatus === InfluencerAuditStatus.READY ? (
-          <div className="grid grid-cols-4 gap-3">
-            <CardStat label="Follower" value={compactNumber(row.followers ?? 0)} />
-            <CardStat
-              label={row.primarySurface ? `ER ${row.primarySurface}` : "ER"}
-              value={`${(row.engagementRate ?? 0).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`}
-            />
-            <CardStat
-              label="vs median"
-              value={erVsBenchmark ? `${erVsBenchmark.toFixed(1)}×` : "—"}
-            />
-            <CardStat
-              label="Perkiraan campaign"
-              value={
-                row.expectedCampaignEr !== null
-                  ? `${row.expectedCampaignEr.toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`
-                  : "—"
-              }
-            />
-          </div>
-        ) : null}
-
-        {row.severeRisk ? (
-          <p className="rounded-lg border border-rose-300/60 bg-rose-50/60 p-2.5 text-xs leading-relaxed text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">
-            <strong>{row.severeRisk}</strong> terdeteksi di caption. Periksa
-            post-nya sebelum menghubungi.
-          </p>
-        ) : null}
-
-        {row.sponsoredDeltaPct !== null && row.sponsoredDeltaPct < -20 ? (
-          <p className="rounded-lg border border-amber-300/60 bg-amber-50/60 p-2.5 text-xs leading-relaxed text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
-            Engagement post berbayar{" "}
-            <strong>{Math.abs(row.sponsoredDeltaPct).toFixed(0)}% lebih rendah</strong>{" "}
-            dari post organiknya.
-          </p>
-        ) : null}
-
-        <div className="mt-auto flex flex-wrap items-center gap-2">
-          <AuditStatusPill status={row.latestStatus} />
-          {row.confidence && row.latestStatus === InfluencerAuditStatus.READY ? (
-            <ConfidenceBadge confidence={row.confidence} />
-          ) : null}
-          {row.tier ? (
-            <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-[11px] font-semibold">
-              {TIER_LABEL[row.tier]}
-            </span>
-          ) : null}
-          {row.flagCount > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
-              <ShieldAlert className="size-3" aria-hidden />
-              {row.flagCount} sinyal
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="border-border/60 flex items-center justify-between gap-2 border-t px-5 py-3 sm:px-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5"
-          render={
-            <Link
-              href={
-                brandHubHref(
-                  `/brand-hub/influencer-audit/${row.id}`,
-                  brandId,
-                ) +
-                (filterQuery
-                  ? `${brandId ? "&" : "?"}${INFLUENCER_RETURN_PARAM}=${encodeURIComponent(filterQuery)}`
-                  : "")
-              }
-            />
-          }
-        >
-          Lihat detail
-          <ArrowUpRight className="size-3.5" />
-        </Button>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={reaudit}
-            disabled={pending || running}
-            title="Audit ulang"
-            className="gap-1.5"
-          >
-            <RefreshCw className={cn("size-3.5", pending && "animate-spin")} />
-            <span className="sr-only sm:not-sr-only">Audit ulang</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={remove}
-            disabled={pending || running}
-            title="Hapus"
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="size-3.5" />
-            <span className="sr-only">Hapus</span>
-          </Button>
-        </div>
-      </div>
-    </LabCard>
-  );
-}
 
 const PLATFORM_ITEMS: SelectItemDef[] = [
   { value: "all", label: "Semua platform" },
@@ -474,6 +270,8 @@ const SORT_ITEMS: SelectItemDef[] = [
   { value: "campaignEr", label: "Perkiraan campaign" },
   { value: "er", label: "ER tertinggi" },
   { value: "followers", label: "Follower terbanyak" },
+  { value: "reliability", label: "Data paling andal" },
+  { value: "peer", label: "Teratas di antara akun sekelas" },
 ];
 
 function FilterToolbar({
@@ -609,6 +407,98 @@ function FilterToolbar({
   );
 }
 
+function SummaryCount({
+  value,
+  label,
+  tone,
+  verdict,
+  active,
+  onPick,
+}: {
+  value: number;
+  label: string;
+  tone: string;
+  verdict: string;
+  active: boolean;
+  onPick: (verdict: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(verdict)}
+      aria-pressed={active}
+      disabled={value === 0}
+      className="focus-visible:ring-ring/50 rounded-md px-0.5 underline-offset-4 outline-none hover:underline focus-visible:ring-2 disabled:pointer-events-none aria-pressed:underline"
+      style={{ color: value > 0 ? tone : undefined }}
+    >
+      <span className="font-semibold tabular-nums">{value}</span> {label}
+    </button>
+  );
+}
+
+/**
+ * Ringkasan sebagai satu kalimat, dengan tiap angka sebagai pintasan filter:
+ * yang ingin dilakukan orang setelah membaca "3 perlu dicek" adalah melihat
+ * ketiganya.
+ */
+function SummaryLine({
+  stats,
+  filters,
+  onChange,
+}: {
+  stats: HubStats;
+  filters: InfluencerFilterState;
+  onChange: (next: InfluencerFilterState) => void;
+}) {
+  const pick = (verdict: string) =>
+    onChange({
+      ...filters,
+      verdict: filters.verdict === verdict ? VERDICT_GROUP.ALL : verdict,
+    });
+
+  const countProps = (verdict: string) => ({
+    verdict,
+    active: filters.verdict === verdict,
+    onPick: pick,
+  });
+
+  if (stats.audited === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        {stats.total} influencer sedang diaudit.
+      </p>
+    );
+  }
+
+  return (
+    <p className="text-foreground text-base leading-relaxed sm:text-lg">
+      <span className="font-semibold tabular-nums">{stats.audited}</span> dari{" "}
+      {stats.total} influencer sudah selesai diaudit:{" "}
+      <SummaryCount
+        value={stats.recommended}
+        label="layak dipakai"
+        tone="var(--iv-go)"
+        {...countProps(VERDICT_GROUP.USABLE)}
+      />
+      ,{" "}
+      <SummaryCount
+        value={stats.needsReview}
+        label="perlu dicek"
+        tone="var(--iv-review)"
+        {...countProps(InfluencerVerdict.NEEDS_REVIEW)}
+      />
+      , dan{" "}
+      <SummaryCount
+        value={stats.suspicious}
+        label="mencurigakan"
+        tone="var(--iv-fraud)"
+        {...countProps(InfluencerVerdict.SUSPICIOUS)}
+      />
+      .
+    </p>
+  );
+}
+
 export function InfluencerAuditClient({
   profiles,
   stats,
@@ -622,6 +512,7 @@ export function InfluencerAuditClient({
   // Filter hidup di URL, bukan di state komponen: membuka satu influencer lalu
   // kembali tidak boleh menghapus penyaringan yang sudah dipasang.
   const { filters, setFilters, query: filterQuery } = useInfluencerFilters();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useBrandJobProgress({ inProgress: anyRunning });
 
@@ -632,29 +523,44 @@ export function InfluencerAuditClient({
     [profiles, filters],
   );
 
+  // Profil yang sudah dihapus atau kembali diaudit keluar dari pilihan.
+  const selectedRows = selectedIds
+    .map((id) => profiles.find((p) => p.id === id))
+    .filter(
+      (p): p is InfluencerRow =>
+        !!p && p.latestStatus === InfluencerAuditStatus.READY,
+    );
+  const selectedSet = new Set(selectedRows.map((r) => r.id));
+
+  function toggle(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : prev.length >= MAX_COMPARE
+          ? prev
+          : [...prev, id],
+    );
+  }
+
+  const hrefFor = (row: InfluencerRow) =>
+    brandHubHref(`/brand-hub/influencer-audit/${row.id}`, brandId) +
+    (filterQuery
+      ? `${brandId ? "&" : "?"}${INFLUENCER_RETURN_PARAM}=${encodeURIComponent(filterQuery)}`
+      : "");
+
+  const listProps = {
+    rows: visible,
+    hrefFor,
+    selected: selectedSet,
+    onToggle: toggle,
+    selectionFull: selectedSet.size >= MAX_COMPARE,
+    onChanged: refresh,
+  };
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          <LabStatChip label="Influencer" value={stats.total} />
-          <LabStatChip label="Sudah diaudit" value={stats.audited} />
-          <LabStatChip
-            label="Layak"
-            value={stats.recommended}
-            tone={stats.recommended > 0 ? "success" : "neutral"}
-          />
-          <LabStatChip
-            label="Perlu dicek"
-            value={stats.needsReview}
-            tone={stats.needsReview > 0 ? "warning" : "neutral"}
-          />
-          <LabStatChip
-            label="Mencurigakan"
-            value={stats.suspicious}
-            tone={stats.suspicious > 0 ? "danger" : "neutral"}
-          />
-          <LabStatChip label="Rata-rata skor" value={stats.avgScore} />
-        </div>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <SummaryLine stats={stats} filters={filters} onChange={setFilters} />
         <AddInfluencerDialog onAdded={refresh} />
       </div>
 
@@ -662,7 +568,7 @@ export function InfluencerAuditClient({
         <LabEmptyState
           icon={UserSearch}
           title="Belum ada influencer yang diaudit"
-          description="Tempel link profil Instagram atau TikTok. Kami hitung engagement rate terhadap follower dan terhadap view, bandingkan dengan median tier-nya, lalu periksa tanda-tanda engagement yang dibeli. Belum punya nama yang mau diperiksa? Cari dulu di KOL Radar."
+          description="Tempel link profil Instagram atau TikTok. Kami hitung engagement rate terhadap follower dan terhadap view, bandingkan dengan akun sekelas, lalu periksa tanda-tanda engagement yang dibeli. Belum punya nama yang mau diperiksa? Cari dulu di KOL Radar."
           action={
             <div className="flex flex-wrap items-center justify-center gap-2">
               <AddInfluencerDialog onAdded={refresh} />
@@ -707,18 +613,17 @@ export function InfluencerAuditClient({
               }
             />
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visible.map((row) => (
-                <InfluencerCard
-                  key={row.id}
-                  row={row}
-                  brandId={brandId}
-                  filterQuery={filterQuery}
-                  onChanged={refresh}
-                />
-              ))}
-            </div>
+            <>
+              <InfluencerTable {...listProps} />
+              <InfluencerCompactList {...listProps} />
+            </>
           )}
+
+          <CompareTray
+            rows={selectedRows}
+            onRemove={toggle}
+            onClear={() => setSelectedIds([])}
+          />
         </>
       )}
     </div>

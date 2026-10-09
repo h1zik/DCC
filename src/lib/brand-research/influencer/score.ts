@@ -16,6 +16,12 @@ import {
   analyzeCommentQuality,
   type CommentQualityResult,
 } from "@/lib/brand-research/influencer/comment-quality";
+import {
+  blendBenchmark,
+  cleanPeerRates,
+  peerMedian,
+  peerPercentile,
+} from "@/lib/brand-research/influencer/peer-benchmark";
 
 export type FakeFlagSeverity = "high" | "medium" | "low";
 
@@ -78,6 +84,52 @@ export type InfluencerScoreInput = {
   posts: NormalizedInfluencerPost[];
   /** Disuntik di test supaya perhitungan "hari sejak posting" deterministik. */
   now?: Date;
+  /**
+   * ER standar akun lain di platform & tier yang sama yang pernah kita ukur.
+   * Dipakai mengkalibrasi benchmark statis dan menghitung persentil. Kosong
+   * atau tidak diisi = benchmark statis saja.
+   */
+  peerEngagementRates?: number[];
+  /**
+   * Pengukuran sebelumnya atas akun yang sama (audit lama & snapshot Radar),
+   * untuk membaca lonjakan follower dan kestabilan ER antar waktu.
+   */
+  history?: InfluencerHistoryPoint[];
+};
+
+export type InfluencerHistoryPoint = {
+  at: Date;
+  followers: number;
+  engagementRate: number | null;
+};
+
+/** Faktor-faktor keandalan, tiap faktor 0–1 (1 = tidak mengurangi apa pun). */
+export type ReliabilityFactors = {
+  sample: number;
+  measured: number;
+  views: number;
+  freshness: number;
+  comments: number;
+  stability: number;
+};
+
+export type VerdictReason = {
+  code: string;
+  text: string;
+  /** Arah pengaruhnya terhadap vonis/skor. */
+  effect: "down" | "cap" | "hold" | "info";
+};
+
+export type PeerBenchmark = {
+  /** Jumlah akun pembanding. */
+  n: number;
+  medianEr: number | null;
+  /** Persentil ER akun ini di antara pembandingnya (0–100). Null bila n < 15. */
+  percentile: number | null;
+  staticBenchmarkEr: number;
+  /** Benchmark yang benar-benar dipakai: campuran statis & populasi. */
+  blendedBenchmarkEr: number;
+  source: "peer" | "static";
 };
 
 export type InfluencerScoreResult = {
@@ -194,11 +246,45 @@ export type InfluencerScoreResult = {
     commentQuality: CommentQualityResult | null;
     components: {
       engagement: number;
-      consistency: number;
-      reach: number;
+      /** Null = tidak terukur; bobotnya dipindah ke komponen lain. */
+      consistency: number | null;
+      reach: number | null;
       authenticity: number;
       performancePenalty: number;
     };
+
+    // ── Metode v2 ──────────────────────────────────────────────────────
+    /** Versi metode penilaian. Audit tanpa field ini = v1. */
+    scoringVersion: number;
+    /** Bobot komponen setelah dinormalisasi ulang atas komponen yang terukur. */
+    componentWeights: {
+      engagement: number;
+      consistency: number;
+      reach: number;
+      authenticity: number;
+    };
+    /** Porsi bobot penilaian yang berdiri di atas data terukur (0–1). */
+    dataCoverage: number;
+    /** "single" = satu permukaan jelas lebih kuat; "blended" = selisihnya dalam batas noise. */
+    primaryMode: "single" | "blended" | null;
+    /** ER setelah ditarik ke benchmark sesuai ketidakpastian sampelnya. */
+    adjustedEngagementRate: number;
+    /** Seberapa kuat ER ditarik ke benchmark (0 = tidak sama sekali). */
+    shrinkageWeight: number;
+    /** Rentang ER p10–p90 hasil bootstrap. */
+    erInterval: [number, number] | null;
+    /** Rentang skor p10–p90 hasil bootstrap. */
+    scoreInterval: [number, number] | null;
+    reliability: number;
+    reliabilityFactors: ReliabilityFactors;
+    peer: PeerBenchmark;
+    /** Perubahan follower dibanding pengukuran sebelumnya yang terdekat. */
+    followerGrowth: {
+      pct: number;
+      days: number;
+      previousFollowers: number;
+    } | null;
+    verdictReasons: VerdictReason[];
   };
 };
 
@@ -362,6 +448,59 @@ const HIDDEN_SHARE_MEDIUM_CONFIDENCE = 0.3;
  * disebut pola, bukan kebetulan.
  */
 const SPONSORED_HIDING_MULTIPLE = 2;
+
+/**
+ * Versi metode penilaian, disimpan di `metrics`. Audit tanpa field ini
+ * dihitung dengan metode v1 (komponen netral 60, permukaan terkuat tanpa uji
+ * noise, tanpa rentang ketidakpastian).
+ */
+export const SCORING_VERSION = 2;
+
+const COMPONENT_WEIGHT = {
+  engagement: 0.45,
+  consistency: 0.2,
+  reach: 0.2,
+  authenticity: 0.15,
+} as const;
+
+/**
+ * Sebaran ER antar akun dalam satu tier, pada skala log (≈ simpangan baku
+ * ln ER). 0,7 berarti dua pertiga akun berada dalam ±2× median tier.
+ * Dipakai sebagai prior shrinkage: makin rapuh sampel sebuah akun dibanding
+ * sebaran ini, makin jauh angkanya ditarik ke benchmark.
+ */
+const ER_PRIOR_LOG_SD = 0.7;
+/** Batas bawah CV dalam taksiran galat median — variasi nol bukan kepastian. */
+const MIN_CV_FOR_SE = 0.2;
+/** z satu sisi 90% — selisih permukaan di bawah ini dianggap noise. */
+const SURFACE_GAP_Z = 1.645;
+
+const BOOTSTRAP_ROUNDS = 200;
+/**
+ * Batas bawah rentang skor (p10) yang harus dilewati sebelum vonis tertinggi
+ * boleh diberikan. Vonis adalah janji; janji butuh angka yang tetap bagus
+ * walau sampelnya diacak ulang.
+ */
+const INTERVAL_FLOOR_EXCELLENT = 70;
+const INTERVAL_FLOOR_GOOD = 55;
+/** Di bawah porsi bobot terukur ini, skor dibatasi. */
+const COVERAGE_FLOOR = 0.8;
+
+const RELIABILITY_HIGH = 75;
+const RELIABILITY_MEDIUM = 45;
+/** Jumlah post terukur yang dianggap sampel penuh. */
+const RELIABILITY_FULL_SAMPLE = 12;
+
+/** Lonjakan follower yang patut dicurigai bila tidak ditopang konten. */
+const FOLLOWER_SPIKE_PCT = 25;
+const FOLLOWER_SPIKE_DAYS = 30;
+const FOLLOWER_SPIKE_HIGH_PCT = 50;
+const FOLLOWER_SPIKE_HIGH_DAYS = 90;
+/** Rentang waktu di mana ER dua audit seharusnya tidak berubah lebih dari 2×. */
+const ER_STABILITY_DAYS = 90;
+const ER_STABILITY_MULTIPLE = 2;
+/** Bobot prior ER umum saat memperkirakan ER campaign dari post berbayar. */
+const CAMPAIGN_PRIOR_POSTS = 4;
 
 function mean(values: number[]): number {
   if (values.length === 0) return 0;
@@ -656,6 +795,230 @@ function resolveConfidence(
   return "medium";
 }
 
+/** Kuantil dengan interpolasi linear dari array yang SUDAH terurut naik. */
+function quantileSorted(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+/** FNV-1a — benih bootstrap dari identitas post, supaya hasilnya deterministik. */
+function hashSeed(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** PRNG kecil dan cepat; cukup untuk resampling, bukan untuk kriptografi. */
+function mulberry32(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function coefficientOfVariation(values: number[]): number | null {
+  const m = mean(values);
+  return values.length >= 2 && m > 0 ? stdDev(values) / m : null;
+}
+
+/**
+ * Taksiran galat relatif median: ≈ 1,253 · CV / √n. Dipakai sebagai galat
+ * pada skala log, yang cukup dekat untuk menimbang sampel kecil vs besar.
+ */
+function medianRelativeError(cv: number | null, n: number): number {
+  if (n <= 0) return Infinity;
+  return (1.253 * Math.max(cv ?? 1, MIN_CV_FOR_SE)) / Math.sqrt(n);
+}
+
+/**
+ * Empirical-Bayes: tarik ER ke benchmark sebanding dengan kerapuhan sampelnya.
+ *
+ * Enam post dengan ER 3× median tier belum bukti akun itu 3× lebih baik —
+ * bisa jadi hanya enam post yang kebetulan bagus. Sebaliknya, 24 post yang
+ * konsisten nyaris tidak digeser. Dilakukan pada skala log supaya tarikan ke
+ * atas dan ke bawah setara.
+ */
+export function shrinkEngagementRate(
+  er: number,
+  benchmark: number,
+  cv: number | null,
+  n: number,
+): { value: number; weight: number } {
+  if (er <= 0 || benchmark <= 0 || n <= 0) return { value: er, weight: 0 };
+  const se = Math.min(medianRelativeError(cv, n), 3);
+  const weight = se ** 2 / (se ** 2 + ER_PRIOR_LOG_SD ** 2);
+  return {
+    value: Math.exp((1 - weight) * Math.log(er) + weight * Math.log(benchmark)),
+    weight,
+  };
+}
+
+/**
+ * Apakah selisih ER dua permukaan lebih besar dari noise sampelnya.
+ *
+ * Memilih angka tertinggi dari dua taksiran yang sama-sama goyah selalu
+ * melebihkan hasil. Permukaan terkuat baru boleh jadi dasar penilaian sendiri
+ * bila keunggulannya bertahan melewati galat kedua sampel.
+ */
+function surfaceGapIsSignificant(hi: SurfaceStats, lo: SurfaceStats): boolean {
+  if (hi.engagementRate === null || lo.engagementRate === null) return false;
+  if (lo.engagementRate <= 0) return hi.engagementRate > 0;
+  const se = Math.sqrt(
+    medianRelativeError(hi.engagementCv, hi.measuredCount) ** 2 +
+      medianRelativeError(lo.engagementCv, lo.measuredCount) ** 2,
+  );
+  if (!Number.isFinite(se) || se <= 0) return false;
+  return Math.log(hi.engagementRate / lo.engagementRate) / se > SURFACE_GAP_Z;
+}
+
+/**
+ * Komponen engagement dari ER penilaian.
+ *
+ * Tanpa satu pun post tersembunyi, dipakai angka apa adanya. Begitu ada yang
+ * disembunyikan, dasarnya ER perkiraan — ditahan dua lapis: dicampur ke
+ * netral bila rasio komentar akun sendiri tidak diketahui, dan dibatasi plafon
+ * yang melandai sesuai porsi yang diperkirakan.
+ */
+function engagementComponentFor(
+  scoringEr: number,
+  benchmarkEr: number,
+  hiddenShare: number,
+  imputeWeight: number,
+): number {
+  const ratio = benchmarkEr > 0 ? scoringEr / benchmarkEr : 0;
+  if (hiddenShare <= 0) return scoreFromRatio(ratio);
+  const ceiling =
+    100 - (100 - IMPUTED_ENGAGEMENT_CEILING) * clamp(hiddenShare, 0, 1);
+  return Math.min(
+    scoreFromRatio(ratio) * imputeWeight +
+      NEUTRAL_ENGAGEMENT * (1 - imputeWeight),
+    ceiling,
+  );
+}
+
+type ScoreComponent = { value: number; weight: number; available: boolean };
+
+/**
+ * Rata-rata berbobot atas komponen yang TERUKUR saja.
+ *
+ * Komponen tanpa data tidak diberi nilai netral — nilai netral adalah hadiah
+ * bagi akun lemah dan hukuman bagi akun kuat. Bobotnya dibagi ulang ke
+ * komponen yang benar-benar diukur, dan porsi yang hilang dicatat sebagai
+ * cakupan data.
+ */
+function combineComponents(parts: ScoreComponent[]): number {
+  const used = parts.filter((p) => p.available);
+  const weightSum = used.reduce((s, p) => s + p.weight, 0);
+  if (weightSum <= 0) return 0;
+  return used.reduce((s, p) => s + p.value * p.weight, 0) / weightSum;
+}
+
+/**
+ * Keandalan 0–100: seberapa jauh angka di halaman ini boleh dipegang.
+ *
+ * Perkalian, bukan rata-rata: data yang bolong di satu sisi tidak boleh
+ * ditutup oleh data yang lengkap di sisi lain.
+ */
+export function computeReliability(factors: ReliabilityFactors): number {
+  const product = Object.values(factors).reduce(
+    (p, f) => p * clamp(f, 0.05, 1),
+    1,
+  );
+  return Math.round(product * 100);
+}
+
+function confidenceFromReliability(reliability: number): SampleConfidence {
+  if (reliability >= RELIABILITY_HIGH) return "high";
+  if (reliability >= RELIABILITY_MEDIUM) return "medium";
+  return "low";
+}
+
+const CONFIDENCE_RANK: Record<SampleConfidence, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};
+
+/**
+ * Bandingkan pengukuran sekarang dengan riwayat akun ini.
+ *
+ * Follower yang dibeli datang sekaligus tanpa membawa interaksi, sehingga ER
+ * turun sebanding dengan lonjakannya. Pertumbuhan organik yang cepat hampir
+ * selalu punya penyebab yang terlihat: satu atau beberapa post yang meledak.
+ */
+function readHistory(
+  history: InfluencerHistoryPoint[],
+  now: Date,
+  followers: number,
+  engagementRate: number,
+): {
+  growth: { pct: number; days: number; previousFollowers: number; erChangePct: number | null } | null;
+  erUnstable: { ratio: number; days: number } | null;
+} {
+  const prior = history
+    .filter(
+      (h) =>
+        h.at.getTime() < now.getTime() &&
+        Number.isFinite(h.followers) &&
+        h.followers > 0,
+    )
+    .sort((a, b) => b.at.getTime() - a.at.getTime());
+
+  let growth: {
+    pct: number;
+    days: number;
+    previousFollowers: number;
+    erChangePct: number | null;
+  } | null = null;
+  // Titik terdekat yang masih dalam jendela lonjakan; kalau tidak ada, titik
+  // terbaru apa pun (untuk ditampilkan, tidak untuk menuduh).
+  for (const h of prior) {
+    const days = (now.getTime() - h.at.getTime()) / DAY_MS;
+    if (days < 1) continue;
+    const pct = ((followers - h.followers) / h.followers) * 100;
+    const erChangePct =
+      h.engagementRate !== null && h.engagementRate > 0 && engagementRate > 0
+        ? ((engagementRate - h.engagementRate) / h.engagementRate) * 100
+        : null;
+    const candidate = { pct, days, previousFollowers: h.followers, erChangePct };
+    if (!growth) growth = candidate;
+    // Simpan lonjakan terbesar per hari di antara titik-titik yang relevan.
+    if (
+      days <= FOLLOWER_SPIKE_HIGH_DAYS &&
+      pct / Math.max(days, 1) > growth.pct / Math.max(growth.days, 1)
+    ) {
+      growth = candidate;
+    }
+  }
+
+  let erUnstable: { ratio: number; days: number } | null = null;
+  if (engagementRate > 0) {
+    for (const h of prior) {
+      const days = (now.getTime() - h.at.getTime()) / DAY_MS;
+      if (days > ER_STABILITY_DAYS) break;
+      if (h.engagementRate === null || h.engagementRate <= 0) continue;
+      const ratio =
+        Math.max(h.engagementRate, engagementRate) /
+        Math.min(h.engagementRate, engagementRate);
+      if (ratio > ER_STABILITY_MULTIPLE && (!erUnstable || ratio > erUnstable.ratio)) {
+        erUnstable = { ratio, days };
+      }
+    }
+  }
+
+  return { growth, erUnstable };
+}
+
 function detectSignals(params: {
   platform: InfluencerPlatform;
   tier: InfluencerTier;
@@ -697,6 +1060,17 @@ function detectSignals(params: {
   weakestSurface: SurfaceStats | null;
   commentQuality: CommentQualityResult | null;
   brandSafety: BrandSafetyResult;
+  /** "blended" = selisih antar permukaan masih dalam batas noise. */
+  primaryMode: "single" | "blended" | null;
+  followerGrowth: {
+    pct: number;
+    days: number;
+    previousFollowers: number;
+    erChangePct: number | null;
+  } | null;
+  /** Ada post yang interaksinya jauh di atas nilai tengah — penjelas pertumbuhan organik. */
+  hasViralPost: boolean;
+  erUnstable: { ratio: number; days: number } | null;
 }): InfluencerFakeFlag[] {
   const flags: InfluencerFakeFlag[] = [];
   const {
@@ -732,6 +1106,10 @@ function detectSignals(params: {
     weakestSurface,
     commentQuality,
     brandSafety,
+    primaryMode,
+    followerGrowth,
+    hasViralPost,
+    erUnstable,
   } = params;
 
   const auth = (
@@ -883,6 +1261,33 @@ function detectSignals(params: {
     );
   }
 
+  // ── Riwayat follower ──────────────────────────────────────────────────
+  // Follower yang dibeli datang sekaligus tanpa interaksi: ER ikut turun.
+  // Lonjakan yang ditopang post viral atau ER yang ikut naik adalah
+  // pertumbuhan organik, jadi tidak dituduh.
+  if (
+    followerGrowth &&
+    followerGrowth.previousFollowers >= 1000 &&
+    !hasViralPost &&
+    (followerGrowth.erChangePct === null || followerGrowth.erChangePct <= 0)
+  ) {
+    const { pct, days, erChangePct } = followerGrowth;
+    const severe =
+      pct > FOLLOWER_SPIKE_HIGH_PCT &&
+      days <= FOLLOWER_SPIKE_HIGH_DAYS &&
+      erChangePct !== null &&
+      erChangePct < -30;
+    const spike = pct > FOLLOWER_SPIKE_PCT && days <= FOLLOWER_SPIKE_DAYS;
+    if (severe || spike) {
+      auth(
+        "FOLLOWER_SPIKE",
+        severe ? "high" : "medium",
+        "Follower melonjak tanpa konten yang menjelaskannya",
+        `Follower naik ${round(pct)}% dalam ${Math.round(days)} hari (dari ${followerGrowth.previousFollowers.toLocaleString("id-ID")} ke ${followers.toLocaleString("id-ID")}), tanpa post viral di sampel${erChangePct !== null ? ` dan ER justru ${erChangePct < 0 ? `turun ${round(Math.abs(erChangePct))}%` : "tidak naik"}` : ""}. Follower yang datang tanpa membawa interaksi adalah pola khas follower dibeli — minta data demografi audiens dari Insights.`,
+      );
+    }
+  }
+
   // ── Kualitas komentar ─────────────────────────────────────────────────
   // Sengaja "medium": komentar pendek adalah kebiasaan wajar audiens
   // Indonesia, jadi sinyal ini menambah bobot bila berbarengan dengan yang
@@ -965,6 +1370,8 @@ function detectSignals(params: {
   if (
     surfaceGapPct !== null &&
     surfaceGapPct >= 50 &&
+    // Selisih yang masih dalam noise sampel belum boleh jadi instruksi.
+    primaryMode === "single" &&
     primarySurface &&
     weakestSurface?.engagementRate != null
   ) {
@@ -1061,7 +1468,7 @@ function detectSignals(params: {
       "NO_VIEW_DATA",
       "low",
       "Tidak ada Reels untuk diukur",
-      "Tab Reels akun ini kosong atau tidak bisa diambil, jadi jangkauan konten videonya tidak terukur. Engagement tetap dihitung dari post feed.",
+      "Tab Reels akun ini kosong atau tidak bisa diambil, jadi jangkauan konten videonya tidak terukur. Komponen jangkauan dikeluarkan dari skor — bobotnya dipindah ke komponen yang terukur, bukan diisi nilai netral — dan keandalan audit turun.",
     );
   } else if (viewCoverage !== null && !viewDataRepresentative) {
     // Reels-nya ada, hitungan view-nya yang tidak lengkap — dua hal berbeda
@@ -1071,8 +1478,17 @@ function detectSignals(params: {
       "low",
       "Hitungan view tidak lengkap di Reels",
       viewCoverage === 0
-        ? "Tidak satu pun Reels melaporkan jumlah view, jadi jangkauan tidak terukur. Komponen jangkauan dinilai netral, bukan nol."
-        : `Hanya ${Math.round(viewCoverage * 100)}% Reels yang melaporkan jumlah view, jadi angka jangkauan di halaman ini dihitung dari sebagian kecil saja. Komponen jangkauan dinilai netral agar tidak menghukum berdasarkan data yang tidak lengkap.`,
+        ? "Tidak satu pun Reels melaporkan jumlah view, jadi jangkauan tidak terukur. Komponen jangkauan dikeluarkan dari skor — tidak dinilai nol, tidak juga diberi nilai netral."
+        : `Hanya ${Math.round(viewCoverage * 100)}% Reels yang melaporkan jumlah view, jadi angka jangkauan di halaman ini dihitung dari sebagian kecil saja. Komponen jangkauan dikeluarkan dari skor agar data yang tidak lengkap tidak menghukum maupun menghadiahi.`,
+    );
+  }
+
+  if (erUnstable) {
+    data(
+      "ER_UNSTABLE_ACROSS_AUDITS",
+      "low",
+      "ER berubah jauh dibanding audit sebelumnya",
+      `ER sekarang berbeda ${round(erUnstable.ratio, 1)}× lipat dibanding pengukuran ${Math.round(erUnstable.days)} hari lalu. Akun yang sehat jarang bergeser sejauh itu dalam waktu sesingkat ini — bisa karena satu periode viral, perubahan strategi konten, atau engagement yang tidak organik. Keandalan audit diturunkan.`,
     );
   }
 
@@ -1118,7 +1534,15 @@ export function scoreInfluencer(
   const now = input.now ?? new Date();
   const followers = Math.max(input.followers, 0);
   const tier = resolveTier(followers);
-  const benchmarkEr = benchmarkErFor(input.platform, tier);
+  const staticBenchmarkEr = benchmarkErFor(input.platform, tier);
+  // Benchmark dikalibrasi dengan populasi akun yang pernah kita ukur di
+  // platform & tier yang sama, sebanding dengan banyaknya pembanding.
+  const peerRates = cleanPeerRates(input.peerEngagementRates);
+  const peerMedianEr = peerMedian(peerRates);
+  const benchmarkEr = round(
+    blendBenchmark(staticBenchmarkEr, peerMedianEr, peerRates.length),
+    3,
+  );
 
   const sample = selectSample(input.posts, now);
   const postsAnalyzed = sample.length;
@@ -1165,10 +1589,25 @@ export function scoreInfluencer(
         )
       : null;
 
+  /**
+   * Permukaan terkuat baru boleh berdiri sendiri bila keunggulannya melewati
+   * noise sampel. Bila tidak, keduanya dinilai bersama — angka tertinggi dari
+   * dua taksiran yang sama-sama goyah selalu melebihkan hasil.
+   */
+  const primaryMode: "single" | "blended" | null = !primary
+    ? null
+    : weakest && weakest.surface !== primary.surface
+      ? surfaceGapIsSignificant(primary, weakest)
+        ? "single"
+        : "blended"
+      : "single";
+
   const primaryPosts = primary
-    ? primary.surface === "feed"
-      ? feedPosts
-      : reelPosts
+    ? primaryMode === "blended"
+      ? sample.filter((p) => pool.some((s) => s.surface === p.surface))
+      : primary.surface === "feed"
+        ? feedPosts
+        : reelPosts
     : sample;
   const engagementSample = primaryPosts.filter(isMeasurable);
   const engagementMeasurable = engagementSample.length > 0;
@@ -1284,7 +1723,13 @@ export function scoreInfluencer(
 
   const engagementSampleSize = engagementSample.length;
   const meanTotal = mean(total);
-  const engagementCv = primary?.engagementCv ?? null;
+  const engagementCv =
+    primaryMode === "blended"
+      ? (() => {
+          const cv = coefficientOfVariation(total);
+          return cv === null ? null : round(cv, 3);
+        })()
+      : (primary?.engagementCv ?? null);
   const viralSkew =
     engagementSampleSize >= 2 && medianTotal > 0 ? meanTotal / medianTotal : null;
 
@@ -1311,9 +1756,10 @@ export function scoreInfluencer(
   const followingRatio = followers > 0 ? input.following / followers : null;
   // Dibandingkan dalam permukaan yang sama dengan `engagementRate`, supaya
   // post berbayar tidak diadu melawan post organik dari permukaan berbeda.
-  const sponsored = primary
-    ? primary.sponsored
-    : computeSponsoredSplit(engagementSample, followers);
+  const sponsored =
+    primary && primaryMode === "single"
+      ? primary.sponsored
+      : computeSponsoredSplit(engagementSample, followers);
 
   // Kepadatan endorse dihitung dari seluruh permukaan: yang dilihat audiens
   // adalah profilnya secara utuh, bukan satu tab saja.
@@ -1331,7 +1777,7 @@ export function scoreInfluencer(
         100
       : null;
 
-  const confidence = resolveConfidence(
+  const legacyConfidence = resolveConfidence(
     postsAnalyzed,
     engagementSampleSize,
     sampleWindowDays,
@@ -1349,6 +1795,18 @@ export function scoreInfluencer(
     now,
   );
   const commentQuality = analyzeCommentQuality(sample);
+
+  // Post yang interaksinya jauh di atas nilai tengah — bila ada, lonjakan
+  // follower punya penjelasan organik.
+  const hasViralPost =
+    (viralSkew !== null && viralSkew > 2) ||
+    (medianTotal > 0 && total.some((t) => t > medianTotal * 5));
+  const { growth: followerGrowth, erUnstable } = readHistory(
+    input.history ?? [],
+    now,
+    followers,
+    engagementRate,
+  );
 
   const fakeFlags = detectSignals({
     platform: input.platform,
@@ -1383,6 +1841,10 @@ export function scoreInfluencer(
     weakestSurface: weakest,
     commentQuality,
     brandSafety,
+    primaryMode,
+    followerGrowth,
+    hasViralPost,
+    erUnstable,
   });
 
   const authenticityPenalty = fakeFlags
@@ -1394,51 +1856,97 @@ export function scoreInfluencer(
     .filter((f) => f.impact === "performance")
     .reduce((sum, f) => sum + f.penalty, 0);
 
-  /**
-   * Komponen engagement.
-   *
-   * Tanpa satu pun post tersembunyi, dipakai angka terukur apa adanya. Begitu
-   * ada yang disembunyikan, dasarnya pindah ke ER perkiraan — dan hasilnya
-   * ditahan dua lapis:
-   *
-   * 1. Bila rasio komentar akun ini sendiri tidak diketahui (semua like
-   *    disembunyikan), perkiraannya dicampur ke netral. Kita memang tidak tahu,
-   *    dan angka yang tidak diketahui tidak boleh menghukum maupun menghadiahi
-   *    terlalu jauh.
-   * 2. Plafon yang melandai sesuai porsi data yang diperkirakan. Nilai penuh
-   *    hanya untuk angka yang benar-benar terukur.
-   */
-  const imputedErVsBenchmark =
-    benchmarkEr > 0 ? imputedEngagementRate / benchmarkEr : 0;
+  // ── Komponen ──────────────────────────────────────────────────────────
   const imputeWeight = commentLikeRatio !== null ? 1 : GENERIC_IMPUTE_WEIGHT;
-  const imputedCeiling =
-    100 - (100 - IMPUTED_ENGAGEMENT_CEILING) * clamp(hiddenShare, 0, 1);
+  // Post yang angkanya diperkirakan dihitung separuh: perkiraan bukan
+  // pengukuran, jadi tidak boleh menyempitkan ketidakpastian sepenuhnya.
+  const effectiveSampleSize =
+    engagementSampleSize + (primaryPosts.length - engagementSampleSize) * 0.5;
+  const scoringCv = coefficientOfVariation(scoringInteractions);
 
-  const engagementComponent =
-    hiddenShare <= 0
-      ? scoreFromRatio(erVsBenchmark)
-      : Math.min(
-          scoreFromRatio(imputedErVsBenchmark) * imputeWeight +
-            NEUTRAL_ENGAGEMENT * (1 - imputeWeight),
-          imputedCeiling,
-        );
+  /**
+   * ER penilaian = ER perkiraan yang ditarik ke benchmark sesuai kerapuhan
+   * sampelnya. `engagementRate` yang dilaporkan tetap angka apa adanya.
+   */
+  const shrunk = shrinkEngagementRate(
+    imputedEngagementRate,
+    benchmarkEr,
+    scoringCv,
+    effectiveSampleSize,
+  );
+  const adjustedEngagementRate = shrunk.value;
+  const engagementComponent = engagementComponentFor(
+    adjustedEngagementRate,
+    benchmarkEr,
+    hiddenShare,
+    imputeWeight,
+  );
+  const engagementAvailable = primaryPosts.length > 0;
+
+  const consistencyAvailable = timestamps.length >= 2;
   const consistencyComponent =
     scoreCadence(postsPerWeek) * 0.6 + scoreRecency(daysSinceLastPost) * 0.4;
-  // Jangkauan diukur dari Reels, dengan target per platform. Bila sebagian
-  // besar Reels tidak melaporkan view, angkanya tidak dapat dipercaya dan
-  // komponen ini jatuh ke netral — bukan nol, karena ketiadaan data bukan
-  // bukti jangkauan buruk.
-  const reachComponent =
-    viewRate !== null && viewDataRepresentative
-      ? clamp((viewRate / REACH_TARGET[input.platform]) * 100, 0, 100)
-      : 60;
 
-  const rawScore =
-    engagementComponent * 0.45 +
-    consistencyComponent * 0.2 +
-    reachComponent * 0.2 +
-    authenticityScore * 0.15 -
-    performancePenalty;
+  // Jangkauan diukur dari Reels, dengan target per platform. Bila sebagian
+  // besar Reels tidak melaporkan view, komponen ini DIKELUARKAN — bukan
+  // dinilai netral: ketiadaan data bukan bukti jangkauan baik maupun buruk.
+  const reachAvailable = viewRate !== null && viewDataRepresentative;
+  const reachComponent = reachAvailable
+    ? clamp(((viewRate as number) / REACH_TARGET[input.platform]) * 100, 0, 100)
+    : null;
+
+  const partsFor = (engagementValue: number): ScoreComponent[] => [
+    {
+      value: engagementValue,
+      weight: COMPONENT_WEIGHT.engagement,
+      available: engagementAvailable,
+    },
+    {
+      value: consistencyComponent,
+      weight: COMPONENT_WEIGHT.consistency,
+      available: consistencyAvailable,
+    },
+    {
+      value: reachComponent ?? 0,
+      weight: COMPONENT_WEIGHT.reach,
+      available: reachAvailable,
+    },
+    {
+      value: authenticityScore,
+      weight: COMPONENT_WEIGHT.authenticity,
+      available: true,
+    },
+  ];
+
+  const availableWeight =
+    (engagementAvailable ? COMPONENT_WEIGHT.engagement : 0) +
+    (consistencyAvailable ? COMPONENT_WEIGHT.consistency : 0) +
+    (reachAvailable ? COMPONENT_WEIGHT.reach : 0) +
+    COMPONENT_WEIGHT.authenticity;
+  const componentWeights = {
+    engagement: engagementAvailable
+      ? round(COMPONENT_WEIGHT.engagement / availableWeight, 3)
+      : 0,
+    consistency: consistencyAvailable
+      ? round(COMPONENT_WEIGHT.consistency / availableWeight, 3)
+      : 0,
+    reach: reachAvailable ? round(COMPONENT_WEIGHT.reach / availableWeight, 3) : 0,
+    authenticity: round(COMPONENT_WEIGHT.authenticity / availableWeight, 3),
+  };
+
+  // Porsi bobot penilaian yang berdiri di atas data terukur. Engagement yang
+  // sebagian diperkirakan dihitung sebagian.
+  const dataCoverage =
+    (engagementAvailable
+      ? COMPONENT_WEIGHT.engagement * (1 - 0.5 * clamp(hiddenShare, 0, 1))
+      : 0) +
+    (consistencyAvailable ? COMPONENT_WEIGHT.consistency : 0) +
+    (reachAvailable ? COMPONENT_WEIGHT.reach : 0) +
+    COMPONENT_WEIGHT.authenticity;
+  const coverageCeiling =
+    dataCoverage < COVERAGE_FLOOR
+      ? Math.round(100 - (COVERAGE_FLOOR - dataCoverage) * 100)
+      : 100;
 
   /**
    * Tuduhan kecurangan butuh korroborasi.
@@ -1454,15 +1962,140 @@ export function scoreInfluencer(
     (f) => f.impact === "authenticity" && f.severity === "high",
   ).length;
 
-  const scoreCeiling =
+  const flagCeiling =
     highAuthenticityFlags >= 2 ? 45 : highAuthenticityFlags === 1 ? 60 : 100;
-  const score = clamp(Math.min(Math.round(rawScore), scoreCeiling), 0, 100);
+  const scoreCeiling = Math.min(flagCeiling, coverageCeiling);
+
+  const rawScoreFor = (engagementValue: number): number =>
+    Math.round(combineComponents(partsFor(engagementValue)) - performancePenalty);
+  const scoreFor = (engagementValue: number): number =>
+    clamp(Math.min(rawScoreFor(engagementValue), scoreCeiling), 0, 100);
+
+  const rawScore = rawScoreFor(engagementComponent);
+  const score = scoreFor(engagementComponent);
+
+  /**
+   * Rentang ketidakpastian lewat bootstrap: sampel post diacak ulang dengan
+   * pengembalian, lalu seluruh rantai engagement → skor dihitung ulang.
+   * Benihnya diambil dari identitas post, jadi audit yang sama selalu
+   * menghasilkan rentang yang sama.
+   */
+  let erInterval: [number, number] | null = null;
+  let scoreInterval: [number, number] | null = null;
+  if (scoringInteractions.length >= 3 && followers > 0) {
+    const rand = mulberry32(
+      hashSeed(primaryPosts.map((p) => p.externalId).join("|")),
+    );
+    const n = scoringInteractions.length;
+    const resample = new Array<number>(n);
+    const ers: number[] = [];
+    const scores: number[] = [];
+    for (let b = 0; b < BOOTSTRAP_ROUNDS; b += 1) {
+      for (let i = 0; i < n; i += 1) {
+        resample[i] = scoringInteractions[Math.floor(rand() * n)];
+      }
+      const er = (median(resample) / followers) * 100;
+      ers.push(er);
+      const adjusted = shrinkEngagementRate(
+        er,
+        benchmarkEr,
+        scoringCv,
+        effectiveSampleSize,
+      ).value;
+      scores.push(
+        scoreFor(
+          engagementComponentFor(adjusted, benchmarkEr, hiddenShare, imputeWeight),
+        ),
+      );
+    }
+    ers.sort((a, b) => a - b);
+    scores.sort((a, b) => a - b);
+    erInterval = [
+      round(quantileSorted(ers, 0.1), 3),
+      round(quantileSorted(ers, 0.9), 3),
+    ];
+    scoreInterval = [
+      Math.min(Math.round(quantileSorted(scores, 0.1)), score),
+      Math.max(Math.round(quantileSorted(scores, 0.9)), score),
+    ];
+  }
+
+  // ── Keandalan ─────────────────────────────────────────────────────────
+  const reliabilityFactors: ReliabilityFactors = {
+    sample: round(clamp(effectiveSampleSize / RELIABILITY_FULL_SAMPLE, 0, 1), 2),
+    measured: round(1 - 0.7 * clamp(hiddenShare, 0, 1), 2),
+    views: reachAvailable
+      ? 1
+      : viewCoverage === null
+        ? 0.85
+        : round(0.85 + 0.15 * viewCoverage, 2),
+    freshness:
+      sampleWindowDays !== null && sampleWindowDays > SAMPLE_WINDOW_DAYS
+        ? 0.7
+        : daysSinceLastPost !== null && daysSinceLastPost > 60
+          ? 0.8
+          : 1,
+    comments: commentQuality ? 1 : 0.92,
+    stability: erUnstable ? 0.8 : 1,
+  };
+  const reliability = computeReliability(reliabilityFactors);
+  // Aturan keyakinan lama tetap berlaku sebagai batas; keandalan hanya boleh
+  // menurunkannya, tidak menaikkannya.
+  const reliabilityConfidence = confidenceFromReliability(reliability);
+  const confidence =
+    CONFIDENCE_RANK[reliabilityConfidence] < CONFIDENCE_RANK[legacyConfidence]
+      ? reliabilityConfidence
+      : legacyConfidence;
+
+  // ── Vonis ─────────────────────────────────────────────────────────────
+  const verdictReasons: VerdictReason[] = [];
+
+  if (rawScore > flagCeiling && flagCeiling < 100) {
+    verdictReasons.push({
+      code: "AUTHENTICITY_CAP",
+      effect: "cap",
+      text: `Skor dibatasi maksimal ${flagCeiling} karena ada ${highAuthenticityFlags} sinyal keaslian berat — angka engagement yang tinggi justru sedang dipertanyakan.`,
+    });
+  }
+  if (rawScore > coverageCeiling && coverageCeiling < 100) {
+    verdictReasons.push({
+      code: "COVERAGE_CAP",
+      effect: "cap",
+      text: `Skor dibatasi maksimal ${coverageCeiling} karena hanya ${Math.round(dataCoverage * 100)}% bobot penilaian yang berdiri di atas data terukur.`,
+    });
+  }
+  if (performancePenalty > 0) {
+    verdictReasons.push({
+      code: "PERFORMANCE_PENALTY",
+      effect: "down",
+      text: `Skor dikurangi ${performancePenalty} poin karena sinyal performa (${fakeFlags
+        .filter((f) => f.impact === "performance" && f.penalty > 0)
+        .map((f) => f.label.toLowerCase())
+        .join(", ")}).`,
+    });
+  }
 
   let verdict: InfluencerVerdict;
   if (authenticityScore < 50 || highAuthenticityFlags >= 2) {
     verdict = InfluencerVerdict.SUSPICIOUS;
+    verdictReasons.push({
+      code: "SUSPICIOUS",
+      effect: "down",
+      text:
+        highAuthenticityFlags >= 2
+          ? `${highAuthenticityFlags} sinyal keaslian berat saling menguatkan.`
+          : `Skor keaslian hanya ${authenticityScore}/100 — terlalu banyak sinyal yang menunjuk ke engagement tidak organik.`,
+    });
   } else if (highAuthenticityFlags === 1) {
     verdict = InfluencerVerdict.NEEDS_REVIEW;
+    const flag = fakeFlags.find(
+      (f) => f.impact === "authenticity" && f.severity === "high",
+    );
+    verdictReasons.push({
+      code: "SINGLE_HIGH_FLAG",
+      effect: "hold",
+      text: `Satu sinyal keaslian berat (${flag?.label.toLowerCase() ?? "lihat daftar sinyal"}) belum cukup untuk memvonis, tapi cukup untuk diperiksa manual.`,
+    });
   } else if (score >= 80) verdict = InfluencerVerdict.EXCELLENT;
   else if (score >= 65) verdict = InfluencerVerdict.GOOD;
   else if (score >= 45) verdict = InfluencerVerdict.AVERAGE;
@@ -1472,6 +2105,11 @@ export function scoreInfluencer(
   // menghasilkan "sangat bagus" — angkanya masih bisa bergerak jauh.
   if (verdict === InfluencerVerdict.EXCELLENT && confidence === "low") {
     verdict = InfluencerVerdict.GOOD;
+    verdictReasons.push({
+      code: "LOW_CONFIDENCE",
+      effect: "down",
+      text: `Diturunkan dari "sangat bagus": keandalan data hanya ${reliability}/100.`,
+    });
   }
 
   // Engagement yang sebagian besarnya diperkirakan — bukan diukur — tidak boleh
@@ -1482,6 +2120,37 @@ export function scoreInfluencer(
     hiddenShare > HIDDEN_SHARE_MEDIUM_CONFIDENCE
   ) {
     verdict = InfluencerVerdict.GOOD;
+    verdictReasons.push({
+      code: "MOSTLY_IMPUTED",
+      effect: "down",
+      text: `Diturunkan dari "sangat bagus": ${Math.round(hiddenShare * 100)}% post menyembunyikan like, jadi engagement-nya sebagian besar perkiraan.`,
+    });
+  }
+
+  // Vonis harus tetap berlaku walau sampelnya diacak ulang: batas bawah
+  // rentang skor yang menentukan, bukan titik tengahnya.
+  if (scoreInterval) {
+    if (
+      verdict === InfluencerVerdict.EXCELLENT &&
+      scoreInterval[0] < INTERVAL_FLOOR_EXCELLENT
+    ) {
+      verdict = InfluencerVerdict.GOOD;
+      verdictReasons.push({
+        code: "WIDE_INTERVAL",
+        effect: "down",
+        text: `Diturunkan dari "sangat bagus": rentang skornya ${scoreInterval[0]}–${scoreInterval[1]}, batas bawahnya belum meyakinkan (perlu ≥ ${INTERVAL_FLOOR_EXCELLENT}).`,
+      });
+    } else if (
+      verdict === InfluencerVerdict.GOOD &&
+      scoreInterval[0] < INTERVAL_FLOOR_GOOD
+    ) {
+      verdict = InfluencerVerdict.AVERAGE;
+      verdictReasons.push({
+        code: "WIDE_INTERVAL",
+        effect: "down",
+        text: `Diturunkan dari "bagus": rentang skornya ${scoreInterval[0]}–${scoreInterval[1]}, terlalu lebar untuk dijanjikan (batas bawah perlu ≥ ${INTERVAL_FLOOR_GOOD}).`,
+      });
+    }
   }
 
   // Risiko asosiasi berat (judi online, konten dewasa) menahan rekomendasi
@@ -1491,14 +2160,61 @@ export function scoreInfluencer(
     (verdict === InfluencerVerdict.EXCELLENT || verdict === InfluencerVerdict.GOOD)
   ) {
     verdict = InfluencerVerdict.NEEDS_REVIEW;
+    verdictReasons.push({
+      code: "BRAND_SAFETY_HOLD",
+      effect: "hold",
+      text: "Ditahan untuk diperiksa: ada post dengan risiko asosiasi merek berat (mis. judi online atau konten dewasa).",
+    });
   }
+
+  if (shrunk.weight >= 0.15) {
+    verdictReasons.push({
+      code: "SHRINKAGE",
+      effect: "info",
+      text: `Sampel ${Math.round(effectiveSampleSize)} post masih rapuh, jadi ER penilaian ditarik ${Math.round(shrunk.weight * 100)}% ke median tier (${round(imputedEngagementRate, 2)}% → ${round(adjustedEngagementRate, 2)}%).`,
+    });
+  }
+  if (!reachAvailable || !consistencyAvailable) {
+    verdictReasons.push({
+      code: "REWEIGHTED",
+      effect: "info",
+      text: `${[!reachAvailable ? "Jangkauan" : null, !consistencyAvailable ? "Konsistensi" : null]
+        .filter(Boolean)
+        .join(" dan ")} tidak terukur — bobotnya dibagi ulang ke komponen yang terukur, bukan diisi nilai netral.`,
+    });
+  }
+
+  const peer: PeerBenchmark = {
+    n: peerRates.length,
+    medianEr: peerMedianEr === null ? null : round(peerMedianEr, 3),
+    percentile: engagementMeasurable
+      ? peerPercentile(engagementRate, peerRates)
+      : null,
+    staticBenchmarkEr,
+    blendedBenchmarkEr: benchmarkEr,
+    source: peerRates.length > 0 ? "peer" : "static",
+  };
 
   // Prediksi hasil kampanye: pakai ER post berbayar bila sampelnya memadai.
   const useSponsored =
     sponsored.sponsoredEr !== null &&
     sponsored.sponsoredCount >= MIN_SPLIT_SAMPLE;
+  /**
+   * Dua-tiga post berbayar adalah sampel yang sangat rapuh. Angkanya ditarik
+   * ke ER umum akun sebanding dengan sedikitnya post berbayar: 2 post baru
+   * menggeser sepertiga jalan, 12 post hampir sepenuhnya.
+   */
   const expectedCampaignEr = useSponsored
-    ? (sponsored.sponsoredEr as number)
+    ? (() => {
+        const sponsoredEr = sponsored.sponsoredEr as number;
+        if (sponsoredEr <= 0 || engagementRate <= 0) return sponsoredEr;
+        const w =
+          sponsored.sponsoredCount / (sponsored.sponsoredCount + CAMPAIGN_PRIOR_POSTS);
+        return round(
+          Math.exp(w * Math.log(sponsoredEr) + (1 - w) * Math.log(engagementRate)),
+          3,
+        );
+      })()
     : round(engagementRate, 3);
 
   return {
@@ -1570,11 +2286,30 @@ export function scoreInfluencer(
       commentQuality,
       components: {
         engagement: round(engagementComponent),
-        consistency: round(consistencyComponent),
-        reach: round(reachComponent),
+        consistency: consistencyAvailable ? round(consistencyComponent) : null,
+        reach: reachComponent === null ? null : round(reachComponent),
         authenticity: authenticityScore,
         performancePenalty,
       },
+      scoringVersion: SCORING_VERSION,
+      componentWeights,
+      dataCoverage: round(dataCoverage, 3),
+      primaryMode,
+      adjustedEngagementRate: round(adjustedEngagementRate, 3),
+      shrinkageWeight: round(shrunk.weight, 3),
+      erInterval,
+      scoreInterval,
+      reliability,
+      reliabilityFactors,
+      peer,
+      followerGrowth: followerGrowth
+        ? {
+            pct: round(followerGrowth.pct, 1),
+            days: Math.round(followerGrowth.days),
+            previousFollowers: followerGrowth.previousFollowers,
+          }
+        : null,
+      verdictReasons,
     },
   };
 }

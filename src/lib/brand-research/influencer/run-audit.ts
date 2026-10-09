@@ -4,6 +4,7 @@ import { after } from "next/server";
 import {
   InfluencerAuditStatus,
   InfluencerPlatform,
+  InfluencerTier,
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -32,11 +33,13 @@ import {
 import { getAdLibraryApifyOutcome } from "@/lib/brand-research/ad-library-apify-status";
 import {
   postEngagementRate,
+  resolveTier,
   scoreInfluencer,
   selectSample,
   SURFACE_LABEL,
   TIER_LABEL,
   VERDICT_LABEL,
+  type InfluencerHistoryPoint,
   type InfluencerScoreResult,
 } from "@/lib/brand-research/influencer/score";
 import { isSponsoredPost } from "@/lib/brand-research/influencer/sponsored";
@@ -64,6 +67,87 @@ async function patchAudit(
     data,
   });
   return result.count > 0;
+}
+
+/** Batas jumlah pembanding yang dibaca — lebih dari ini tidak menggeser median lagi. */
+const PEER_SAMPLE_LIMIT = 2_000;
+const HISTORY_LIMIT = 20;
+
+/**
+ * Konteks penilaian dari DB: ER akun sekelas (kalibrasi benchmark) dan
+ * pengukuran sebelumnya atas akun ini (lonjakan follower, kestabilan ER).
+ *
+ * Gagal membaca konteks tidak boleh menggagalkan audit — penilaian tetap
+ * jalan dengan benchmark statis dan tanpa riwayat.
+ */
+async function loadScoringContext(
+  profileId: string,
+  platform: InfluencerPlatform,
+  tier: InfluencerTier,
+  currentAuditId: string,
+): Promise<{
+  peerEngagementRates: number[];
+  history: InfluencerHistoryPoint[];
+}> {
+  try {
+    const [peers, audits, snapshots] = await Promise.all([
+      // Nilai terbaru per akun yang di-cache di profil (dari audit penuh
+      // maupun snapshot Radar) — satu angka per akun, bukan per pengukuran.
+      prisma.influencerProfile.findMany({
+        where: {
+          platform,
+          latestTier: tier,
+          latestEngagementRate: { gt: 0 },
+          id: { not: profileId },
+        },
+        select: { latestEngagementRate: true },
+        take: PEER_SAMPLE_LIMIT,
+      }),
+      prisma.influencerAudit.findMany({
+        where: {
+          profileId,
+          status: InfluencerAuditStatus.READY,
+          id: { not: currentAuditId },
+          followers: { gt: 0 },
+        },
+        select: {
+          createdAt: true,
+          collectedAt: true,
+          followers: true,
+          engagementRate: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: HISTORY_LIMIT,
+      }),
+      prisma.influencerSnapshot.findMany({
+        where: { profileId, followers: { gt: 0 } },
+        select: { collectedAt: true, followers: true, engagementRate: true },
+        orderBy: { collectedAt: "desc" },
+        take: HISTORY_LIMIT,
+      }),
+    ]);
+
+    return {
+      peerEngagementRates: peers
+        .map((p) => p.latestEngagementRate)
+        .filter((r): r is number => typeof r === "number"),
+      history: [
+        ...audits.map((a) => ({
+          at: a.collectedAt ?? a.createdAt,
+          followers: a.followers,
+          engagementRate: a.engagementRate > 0 ? a.engagementRate : null,
+        })),
+        ...snapshots.map((s) => ({
+          at: s.collectedAt,
+          followers: s.followers,
+          engagementRate: s.engagementRate,
+        })),
+      ],
+    };
+  } catch (err) {
+    console.error("[brand/influencer/audit] konteks penilaian gagal dibaca", err);
+    return { peerEngagementRates: [], history: [] };
+  }
 }
 
 async function generateAuditNarrative(
@@ -100,7 +184,8 @@ Feed vs Reels (khusus Instagram; di TikTok semuanya video):
 - ER feed: ${scored.feedEngagementRate ?? "tidak tersedia"}%
 - ER Reels: ${scored.reelsEngagementRate ?? "tidak tersedia"}%
 - Permukaan yang jadi dasar angka utama: ${scored.primarySurface ? SURFACE_LABEL[scored.primarySurface] : "tidak ada"}
-- CATATAN PENTING: feed dan Reels adalah dua permukaan berbeda dan dihitung terpisah dengan rumus yang sama, jadi kedua angka di atas boleh dibandingkan langsung. Angka utama diambil dari permukaan TERKUAT karena itulah format yang akan dipesan brand. WAJIB sebutkan format mana yang harus dipesan, dan berapa angkanya kalau brand salah memesan format satunya. Permukaan yang lemah BUKAN alasan menolak influencer — itu alasan memilih format.
+- Cara memilih dasar angka: ${scored.metrics.primaryMode === "blended" ? "selisih feed vs Reels masih dalam batas noise sampel, jadi KEDUANYA dinilai bersama — JANGAN menyuruh brand memilih format berdasarkan selisih ini" : "permukaan terkuat unggul melewati noise sampel, jadi angka utama diambil darinya"}
+- CATATAN PENTING: feed dan Reels adalah dua permukaan berbeda dan dihitung terpisah dengan rumus yang sama, jadi kedua angka di atas boleh dibandingkan langsung. WAJIB sebutkan format mana yang harus dipesan, dan berapa angkanya kalau brand salah memesan format satunya. Permukaan yang lemah BUKAN alasan menolak influencer — itu alasan memilih format.
 - Median per post: like ${scored.medianLikes}, komentar ${scored.medianComments}, share ${scored.medianShares}, view ${scored.medianViews}
 - Rata-rata per post (pembanding): like ${scored.avgLikes}, view ${scored.avgViews}
 - Rasio komentar terhadap like: ${scored.metrics.commentLikeRatio ?? "tidak tersedia"}
@@ -148,10 +233,15 @@ ${
     ? `- CATATAN PENTING: like yang disembunyikan TIDAK dihitung nol dan TIDAK dibuang — angkanya DIPERKIRAKAN dari jumlah komentar yang tetap publik. ER yang dipakai menilai: ${scored.metrics.imputedEngagementRate}% (ER terukur dari post yang angkanya terlihat: ${scored.engagementRate}%). Perkiraan ini bisa meleset beberapa kali lipat ke atas maupun ke bawah, jadi sebut terus terang bahwa angkanya perkiraan dan syaratkan screenshot Instagram Insights sebelum deal. JANGAN menyebut penyembunyian like sebagai bukti kecurangan — itu setelan yang wajar dipakai banyak akun besar.`
     : "- Semua post yang dianalisis menampilkan jumlah like-nya."
 }
-- Tingkat keyakinan: ${scored.confidence}
+- Tingkat keyakinan: ${scored.confidence} (indeks keandalan ${scored.metrics.reliability}/100)
+- Rentang ER (p10–p90, bootstrap atas sampel post): ${scored.metrics.erInterval ? `${scored.metrics.erInterval[0]}% – ${scored.metrics.erInterval[1]}%` : "sampel terlalu kecil untuk dihitung"}
+- ER setelah disesuaikan dengan ketidakpastian sampel (dipakai menilai): ${scored.metrics.adjustedEngagementRate}%
+- Pembanding populasi: ${scored.metrics.peer.percentile !== null ? `ER lebih tinggi dari ${scored.metrics.peer.percentile}% dari ${scored.metrics.peer.n} akun sekelas yang pernah kita ukur` : "belum cukup akun sekelas untuk dibandingkan"}${scored.metrics.followerGrowth ? `\n- Follower berubah ${scored.metrics.followerGrowth.pct}% dalam ${scored.metrics.followerGrowth.days} hari dibanding pengukuran sebelumnya` : ""}
 
 Hasil penilaian sistem:
-- Skor performa: ${scored.score}/100 — ${VERDICT_LABEL[scored.verdict]}
+- Skor performa: ${scored.score}/100 (rentang ${scored.metrics.scoreInterval ? `${scored.metrics.scoreInterval[0]}–${scored.metrics.scoreInterval[1]}` : "tidak tersedia"}) — ${VERDICT_LABEL[scored.verdict]}
+- Alasan vonis dari sistem:
+${scored.metrics.verdictReasons.length > 0 ? scored.metrics.verdictReasons.map((r) => `  - ${r.text}`).join("\n") : "  - Tidak ada penyesuaian"}
 - Skor keaslian: ${scored.authenticityScore}/100
 
 Sinyal yang terdeteksi:
@@ -164,7 +254,8 @@ Tulis penilaian yang jujur dan tegas untuk tim brand. Jangan mengarang data di l
 - Bila tingkat keyakinan rendah, sebutkan bahwa kesimpulannya sementara dan sarankan audit ulang setelah influencer memposting lebih banyak.
 - Bila ER post berbayar jauh di bawah organik, jadikan itu poin utama — angka itulah yang akan brand dapatkan.
 - Bila ada risiko asosiasi merek tingkat "high" (mis. judi online), jadikan itu poin PERTAMA di risiko dan syaratkan verifikasi manual post terkait sebelum deal — tapi tetap sebut bahwa ini hasil pencocokan kata yang bisa keliru, bukan vonis.
-- Sebut format yang harus dipesan (feed atau Reels) di rekomendasi bila kedua permukaan ada dan angkanya berbeda jauh.
+- Sebut format yang harus dipesan (feed atau Reels) di rekomendasi HANYA bila dasar angkanya satu permukaan, bukan dinilai bersama.
+- Jangan menjanjikan angka tunggal bila rentangnya lebar; sebut rentangnya. Bila indeks keandalan di bawah 45, perlakukan seluruh kesimpulan sebagai indikasi awal.
 
 Balas JSON:
 {
@@ -556,12 +647,20 @@ export async function executeInfluencerAudit(auditId: string): Promise<void> {
     // Satu `now` dipakai untuk menilai dan untuk menandai post mana yang masuk
     // sampel, supaya keduanya tidak pernah berbeda batas jendelanya.
     const now = new Date();
+    const context = await loadScoringContext(
+      profile.id,
+      profile.platform,
+      resolveTier(normalized.followers),
+      auditId,
+    );
     const scored = scoreInfluencer({
       platform: profile.platform,
       followers: normalized.followers,
       following: normalized.following,
       posts: normalized.posts,
       now,
+      peerEngagementRates: context.peerEngagementRates,
+      history: context.history,
     });
 
     const stillThere = await prisma.influencerProfile.findUnique({
