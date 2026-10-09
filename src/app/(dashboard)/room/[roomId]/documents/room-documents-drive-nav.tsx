@@ -40,6 +40,16 @@ function folderDocumentCount(folder: DriveFolderRow) {
   return folder._count.recursiveDocuments ?? folder._count.documents;
 }
 
+/**
+ * Template kolom tampilan list (header, baris folder, baris file) — satu
+ * sumber agar kolom selalu sejajar. Di bawah md baris kembali ke flex.
+ */
+export function documentListGridClass(showLocation: boolean) {
+  return showLocation
+    ? "md:grid md:grid-cols-[1rem_minmax(0,1fr)_10rem_5.5rem_7rem_6rem] md:gap-3"
+    : "md:grid md:grid-cols-[1rem_minmax(0,1fr)_5.5rem_7rem_6rem] md:gap-3";
+}
+
 /** MIME kustom untuk seret item dokumen/folder di dalam halaman Documents. */
 export const DOCUMENT_ITEMS_DRAG_TYPE = "application/x-dcc-document-items";
 
@@ -88,7 +98,7 @@ export function DriveBreadcrumb({
   return (
     <nav
       aria-label="Lokasi folder"
-      className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5 text-sm"
+      className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5 text-sm"
     >
       {crumbs.map((c, i) => {
         const isLast = i === crumbs.length - 1;
@@ -101,12 +111,14 @@ export function DriveBreadcrumb({
               />
             ) : null}
             {isLast ? (
-              <span className="text-foreground truncate font-medium">{c.name}</span>
+              <h1 className="text-foreground truncate text-lg font-semibold" aria-current="page">
+                {c.name}
+              </h1>
             ) : (
               <button
                 type="button"
                 onClick={() => onNavigate(c.id)}
-                className="text-muted-foreground hover:text-foreground truncate transition-colors hover:underline"
+                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring truncate rounded outline-none hover:underline focus-visible:ring-2"
               >
                 {c.name}
               </button>
@@ -171,7 +183,7 @@ function DriveFolderTreeNode({
           type="button"
           onClick={() => onNavigate(folder.id)}
           className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+            "focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2",
             active
               ? "bg-primary/10 text-primary font-medium"
               : "text-foreground hover:bg-muted",
@@ -185,10 +197,8 @@ function DriveFolderTreeNode({
           <span className="min-w-0 flex-1 truncate">{folder.name}</span>
           <span
             className={cn(
-              "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
-              active
-                ? "bg-primary/15 text-primary"
-                : "bg-muted text-muted-foreground",
+              "shrink-0 text-xs tabular-nums",
+              active ? "text-primary/80" : "text-muted-foreground",
             )}
           >
             {folderDocumentCount(folder)}
@@ -299,7 +309,7 @@ export function DriveFolderTree({
         type="button"
         onClick={() => onNavigate(null)}
         className={cn(
-          "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+          "focus-visible:ring-ring flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2",
           atRoot
             ? "bg-primary/10 text-primary font-medium"
             : "text-foreground hover:bg-muted",
@@ -310,13 +320,11 @@ export function DriveFolderTree({
         ) : (
           <Folder className="size-4 shrink-0 opacity-70" />
         )}
-        <span className="min-w-0 flex-1 truncate font-medium">Semua file</span>
+        <span className="min-w-0 flex-1 truncate">Semua file</span>
         <span
           className={cn(
-            "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
-            atRoot
-              ? "bg-primary/15 text-primary"
-              : "bg-muted text-muted-foreground",
+            "shrink-0 text-xs tabular-nums",
+            atRoot ? "text-primary/80" : "text-muted-foreground",
           )}
         >
           {rootFileCount}
@@ -385,7 +393,7 @@ export function DriveFolderChip({
     <li>
       <div
         className={cn(
-          "group border-border bg-card hover:border-primary/40 hover:bg-muted/40 relative flex items-center gap-3 rounded-xl border p-2.5 shadow-sm transition-colors",
+          "group border-border bg-card hover:border-foreground/20 focus-within:ring-ring/50 relative flex items-center gap-3 rounded-xl border p-2.5 transition-colors focus-within:ring-2",
           isOver && "border-primary bg-primary/5 ring-primary/40 ring-2",
         )}
         draggable={Boolean(onItemDragStart)}
@@ -398,13 +406,13 @@ export function DriveFolderChip({
             checked={selected}
             onCheckedChange={onToggleSelect}
             aria-label={`Pilih folder ${folder.name}`}
-            className={cn(!selectionActive && !selected && "sm:opacity-0 sm:group-hover:opacity-100")}
+            className={cn(!selectionActive && !selected && "sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100")}
           />
         ) : null}
         <button
           type="button"
           onClick={onOpen}
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none"
         >
           <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 flex size-10 shrink-0 items-center justify-center rounded-xl">
             <Folder className="size-5" />
@@ -469,6 +477,7 @@ export function DriveFolderGridCard({
   folder,
   view,
   compact = false,
+  listShowLocation = false,
   isRoomManager,
   onOpen,
   onRename,
@@ -487,6 +496,8 @@ export function DriveFolderGridCard({
   folder: DriveFolderRow;
   view: "grid" | "list";
   compact?: boolean;
+  /** Tampilan list: kolom Lokasi ikut tampil (mode cari). */
+  listShowLocation?: boolean;
   isRoomManager: boolean;
   onOpen: () => void;
   onRename: () => void;
@@ -509,6 +520,7 @@ export function DriveFolderGridCard({
         <div
           className={cn(
             "hover:bg-muted/40 flex items-center gap-3 px-3 py-2 transition-colors",
+            documentListGridClass(listShowLocation),
             isOver && "bg-primary/10 ring-primary/40 ring-2 ring-inset",
           )}
           draggable={Boolean(onItemDragStart)}
@@ -516,23 +528,27 @@ export function DriveFolderGridCard({
           onDragEnd={onItemDragEnd}
           {...dropProps}
         >
-          {onToggleSelect ? <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label={`Pilih folder ${folder.name}`} /> : null}
+          {onToggleSelect ? (
+            <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label={`Pilih folder ${folder.name}`} />
+          ) : (
+            <span className="hidden size-4 md:block" aria-hidden />
+          )}
           <button
             type="button"
             onClick={onOpen}
-            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+            className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2"
           >
-            <div className="bg-amber-500/15 text-amber-700 dark:text-amber-400 flex size-9 shrink-0 items-center justify-center rounded-md">
+            <div className="bg-amber-500/15 text-amber-700 dark:text-amber-400 flex size-9 shrink-0 items-center justify-center rounded-lg">
               <Folder className="size-4" />
             </div>
-            <div className="min-w-0">
-              <p className="text-foreground truncate text-sm font-medium">{folder.name}</p>
-              <p className="text-muted-foreground text-[11px]">Folder</p>
-            </div>
+            <p className="text-foreground min-w-0 truncate text-sm font-medium">{folder.name}</p>
           </button>
-          <span className="text-muted-foreground text-[11px] tabular-nums">
+          {listShowLocation ? <span className="hidden md:block" aria-hidden /> : null}
+          <span className="text-muted-foreground text-xs tabular-nums md:text-right">
             {folderDocumentCount(folder)} file
           </span>
+          <span className="hidden md:block" aria-hidden />
+          <div className="flex justify-end">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -569,6 +585,7 @@ export function DriveFolderGridCard({
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
       </li>
     );
@@ -578,7 +595,7 @@ export function DriveFolderGridCard({
     <li>
       <div
         className={cn(
-          "folder-grid-card border-border bg-card relative overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md",
+          "folder-grid-card border-border bg-card hover:border-foreground/20 focus-within:ring-ring/50 relative overflow-hidden rounded-xl border transition-colors focus-within:ring-2",
           "sm:[&:hover_.folder-grid-card-actions]:opacity-100 sm:[&:focus-within_.folder-grid-card-actions]:opacity-100",
           isOver && "border-primary ring-primary/40 ring-2",
         )}
@@ -622,7 +639,7 @@ export function DriveFolderGridCard({
             >
               {compact
                 ? `${folderDocumentCount(folder)} file`
-                : `Folder · ${folderDocumentCount(folder)} file`}
+                : `${folderDocumentCount(folder)} file`}
             </p>
           </div>
         </button>
