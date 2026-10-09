@@ -52,9 +52,6 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -88,8 +85,26 @@ import {
   DriveFolderChip,
   DriveFolderGridCard,
   DriveFolderTree,
+  documentListGridClass,
   type DriveFolderRow,
 } from "./room-documents-drive-nav";
+import {
+  ActiveFilterChips,
+  DocActionsMenu,
+  FileTypeBadge,
+  FileTypeSpine,
+  FolderChoiceItem,
+  fileTypeMeta,
+  formatDate,
+  formatFileSize,
+  type ActiveFilterChip,
+} from "./room-documents-items";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { RoomDocumentPreviewDialog } from "@/components/documents/room-document-preview-dialog";
 import {
   RoomDocumentShareDialog,
@@ -103,45 +118,30 @@ import {
 import {
   ArrowDownAZ,
   ArrowLeft,
-  ArrowUpAZ,
-  Calendar,
   Check,
   ChevronDown,
   CircleAlert,
   CircleCheck,
   CloudUpload,
   Download,
-  Eye,
-  File as FileIcon,
-  FileArchive,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
   Film,
   Folder,
   FolderInput,
   FolderOpen,
   FolderPlus,
-  Grid3x3,
-  HardDrive,
   Info,
   LayoutGrid,
   LayoutList,
   Loader2,
-  EllipsisVertical,
-  Music,
-  Pencil,
   Play,
   Clock3,
   RotateCcw,
   Search,
-  Share2,
   Star,
   SlidersHorizontal,
   Tag,
   Trash2,
   Upload,
-  User,
   X,
 } from "lucide-react";
 
@@ -173,6 +173,30 @@ const SORT_LABEL: Record<SortKey, string> = {
   size_asc: "Ukuran (kecil)",
   type: "Tipe file",
   uploader: "Pengunggah",
+};
+
+const TYPE_FILTER_LABEL: Record<TypeFilter, string> = {
+  all: "Semua tipe",
+  image: "Gambar",
+  video: "Video",
+  audio: "Audio",
+  pdf: "PDF",
+  document: "Dokumen",
+  archive: "Arsip",
+};
+
+const DATE_FILTER_LABEL: Record<DateFilter, string> = {
+  all: "Semua waktu",
+  today: "Hari ini",
+  week: "7 hari terakhir",
+  month: "30 hari terakhir",
+};
+
+const SCOPE_LABEL: Record<LibraryScope, string> = {
+  browse: "Semua file",
+  favorites: "Favorit",
+  recent: "Terbaru",
+  trash: "Sampah",
 };
 
 /** Kepadatan grid — mengatur jumlah kolom & ukuran kartu file/folder. */
@@ -283,65 +307,12 @@ function mountDragGhost(
   return ghost;
 }
 
-function formatFileSize(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
-function formatDate(d: Date | string): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function folderLabelForDoc(
   folderId: string | null,
   folders: RoomDocumentFolderRow[],
 ): string {
   if (!folderId) return "Semua file";
   return formatFolderPath(folderId, folders);
-}
-
-function fileTypeMeta(mimeType: string): {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  tone: string;
-  /** Latar lembut senada tipe — untuk placeholder file non-visual. */
-  bg: string;
-} {
-  if (mimeType.startsWith("image/"))
-    return { icon: FileImage, label: "Gambar", tone: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" };
-  if (mimeType.startsWith("video/"))
-    return { icon: Film, label: "Video", tone: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10" };
-  if (mimeType.startsWith("audio/"))
-    return { icon: Music, label: "Audio", tone: "text-pink-600 dark:text-pink-400", bg: "bg-pink-500/10" };
-  if (mimeType === "application/pdf")
-    return { icon: FileText, label: "PDF", tone: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10" };
-  if (
-    mimeType.includes("zip") ||
-    mimeType.includes("compressed") ||
-    mimeType.includes("rar") ||
-    mimeType.includes("tar")
-  )
-    return { icon: FileArchive, label: "Arsip", tone: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" };
-  if (
-    mimeType.includes("spreadsheet") ||
-    mimeType.includes("excel") ||
-    mimeType.includes("csv")
-  )
-    return { icon: FileSpreadsheet, label: "Spreadsheet", tone: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-500/10" };
-  if (
-    mimeType.includes("word") ||
-    mimeType.includes("document") ||
-    mimeType.startsWith("text/")
-  )
-    return { icon: FileText, label: "Dokumen", tone: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10" };
-  return { icon: FileIcon, label: "File", tone: "text-muted-foreground", bg: "bg-muted" };
 }
 
 export function RoomDocumentsWorkspace({
@@ -429,7 +400,7 @@ export function RoomDocumentsWorkspace({
   });
   const [showAllFolders, setShowAllFolders] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("newest");
-  const [showHelp, setShowHelp] = useState(false);
+  const [folderSheetOpen, setFolderSheetOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<RoomDocumentRow | null>(null);
   const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
@@ -1264,13 +1235,73 @@ export function RoomDocumentsWorkspace({
 
   const inputId = `room-doc-file-${roomId}`;
   const folderEmpty =
-    !isSearchActive &&
     childFolders.length === 0 &&
     visibleDocuments.length === 0;
   const totalDocs = storageSummary.fileCount;
 
+  const clearFilters = () => {
+    setTypeFilter("all");
+    setDateFilter("all");
+    setUploaderFilter("");
+    setTagFilter("__all__");
+  };
+  const uploaderFilterLabel = uploaderFilter
+    ? (() => {
+        const member = documentMembers.find((m) => m.id === uploaderFilter);
+        return member?.name || member?.email || "Pengunggah";
+      })()
+    : "";
+  const filterChips: ActiveFilterChip[] = [
+    typeFilter !== "all"
+      ? { key: "type", label: TYPE_FILTER_LABEL[typeFilter], onRemove: () => setTypeFilter("all") }
+      : null,
+    dateFilter !== "all"
+      ? { key: "date", label: DATE_FILTER_LABEL[dateFilter], onRemove: () => setDateFilter("all") }
+      : null,
+    uploaderFilter
+      ? { key: "uploader", label: `Oleh ${uploaderFilterLabel}`, onRemove: () => setUploaderFilter("") }
+      : null,
+    tagFilter !== "__all__"
+      ? { key: "tag", label: `#${tagFilter}`, onRemove: () => setTagFilter("__all__") }
+      : null,
+  ].filter((chip): chip is ActiveFilterChip => chip != null);
+  const hasNarrowing = isSearchActive || filterChips.length > 0;
+  const resultCount = documentTotal + childFolders.length;
+
+  const navigateFromSheet = (folderId: string | null) => {
+    navigateToFolder(folderId);
+    setFolderSheetOpen(false);
+  };
+
   /** Urutan file untuk prev/next di dialog pratinjau (folder / filter saat ini). */
   const previewPlaylist = useMemo(() => visibleDocuments, [visibleDocuments]);
+
+  const scopeItems = [
+    ["browse", Folder],
+    ["favorites", Star],
+    ["recent", Clock3],
+    ["trash", Trash2],
+  ] as const;
+
+  const folderTreeProps = {
+    folders,
+    currentFolderId,
+    rootFileCount,
+    isRoomManager,
+    onRename: openRename,
+    onMove: openMoveFolder,
+    onFavorite: (folder: RoomDocumentFolderRow) => void onToggleFavorite("folder", folder.id),
+    onShare: (folder: RoomDocumentFolderRow) =>
+      setShareTarget({ kind: "folder", id: folder.id, name: folder.name }),
+    onDelete: (f: RoomDocumentFolderRow) => void onDeleteFolder(f),
+    onDownload: (f: RoomDocumentFolderRow) => void onDownloadFolder(f),
+  };
+
+  const storageLine = (
+    <p className="text-muted-foreground text-xs tabular-nums">
+      {formatFileSize(totalSize)} terpakai oleh {totalDocs} file
+    </p>
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -1285,100 +1316,128 @@ export function RoomDocumentsWorkspace({
         onChange={(e) => void onFileInput(e)}
       />
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        {/* Sidebar — Drive ruangan */}
-        <aside className="border-border bg-card sticky top-14 z-10 w-full shrink-0 space-y-3 rounded-xl border p-3 lg:max-w-[264px]">
-          {/* Ringkasan penyimpanan */}
-          <div className="bg-muted/40 flex items-center gap-3 rounded-lg p-3">
-            <div className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
-              <HardDrive className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold leading-tight tabular-nums">
-                {formatFileSize(totalSize)}
-              </p>
-              <p className="text-muted-foreground text-xs">
-                {totalDocs} file · {folders.length} folder
-              </p>
-            </div>
-          </div>
+      {/* Navigasi ringkas untuk layar < lg — sidebar penuh hanya di desktop */}
+      <div className="flex items-center gap-2 lg:hidden">
+        <nav
+          aria-label="Tampilan pustaka"
+          className="flex min-w-0 flex-1 gap-1 overflow-x-auto"
+        >
+          {scopeItems.map(([scope, Icon]) => (
+            <button
+              key={scope}
+              type="button"
+              onClick={() => changeLibraryScope(scope)}
+              aria-current={libraryScope === scope ? "page" : undefined}
+              className={cn(
+                "focus-visible:ring-ring inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm outline-none focus-visible:ring-2",
+                libraryScope === scope
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <Icon className="size-3.5" />
+              {SCOPE_LABEL[scope]}
+              {scope === "trash" && trashFolders.length > 0 ? (
+                <span className="tabular-nums opacity-70">{trashFolders.length}</span>
+              ) : null}
+            </button>
+          ))}
+        </nav>
+        {libraryScope === "browse" ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setFolderSheetOpen(true)}
+          >
+            <FolderOpen className="size-4" />
+            Folder
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Riwayat aktivitas"
+          title="Riwayat aktivitas"
+          onClick={() => setActivityOpen(true)}
+        >
+          <Clock3 className="size-4" />
+        </Button>
+      </div>
 
-          <nav aria-label="Tampilan pustaka" className="grid grid-cols-2 gap-1 lg:grid-cols-1">
-            {([
-              ["browse", "Semua file", HardDrive],
-              ["favorites", "Favorit", Star],
-              ["recent", "Terbaru", Clock3],
-              ["trash", "Sampah", Trash2],
-            ] as const).map(([scope, label, Icon]) => (
+      <Sheet open={folderSheetOpen} onOpenChange={setFolderSheetOpen}>
+        <SheetContent side="left" className="gap-0">
+          <SheetHeader>
+            <SheetTitle>Folder</SheetTitle>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+            <DriveFolderTree {...folderTreeProps} onNavigate={navigateFromSheet} />
+          </div>
+          <div className="border-border border-t px-4 py-3">{storageLine}</div>
+        </SheetContent>
+      </Sheet>
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        {/* Sidebar — Drive ruangan (desktop) */}
+        <aside className="border-border bg-card sticky top-14 z-10 hidden max-h-[calc(100vh-4.5rem)] w-64 shrink-0 flex-col gap-3 rounded-xl border p-2 lg:flex">
+          <nav aria-label="Tampilan pustaka" className="flex flex-col gap-0.5">
+            {scopeItems.map(([scope, Icon]) => (
               <button
                 key={scope}
                 type="button"
                 onClick={() => changeLibraryScope(scope)}
+                aria-current={libraryScope === scope ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                  "focus-visible:ring-ring flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2",
                   libraryScope === scope
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                <span className="flex-1">{label}</span>
+                <span className="flex-1">{SCOPE_LABEL[scope]}</span>
                 {scope === "trash" && trashFolders.length > 0 ? (
-                  <span className="bg-muted rounded px-1.5 text-[10px] tabular-nums">
+                  <span className="text-xs tabular-nums opacity-70">
                     {trashFolders.length}
                   </span>
                 ) : null}
               </button>
             ))}
           </nav>
-          <Button type="button" size="sm" variant="outline" className="w-full justify-start" onClick={() => setActivityOpen(true)}>
-            <Clock3 className="size-4" /> Riwayat aktivitas
-          </Button>
 
           {libraryScope === "browse" ? (
-            <>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-              Folder
-            </p>
-            <Button
+            <div className="border-border flex min-h-0 flex-1 flex-col gap-1 border-t pt-3">
+              <div className="flex items-center justify-between gap-2 px-2.5">
+                <h2 className="text-sm font-medium">Folder</h2>
+                <span
+                  className="text-muted-foreground"
+                  title="File diunggah ke folder yang sedang dibuka. Seret file atau folder ke folder lain untuk memindahkannya. Pencarian mencakup seluruh ruangan."
+                >
+                  <Info className="size-3.5" aria-hidden />
+                  <span className="sr-only">
+                    File diunggah ke folder yang sedang dibuka. Seret item ke
+                    folder lain untuk memindahkannya.
+                  </span>
+                </span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <DriveFolderTree {...folderTreeProps} onNavigate={navigateToFolder} />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="border-border space-y-1 border-t px-2.5 pt-3 pb-1">
+            {storageLine}
+            <button
               type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Cara pakai"
-              className="text-muted-foreground"
-              onClick={() => setShowHelp((v) => !v)}
+              onClick={() => setActivityOpen(true)}
+              className="text-muted-foreground hover:text-foreground focus-visible:ring-ring -mx-1 inline-flex items-center gap-1.5 rounded px-1 py-0.5 text-xs outline-none focus-visible:ring-2"
             >
-              <Info className="size-3.5" />
-            </Button>
+              <Clock3 className="size-3.5" />
+              Riwayat aktivitas
+            </button>
           </div>
-          {showHelp ? (
-            <p className="text-muted-foreground bg-muted/40 rounded-lg p-2.5 text-[11px] leading-relaxed">
-              Navigasi seperti Google Drive: buka folder di panel ini atau lewat
-              kartu folder. File diunggah ke folder yang sedang dibuka. Saat
-              mencari, hasil mencakup seluruh ruangan beserta jalur foldernya.
-              Manager dapat memindahkan folder beserta seluruh isinya dari menu
-              aksi folder.
-            </p>
-          ) : null}
-
-          <DriveFolderTree
-            folders={folders}
-            currentFolderId={currentFolderId}
-            rootFileCount={rootFileCount}
-            isRoomManager={isRoomManager}
-            onNavigate={navigateToFolder}
-            onRename={openRename}
-            onMove={openMoveFolder}
-            onFavorite={(folder) => void onToggleFavorite("folder", folder.id)}
-            onShare={(folder) => setShareTarget({ kind: "folder", id: folder.id, name: folder.name })}
-            onDelete={(f) => void onDeleteFolder(f)}
-            onDownload={(f) => void onDownloadFolder(f)}
-          />
-
-            </>
-          ) : null}
-
         </aside>
 
         {/* Main — area konten sekaligus zona tarik-lepas seluruh panel */}
@@ -1406,400 +1465,368 @@ export function RoomDocumentsWorkspace({
         >
           {/* Overlay tarik-lepas — hanya tampil saat menyeret file */}
           {isDragging ? (
-            <div className="border-primary bg-primary/10 pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed text-center backdrop-blur-sm">
+            <div className="border-primary bg-primary/10 motion-safe:animate-in motion-safe:fade-in-0 pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed text-center backdrop-blur-sm">
               <div className="bg-primary text-primary-foreground flex size-14 items-center justify-center rounded-2xl shadow-lg">
                 <CloudUpload className="size-7" />
               </div>
-              <p className="text-sm font-semibold">
-                Lepas untuk mengunggah ke{" "}
-                <span className="text-primary">{uploadTargetLabel}</span>
-              </p>
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold">Lepas untuk mengunggah</p>
+                <p className="text-muted-foreground text-xs">
+                  ke {uploadTargetLabel}
+                </p>
+              </div>
             </div>
           ) : null}
 
-          {/* Toolbar */}
-          <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-xl border p-2">
-            <div
-              className="flex min-w-0 items-center gap-1"
-              onDragOver={(event) => {
-                if (event.dataTransfer.types.includes(DOCUMENT_ITEMS_DRAG_TYPE)) event.preventDefault();
-              }}
-              onDrop={(event) => void dropItemsIntoFolder(event, currentFolderId)}
-              title="Lepaskan item di breadcrumb untuk memindahkan ke lokasi ini"
-            >
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                disabled={!canGoBackFolder || libraryScope !== "browse"}
-                onClick={goBackToPreviousFolder}
-                aria-label={
-                  previousFolderLabel
-                    ? `Kembali ke ${previousFolderLabel}`
-                    : "Kembali ke folder sebelumnya"
-                }
-                title={
-                  previousFolderLabel
-                    ? `Kembali ke ${previousFolderLabel}`
-                    : "Kembali ke folder sebelumnya"
-                }
-                className="shrink-0"
+          <header className="space-y-3">
+            {/* Baris 1 — lokasi saat ini sebagai judul + aksi utama */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div
+                className="flex min-w-0 flex-1 items-center gap-1"
+                onDragOver={(event) => {
+                  if (event.dataTransfer.types.includes(DOCUMENT_ITEMS_DRAG_TYPE)) event.preventDefault();
+                }}
+                onDrop={(event) => void dropItemsIntoFolder(event, currentFolderId)}
+                title="Lepaskan item di sini untuk memindahkannya ke lokasi ini"
               >
-                <ArrowLeft className="size-4" />
-              </Button>
-              <div className="bg-border hidden h-5 w-px sm:block" aria-hidden />
+                {libraryScope === "browse" && canGoBackFolder ? (
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={goBackToPreviousFolder}
+                    aria-label={
+                      previousFolderLabel
+                        ? `Kembali ke ${previousFolderLabel}`
+                        : "Kembali ke folder sebelumnya"
+                    }
+                    title={
+                      previousFolderLabel
+                        ? `Kembali ke ${previousFolderLabel}`
+                        : "Kembali ke folder sebelumnya"
+                    }
+                    className="-ml-1 shrink-0"
+                  >
+                    <ArrowLeft className="size-4" />
+                  </Button>
+                ) : null}
+                {libraryScope === "browse" ? (
+                  <DriveBreadcrumb
+                    currentFolderId={currentFolderId}
+                    folders={folders}
+                    onNavigate={navigateToFolder}
+                  />
+                ) : (
+                  <h1 className="text-lg font-semibold">{SCOPE_LABEL[libraryScope]}</h1>
+                )}
+              </div>
               {libraryScope === "browse" ? (
-                <DriveBreadcrumb
-                  currentFolderId={currentFolderId}
-                  folders={folders}
-                  onNavigate={navigateToFolder}
-                />
-              ) : (
-                <span className="text-sm font-medium">
-                  {libraryScope === "favorites"
-                    ? "Favorit"
-                    : libraryScope === "recent"
-                      ? "Terbaru"
-                      : "Sampah"}
-                </span>
-              )}
-            </div>
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-            {isSearchActive ? (
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {documentTotal + childFolders.length} hasil · metadata & isi file
-              </span>
-            ) : (
-              <span className="text-muted-foreground hidden text-xs tabular-nums sm:inline">
-                {childFolders.length} folder · {visibleDocuments.length} file
-              </span>
-            )}
-            <div className="border-border focus-within:border-ring focus-within:ring-ring/40 flex items-center gap-2 rounded-lg border px-2.5 transition-colors focus-within:ring-2">
-              <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari folder, file, atau isi…"
-                className="placeholder:text-muted-foreground h-8 w-44 bg-transparent text-sm outline-none"
-              />
-              {search ? (
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground"
-                  aria-label="Bersihkan pencarian"
-                  onClick={() => setSearch("")}
-                >
-                  <X className="size-3.5" />
-                </button>
-              ) : null}
-            </div>
-            {/* Toggle tampilan grid / list */}
-            <div className="border-border bg-background flex shrink-0 items-center rounded-lg border p-0.5">
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                  view === "grid"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setView("grid")}
-                aria-pressed={view === "grid"}
-                aria-label="Tampilan grid"
-              >
-                <Grid3x3 className="size-3.5" />
-                Grid
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                  view === "list"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setView("list")}
-                aria-pressed={view === "list"}
-                aria-label="Tampilan daftar"
-              >
-                <LayoutList className="size-3.5" />
-                List
-              </button>
-            </div>
-
-            {/* Opsi tampilan: urutkan + ukuran kartu + filter tag + mode pilih */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
+                <div className="flex shrink-0 items-center gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    title="Urutkan, ukuran & filter"
+                    onClick={() => setCreateFolderOpen(true)}
+                    disabled={pending}
                   >
-                    <SlidersHorizontal className="size-3.5" />
-                    <span className="hidden sm:inline">Tampilan</span>
-                    {tagFilter !== "__all__" ||
-                    sortKey !== "newest" ||
-                    typeFilter !== "all" ||
-                    dateFilter !== "all" ||
-                    uploaderFilter ? (
-                      <span
-                        className="bg-primary size-1.5 rounded-full"
-                        aria-hidden
-                      />
-                    ) : null}
+                    <FolderPlus className="size-4" />
+                    <span className="hidden sm:inline">Folder baru</span>
                   </Button>
-                }
-              />
-              <DropdownMenuContent
-                align="end"
-                sideOffset={4}
-                className="max-h-[70vh] w-60 overflow-y-auto"
-              >
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>Urutkan</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={sortKey}
-                    onValueChange={(v) => setSortKey(v as SortKey)}
-                  >
-                    <DropdownMenuRadioItem value="newest">
-                      <Calendar className="size-3.5" /> {SORT_LABEL.newest}
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="oldest">
-                      <Calendar className="size-3.5" /> {SORT_LABEL.oldest}
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="name">
-                      <ArrowDownAZ className="size-3.5" /> {SORT_LABEL.name}
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="name_desc">
-                      <ArrowUpAZ className="size-3.5" /> {SORT_LABEL.name_desc}
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="size">
-                      <HardDrive className="size-3.5" /> {SORT_LABEL.size}
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="size_asc">
-                      <HardDrive className="size-3.5 opacity-60" />{" "}
-                      {SORT_LABEL.size_asc}
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="type">
-                      <Film className="size-3.5" /> {SORT_LABEL.type}
-                    </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="uploader">
-                      <User className="size-3.5" /> {SORT_LABEL.uploader}
-                    </DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
+                  {/* Unggah + opsi (judul & tag) sebagai caret */}
+                  <div className="flex shrink-0 items-center">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-r-none"
+                      disabled={pending || uploadBusy || libraryScope !== "browse"}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {pending || uploadBusy ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Upload className="size-4" />
+                      )}
+                      Unggah
+                    </Button>
+                    <Popover
+                      open={uploadOptionsOpen}
+                      onOpenChange={setUploadOptionsOpen}
+                    >
+                      <PopoverTrigger
+                        render={
+                          <Button
+                            type="button"
+                            size="sm"
+                            aria-label="Opsi unggah (judul & tag)"
+                            title="Opsi unggah berikutnya"
+                            className="border-primary-foreground/25 rounded-l-none border-l px-1.5"
+                          >
+                            <ChevronDown className="size-4" />
+                            {title.trim() || uploadTagsInput.trim() ? (
+                              <span
+                                className="bg-primary-foreground size-1.5 rounded-full"
+                                aria-hidden
+                              />
+                            ) : null}
+                          </Button>
+                        }
+                      />
+                      <PopoverContent align="end" className="w-80">
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-medium">Opsi unggah berikutnya</p>
+                          <p className="text-muted-foreground text-xs">
+                            Berlaku untuk file yang diunggah setelah ini.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="doc-title" className="text-xs">
+                            Judul (opsional)
+                          </Label>
+                          <Input
+                            id="doc-title"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            placeholder="Contoh: Briefing Q3"
+                            disabled={pending || uploadBusy}
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="doc-upload-tags" className="text-xs">
+                            Tag batch (opsional)
+                          </Label>
+                          <Input
+                            id="doc-upload-tags"
+                            value={uploadTagsInput}
+                            onChange={(e) => setUploadTagsInput(e.target.value)}
+                            placeholder="footage, raw, approved"
+                            disabled={pending || uploadBusy}
+                            className="h-9"
+                          />
+                          <p className="text-muted-foreground text-[11px]">
+                            Maks. 20 tag; huruf kecil otomatis. Pisahkan dengan
+                            koma/spasi.
+                          </p>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              ) : null}
+            </div>
 
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>Filter tipe</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={typeFilter}
-                    onValueChange={(value) => setTypeFilter(value as TypeFilter)}
+            {/* Baris 2 — cari, urutkan, saring, tampilan */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/40 flex h-9 min-w-[12rem] flex-1 items-center gap-2 rounded-lg border px-3 transition-colors focus-within:ring-2">
+                {libraryLoading && isSearchActive ? (
+                  <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" aria-hidden />
+                ) : (
+                  <Search className="text-muted-foreground size-4 shrink-0" aria-hidden />
+                )}
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cari nama, tag, atau isi file"
+                  aria-label="Cari dokumen"
+                  className="placeholder:text-muted-foreground h-full min-w-0 flex-1 bg-transparent text-sm outline-none [&::-webkit-search-cancel-button]:hidden"
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded outline-none focus-visible:ring-2"
+                    aria-label="Bersihkan pencarian"
+                    onClick={() => setSearch("")}
                   >
-                    {([
-                      ["all", "Semua tipe"],
-                      ["image", "Gambar"],
-                      ["video", "Video"],
-                      ["audio", "Audio"],
-                      ["pdf", "PDF"],
-                      ["document", "Dokumen"],
-                      ["archive", "Arsip"],
-                    ] as const).map(([value, label]) => (
-                      <DropdownMenuRadioItem key={value} value={value}>
-                        <FileIcon className="size-3.5" /> {label}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>Waktu unggah</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={dateFilter}
-                    onValueChange={(value) => setDateFilter(value as DateFilter)}
-                  >
-                    <DropdownMenuRadioItem value="all"><Calendar className="size-3.5" /> Semua waktu</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="today"><Calendar className="size-3.5" /> Hari ini</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="week"><Calendar className="size-3.5" /> 7 hari</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="month"><Calendar className="size-3.5" /> 30 hari</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
-
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>Pengunggah</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup
-                    value={uploaderFilter || "__all__"}
-                    onValueChange={(value) => setUploaderFilter(value === "__all__" ? "" : value)}
-                  >
-                    <DropdownMenuRadioItem value="__all__"><User className="size-3.5" /> Semua orang</DropdownMenuRadioItem>
-                    {documentMembers.map((member) => (
-                      <DropdownMenuRadioItem key={member.id} value={member.id}>
-                        <User className="size-3.5" /> {member.name || member.email}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuGroup>
-
-                {view === "grid" ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>Ukuran kartu</DropdownMenuLabel>
-                      <DropdownMenuRadioGroup
-                        value={density}
-                        onValueChange={(v) => setDensity(v as GridDensity)}
-                      >
-                        <DropdownMenuRadioItem value="besar">
-                          <LayoutGrid className="size-3.5" />{" "}
-                          {DENSITY_LABEL.besar}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="sedang">
-                          <Grid3x3 className="size-3.5" /> {DENSITY_LABEL.sedang}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="kecil">
-                          <Grid3x3 className="size-3.5 opacity-60" />{" "}
-                          {DENSITY_LABEL.kecil}
-                        </DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuGroup>
-                  </>
+                    <X className="size-4" />
+                  </button>
                 ) : null}
+              </div>
 
-                {allTagsInRoom.length > 0 ? (
-                  <>
-                    <DropdownMenuSeparator />
+              <div className="flex items-center gap-2">
+                {/* Urutan (+ ukuran kartu saat grid) */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button type="button" size="sm" variant="outline" className="h-9" title="Urutkan">
+                        <ArrowDownAZ className="size-4" />
+                        <span className="hidden sm:inline">{SORT_LABEL[sortKey]}</span>
+                        <ChevronDown className="size-3.5 opacity-60" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end" sideOffset={4} className="w-56">
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel>Filter tag</DropdownMenuLabel>
+                      <DropdownMenuLabel>Urutkan</DropdownMenuLabel>
                       <DropdownMenuRadioGroup
-                        value={tagFilter}
-                        onValueChange={(v) => setTagFilter(v ?? "__all__")}
+                        value={sortKey}
+                        onValueChange={(v) => setSortKey(v as SortKey)}
                       >
-                        <DropdownMenuRadioItem value="__all__">
-                          <Tag className="size-3.5 opacity-60" /> Semua tag
-                        </DropdownMenuRadioItem>
-                        {allTagsInRoom.map((t) => (
-                          <DropdownMenuRadioItem key={t} value={t}>
-                            <Tag className="size-3.5" /> {t}
+                        {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
+                          <DropdownMenuRadioItem key={key} value={key}>
+                            {SORT_LABEL[key]}
                           </DropdownMenuRadioItem>
                         ))}
                       </DropdownMenuRadioGroup>
                     </DropdownMenuGroup>
-                  </>
-                ) : null}
+                    {view === "grid" ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel>Ukuran kartu</DropdownMenuLabel>
+                          <DropdownMenuRadioGroup
+                            value={density}
+                            onValueChange={(v) => setDensity(v as GridDensity)}
+                          >
+                            {(Object.keys(DENSITY_LABEL) as GridDensity[]).map((key) => (
+                              <DropdownMenuRadioItem key={key} value={key}>
+                                {DENSITY_LABEL[key]}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuGroup>
+                      </>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-                {!selectionActive && selectableDocIds.length > 0 ? (
-                  <>
+                {/* Filter — yang aktif juga tampil sebagai chip di bawah */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button type="button" size="sm" variant="outline" className="h-9" title="Saring">
+                        <SlidersHorizontal className="size-4" />
+                        <span className="hidden sm:inline">Filter</span>
+                        {filterChips.length > 0 ? (
+                          <span className="bg-primary text-primary-foreground inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-semibold tabular-nums">
+                            {filterChips.length}
+                          </span>
+                        ) : null}
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent
+                    align="end"
+                    sideOffset={4}
+                    className="max-h-[70vh] w-60 overflow-y-auto"
+                  >
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Tipe</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={typeFilter}
+                        onValueChange={(value) => setTypeFilter(value as TypeFilter)}
+                      >
+                        {(Object.keys(TYPE_FILTER_LABEL) as TypeFilter[]).map((key) => (
+                          <DropdownMenuRadioItem key={key} value={key}>
+                            {TYPE_FILTER_LABEL[key]}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuGroup>
+
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={selectAllVisibleDocs}>
-                      <Check className="size-3.5" /> Pilih file…
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Waktu unggah</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={dateFilter}
+                        onValueChange={(value) => setDateFilter(value as DateFilter)}
+                      >
+                        {(Object.keys(DATE_FILTER_LABEL) as DateFilter[]).map((key) => (
+                          <DropdownMenuRadioItem key={key} value={key}>
+                            {DATE_FILTER_LABEL[key]}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuGroup>
 
-            <div
-              className="bg-border mx-0.5 hidden h-6 w-px lg:block"
-              aria-hidden
-            />
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Pengunggah</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={uploaderFilter || "__all__"}
+                        onValueChange={(value) => setUploaderFilter(value === "__all__" ? "" : value)}
+                      >
+                        <DropdownMenuRadioItem value="__all__">Semua orang</DropdownMenuRadioItem>
+                        {documentMembers.map((member) => (
+                          <DropdownMenuRadioItem key={member.id} value={member.id}>
+                            {member.name || member.email}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuGroup>
 
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setCreateFolderOpen(true)}
-              disabled={pending || libraryScope !== "browse"}
-            >
-              <FolderPlus className="size-4" />
-              <span className="hidden sm:inline">Folder baru</span>
-            </Button>
+                    {allTagsInRoom.length > 0 ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel>Tag</DropdownMenuLabel>
+                          <DropdownMenuRadioGroup
+                            value={tagFilter}
+                            onValueChange={(v) => setTagFilter(v ?? "__all__")}
+                          >
+                            <DropdownMenuRadioItem value="__all__">Semua tag</DropdownMenuRadioItem>
+                            {allTagsInRoom.map((t) => (
+                              <DropdownMenuRadioItem key={t} value={t}>
+                                <Tag className="size-3.5 opacity-60" /> {t}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuGroup>
+                      </>
+                    ) : null}
 
-            {/* Unggah + opsi (judul & tag) sebagai caret */}
-            <div className="flex shrink-0 items-center">
-              <Button
-                type="button"
-                size="sm"
-                className="rounded-r-none"
-                disabled={pending || uploadBusy || libraryScope !== "browse"}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {pending || uploadBusy ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Upload className="size-4" />
-                )}
-                Unggah
-              </Button>
-              <Popover
-                open={uploadOptionsOpen}
-                onOpenChange={setUploadOptionsOpen}
-              >
-                <PopoverTrigger
-                  render={
-                    <Button
+                    {!selectionActive && selectableDocIds.length > 0 ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={selectAllVisibleDocs}>
+                          <Check className="size-3.5" /> Pilih semua file
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Toggle tampilan grid / list */}
+                <div
+                  role="group"
+                  aria-label="Tampilan"
+                  className="border-input bg-background flex h-9 shrink-0 items-center rounded-lg border p-0.5"
+                >
+                  {([
+                    ["grid", LayoutGrid, "Tampilan grid"],
+                    ["list", LayoutList, "Tampilan daftar"],
+                  ] as const).map(([mode, Icon, label]) => (
+                    <button
+                      key={mode}
                       type="button"
-                      size="sm"
-                      aria-label="Opsi unggah (judul & tag)"
-                      title="Opsi unggah berikutnya"
-                      className="border-primary-foreground/25 rounded-l-none border-l px-1.5"
+                      className={cn(
+                        "focus-visible:ring-ring inline-flex h-full items-center rounded-md px-2 outline-none focus-visible:ring-2",
+                        view === mode
+                          ? "bg-muted text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setView(mode)}
+                      aria-pressed={view === mode}
+                      aria-label={label}
+                      title={label}
                     >
-                      <ChevronDown className="size-4" />
-                      {title.trim() || uploadTagsInput.trim() ? (
-                        <span
-                          className="bg-primary-foreground size-1.5 rounded-full"
-                          aria-hidden
-                        />
-                      ) : null}
-                    </Button>
-                  }
-                />
-                <PopoverContent align="end" className="w-80">
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-medium">Opsi unggah berikutnya</p>
-                    <p className="text-muted-foreground text-xs">
-                      Berlaku untuk file yang diunggah setelah ini.
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="doc-title" className="text-xs">
-                      Judul (opsional)
-                    </Label>
-                    <Input
-                      id="doc-title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Contoh: Briefing Q3"
-                      disabled={pending || uploadBusy}
-                      className="h-9"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="doc-upload-tags" className="text-xs">
-                      Tag batch (opsional)
-                    </Label>
-                    <Input
-                      id="doc-upload-tags"
-                      value={uploadTagsInput}
-                      onChange={(e) => setUploadTagsInput(e.target.value)}
-                      placeholder="footage, raw, approved"
-                      disabled={pending || uploadBusy}
-                      className="h-9"
-                    />
-                    <p className="text-muted-foreground text-[11px]">
-                      Maks. 20 tag; huruf kecil otomatis. Pisahkan dengan
-                      koma/spasi.
-                    </p>
-                  </div>
-                </PopoverContent>
-              </Popover>
+                      <Icon className="size-4" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            </div>
-          </div>
+
+            <ActiveFilterChips chips={filterChips} onClearAll={clearFilters} />
+
+            {isSearchActive ? (
+              <p className="text-muted-foreground text-xs tabular-nums" aria-live="polite">
+                {libraryLoading
+                  ? "Mencari di seluruh ruangan…"
+                  : `${resultCount} hasil di seluruh ruangan, termasuk isi file`}
+              </p>
+            ) : null}
+          </header>
 
           {selectionActive ? (
             <div className="border-primary/30 bg-primary/5 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
@@ -1895,13 +1922,11 @@ export function RoomDocumentsWorkspace({
                 className="p-12"
               />
             ) : (
-              <div className="border-border bg-card overflow-hidden rounded-xl border">
-                <div className="border-border bg-muted/30 flex items-center justify-between border-b px-4 py-3">
-                  <div>
-                    <h2 className="text-sm font-semibold">Sampah</h2>
-                    <p className="text-muted-foreground text-xs">Pulihkan item atau hapus permanen.</p>
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <p className="text-muted-foreground text-xs">
+                  Pulihkan item ke lokasi asalnya, atau hapus permanen.
+                </p>
+                <div className="border-border bg-card overflow-hidden rounded-xl border">
                 <ul className="divide-border divide-y">
                   {childFolders.map((folder) => (
                     <li key={folder.id} className="flex items-center gap-3 px-4 py-3">
@@ -1911,7 +1936,8 @@ export function RoomDocumentsWorkspace({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{folder.name}</p>
                         <p className="text-muted-foreground text-xs">
-                          Folder · {folder._count.recursiveDocuments ?? folder._count.documents} file
+                          {folder._count.recursiveDocuments ?? folder._count.documents} file
+                          {folder.trashedAt ? <> · dihapus {formatDate(folder.trashedAt)}</> : null}
                         </p>
                       </div>
                       <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onRestoreTrashFolder(folder)}>
@@ -1924,12 +1950,13 @@ export function RoomDocumentsWorkspace({
                   ))}
                   {documentRows.map((document) => (
                     <li key={document.id} className="flex items-center gap-3 px-4 py-3">
-                      <span className="bg-muted text-muted-foreground flex size-9 items-center justify-center rounded-lg">
-                        <FileIcon className="size-4" />
-                      </span>
+                      <FileTypeBadge mimeType={document.mimeType} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{document.title || document.fileName}</p>
-                        <p className="text-muted-foreground truncate text-xs">{document.fileName} · {formatFileSize(document.size)}</p>
+                        <p className="text-muted-foreground truncate text-xs tabular-nums">
+                          {formatFileSize(document.size)}
+                          {document.trashedAt ? <> · dihapus {formatDate(document.trashedAt)}</> : null}
+                        </p>
                       </div>
                       <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onRestoreTrashDocument(document)}>
                         <RotateCcw className="size-3.5" /> Pulihkan
@@ -1940,23 +1967,59 @@ export function RoomDocumentsWorkspace({
                     </li>
                   ))}
                 </ul>
+                </div>
               </div>
             )
           ) : folderEmpty ? (
-            <EmptyState
-              icon={isSearchActive ? Search : FolderOpen}
-              title={
-                isSearchActive
-                  ? "Tidak ada file yang cocok."
-                  : "Folder ini masih kosong."
-              }
-              description={
-                isSearchActive
-                  ? "Coba kata kunci lain atau ubah filter tag."
-                  : "Tarik & lepas file ke area ini, atau unggah lewat tombol di atas."
-              }
-              action={
-                !isSearchActive ? (
+            libraryLoading ? (
+              <div className="text-muted-foreground flex items-center justify-center gap-2 py-16 text-sm">
+                <Loader2 className="size-4 animate-spin" /> Memuat…
+              </div>
+            ) : hasNarrowing ? (
+              <EmptyState
+                icon={Search}
+                title="Tidak ada yang cocok"
+                description={
+                  isSearchActive
+                    ? "Coba kata kunci lain, atau lepas filter yang aktif."
+                    : "Tidak ada file yang lolos filter ini di lokasi sekarang."
+                }
+                action={
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSearch("");
+                      clearFilters();
+                    }}
+                  >
+                    <X className="size-4" />
+                    {isSearchActive ? "Hapus pencarian & filter" : "Hapus filter"}
+                  </Button>
+                }
+                className="p-12"
+              />
+            ) : libraryScope === "favorites" ? (
+              <EmptyState
+                icon={Star}
+                title="Belum ada favorit"
+                description="Tandai file atau folder sebagai favorit lewat menu aksinya agar mudah ditemukan di sini."
+                className="p-12"
+              />
+            ) : libraryScope === "recent" ? (
+              <EmptyState
+                icon={Clock3}
+                title="Belum ada file terbaru"
+                description="File yang baru diunggah ke ruangan ini akan muncul di sini."
+                className="p-12"
+              />
+            ) : (
+              <EmptyState
+                icon={FolderOpen}
+                title="Folder ini kosong"
+                description="Seret file ke area ini, atau pilih file dari perangkat."
+                action={
                   <Button
                     type="button"
                     size="sm"
@@ -1966,21 +2029,16 @@ export function RoomDocumentsWorkspace({
                     <Upload className="size-4" />
                     Unggah file
                   </Button>
-                ) : undefined
-              }
-              className="p-12"
-            />
+                }
+                className="p-12"
+              />
+            )
           ) : view === "grid" ? (
             <div className="space-y-5">
               {/* Seksi folder — kartu ringkas terpisah dari file */}
-              {!isSearchActive && childFolders.length > 0 ? (
-                <section className="space-y-2">
-                  <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Folder
-                    <span className="ml-1 font-normal tabular-nums opacity-70">
-                      ({childFolders.length})
-                    </span>
-                  </h2>
+              {childFolders.length > 0 ? (
+                <section className="space-y-2.5">
+                  <SectionHeading label="Folder" count={childFolders.length} />
                   <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                     {(showAllFolders
                       ? childFolders
@@ -2030,14 +2088,9 @@ export function RoomDocumentsWorkspace({
 
               {/* Seksi file */}
               {pagedVisibleDocuments.length > 0 ? (
-                <section className="space-y-2">
-                  {!isSearchActive && childFolders.length > 0 ? (
-                    <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                      File
-                      <span className="ml-1 font-normal tabular-nums opacity-70">
-                        ({visibleDocuments.length})
-                      </span>
-                    </h2>
+                <section className="space-y-2.5">
+                  {childFolders.length > 0 ? (
+                    <SectionHeading label="File" count={documentTotal} />
                   ) : null}
                   <ul className={cn("grid", DENSITY_GRID[density])}>
                     {pagedVisibleDocuments.map((d, idx) => (
@@ -2069,15 +2122,15 @@ export function RoomDocumentsWorkspace({
                     ))}
                   </ul>
                 </section>
-              ) : !isSearchActive && childFolders.length > 0 ? (
-                <p className="text-muted-foreground py-1 text-xs">
-                  Belum ada file langsung di folder ini.
+              ) : !hasNarrowing && childFolders.length > 0 ? (
+                <p className="text-muted-foreground text-sm">
+                  Belum ada file langsung di folder ini. Seret file ke sini untuk mengunggah.
                 </p>
               ) : null}
             </div>
           ) : (
             <DocList
-              childFolders={isSearchActive ? [] : childFolders}
+              childFolders={childFolders}
               docs={pagedVisibleDocuments}
               folders={folders}
               showFolderHint={isSearchActive}
@@ -2114,8 +2167,7 @@ export function RoomDocumentsWorkspace({
           {nextDocumentOffset != null ? (
             <div className="flex flex-col items-center gap-2 pt-3">
               <p className="text-muted-foreground text-center text-xs tabular-nums">
-                Menampilkan {pagedVisibleDocuments.length} dari{" "}
-                {documentTotal} file · ketuk untuk memuat lebih banyak
+                {pagedVisibleDocuments.length} dari {documentTotal} file ditampilkan
               </p>
               <Button
                 type="button"
@@ -2589,28 +2641,6 @@ function MoveFolderMenu({
   );
 }
 
-function FolderChoiceItem({
-  icon,
-  label,
-  active,
-  onSelect,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <DropdownMenuItem onClick={onSelect} disabled={active} className="gap-2">
-      {icon}
-      <span className="flex-1 truncate">{label}</span>
-      {active ? (
-        <Check className="text-primary size-3.5 shrink-0" aria-label="Folder saat ini" />
-      ) : null}
-    </DropdownMenuItem>
-  );
-}
-
 /**
  * Tile pratinjau video di daftar/grid.
  *
@@ -2693,6 +2723,15 @@ function VideoTilePlaceholder({
   );
 }
 
+function SectionHeading({ label, count }: { label: string; count: number }) {
+  return (
+    <h2 className="flex items-baseline gap-1.5 text-sm font-medium">
+      {label}
+      <span className="text-muted-foreground font-normal tabular-nums">{count}</span>
+    </h2>
+  );
+}
+
 function DocTagChips({ tags, max = 5 }: { tags: string[]; max?: number }) {
   if (!tags.length) return null;
   const shown = tags.slice(0, max);
@@ -2760,11 +2799,11 @@ const DocCard = memo(function DocCard({
   /** Hint LCP — tile pertama yang berada di atas fold harus eager. */
   priority?: boolean;
 }) {
-  const meta = fileTypeMeta(doc.mimeType);
-  const Icon = meta.icon;
   const isImage = doc.mimeType.startsWith("image/");
   const isVideo = doc.mimeType.startsWith("video/");
   const currentFolderName = folderLabelForDoc(doc.folderId, folders);
+  const name = doc.title?.trim() || doc.fileName;
+  const uploaderName = doc.uploadedBy.name ?? doc.uploadedBy.email;
 
   return (
     <li
@@ -2772,7 +2811,8 @@ const DocCard = memo(function DocCard({
       onDragStart={onItemDragStart}
       onDragEnd={onItemDragEnd}
       className={cn(
-        "doc-grid-card border-border bg-card hover:border-primary/40 hover:shadow-md relative flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm transition-all",
+        "doc-grid-card border-border bg-card relative flex min-w-0 flex-col overflow-hidden rounded-xl border transition-colors",
+        "hover:border-foreground/20 focus-within:ring-ring/50 focus-within:ring-2",
         "sm:[&:hover_.doc-grid-card-select]:opacity-100 sm:[&:focus-within_.doc-grid-card-select]:opacity-100",
         "sm:[&:hover_.doc-grid-card-actions]:opacity-100 sm:[&:focus-within_.doc-grid-card-actions]:opacity-100",
         selected && "border-primary ring-primary/30 ring-2",
@@ -2794,157 +2834,88 @@ const DocCard = memo(function DocCard({
           className="bg-background/90 size-5 border-2 shadow-sm"
         />
       </div>
+      {/* Duplikat klik judul untuk mouse — judul tetap satu-satunya tab stop. */}
       <button
         type="button"
+        tabIndex={-1}
+        aria-hidden
         onClick={() => onPreview(doc)}
-        className="bg-muted/30 relative block aspect-[4/3] w-full overflow-hidden text-left"
-        title={`Pratinjau ${doc.title?.trim() || doc.fileName}`}
+        className="border-border bg-muted/30 relative block aspect-[4/3] w-full overflow-hidden border-b text-left"
       >
         {isImage && doc.thumbPath ? (
           // Hanya thumbnail webp (~480px) yang boleh tampil di kartu — 1 file
           // mentah bisa puluhan MB (mis. PNG transparan), thumbnail biasanya
-          // <50 KB. Tanpa thumbnail, fallback ke ikon tipe file di bawah;
+          // <50 KB. Tanpa thumbnail, fallback ke placeholder tipe file di bawah;
           // memuat file asli di grid pernah membuat folder tertentu macet
           // total. File asli tetap dimuat penuh di dialog pratinjau.
           <Image
             src={doc.thumbPath}
-            alt={doc.fileName}
+            alt=""
             fill
             unoptimized
             priority={priority}
             // Lihat catatan di VideoTilePlaceholder: thumbnail tak boleh jadi
             // sumber drag native, agar seret selalu = pindah item, bukan unggah.
             draggable={false}
-            className="doc-grid-card-thumb object-cover transition-transform [.doc-grid-card:hover_&]:scale-[1.02]"
+            className="object-cover"
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
           />
         ) : isVideo ? (
           <VideoTilePlaceholder
             thumbPath={doc.thumbPath}
-            alt={doc.fileName}
-            className="doc-grid-card-thumb transition-transform [.doc-grid-card:hover_&]:scale-[1.02]"
             iconSize="lg"
             sizes="(max-width: 768px) 100vw, (max-width: 1280px) 33vw, 25vw"
             priority={priority}
           />
         ) : (
-          <div
-            className={cn(
-              "flex h-full w-full flex-col items-center justify-center gap-1.5",
-              meta.bg,
-            )}
-          >
-            <Icon className={cn(compact ? "size-8" : "size-11", meta.tone)} />
-            {!compact ? (
-              <span
-                className={cn(
-                  "text-[10px] font-semibold tracking-wide uppercase",
-                  meta.tone,
-                )}
-              >
-                {meta.label}
+          <FileTypeSpine
+            fileName={doc.fileName}
+            mimeType={doc.mimeType}
+            compact={compact}
+          />
+        )}
+        {doc.isFavorite || doc.currentVersion > 1 ? (
+          <span className="pointer-events-none absolute right-2 bottom-2 flex items-center gap-1">
+            {doc.currentVersion > 1 ? (
+              <span className="bg-background/90 text-foreground rounded-full px-1.5 text-[10px] leading-5 font-medium tabular-nums shadow-sm">
+                v{doc.currentVersion}
               </span>
             ) : null}
-          </div>
-        )}
+            {doc.isFavorite ? (
+              <span className="bg-background/90 flex size-5 items-center justify-center rounded-full shadow-sm">
+                <Star className="size-3 fill-amber-500 text-amber-500" />
+              </span>
+            ) : null}
+          </span>
+        ) : null}
       </button>
 
-      {/* Aksi (unduh / pindah / hapus) — tersembunyi, muncul saat hover;
-          selalu tampil di layar sentuh yang tak punya hover. */}
+      {/* Aksi — muncul saat hover/fokus; selalu tampil di layar sentuh. */}
       <div
         className="doc-grid-card-actions absolute top-2 right-2 z-20 opacity-100 transition-opacity sm:opacity-0"
         onClick={(event) => event.stopPropagation()}
       >
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="secondary"
-                className="size-8 shadow-sm"
-                aria-label={`Buka menu aksi ${doc.fileName}`}
-                title="Aksi lainnya"
-              >
-                <EllipsisVertical className="size-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end" sideOffset={4} className="min-w-52">
-            <DropdownMenuItem onClick={() => onPreview(doc)}>
-              <Eye className="size-4" /> Pratinjau
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onVersions(doc)}>
-              <Clock3 className="size-4" /> Riwayat versi
-              <span className="text-muted-foreground ml-auto text-xs">
-                v{doc.currentVersion}
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onShare(doc)}>
-              <Share2 className="size-4" /> Bagikan
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void onFavorite(doc)}>
-              <Star
-                className={cn(
-                  "size-4",
-                  doc.isFavorite && "fill-current text-amber-500",
-                )}
-              />
-              {doc.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void onDownload(doc)}>
-              <Download className="size-4" /> Unduh
-            </DropdownMenuItem>
-            {canManage ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onRename(doc)}>
-                  <Pencil className="size-4" /> Ganti nama
-                </DropdownMenuItem>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <FolderInput className="size-4" /> Pindahkan
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="max-h-72 min-w-56 overflow-y-auto">
-                    <FolderChoiceItem
-                      icon={<Folder className="size-3.5 opacity-70" />}
-                      label="Semua file (root)"
-                      active={doc.folderId == null}
-                      onSelect={() => void onMove(doc, null)}
-                    />
-                    {folders.length > 0 ? <DropdownMenuSeparator /> : null}
-                    {flattenFoldersForPicker(folders).map((folder) => (
-                      <FolderChoiceItem
-                        key={folder.id}
-                        icon={<Folder className="size-3.5 opacity-70" />}
-                        label={
-                          folder.depth > 0
-                            ? `${"  ".repeat(folder.depth)}${folder.label}`
-                            : folder.label
-                        }
-                        active={doc.folderId === folder.id}
-                        onSelect={() => void onMove(doc, folder.id)}
-                      />
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => void onDelete(doc)}
-                >
-                  <Trash2 className="size-4" /> Pindahkan ke Sampah
-                </DropdownMenuItem>
-              </>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <DocActionsMenu
+          doc={doc}
+          folders={folders}
+          canManage={canManage}
+          triggerVariant="secondary"
+          triggerClassName="size-8 shadow-sm"
+          onPreview={onPreview}
+          onVersions={onVersions}
+          onShare={onShare}
+          onFavorite={onFavorite}
+          onDownload={onDownload}
+          onRename={onRename}
+          onMove={onMove}
+          onDelete={onDelete}
+        />
       </div>
 
       <div
         className={cn(
           "flex flex-1 flex-col",
-          compact ? "gap-0.5 p-2" : "gap-2 p-3",
+          compact ? "gap-0.5 p-2" : "gap-1.5 p-3",
         )}
       >
         {!compact && showFolderHint ? (
@@ -2956,7 +2927,7 @@ const DocCard = memo(function DocCard({
               trigger={
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-foreground hover:bg-muted/40 -mx-1 -my-0.5 inline-flex w-fit max-w-full items-center gap-1 truncate rounded px-1 py-0.5 text-[10px] font-semibold tracking-[0.06em] uppercase transition-colors"
+                  className="text-muted-foreground hover:text-foreground hover:bg-muted/40 -mx-1 -my-0.5 inline-flex w-fit max-w-full items-center gap-1 truncate rounded px-1 py-0.5 text-xs transition-colors"
                   title="Pindahkan ke folder lain"
                 >
                   <Folder className="size-3 shrink-0 opacity-70" aria-hidden />
@@ -2965,7 +2936,8 @@ const DocCard = memo(function DocCard({
               }
             />
           ) : (
-            <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+            <p className="text-muted-foreground inline-flex items-center gap-1 truncate text-xs">
+              <Folder className="size-3 shrink-0 opacity-70" aria-hidden />
               {currentFolderName}
             </p>
           )
@@ -2974,37 +2946,34 @@ const DocCard = memo(function DocCard({
           type="button"
           onClick={() => onPreview(doc)}
           className={cn(
-            "text-foreground text-left font-medium hover:underline",
+            "text-foreground text-left font-medium outline-none hover:underline focus-visible:underline",
             compact ? "line-clamp-2 text-xs leading-snug" : "line-clamp-2 text-sm",
           )}
-          title={doc.title?.trim() || doc.fileName}
+          title={name}
         >
-          {doc.title?.trim() ? doc.title : doc.fileName}
+          {name}
         </button>
         {compact ? (
-          <p className="text-muted-foreground text-[10px] tabular-nums">
+          <p className="text-muted-foreground text-[11px] tabular-nums">
             {formatFileSize(doc.size)}
           </p>
-        ) : null}
-        {compact ? null : (
-        <>
-        <div className="text-muted-foreground flex items-center justify-between gap-2 text-[11px]">
-          <span className="truncate tabular-nums">
-            {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
-          </span>
-          <span
-            className="bg-muted text-foreground/70 flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold uppercase"
-            title={`Diunggah oleh ${doc.uploadedBy.name ?? doc.uploadedBy.email}`}
-            aria-label={`Diunggah oleh ${doc.uploadedBy.name ?? doc.uploadedBy.email}`}
-          >
-            {(doc.uploadedBy.name ?? doc.uploadedBy.email).charAt(0)}
-          </span>
-        </div>
-        <DocTagChips tags={doc.tags ?? []} max={3} />
-        </>
+        ) : (
+          <>
+            <div className="text-muted-foreground mt-auto flex items-center gap-2 text-xs tabular-nums">
+              <span>{formatFileSize(doc.size)}</span>
+              <span className="truncate">{formatDate(doc.createdAt)}</span>
+              <span
+                className="bg-muted text-foreground/70 ml-auto flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                title={`Diunggah oleh ${uploaderName}`}
+                aria-label={`Diunggah oleh ${uploaderName}`}
+              >
+                {uploaderName.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <DocTagChips tags={doc.tags ?? []} max={3} />
+          </>
         )}
       </div>
-
     </li>
   );
 });
@@ -3048,6 +3017,8 @@ const DocListRow = memo(function DocListRow({
   const Icon = meta.icon;
   const isImage = doc.mimeType.startsWith("image/");
   const isVideo = doc.mimeType.startsWith("video/");
+  const name = doc.title?.trim() || doc.fileName;
+  const uploaderName = doc.uploadedBy.name ?? doc.uploadedBy.email;
 
   return (
     <li
@@ -3055,10 +3026,11 @@ const DocListRow = memo(function DocListRow({
       onDragStart={onItemDragStart}
       onDragEnd={onItemDragEnd}
       className={cn(
-        "hover:bg-muted/40 flex flex-row flex-wrap items-center gap-2 px-3 py-2 transition-colors md:flex-nowrap md:gap-3",
+        "group/row hover:bg-muted/40 flex flex-row flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 transition-colors md:flex-nowrap",
+        documentListGridClass(showFolderHint),
         // `content-visibility` bikin snapshot seret bawaan browser rusak; aman
         // karena startItemDrag selalu memasang gambar seret sendiri.
-        "[content-visibility:auto] [contain-intrinsic-block-size:72px]",
+        "[content-visibility:auto] [contain-intrinsic-block-size:60px]",
         selected && "bg-primary/5",
       )}
     >
@@ -3069,7 +3041,12 @@ const DocListRow = memo(function DocListRow({
         className="shrink-0"
       />
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="bg-muted relative size-9 shrink-0 overflow-hidden rounded-md">
+        <div
+          className={cn(
+            "relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg",
+            meta.bg,
+          )}
+        >
           {isImage && doc.thumbPath ? (
             // Sama seperti kartu grid: tanpa thumbnail jangan muat file asli
             // (bisa puluhan MB per baris) — jatuh ke ikon tipe file.
@@ -3090,132 +3067,81 @@ const DocListRow = memo(function DocListRow({
               sizes="36px"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <Icon className={cn("size-4", meta.tone)} />
-            </div>
+            <Icon className={cn("size-4", meta.tone)} />
           )}
         </div>
         <div className="min-w-0">
-          <button
-            type="button"
-            onClick={() => onPreview(doc)}
-            className="text-foreground line-clamp-1 text-left text-sm font-medium hover:underline"
-            title={doc.title?.trim() || doc.fileName}
-          >
-            {doc.title?.trim() ? doc.title : doc.fileName}
-          </button>
-          <p className="text-muted-foreground line-clamp-1 text-[11px]">
-            {doc.fileName} · {doc.uploadedBy.name ?? doc.uploadedBy.email}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onPreview(doc)}
+              className="text-foreground focus-visible:ring-ring line-clamp-1 rounded text-left text-sm font-medium outline-none hover:underline focus-visible:ring-2"
+              title={name}
+            >
+              {name}
+            </button>
+            {doc.isFavorite ? (
+              <Star className="size-3 shrink-0 fill-amber-500 text-amber-500" aria-label="Favorit" />
+            ) : null}
+            {doc.currentVersion > 1 ? (
+              <span className="text-muted-foreground shrink-0 text-[10px] font-medium tabular-nums">
+                v{doc.currentVersion}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-muted-foreground line-clamp-1 text-xs">
+            {doc.title?.trim() ? `${doc.fileName}, oleh ${uploaderName}` : `Oleh ${uploaderName}`}
           </p>
           <DocTagChips tags={doc.tags ?? []} />
         </div>
       </div>
       {showFolderHint ? (
-        <span className="text-muted-foreground line-clamp-1 w-32 text-[11px]">
+        <span className="text-muted-foreground hidden truncate text-xs md:block">
           {folderLabelForDoc(doc.folderId, folders)}
         </span>
       ) : null}
-      <span className="text-muted-foreground w-24 text-right text-[11px] tabular-nums">
+      <span className="text-muted-foreground text-xs tabular-nums md:text-right">
         {formatFileSize(doc.size)}
       </span>
-      <span className="text-muted-foreground w-32 text-[11px]">
+      <span className="text-muted-foreground text-xs tabular-nums">
         {formatDate(doc.createdAt)}
       </span>
-      <div className="ml-auto flex items-center gap-1 md:ml-0">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Riwayat versi ${doc.fileName}`}
-          title={`Riwayat versi (v${doc.currentVersion})`}
-          onClick={() => onVersions(doc)}
-        >
-          <Clock3 className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Bagikan ${doc.fileName}`}
-          title="Bagikan"
-          onClick={() => onShare(doc)}
-        >
-          <Share2 className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={doc.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
-          title={doc.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
-          onClick={() => void onFavorite(doc)}
-        >
-          <Star className={cn("size-4", doc.isFavorite && "fill-current text-amber-500")} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Pratinjau ${doc.fileName}`}
-          title="Pratinjau"
-          onClick={() => onPreview(doc)}
-        >
-          <Eye className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Unduh ${doc.fileName}`}
-          title="Unduh"
-          onClick={() => void onDownload(doc)}
-        >
-          <Download className="size-4" />
-        </Button>
-        {canManage ? (
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Ganti nama ${doc.fileName}`}
-              title="Ganti nama"
-              onClick={() => onRename(doc)}
-            >
-              <Pencil className="size-4" />
-            </Button>
-            <MoveFolderMenu
-              doc={doc}
-              folders={folders}
-              onMove={onMove}
-              trigger={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Pindahkan ${doc.fileName}`}
-                  title={`Pindah folder · sekarang: ${folderLabelForDoc(
-                    doc.folderId,
-                    folders,
-                  )}`}
-                >
-                  <FolderInput className="size-4" />
-                </Button>
-              }
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Hapus ${doc.fileName}`}
-              title="Hapus dokumen"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => void onDelete(doc)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </>
-        ) : null}
+      <div className="ml-auto flex items-center justify-end gap-0.5 md:ml-0">
+        <div className="flex items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover/row:opacity-100 sm:group-focus-within/row:opacity-100">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={doc.isFavorite ? `Hapus ${name} dari favorit` : `Tambahkan ${name} ke favorit`}
+            title={doc.isFavorite ? "Hapus dari favorit" : "Tambahkan ke favorit"}
+            onClick={() => void onFavorite(doc)}
+          >
+            <Star className={cn("size-4", doc.isFavorite && "fill-current text-amber-500")} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Unduh ${name}`}
+            title="Unduh"
+            onClick={() => void onDownload(doc)}
+          >
+            <Download className="size-4" />
+          </Button>
+        </div>
+        <DocActionsMenu
+          doc={doc}
+          folders={folders}
+          canManage={canManage}
+          onPreview={onPreview}
+          onVersions={onVersions}
+          onShare={onShare}
+          onFavorite={onFavorite}
+          onDownload={onDownload}
+          onRename={onRename}
+          onMove={onMove}
+          onDelete={onDelete}
+        />
       </div>
     </li>
   );
@@ -3290,7 +3216,12 @@ function DocList({
 }) {
   return (
     <div className="border-border bg-card overflow-hidden rounded-xl border">
-      <div className="border-border text-muted-foreground bg-muted/40 hidden items-center gap-3 border-b px-3 py-2 text-[11px] font-semibold tracking-wide uppercase md:flex">
+      <div
+        className={cn(
+          "border-border text-muted-foreground bg-muted/40 hidden items-center border-b px-3 py-2 text-xs font-medium",
+          documentListGridClass(showFolderHint),
+        )}
+      >
         <Checkbox
           checked={allDocsSelected}
           onCheckedChange={(v) => {
@@ -3300,11 +3231,11 @@ function DocList({
           aria-label="Pilih semua file"
           className="shrink-0"
         />
-        <span className="flex-1">Nama</span>
-        {showFolderHint ? <span className="w-48">Lokasi</span> : null}
-        <span className="w-24 text-right">Ukuran</span>
-        <span className="w-32">Diunggah</span>
-        <span className="w-8" />
+        <span>Nama</span>
+        {showFolderHint ? <span>Lokasi</span> : null}
+        <span className="text-right">Ukuran</span>
+        <span>Diunggah</span>
+        <span className="sr-only">Aksi</span>
       </div>
       <ul className="divide-border divide-y">
         {childFolders.map((f) => (
@@ -3312,6 +3243,7 @@ function DocList({
             key={f.id}
             folder={f}
             view="list"
+            listShowLocation={showFolderHint}
             isRoomManager={isRoomManager}
             onOpen={() => onOpenFolder(f.id)}
             onRename={() => onRenameFolder(f)}
@@ -3353,4 +3285,3 @@ function DocList({
     </div>
   );
 }
-

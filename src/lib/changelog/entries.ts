@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-10-09-documents-ux-redesign",
+    date: "2026-10-09",
+    title: "Dokumen: tampilan baru yang lebih mudah dicari",
+    category: "improved",
+    description:
+      "Halaman Dokumen ruangan ditata ulang: kolom cari lebih lebar, filter yang aktif selalu terlihat, dan kartu file menampilkan jenis file dengan jelas.",
+    highlights: [
+      "Nama folder yang sedang dibuka kini jadi judul halaman",
+      "Filter aktif tampil sebagai chip dan bisa dilepas satu per satu",
+      "Kartu file non-gambar menampilkan ekstensinya (PDF, DOCX, ZIP) dengan besar",
+      "Tanda favorit dan versi terlihat langsung di kartu",
+      "Tampilan daftar lebih rapi: kolom sejajar dan aksi lebih ringkas",
+      "Di ponsel, folder dibuka lewat panel samping agar layar tidak penuh",
+      "Pencarian kini juga menampilkan folder yang cocok",
+    ],
+  },
+  {
     id: "2026-10-07-kol-hub-edit-schedule",
     date: "2026-10-07",
     title: "KOL Hub: isi jadwal bisa diedit",
