@@ -37,6 +37,28 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-10-21-whiteboard-ux-overhaul",
+    date: "2026-10-21",
+    title: "Whiteboard: dock alat baru, konektor yang menempel, dan banyak perbaikan",
+    category: "improved",
+    description:
+      "Whiteboard ditata ulang agar lebih nyaman dipakai: alat dikumpulkan di dock bawah, garis dan panah menempel ke objek, dan sejumlah bug yang membuat perubahan hilang sudah diperbaiki.",
+    highlights: [
+      "Dock alat di bawah kanvas: bentuk, garis, dan pena dikelompokkan; warna sticky dipilih langsung dari dock",
+      "Panah & konektor menempel ke objek dan ikut bergeser saat objeknya dipindah",
+      "Menggeser frame ikut membawa isinya; frame baru tidak lagi menutupi objek di bawahnya",
+      "Salin–tempel objek antarpapan, tempel teks jadi beberapa sticky sekaligus",
+      "Tekan Tab saat menulis sticky untuk langsung membuat sticky berikutnya",
+      "Laser pointer kini meninggalkan jejak yang terlihat semua peserta",
+      "Zoom dengan cubit dua jari di tablet & layar sentuh, plus mode layar penuh",
+      "Tautan langsung ke papan tertentu, judul papan bisa diedit di tempat",
+      "Daftar pintasan papan tik (tekan ?) dan petunjuk di papan kosong",
+      "Perbaikan: undo setelah menghapus kini benar-benar memulihkan objek di server",
+      "Perbaikan: perubahan saat koneksi putus tidak lagi hilang — dikirim ulang otomatis",
+      "Perbaikan: objek terkunci bisa dibuka lagi lewat klik kanan",
+    ],
+  },
+  {
     id: "2026-10-09-documents-ux-redesign",
     date: "2026-10-09",
     title: "Dokumen: tampilan baru yang lebih mudah dicari",

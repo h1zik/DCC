@@ -161,8 +161,43 @@ export async function POST(req: Request, { params }: Ctx) {
       const nextRev = board.rev;
 
       if (mutation.create.length > 0) {
+        // Undo atas penghapusan mengirim ulang elemen dengan id yang sama.
+        // Barisnya masih ada (soft delete), jadi `createMany` + skipDuplicates
+        // akan melewatinya diam-diam — elemen tampak pulih di layar tapi
+        // hilang saat dimuat ulang. Baris seperti itu dihidupkan kembali di sini.
+        const revived = await tx.roomWhiteboardElement.findMany({
+          where: {
+            boardId,
+            id: { in: mutation.create.map((el) => el.id) },
+            deletedAt: { not: null },
+          },
+          select: { id: true },
+        });
+        const revivedIds = new Set(revived.map((row) => row.id));
+        for (const el of mutation.create) {
+          if (!revivedIds.has(el.id)) continue;
+          await tx.roomWhiteboardElement.update({
+            where: { id: el.id },
+            data: {
+              type: el.type,
+              zIndex: el.zIndex,
+              x: el.x,
+              y: el.y,
+              width: el.width,
+              height: el.height,
+              rotation: el.rotation,
+              props: el.props as Prisma.InputJsonValue,
+              locked: el.locked,
+              frameId: el.frameId,
+              deletedAt: null,
+              rev: nextRev,
+              updatedById: userId,
+            },
+          });
+        }
+
         await tx.roomWhiteboardElement.createMany({
-          data: mutation.create.map((el) => ({
+          data: mutation.create.filter((el) => !revivedIds.has(el.id)).map((el) => ({
             id: el.id,
             boardId,
             type: el.type,

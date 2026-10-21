@@ -71,6 +71,8 @@ export function useWhiteboardSync(options: SyncOptions) {
   const fetchingRef = useRef(false);
   const pendingFetchRef = useRef(false);
   const inflightRef = useRef(0);
+  /** Stream SSE sedang tersambung — status "live" hanya jujur kalau ini benar. */
+  const sseLiveRef = useRef(false);
 
   /**
    * Callback pemanggil disimpan di ref supaya koneksi SSE tidak perlu dibuka
@@ -140,7 +142,8 @@ export function useWhiteboardSync(options: SyncOptions) {
 
       source.addEventListener("ready", (event) => {
         attempt = 0;
-        setStatus("live");
+        sseLiveRef.current = true;
+        setStatus(queueRef.current.length > 0 ? "saving" : "live");
         try {
           const data = JSON.parse((event as MessageEvent).data) as {
             rev: number;
@@ -247,6 +250,7 @@ export function useWhiteboardSync(options: SyncOptions) {
       source.onerror = () => {
         source?.close();
         source = null;
+        sseLiveRef.current = false;
         if (disposed) return;
         setStatus("offline");
         attempt += 1;
@@ -297,8 +301,12 @@ export function useWhiteboardSync(options: SyncOptions) {
 
   const queueRef = useRef<WhiteboardMutation[]>([]);
   const flushingRef = useRef(false);
+  const flushRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushAttemptRef = useRef(0);
+  /** Ada perubahan yang belum sampai server — dipakai peringatan tutup tab. */
+  const [unsaved, setUnsaved] = useState(false);
 
-  const flush = useCallback(async () => {
+  const flush = useCallback(async (): Promise<void> => {
     if (flushingRef.current) return;
     flushingRef.current = true;
     try {
@@ -315,33 +323,87 @@ export function useWhiteboardSync(options: SyncOptions) {
 
         inflightRef.current += 1;
         setStatus((s) => (s === "offline" ? s : "saving"));
+        let res: Response;
         try {
-          const res = await fetch(`${base}/sync`, {
+          res = await fetch(`${base}/sync`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ mutation: merged, sessionId }),
           });
-          if (!res.ok) {
-            const detail = (await res.json().catch(() => null)) as
-              | { error?: string }
-              | null;
-            throw new Error(detail?.error ?? "Gagal menyimpan perubahan.");
-          }
-          const data = (await res.json()) as { rev: number };
-          if (data.rev > revRef.current) {
-            // Tarik delta agar perubahan peserta lain di antara revisi ini
-            // ikut masuk — perubahan sendiri idempoten saat diterapkan ulang.
-            void pullDelta();
-          }
+        } catch {
+          res = new Response(null, { status: 599 });
         } finally {
           inflightRef.current -= 1;
         }
+
+        if (res.status >= 500 || res.status === 429) {
+          // Gangguan sementara: kembalikan batch ke depan antrean dan coba
+          // lagi nanti. Membuangnya berarti perubahan pengguna hilang diam-diam.
+          queueRef.current = [merged, ...queueRef.current];
+          setStatus("offline");
+          flushAttemptRef.current += 1;
+          const delay = Math.min(
+            RETRY_MAX_MS,
+            RETRY_BASE_MS * 2 ** (flushAttemptRef.current - 1),
+          );
+          if (flushRetryRef.current) clearTimeout(flushRetryRef.current);
+          flushRetryRef.current = setTimeout(() => {
+            flushRetryRef.current = null;
+            void flush().catch(() => undefined);
+          }, delay);
+          return;
+        }
+        flushAttemptRef.current = 0;
+
+        if (!res.ok) {
+          // Ditolak server (validasi, batas objek, akses) — mengulang tidak
+          // akan menolong, jadi laporkan ke pemanggil.
+          const detail = (await res.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+          setUnsaved(queueRef.current.length > 0);
+          setStatus(sseLiveRef.current ? "live" : "offline");
+          throw new Error(detail?.error ?? "Gagal menyimpan perubahan.");
+        }
+        const data = (await res.json()) as { rev: number };
+        if (data.rev > revRef.current) {
+          // Tarik delta agar perubahan peserta lain di antara revisi ini
+          // ikut masuk — perubahan sendiri idempoten saat diterapkan ulang.
+          void pullDelta();
+        }
       }
-      setStatus((s) => (s === "offline" ? s : "live"));
+      setUnsaved(false);
+      setStatus(sseLiveRef.current ? "live" : "offline");
     } finally {
       flushingRef.current = false;
     }
   }, [base, sessionId, pullDelta]);
+
+  // Kembali online: kirim yang tertunda tanpa menunggu jadwal retry.
+  useEffect(() => {
+    const onOnline = () => {
+      if (queueRef.current.length === 0) return;
+      if (flushRetryRef.current) clearTimeout(flushRetryRef.current);
+      flushRetryRef.current = null;
+      flushAttemptRef.current = 0;
+      void flush().catch(() => undefined);
+    };
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      if (flushRetryRef.current) clearTimeout(flushRetryRef.current);
+    };
+  }, [flush]);
+
+  // Peringatkan sebelum menutup tab kalau masih ada perubahan tertunda.
+  useEffect(() => {
+    if (!unsaved) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [unsaved]);
 
   const commit = useCallback(
     (mutation: WhiteboardMutation) => {
@@ -353,6 +415,9 @@ export function useWhiteboardSync(options: SyncOptions) {
         return Promise.resolve();
       }
       queueRef.current.push(mutation);
+      setUnsaved(true);
+      // Sedang menunggu jadwal retry: biarkan antrean ikut terkirim nanti.
+      if (flushRetryRef.current) return Promise.resolve();
       return flush();
     },
     [flush],
@@ -455,6 +520,7 @@ export function useWhiteboardSync(options: SyncOptions) {
   return {
     sessionId,
     status,
+    unsaved,
     presence,
     drafts,
     commit,
