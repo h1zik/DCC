@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -14,10 +15,13 @@ import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import {
   boxCenter,
+  boxContains,
+  boxesIntersect,
   clampZoom,
   computeSnap,
   elementAABB,
   elementsBounds,
+  handleCursor,
   hitTestElement,
   MIN_ELEMENT_SIZE,
   pickElement,
@@ -49,7 +53,9 @@ import {
   defaultSizeForType,
   LINEAR_TYPES,
   TEXT_CAPABLE_TYPES,
+  whiteboardElementInputSchema,
   type WhiteboardBackground,
+  type WhiteboardColorToken,
   type WhiteboardElement,
   type WhiteboardElementInput,
   type WhiteboardElementPatch,
@@ -58,7 +64,10 @@ import {
 } from "@/lib/whiteboard/types";
 import { emptyMutation, useBoardStore } from "./use-board-store";
 import { useWhiteboardSync, type DraftPatch } from "./use-whiteboard-sync";
-import { WhiteboardElementNode } from "./whiteboard-element";
+import { connectorPoints, WhiteboardElementNode } from "./whiteboard-element";
+import { LaserTrail, RemoteLaser, useLaserTrail } from "./whiteboard-laser";
+import { WhiteboardShortcutsDialog } from "./whiteboard-shortcuts";
+import { cursorColorFor, STICKY_PALETTE } from "@/lib/whiteboard/palette";
 import { WhiteboardToolbar } from "./whiteboard-toolbar";
 import { WhiteboardStylePanel } from "./whiteboard-style-panel";
 import { WhiteboardPresenceLayer, WhiteboardPresenceBar } from "./whiteboard-presence";
@@ -100,11 +109,15 @@ type Interaction =
       kind: "translate";
       startWorld: Point;
       currentWorld: Point;
-      originals: Map<string, { x: number; y: number }>;
+      /** Ukuran hanya diisi untuk garis yang tempelannya dilepas. */
+      originals: Map<string, { x: number; y: number; width?: number; height?: number }>;
+      /** Ujung garis yang menempel ke elemen di luar seleksi — dilepas saat digeser. */
+      detach: Map<string, Array<"start" | "end">>;
       moved: boolean;
       guides: SnapGuide[];
       staticBoxes: Box[];
       groupBox: Box;
+      touched: Touched;
     }
   | {
       kind: "resize";
@@ -114,12 +127,14 @@ type Interaction =
       groupBox: Box;
       /** Rotasi elemen tunggal — resize dilakukan di ruang lokalnya. */
       rotation: number;
+      touched: Touched;
     }
   | {
       kind: "rotate";
       center: Point;
       startAngle: number;
       originals: Map<string, { rotation: number; x: number; y: number; width: number; height: number }>;
+      touched: Touched;
     }
   | {
       kind: "create";
@@ -141,7 +156,23 @@ type Interaction =
       kind: "endpoint";
       elementId: string;
       end: "start" | "end";
+      /** Elemen di bawah pointer yang akan ditempeli saat dilepas. */
+      target: string | null;
+      touched: Touched;
+    }
+  | {
+      kind: "pinch";
+      startDistance: number;
+      startMid: Point;
+      startViewport: Viewport;
     };
+
+/**
+ * Salinan elemen *sebelum* interaksi bertahap mulai mengubahnya, per id.
+ * Diisi malas (saat elemen pertama kali disentuh) dan dipakai untuk dua hal:
+ * mutasi kebalikan untuk undo, dan memulihkan papan saat gerakan dibatalkan.
+ */
+type Touched = Map<string, WhiteboardElement>;
 
 /**
  * Bagian dari interaksi berjalan yang perlu digambar ulang tiap frame.
@@ -161,6 +192,10 @@ type Preview =
   | { kind: "guides"; guides: SnapGuide[] }
   | { kind: "erase"; ids: string[] };
 
+/** Penanda isi clipboard sistem yang berasal dari whiteboard ini. */
+const CLIPBOARD_MARKER = "dcc-whiteboard/v1";
+
+
 const SNAP_PX = 6;
 const CLICK_SLOP_PX = 4;
 
@@ -173,13 +208,14 @@ export function BoardCanvas({
   board,
   initialElements,
   currentUser,
-  onRequestRename,
+  onThumbnailSaved,
 }: {
   roomId: string;
   board: BoardMeta;
   initialElements: SerializedElement[];
   currentUser: { id: string; name: string; image: string | null };
-  onRequestRename?: () => void;
+  /** Pratinjau baru tersimpan — daftar papan bisa langsung memakainya. */
+  onThumbnailSaved?: (thumbnail: string) => void;
 }) {
   const store = useBoardStore(initialElements);
   // Dipakai langsung (bukan lewat `store.x`) supaya dependency tiap hook
@@ -226,6 +262,23 @@ export function BoardCanvas({
   const [spacePressed, setSpacePressed] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [hasClipboard, setHasClipboard] = useState(false);
+  /** Alat tetap aktif setelah membuat objek (tidak kembali ke Pilih). */
+  const [toolLocked, setToolLocked] = useState(false);
+  /** Elemen di bawah kursor saat alat Pilih aktif — diberi garis tipis. */
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  /** Kursor kontekstual (gagang resize, putar, geser) yang menimpa kursor alat. */
+  const [hoverCursor, setHoverCursor] = useState<string | null>(null);
+  /** Elemen yang akan ditempeli ujung konektor/panah yang sedang ditarik. */
+  const [attachTarget, setAttachTarget] = useState<string | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** Sticky berikutnya dibuat dengan warna ini (dipilih dari dock). */
+  const [stickyColor, setStickyColor] = useState<WhiteboardColorToken>("yellow");
+  const stickyColorRef = useRef(stickyColor);
+  const toolLockedRef = useRef(toolLocked);
+
+  /** Pointer sentuh yang sedang menempel di layar, untuk pinch-zoom. */
+  const touchPointsRef = useRef(new Map<number, Point>());
+  const { push: pushLaser, trail: laserTrail } = useLaserTrail();
 
   /** Gaya terakhir yang dipakai — diwariskan ke elemen berikutnya. */
   const [styleDefaults, setStyleDefaults] = useState<WhiteboardProps>({});
@@ -248,6 +301,8 @@ export function BoardCanvas({
     toolRef.current = tool;
     selectionRef.current = selection;
     styleDefaultsRef.current = styleDefaults;
+    stickyColorRef.current = stickyColor;
+    toolLockedRef.current = toolLocked;
   });
 
   /**
@@ -327,19 +382,52 @@ export function BoardCanvas({
   // Ukuran kontainer & posisi awal
   // -------------------------------------------------------------------------
 
+  const didInitialFit = useRef(false);
+
+  // `mounted` ikut jadi dependency: render pertama setelah hidrasi memakai
+  // div placeholder, lalu diganti div kanvas asli. Tanpa ini observer (dan
+  // listener wheel di bawah) tetap menempel ke placeholder yang sudah lepas,
+  // sehingga ukuran kanvas membeku — layar penuh, resize jendela, dan
+  // buka-tutup daftar papan tidak pernah terdeteksi.
   useLayoutEffect(() => {
     const node = containerRef.current;
-    if (!node) return;
+    if (!node || !mounted) return;
+    let last = { width: node.clientWidth, height: node.clientHeight };
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
-      if (rect) setSize({ width: rect.width, height: rect.height });
+      if (!rect) return;
+      const next = { width: rect.width, height: rect.height };
+      const dx = (next.width - last.width) / 2;
+      const dy = (next.height - last.height) / 2;
+      last = next;
+      setSize(next);
+      // Pertahankan titik tengah layar saat kanvas membesar/mengecil (mis.
+      // masuk layar penuh), supaya isi papan tidak "melompat" ke pojok.
+      if (didInitialFit.current && (dx !== 0 || dy !== 0)) {
+        setViewport((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+      }
     });
     observer.observe(node);
-    setSize({ width: node.clientWidth, height: node.clientHeight });
+    setSize(last);
     return () => observer.disconnect();
-  }, []);
+  }, [mounted]);
 
-  const didInitialFit = useRef(false);
+  // Papan lama bisa menyimpan geometri konektor yang basi (sebelum konektor
+  // ikut diperbarui saat objeknya bergeser). Rapikan sekali saat dibuka,
+  // tanpa masuk riwayat undo.
+  useEffect(() => {
+    const linearIds = new Set<string>();
+    for (const el of elementsRef.current.values()) {
+      if (LINEAR_TYPES.has(el.type)) linearIds.add(el.id);
+    }
+    if (linearIds.size === 0) return;
+    const fix = connectorFollowUps(linearIds, elementsRef.current);
+    if (fix.length === 0) return;
+    const mutation = { ...emptyMutation(), update: fix };
+    applyMutation(mutation, { history: false });
+    void commit(mutation).catch(() => undefined);
+  }, [elementsRef, applyMutation, commit]);
+
   useEffect(() => {
     if (didInitialFit.current || size.width === 0) return;
     didInitialFit.current = true;
@@ -420,6 +508,9 @@ export function BoardCanvas({
       const base = defaultPropsForType(type);
       // Warisi gaya terakhir hanya untuk atribut yang relevan dengan tipe ini.
       const inherited = inheritableStyle(styleDefaultsRef.current, type);
+      if (type === RoomWhiteboardElementType.STICKY) {
+        inherited.fill = stickyColorRef.current;
+      }
       return {
         id: newId(),
         type,
@@ -473,6 +564,118 @@ export function BoardCanvas({
   );
 
   // -------------------------------------------------------------------------
+  // Interaksi bertahap: pencatatan, konektor ikutan, commit & batal
+  // -------------------------------------------------------------------------
+
+  /** Catat keadaan awal elemen sebelum interaksi mengubahnya. */
+  const touch = useCallback(
+    (touched: Touched, ids: Iterable<string>) => {
+      const fresh: string[] = [];
+      for (const id of ids) {
+        if (touched.has(id)) continue;
+        const el = elementsRef.current.get(id);
+        if (!el) continue;
+        touched.set(id, el);
+        fresh.push(id);
+      }
+      if (fresh.length > 0) markDirty(fresh);
+    },
+    [elementsRef, markDirty],
+  );
+
+  /**
+   * Terapkan patch sementara, lalu ikutkan garis/konektor yang menempel ke
+   * elemen yang berubah. Tanpa ini geometri tersimpan konektor jadi basi:
+   * tampilannya mengikuti elemen, tapi klik & kotak seleksinya tertinggal.
+   */
+  const applyTransientWithFollowUps = useCallback(
+    (update: WhiteboardElementPatch[], touched: Touched): WhiteboardElementPatch[] => {
+      touch(touched, update.map((patch) => patch.id));
+      applyTransient({ ...emptyMutation(), update });
+      const follow = connectorFollowUps(
+        new Set(update.map((patch) => patch.id)),
+        elementsRef.current,
+      );
+      if (follow.length > 0) {
+        touch(touched, follow.map((patch) => patch.id));
+        applyTransient({ ...emptyMutation(), update: follow });
+      }
+      return [...update, ...follow];
+    },
+    [touch, applyTransient, elementsRef],
+  );
+
+  /**
+   * Commit hasil interaksi bertahap dengan riwayat yang memakai nilai
+   * *sebelum* gerakan dimulai — bukan posisi antara yang sempat ditulis
+   * `applyTransient` selama pointer masih ditekan.
+   */
+  const commitTouched = useCallback(
+    (touched: Touched) => {
+      const forward: WhiteboardElementPatch[] = [];
+      const backward: WhiteboardElementPatch[] = [];
+      for (const [id, before] of touched) {
+        const after = elementsRef.current.get(id);
+        if (!after || sameGeometry(before, after)) continue;
+        const withEnds = hasEndpoints(before) || hasEndpoints(after);
+        forward.push(geometryPatch(after, withEnds));
+        backward.push(geometryPatch(before, withEnds));
+      }
+      if (forward.length === 0) return;
+      const mutation = { ...emptyMutation(), update: forward };
+      pushHistory(mutation, { ...emptyMutation(), update: backward });
+      void commit(mutation).catch((error: unknown) => {
+        toast.error(
+          error instanceof Error ? error.message : "Gagal menyimpan perubahan.",
+        );
+      });
+    },
+    [elementsRef, pushHistory, commit],
+  );
+
+  /** Kembalikan elemen yang sempat diubah sementara ke keadaan awalnya. */
+  const revertTouched = useCallback(
+    (touched: Touched) => {
+      const update = [...touched.values()].map((before) =>
+        geometryPatch(before, hasEndpoints(before)),
+      );
+      applyTransient({ ...emptyMutation(), update });
+    },
+    [applyTransient],
+  );
+
+  /**
+   * Hentikan gerakan yang sedang berlangsung tanpa menyimpannya (Esc, atau
+   * jari kedua menyentuh layar untuk pinch-zoom).
+   */
+  const cancelInteraction = useCallback(() => {
+    const state = interactionRef.current;
+    interactionRef.current = { kind: "idle" };
+    if ("touched" in state) {
+      revertTouched(state.touched);
+      endDraft();
+      clearDirty(state.touched.keys());
+    }
+    setAttachTarget(null);
+    clearPreview();
+  }, [revertTouched, endDraft, clearDirty, clearPreview]);
+
+  /** Elemen bertubuh (bukan garis) di titik ini yang bisa ditempeli konektor. */
+  const attachableAt = useCallback(
+    (world: Point, excludeId?: string) => {
+      const zoom = viewportRef.current.zoom;
+      for (let i = ordered.length - 1; i >= 0; i -= 1) {
+        const el = ordered[i]!;
+        if (el.id === excludeId || LINEAR_TYPES.has(el.type)) continue;
+        if (el.type === RoomWhiteboardElementType.DRAW) continue;
+        if (hitTestElement(el, world, 6 / zoom)) return el;
+      }
+      return null;
+    },
+    [ordered],
+  );
+
+  // -------------------------------------------------------------------------
   // Penghapus
   // -------------------------------------------------------------------------
 
@@ -498,6 +701,25 @@ export function BoardCanvas({
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.set(event.pointerId, pointerScreen(event));
+        if (touchPointsRef.current.size === 2) {
+          // Jari kedua: batalkan apa pun yang dimulai jari pertama, lalu
+          // beralih ke pinch-zoom + geser dua jari.
+          cancelInteraction();
+          const [p1, p2] = [...touchPointsRef.current.values()] as [Point, Point];
+          interactionRef.current = {
+            kind: "pinch",
+            startDistance: Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y)),
+            startMid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
+            startViewport: viewportRef.current,
+          };
+          svgRef.current?.setPointerCapture(event.pointerId);
+          return;
+        }
+        if (touchPointsRef.current.size > 2) return;
+      }
+
       if (event.button === 1 || (event.button === 0 && spacePressed)) {
         // Klik tengah / spasi = geser kanvas.
         interactionRef.current = {
@@ -535,7 +757,8 @@ export function BoardCanvas({
       }
 
       if (activeTool === "laser") {
-        // Laser hanya efemeral — tidak membuat apa pun.
+        // Laser hanya efemeral — jejaknya digambar dari gerakan pointer.
+        pushLaser(world);
         return;
       }
 
@@ -566,11 +789,9 @@ export function BoardCanvas({
 
       if (DRAG_CREATE_TOOLS.has(activeTool)) {
         let startAttach: { elementId: string } | null = null;
-        if (activeTool === "connector") {
-          const target = pickElement(ordered, world, tolerance);
-          if (target && !LINEAR_TYPES.has(target.type)) {
-            startAttach = { elementId: target.id };
-          }
+        if (ATTACHING_TOOLS.has(activeTool)) {
+          const target = attachableAt(world);
+          if (target) startAttach = { elementId: target.id };
         }
         interactionRef.current = {
           kind: "create",
@@ -603,36 +824,45 @@ export function BoardCanvas({
             center,
             startAngle: Math.atan2(world.y - center.y, world.x - center.x),
             originals: new Map(
-              selectedElements.map((el) => [
-                el.id,
-                {
-                  rotation: el.rotation,
-                  x: el.x,
-                  y: el.y,
-                  width: el.width,
-                  height: el.height,
-                },
-              ]),
+              selectedElements
+                .filter((el) => !el.locked)
+                .map((el) => [
+                  el.id,
+                  {
+                    rotation: el.rotation,
+                    x: el.x,
+                    y: el.y,
+                    width: el.width,
+                    height: el.height,
+                  },
+                ]),
             ),
+            touched: new Map(),
           };
         } else if (handle.type === "endpoint") {
           interactionRef.current = {
             kind: "endpoint",
             elementId: selectedElements[0]!.id,
             end: handle.end,
+            target: null,
+            touched: new Map(),
           };
         } else {
           interactionRef.current = {
             kind: "resize",
             handle: handle.handle,
             startWorld: world,
-            originals: new Map(selectedElements.map((el) => [el.id, el])),
+            originals: new Map(
+              selectedElements
+                .filter((el) => !el.locked)
+                .map((el) => [el.id, el]),
+            ),
             groupBox: selectionBox!,
             rotation:
               selectedElements.length === 1 ? selectedElements[0]!.rotation : 0,
+            touched: new Map(),
           };
         }
-        markDirty(selectionRef.current);
         return;
       }
 
@@ -669,20 +899,54 @@ export function BoardCanvas({
       if (moving.length === 0) return;
 
       const movingIds = new Set(moving.map((el) => el.id));
-      const groupBox = elementsBounds(moving)!;
+      // Frame membawa serta semua objek yang sepenuhnya berada di dalamnya.
+      const frames = moving.filter(
+        (el) => el.type === RoomWhiteboardElementType.FRAME,
+      );
+      for (const frame of frames) {
+        const frameBox = elementAABB(frame);
+        for (const other of ordered) {
+          if (movingIds.has(other.id) || other.locked) continue;
+          if (other.type === RoomWhiteboardElementType.FRAME) continue;
+          if (!boxContains(frameBox, elementAABB(other))) continue;
+          moving.push(other);
+          movingIds.add(other.id);
+        }
+      }
+
+      // Garis yang ujungnya menempel ke objek di luar seleksi dilepas
+      // tempelannya, kalau tidak ia tidak akan ikut bergeser sama sekali.
+      const originals = new Map<string, { x: number; y: number; width?: number; height?: number }>();
+      const detach = new Map<string, Array<"start" | "end">>();
+      for (const el of moving) {
+        if (LINEAR_TYPES.has(el.type)) {
+          const ends = (["start", "end"] as const).filter((end) => {
+            const target = el.props[end]?.elementId;
+            return Boolean(target) && !movingIds.has(target!);
+          });
+          if (ends.length > 0) {
+            detach.set(el.id, ends);
+            originals.set(el.id, resolvedLinearGeometry(el, elementsRef.current));
+            continue;
+          }
+        }
+        originals.set(el.id, { x: el.x, y: el.y });
+      }
+
       interactionRef.current = {
         kind: "translate",
         startWorld: world,
         currentWorld: world,
-        originals: new Map(moving.map((el) => [el.id, { x: el.x, y: el.y }])),
+        originals,
+        detach,
         moved: false,
         guides: [],
         staticBoxes: ordered
           .filter((el) => !movingIds.has(el.id))
           .map(elementAABB),
-        groupBox,
+        groupBox: elementsBounds(moving)!,
+        touched: new Map(),
       };
-      markDirty(movingIds);
     },
     [
       elementsRef,
@@ -698,7 +962,9 @@ export function BoardCanvas({
       eraseAt,
       selectionBox,
       selectedElements,
-      markDirty,
+      cancelInteraction,
+      attachableAt,
+      pushLaser,
     ],
   );
 
@@ -706,8 +972,48 @@ export function BoardCanvas({
   // Pointer: bergerak
   // -------------------------------------------------------------------------
 
+  /** Kursor & sorotan saat kursor sekadar melintas (tanpa tombol ditekan). */
+  const updateHover = useCallback(
+    (world: Point) => {
+      if (toolRef.current !== "select" || spacePressed) {
+        setHoverId(null);
+        setHoverCursor(null);
+        return;
+      }
+      const zoom = viewportRef.current.zoom;
+      const handle = hitTestSelectionHandles(
+        world,
+        selectionBox,
+        selectedElements,
+        zoom,
+      );
+      if (handle) {
+        setHoverId(null);
+        setHoverCursor(
+          handle.type === "resize"
+            ? handleCursor(
+                handle.handle,
+                selectedElements.length === 1 ? selectedElements[0]!.rotation : 0,
+              )
+            : handle.type === "rotate"
+              ? "grab"
+              : "crosshair",
+        );
+        return;
+      }
+      const hit = pickElement(ordered, world, 4 / zoom);
+      setHoverId(hit && !selectionRef.current.includes(hit.id) ? hit.id : null);
+      setHoverCursor(hit ? "move" : null);
+    },
+    [ordered, selectionBox, selectedElements, spacePressed],
+  );
+
   const onPointerMove = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType === "touch" && touchPointsRef.current.has(event.pointerId)) {
+        touchPointsRef.current.set(event.pointerId, pointerScreen(event));
+      }
+
       const world = pointerWorld(event);
       const state = interactionRef.current;
       const zoom = viewportRef.current.zoom;
@@ -719,7 +1025,29 @@ export function BoardCanvas({
         tool: toolRef.current,
       });
 
+      if (toolRef.current === "laser") pushLaser(world);
+
       switch (state.kind) {
+        case "idle": {
+          if (event.pointerType !== "touch") updateHover(world);
+          return;
+        }
+        case "pinch": {
+          const points = [...touchPointsRef.current.values()];
+          if (points.length < 2) return;
+          const [p1, p2] = points as [Point, Point];
+          const distance = Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+          const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+          const start = state.startViewport;
+          const anchor = screenToWorld(state.startMid, start);
+          const nextZoom = clampZoom(start.zoom * (distance / state.startDistance));
+          setViewport({
+            zoom: nextZoom,
+            x: mid.x - anchor.x * nextZoom,
+            y: mid.y - anchor.y * nextZoom,
+          });
+          return;
+        }
         case "pan": {
           const now = pointerScreen(event);
           setViewport({
@@ -746,9 +1074,15 @@ export function BoardCanvas({
           state.currentWorld = world;
           let dx = world.x - state.startWorld.x;
           let dy = world.y - state.startWorld.y;
-          if (Math.abs(dx) > CLICK_SLOP_PX / zoom || Math.abs(dy) > CLICK_SLOP_PX / zoom) {
-            state.moved = true;
+          if (
+            !state.moved &&
+            Math.abs(dx) <= CLICK_SLOP_PX / zoom &&
+            Math.abs(dy) <= CLICK_SLOP_PX / zoom
+          ) {
+            // Klik biasa sering bergeser 1–2 piksel; jangan anggap itu geseran.
+            return;
           }
+          state.moved = true;
           if (event.shiftKey) {
             // Kunci ke sumbu dominan.
             if (Math.abs(dx) > Math.abs(dy)) dy = 0;
@@ -772,10 +1106,30 @@ export function BoardCanvas({
 
           const update: WhiteboardElementPatch[] = [];
           for (const [id, origin] of state.originals) {
-            update.push({ id, x: origin.x + dx, y: origin.y + dy });
+            const patch: WhiteboardElementPatch = {
+              id,
+              x: origin.x + dx,
+              y: origin.y + dy,
+            };
+            const ends = state.detach.get(id);
+            if (ends && origin.width !== undefined && origin.height !== undefined) {
+              patch.width = origin.width;
+              patch.height = origin.height;
+              const props: WhiteboardProps = {};
+              for (const end of ends) {
+                props[end] = {
+                  elementId: null,
+                  side: "auto",
+                  x: end === "start" ? patch.x! : patch.x! + origin.width,
+                  y: end === "start" ? patch.y! : patch.y! + origin.height,
+                };
+              }
+              patch.props = props;
+            }
+            update.push(patch);
           }
-          applyTransient({ ...emptyMutation(), update });
-          sendDraft(update as DraftPatch[]);
+          const all = applyTransientWithFollowUps(update, state.touched);
+          sendDraft(all as DraftPatch[]);
           setPreview(guides.length > 0 ? { kind: "guides", guides } : null);
           return;
         }
@@ -805,8 +1159,8 @@ export function BoardCanvas({
             const scaled = scaleElementWithinBox(original, state.groupBox, after);
             update.push({ id, ...scaled });
           }
-          applyTransient({ ...emptyMutation(), update });
-          sendDraft(update as DraftPatch[]);
+          const all = applyTransientWithFollowUps(update, state.touched);
+          sendDraft(all as DraftPatch[]);
           return;
         }
         case "rotate": {
@@ -829,13 +1183,17 @@ export function BoardCanvas({
               y: rotated.y - original.height / 2,
             });
           }
-          applyTransient({ ...emptyMutation(), update });
-          sendDraft(update as DraftPatch[]);
+          const all = applyTransientWithFollowUps(update, state.touched);
+          sendDraft(all as DraftPatch[]);
           return;
         }
         case "create": {
           state.currentWorld = world;
           const creating = state;
+          if (ATTACHING_TOOLS.has(creating.tool)) {
+            const target = attachableAt(world, creating.startAttach?.elementId);
+            setAttachTarget(target?.id ?? null);
+          }
           schedulePreview(() => ({
             kind: "create",
             tool: creating.tool,
@@ -874,21 +1232,36 @@ export function BoardCanvas({
         case "endpoint": {
           const element = elementsRef.current.get(state.elementId);
           if (!element) return;
+          const canAttach = element.type !== RoomWhiteboardElementType.LINE;
+          const target = canAttach ? attachableAt(world, element.id) : null;
+          state.target = target?.id ?? null;
+          setAttachTarget(state.target);
+
+          // Ujung yang ditarik dilepas dulu; ujung lainnya tetap di posisinya
+          // yang sudah diresolusi (bisa jadi menempel ke elemen lain).
+          const resolved = connectorPoints(element, (id) => elementsRef.current.get(id));
+          const fixed =
+            state.end === "start" ? resolved[resolved.length - 1]! : resolved[0]!;
+          const free = { elementId: null, side: "auto" as const, x: world.x, y: world.y };
           const patch: WhiteboardElementPatch =
             state.end === "start"
               ? {
                   id: element.id,
                   x: world.x,
                   y: world.y,
-                  width: element.x + element.width - world.x,
-                  height: element.y + element.height - world.y,
+                  width: fixed.x - world.x,
+                  height: fixed.y - world.y,
+                  props: { start: free },
                 }
               : {
                   id: element.id,
-                  width: world.x - element.x,
-                  height: world.y - element.y,
+                  x: fixed.x,
+                  y: fixed.y,
+                  width: world.x - fixed.x,
+                  height: world.y - fixed.y,
+                  props: { end: free },
                 };
-          applyTransient({ ...emptyMutation(), update: [patch] });
+          applyTransientWithFollowUps([patch], state.touched);
           sendDraft([patch as DraftPatch]);
           return;
         }
@@ -897,7 +1270,7 @@ export function BoardCanvas({
       }
     },
     [
-      applyTransient,
+      applyTransientWithFollowUps,
       elementsRef,
       ordered,
       pointerWorld,
@@ -906,47 +1279,15 @@ export function BoardCanvas({
       sendDraft,
       schedulePreview,
       eraseAt,
+      attachableAt,
+      updateHover,
+      pushLaser,
     ],
   );
 
   // -------------------------------------------------------------------------
   // Pointer: selesai
   // -------------------------------------------------------------------------
-
-  /** Sisipkan entri riwayat buatan tangan (untuk interaksi bertahap). */
-  const pushManualHistory = useCallback(
-    (forward: WhiteboardMutation, backward: WhiteboardMutation) => {
-      pushHistory(forward, backward);
-    },
-    [pushHistory],
-  );
-
-  /**
-   * Commit hasil interaksi bertahap dengan riwayat yang memakai nilai
-   * *sebelum* gerakan dimulai — bukan posisi antara yang sempat ditulis
-   * `applyTransient` selama pointer masih ditekan.
-   */
-  const commitFromOriginals = useCallback(
-    <T,>(
-      update: WhiteboardElementPatch[],
-      originals: Map<string, T>,
-      toInverse: (id: string, origin: T) => WhiteboardElementPatch,
-    ) => {
-      if (update.length === 0) return;
-      const mutation = { ...emptyMutation(), update };
-      const inverse = [...originals.entries()].map(([id, origin]) =>
-        toInverse(id, origin),
-      );
-      applyMutation(mutation, { history: false });
-      pushManualHistory(mutation, { ...emptyMutation(), update: inverse });
-      void commit(mutation).catch((error: unknown) => {
-        toast.error(
-          error instanceof Error ? error.message : "Gagal menyimpan perubahan.",
-        );
-      });
-    },
-    [pushManualHistory, commit, applyMutation],
-  );
 
   const finishCreate = useCallback(
     (
@@ -966,10 +1307,9 @@ export function BoardCanvas({
 
       if (LINEAR_TYPES.has(type)) {
         if (dragged < CLICK_SLOP_PX) return;
-        const endTarget =
-          creating.tool === "connector"
-            ? pickElement(ordered, endWorld, 4 / zoom)
-            : null;
+        const endTarget = ATTACHING_TOOLS.has(creating.tool)
+          ? attachableAt(endWorld, creating.startAttach?.elementId)
+          : null;
         const extra: WhiteboardProps = {};
         if (creating.startAttach || endTarget) {
           extra.start = {
@@ -979,10 +1319,7 @@ export function BoardCanvas({
             y: creating.startWorld.y,
           };
           extra.end = {
-            elementId:
-              endTarget && endTarget.id !== creating.startAttach?.elementId
-                ? endTarget.id
-                : null,
+            elementId: endTarget?.id ?? null,
             side: "auto",
             x: endWorld.x,
             y: endWorld.y,
@@ -998,6 +1335,14 @@ export function BoardCanvas({
           },
           extra,
         );
+        if (creating.startAttach || endTarget) {
+          // Simpan geometri yang sudah menempel ke tepi objek, bukan titik
+          // mentah pointer — supaya klik & kotak seleksinya tepat sejak awal.
+          Object.assign(
+            element,
+            resolvedLinearGeometry(element as WhiteboardElement, elementsRef.current),
+          );
+        }
         applyAndCommit({ ...emptyMutation(), create: [element] });
         setSelection([element.id]);
         if (!keepTool) setTool("select");
@@ -1016,6 +1361,15 @@ export function BoardCanvas({
       }
 
       const element = buildElement(type, box);
+      if (type === RoomWhiteboardElementType.FRAME) {
+        // Frame berlatar padat; kalau ditaruh di atas, objek yang dibingkainya
+        // tertutup. Letakkan di bawah semua objek lain.
+        let min = 0;
+        for (const el of elementsRef.current.values()) {
+          if (el.zIndex < min) min = el.zIndex;
+        }
+        element.zIndex = min - 1;
+      }
       applyAndCommit({ ...emptyMutation(), create: [element] });
       setSelection([element.id]);
 
@@ -1033,7 +1387,7 @@ export function BoardCanvas({
 
       if (!keepTool) setTool("select");
     },
-    [ordered, viewportRef, buildElement, applyAndCommit],
+    [viewportRef, buildElement, applyAndCommit, attachableAt, elementsRef],
   );
 
   const finishDraw = useCallback(
@@ -1086,85 +1440,66 @@ export function BoardCanvas({
 
   const onPointerUp = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.delete(event.pointerId);
+      }
       const state = interactionRef.current;
-      interactionRef.current = { kind: "idle" };
       try {
         svgRef.current?.releasePointerCapture(event.pointerId);
       } catch {
         // Pointer sudah lepas.
       }
+      if (state.kind === "pinch") {
+        // Satu jari diangkat mengakhiri pinch; jari sisanya diabaikan sampai
+        // ikut diangkat, supaya tidak tiba-tiba mulai menyeleksi.
+        if (touchPointsRef.current.size === 0) {
+          interactionRef.current = { kind: "idle" };
+        }
+        return;
+      }
+      interactionRef.current = { kind: "idle" };
 
       const world = pointerWorld(event);
+      setAttachTarget(null);
 
       switch (state.kind) {
-        case "translate": {
-          endDraft();
-          if (state.moved) {
-            const update: WhiteboardElementPatch[] = [];
-            for (const id of state.originals.keys()) {
-              const el = elementsRef.current.get(id);
-              if (!el) continue;
-              update.push({ id, x: el.x, y: el.y });
-            }
-            commitFromOriginals(update, state.originals, (id, origin) => ({
-              id,
-              x: origin.x,
-              y: origin.y,
-            }));
-          }
-          clearDirty(state.originals.keys());
-          break;
-        }
+        case "translate":
         case "resize":
         case "rotate": {
           endDraft();
-          const ids = [...state.originals.keys()];
-          const update: WhiteboardElementPatch[] = [];
-          for (const id of ids) {
-            const el = elementsRef.current.get(id);
-            if (!el) continue;
-            update.push({
-              id,
-              x: el.x,
-              y: el.y,
-              width: el.width,
-              height: el.height,
-              rotation: el.rotation,
-            });
-          }
-          commitFromOriginals(update, state.originals, (id, origin) => ({
-            id,
-            x: origin.x,
-            y: origin.y,
-            width: origin.width,
-            height: origin.height,
-            rotation: "rotation" in origin ? origin.rotation : 0,
-          }));
-          clearDirty(ids);
+          commitTouched(state.touched);
+          clearDirty(state.touched.keys());
           break;
         }
         case "endpoint": {
           endDraft();
-          const el = elementsRef.current.get(state.elementId);
-          if (el) {
-            applyAndCommit({
-              ...emptyMutation(),
-              update: [
+          const element = elementsRef.current.get(state.elementId);
+          if (element && state.target) {
+            // Lepas di atas objek: tempelkan, lalu rapikan geometrinya ke tepi.
+            const current = element.props[state.end];
+            applyTransientWithFollowUps(
+              [
                 {
-                  id: el.id,
-                  x: el.x,
-                  y: el.y,
-                  width: el.width,
-                  height: el.height,
+                  id: element.id,
+                  props: {
+                    [state.end]: {
+                      elementId: state.target,
+                      side: "auto",
+                      x: current?.x ?? world.x,
+                      y: current?.y ?? world.y,
+                    },
+                  },
                 },
               ],
-            });
+              state.touched,
+            );
           }
-          clearDirty([state.elementId]);
+          commitTouched(state.touched);
+          clearDirty(state.touched.keys());
           break;
         }
         case "create":
-          finishCreate(state, world, event.shiftKey);
+          finishCreate(state, world, event.shiftKey || toolLockedRef.current);
           break;
         case "draw":
           finishDraw(state);
@@ -1186,7 +1521,8 @@ export function BoardCanvas({
       endDraft,
       clearDirty,
       applyAndCommit,
-      commitFromOriginals,
+      applyTransientWithFollowUps,
+      commitTouched,
       finishCreate,
       finishDraw,
       clearPreview,
@@ -1199,7 +1535,7 @@ export function BoardCanvas({
 
   useEffect(() => {
     const node = containerRef.current;
-    if (!node) return;
+    if (!node || !mounted) return;
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
@@ -1221,7 +1557,7 @@ export function BoardCanvas({
 
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [mounted]);
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -1252,6 +1588,37 @@ export function BoardCanvas({
   // Aksi pada seleksi
   // -------------------------------------------------------------------------
 
+  /**
+   * Terapkan mutasi berisi patch posisi/ukuran, plus konektor yang menempel
+   * ke elemen yang bergerak — satu langkah undo untuk semuanya.
+   */
+  const commitWithFollowUps = useCallback(
+    (update: WhiteboardElementPatch[], options?: { coalesceKey?: string }) => {
+      if (update.length === 0) return;
+      const preview = new Map(elementsRef.current);
+      for (const patch of update) {
+        const el = preview.get(patch.id);
+        if (!el) continue;
+        preview.set(patch.id, {
+          ...el,
+          x: patch.x ?? el.x,
+          y: patch.y ?? el.y,
+          width: patch.width ?? el.width,
+          height: patch.height ?? el.height,
+        });
+      }
+      const follow = connectorFollowUps(
+        new Set(update.map((patch) => patch.id)),
+        preview,
+      );
+      applyAndCommit(
+        { ...emptyMutation(), update: [...update, ...follow] },
+        options,
+      );
+    },
+    [applyAndCommit, elementsRef],
+  );
+
   const deleteSelection = useCallback(() => {
     const ids = selectionRef.current.filter((id) => {
       const el = elementsRef.current.get(id);
@@ -1262,32 +1629,44 @@ export function BoardCanvas({
     setSelection([]);
   }, [applyAndCommit, elementsRef]);
 
-  const duplicateSelection = useCallback(
-    (offset = 24) => {
-      const originals = selectionRef.current
-        .map((id) => elementsRef.current.get(id))
-        .filter((el): el is WhiteboardElement => Boolean(el));
-      if (originals.length === 0) return;
-
-      const idMap = new Map(originals.map((el) => [el.id, newId()]));
+  /**
+   * Sisipkan salinan elemen dengan id baru, digeser sejauh (dx, dy).
+   * Urutan tumpukan asal dipertahankan (frame tetap di bawah isinya) dan
+   * tempelan konektor dipetakan ulang ke salinannya.
+   */
+  const insertClones = useCallback(
+    (source: WhiteboardElement[], dx: number, dy: number) => {
+      if (source.length === 0) return;
+      const sorted = [...source].sort((a, b) => a.zIndex - b.zIndex);
+      const idMap = new Map(sorted.map((el) => [el.id, newId()]));
       let z = nextZIndex();
-      const create: WhiteboardElementInput[] = originals.map((el) => ({
+      const create: WhiteboardElementInput[] = sorted.map((el) => ({
         id: idMap.get(el.id)!,
         type: el.type,
         zIndex: z++,
-        x: el.x + offset,
-        y: el.y + offset,
+        x: el.x + dx,
+        y: el.y + dy,
         width: el.width,
         height: el.height,
         rotation: el.rotation,
-        props: remapConnectorProps(el.props, idMap),
+        props: remapConnectorProps(el.props, idMap, dx, dy),
         locked: false,
         frameId: el.frameId ? (idMap.get(el.frameId) ?? null) : null,
       }));
       applyAndCommit({ ...emptyMutation(), create });
       setSelection(create.map((el) => el.id));
     },
-    [newId, nextZIndex, applyAndCommit, elementsRef],
+    [newId, nextZIndex, applyAndCommit],
+  );
+
+  const duplicateSelection = useCallback(
+    (offset = 24) => {
+      const originals = selectionRef.current
+        .map((id) => elementsRef.current.get(id))
+        .filter((el): el is WhiteboardElement => Boolean(el));
+      insertClones(originals, offset, offset);
+    },
+    [insertClones, elementsRef],
   );
 
   const updateSelectionProps = useCallback(
@@ -1296,6 +1675,17 @@ export function BoardCanvas({
         elementsRef.current.has(id),
       );
       setStyleDefaults((prev) => ({ ...prev, ...props }));
+      // Warna kertas yang baru dipilih jadi warna sticky berikutnya.
+      if (
+        props.fill &&
+        STICKY_PALETTE.includes(props.fill) &&
+        ids.some(
+          (id) =>
+            elementsRef.current.get(id)?.type === RoomWhiteboardElementType.STICKY,
+        )
+      ) {
+        setStickyColor(props.fill);
+      }
       if (ids.length === 0) return;
       applyAndCommit(
         { ...emptyMutation(), update: ids.map((id) => ({ id, props })) },
@@ -1317,15 +1707,19 @@ export function BoardCanvas({
           direction === "front"
             ? Math.max(0, ...all.map((el) => el.zIndex))
             : Math.min(0, ...all.map((el) => el.zIndex));
-        let offset = 1;
-        for (const el of all) {
-          if (!ids.has(el.id)) continue;
+        // "Ke belakang" harus menjaga urutan relatif seleksi: yang paling
+        // bawah di antara seleksi tetap paling bawah.
+        const chosen = all.filter((el) => ids.has(el.id));
+        const count = chosen.length;
+        chosen.forEach((el, index) => {
           update.push({
             id: el.id,
-            zIndex: direction === "front" ? extreme + offset : extreme - offset,
+            zIndex:
+              direction === "front"
+                ? extreme + index + 1
+                : extreme - count + index,
           });
-          offset += 1;
-        }
+        });
       } else {
         // Tukar posisi dengan tetangga terdekat di luar seleksi.
         const step = direction === "forward" ? 1 : -1;
@@ -1355,8 +1749,24 @@ export function BoardCanvas({
       ...emptyMutation(),
       update: elements.map((el) => ({ id: el.id, locked: lock })),
     });
+    toast.success(
+      lock
+        ? "Objek dikunci. Klik kanan objek untuk membuka kuncinya."
+        : "Kunci objek dibuka.",
+    );
     if (lock) setSelection([]);
   }, [applyAndCommit, elementsRef]);
+
+  const unlockAll = useCallback(() => {
+    const locked = ordered.filter((el) => el.locked);
+    if (locked.length === 0) return;
+    applyAndCommit({
+      ...emptyMutation(),
+      update: locked.map((el) => ({ id: el.id, locked: false })),
+    });
+    setSelection(locked.map((el) => el.id));
+    toast.success(`${locked.length} objek dibuka kuncinya.`);
+  }, [applyAndCommit, ordered]);
 
   const alignSelection = useCallback(
     (
@@ -1424,9 +1834,9 @@ export function BoardCanvas({
         }
       }
 
-      if (update.length > 0) applyAndCommit({ ...emptyMutation(), update });
+      commitWithFollowUps(update);
     },
-    [applyAndCommit, elementsRef],
+    [commitWithFollowUps, elementsRef],
   );
 
   // -------------------------------------------------------------------------
@@ -1449,48 +1859,62 @@ export function BoardCanvas({
   // Clipboard
   // -------------------------------------------------------------------------
 
+  /**
+   * Salinan internal — dipakai menu klik kanan, yang tidak bisa membaca
+   * clipboard sistem secara sinkron. Pintasan papan tik memakai clipboard
+   * sistem (lihat listener copy/cut/paste) sehingga objek bisa ditempel ke
+   * papan lain, dan gambar/teks dari aplikasi lain tetap bisa ditempel.
+   */
   const clipboardRef = useRef<WhiteboardElement[]>([]);
 
-  const copySelection = useCallback(() => {
-    const copied = selectionRef.current
-      .map((id) => elementsRef.current.get(id))
-      .filter((el): el is WhiteboardElement => Boolean(el))
-      .map((el) => ({ ...el }));
-    clipboardRef.current = copied;
-    setHasClipboard(copied.length > 0);
-  }, [elementsRef]);
+  const selectedForClipboard = useCallback(
+    () =>
+      selectionRef.current
+        .map((id) => elementsRef.current.get(id))
+        .filter((el): el is WhiteboardElement => Boolean(el))
+        .map((el) => ({ ...el })),
+    [elementsRef],
+  );
 
-  const pasteClipboard = useCallback(
-    (at?: Point) => {
-      const source = clipboardRef.current;
+  const copySelection = useCallback(() => {
+    const copied = selectedForClipboard();
+    if (copied.length === 0) return;
+    clipboardRef.current = copied;
+    setHasClipboard(true);
+    // Menu klik kanan: tulis juga ke clipboard sistem kalau diizinkan.
+    void navigator.clipboard
+      ?.writeText(serializeClipboard(copied))
+      .catch(() => undefined);
+  }, [selectedForClipboard]);
+
+  /**
+   * Tempel objek. Kalau posisi asalnya masih terlihat, salinan digeser
+   * sedikit; kalau tidak (mis. dari papan lain), diletakkan di tengah layar.
+   */
+  const pasteElements = useCallback(
+    (source: WhiteboardElement[], at?: Point) => {
       if (source.length === 0) return;
       const bounds = elementsBounds(source)!;
-      const target = at ?? {
-        x: bounds.x + 24,
-        y: bounds.y + 24,
-      };
-      const dx = target.x - bounds.x;
-      const dy = target.y - bounds.y;
-
-      const idMap = new Map(source.map((el) => [el.id, newId()]));
-      let z = nextZIndex();
-      const create: WhiteboardElementInput[] = source.map((el) => ({
-        id: idMap.get(el.id)!,
-        type: el.type,
-        zIndex: z++,
-        x: el.x + dx,
-        y: el.y + dy,
-        width: el.width,
-        height: el.height,
-        rotation: el.rotation,
-        props: remapConnectorProps(el.props, idMap),
-        locked: false,
-        frameId: el.frameId ? (idMap.get(el.frameId) ?? null) : null,
-      }));
-      applyAndCommit({ ...emptyMutation(), create });
-      setSelection(create.map((el) => el.id));
+      let target: Point;
+      if (at) {
+        target = at;
+      } else {
+        const view = visibleWorldBox(viewportRef.current, size);
+        target = boxesIntersect(view, bounds)
+          ? { x: bounds.x + 24, y: bounds.y + 24 }
+          : {
+              x: view.x + view.width / 2 - bounds.width / 2,
+              y: view.y + view.height / 2 - bounds.height / 2,
+            };
+      }
+      insertClones(source, target.x - bounds.x, target.y - bounds.y);
     },
-    [newId, nextZIndex, applyAndCommit],
+    [insertClones, size],
+  );
+
+  const pasteClipboard = useCallback(
+    (at?: Point) => pasteElements(clipboardRef.current, at),
+    [pasteElements],
   );
 
   // -------------------------------------------------------------------------
@@ -1567,13 +1991,9 @@ export function BoardCanvas({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable);
-      if (typing) return;
+      if (isTypingTarget(event.target)) return;
+      // Dialog/menu lain sedang terbuka di atas papan — jangan curi tombolnya.
+      if (document.querySelector("[role=dialog], [role=menu]")) return;
 
       const mod = event.metaKey || event.ctrlKey;
 
@@ -1599,26 +2019,20 @@ export function BoardCanvas({
         setSelection(ordered.filter((el) => !el.locked).map((el) => el.id));
         return;
       }
-      if (mod && event.key.toLowerCase() === "c") {
-        copySelection();
-        return;
-      }
-      if (mod && event.key.toLowerCase() === "x") {
-        copySelection();
-        deleteSelection();
-        return;
-      }
-      if (mod && event.key.toLowerCase() === "v") {
-        // Tempel gambar ditangani oleh listener `paste`.
-        if (hasClipboard) {
-          event.preventDefault();
-          pasteClipboard();
-        }
-        return;
-      }
+      // Salin/potong/tempel ditangani listener `copy`/`cut`/`paste` di bawah.
       if (mod && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateSelection();
+        return;
+      }
+      if (mod && event.key === "]") {
+        event.preventDefault();
+        reorderSelection(event.shiftKey ? "front" : "forward");
+        return;
+      }
+      if (mod && event.key === "[") {
+        event.preventDefault();
+        reorderSelection(event.shiftKey ? "back" : "backward");
         return;
       }
       if (mod && event.key === "0") {
@@ -1638,12 +2052,22 @@ export function BoardCanvas({
       }
       if (mod) return;
 
+      if (event.key === "?") {
+        event.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         deleteSelection();
         return;
       }
       if (event.key === "Escape") {
+        if (interactionRef.current.kind !== "idle") {
+          // Esc di tengah gerakan membatalkan gerakan itu saja.
+          cancelInteraction();
+          return;
+        }
         setSelection([]);
         setEditingId(null);
         setContextMenu(null);
@@ -1664,6 +2088,10 @@ export function BoardCanvas({
       }
       if (event.key === "2" && !event.shiftKey && selectedElements.length > 0) {
         zoomToFit(selectedElements);
+        return;
+      }
+      if (event.key.toLowerCase() === "q") {
+        setToolLocked((locked) => !locked);
         return;
       }
 
@@ -1688,7 +2116,7 @@ export function BoardCanvas({
             y: el.y + direction[1] * step,
           });
         }
-        applyAndCommit({ ...emptyMutation(), update }, { coalesceKey: "nudge" });
+        commitWithFollowUps(update, { coalesceKey: "nudge" });
         return;
       }
 
@@ -1702,52 +2130,58 @@ export function BoardCanvas({
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code === "Space") setSpacePressed(false);
     };
+    // Tab berpindah fokus saat spasi ditahan → keyup tidak pernah datang.
+    const onBlur = () => setSpacePressed(false);
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
     };
   }, [
     doUndo,
     doRedo,
     elementsRef,
-    hasClipboard,
     ordered,
-    copySelection,
     deleteSelection,
-    pasteClipboard,
     duplicateSelection,
+    reorderSelection,
     zoomTo,
     zoomBy,
     zoomToFit,
     selectedElements,
     startEditing,
-    applyAndCommit,
+    commitWithFollowUps,
+    cancelInteraction,
   ]);
 
-  // Tempel gambar / teks dari clipboard sistem.
+  // Salin, potong & tempel lewat clipboard sistem.
   useEffect(() => {
+    const onCopyOrCut = (event: ClipboardEvent) => {
+      if (isTypingTarget(event.target) || editingId) return;
+      const copied = selectedForClipboard();
+      if (copied.length === 0) return;
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", serializeClipboard(copied));
+      clipboardRef.current = copied;
+      setHasClipboard(true);
+      if (event.type === "cut") deleteSelection();
+    };
+
     const onPaste = (event: ClipboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      const items = event.clipboardData?.items;
-      if (!items) return;
+      if (isTypingTarget(event.target) || editingId) return;
+      const data = event.clipboardData;
+      if (!data) return;
 
       const center = screenToWorld(
         { x: size.width / 2, y: size.height / 2 },
         viewportRef.current,
       );
 
-      for (const item of items) {
+      for (const item of data.items) {
         if (item.type.startsWith("image/")) {
           const file = item.getAsFile();
           if (file) {
@@ -1758,22 +2192,68 @@ export function BoardCanvas({
         }
       }
 
-      const text = event.clipboardData?.getData("text/plain");
-      if (text && text.trim() && !hasClipboard) {
+      const text = data.getData("text/plain");
+      const elements = text ? parseClipboard(text) : null;
+      if (elements) {
         event.preventDefault();
-        const element = buildElement(
-          RoomWhiteboardElementType.STICKY,
-          centeredBox(center, defaultSizeForType(RoomWhiteboardElementType.STICKY)),
-          { text: text.slice(0, 2000) },
+        pasteElements(elements);
+        return;
+      }
+      if (text && text.trim()) {
+        // Teks biasa dari aplikasi lain jadi sticky baru; tiap paragraf
+        // (dipisah baris kosong) jadi satu sticky, berjajar ke kanan.
+        event.preventDefault();
+        const chunks = text
+          .split(/\r?\n\s*\r?\n/u)
+          .map((chunk) => chunk.trim())
+          .filter(Boolean)
+          .slice(0, 24);
+        const size = defaultSizeForType(RoomWhiteboardElementType.STICKY);
+        const gap = 24;
+        const perRow = Math.min(chunks.length, 6);
+        const rowWidth = perRow * size.width + (perRow - 1) * gap;
+        const create = chunks.map((chunk, index) =>
+          buildElement(
+            RoomWhiteboardElementType.STICKY,
+            {
+              x: center.x - rowWidth / 2 + (index % perRow) * (size.width + gap),
+              y:
+                center.y -
+                size.height / 2 +
+                Math.floor(index / perRow) * (size.height + gap),
+              width: size.width,
+              height: size.height,
+            },
+            { text: chunk.slice(0, 2000) },
+          ),
         );
-        applyAndCommit({ ...emptyMutation(), create: [element] });
-        setSelection([element.id]);
+        // `buildElement` memberi z-index sama untuk semua; jadikan berurutan.
+        create.forEach((el, index) => {
+          el.zIndex += index;
+        });
+        applyAndCommit({ ...emptyMutation(), create });
+        setSelection(create.map((el) => el.id));
       }
     };
 
+    window.addEventListener("copy", onCopyOrCut);
+    window.addEventListener("cut", onCopyOrCut);
     window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [size, uploadImage, buildElement, applyAndCommit, hasClipboard]);
+    return () => {
+      window.removeEventListener("copy", onCopyOrCut);
+      window.removeEventListener("cut", onCopyOrCut);
+      window.removeEventListener("paste", onPaste);
+    };
+  }, [
+    size,
+    editingId,
+    uploadImage,
+    buildElement,
+    applyAndCommit,
+    selectedForClipboard,
+    deleteSelection,
+    pasteElements,
+  ]);
 
   // -------------------------------------------------------------------------
   // Drag & drop gambar
@@ -1829,39 +2309,102 @@ export function BoardCanvas({
     thumbnailDirty.current = true;
   }, [elements]);
 
+  const onThumbnailSavedRef = useRef(onThumbnailSaved);
   useEffect(() => {
+    onThumbnailSavedRef.current = onThumbnailSaved;
+  });
+
+  useEffect(() => {
+    // Kanvas baru dimuat belum mengubah apa pun.
+    thumbnailDirty.current = false;
     const THROTTLE_MS = 45_000;
+    const saveThumbnail = async () => {
+      thumbnailDirty.current = false;
+      lastThumbnailAt.current = Date.now();
+      try {
+        const thumbnail = await renderBoardThumbnail({
+          elements: [...elementsRef.current.values()],
+          dark,
+        });
+        if (!thumbnail) return;
+        await saveRoomWhiteboardThumbnail({ boardId: board.id, thumbnail });
+        onThumbnailSavedRef.current?.(thumbnail);
+      } catch {
+        // Pratinjau bersifat kosmetik — kegagalan tidak perlu diributkan.
+      }
+    };
     const id = window.setInterval(() => {
       if (!thumbnailDirty.current) return;
       if (document.visibilityState === "hidden") return;
       if (Date.now() - lastThumbnailAt.current < THROTTLE_MS) return;
       if (interactionRef.current.kind !== "idle") return;
-
-      thumbnailDirty.current = false;
-      lastThumbnailAt.current = Date.now();
-      void (async () => {
-        try {
-          const thumbnail = await renderBoardThumbnail({
-            elements: elementsRef.current
-              ? [...elementsRef.current.values()]
-              : [],
-            dark,
-          });
-          if (!thumbnail) return;
-          await saveRoomWhiteboardThumbnail({ boardId: board.id, thumbnail });
-        } catch {
-          // Pratinjau bersifat kosmetik — kegagalan tidak perlu diributkan.
-        }
-      })();
+      void saveThumbnail();
     }, 15_000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      // Pindah papan sebelum jadwal berikutnya: simpan pratinjau terakhir
+      // supaya kartu di daftar tidak menampilkan isi lama.
+      if (thumbnailDirty.current) void saveThumbnail();
+    };
   }, [board.id, dark, elementsRef]);
 
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
-  const activeCursor = spacePressed ? "grab" : TOOL_META[tool].cursor;
+  /**
+   * Tab saat menulis di sticky: simpan, lalu langsung buat sticky baru di
+   * kanannya — cara cepat menuangkan banyak ide berturut-turut.
+   */
+  const createNextSticky = useCallback(
+    (fromId: string) => {
+      const from = elementsRef.current.get(fromId);
+      if (!from) return;
+      const gap = 24;
+      const element = buildElement(
+        RoomWhiteboardElementType.STICKY,
+        {
+          x: from.x + from.width + gap,
+          y: from.y,
+          width: from.width,
+          height: from.height,
+        },
+        { fill: from.props.fill ?? stickyColorRef.current },
+      );
+      applyAndCommit({ ...emptyMutation(), create: [element] });
+      setSelection([element.id]);
+      setEditingId(element.id);
+      // Ikuti sticky baru kalau ia keluar dari layar.
+      const view = visibleWorldBox(viewportRef.current, size);
+      if (!boxContains(view, element)) {
+        setViewport((v) => ({
+          ...v,
+          x: v.x - (element.width + gap) * v.zoom,
+        }));
+      }
+    },
+    [elementsRef, buildElement, applyAndCommit, size],
+  );
+
+  const selectTool = useCallback(
+    (next: WhiteboardTool) => {
+      if (next === "image") {
+        // Gambar bukan alat yang "dipegang": langsung buka pemilih file.
+        pickImage();
+        return;
+      }
+      setTool(next);
+      setHoverId(null);
+      setHoverCursor(null);
+    },
+    [pickImage],
+  );
+
+  const activeCursor = spacePressed
+    ? "grab"
+    : tool === "select" && hoverCursor
+      ? hoverCursor
+      : TOOL_META[tool].cursor;
 
   const remoteDraftOverrides = useMemo(() => {
     const map = new Map<string, DraftPatch>();
@@ -1892,12 +2435,30 @@ export function BoardCanvas({
     [preview],
   );
 
+  // Saat peserta lain sedang menggeser objek, konektor yang menempel harus
+  // mengikuti posisi pratinjaunya — bukan posisi tersimpan yang tertinggal.
+  const renderLookup = useMemo(() => {
+    if (remoteDraftOverrides.size === 0) return getElement;
+    const map = new Map(renderElements.map((el) => [el.id, el]));
+    return (id: string) => map.get(id);
+  }, [remoteDraftOverrides, renderElements, getElement]);
+
   const renderContext = useMemo(
-    () => ({ dark, getElement, editingId }),
-    [dark, getElement, editingId],
+    () => ({ dark, getElement: renderLookup, editingId }),
+    [dark, renderLookup, editingId],
   );
 
   const editingElement = editingId ? elements.get(editingId) : undefined;
+  const hoverElement =
+    hoverId && !selection.includes(hoverId) ? elements.get(hoverId) : undefined;
+  const attachElement = attachTarget ? elements.get(attachTarget) : undefined;
+  const lockedCount = useMemo(
+    () => ordered.reduce((count, el) => count + (el.locked ? 1 : 0), 0),
+    [ordered],
+  );
+  const laserPeers = sync.presence.filter(
+    (peer) => peer.tool === "laser" && peer.cursor,
+  );
 
   // Semua hook sudah dipanggil di atas, jadi keluar lebih awal di sini aman.
   if (!mounted) {
@@ -1913,14 +2474,27 @@ export function BoardCanvas({
   return (
     <div
       ref={containerRef}
-      className="bg-muted/40 relative h-full w-full touch-none overflow-hidden outline-none select-none"
+      className="bg-muted/40 @container relative h-full w-full touch-none overflow-hidden outline-none select-none"
       tabIndex={0}
+      aria-label={`Kanvas papan ${board.title}`}
       onDrop={onDrop}
       onDragOver={(e) => e.preventDefault()}
       onContextMenu={(event) => {
         event.preventDefault();
         const world = pointerWorld(event);
-        const hit = pickElement(ordered, world, 4 / viewport.zoom);
+        const tolerance = 4 / viewport.zoom;
+        // Klik kanan juga menjangkau objek terkunci — satu-satunya jalan
+        // untuk membuka kuncinya, karena klik kiri sengaja menembusnya.
+        let hit = pickElement(ordered, world, tolerance);
+        if (!hit) {
+          for (let i = ordered.length - 1; i >= 0; i -= 1) {
+            const el = ordered[i]!;
+            if (el.locked && hitTestElement(el, world, tolerance)) {
+              hit = el;
+              break;
+            }
+          }
+        }
         if (hit && !selectionRef.current.includes(hit.id)) {
           setSelection([hit.id]);
         }
@@ -1939,9 +2513,10 @@ export function BoardCanvas({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onPointerLeave={() =>
-          sendPresence({ cursor: null, selection: selectionRef.current, tool })
-        }
+        onPointerLeave={() => {
+          setHoverId(null);
+          sendPresence({ cursor: null, selection: selectionRef.current, tool });
+        }}
         onDoubleClick={(event) => {
           const world = pointerWorld(event);
           const hit = pickElement(ordered, world, 4 / viewport.zoom);
@@ -1982,6 +2557,13 @@ export function BoardCanvas({
             </g>
           ))}
 
+          {hoverElement && !preview ? (
+            <OutlineBox element={hoverElement} dark={dark} subtle />
+          ) : null}
+          {attachElement ? (
+            <OutlineBox element={attachElement} dark={dark} />
+          ) : null}
+
           <CreationPreview
             preview={preview}
             dark={dark}
@@ -2009,6 +2591,19 @@ export function BoardCanvas({
                 <SnapGuideLine key={i} guide={guide} zoom={viewport.zoom} />
               ))
             : null}
+
+          <LaserTrail
+            points={laserTrail.points}
+            now={laserTrail.now}
+            color={LOCAL_LASER_COLOR}
+          />
+          {laserPeers.map((peer) => (
+            <RemoteLaser
+              key={peer.sessionId}
+              cursor={peer.cursor}
+              color={cursorColorFor(peer.userId)}
+            />
+          ))}
         </g>
 
         <WhiteboardPresenceLayer
@@ -2026,31 +2621,25 @@ export function BoardCanvas({
           element={editingElement}
           viewport={viewport}
           dark={dark}
-          onCommit={(text) => {
-            commitText(editingElement.id, text);
+          onCommit={(text, next) => {
+            const id = editingElement.id;
+            commitText(id, text);
             setEditingId(null);
+            if (next && editingElement.type === RoomWhiteboardElementType.STICKY) {
+              createNextSticky(id);
+            }
           }}
         />
       ) : null}
 
+      {ordered.length === 0 && !preview && !editingId ? (
+        <EmptyBoardHint />
+      ) : null}
+
       {/* Panel & kontrol mengambang */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="pointer-events-auto absolute top-3 left-1/2 -translate-x-1/2">
-          <WhiteboardToolbar
-            tool={tool}
-            onToolChange={(next) => {
-              setTool(next);
-              if (next === "image") pickImage();
-            }}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            onUndo={doUndo}
-            onRedo={doRedo}
-          />
-        </div>
-
         {selectedElements.length > 0 && !editingId ? (
-          <div className="pointer-events-auto absolute top-3 left-3 max-h-[calc(100%-6rem)] overflow-y-auto">
+          <div className="pointer-events-auto absolute top-3 left-3 max-h-[calc(100%-6.5rem)] overflow-y-auto rounded-2xl">
             <WhiteboardStylePanel
               elements={selectedElements}
               dark={dark}
@@ -2060,6 +2649,12 @@ export function BoardCanvas({
               onDuplicate={() => duplicateSelection()}
               onDelete={deleteSelection}
               onToggleLock={toggleLockSelection}
+              onEditText={
+                selectedElements.length === 1 &&
+                TEXT_CAPABLE_TYPES.has(selectedElements[0]!.type)
+                  ? () => startEditing(selectedElements[0]!.id)
+                  : undefined
+              }
             />
           </div>
         ) : null}
@@ -2068,13 +2663,33 @@ export function BoardCanvas({
           <WhiteboardPresenceBar
             presence={sync.presence}
             status={sync.status}
+            unsaved={sync.unsaved}
             currentUser={currentUser}
             onExport={handleExport}
-            onRename={onRequestRename}
+            exportScope={selectedElements.length > 0 ? "selection" : "board"}
           />
         </div>
 
-        <div className="pointer-events-auto absolute right-3 bottom-3 flex flex-col items-end gap-2">
+        <div className="pointer-events-auto absolute bottom-3 left-1/2 max-w-[calc(100%-1.5rem)] -translate-x-1/2">
+          <WhiteboardToolbar
+            tool={tool}
+            onToolChange={selectTool}
+            toolLocked={toolLocked}
+            onToggleToolLock={() => setToolLocked((locked) => !locked)}
+            stickyColor={stickyColor}
+            onStickyColorChange={(color) => {
+              setStickyColor(color);
+              setTool("sticky");
+            }}
+            dark={dark}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={doUndo}
+            onRedo={doRedo}
+          />
+        </div>
+
+        <div className="pointer-events-auto absolute right-3 bottom-[4.25rem] flex flex-col items-end gap-2 @min-[72rem]:bottom-3">
           <WhiteboardMinimap
             elements={ordered}
             viewport={viewport}
@@ -2090,10 +2705,13 @@ export function BoardCanvas({
           />
           <WhiteboardZoomControls
             zoom={viewport.zoom}
+            hasSelection={selectedElements.length > 0}
             onZoomIn={() => zoomBy(1.2)}
             onZoomOut={() => zoomBy(1 / 1.2)}
-            onReset={() => zoomTo(1)}
+            onZoomTo={zoomTo}
             onFit={() => zoomToFit()}
+            onFitSelection={() => zoomToFit(selectedElements)}
+            onShowShortcuts={() => setShortcutsOpen(true)}
           />
         </div>
       </div>
@@ -2101,10 +2719,16 @@ export function BoardCanvas({
       {contextMenu ? (
         <WhiteboardContextMenu
           state={contextMenu}
+          bounds={size}
           hasSelection={selectedElements.length > 0}
           multiple={selectedElements.length > 1}
           locked={selectedElements.some((el) => el.locked)}
+          canEditText={
+            selectedElements.length === 1 &&
+            TEXT_CAPABLE_TYPES.has(selectedElements[0]!.type)
+          }
           canPaste={hasClipboard}
+          lockedCount={lockedCount}
           onClose={() => setContextMenu(null)}
           onAction={(action) => {
             setContextMenu(null);
@@ -2136,6 +2760,9 @@ export function BoardCanvas({
               case "lock":
                 toggleLockSelection();
                 break;
+              case "unlock-all":
+                unlockAll();
+                break;
               case "select-all":
                 setSelection(
                   ordered.filter((el) => !el.locked).map((el) => el.id),
@@ -2144,6 +2771,21 @@ export function BoardCanvas({
               case "zoom-fit":
                 zoomToFit();
                 break;
+              case "zoom-selection":
+                zoomToFit(selectedElements);
+                break;
+              case "add-sticky": {
+                const element = buildElement(
+                  RoomWhiteboardElementType.STICKY,
+                  centeredBox(
+                    contextMenu.world,
+                    defaultSizeForType(RoomWhiteboardElementType.STICKY),
+                  ),
+                );
+                applyAndCommit({ ...emptyMutation(), create: [element] });
+                startEditing(element.id);
+                break;
+              }
               case "edit-text": {
                 const first = selectedElements[0];
                 if (first) startEditing(first.id);
@@ -2153,7 +2795,99 @@ export function BoardCanvas({
           }}
         />
       ) : null}
+
+      <WhiteboardShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+      />
     </div>
+  );
+}
+
+const LOCAL_LASER_COLOR = "#ef4444";
+
+/**
+ * Petunjuk di tengah papan yang masih kosong. Tidak menangkap klik, jadi
+ * pengguna bisa langsung mulai menggambar di atasnya.
+ */
+function EmptyBoardHint() {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+      <div className="max-w-sm text-center">
+        <p className="text-foreground text-base font-semibold">
+          Papan ini masih kosong
+        </p>
+        <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+          Klik dua kali di mana saja untuk menulis sticky note, atau pilih alat
+          di bawah.
+        </p>
+        <dl className="text-muted-foreground mt-5 inline-grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-left text-xs">
+          {EMPTY_HINTS.map(({ keys, label }) => (
+            <Fragment key={label}>
+              <dt className="flex justify-end gap-1">
+                {keys.map((key) => (
+                  <Kbd key={key}>{key}</Kbd>
+                ))}
+              </dt>
+              <dd>{label}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+const EMPTY_HINTS = [
+  { keys: ["N"], label: "Sticky note" },
+  { keys: ["R"], label: "Persegi" },
+  { keys: ["C"], label: "Konektor antar-objek" },
+  { keys: ["Ctrl", "V"], label: "Tempel gambar atau teks" },
+  { keys: ["?"], label: "Semua pintasan" },
+];
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="border-border bg-card text-foreground inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-sans text-[10px] font-semibold shadow-[0_1px_0_var(--border)]">
+      {children}
+    </kbd>
+  );
+}
+
+/** Garis tipis di sekeliling objek: sorotan hover, atau target tempelan. */
+function OutlineBox({
+  element,
+  dark,
+  subtle = false,
+}: {
+  element: WhiteboardElement;
+  dark: boolean;
+  subtle?: boolean;
+}) {
+  const accent = dark ? "#60a5fa" : "#2563eb";
+  const center = boxCenter(element);
+  const transform = element.rotation
+    ? `rotate(${(element.rotation * 180) / Math.PI} ${center.x} ${center.y})`
+    : undefined;
+  const box = LINEAR_TYPES.has(element.type)
+    ? elementAABB(element)
+    : { x: element.x, y: element.y, width: element.width, height: element.height };
+  const pad = subtle ? 0 : 4;
+  return (
+    <rect
+      x={box.x - pad}
+      y={box.y - pad}
+      width={Math.max(0, box.width + pad * 2)}
+      height={Math.max(0, box.height + pad * 2)}
+      rx={subtle ? 2 : 6}
+      fill={subtle ? "none" : dark ? "rgba(96,165,250,0.08)" : "rgba(37,99,235,0.06)"}
+      stroke={accent}
+      strokeOpacity={subtle ? 0.55 : 1}
+      strokeWidth={subtle ? 1 : 2}
+      vectorEffect="non-scaling-stroke"
+      transform={transform}
+      style={{ pointerEvents: "none" }}
+    />
   );
 }
 
@@ -2505,6 +3239,17 @@ function SelectionOverlay({
 // Bantuan
 // ---------------------------------------------------------------------------
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return Boolean(
+    el &&
+      (el.tagName === "INPUT" ||
+        el.tagName === "TEXTAREA" ||
+        el.tagName === "SELECT" ||
+        el.isContentEditable),
+  );
+}
+
 function normalizeBox(a: Point, b: Point): Box {
   return {
     x: Math.min(a.x, b.x),
@@ -2622,9 +3367,6 @@ function inheritableStyle(
     if (defaults.strokeWidth !== undefined) out.strokeWidth = defaults.strokeWidth;
     if (defaults.strokeStyle) out.strokeStyle = defaults.strokeStyle;
   }
-  if (type === RoomWhiteboardElementType.STICKY && defaults.fill) {
-    out.fill = defaults.fill;
-  }
   if (LINEAR_TYPES.has(type)) {
     if (defaults.stroke) out.stroke = defaults.stroke;
     if (defaults.strokeWidth !== undefined) out.strokeWidth = defaults.strokeWidth;
@@ -2641,6 +3383,8 @@ function inheritableStyle(
 function remapConnectorProps(
   props: WhiteboardProps,
   idMap: Map<string, string>,
+  dx = 0,
+  dy = 0,
 ): WhiteboardProps {
   if (!props.start && !props.end) return { ...props };
   const clone: WhiteboardProps = { ...props };
@@ -2649,10 +3393,164 @@ function remapConnectorProps(
     if (!endpoint) continue;
     clone[key] = {
       ...endpoint,
+      // Tempelan ke objek yang tidak ikut disalin dilepas — salinan tidak
+      // boleh "menarik" garis dari objek aslinya.
       elementId: endpoint.elementId
         ? (idMap.get(endpoint.elementId) ?? null)
         : null,
+      x: endpoint.x + dx,
+      y: endpoint.y + dy,
     };
   }
   return clone;
+}
+
+/** Kotak area world yang sedang terlihat di layar. */
+function visibleWorldBox(
+  viewport: Viewport,
+  size: { width: number; height: number },
+): Box {
+  const topLeft = screenToWorld({ x: 0, y: 0 }, viewport);
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    width: size.width / viewport.zoom,
+    height: size.height / viewport.zoom,
+  };
+}
+
+function serializeClipboard(elements: WhiteboardElement[]): string {
+  return JSON.stringify({ kind: CLIPBOARD_MARKER, elements });
+}
+
+/** Objek whiteboard dari teks clipboard, atau null kalau bukan milik kita. */
+function parseClipboard(text: string): WhiteboardElement[] | null {
+  if (!text.includes(CLIPBOARD_MARKER)) return null;
+  try {
+    const data = JSON.parse(text) as { kind?: string; elements?: unknown };
+    if (data.kind !== CLIPBOARD_MARKER || !Array.isArray(data.elements)) {
+      return null;
+    }
+    const out: WhiteboardElement[] = [];
+    for (const raw of data.elements.slice(0, 2000)) {
+      // Validasi ulang: isi clipboard bisa berasal dari mana saja.
+      const parsed = whiteboardElementInputSchema.safeParse(raw);
+      if (!parsed.success) continue;
+      out.push({
+        ...parsed.data,
+        rev: 0,
+        deleted: false,
+        updatedById: null,
+      });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Garis & konektor yang menempel
+// ---------------------------------------------------------------------------
+
+/** Alat garis yang ujungnya otomatis menempel ke objek. */
+const ATTACHING_TOOLS = new Set<WhiteboardTool>(["connector", "arrow"]);
+
+/** Geometri tersimpan garis setelah ujung-ujungnya diresolusi ke objek. */
+function resolvedLinearGeometry(
+  element: WhiteboardElement,
+  map: Map<string, WhiteboardElement>,
+): { x: number; y: number; width: number; height: number } {
+  const points = connectorPoints(element, (id) => map.get(id));
+  const a = points[0]!;
+  const b = points[points.length - 1]!;
+  return { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y };
+}
+
+/**
+ * Patch untuk garis yang menempel ke salah satu elemen di `changed` (atau
+ * garis itu sendiri berubah), agar geometri tersimpannya sama dengan yang
+ * tampil di layar.
+ */
+function connectorFollowUps(
+  changed: Set<string>,
+  map: Map<string, WhiteboardElement>,
+): WhiteboardElementPatch[] {
+  const out: WhiteboardElementPatch[] = [];
+  for (const el of map.values()) {
+    if (!LINEAR_TYPES.has(el.type)) continue;
+    const start = el.props.start?.elementId ?? null;
+    const end = el.props.end?.elementId ?? null;
+    if (!start && !end) continue;
+    if (
+      !changed.has(el.id) &&
+      !(start && changed.has(start)) &&
+      !(end && changed.has(end))
+    ) {
+      continue;
+    }
+    const geometry = resolvedLinearGeometry(el, map);
+    if (
+      Math.abs(geometry.x - el.x) < 0.01 &&
+      Math.abs(geometry.y - el.y) < 0.01 &&
+      Math.abs(geometry.width - el.width) < 0.01 &&
+      Math.abs(geometry.height - el.height) < 0.01
+    ) {
+      continue;
+    }
+    out.push({ id: el.id, ...geometry });
+  }
+  return out;
+}
+
+function hasEndpoints(element: WhiteboardElement): boolean {
+  return (
+    LINEAR_TYPES.has(element.type) &&
+    Boolean(element.props.start || element.props.end)
+  );
+}
+
+function geometryPatch(
+  element: WhiteboardElement,
+  withEnds: boolean,
+): WhiteboardElementPatch {
+  const patch: WhiteboardElementPatch = {
+    id: element.id,
+    x: element.x,
+    y: element.y,
+    width: element.width,
+    height: element.height,
+    rotation: element.rotation,
+  };
+  if (withEnds) {
+    const props: WhiteboardProps = {};
+    // Ujung yang tidak pernah menempel ditulis sebagai titik bebas — nilai
+    // `undefined` akan hilang saat dikirim sebagai JSON.
+    props.start = element.props.start ?? {
+      elementId: null,
+      side: "auto",
+      x: element.x,
+      y: element.y,
+    };
+    props.end = element.props.end ?? {
+      elementId: null,
+      side: "auto",
+      x: element.x + element.width,
+      y: element.y + element.height,
+    };
+    patch.props = props;
+  }
+  return patch;
+}
+
+function sameGeometry(a: WhiteboardElement, b: WhiteboardElement): boolean {
+  return (
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.rotation === b.rotation &&
+    JSON.stringify(a.props.start ?? null) === JSON.stringify(b.props.start ?? null) &&
+    JSON.stringify(a.props.end ?? null) === JSON.stringify(b.props.end ?? null)
+  );
 }

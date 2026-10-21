@@ -17,6 +17,7 @@ import {
   Italic,
   Lock,
   MoveDown,
+  PencilLine,
   MoveUp,
   Trash2,
   Underline,
@@ -45,7 +46,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -77,6 +82,7 @@ export function WhiteboardStylePanel({
   onDuplicate,
   onDelete,
   onToggleLock,
+  onEditText,
 }: {
   elements: WhiteboardElement[];
   dark: boolean;
@@ -86,6 +92,8 @@ export function WhiteboardStylePanel({
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleLock: () => void;
+  /** Ada bila tepat satu objek berteks terpilih. */
+  onEditText?: () => void;
 }) {
   const types = new Set(elements.map((el) => el.type));
   const first = elements[0]!;
@@ -104,33 +112,41 @@ export function WhiteboardStylePanel({
   const showStroke = hasClosed || hasLinear || hasDraw;
 
   return (
-    <div className="border-border bg-card/95 flex w-60 flex-col gap-3 rounded-xl border p-3 shadow-lg backdrop-blur">
-      <div className="text-muted-foreground flex items-center justify-between text-[11px] font-medium">
-        <span>
+    <div
+      role="region"
+      aria-label="Gaya objek terpilih"
+      className="border-border bg-card/95 flex w-64 flex-col gap-3.5 rounded-2xl border p-3.5 shadow-[0_10px_30px_-12px_rgba(0,0,0,0.35)] backdrop-blur"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-foreground truncate text-sm font-semibold">
           {elements.length === 1
             ? typeLabel(first.type)
-            : `${elements.length} objek terpilih`}
-        </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onClick={onToggleLock}
-                className="hover:text-foreground"
-                aria-label={locked ? "Buka kunci" : "Kunci"}
-              >
-                {locked ? (
-                  <Lock className="size-3.5" aria-hidden />
-                ) : (
-                  <Unlock className="size-3.5" aria-hidden />
-                )}
-              </button>
-            }
-          />
-          <TooltipContent>{locked ? "Buka kunci" : "Kunci objek"}</TooltipContent>
-        </Tooltip>
+            : `${elements.length} objek`}
+        </p>
+        <div className="flex items-center gap-0.5">
+          {onEditText ? (
+            <IconButton label="Edit teks (Enter)" onClick={onEditText}>
+              <PencilLine className="size-3.5" aria-hidden />
+            </IconButton>
+          ) : null}
+          <IconButton
+            label={locked ? "Buka kunci posisi" : "Kunci posisi"}
+            onClick={onToggleLock}
+            active={locked}
+          >
+            {locked ? (
+              <Lock className="size-3.5" aria-hidden />
+            ) : (
+              <Unlock className="size-3.5" aria-hidden />
+            )}
+          </IconButton>
+        </div>
       </div>
+      {locked ? (
+        <p className="bg-muted text-muted-foreground -mt-1 rounded-lg px-2.5 py-1.5 text-xs leading-snug">
+          Terkunci: tidak bisa digeser atau dihapus sampai kuncinya dibuka.
+        </p>
+      ) : null}
 
       {showFill ? (
         <Field label={hasSticky ? "Warna kertas" : "Isi"}>
@@ -206,7 +222,7 @@ export function WhiteboardStylePanel({
       ) : null}
 
       {hasLinear ? (
-        <Field label="Ujung">
+        <Field label="Ujung awal dan akhir">
           <div className="grid grid-cols-2 gap-1.5">
             <SegmentRow
               compact
@@ -229,7 +245,9 @@ export function WhiteboardStylePanel({
               }))}
               value={props.endArrowhead ?? "arrow"}
               onSelect={(value) =>
-                onChange({ endArrowhead: value as WhiteboardProps["endArrowhead"] })
+                onChange({
+                  endArrowhead: value as WhiteboardProps["endArrowhead"],
+                })
               }
             />
           </div>
@@ -282,7 +300,9 @@ export function WhiteboardStylePanel({
               active={(props.fontWeight ?? 400) >= 600}
               label="Tebal"
               onClick={() =>
-                onChange({ fontWeight: (props.fontWeight ?? 400) >= 600 ? 400 : 700 })
+                onChange({
+                  fontWeight: (props.fontWeight ?? 400) >= 600 ? 400 : 700,
+                })
               }
             >
               <Bold className="size-3.5" aria-hidden />
@@ -322,7 +342,7 @@ export function WhiteboardStylePanel({
             ))}
           </div>
           {!hasSticky ? (
-            <Field label={`Ukuran font · ${Math.round(props.fontSize ?? 16)}`}>
+            <Field label={`Ukuran font ${Math.round(props.fontSize ?? 16)} px`}>
               <Slider
                 value={props.fontSize ?? 16}
                 min={8}
@@ -339,24 +359,30 @@ export function WhiteboardStylePanel({
 
       <Separator />
 
-      <Field label={`Transparansi · ${Math.round((props.opacity ?? 1) * 100)}%`}>
+      <Field label={`Opasitas ${Math.round((props.opacity ?? 1) * 100)}%`}>
         <Slider
           value={Math.round((props.opacity ?? 1) * 100)}
           min={10}
           max={100}
           step={5}
-          onValueChange={(value) => onChange({ opacity: value / 100 }, "opacity")}
+          onValueChange={(value) =>
+            onChange({ opacity: value / 100 }, "opacity")
+          }
         />
       </Field>
 
       {hasImage || hasClosed ? (
-        <Field label={`Sudut · ${Math.round(props.cornerRadius ?? 0)}`}>
+        <Field
+          label={`Sudut membulat ${Math.round(props.cornerRadius ?? 0)} px`}
+        >
           <Slider
             value={props.cornerRadius ?? 0}
             min={0}
             max={80}
             step={1}
-            onValueChange={(value) => onChange({ cornerRadius: value }, "cornerRadius")}
+            onValueChange={(value) =>
+              onChange({ cornerRadius: value }, "cornerRadius")
+            }
           />
         </Field>
       ) : null}
@@ -369,7 +395,10 @@ export function WhiteboardStylePanel({
               <IconButton label="Rata kiri" onClick={() => onAlign("left")}>
                 <AlignLeft className="size-3.5" aria-hidden />
               </IconButton>
-              <IconButton label="Tengah horizontal" onClick={() => onAlign("center-x")}>
+              <IconButton
+                label="Tengah horizontal"
+                onClick={() => onAlign("center-x")}
+              >
                 <AlignCenter className="size-3.5" aria-hidden />
               </IconButton>
               <IconButton label="Rata kanan" onClick={() => onAlign("right")}>
@@ -384,7 +413,10 @@ export function WhiteboardStylePanel({
               <IconButton label="Rata atas" onClick={() => onAlign("top")}>
                 <AlignStartHorizontal className="size-3.5" aria-hidden />
               </IconButton>
-              <IconButton label="Tengah vertikal" onClick={() => onAlign("center-y")}>
+              <IconButton
+                label="Tengah vertikal"
+                onClick={() => onAlign("center-y")}
+              >
                 <FlipHorizontal className="size-3.5 rotate-90" aria-hidden />
               </IconButton>
               <IconButton label="Rata bawah" onClick={() => onAlign("bottom")}>
@@ -403,27 +435,29 @@ export function WhiteboardStylePanel({
 
       <Separator />
 
-      <div className="grid grid-cols-4 gap-1">
-        <IconButton label="Ke depan" onClick={() => onReorder("front")}>
-          <ArrowUpToLine className="size-3.5" aria-hidden />
-        </IconButton>
-        <IconButton label="Maju satu" onClick={() => onReorder("forward")}>
-          <MoveUp className="size-3.5" aria-hidden />
-        </IconButton>
-        <IconButton label="Mundur satu" onClick={() => onReorder("backward")}>
-          <MoveDown className="size-3.5" aria-hidden />
-        </IconButton>
-        <IconButton label="Ke belakang" onClick={() => onReorder("back")}>
-          <ArrowDownToLine className="size-3.5" aria-hidden />
-        </IconButton>
-      </div>
+      <Field label="Urutan tumpukan">
+        <div className="grid grid-cols-4 gap-1">
+          <IconButton label="Ke depan" onClick={() => onReorder("front")}>
+            <ArrowUpToLine className="size-3.5" aria-hidden />
+          </IconButton>
+          <IconButton label="Maju satu" onClick={() => onReorder("forward")}>
+            <MoveUp className="size-3.5" aria-hidden />
+          </IconButton>
+          <IconButton label="Mundur satu" onClick={() => onReorder("backward")}>
+            <MoveDown className="size-3.5" aria-hidden />
+          </IconButton>
+          <IconButton label="Ke belakang" onClick={() => onReorder("back")}>
+            <ArrowDownToLine className="size-3.5" aria-hidden />
+          </IconButton>
+        </div>
+      </Field>
 
       <div className="flex items-center gap-1.5">
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 flex-1 gap-1.5 text-xs"
+          className="h-8 flex-1 gap-1.5 rounded-lg text-xs"
           onClick={onDuplicate}
         >
           <Copy className="size-3.5" aria-hidden />
@@ -433,8 +467,9 @@ export function WhiteboardStylePanel({
           type="button"
           variant="outline"
           size="icon-sm"
-          className="text-destructive hover:text-destructive size-7"
+          className="text-destructive hover:text-destructive size-8 rounded-lg"
           onClick={onDelete}
+          disabled={locked}
           aria-label="Hapus"
         >
           <Trash2 className="size-3.5" aria-hidden />
@@ -455,7 +490,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <span className="text-muted-foreground block text-[10px] font-medium tracking-wide uppercase">
+      <span className="text-muted-foreground block text-xs font-medium">
         {label}
       </span>
       {children}
@@ -479,7 +514,7 @@ function ColorRow({
   allowNone?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap gap-1.5">
       {allowNone ? (
         <button
           type="button"
@@ -487,8 +522,9 @@ function ColorRow({
           aria-label="Tanpa warna"
           aria-pressed={value === "transparent"}
           className={cn(
-            "border-border relative size-5 overflow-hidden rounded-full border",
-            value === "transparent" && "ring-primary ring-2 ring-offset-1",
+            "border-border relative size-6 overflow-hidden rounded-full border",
+            value === "transparent" &&
+              "ring-primary ring-offset-card ring-2 ring-offset-2",
           )}
         >
           <span className="absolute inset-x-0 top-1/2 h-px rotate-45 bg-red-500" />
@@ -505,8 +541,9 @@ function ColorRow({
             aria-pressed={value === token}
             title={entry.label}
             className={cn(
-              "border-border/60 size-5 rounded-full border transition-transform hover:scale-110",
-              value === token && "ring-primary ring-2 ring-offset-1",
+              "border-border/60 focus-visible:ring-ring size-6 rounded-full border outline-none transition-transform hover:scale-110 focus-visible:ring-2",
+              value === token &&
+                "ring-primary ring-offset-card ring-2 ring-offset-2",
             )}
             style={{ background: surface ? entry.surface : entry.ink }}
           />
@@ -596,10 +633,12 @@ function ToggleButton({
 function IconButton({
   label,
   onClick,
+  active = false,
   children,
 }: {
   label: string;
   onClick: () => void;
+  active?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -610,7 +649,13 @@ function IconButton({
             type="button"
             onClick={onClick}
             aria-label={label}
-            className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-7 items-center justify-center rounded-md transition-colors"
+            aria-pressed={active || undefined}
+            className={cn(
+              "focus-visible:ring-ring flex h-7 min-w-7 items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2",
+              active
+                ? "bg-primary/10 text-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
           >
             {children}
           </button>

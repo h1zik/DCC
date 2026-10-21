@@ -19,10 +19,17 @@ import { WhiteboardViewClient } from "@/components/whiteboard/whiteboard-view-cl
 
 type PageProps = {
   params: Promise<{ roomId: string; viewId: string }>;
+  /** `?board=<id>` membuka papan tertentu (tautan yang bisa dibagikan). */
+  searchParams: Promise<{ board?: string | string[] }>;
 };
 
-export default async function RoomCustomViewPage({ params }: PageProps) {
+export default async function RoomCustomViewPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { roomId, viewId } = await params;
+  const { board: boardParam } = await searchParams;
+  const requestedBoardId = typeof boardParam === "string" ? boardParam : null;
   const { role, viewerUserId } = await getRoomMemberContextOrThrow(roomId);
 
   const view = await prisma.roomView.findUnique({
@@ -50,7 +57,12 @@ export default async function RoomCustomViewPage({ params }: PageProps) {
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden"
       >
         <RoomViewHeader view={view} canManage={canManage} />
-        {await renderWhiteboardBody(roomId, view.id, viewerUserId)}
+        {await renderWhiteboardBody(
+          roomId,
+          view.id,
+          viewerUserId,
+          requestedBoardId,
+        )}
       </div>
     );
   }
@@ -69,6 +81,7 @@ async function renderWhiteboardBody(
   roomId: string,
   viewId: string,
   viewerUserId: string,
+  requestedBoardId: string | null,
 ) {
   const [boards, session] = await Promise.all([
     prisma.roomWhiteboard.findMany({
@@ -100,7 +113,8 @@ async function renderWhiteboardBody(
     editors.map((u) => [u.id, u.name?.trim() || u.email] as const),
   );
 
-  const activeBoard = boards[0] ?? null;
+  const activeBoard =
+    boards.find((b) => b.id === requestedBoardId) ?? boards[0] ?? null;
   const elements = activeBoard
     ? await prisma.roomWhiteboardElement.findMany({
         where: { boardId: activeBoard.id, deletedAt: null },

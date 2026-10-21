@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Map as MapIcon } from "lucide-react";
+import { Map as MapIcon, X } from "lucide-react";
 import {
   elementAABB,
   elementsBounds,
@@ -78,13 +78,23 @@ export function WhiteboardMinimap({
     y: (y - bounds.y) * scale + offsetY,
   });
 
+  const navigateTo = (event: React.PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const mapX = event.clientX - rect.left;
+    const mapY = event.clientY - rect.top;
+    onNavigate({
+      x: (mapX - offsetX) / scale + bounds.x,
+      y: (mapY - offsetY) / scale + bounds.y,
+    });
+  };
+
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Tampilkan peta mini"
-        className="border-border bg-card/95 text-muted-foreground hover:text-foreground flex size-8 items-center justify-center rounded-lg border shadow-lg backdrop-blur"
+        className="border-border bg-card/95 text-muted-foreground hover:text-foreground hidden size-9 items-center justify-center rounded-xl border shadow-md backdrop-blur sm:flex"
       >
         <MapIcon className="size-4" aria-hidden />
       </button>
@@ -92,22 +102,25 @@ export function WhiteboardMinimap({
   }
 
   return (
-    <div className="border-border bg-card/95 hidden rounded-xl border p-1.5 shadow-lg backdrop-blur sm:block">
+    <div className="border-border bg-card/95 group/minimap relative hidden rounded-xl border p-1 shadow-md backdrop-blur sm:block">
       <svg
         width={MAP_WIDTH}
         height={MAP_HEIGHT}
+        role="img"
+        aria-label="Peta mini papan — klik atau seret untuk berpindah area"
         className={cn(
-          "cursor-pointer rounded-md",
-          dark ? "bg-black/25" : "bg-black/5",
+          "block cursor-grab touch-none rounded-lg active:cursor-grabbing",
+          dark ? "bg-black/25" : "bg-black/[0.04]",
         )}
         onPointerDown={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          const mapX = event.clientX - rect.left;
-          const mapY = event.clientY - rect.top;
-          onNavigate({
-            x: (mapX - offsetX) / scale + bounds.x,
-            y: (mapY - offsetY) / scale + bounds.y,
-          });
+          event.currentTarget.setPointerCapture(event.pointerId);
+          navigateTo(event);
+        }}
+        onPointerMove={(event) => {
+          // Seret penanda viewport untuk menjelajah papan dengan cepat.
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            navigateTo(event);
+          }
         }}
       >
         {elements.map((element) => {
@@ -141,7 +154,7 @@ export function WhiteboardMinimap({
               y={topLeft.y}
               width={Math.max(4, view.width * scale)}
               height={Math.max(4, view.height * scale)}
-              fill="none"
+              fill={dark ? "rgba(96,165,250,0.1)" : "rgba(37,99,235,0.07)"}
               stroke={dark ? "#60a5fa" : "#2563eb"}
               strokeWidth={1.5}
               rx={2}
@@ -152,9 +165,10 @@ export function WhiteboardMinimap({
       <button
         type="button"
         onClick={() => setOpen(false)}
-        className="text-muted-foreground hover:text-foreground mt-1 w-full text-[10px]"
+        aria-label="Sembunyikan peta mini"
+        className="bg-card/90 text-muted-foreground hover:text-foreground border-border absolute top-2 right-2 flex size-6 items-center justify-center rounded-md border opacity-0 transition-opacity group-hover/minimap:opacity-100 focus-visible:opacity-100"
       >
-        Sembunyikan peta
+        <X className="size-3.5" aria-hidden />
       </button>
     </div>
   );

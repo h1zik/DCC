@@ -9,6 +9,9 @@ import {
   CopyPlus,
   Lock,
   Maximize,
+  ScanSearch,
+  StickyNote,
+  Unlock,
   MousePointerSquareDashed,
   MoveDown,
   MoveUp,
@@ -40,6 +43,9 @@ export type ContextMenuAction =
   | "lock"
   | "select-all"
   | "zoom-fit"
+  | "zoom-selection"
+  | "unlock-all"
+  | "add-sticky"
   | "edit-text";
 
 export function WhiteboardContextMenu({
@@ -47,7 +53,10 @@ export function WhiteboardContextMenu({
   hasSelection,
   multiple,
   locked,
+  canEditText,
   canPaste,
+  lockedCount,
+  bounds,
   onClose,
   onAction,
 }: {
@@ -55,7 +64,12 @@ export function WhiteboardContextMenu({
   hasSelection: boolean;
   multiple: boolean;
   locked: boolean;
+  canEditText: boolean;
   canPaste: boolean;
+  /** Jumlah objek terkunci di papan — menampilkan "Buka semua kunci". */
+  lockedCount: number;
+  /** Ukuran kanvas; menu dijaga tetap di dalamnya. */
+  bounds: { width: number; height: number };
   onClose: () => void;
   onAction: (action: ContextMenuAction) => void;
 }) {
@@ -79,18 +93,29 @@ export function WhiteboardContextMenu({
   return (
     <div
       ref={ref}
-      className="border-border bg-popover text-popover-foreground absolute z-50 min-w-48 rounded-lg border p-1 shadow-xl"
+      role="menu"
+      aria-label="Menu kanvas"
+      className="border-border bg-popover text-popover-foreground animate-in fade-in-0 zoom-in-95 absolute z-50 w-52 rounded-xl border p-1 shadow-xl duration-100"
       style={{
-        // Jaga menu tetap di dalam layar saat diklik dekat tepi kanan/bawah.
-        left: Math.min(state.screen.x, window.innerWidth - 220),
-        top: Math.min(state.screen.y, window.innerHeight - 340),
+        // Menu diposisikan relatif terhadap kanvas, jadi batasnya pun ukuran
+        // kanvas — bukan jendela — agar tidak terpotong di tepi kanan/bawah.
+        left: Math.max(4, Math.min(state.screen.x, bounds.width - 212)),
+        top: Math.max(
+          4,
+          Math.min(state.screen.y, bounds.height - (hasSelection ? 330 : 170)),
+        ),
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
       {hasSelection ? (
         <>
-          {!multiple ? (
-            <Item icon={Type} label="Edit teks" onClick={() => onAction("edit-text")} />
+          {!multiple && canEditText ? (
+            <Item
+              icon={Type}
+              label="Edit teks"
+              hint="Enter"
+              onClick={() => onAction("edit-text")}
+            />
           ) : null}
           <Item icon={Copy} label="Salin" hint="Ctrl+C" onClick={() => onAction("copy")} />
           <Item
@@ -118,8 +143,14 @@ export function WhiteboardContextMenu({
           />
           <Divider />
           <Item
-            icon={Lock}
-            label={locked ? "Buka kunci" : "Kunci"}
+            icon={ScanSearch}
+            label="Perbesar ke pilihan"
+            hint="2"
+            onClick={() => onAction("zoom-selection")}
+          />
+          <Item
+            icon={locked ? Unlock : Lock}
+            label={locked ? "Buka kunci" : "Kunci posisi"}
             onClick={() => onAction("lock")}
           />
           <Item
@@ -132,6 +163,11 @@ export function WhiteboardContextMenu({
         </>
       ) : (
         <>
+          <Item
+            icon={StickyNote}
+            label="Sticky note di sini"
+            onClick={() => onAction("add-sticky")}
+          />
           {canPaste ? (
             <Item
               icon={ClipboardPaste}
@@ -152,6 +188,16 @@ export function WhiteboardContextMenu({
             hint="1"
             onClick={() => onAction("zoom-fit")}
           />
+          {lockedCount > 0 ? (
+            <>
+              <Divider />
+              <Item
+                icon={Unlock}
+                label={`Buka semua kunci (${lockedCount})`}
+                onClick={() => onAction("unlock-all")}
+              />
+            </>
+          ) : null}
         </>
       )}
     </div>
@@ -174,8 +220,9 @@ function Item({
   return (
     <button
       type="button"
+      role="menuitem"
       onClick={onClick}
-      className={`hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+      className={`hover:bg-accent focus-visible:bg-accent outline-none hover:text-accent-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
         destructive ? "text-destructive hover:text-destructive" : ""
       }`}
     >

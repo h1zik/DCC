@@ -40,7 +40,7 @@ export function WhiteboardTextEditor({
    * `commitText` selalu bernilai sama sehingga perubahan tidak pernah
    * tersimpan.
    */
-  onCommit: (text: string) => void;
+  onCommit: (text: string, next?: boolean) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const [value, setValue] = useState(element.props.text ?? "");
@@ -66,16 +66,17 @@ export function WhiteboardTextEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  function commit() {
+  function commit(next = false) {
     if (committedRef.current) return;
     committedRef.current = true;
-    onCommit(value);
+    onCommit(value, next);
   }
 
   const screen = worldToScreen({ x: element.x, y: element.y }, viewport);
   const fontSize = effectiveFontSize({ ...element, props: { ...element.props, text: value } });
   const family = (element.props.fontFamily ?? "sans") as WhiteboardFontFamily;
   const isStandalone = element.type === RoomWhiteboardElementType.TEXT;
+  const isFrame = element.type === RoomWhiteboardElementType.FRAME;
   const align = element.props.textAlign ?? (isStandalone ? "left" : "center");
   const vAlign = element.props.verticalAlign ?? (isStandalone ? "top" : "middle");
 
@@ -86,6 +87,39 @@ export function WhiteboardTextEditor({
       : "#18181b";
 
   const padding = TEXT_PADDING * viewport.zoom;
+
+  if (isFrame) {
+    // Label frame digambar di atas bingkainya (bukan di dalam), dengan ukuran
+    // tetap — editornya harus menempati posisi yang sama persis.
+    return (
+      <input
+        ref={ref as unknown as React.Ref<HTMLInputElement>}
+        value={value}
+        maxLength={120}
+        aria-label="Nama frame"
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter" || event.key === "Escape" || event.key === "Tab") {
+            event.preventDefault();
+            commit();
+          }
+        }}
+        onBlur={() => commit()}
+        onPointerDown={(event) => event.stopPropagation()}
+        spellCheck={false}
+        className="border-primary/60 bg-card absolute rounded border px-1 text-[13px] font-semibold outline-none"
+        style={{
+          left: screen.x - 4,
+          top: screen.y - 30,
+          width: Math.max(140, Math.min(320, element.width * viewport.zoom)),
+          height: 24,
+          fontFamily: FONT_STACKS.sans,
+          color,
+        }}
+      />
+    );
+  }
 
   return (
     <textarea
@@ -99,16 +133,25 @@ export function WhiteboardTextEditor({
           commit();
           return;
         }
-        // Enter menyisipkan baris baru; Ctrl/Cmd+Enter & Tab menyelesaikan.
-        if (
-          (event.key === "Enter" && (event.metaKey || event.ctrlKey)) ||
-          event.key === "Tab"
-        ) {
+        // Label frame cuma satu baris: Enter langsung menyelesaikan.
+        if (isFrame && event.key === "Enter") {
           event.preventDefault();
           commit();
+          return;
+        }
+        // Enter menyisipkan baris baru; Ctrl/Cmd+Enter menyelesaikan; Tab
+        // menyelesaikan lalu (untuk sticky) membuat sticky berikutnya.
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          commit();
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          commit(!event.shiftKey);
         }
       }}
-      onBlur={commit}
+      onBlur={() => commit()}
       onPointerDown={(event) => event.stopPropagation()}
       spellCheck={false}
       className="absolute resize-none overflow-hidden border-0 bg-transparent outline-none"
