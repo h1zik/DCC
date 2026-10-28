@@ -18,12 +18,11 @@ import {
   absolutePathFromStoredPublicPath,
   getUploadPublicDir,
 } from "@/lib/upload-storage";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
+import { MAX_DESIGN_SLIDES, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 
-const MAX_DESIGN_SLIDES = 24;
 const ALLOWED_PREFIXES = [
   "image/",
   "application/pdf",
@@ -90,6 +89,12 @@ async function assertItemRoom(roomId: string, itemId: string) {
   }
 }
 
+/** Indeks cover feed yang valid untuk daftar slide saat ini (clamp seperti `contentPlanFeedCoverPath`). */
+function clampCoverIndex(idx: number, len: number): number {
+  if (len <= 0) return 0;
+  return Math.max(0, Math.min(idx, len - 1));
+}
+
 /** Reels / Single feed: hanya satu file design aktif. */
 async function normalizeDesignPathsForNonCarousel(itemId: string) {
   const row = await prisma.roomContentPlanItem.findUnique({
@@ -102,7 +107,7 @@ async function normalizeDesignPathsForNonCarousel(itemId: string) {
   for (const p of rest) await unlinkIfSafe(p);
   await prisma.roomContentPlanItem.update({
     where: { id: itemId },
-    data: { designFilePaths: first ? [first] : [] },
+    data: { designFilePaths: first ? [first] : [], feedCoverIndex: 0 },
   });
 }
 
@@ -399,12 +404,19 @@ export async function uploadContentPlanDesignFile(
 
   await prisma.roomContentPlanItem.update({
     where: { id: itemId },
-    data: { designFilePaths: nextPaths },
+    data: replaceSingle
+      ? { designFilePaths: nextPaths, feedCoverIndex: 0 }
+      : { designFilePaths: nextPaths },
   });
   revalidateTasksAndRoomHub();
   revalidatePath(`/room/${roomId}/content-planning`);
+  return { publicPath };
 }
 
+/**
+ * Hapus satu slide design. `feedCoverIndex` digeser agar tetap menunjuk file
+ * yang sama (atau slide berikutnya bila cover itu sendiri yang dihapus).
+ */
 export async function removeContentPlanDesignSlide(
   roomId: string,
   itemId: string,
@@ -413,18 +425,69 @@ export async function removeContentPlanDesignSlide(
   await assertItemRoom(roomId, itemId);
   const row = await prisma.roomContentPlanItem.findUniqueOrThrow({
     where: { id: itemId },
-    select: { designFilePaths: true },
+    select: { designFilePaths: true, feedCoverIndex: true },
   });
-  if (!row.designFilePaths.includes(publicPath)) {
+  const removedAt = row.designFilePaths.indexOf(publicPath);
+  if (removedAt < 0) {
     throw new Error("File tidak ada dalam daftar slide.");
   }
   await unlinkIfSafe(publicPath);
+  const nextPaths = row.designFilePaths.filter((p) => p !== publicPath);
+  const cur = clampCoverIndex(row.feedCoverIndex, row.designFilePaths.length);
+  const nextCover = clampCoverIndex(cur > removedAt ? cur - 1 : cur, nextPaths.length);
   await prisma.roomContentPlanItem.update({
     where: { id: itemId },
-    data: { designFilePaths: row.designFilePaths.filter((p) => p !== publicPath) },
+    data: { designFilePaths: nextPaths, feedCoverIndex: nextCover },
   });
   revalidateTasksAndRoomHub();
   revalidatePath(`/room/${roomId}/content-planning`);
+  return { designFilePaths: nextPaths, feedCoverIndex: nextCover };
+}
+
+const reorderSlidesSchema = z.array(z.string().min(1)).max(MAX_DESIGN_SLIDES);
+
+/**
+ * Simpan urutan baru slide design. `orderedPaths` harus berisi file yang persis
+ * sama dengan daftar saat ini (hanya urutannya yang berubah). `feedCoverIndex`
+ * ikut dipindahkan agar tetap menunjuk file yang sama.
+ */
+export async function reorderContentPlanDesignSlides(
+  roomId: string,
+  itemId: string,
+  orderedPaths: string[],
+) {
+  await assertItemRoom(roomId, itemId);
+  const next = reorderSlidesSchema.parse(orderedPaths);
+  const row = await prisma.roomContentPlanItem.findUniqueOrThrow({
+    where: { id: itemId },
+    select: { designFilePaths: true, feedCoverIndex: true },
+  });
+  const current = row.designFilePaths;
+  const mismatch =
+    next.length !== current.length ||
+    new Set(next).size !== next.length ||
+    !next.every((p) => current.includes(p));
+  if (mismatch) {
+    throw new Error("Daftar slide tidak cocok. Muat ulang halaman lalu coba lagi.");
+  }
+  const curCover = clampCoverIndex(row.feedCoverIndex, current.length);
+  if (next.every((p, i) => p === current[i])) {
+    return { feedCoverIndex: curCover };
+  }
+  const coverPath = current[curCover];
+  const nextCover = coverPath ? Math.max(0, next.indexOf(coverPath)) : 0;
+
+  // Compare-and-set: tolak bila daftar berubah di antara baca & tulis (tab lain / upload paralel).
+  const { count } = await prisma.roomContentPlanItem.updateMany({
+    where: { id: itemId, designFilePaths: { equals: current } },
+    data: { designFilePaths: next, feedCoverIndex: nextCover },
+  });
+  if (count === 0) {
+    throw new Error("Slide berubah di tempat lain. Muat ulang halaman lalu coba lagi.");
+  }
+  revalidateTasksAndRoomHub();
+  revalidatePath(`/room/${roomId}/content-planning`);
+  return { feedCoverIndex: nextCover };
 }
 
 export async function clearContentPlanCopywritingFile(roomId: string, itemId: string) {
@@ -453,7 +516,7 @@ export async function clearContentPlanDesignFiles(roomId: string, itemId: string
   }
   await prisma.roomContentPlanItem.update({
     where: { id: itemId },
-    data: { designFilePaths: [] },
+    data: { designFilePaths: [], feedCoverIndex: 0 },
   });
   revalidateTasksAndRoomHub();
   revalidatePath(`/room/${roomId}/content-planning`);

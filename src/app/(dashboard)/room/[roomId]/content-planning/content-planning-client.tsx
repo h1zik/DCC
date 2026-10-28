@@ -22,20 +22,15 @@ import {
 } from "@/actions/content-plan-posting-times";
 import type { PostingTimeSuggestion } from "@/lib/content-plan-posting-suggest";
 import {
-  clearContentPlanCopywritingFile,
-  clearContentPlanDesignFiles,
   deleteRoomContentPlanItem,
-  removeContentPlanDesignSlide,
   reorderRoomContentPlanItems,
   setRoomContentPlanItemsArchived,
-  uploadContentPlanCopywritingFile,
-  uploadContentPlanDesignFile,
   upsertRoomContentPlanItem,
 } from "@/actions/room-content-planning";
 import { DataTable, DataTableRowDragHandle } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -52,19 +47,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   contentPlanDownloadApiPath,
@@ -73,16 +57,12 @@ import {
 import {
   isContentPlanImagePath,
   isContentPlanVideoPath,
-  JENIS_BADGE_CLASS,
   JENIS_LABEL,
-  PLATFORM_BADGE_CLASS,
   PLATFORM_LABEL,
   PLATFORM_ORDER,
-  PLATFORM_SHORT_LABEL,
   sortPlatforms,
   STATUS_BADGE_CLASS,
   STATUS_LABEL,
-  USAGE_BADGE_CLASS,
   USAGE_LABEL,
 } from "@/lib/content-plan-ui";
 import {
@@ -95,7 +75,14 @@ import {
   type ContentPlanFeedProfileData,
   type ContentPlanFeedRowPatch,
 } from "./content-plan-feed";
-import { MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
+import { ContentPlanEditSheet } from "./content-plan-edit-sheet";
+import {
+  JenisBadge,
+  PlatformBadge,
+  toDateInput,
+  UsageBadge,
+  type PicOption,
+} from "./content-plan-shared";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import {
   Archive,
@@ -132,7 +119,6 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
-  UserCircle,
   Users,
   X,
 } from "lucide-react";
@@ -205,7 +191,6 @@ export type ContentPlanTableRow = {
   kanbanTaskKinds?: ContentPlanTaskKind[];
 };
 
-type PicOption = Pick<User, "id" | "name" | "email" | "image">;
 
 /** Status sisi pekerjaan (copy/design) sebuah baris. */
 function rowStatusForKind(
@@ -253,16 +238,6 @@ function rowKanbanIneligibleHint(
 }
 
 /** Pakai komponen tanggal lokal agar konsisten dengan formatDateShort (bukan UTC). */
-function toDateInput(v: Date | string | null | undefined): string {
-  if (!v) return "";
-  const d = typeof v === "string" ? new Date(v) : v;
-  if (Number.isNaN(d.getTime())) return "";
-  const yyyy = String(d.getFullYear()).padStart(4, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 /** Kunci hari lokal (YYYY-MM-DD) untuk mengelompokkan tanggal posting. */
 function cpPostingDayKey(v: Date | string | null | undefined): string | null {
   const s = toDateInput(v);
@@ -474,55 +449,6 @@ function StatusBadge({ status }: { status: ContentPlanStatusKerja }) {
   );
 }
 
-function JenisBadge({ jenis }: { jenis: ContentPlanJenis }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "max-w-full whitespace-normal px-1.5 py-0.5 text-left text-[9px] leading-tight font-medium sm:text-[10px]",
-        JENIS_BADGE_CLASS[jenis],
-      )}
-    >
-      {JENIS_LABEL[jenis]}
-    </Badge>
-  );
-}
-
-function UsageBadge({ usage }: { usage: ContentPlanUsage }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "max-w-full whitespace-normal px-1.5 py-0.5 text-left text-[9px] leading-tight font-medium sm:text-[10px]",
-        USAGE_BADGE_CLASS[usage],
-      )}
-    >
-      {USAGE_LABEL[usage]}
-    </Badge>
-  );
-}
-
-function PlatformBadge({
-  platform,
-  short,
-}: {
-  platform: ContentPlanPlatform;
-  short?: boolean;
-}) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "h-5 shrink-0 rounded-md border px-1.5 text-[11px] font-semibold",
-        PLATFORM_BADGE_CLASS[platform],
-      )}
-      title={PLATFORM_LABEL[platform]}
-    >
-      {short ? PLATFORM_SHORT_LABEL[platform] : PLATFORM_LABEL[platform]}
-    </Badge>
-  );
-}
-
 /** Deretan badge platform; kosong = tanda strip agar sel tetap bisa diklik. */
 function PlatformList({
   platforms,
@@ -708,111 +634,6 @@ function DesignTableCell({
         ) : null}
       </div>
       {hasLink ? <ExternalOrText value={row.designLink} /> : null}
-    </div>
-  );
-}
-
-type CarouselRailProps = {
-  paths: string[];
-  roomId: string;
-  itemId: string;
-  onPathsChange: (next: string[]) => void;
-};
-
-function CarouselDesignRail({
-  paths,
-  roomId,
-  itemId,
-  onPathsChange,
-}: CarouselRailProps) {
-  const router = useRouter();
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-muted-foreground text-xs">
-          Urutan kiri → kanan = urutan slide carousel ({paths.length} file).
-        </p>
-        {paths.length > 0 ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            className="text-destructive border-destructive/30 hover:bg-destructive/10"
-            onClick={async () => {
-              if (!confirm("Hapus semua file design untuk baris ini?")) return;
-              try {
-                await clearContentPlanDesignFiles(roomId, itemId);
-                onPathsChange([]);
-                toast.success("Semua slide dihapus.");
-                router.refresh();
-              } catch (e) {
-                toast.error(actionErrorMessage(e, "Gagal."));
-              }
-            }}
-          >
-            Hapus semua slide
-          </Button>
-        ) : null}
-      </div>
-      <div className="border-border bg-muted/20 flex gap-3 overflow-x-auto rounded-xl border p-3">
-        {paths.length === 0 ? (
-          <p className="text-muted-foreground py-6 text-center text-sm">
-            Belum ada slide. Unggah gambar atau file di bawah — bisa pilih banyak
-            sekaligus.
-          </p>
-        ) : (
-          paths.map((p, i) => (
-            <div
-              key={p}
-              className="border-border group relative shrink-0 overflow-hidden rounded-xl border bg-card shadow-sm"
-              style={{ width: "5.75rem" }}
-            >
-              <div className="bg-accent text-accent-foreground absolute top-1.5 left-1.5 z-10 rounded-md px-1.5 py-0.5 text-[10px] font-semibold">
-                {i + 1}
-              </div>
-              <button
-                type="button"
-                className="bg-destructive/90 text-destructive-foreground absolute top-1.5 right-1.5 z-10 flex size-6 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100"
-                aria-label={`Hapus slide ${i + 1}`}
-                onClick={async () => {
-                  try {
-                    await removeContentPlanDesignSlide(roomId, itemId, p);
-                    onPathsChange(paths.filter((x) => x !== p));
-                    toast.success("Slide dihapus.");
-                    router.refresh();
-                  } catch (e) {
-                    toast.error(actionErrorMessage(e, "Gagal menghapus."));
-                  }
-                }}
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-              <a
-                href={p}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-muted/50 flex aspect-[4/5] w-full items-center justify-center"
-              >
-                {isImagePath(p) ? (
-                  <Image
-                    src={p}
-                    alt=""
-                    width={184}
-                    height={230}
-                    className="h-full w-full object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="text-muted-foreground flex flex-col items-center gap-1 p-2 text-center">
-                    <FileText className="size-8 opacity-70" />
-                    <span className="text-[10px] leading-tight">Buka file</span>
-                  </div>
-                )}
-              </a>
-            </div>
-          ))
-        )}
-      </div>
     </div>
   );
 }
@@ -1299,33 +1120,11 @@ export function ContentPlanningClient({
   feedDefaults: ContentPlanFeedDefaults;
 }) {
   const router = useRouter();
-  const copyFileRef = useRef<HTMLInputElement>(null);
-  const designFileRef = useRef<HTMLInputElement>(null);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ContentPlanTableRow | null>(null);
-  const [konten, setKonten] = useState("");
-  const [jenisKonten, setJenisKonten] = useState<ContentPlanJenis>(
-    ContentPlanJenis.REELS,
-  );
-  const [usage, setUsage] = useState<ContentPlanUsage>(ContentPlanUsage.AWARENESS);
-  const [platforms, setPlatforms] = useState<ContentPlanPlatform[]>([]);
-  const [detailKonten, setDetailKonten] = useState("");
-  const [copywritingLink, setCopywritingLink] = useState("");
-  const [designLink, setDesignLink] = useState("");
-  const [picUserIds, setPicUserIds] = useState<string[]>([]);
-  const [statusCopywriting, setStatusCopywriting] = useState<ContentPlanStatusKerja>(
-    ContentPlanStatusKerja.BARU,
-  );
-  const [statusDesign, setStatusDesign] = useState<ContentPlanStatusKerja>(
-    ContentPlanStatusKerja.BARU,
-  );
-  const [deadlineCopywriting, setDeadlineCopywriting] = useState("");
-  const [deadlineDesign, setDeadlineDesign] = useState("");
-  const [tanggalPosting, setTanggalPosting] = useState("");
-  const [jamPosting, setJamPosting] = useState("");
-  const [catatan, setCatatan] = useState("");
-  const [pending, setPending] = useState(false);
+  /** Naik setiap kali sheet dibuka agar form selalu mulai dari data baris terbaru. */
+  const [openKey, setOpenKey] = useState(0);
   const [kanbanPending, startKanban] = useTransition();
   const [aiSuggestPending, startAiSuggest] = useTransition();
   const [aiApplyPending, startAiApply] = useTransition();
@@ -1373,7 +1172,6 @@ export function ContentPlanningClient({
   const [tableRows, setTableRows] = useState<ContentPlanTableRow[]>(serverRows);
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [inlineSavingCell, setInlineSavingCell] = useState<string | null>(null);
-  const [queuedDesignFiles, setQueuedDesignFiles] = useState<File[]>([]);
   const [previewRow, setPreviewRow] = useState<ContentPlanTableRow | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [kanbanSelectedIds, setKanbanSelectedIds] = useState<string[]>([]);
@@ -1612,8 +1410,6 @@ export function ContentPlanningClient({
     [kanbanProjectId, kanbanSelectedIds, roomId, router],
   );
 
-  const isCarousel = jenisKonten === ContentPlanJenis.CAROUSEL;
-
   const jenisKontenSelectItems = useMemo((): SelectItemDef[] => {
     return (Object.values(ContentPlanJenis) as ContentPlanJenis[]).map((j) => ({
       value: j,
@@ -1659,52 +1455,15 @@ export function ContentPlanningClient({
     ];
   }, [picUserOptions]);
 
-  const reset = useCallback(() => {
-    setEditing(null);
-    setKonten("");
-    setJenisKonten(ContentPlanJenis.REELS);
-    setUsage(ContentPlanUsage.AWARENESS);
-    setPlatforms([]);
-    setDetailKonten("");
-    setCopywritingLink("");
-    setDesignLink("");
-    setPicUserIds([]);
-    setStatusCopywriting(ContentPlanStatusKerja.BARU);
-    setStatusDesign(ContentPlanStatusKerja.BARU);
-    setDeadlineCopywriting("");
-    setDeadlineDesign("");
-    setTanggalPosting("");
-    setJamPosting("");
-    setCatatan("");
-    setQueuedDesignFiles([]);
-    if (copyFileRef.current) copyFileRef.current.value = "";
-    if (designFileRef.current) designFileRef.current.value = "";
-  }, []);
-
   const openCreate = useCallback(() => {
-    reset();
+    setEditing(null);
+    setOpenKey((k) => k + 1);
     setOpen(true);
-  }, [reset]);
+  }, []);
 
   const openEdit = useCallback((row: ContentPlanTableRow) => {
     setEditing(row);
-    setKonten(row.konten);
-    setJenisKonten(row.jenisKonten);
-    setUsage(row.usage ?? ContentPlanUsage.AWARENESS);
-    setPlatforms(sortPlatforms(row.platforms));
-    setDetailKonten(row.detailKonten ?? "");
-    setCopywritingLink(row.copywritingLink ?? "");
-    setDesignLink(row.designLink ?? "");
-    setPicUserIds(row.picUserIds?.length ? row.picUserIds : row.picUserId ? [row.picUserId] : []);
-    setStatusCopywriting(row.statusCopywriting);
-    setStatusDesign(row.statusDesign);
-    setDeadlineCopywriting(toDateInput(row.deadlineCopywriting));
-    setDeadlineDesign(toDateInput(row.deadlineDesign));
-    setTanggalPosting(toDateInput(row.tanggalPosting));
-    setJamPosting(row.jamPosting ?? "");
-    setCatatan(row.catatan ?? "");
-    if (copyFileRef.current) copyFileRef.current.value = "";
-    if (designFileRef.current) designFileRef.current.value = "";
+    setOpenKey((k) => k + 1);
     setOpen(true);
   }, []);
 
@@ -1762,83 +1521,6 @@ export function ContentPlanningClient({
     },
     [roomId, router, tableRows],
   );
-
-  async function onSave() {
-    if (!konten.trim()) return;
-    if (
-      editing &&
-      editing.jenisKonten === ContentPlanJenis.CAROUSEL &&
-      jenisKonten !== ContentPlanJenis.CAROUSEL &&
-      editing.designFilePaths.length > 1
-    ) {
-      const extra = editing.designFilePaths.length - 1;
-      if (
-        !confirm(
-          `Mengubah jenis dari Carousel akan menghapus ${extra} slide design secara permanen (hanya slide pertama disimpan). Lanjutkan?`,
-        )
-      ) {
-        return;
-      }
-    }
-    setPending(true);
-    try {
-      const dc = deadlineCopywriting.trim()
-        ? new Date(deadlineCopywriting)
-        : null;
-      const dd = deadlineDesign.trim() ? new Date(deadlineDesign) : null;
-      const tp = tanggalPosting.trim() ? new Date(tanggalPosting) : null;
-
-      const { id } = await upsertRoomContentPlanItem({
-        id: editing?.id,
-        roomId,
-        konten: konten.trim(),
-        jenisKonten,
-        usage,
-        platforms,
-        detailKonten: detailKonten.trim() || null,
-        copywritingLink: copywritingLink.trim() || null,
-        designLink: designLink.trim() || null,
-        picUserIds,
-        statusCopywriting,
-        statusDesign,
-        deadlineCopywriting: dc,
-        deadlineDesign: dd,
-        tanggalPosting: tp,
-        jamPosting: jamPosting.trim() || null,
-        catatan: catatan.trim() || null,
-      });
-
-      const copyInput = copyFileRef.current;
-      const cf = copyInput?.files?.[0];
-      if (cf && copyInput) {
-        const fd = new FormData();
-        fd.append("file", cf);
-        await uploadContentPlanCopywritingFile(roomId, id, fd);
-        copyInput.value = "";
-      }
-
-      if (queuedDesignFiles.length > 0) {
-        const list = isCarousel ? queuedDesignFiles : [queuedDesignFiles[0]!];
-        for (const file of list) {
-          const fd = new FormData();
-          fd.append("file", file);
-          fd.append("replaceSingle", isCarousel ? "0" : "1");
-          await uploadContentPlanDesignFile(roomId, id, fd);
-        }
-        setQueuedDesignFiles([]);
-        if (designFileRef.current) designFileRef.current.value = "";
-      }
-
-      toast.success(editing ? "Baris diperbarui." : "Baris ditambahkan.");
-      setOpen(false);
-      reset();
-      router.refresh();
-    } catch (e) {
-      toast.error(actionErrorMessage(e, "Gagal menyimpan."));
-    } finally {
-      setPending(false);
-    }
-  }
 
   const buildUpsertPayload = useCallback((row: ContentPlanTableRow) => {
     return {
@@ -2662,9 +2344,6 @@ export function ContentPlanningClient({
     ],
   );
 
-  const editingPaths = editing?.designFilePaths ?? [];
-  const editingId = editing?.id;
-
   const hasActiveFilters = activeFilterCount > 0 || searchQuery.trim().length > 0;
   const filteredCount = filteredRows.length;
   const totalCount = tableRows.length;
@@ -2899,531 +2578,22 @@ export function ContentPlanningClient({
           <Plus className="size-4" />
           Baris baru
         </Button>
-        <Sheet
+        <ContentPlanEditSheet
+          roomId={roomId}
           open={open}
-          onOpenChange={(v) => {
-            setOpen(v);
-            if (!v) reset();
+          row={editing}
+          openKey={openKey}
+          picUserOptions={picUserOptions}
+          onOpenChange={setOpen}
+          onRowPatched={(rowId, patch) => {
+            setEditing((prev) => (prev && prev.id === rowId ? { ...prev, ...patch } : prev));
+            patchRowLocal(rowId, patch);
           }}
-        >
-          <SheetContent
-            side="right"
-            showCloseButton
-            className="data-[side=right]:sm:max-w-2xl flex w-full max-w-full flex-col gap-0 border-l p-0 lg:max-w-[min(42rem,100vw-2rem)]"
-          >
-            <SheetHeader className="border-border shrink-0 space-y-1 border-b px-6 py-5 text-left">
-              <SheetTitle className="text-lg">
-                {editing ? "Edit baris content planning" : "Baris content planning baru"}
-              </SheetTitle>
-              <SheetDescription>
-                Isi per blok. Tombol Simpan juga mengunggah file copywriting dan design
-                yang dipilih pada langkah yang sama.
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
-              <Card size="sm" className="shadow-none ring-border/60">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <LayoutList className="text-accent-foreground size-4" />
-                    <CardTitle className="text-sm">Ringkasan konten</CardTitle>
-                  </div>
-                  <CardDescription>Nama, format, dan PIC.</CardDescription>
-                </CardHeader>
-                <div className="grid gap-4 px-4 pb-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="cp-konten">Konten (nama)</Label>
-                    <Input
-                      id="cp-konten"
-                      value={konten}
-                      onChange={(e) => setKonten(e.target.value)}
-                      placeholder="Judul atau nama konten"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Jenis konten</Label>
-                    <Select
-                      value={jenisKonten}
-                      items={jenisKontenSelectItems}
-                      onValueChange={(v) => {
-                        if (v) setJenisKonten(v as ContentPlanJenis);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.values(ContentPlanJenis) as ContentPlanJenis[]).map(
-                          (j) => (
-                            <SelectItem key={j} value={j}>
-                              <div className="py-0.5">
-                                <JenisBadge jenis={j} />
-                              </div>
-                            </SelectItem>
-                          ),
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Usage</Label>
-                    <Select
-                      value={usage}
-                      items={usageSelectItems}
-                      onValueChange={(v) => {
-                        if (v) setUsage(v as ContentPlanUsage);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <UsageBadge usage={usage} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.values(ContentPlanUsage) as ContentPlanUsage[]).map(
-                          (u) => (
-                            <SelectItem key={u} value={u}>
-                              <div className="py-0.5">
-                                <UsageBadge usage={u} />
-                              </div>
-                            </SelectItem>
-                          ),
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Platform</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {PLATFORM_ORDER.map((p) => {
-                        const checked = platforms.includes(p);
-                        return (
-                          <button
-                            key={p}
-                            type="button"
-                            role="checkbox"
-                            aria-checked={checked}
-                            onClick={() =>
-                              setPlatforms((prev) =>
-                                sortPlatforms(
-                                  prev.includes(p)
-                                    ? prev.filter((x) => x !== p)
-                                    : [...prev, p],
-                                ),
-                              )
-                            }
-                            className={cn(
-                              "rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors",
-                              checked
-                                ? PLATFORM_BADGE_CLASS[p]
-                                : "border-border bg-background text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            {PLATFORM_LABEL[p]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-muted-foreground text-xs">
-                      Boleh pilih lebih dari satu. Kosongkan bila belum ditentukan.
-                    </p>
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label className="inline-flex items-center gap-1.5">
-                      <UserCircle className="size-3.5 opacity-70" />
-                      PIC
-                    </Label>
-                    <div className="border-border bg-muted/20 max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
-                      {picUserOptions.map((u) => {
-                        const checked = picUserIds.includes(u.id);
-                        return (
-                          <label
-                            key={u.id}
-                            className="hover:bg-muted flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm"
-                          >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(v) => {
-                                setPicUserIds((prev) => {
-                                  if (v) return [...prev, u.id];
-                                  return prev.filter((id) => id !== u.id);
-                                });
-                              }}
-                            />
-                            <span>{u.name ?? u.email}</span>
-                          </label>
-                        );
-                      })}
-                      {picUserOptions.length === 0 ? (
-                        <p className="text-muted-foreground px-2 py-1 text-xs">Belum ada anggota.</p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="cp-detail">Detail konten</Label>
-                    <Textarea
-                      id="cp-detail"
-                      rows={4}
-                      value={detailKonten}
-                      onChange={(e) => setDetailKonten(e.target.value)}
-                      placeholder="Brief, angle, CTA, referensi…"
-                    />
-                  </div>
-                </div>
-              </Card>
-
-              <Card size="sm" className="shadow-none ring-border/60">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="text-accent-foreground size-4" />
-                    <CardTitle className="text-sm">Copywriting</CardTitle>
-                  </div>
-                  <CardDescription>Link eksternal atau unggah satu file pendukung.</CardDescription>
-                </CardHeader>
-                <div className="grid gap-4 px-4 pb-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="cp-cw-link">Link / teks (opsional)</Label>
-                    <Input
-                      id="cp-cw-link"
-                      value={copywritingLink}
-                      onChange={(e) => setCopywritingLink(e.target.value)}
-                      placeholder="https://…"
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Unggah file</Label>
-                    <div className="border-border bg-muted/30 flex flex-col gap-2 rounded-lg border border-dashed p-3">
-                      <Input
-                        ref={copyFileRef}
-                        type="file"
-                        className="text-muted-foreground cursor-pointer text-xs file:mr-3 file:rounded-md file:border-0 file:bg-accent/30 file:px-2 file:py-1 file:text-xs file:font-medium"
-                      />
-                      <p className="text-muted-foreground text-[11px]">
-                        Maks. {MAX_UPLOAD_LABEL} — dokumen, PDF, gambar, zip.
-                      </p>
-                    </div>
-                    {editing?.copywritingFilePath ? (
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <a
-                          href={editing.copywritingFilePath}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-accent-foreground text-xs font-medium underline-offset-2 hover:underline"
-                        >
-                          File terunggah
-                        </a>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          className="text-destructive h-7"
-                          onClick={async () => {
-                            try {
-                              await clearContentPlanCopywritingFile(roomId, editing.id);
-                              toast.success("File copywriting dihapus.");
-                              setEditing((prev) =>
-                                prev ? { ...prev, copywritingFilePath: null } : prev,
-                              );
-                              router.refresh();
-                            } catch (e) {
-                              toast.error(
-                                actionErrorMessage(e, "Gagal menghapus file."));
-                            }
-                          }}
-                        >
-                          Hapus file
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </Card>
-
-              <Card size="sm" className="shadow-none ring-border/60">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <Layers className="text-accent-foreground size-4" />
-                    <CardTitle className="text-sm">Design</CardTitle>
-                  </div>
-                  <CardDescription>
-                    {isCarousel
-                      ? "Carousel: tampilan slide rapi di bawah. Unggah beberapa gambar sekaligus (multi-select)."
-                      : "Reels / Single feed: satu file design utama."}
-                  </CardDescription>
-                </CardHeader>
-                <div className="space-y-4 px-4 pb-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="cp-des-link">Link design (opsional)</Label>
-                    <Input
-                      id="cp-des-link"
-                      value={designLink}
-                      onChange={(e) => setDesignLink(e.target.value)}
-                      placeholder="https://… Figma, Drive, dll."
-                    />
-                  </div>
-
-                  {editingId && isCarousel ? (
-                    <CarouselDesignRail
-                      paths={editingPaths}
-                      roomId={roomId}
-                      itemId={editingId}
-                      onPathsChange={(next) =>
-                        setEditing((prev) =>
-                          prev ? { ...prev, designFilePaths: next } : prev,
-                        )
-                      }
-                    />
-                  ) : editingId && !isCarousel && editingPaths[0] ? (
-                    <div className="border-border bg-muted/20 flex max-w-xs items-center gap-3 rounded-xl border p-3">
-                      {isImagePath(editingPaths[0]) ? (
-                        <Image
-                          src={editingPaths[0]}
-                          alt=""
-                          width={72}
-                          height={72}
-                          className="border-border size-[72px] rounded-lg border object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="border-border bg-background flex size-[72px] items-center justify-center rounded-lg border">
-                          <FileText className="text-muted-foreground size-8" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <a
-                          href={editingPaths[0]}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-accent-foreground text-sm font-medium underline-offset-2 hover:underline"
-                        >
-                          Buka file design
-                        </a>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="xs"
-                          className="text-destructive mt-1"
-                          onClick={async () => {
-                            try {
-                              await clearContentPlanDesignFiles(roomId, editingId);
-                              setEditing((prev) =>
-                                prev ? { ...prev, designFilePaths: [] } : prev,
-                              );
-                              toast.success("File design dihapus.");
-                              router.refresh();
-                            } catch (e) {
-                              toast.error(
-                                actionErrorMessage(e, "Gagal menghapus."));
-                            }
-                          }}
-                        >
-                          Ganti file
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-2">
-                    <Label>
-                      {isCarousel ? "Tambah slide (boleh banyak file)" : "Unggah / ganti file design"}
-                    </Label>
-                    <div className="border-border bg-muted/30 flex flex-col gap-2 rounded-lg border border-dashed p-3">
-                      <Input
-                        ref={designFileRef}
-                        type="file"
-                        multiple={isCarousel}
-                        accept={
-                          isCarousel
-                            ? "image/*,.pdf,.doc,.docx,application/pdf"
-                            : "image/*,video/*,.pdf,.doc,.docx,application/pdf"
-                        }
-                        className="text-muted-foreground cursor-pointer text-xs file:mr-3 file:rounded-md file:border-0 file:bg-accent/30 file:px-2 file:py-1 file:text-xs file:font-medium"
-                        onChange={(e) => {
-                          const picked = Array.from(e.target.files ?? []);
-                          if (picked.length === 0) return;
-                          setQueuedDesignFiles((prev) =>
-                            isCarousel ? [...prev, ...picked] : [picked[0]!],
-                          );
-                          e.currentTarget.value = "";
-                        }}
-                      />
-                      <p className="text-muted-foreground text-[11px]">
-                        {isCarousel
-                          ? "Pilih file berkali-kali untuk menambah antrean slide. Semua file di bawah akan diunggah saat klik Simpan."
-                          : "Satu file menggantikan file sebelumnya. Simpan form setelah memilih file."}
-                      </p>
-                    </div>
-                    {queuedDesignFiles.length > 0 ? (
-                      <div className="bg-background border-border space-y-2 rounded-lg border p-2.5">
-                        <p className="text-muted-foreground text-[11px] font-medium">
-                          Antrean upload ({queuedDesignFiles.length} file)
-                        </p>
-                        <div className="max-h-40 space-y-1 overflow-y-auto">
-                          {queuedDesignFiles.map((file, idx) => (
-                            <div
-                              key={`${file.name}-${file.size}-${idx}`}
-                              className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-2 py-1.5"
-                            >
-                              <span className="min-w-0 truncate text-xs">
-                                {idx + 1}. {file.name}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-xs"
-                                aria-label={`Hapus antrean ${file.name}`}
-                                onClick={() =>
-                                  setQueuedDesignFiles((prev) =>
-                                    prev.filter((_, i) => i !== idx),
-                                  )
-                                }
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex justify-end">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setQueuedDesignFiles([])}
-                          >
-                            Kosongkan antrean
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </Card>
-
-              <Card size="sm" className="shadow-none ring-border/60">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="text-accent-foreground size-4" />
-                    <CardTitle className="text-sm">Status & jadwal</CardTitle>
-                  </div>
-                  <CardDescription>Alur kerja dan deadline.</CardDescription>
-                </CardHeader>
-                <div className="grid gap-4 px-4 pb-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Status copywriting</Label>
-                    <Select
-                      value={statusCopywriting}
-                      items={statusKerjaSelectItems}
-                      onValueChange={(v) => {
-                        if (v) setStatusCopywriting(v as ContentPlanStatusKerja);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(
-                          Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[]
-                        ).map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {STATUS_LABEL[s]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status design</Label>
-                    <Select
-                      value={statusDesign}
-                      items={statusKerjaSelectItems}
-                      onValueChange={(v) => {
-                        if (v) setStatusDesign(v as ContentPlanStatusKerja);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(
-                          Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[]
-                        ).map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {STATUS_LABEL[s]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cp-dl-cw">Deadline copywriting</Label>
-                    <Input
-                      id="cp-dl-cw"
-                      type="date"
-                      value={deadlineCopywriting}
-                      onChange={(e) => setDeadlineCopywriting(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cp-dl-des">Deadline design</Label>
-                    <Input
-                      id="cp-dl-des"
-                      type="date"
-                      value={deadlineDesign}
-                      onChange={(e) => setDeadlineDesign(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cp-post">Tanggal postingan</Label>
-                    <Input
-                      id="cp-post"
-                      type="date"
-                      value={tanggalPosting}
-                      onChange={(e) => setTanggalPosting(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cp-post-jam" className="inline-flex items-center gap-1.5">
-                      <Clock className="size-3.5 opacity-70" />
-                      Jam posting (WIB)
-                    </Label>
-                    <Input
-                      id="cp-post-jam"
-                      type="time"
-                      value={jamPosting}
-                      onChange={(e) => setJamPosting(e.target.value)}
-                    />
-                    <p className="text-muted-foreground text-[11px]">
-                      Opsional — penting bila ada beberapa konten di hari yang sama.
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <div className="space-y-2">
-                <Label htmlFor="cp-cat" className="text-sm font-medium">
-                  Catatan
-                </Label>
-                <Textarea
-                  id="cp-cat"
-                  rows={3}
-                  value={catatan}
-                  onChange={(e) => setCatatan(e.target.value)}
-                  placeholder="Catatan internal untuk tim…"
-                  className="resize-none"
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            <SheetFooter className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm shrink-0 flex-row flex-wrap justify-end gap-2 border-t px-6 py-4">
-              <Button variant="outline" type="button" onClick={() => setOpen(false)}>
-                Batal
-              </Button>
-              <Button type="button" onClick={onSave} disabled={pending || !konten.trim()}>
-                {pending ? "Menyimpan…" : "Simpan"}
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+          onSaved={() => {
+            setOpen(false);
+            router.refresh();
+          }}
+        />
       </div>
 
       {/* Filter pills (collapsible) */}
