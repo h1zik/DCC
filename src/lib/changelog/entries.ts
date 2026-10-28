@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-10-28-content-planning-edit-sheet-storyboard",
+    date: "2026-10-28",
+    title: "Content Planning: form edit baru & urutan slide carousel bisa diseret",
+    category: "improved",
+    description:
+      "Panel edit baris content planning dirombak agar lebih ringkas: bagian form bisa dilompati lewat navigasi di atas, PIC dipilih lewat chip, file bisa ditarik langsung ke area unggah, dan footer menampilkan apa yang akan terjadi saat Simpan. Untuk carousel, slide tampil sebagai storyboard yang bisa diseret untuk mengubah urutan, termasuk file baru yang belum diunggah.",
+    highlights: [
+      "Seret slide carousel (mouse, sentuh, atau keyboard) untuk mengatur urutan; nomor slide dan tanda Cover mengikuti.",
+      "File baru bisa diselipkan di antara slide lama; urutan final disimpan saat klik Simpan.",
+      "Cover di simulasi Feed tetap menunjuk gambar yang sama setelah slide diurutkan atau dihapus.",
+      "Konfirmasi saat menutup panel dengan perubahan belum disimpan, dan Ctrl/Cmd+Enter untuk menyimpan.",
+    ],
+  },
+  {
     id: "2026-10-28-seo-toolkit-reliability",
     date: "2026-10-28",
     title: "SEO Toolkit: angka yang lebih bisa dipercaya di semua modul",
