@@ -62,10 +62,15 @@ export type LlmModelInfo = {
   web_search_supported?: boolean;
 };
 
+/** Hasil resolusi model: `fallback` true bila daftar model gagal dimuat. */
+export type ResolvedLlmModel = { model: LlmModelInfo; fallback: boolean };
+
 const MODEL_CACHE_TTL_MS = 60 * 60 * 1000;
+/** Fallback di-cache lebih singkat agar daftar model dicoba lagi lebih cepat. */
+const MODEL_FALLBACK_CACHE_TTL_MS = 5 * 60 * 1000;
 const modelCache = new Map<
   AiPlatform,
-  { expiresAt: number; promise: Promise<LlmModelInfo> }
+  { expiresAt: number; promise: Promise<ResolvedLlmModel> }
 >();
 
 const CHEAP_MODEL_PATTERNS: Record<AiPlatform, RegExp[]> = {
@@ -118,12 +123,12 @@ export function selectLlmModel(
   return models[0] ?? fallbackModel(platform);
 }
 
-async function resolveLlmModel(platform: AiPlatform): Promise<LlmModelInfo> {
+async function resolveLlmModel(platform: AiPlatform): Promise<ResolvedLlmModel> {
   const cached = modelCache.get(platform);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
   const config = PLATFORM_CONFIG[platform];
-  const promise = (async () => {
+  const promise: Promise<ResolvedLlmModel> = (async () => {
     try {
       const response = await dataForSeoGet<LlmModelInfo>(config.modelsEndpoint, {
         maxRetries: 1,
@@ -143,13 +148,13 @@ async function resolveLlmModel(platform: AiPlatform): Promise<LlmModelInfo> {
           `DataForSEO tidak mengembalikan model ${AI_PLATFORM_LABELS[platform]}.`,
         );
       }
-      return selectLlmModel(platform, models);
+      return { model: selectLlmModel(platform, models), fallback: false };
     } catch (err) {
       console.warn(
         `[seo/ai-visibility] daftar model ${platform} gagal, memakai fallback`,
         err,
       );
-      return fallbackModel(platform);
+      return { model: fallbackModel(platform), fallback: true };
     }
   })();
 
@@ -157,12 +162,25 @@ async function resolveLlmModel(platform: AiPlatform): Promise<LlmModelInfo> {
     expiresAt: Date.now() + MODEL_CACHE_TTL_MS,
     promise,
   });
+  // Bila berakhir fallback, persingkat masa cache agar daftar model dicoba ulang.
+  void promise.then((resolved) => {
+    if (resolved.fallback && modelCache.get(platform)?.promise === promise) {
+      modelCache.set(platform, {
+        expiresAt: Date.now() + MODEL_FALLBACK_CACHE_TTL_MS,
+        promise,
+      });
+    }
+  });
   return promise;
 }
 
 export type LlmAnswer = {
   text: string;
   citations: string[];
+  /** Nama model yang dipakai untuk prompt ini. */
+  modelName: string;
+  /** True bila model fallback hard-coded dipakai (daftar model gagal dimuat). */
+  modelFallback: boolean;
 };
 
 export function buildLlmRequest(
@@ -188,7 +206,9 @@ const URL_KEYS = new Set(["url", "source_url", "link"]);
 const SKIP_KEYS = new Set(["input_tokens", "output_tokens", "money_spent"]);
 
 /** Kumpulkan teks & URL dari struktur respons apa pun (pure, di-export untuk test). */
-export function collectLlmAnswer(node: unknown): LlmAnswer {
+export function collectLlmAnswer(
+  node: unknown,
+): Pick<LlmAnswer, "text" | "citations"> {
   const texts: string[] = [];
   const urls = new Set<string>();
 
@@ -223,15 +243,16 @@ export function collectLlmAnswer(node: unknown): LlmAnswer {
 }
 
 /**
- * Tanyakan satu prompt ke platform AI. Cache TTL default berlaku (24 jam) —
- * cukup untuk cek berkala tanpa biaya ganda di hari yang sama.
+ * Tanyakan satu prompt ke platform AI. Cache TTL default berlaku (24 jam);
+ * `fresh: true` melewati pembacaan cache (hasil baru tetap ditulis) — dipakai
+ * run AI Visibility agar tiap run benar-benar menanyakan ulang.
  */
 export async function fetchLlmResponse(
   platform: AiPlatform,
   prompt: string,
   opts: { fresh?: boolean } = {},
 ): Promise<LlmAnswer> {
-  const model = await resolveLlmModel(platform);
+  const { model, fallback } = await resolveLlmModel(platform);
   const { endpoint, payload } = buildLlmRequest(platform, prompt, model);
 
   const result = await withDataForSeoCache(
@@ -246,5 +267,9 @@ export async function fetchLlmResponse(
     { bypass: opts.fresh === true },
   );
 
-  return collectLlmAnswer(result);
+  return {
+    ...collectLlmAnswer(result),
+    modelName: model.model_name,
+    modelFallback: fallback,
+  };
 }

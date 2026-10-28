@@ -6,6 +6,7 @@ import { ResearchMarketplace } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSeoAccess } from "@/lib/seo/auth";
+import { isSeoRunStale, isSeoStatusBusy } from "@/lib/seo/labels";
 import {
   enqueueMarketplaceAnalysis,
   MARKETPLACE_SEO_SUPPORTED,
@@ -54,9 +55,16 @@ export async function refreshSeoMarketplaceAnalysis(analysisId: string) {
 
   const existing = await prisma.seoMarketplaceAnalysis.findUnique({
     where: { id: analysisId },
-    select: { id: true },
+    select: { id: true, status: true, updatedAt: true },
   });
   if (!existing) throw new Error("Analisis tidak ditemukan.");
+  // Tolak bila masih berjalan dan belum macet (>15 menit tanpa progres).
+  if (
+    isSeoStatusBusy(existing.status) &&
+    !isSeoRunStale(existing.status, existing.updatedAt)
+  ) {
+    throw new Error("Run masih berjalan.");
+  }
 
   await prisma.seoMarketplaceAnalysis.update({
     where: { id: analysisId },

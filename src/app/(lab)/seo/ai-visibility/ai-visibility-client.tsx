@@ -10,6 +10,7 @@ import {
   Loader2,
   Play,
   Plus,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -28,11 +29,12 @@ import {
 } from "@/components/seo/ai-engine-logo";
 import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
 import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
-import { isSeoStatusBusy } from "@/lib/seo/labels";
+import { isSeoRunStale, isSeoStatusBusy } from "@/lib/seo/labels";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   createAiVisibilityRun,
   deleteAiVisibilityRun,
+  rerunAiVisibilityRun,
 } from "@/actions/seo-ai-visibility";
 import type {
   AiVisibilityResult,
@@ -52,11 +54,54 @@ export type AiVisibilityRunRow = {
   dataNotice: string | null;
   errorMessage: string | null;
   createdAt: string;
+  updatedAt: string;
 };
 
 const PLATFORM_KEYS = Object.keys(AI_ENGINES) as (keyof typeof AI_ENGINES)[];
 
-export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
+/** Ringkasan lama (sebelum ada `failedChecks`) dibaca sebagai 0 gagal. */
+function failedOf(summary: AiVisibilitySummary | null | undefined): number {
+  return summary?.failedChecks ?? 0;
+}
+
+/**
+ * Teks mention rate yang jujur: "—" bila tidak ada cek berhasil sama sekali
+ * tetapi ada yang gagal (0% / 100% dari nol sampel menyesatkan).
+ */
+function formatRate(valid: number, failed: number, rate: number): string {
+  if (valid === 0 && failed > 0) return "—";
+  return `${rate}%`;
+}
+
+/** Chip kecil "N gagal" bernada error (null bila 0). */
+function FailedChip({
+  count,
+  className,
+}: {
+  count: number;
+  className?: string;
+}) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-md bg-rose-500/15 px-1.5 py-0.5 text-[10.5px] font-bold leading-none text-rose-700 tabular-nums dark:text-rose-300",
+        className,
+      )}
+    >
+      {count} gagal
+    </span>
+  );
+}
+
+export function AiVisibilityClient({
+  items,
+  totalRuns,
+}: {
+  items: AiVisibilityRunRow[];
+  /** Total run di DB (daftar dibatasi `take`, jadi bukan `items.length`). */
+  totalRuns: number;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
@@ -77,10 +122,12 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
       (acc, i) => acc + (i.summary?.mentionedChecks ?? 0),
       0,
     );
+    const failed = ready.reduce((acc, i) => acc + failedOf(i.summary), 0);
     return {
       readyRuns: ready.length,
       totalChecks,
       mentioned,
+      failed,
       rate:
         totalChecks > 0 ? Math.round((mentioned / totalChecks) * 100) : null,
       running: items.filter((i) => isSeoStatusBusy(i.status)).length,
@@ -142,12 +189,29 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
     });
   }
 
+  function handleRerun(id: string) {
+    startTransition(async () => {
+      try {
+        await rerunAiVisibilityRun(id);
+        toast.success("Run dijalankan ulang — tiap cek menanyakan ulang ke AI.");
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menjalankan ulang."));
+      }
+    });
+  }
+
   const openRun = items.find((i) => i.id === openRunId) ?? items[0] ?? null;
+  const openRunBusy = openRun ? isSeoStatusBusy(openRun.status) : false;
+  const openRunStale = openRun
+    ? isSeoRunStale(openRun.status, openRun.updatedAt)
+    : false;
+  const canRerun = !!openRun && (!openRunBusy || openRunStale);
 
   return (
     <div className="flex flex-col gap-5">
       {/* Ringkasan portofolio */}
-      {portfolio.rate != null ? (
+      {portfolio.readyRuns > 0 ? (
         <div
           className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
         >
@@ -155,14 +219,25 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
             <span className="text-[11.5px] font-semibold text-teal-100 dark:text-teal-950/70">
               Mention rate
             </span>
-            <span className="bento-value text-white dark:text-teal-950">
-              {portfolio.rate}
-              <span className="text-lg font-bold text-teal-200/80 dark:text-teal-900/60">
-                %
-              </span>
+            <span className="bento-value flex items-baseline gap-2 text-white dark:text-teal-950">
+              {portfolio.rate != null ? (
+                <>
+                  {portfolio.rate}
+                  <span className="text-lg font-bold text-teal-200/80 dark:text-teal-900/60">
+                    %
+                  </span>
+                </>
+              ) : (
+                "—"
+              )}
+              <FailedChip
+                count={portfolio.failed}
+                className="bg-white/90 text-rose-700 dark:bg-teal-950/80 dark:text-rose-300"
+              />
             </span>
             <span className="text-[11px] font-medium text-teal-100/90 dark:text-teal-900/80">
               gabungan {portfolio.readyRuns} run selesai
+              {portfolio.failed > 0 ? " · cek gagal tidak dihitung" : ""}
             </span>
           </div>
 
@@ -182,9 +257,11 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
 
           <div className="bento-tile">
             <span className="bento-label">Total run</span>
-            <span className="bento-value">{items.length}</span>
+            <span className="bento-value">{totalRuns}</span>
             <span className="text-muted-foreground text-[11px] font-medium">
-              riwayat cek AI visibility
+              {totalRuns > items.length
+                ? `${items.length} terbaru ditampilkan`
+                : "riwayat cek AI visibility"}
             </span>
           </div>
 
@@ -214,7 +291,7 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
           <p className={lab.sectionDesc}>
             {items.length === 0
               ? "Mulai dengan cek pertama Anda di bawah."
-              : `${items.length} run · brand terms dicek di jawaban AI untuk keyword komersial Anda.`}
+              : `${totalRuns} run${totalRuns > items.length ? ` (${items.length} terbaru ditampilkan)` : ""} · brand terms dicek di jawaban AI untuk keyword komersial Anda.`}
           </p>
         </div>
         {items.length > 0 ? (
@@ -332,10 +409,22 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                   <span className="block truncate text-sm font-medium">
                     {run.name}
                   </span>
-                  <span className="text-muted-foreground block text-xs">
-                    {run.summary
-                      ? `${run.summary.mentionRate}% mention · ${run.summary.totalChecks} cek`
-                      : `${run.keywords.length} keyword`}
+                  <span className="text-muted-foreground flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs">
+                    {run.summary ? (
+                      <>
+                        <span>
+                          {formatRate(
+                            run.summary.totalChecks,
+                            failedOf(run.summary),
+                            run.summary.mentionRate,
+                          )}{" "}
+                          mention · {run.summary.totalChecks} cek
+                        </span>
+                        <FailedChip count={failedOf(run.summary)} />
+                      </>
+                    ) : (
+                      `${run.keywords.length} keyword`
+                    )}
                   </span>
                 </span>
                 <SeoStatusBadge status={run.status} />
@@ -355,8 +444,16 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-teal-100 dark:text-teal-900/80">
                           Mention rate
                         </span>
-                        <span className="text-xl font-extrabold tabular-nums tracking-tight">
-                          {openRun.summary.mentionRate}%
+                        <span className="flex items-baseline gap-2 text-xl font-extrabold tabular-nums tracking-tight">
+                          {formatRate(
+                            openRun.summary.totalChecks,
+                            failedOf(openRun.summary),
+                            openRun.summary.mentionRate,
+                          )}
+                          <FailedChip
+                            count={failedOf(openRun.summary)}
+                            className="bg-white/90 text-rose-700 dark:bg-teal-950/80 dark:text-rose-300"
+                          />
                         </span>
                       </div>
                       {/* Tile per-platform dengan logo brand */}
@@ -373,8 +470,9 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                               <span className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
                                 {aiEngineLabel(p)}
                               </span>
-                              <span className="text-foreground text-lg font-extrabold leading-tight tabular-nums tracking-tight">
-                                {s.rate}%
+                              <span className="text-foreground flex items-baseline gap-1.5 text-lg font-extrabold leading-tight tabular-nums tracking-tight">
+                                {formatRate(s.total, s.failed ?? 0, s.rate)}
+                                <FailedChip count={s.failed ?? 0} />
                               </span>
                             </span>
                           </div>
@@ -383,16 +481,40 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                     </>
                   ) : null}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => handleDelete(openRun.id)}
-                  disabled={pending}
-                  aria-label="Hapus run"
-                >
-                  <Trash2 className="text-destructive" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleRerun(openRun.id)}
+                    disabled={pending || !canRerun}
+                    title={
+                      canRerun
+                        ? "Jalankan ulang — tiap cek menanyakan ulang ke AI (bukan dari cache)"
+                        : "Run masih berjalan"
+                    }
+                  >
+                    <RefreshCw />
+                    {openRunStale ? "Jalankan ulang (macet)" : "Jalankan ulang"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => handleDelete(openRun.id)}
+                    disabled={pending}
+                    aria-label="Hapus run"
+                  >
+                    <Trash2 className="text-destructive" />
+                  </Button>
+                </div>
               </div>
+
+              <p className="text-muted-foreground text-[11px] leading-snug">
+                1 sampel per keyword × platform; jawaban LLM bisa berbeda antar
+                run.
+                {failedOf(openRun.summary) > 0
+                  ? " Cek yang gagal tidak dihitung dalam mention rate."
+                  : ""}
+              </p>
 
               {openRun.errorMessage ? (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
@@ -405,7 +527,7 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                 </div>
               ) : null}
 
-              {isSeoStatusBusy(openRun.status) ? (
+              {openRunBusy ? (
                 <div className={cn(lab.card, "flex items-center gap-3 p-6")}>
                   <Loader2 className="text-primary size-5 animate-spin" />
                   <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
@@ -418,6 +540,12 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                     <span className="text-muted-foreground">
                       … ({openRun.results.length} cek selesai)
                     </span>
+                    {openRunStale ? (
+                      <span className="text-amber-700 dark:text-amber-400">
+                        Tidak ada progres &gt;15 menit — kemungkinan macet,
+                        bisa dijalankan ulang.
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -427,7 +555,7 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                   <div key={i} className={cn(lab.card, "p-3")}>
                     <div className="flex flex-wrap items-center gap-2">
                       {r.error ? (
-                        <Badge variant="outline">gagal</Badge>
+                        <Badge variant="destructive">gagal</Badge>
                       ) : r.mentioned ? (
                         <Check className="size-4 shrink-0 text-emerald-500" />
                       ) : (
@@ -440,6 +568,15 @@ export function AiVisibilityClient({ items }: { items: AiVisibilityRunRow[] }) {
                       {r.matchedTerms.length > 0 ? (
                         <Badge variant="outline">
                           {r.matchedTerms.join(", ")}
+                        </Badge>
+                      ) : null}
+                      {r.modelFallback ? (
+                        <Badge
+                          variant="outline"
+                          title="Daftar model DataForSEO gagal dimuat; model fallback dipakai"
+                          className="text-amber-700 dark:text-amber-400"
+                        >
+                          model fallback
                         </Badge>
                       ) : null}
                     </div>

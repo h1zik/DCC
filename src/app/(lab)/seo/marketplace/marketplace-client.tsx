@@ -4,7 +4,15 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ResearchMarketplace, SeoAnalysisStatus } from "@prisma/client";
-import { ArrowUpRight, Loader2, Plus, Store, Trash2, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Info,
+  Loader2,
+  Plus,
+  Store,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +23,11 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
 import {
   SEO_STATUS_LABELS,
@@ -62,9 +75,32 @@ export type MarketplaceSummary = {
   ready: number;
   busy: number;
   failed: number;
-  /** Rata-rata skor optimasi judul (hanya analisis dengan judul sendiri). */
+  /**
+   * Rata-rata skor judul (heuristik; hanya analisis dengan judul sendiri).
+   * Bukan metrik ranking — lihat `TITLE_SCORE_HELP`.
+   */
   avgScore: number | null;
 };
+
+/** Penjelasan skor judul — heuristik, bukan metrik ranking marketplace. */
+export const TITLE_SCORE_HELP =
+  "Heuristik, bukan metrik ranking: keyword ada di judul (30) + overlap istilah teratas pesaing di luar keyword (50) + panjang judul wajar (20).";
+
+/** Ikon info + tooltip; dirender sebagai span agar sah di dalam <a>. */
+export function TitleScoreHint() {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span tabIndex={0} role="img" />}
+        aria-label="Penjelasan skor judul"
+        className="inline-flex cursor-help items-center opacity-80 hover:opacity-100"
+      >
+        <Info className="size-3" aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent>{TITLE_SCORE_HELP}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -110,12 +146,12 @@ function CardStat({
   label,
   value,
 }: {
-  label: string;
+  label: React.ReactNode;
   value: React.ReactNode;
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide">
         {label}
       </p>
       <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -225,12 +261,15 @@ export function MarketplaceClient({
           </div>
 
           <div className="bento-tile">
-            <span className="bento-label">Skor judul rata-rata</span>
+            <span className="bento-label inline-flex items-center gap-1">
+              Skor judul (heuristik) rata-rata
+              <TitleScoreHint />
+            </span>
             <span className={cn("bento-value", scoreToneClass(summary.avgScore))}>
               {summary.avgScore ?? "—"}
             </span>
             <span className="text-muted-foreground text-[11px] font-medium">
-              dari analisis dengan judul sendiri
+              dari analisis dengan judul sendiri · bukan metrik ranking
             </span>
           </div>
         </div>
@@ -366,7 +405,12 @@ export function MarketplaceClient({
 
                   <div className="grid grid-cols-2 gap-2">
                     <CardStat
-                      label="Skor judul"
+                      label={
+                        <>
+                          Skor judul (heuristik)
+                          <TitleScoreHint />
+                        </>
+                      }
                       value={
                         a.hasOwnTitle ? (
                           <span className={scoreToneClass(a.optimizationScore)}>

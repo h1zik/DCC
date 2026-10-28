@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ResearchMarketplace, SeoAnalysisStatus } from "@prisma/client";
-import { ArrowLeft, RefreshCw, Search, Store } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  RefreshCw,
+  Search,
+  Store,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,11 +32,19 @@ import {
 import { SeoDetailPage } from "@/components/seo/seo-module-page";
 import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
 import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
-import { isSeoStatusBusy, scoreToneClass } from "@/lib/seo/labels";
+import {
+  isSeoRunStale,
+  isSeoStatusBusy,
+  scoreToneClass,
+} from "@/lib/seo/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { refreshSeoMarketplaceAnalysis } from "@/actions/seo-marketplace";
-import { MARKETPLACE_LABELS } from "../marketplace-client";
+import {
+  MARKETPLACE_LABELS,
+  TITLE_SCORE_HELP,
+  TitleScoreHint,
+} from "../marketplace-client";
 import { cn } from "@/lib/utils";
 
 type Listing = {
@@ -63,9 +77,35 @@ export type MarketplaceDetail = {
   } | null;
   dataNotice: string | null;
   errorMessage: string | null;
+  updatedAt: string;
 };
 
 type ListingSortKey = "default" | "sold" | "priceAsc" | "priceDesc" | "rating";
+
+/** Label tile "terjual" per marketplace: Shopee = per bulan, Tokopedia = lifetime. */
+function soldLabel(marketplace: ResearchMarketplace): {
+  label: string;
+  caption: string;
+} {
+  switch (marketplace) {
+    case ResearchMarketplace.SHOPEE:
+      return { label: "Terjual/bulan (Shopee)", caption: "akumulasi bulanan listing teratas" };
+    case ResearchMarketplace.TOKOPEDIA:
+      return { label: "Total terjual (Tokopedia)", caption: "akumulasi lifetime listing teratas" };
+    default:
+      return { label: "Total terjual", caption: "akumulasi listing teratas" };
+  }
+}
+
+/** Label + ikon info dengan tooltip penjelasan heuristik skor judul. */
+function TitleScoreLabel({ className }: { className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1", className)}>
+      Skor judul (heuristik)
+      <TitleScoreHint />
+    </span>
+  );
+}
 
 const LISTING_SORT_ITEMS: SelectItemDef[] = [
   { value: "default", label: "Urutan hasil" },
@@ -103,6 +143,12 @@ export function MarketplaceDetailClient({
   const [sortBy, setSortBy] = useState<ListingSortKey>("default");
 
   const busy = isSeoStatusBusy(analysis.status);
+  const stale = isSeoRunStale(analysis.status, analysis.updatedAt);
+  const failed = analysis.status === SeoAnalysisStatus.FAILED;
+  // Gagal tanpa data (mis. scraper kosong/diblokir): tampilkan panel gagal +
+  // tombol ulang, bukan grid statistik kosong seolah hasil bersih.
+  const failedWithoutData = failed && analysis.listingStats == null;
+  const canRefresh = !busy || stale;
   useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 5000);
@@ -182,10 +228,11 @@ export function MarketplaceDetailClient({
             variant="outline"
             size="sm"
             onClick={handleRefresh}
-            disabled={pending || refreshing || busy}
+            disabled={pending || refreshing || !canRefresh}
+            title={canRefresh ? undefined : "Run masih berjalan"}
           >
             <RefreshCw className={cn(refreshing && "animate-spin")} />
-            Ulang
+            {stale ? "Ulang (macet)" : "Ulang"}
           </Button>
           <Button variant="ghost" size="sm" render={<Link href="/seo/marketplace" />}>
             <ArrowLeft />
@@ -194,7 +241,7 @@ export function MarketplaceDetailClient({
         </div>
       }
     >
-      {analysis.status === SeoAnalysisStatus.FAILED && analysis.errorMessage ? (
+      {failed && analysis.errorMessage && !failedWithoutData ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {analysis.errorMessage}
         </div>
@@ -209,8 +256,37 @@ export function MarketplaceDetailClient({
         <LabEmptyState
           icon={Store}
           title="Menganalisis listing…"
-          description="Scraping listing teratas dari marketplace. Halaman ter-update otomatis."
+          description={
+            stale
+              ? "Tidak ada progres >15 menit — kemungkinan proses macet. Gunakan tombol Ulang."
+              : "Scraping listing teratas dari marketplace. Halaman ter-update otomatis."
+          }
         />
+      ) : failedWithoutData ? (
+        <div
+          role="alert"
+          className="flex flex-col items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-6 py-10 text-center"
+        >
+          <span className="bg-destructive/10 text-destructive flex size-11 items-center justify-center rounded-xl">
+            <AlertTriangle className="size-5" aria-hidden />
+          </span>
+          <div className="max-w-md">
+            <p className="text-foreground font-bold tracking-tight">
+              Analisis gagal
+            </p>
+            <p className="text-destructive mt-1 text-sm leading-relaxed">
+              {analysis.errorMessage ?? "Analisis marketplace gagal."}
+            </p>
+          </div>
+          <Button
+            onClick={handleRefresh}
+            disabled={pending || refreshing}
+            size="sm"
+          >
+            <RefreshCw className={cn(refreshing && "animate-spin")} />
+            Coba lagi
+          </Button>
+        </div>
       ) : (
         <div className="flex flex-col gap-6">
           {/* Papan bento: skor/listing + komposisi toko + statistik pasar */}
@@ -218,7 +294,7 @@ export function MarketplaceDetailClient({
             {/* Tile hero teal */}
             <div className="bento-tile col-span-2 row-span-2 border-transparent bg-teal-600 shadow-md shadow-teal-600/20 lg:col-span-1 dark:bg-teal-500">
               <span className="text-[11.5px] font-semibold text-teal-100 dark:text-teal-950/70">
-                {analysis.ownTitle ? "Skor optimasi judul" : "Listing dianalisis"}
+                {analysis.ownTitle ? <TitleScoreLabel /> : "Listing dianalisis"}
               </span>
               <span className="bento-value text-5xl text-white dark:text-teal-950">
                 {analysis.ownTitle
@@ -309,10 +385,10 @@ export function MarketplaceDetailClient({
             </div>
 
             <div className="bento-tile">
-              <span className="bento-label">Total terjual</span>
+              <span className="bento-label">{soldLabel(analysis.marketplace).label}</span>
               <span className="bento-value text-2xl">{num(s.totalSold)}</span>
               <span className="text-muted-foreground text-[11px] font-medium">
-                akumulasi listing teratas
+                {soldLabel(analysis.marketplace).caption}
               </span>
             </div>
 
@@ -353,7 +429,7 @@ export function MarketplaceDetailClient({
             >
               {showScorePanel ? (
                 <div className="bento-tile justify-start gap-3">
-                  <span className="bento-label">Skor optimasi judul</span>
+                  <TitleScoreLabel className="bento-label" />
                   <div className="flex items-start gap-3">
                     <span
                       className={cn(
@@ -395,11 +471,14 @@ export function MarketplaceDetailClient({
                       </span>
                     </div>
                   ) : null}
+                  <p className="text-muted-foreground text-[11px] leading-snug">
+                    {TITLE_SCORE_HELP}
+                  </p>
                   {recs?.titleScore?.missingTerms &&
                   recs.titleScore.missingTerms.length > 0 ? (
                     <div className="text-sm">
                       <p className="text-muted-foreground mb-1.5 text-xs">
-                        Istilah penting yang belum ada:
+                        Istilah pesaing (di luar keyword) yang belum ada:
                       </p>
                       <div className="flex flex-wrap gap-1">
                         {recs.titleScore.missingTerms.map((t) => (
