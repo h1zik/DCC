@@ -133,6 +133,34 @@ export function splitBatchHtml(
   return out;
 }
 
+/** Apakah HTML section benar-benar berisi (bukan string kosong/spasi). */
+export function isSectionHtmlFilled(html: string | undefined | null): boolean {
+  return !!html && html.trim().length > 0;
+}
+
+/**
+ * Terapkan hasil tulisan LLM ke rencana section. Section hanya ditandai
+ * `done` bila HTML-nya terisi; yang kosong dibiarkan pending agar
+ * resume menulis ulang. Mengembalikan id section yang masih kosong.
+ */
+export function applyWrittenSections(
+  sections: PlannedSection[],
+  written: { id: string; html: string }[],
+): { sections: PlannedSection[]; missingIds: string[] } {
+  const byId = new Map(written.map((w) => [w.id, w.html]));
+  const missingIds: string[] = [];
+  const next = sections.map((s) => {
+    if (!byId.has(s.id)) return s;
+    const html = byId.get(s.id) ?? "";
+    if (isSectionHtmlFilled(html)) {
+      return { ...s, html: html.trim(), done: true };
+    }
+    missingIds.push(s.id);
+    return { ...s, html: "", done: false };
+  });
+  return { sections: next, missingIds };
+}
+
 /** Ambil ~N kata terakhir dari HTML (untuk kontinuitas antar chunk LLM). */
 export function tailWords(html: string, n = 150): string {
   const text = html

@@ -5,6 +5,8 @@
  * - Server: `extractSignalsFromHtml` di html-signals-server.ts (cheerio).
  */
 
+import { extractVerifyMarkersFromHtml } from "@/lib/seo/content/claims";
+
 export type DocHeading = { level: number; text: string };
 
 export type DocSignals = {
@@ -81,18 +83,8 @@ export function buildDocSignals(raw: {
   };
 }
 
-const VERIFY_RE = /<!--\s*verify:\s*([\s\S]*?)-->/gi;
-
-export function extractVerifyMarkersFromHtml(html: string): string[] {
-  const out: string[] = [];
-  let match: RegExpExecArray | null;
-  const re = new RegExp(VERIFY_RE.source, "gi");
-  while ((match = re.exec(html)) !== null) {
-    const note = match[1].trim();
-    if (note) out.push(note);
-  }
-  return out;
-}
+// Satu implementasi regex marker verify dipakai bersama (lihat claims.ts).
+export { extractVerifyMarkersFromHtml };
 
 /** Extractor client (browser DOMParser). Jangan panggil di server. */
 export function extractSignalsFromDom(html: string): DocSignals {
@@ -115,12 +107,20 @@ export function extractSignalsFromDom(html: string): DocSignals {
     links.push({ href: el.getAttribute("href") ?? "" });
   });
 
+  const listCount = doc.querySelectorAll("ul, ol").length;
+
+  // Sisipkan spasi antar blok sebelum membaca textContent agar word count
+  // identik dengan extractor server (cheerio `.after(" ")` pada blok yang sama).
+  doc
+    .querySelectorAll("p, h1, h2, h3, h4, h5, h6, li, td, div")
+    .forEach((el) => el.after(" "));
+
   return buildDocSignals({
     text: doc.body?.textContent ?? "",
     headings,
     paragraphs,
     links,
-    listCount: doc.querySelectorAll("ul, ol").length,
+    listCount,
     verifyMarkers: extractVerifyMarkersFromHtml(html),
   });
 }

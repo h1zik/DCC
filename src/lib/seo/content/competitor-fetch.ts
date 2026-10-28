@@ -7,6 +7,11 @@ import {
 import { isPathAllowed } from "@/lib/seo/content/robots";
 import { isDataForSeoConfigured } from "@/lib/seo/dataforseo/client";
 import { fetchContentParsing } from "@/lib/seo/dataforseo/onpage";
+import {
+  UnsafeUrlError,
+  readTextCapped,
+  safeFetch,
+} from "@/lib/seo/safe-fetch";
 
 /**
  * Fetch halaman kompetitor untuk grounding brief. Best-effort: kegagalan satu
@@ -79,46 +84,24 @@ function isBlockedDomain(hostname: string): boolean {
   );
 }
 
-/** Baca body dengan batas byte agar halaman raksasa tidak menghabiskan memori. */
-async function readBodyCapped(res: Response): Promise<string> {
-  const reader = res.body?.getReader();
-  if (!reader) return await res.text();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) {
-      chunks.push(value);
-      total += value.byteLength;
-      if (total >= MAX_BYTES) {
-        await reader.cancel().catch(() => undefined);
-        break;
-      }
-    }
-  }
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    merged.set(c, offset);
-    offset += c.byteLength;
-  }
-  return new TextDecoder("utf-8", { fatal: false }).decode(merged);
-}
+/** Batas byte robots.txt (cukup besar untuk file robots normal). */
+const ROBOTS_MAX_BYTES = 256 * 1024;
 
-/** Cache robots.txt per-origin selama satu run (module-level, best-effort). */
+/**
+ * Cache robots.txt per-origin selama satu run (best-effort). Lewat `safeFetch`
+ * agar redirect robots.txt tidak bisa diarahkan ke alamat internal (SSRF).
+ */
 async function fetchRobots(
   origin: string,
   cache: Map<string, string | null>,
 ): Promise<string | null> {
   if (cache.has(origin)) return cache.get(origin) ?? null;
   try {
-    const res = await fetch(`${origin}/robots.txt`, {
+    const res = await safeFetch(`${origin}/robots.txt`, {
       headers: { "User-Agent": USER_AGENT },
       signal: AbortSignal.timeout(ROBOTS_TIMEOUT_MS),
-      redirect: "follow",
     });
-    const text = res.ok ? await res.text() : null;
+    const text = res.ok ? await readTextCapped(res, ROBOTS_MAX_BYTES) : null;
     cache.set(origin, text);
     return text;
   } catch {
@@ -150,22 +133,27 @@ export async function fetchCompetitorPage(
   }
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml",
-        "Accept-Language": "id-ID,id;q=0.9,en;q=0.6",
+    // safeFetch memvalidasi URL awal + setiap hop redirect terhadap alamat
+    // privat/internal (SSRF) sebelum request dikirim.
+    const res = await safeFetch(
+      url,
+      {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "text/html,application/xhtml+xml",
+          "Accept-Language": "id-ID,id;q=0.9,en;q=0.6",
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "follow",
-    });
+      { maxRedirects: 5 },
+    );
     if (!res.ok) return emptyPage(url, "failed", `HTTP ${res.status}`);
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.includes("text/html")) {
       return emptyPage(url, "skipped", `Bukan HTML (${contentType || "?"}).`);
     }
 
-    const html = await readBodyCapped(res);
+    const html = await readTextCapped(res, MAX_BYTES);
     const signals = extractArticleSignals(html);
     return {
       url,
@@ -178,6 +166,9 @@ export async function fetchCompetitorPage(
       bodyText: signals.bodyText,
     };
   } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      return emptyPage(url, "skipped", `URL tidak aman: ${err.message}`);
+    }
     const msg =
       err instanceof Error && err.name === "TimeoutError"
         ? "Timeout."

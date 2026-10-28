@@ -4,9 +4,10 @@ import { prisma } from "@/lib/prisma";
 import {
   getGscSiteUrl,
   gscDate,
-  gscSearchAnalytics,
+  gscSearchAnalyticsAll,
   isGscConfigured,
 } from "@/lib/seo/gsc/client";
+import { gscWindowBounds, gscWindows } from "@/lib/seo/gsc/gsc-dates";
 
 /**
  * Sinkronisasi harian data GSC → `SeoGscDaily` (dimensi page & query).
@@ -15,7 +16,10 @@ import {
  */
 
 const SYNC_WINDOW_DAYS = 5;
-const ROWS_PER_DIMENSION_PER_DAY = 500;
+/** Ukuran halaman API per request (pagination `startRow`). */
+const ROWS_PER_PAGE = 500;
+/** Batas total baris per dimensi per hari yang disimpan ke DB. */
+const MAX_ROWS_PER_DIMENSION_PER_DAY = 2000;
 const RETENTION_DAYS = 180;
 
 export async function syncGscDaily(): Promise<{
@@ -31,12 +35,13 @@ export async function syncGscDaily(): Promise<{
   for (let daysAgo = 2; daysAgo < 2 + SYNC_WINDOW_DAYS; daysAgo++) {
     const date = gscDate(daysAgo);
     for (const dimension of ["page", "query"] as const) {
-      const rows = await gscSearchAnalytics({
+      const rows = await gscSearchAnalyticsAll({
         siteUrl,
         startDate: date,
         endDate: date,
         dimensions: [dimension],
-        rowLimit: ROWS_PER_DIMENSION_PER_DAY,
+        rowLimit: ROWS_PER_PAGE,
+        maxRows: MAX_ROWS_PER_DIMENSION_PER_DAY,
       });
       for (const row of rows) {
         const key = row.keys[0];
@@ -90,22 +95,25 @@ export async function getGscDashboardSummary(): Promise<{
 } | null> {
   if (!isGscConfigured()) return null;
   const siteUrl = getGscSiteUrl()!;
-  const now = Date.now();
-  const d28 = new Date(now - 28 * 24 * 60 * 60 * 1000);
-  const d56 = new Date(now - 56 * 24 * 60 * 60 * 1000);
+  // Jendela berbasis tanggal murni (baris disimpan T00:00Z, hanya sampai
+  // 2 hari lalu): kini = [gscDate(29)..gscDate(2)], sebelumnya =
+  // [gscDate(57)..gscDate(30)] — masing-masing tepat 28 hari, tanpa overlap.
+  const windows = gscWindows(Date.now(), 28);
+  const cur = gscWindowBounds(windows.current);
+  const prev = gscWindowBounds(windows.previous);
 
   const [current, previous, queries] = await Promise.all([
     prisma.seoGscDaily.aggregate({
-      where: { siteUrl, dimension: "page", date: { gte: d28 } },
+      where: { siteUrl, dimension: "page", date: cur },
       _sum: { clicks: true, impressions: true },
     }),
     prisma.seoGscDaily.aggregate({
-      where: { siteUrl, dimension: "page", date: { gte: d56, lt: d28 } },
+      where: { siteUrl, dimension: "page", date: prev },
       _sum: { clicks: true },
     }),
     prisma.seoGscDaily.groupBy({
       by: ["key"],
-      where: { siteUrl, dimension: "query", date: { gte: d28 } },
+      where: { siteUrl, dimension: "query", date: cur },
       _sum: { clicks: true },
       orderBy: { _sum: { clicks: "desc" } },
       take: 5,

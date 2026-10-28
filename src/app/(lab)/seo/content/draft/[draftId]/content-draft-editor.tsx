@@ -42,11 +42,17 @@ import {
 import { RichTextEditorLazy as RichTextEditor } from "@/components/rich-text-editor-lazy";
 import { SeoDetailPage } from "@/components/seo/seo-module-page";
 import { lab } from "@/components/lab/lab-primitives";
-import { isSeoStatusBusy, scoreToneClass } from "@/lib/seo/labels";
+import {
+  isSeoRunStale,
+  isSeoStatusBusy,
+  scoreToneClass,
+} from "@/lib/seo/labels";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   analyzeDraftAction,
   checkDraftOriginality,
+  clearDraftClaims,
+  resolveDraftClaim,
   resumeDraftGenerationAction,
   saveContentDraft,
 } from "@/actions/seo-content";
@@ -98,6 +104,8 @@ export type DraftDetail = {
   stepLabel: string | null;
   percent: number;
   errorMessage: string | null;
+  /** ISO — untuk deteksi proses macet (busy > 15 menit tanpa update). */
+  updatedAt: string;
   metaTitle: string | null;
   metaDescription: string | null;
   slug: string | null;
@@ -107,12 +115,19 @@ export type DraftDetail = {
 export function ContentDraftEditor({
   draft,
   grounding,
+  pendingClaims,
 }: {
   draft: DraftDetail;
   grounding: ScoreGrounding | null;
+  /** Klaim menunggu verifikasi (aiMeta.pendingClaims ∪ marker HTML lama). */
+  pendingClaims: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // Sumber kebenaran klaim di client — editor TipTap membuang komentar HTML,
+  // jadi daftar ini TIDAK dibaca dari HTML.
+  const [claims, setClaims] = useState<string[]>(pendingClaims);
+  const stale = isSeoRunStale(draft.status, draft.updatedAt);
   const [title, setTitle] = useState(draft.title);
   const [keyword, setKeyword] = useState(draft.targetKeyword ?? "");
   const [metaTitle, setMetaTitle] = useState(draft.metaTitle ?? "");
@@ -150,10 +165,12 @@ export function ContentDraftEditor({
             slug: slug || null,
           },
           usableGrounding,
+          // Klaim dari state (bukan HTML) agar skor live = skor server.
+          { pendingClaims: claims },
         ),
       );
     },
-    [usableGrounding, metaTitle, metaDescription, slug],
+    [usableGrounding, metaTitle, metaDescription, slug, claims],
   );
 
   // Skor awal saat mount / setelah generate selesai.
@@ -221,7 +238,7 @@ export function ContentDraftEditor({
         await persist();
         const report = await checkDraftOriginality(draft.id);
         toast.success(
-          `Orisinalitas: ${report.score}/100 (${report.matchedCount}/${report.sampledCount} kalimat ditemukan di web).`,
+          `Cek sampel selesai: ${report.matchedCount}/${report.sampledCount} kalimat sampel ditemukan persis di Google.`,
         );
         router.refresh();
       } catch (err) {
@@ -244,6 +261,39 @@ export function ContentDraftEditor({
     });
   }
 
+  function handleResolveClaim(claim: string) {
+    startTransition(async () => {
+      try {
+        const { pendingClaims: next } = await resolveDraftClaim({
+          draftId: draft.id,
+          claim,
+        });
+        setClaims(next);
+        toast.success("Klaim ditandai terverifikasi.");
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal memperbarui klaim."));
+      }
+    });
+  }
+
+  function handleClearClaims() {
+    startTransition(async () => {
+      try {
+        await clearDraftClaims(draft.id);
+        setClaims([]);
+        toast.success("Semua tanda klaim dihapus.");
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menghapus tanda klaim."));
+      }
+    });
+  }
+
+  // Skor live ikut berubah saat daftar klaim berubah (cek "verify_markers").
+  useEffect(() => {
+    if (!busy && live) runLiveScore(htmlRef.current, title);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claims]);
+
   async function copyToClipboard(text: string, label: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -258,7 +308,7 @@ export function ContentDraftEditor({
   const checks: ContentCheck[] = live?.checks ?? analysis?.checks ?? [];
   const suggestions = analysis?.suggestions ?? [];
   const claimWarnings = analysis?.claimWarnings ?? [];
-  const verifyMarkers = analysis?.claims ?? [];
+  const verifyMarkers = claims;
   const termReport = live?.termReport ?? [];
   const categories = live?.categories ?? [];
   const wordCount = live
@@ -280,6 +330,17 @@ export function ContentDraftEditor({
           </Button>
         }
       >
+        {stale ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
+            <span>Proses tampak terhenti — jalankan ulang.</span>
+            {draft.briefId ? (
+              <Button size="sm" variant="outline" onClick={handleResume} disabled={pending}>
+                {pending ? <Loader2 className="animate-spin" /> : <Play />}
+                Lanjutkan penulisan
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         <div className={cn(lab.card, "flex flex-col items-center gap-4 p-10")}>
           <Loader2 className="text-primary size-8 animate-spin" />
           <div className="text-center">
@@ -316,14 +377,14 @@ export function ContentDraftEditor({
             size="sm"
             onClick={handleCheckOriginality}
             disabled={pending || checkingOriginality}
-            title="Sampel kalimat dicek sebagai frasa persis di Google"
+            title="Cek sampel 6 kalimat di Google (frasa persis) — bukan skor plagiarisme"
           >
             {checkingOriginality ? (
               <Loader2 className="animate-spin" />
             ) : (
               <ShieldAlert />
             )}
-            Orisinalitas
+            Cek sampel Google
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -419,12 +480,15 @@ export function ContentDraftEditor({
           )}
         >
           <p className="mb-1 font-semibold">
-            Orisinalitas: {analysis.originality.score}/100{" "}
-            <span className="text-muted-foreground font-normal">
-              ({analysis.originality.matchedCount}/
-              {analysis.originality.sampledCount} kalimat sampel ditemukan persis
-              di web)
-            </span>
+            Cek sampel {analysis.originality.sampledCount} kalimat di Google:{" "}
+            {analysis.originality.matchedCount}/{analysis.originality.sampledCount}{" "}
+            ditemukan persis
+          </p>
+          <p className="text-muted-foreground mb-2 text-xs">
+            Hanya {analysis.originality.sampledCount} kalimat sampel yang dicek
+            sebagai frasa persis di Google — ini bukan skor plagiarisme
+            menyeluruh. 0 temuan berarti sampel tidak ditemukan, bukan jaminan
+            seluruh draft orisinal.
           </p>
           {analysis.originality.matches.length > 0 ? (
             <ul className="text-muted-foreground ml-5 list-disc">
@@ -452,12 +516,39 @@ export function ContentDraftEditor({
 
       {verifyMarkers.length > 0 ? (
         <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 text-sm">
-          <p className="mb-1 flex items-center gap-2 font-semibold text-sky-700 dark:text-sky-400">
-            <AlertTriangle className="size-4" /> Perlu verifikasi manusia
-          </p>
-          <ul className="text-muted-foreground ml-5 list-disc">
-            {verifyMarkers.map((c, i) => (
-              <li key={i}>{c}</li>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-2 font-semibold text-sky-700 dark:text-sky-400">
+              <AlertTriangle className="size-4" /> Perlu verifikasi manusia (
+              {verifyMarkers.length})
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearClaims}
+              disabled={pending}
+            >
+              <X />
+              Hapus semua tanda
+            </Button>
+          </div>
+          <ul className="flex flex-col gap-1.5">
+            {verifyMarkers.map((c) => (
+              <li
+                key={c}
+                className="flex items-start justify-between gap-3 text-muted-foreground"
+              >
+                <span className="min-w-0 flex-1">{c}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => handleResolveClaim(c)}
+                  disabled={pending}
+                >
+                  <Check />
+                  Tandai terverifikasi
+                </Button>
+              </li>
             ))}
           </ul>
         </div>

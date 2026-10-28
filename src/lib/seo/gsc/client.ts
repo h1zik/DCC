@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSign } from "node:crypto";
+import { gscDateFrom } from "@/lib/seo/gsc/gsc-dates";
 
 /**
  * Klien Google Search Console via service account (tanpa dependensi baru):
@@ -120,10 +121,16 @@ export type GscQueryOptions = {
   startDate: string; // YYYY-MM-DD
   endDate: string;
   dimensions: ("query" | "page" | "date" | "device" | "country")[];
+  /** Ukuran satu halaman hasil (maks 25 000 sesuai API). */
   rowLimit?: number;
+  /** Offset baris (pagination API). */
+  startRow?: number;
 };
 
-/** Panggil Search Analytics API (`searchAnalytics/query`). */
+/** Batas maksimum satu halaman hasil menurut API Search Console. */
+export const GSC_MAX_ROW_LIMIT = 25000;
+
+/** Panggil Search Analytics API (`searchAnalytics/query`) — satu halaman. */
 export async function gscSearchAnalytics(
   opts: GscQueryOptions,
 ): Promise<GscRow[]> {
@@ -143,7 +150,8 @@ export async function gscSearchAnalytics(
         startDate: opts.startDate,
         endDate: opts.endDate,
         dimensions: opts.dimensions,
-        rowLimit: Math.min(25000, Math.max(1, opts.rowLimit ?? 1000)),
+        rowLimit: Math.min(GSC_MAX_ROW_LIMIT, Math.max(1, opts.rowLimit ?? 1000)),
+        ...(opts.startRow ? { startRow: Math.max(0, opts.startRow) } : {}),
         dataState: "final",
       }),
     },
@@ -160,8 +168,35 @@ export async function gscSearchAnalytics(
   return json?.rows ?? [];
 }
 
-/** Format tanggal YYYY-MM-DD (UTC). */
+/**
+ * Tarik SEMUA baris dengan pagination `startRow += rowLimit` sampai satu
+ * halaman mengembalikan kurang dari `rowLimit` baris, dibatasi `maxRows`
+ * (default 25 000) agar properti besar tidak membanjiri memori/DB.
+ */
+export async function gscSearchAnalyticsAll(
+  opts: Omit<GscQueryOptions, "startRow"> & { maxRows?: number },
+): Promise<GscRow[]> {
+  const pageSize = Math.min(
+    GSC_MAX_ROW_LIMIT,
+    Math.max(1, opts.rowLimit ?? 1000),
+  );
+  const maxRows = Math.max(pageSize, opts.maxRows ?? GSC_MAX_ROW_LIMIT);
+  const out: GscRow[] = [];
+  let startRow = 0;
+  for (;;) {
+    const page = await gscSearchAnalytics({
+      ...opts,
+      rowLimit: pageSize,
+      startRow,
+    });
+    out.push(...page);
+    if (page.length < pageSize || out.length >= maxRows) break;
+    startRow += pageSize;
+  }
+  return out.length > maxRows ? out.slice(0, maxRows) : out;
+}
+
+/** Format tanggal YYYY-MM-DD (UTC) untuk `daysAgo` hari sebelum sekarang. */
 export function gscDate(daysAgo: number): string {
-  const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-  return d.toISOString().slice(0, 10);
+  return gscDateFrom(Date.now(), daysAgo);
 }

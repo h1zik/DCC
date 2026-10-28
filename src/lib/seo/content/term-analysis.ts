@@ -46,6 +46,24 @@ const STOPWORDS = new Set([
   "of", "in", "on", "at", "to", "a", "an", "is", "be", "or", "as", "by",
 ]);
 
+/**
+ * Boilerplate media/portal Indonesia yang lolos ekstraksi artikel (kredit foto,
+ * navigasi "baca juga", nama portal, byline). Bukan istilah topik — dibuang
+ * seperti stopword agar tidak jadi "term kompetitor".
+ */
+export const BOILERPLATE_STOPWORDS = new Set([
+  "baca", "juga", "foto", "jakarta", "kompas", "detik", "ilustrasi", "sumber",
+  "shutterstock", "getty", "iklan", "advertisement", "tribunnews", "liputan6",
+  "editor", "reporter", "copyright", "simak", "video", "selengkapnya", "klik",
+  "istimewa", "dok", "unsplash", "freepik", "pexels", "pixabay", "instagram",
+  "tiktok", "youtube", "wib", "penulis", "kontributor", "penerbit", "lihat",
+]);
+
+/** Panjang token minimum (≥ 3 huruf; "uv"/"ph" dianggap noise). */
+export const MIN_TOKEN_LENGTH = 3;
+/** Minimal dokumen kompetitor agar analisis term dianggap representatif. */
+export const MIN_TERM_DOCS = 3;
+
 /** Tokenisasi sederhana Bahasa Indonesia: lowercase, buang tanda baca/angka murni. */
 export function tokenizeId(text: string): string[] {
   return text
@@ -53,11 +71,11 @@ export function tokenizeId(text: string): string[] {
     .replace(/[^a-z0-9à-ÿ\s-]/gi, " ")
     .split(/\s+/)
     .map((t) => t.replace(/^-+|-+$/g, ""))
-    .filter((t) => t.length >= 2 && !/^\d+$/.test(t));
+    .filter((t) => t.length >= MIN_TOKEN_LENGTH && !/^\d+$/.test(t));
 }
 
 function isStopword(token: string): boolean {
-  return STOPWORDS.has(token);
+  return STOPWORDS.has(token) || BOILERPLATE_STOPWORDS.has(token);
 }
 
 /** Bangun n-gram (1..3) dari token; n-gram tidak boleh diawali/diakhiri stopword. */
@@ -86,6 +104,11 @@ export type TermAnalysisOptions = {
   targetKeyword?: string;
   /** Maksimal term yang dikembalikan. */
   limit?: number;
+  /**
+   * Minimal dokumen agar analisis dijalankan (default `MIN_TERM_DOCS`). Sampel
+   * lebih kecil mengembalikan [] — term dari 1–2 halaman tidak representatif.
+   */
+  minDocs?: number;
 };
 
 /**
@@ -96,7 +119,8 @@ export function analyzeTerms(
   opts: TermAnalysisOptions = {},
 ): SemanticTerm[] {
   const totalDocs = docs.length;
-  if (totalDocs === 0) return [];
+  const minDocsRequired = opts.minDocs ?? MIN_TERM_DOCS;
+  if (totalDocs === 0 || totalDocs < minDocsRequired) return [];
   const limit = opts.limit ?? 30;
   const kw = opts.targetKeyword?.toLowerCase().trim() ?? "";
 

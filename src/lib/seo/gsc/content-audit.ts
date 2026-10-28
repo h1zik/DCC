@@ -5,11 +5,15 @@ import { prisma } from "@/lib/prisma";
 import {
   GscError,
   getGscSiteUrl,
-  gscDate,
-  gscSearchAnalytics,
+  gscSearchAnalyticsAll,
   isGscConfigured,
 } from "@/lib/seo/gsc/client";
 import { buildAuditRows } from "@/lib/seo/gsc/content-audit-rules";
+import { gscWindows } from "@/lib/seo/gsc/gsc-dates";
+
+/** Batas baris per query agar audit properti besar tetap terkendali. */
+const MAX_PAGE_ROWS = 25000;
+const MAX_PAGE_QUERY_ROWS = 25000;
 
 /**
  * Content Audit: tarik data GSC 28 hari vs 28 hari sebelumnya (agregat per
@@ -41,33 +45,34 @@ export async function runContentAudit(auditId: string): Promise<void> {
   try {
     const siteUrl = audit.siteUrl || getGscSiteUrl()!;
     const days = audit.windowDays;
-    // GSC lag ~2 hari: jendela kini = [2+days-1 .. 2] hari lalu.
-    const curEnd = gscDate(2);
-    const curStart = gscDate(2 + days - 1);
-    const prevEnd = gscDate(2 + days);
-    const prevStart = gscDate(2 + days * 2 - 1);
+    // GSC lag ~2 hari: jendela kini = [2+days-1 .. 2] hari lalu, sebelumnya
+    // tepat `days` hari sebelum itu (lihat gscWindows).
+    const { current, previous } = gscWindows(Date.now(), days);
 
     const [currentRows, previousRows, pageQueryRows] = await Promise.all([
-      gscSearchAnalytics({
+      gscSearchAnalyticsAll({
         siteUrl,
-        startDate: curStart,
-        endDate: curEnd,
+        startDate: current.start,
+        endDate: current.end,
         dimensions: ["page"],
         rowLimit: 1000,
+        maxRows: MAX_PAGE_ROWS,
       }),
-      gscSearchAnalytics({
+      gscSearchAnalyticsAll({
         siteUrl,
-        startDate: prevStart,
-        endDate: prevEnd,
+        startDate: previous.start,
+        endDate: previous.end,
         dimensions: ["page"],
         rowLimit: 1000,
+        maxRows: MAX_PAGE_ROWS,
       }),
-      gscSearchAnalytics({
+      gscSearchAnalyticsAll({
         siteUrl,
-        startDate: curStart,
-        endDate: curEnd,
+        startDate: current.start,
+        endDate: current.end,
         dimensions: ["page", "query"],
         rowLimit: 5000,
+        maxRows: MAX_PAGE_QUERY_ROWS,
       }),
     ]);
 

@@ -39,6 +39,7 @@ export default async function SeoContentBriefPage({
     dataNotice: brief.dataNotice,
     stepLabel: brief.stepLabel,
     percent: brief.percent,
+    updatedAt: brief.updatedAt.toISOString(),
     serpData: Array.isArray(brief.serpData)
       ? (brief.serpData as BriefDetail["serpData"])
       : [],

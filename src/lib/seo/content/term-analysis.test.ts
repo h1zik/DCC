@@ -59,6 +59,31 @@ describe("analyzeTerms", () => {
     expect(analyzeTerms([])).toEqual([]);
   });
 
+  it("returns empty when the competitor sample is below the minimum", () => {
+    expect(analyzeTerms(DOCS.slice(0, 2))).toEqual([]);
+    expect(analyzeTerms(DOCS.slice(0, 1))).toEqual([]);
+    // Ambang bisa diturunkan eksplisit.
+    expect(analyzeTerms(DOCS.slice(0, 2), { minDocs: 2 }).length).toBeGreaterThan(0);
+  });
+
+  it("drops Indonesian media boilerplate and short tokens", () => {
+    const noisy = DOCS.map(
+      (d) =>
+        `Baca juga: ${d} Foto: Shutterstock/Getty. Editor: Reporter Kompas Jakarta. Simak video selengkapnya, klik di sini. pH uv ok.`,
+    );
+    const names = analyzeTerms(noisy, { targetKeyword: "serum niacinamide" }).map(
+      (t) => t.term,
+    );
+    for (const bad of [
+      "baca juga", "baca", "foto", "shutterstock", "getty", "editor",
+      "reporter", "kompas", "jakarta", "simak", "video", "selengkapnya",
+      "klik", "ph", "uv",
+    ]) {
+      expect(names).not.toContain(bad);
+    }
+    expect(names).toContain("kulit kusam");
+  });
+
   it("respects the limit", () => {
     expect(analyzeTerms(DOCS, { limit: 3 })).toHaveLength(3);
   });

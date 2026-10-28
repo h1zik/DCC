@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SeoAnalysisStatus, SeoKeywordIntent } from "@prisma/client";
-import { Lightbulb, Loader2, PenLine, Sparkles, Trash2 } from "lucide-react";
+import {
+  Lightbulb,
+  Loader2,
+  PenLine,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +23,7 @@ import {
 import {
   SEO_INTENT_LABELS,
   SEO_STATUS_LABELS,
+  isSeoRunStale,
   isSeoStatusBusy,
   scoreToneClass,
 } from "@/lib/seo/labels";
@@ -23,6 +31,7 @@ import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   createTopicDiscovery,
   deleteTopicDiscovery,
+  retryTopicDiscovery,
 } from "@/actions/seo-content-discovery";
 import { createContentBrief } from "@/actions/seo-content";
 import { saveTopicSuggestionToFeed } from "@/actions/seo-content-opportunities";
@@ -47,6 +56,8 @@ export type DiscoveryRun = {
   dataNotice: string | null;
   errorMessage: string | null;
   createdAt: string;
+  /** ISO — untuk deteksi proses macet (busy > 15 menit tanpa update). */
+  updatedAt: string;
 };
 
 function num(v: number | null): string {
@@ -156,6 +167,18 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
         router.refresh();
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal menghapus."));
+      }
+    });
+  }
+
+  function handleRetry(id: string) {
+    startTransition(async () => {
+      try {
+        await retryTopicDiscovery(id);
+        toast.success("Discovery dijalankan ulang.");
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menjalankan ulang."));
       }
     });
   }
@@ -303,6 +326,18 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
                       {run.suggestions.length} topik
                     </span>
                   ) : null}
+                  {run.status === SeoAnalysisStatus.FAILED ||
+                  isSeoRunStale(run.status, run.updatedAt) ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRetry(run.id)}
+                      disabled={pending}
+                    >
+                      <RefreshCw />
+                      Jalankan ulang
+                    </Button>
+                  ) : null}
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -318,6 +353,11 @@ export function TopicDiscoveryClient({ runs }: { runs: DiscoveryRun[] }) {
               <div className="flex flex-col gap-2 p-4">
                 {run.status === SeoAnalysisStatus.FAILED && run.errorMessage ? (
                   <p className="text-destructive text-sm">{run.errorMessage}</p>
+                ) : null}
+                {isSeoRunStale(run.status, run.updatedAt) ? (
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    Proses tampak terhenti — jalankan ulang.
+                  </p>
                 ) : null}
                 {run.dataNotice ? (
                   <p className="text-muted-foreground text-sm">

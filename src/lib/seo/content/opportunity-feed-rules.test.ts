@@ -7,8 +7,12 @@ import {
 import {
   classifyTrackedKeyword,
   deriveStage,
+  excludeTopRanking,
+  isTopRanking,
   mergeCandidates,
+  normalizeOpportunityKeyword,
   scoreCandidate,
+  selectPruneIds,
   type OpportunityCandidate,
 } from "@/lib/seo/content/opportunity-feed-rules";
 
@@ -30,6 +34,25 @@ describe("classifyTrackedKeyword", () => {
         keyword: "x",
         lastPosition: null,
         lastFoundUrl: null,
+        inKeywordProject: true,
+      }),
+    ).toBe(SeoOpportunityType.NEW_ARTICLE);
+  });
+
+  it("marks position 21-30 as OPTIMIZE_EXISTING (near striking distance)", () => {
+    expect(
+      classifyTrackedKeyword({
+        keyword: "x",
+        lastPosition: 25,
+        lastFoundUrl: "https://a.com/x",
+        inKeywordProject: true,
+      }),
+    ).toBe(SeoOpportunityType.OPTIMIZE_EXISTING);
+    expect(
+      classifyTrackedKeyword({
+        keyword: "x",
+        lastPosition: 31,
+        lastFoundUrl: "https://a.com/x",
         inKeywordProject: true,
       }),
     ).toBe(SeoOpportunityType.NEW_ARTICLE);
@@ -66,6 +89,78 @@ describe("scoreCandidate", () => {
     const fresh = scoreCandidate(input, SeoOpportunityType.NEW_ARTICLE);
     expect(optimize).toBeGreaterThan(fresh);
     expect(optimize).toBeLessThanOrEqual(100);
+  });
+
+  it("scores position 21-30 lower than striking distance", () => {
+    const input = {
+      searchVolume: 1000,
+      difficulty: 40,
+      intent: SeoKeywordIntent.COMMERCIAL,
+    };
+    const striking = scoreCandidate(input, SeoOpportunityType.OPTIMIZE_EXISTING, 10);
+    const near = scoreCandidate(input, SeoOpportunityType.OPTIMIZE_EXISTING, 25);
+    expect(near).toBeLessThan(striking);
+    expect(near).toBe(scoreCandidate(input, SeoOpportunityType.NEW_ARTICLE));
+  });
+});
+
+describe("top ranking exclusion", () => {
+  const cand = (keyword: string): OpportunityCandidate => ({
+    keyword,
+    type: SeoOpportunityType.NEW_ARTICLE,
+    searchVolume: null,
+    difficulty: null,
+    intent: SeoKeywordIntent.UNKNOWN,
+    opportunityScore: 50,
+    currentPosition: null,
+    targetUrl: null,
+    source: "keyword_project",
+    sourceRefId: null,
+  });
+
+  it("detects positions 1-4", () => {
+    expect(isTopRanking(1)).toBe(true);
+    expect(isTopRanking(4)).toBe(true);
+    expect(isTopRanking(5)).toBe(false);
+    expect(isTopRanking(null)).toBe(false);
+  });
+
+  it("drops project candidates already ranking top 4 (case-insensitive)", () => {
+    const out = excludeTopRanking(
+      [cand("Serum Niacinamide"), cand("toner exfoliating")],
+      new Set(["serum niacinamide"]),
+    );
+    expect(out.map((c) => c.keyword)).toEqual(["toner exfoliating"]);
+  });
+});
+
+describe("normalizeOpportunityKeyword", () => {
+  it("lowercases, trims and collapses whitespace", () => {
+    expect(normalizeOpportunityKeyword("  Serum   Niacinamide ")).toBe(
+      "serum niacinamide",
+    );
+  });
+});
+
+describe("selectPruneIds", () => {
+  const rows = [
+    { id: "a", keyword: "serum niacinamide", source: "keyword_project" },
+    { id: "b", keyword: "Toner Exfoliating", source: "rank_tracker" },
+    { id: "c", keyword: "parfum gen z", source: "topic_run" },
+    { id: "d", keyword: "sunscreen spf 50", source: "gsc_decay" },
+    { id: "e", keyword: "cushion matte", source: "keyword_project" },
+  ];
+
+  it("only prunes engine-sourced rows missing from the refreshed set", () => {
+    const keep = new Set(["serum niacinamide"]);
+    expect(selectPruneIds(rows, keep)).toEqual(["b", "e"]);
+  });
+
+  it("matches keep set case-insensitively and never touches manual rows", () => {
+    const keep = new Set(["toner exfoliating", "cushion matte"]);
+    expect(selectPruneIds(rows, keep)).toEqual(["a"]);
+    expect(selectPruneIds(rows, new Set())).not.toContain("c");
+    expect(selectPruneIds(rows, new Set())).not.toContain("d");
   });
 });
 

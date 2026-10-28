@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { buildScoreGrounding } from "@/lib/seo/content/generator";
 import type { ScoreGrounding } from "@/lib/seo/content/content-score-v2";
 import {
+  extractVerifyMarkersFromHtml,
+  readPendingClaims,
+  unionClaims,
+} from "@/lib/seo/content/claims";
+import {
   ContentDraftEditor,
   type DraftDetail,
 } from "./content-draft-editor";
@@ -39,6 +44,7 @@ export default async function SeoContentDraftPage({
     stepLabel: draft.stepLabel,
     percent: draft.percent,
     errorMessage: draft.errorMessage,
+    updatedAt: draft.updatedAt.toISOString(),
     metaTitle: draft.metaTitle,
     metaDescription: draft.metaDescription,
     slug: draft.slug,
@@ -47,5 +53,17 @@ export default async function SeoContentDraftPage({
       : [],
   };
 
-  return <ContentDraftEditor draft={detail} grounding={grounding} />;
+  // Klaim menunggu verifikasi: aiMeta.pendingClaims ∪ marker HTML draft lama.
+  const pendingClaims = unionClaims(
+    readPendingClaims(draft.aiMeta),
+    extractVerifyMarkersFromHtml(draft.contentHtml),
+  );
+
+  return (
+    <ContentDraftEditor
+      draft={detail}
+      grounding={grounding}
+      pendingClaims={pendingClaims}
+    />
+  );
 }

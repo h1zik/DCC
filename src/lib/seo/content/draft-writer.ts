@@ -10,12 +10,19 @@ import {
   type ResearchAiModelStep,
 } from "@/lib/research/llm";
 import {
+  applyWrittenSections,
+  isSectionHtmlFilled,
   planDraftSections,
   splitBatchHtml,
   tailWords,
   type OutlineSection,
   type PlannedSection,
 } from "@/lib/seo/content/draft-plan";
+import {
+  extractVerifyMarkersFromHtml,
+  stripVerifyMarkers,
+  unionClaims,
+} from "@/lib/seo/content/claims";
 import {
   suggestInternalLinks,
   type LinkCandidate,
@@ -130,14 +137,33 @@ export async function writeDraftFromBrief(draftId: string): Promise<void> {
     }
 
     /* --------------------------- 2. Tulis section --------------------------- */
+    // Section lama yang terlanjur `done` dengan HTML kosong (bug lama) dibuka
+    // kembali agar ditulis ulang saat resume.
+    for (const s of sections) {
+      if (s.done && !isSectionHtmlFilled(s.html)) s.done = false;
+    }
+
     const pendingIdx = () => sections.findIndex((s) => !s.done);
     const totalSections = sections.length;
+    // Pengaman loop: tiap section maksimal 2 putaran batch (batch + retry
+    // internal sudah 2 percobaan LLM per putaran).
+    const roundsBySection = new Map<string, number>();
 
     while (pendingIdx() !== -1) {
       const start = pendingIdx();
       const batch = sections
         .slice(start, start + SECTIONS_PER_CALL)
         .filter((s) => !s.done);
+
+      for (const s of batch) {
+        const rounds = (roundsBySection.get(s.id) ?? 0) + 1;
+        roundsBySection.set(s.id, rounds);
+        if (rounds > 2) {
+          throw new Error(
+            `Section "${s.heading ?? "paragraf pembuka"}" tetap kosong setelah beberapa percobaan — coba "Lanjutkan".`,
+          );
+        }
+      }
 
       const doneCount = sections.filter((s) => s.done).length;
       const percent = 10 + Math.round((doneCount / totalSections) * 60);
@@ -149,13 +175,9 @@ export async function writeDraftFromBrief(draftId: string): Promise<void> {
       const written = await writeSectionBatch(brief, draft.title, sections, batch);
       aiSteps.push(buildResearchAiStep("SEO draft sections", "pro"));
 
-      for (const w of written) {
-        const target = sections.find((s) => s.id === w.id);
-        if (target) {
-          target.html = w.html;
-          target.done = true;
-        }
-      }
+      // Hanya section ber-HTML yang ditandai done; yang kosong tetap pending.
+      const applied = applyWrittenSections(sections, written);
+      sections = applied.sections;
       await persistSections(draftId, sections);
     }
 
@@ -225,9 +247,15 @@ export async function writeDraftFromBrief(draftId: string): Promise<void> {
       .filter((s) => s.id !== "faq")
       .map((s) => s.html ?? "")
       .join("\n");
-    const contentHtml = [`<h1>${escapeHtml(draft.title)}</h1>`, bodyHtml, faqHtml]
+    const rawHtml = [`<h1>${escapeHtml(draft.title)}</h1>`, bodyHtml, faqHtml]
       .filter(Boolean)
       .join("\n");
+
+    // Marker <!-- verify --> hilang saat TipTap menyerialisasi ulang, jadi
+    // klaim dipindahkan ke aiMeta.pendingClaims (sumber kebenaran untuk skor
+    // & panel klaim) dan HTML dibersihkan.
+    const pendingClaims = unionClaims(extractVerifyMarkersFromHtml(rawHtml));
+    const contentHtml = stripVerifyMarkers(rawHtml);
 
     await prisma.seoContentDraft.update({
       where: { id: draftId },
@@ -236,7 +264,10 @@ export async function writeDraftFromBrief(draftId: string): Promise<void> {
         status: SeoAnalysisStatus.READY,
         stepLabel: null,
         percent: 100,
-        aiMeta: researchAiMetaFromSteps(aiSteps) as object,
+        aiMeta: {
+          ...researchAiMetaFromSteps(aiSteps),
+          pendingClaims,
+        } as unknown as Prisma.InputJsonValue,
         errorMessage: null,
       },
     });
@@ -333,7 +364,30 @@ ${TRUST_RULES}`;
     html = await attempt(); // retry sekali
   }
 
-  return splitBatchHtml(html, batch);
+  const written = splitBatchHtml(html, batch);
+
+  // LLM kadang mengembalikan lebih sedikit <h2> dari yang diminta → section
+  // yang kosong ditulis ulang sendiri satu kali (batch lebih kecil = lebih
+  // patuh). Hanya untuk batch > 1 agar tidak rekursif tanpa batas.
+  const missing = batch.filter((s) => {
+    const w = written.find((x) => x.id === s.id);
+    return !w || !isSectionHtmlFilled(w.html);
+  });
+  if (missing.length > 0 && missing.length < batch.length) {
+    const retried = await writeSectionBatch(
+      brief,
+      title,
+      allSections,
+      missing,
+    );
+    for (const r of retried) {
+      const idx = written.findIndex((w) => w.id === r.id);
+      if (idx >= 0) written[idx] = r;
+      else written.push(r);
+    }
+  }
+
+  return written;
 }
 
 /* ---------------------------------- FAQ ---------------------------------- */
@@ -423,7 +477,8 @@ Balas HANYA JSON: { "metaTitle": "string", "metaDescription": "string", "slug": 
       },
     );
     return {
-      metaTitle: (result.metaTitle ?? fallback.metaTitle).trim().slice(0, 70),
+      // ≤ 60 karakter — selaras dengan ambang cek `meta_title` skor konten.
+      metaTitle: (result.metaTitle ?? fallback.metaTitle).trim().slice(0, 60),
       metaDescription: (result.metaDescription ?? fallback.metaDescription)
         .trim()
         .slice(0, 170),

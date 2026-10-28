@@ -57,6 +57,39 @@ export function sampleDistinctiveSentences(
   return picked;
 }
 
+/**
+ * Normalisasi untuk pencocokan: lowercase, buang tanda baca/simbol, rapatkan
+ * spasi. Dipakai pada kalimat sampel maupun title/description hasil SERP.
+ */
+export function normalizeForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Query frasa persis untuk Google: buang tanda kutip di kalimat lalu bungkus `"…"`. */
+export function toExactPhraseQuery(sentence: string): string {
+  const clean = sentence.replace(/["“”„‟«»]/g, "").replace(/\s+/g, " ").trim();
+  return `"${clean}"`;
+}
+
+/**
+ * Hasil SERP dihitung cocok hanya bila kalimat sampel (ternormalisasi) muncul
+ * utuh di title atau description hasil tersebut — bukan sekadar Google
+ * mengembalikan hasil "mirip" untuk pencarian frasa persis.
+ */
+export function sentenceAppearsIn(
+  sentence: string,
+  item: { title?: string | null; description?: string | null },
+): boolean {
+  const needle = normalizeForMatch(sentence);
+  if (!needle) return false;
+  const hay = normalizeForMatch(`${item.title ?? ""} ${item.description ?? ""}`);
+  return hay.includes(needle);
+}
+
 export function buildOriginalityReport(
   results: { sentence: string; matches: { url: string; title: string | null }[] }[],
   checkedAt: string,
