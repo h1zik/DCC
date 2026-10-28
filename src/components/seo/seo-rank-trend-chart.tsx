@@ -3,7 +3,10 @@
 import type { EChartsOption } from "echarts";
 import { EChart } from "@/components/lab/echart";
 
-/** Grafik tren posisi rata-rata (sumbu dibalik: posisi kecil = baik). */
+/**
+ * Grafik tren posisi rata-rata keyword yang ranking (sumbu dibalik: posisi
+ * kecil = baik). Titik per hari kalender WIB, sudah carry-forward.
+ */
 export function SeoRankTrendChart({
   points,
   height = 240,
@@ -18,7 +21,7 @@ export function SeoRankTrendChart({
     yAxis: { type: "value", inverse: true, min: 1, name: "Posisi" },
     series: [
       {
-        name: "Posisi rata-rata",
+        name: "Posisi rata-rata (keyword yang ranking)",
         type: "line",
         smooth: true,
         showSymbol: false,

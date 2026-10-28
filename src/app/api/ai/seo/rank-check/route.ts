@@ -6,7 +6,9 @@ import { fetchSerpLive, findDomainRank } from "@/lib/seo/dataforseo/serp";
 
 /**
  * Cek posisi SERP Google Indonesia untuk satu keyword (read-only, untuk MCP).
- * Query: `keyword`, `domain`, `device?` (desktop|mobile).
+ * Query: `keyword`, `domain`, `device?` (desktop|mobile), `targetUrl?`,
+ * `fresh?=1` (lewati cache SERP 24 jam — berbayar; default pakai cache karena
+ * hasil ad-hoc ini tidak disimpan sebagai snapshot).
  */
 export async function GET(req: Request) {
   const guard = guardAiApiRequest(req);
@@ -27,15 +29,23 @@ export async function GET(req: Request) {
       ? SeoRankDevice.DESKTOP
       : SeoRankDevice.MOBILE;
 
+  const targetUrl = url.searchParams.get("targetUrl")?.trim() || null;
+  const fresh = ["1", "true"].includes(
+    (url.searchParams.get("fresh") ?? "").toLowerCase(),
+  );
+
   try {
-    const lookup = await fetchSerpLive(keyword, { device });
-    const rank = findDomainRank(lookup.items, domain);
+    const lookup = await fetchSerpLive(keyword, { device, fresh });
+    const rank = findDomainRank(lookup.items, domain, targetUrl);
     return aiApiOk(
       {
         keyword,
         domain,
+        targetUrl,
         position: rank?.position ?? null,
         foundUrl: rank?.foundUrl ?? null,
+        viaFeaturedSnippet: rank?.viaFeaturedSnippet ?? false,
+        fresh,
         serpFeatures: lookup.serpFeatures,
       },
       guard.ctx.role,

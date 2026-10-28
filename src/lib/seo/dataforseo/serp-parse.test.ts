@@ -3,6 +3,7 @@ import {
   extractSerpFeatures,
   findDomainRank,
   normalizeDomain,
+  normalizeUrlTarget,
   type SerpResultItem,
 } from "@/lib/seo/dataforseo/serp-parse";
 
@@ -39,6 +40,7 @@ describe("findDomainRank", () => {
     const result = findDomainRank(items, "brandanda.com");
     expect(result?.position).toBe(2);
     expect(result?.foundUrl).toContain("brandanda.com");
+    expect(result?.viaFeaturedSnippet).toBe(false);
   });
 
   it("matches subdomains", () => {
@@ -63,6 +65,124 @@ describe("findDomainRank", () => {
 
   it("returns null when domain absent", () => {
     expect(findDomainRank(items, "tidakada.com")).toBeNull();
+  });
+});
+
+describe("normalizeUrlTarget", () => {
+  it("strips scheme, www, query/hash and trailing slash", () => {
+    expect(
+      normalizeUrlTarget("HTTPS://www.Brand.com/Produk/Serum/?utm=x#top"),
+    ).toEqual({ host: "brand.com", path: "/produk/serum" });
+    expect(normalizeUrlTarget("https://brand.com/")).toEqual({
+      host: "brand.com",
+      path: "",
+    });
+  });
+
+  it("treats leading-slash and dot-less inputs as path-only", () => {
+    expect(normalizeUrlTarget("/produk/serum/")).toEqual({
+      host: null,
+      path: "/produk/serum",
+    });
+    expect(normalizeUrlTarget("produk/serum")).toEqual({
+      host: null,
+      path: "/produk/serum",
+    });
+    expect(normalizeUrlTarget("   ")).toBeNull();
+  });
+});
+
+describe("findDomainRank targetUrl matching", () => {
+  const serp: SerpResultItem[] = [
+    {
+      type: "organic",
+      rank_group: 1,
+      domain: "brand.com",
+      url: "https://brand.com/produk-baru",
+    },
+    {
+      type: "organic",
+      rank_group: 2,
+      domain: "www.brand.com",
+      url: "https://www.brand.com/produk/serum/?ref=serp",
+    },
+    {
+      type: "organic",
+      rank_group: 3,
+      domain: "brand.com",
+      url: "https://brand.com/produk/serum/varian-a",
+    },
+  ];
+
+  it("matches a full target URL by host+path exactly (ignoring www/query/slash)", () => {
+    const r = findDomainRank(serp, "brand.com", "http://www.brand.com/produk/serum/");
+    expect(r?.position).toBe(2);
+    expect(r?.viaFeaturedSnippet).toBe(false);
+    // Host+path harus persis: path lain tidak cocok untuk target URL penuh.
+    expect(
+      findDomainRank(serp, "brand.com", "https://brand.com/produk/serum/varian-b"),
+    ).toBeNull();
+  });
+
+  it("matches a path-only target exactly or as a prefix followed by '/'", () => {
+    expect(findDomainRank(serp, "brand.com", "/produk/serum")?.position).toBe(2);
+    expect(
+      findDomainRank(serp, "brand.com", "/produk/serum/varian-a")?.position,
+    ).toBe(3);
+    // "/produk" adalah prefix "/produk/serum" (diikuti "/"), bukan "/produk-baru".
+    expect(findDomainRank(serp, "brand.com", "/produk")?.position).toBe(2);
+    // Tidak ada substring matching telanjang.
+    expect(findDomainRank(serp, "brand.com", "/serum")).toBeNull();
+    expect(findDomainRank(serp, "brand.com", "/produ")).toBeNull();
+  });
+});
+
+describe("findDomainRank featured snippet fallback", () => {
+  const serp: SerpResultItem[] = [
+    {
+      type: "featured_snippet",
+      rank_group: 1,
+      rank_absolute: 1,
+      domain: "brand.com",
+      url: "https://brand.com/blog/cara-pakai-serum",
+    },
+    {
+      type: "organic",
+      rank_group: 1,
+      rank_absolute: 2,
+      domain: "kompetitor.co.id",
+      url: "https://kompetitor.co.id/a",
+    },
+  ];
+
+  it("uses the featured snippet position when no organic result matches", () => {
+    expect(findDomainRank(serp, "brand.com")).toEqual({
+      position: 1,
+      foundUrl: "https://brand.com/blog/cara-pakai-serum",
+      viaFeaturedSnippet: true,
+    });
+  });
+
+  it("prefers an organic match over the featured snippet", () => {
+    const withOrganic: SerpResultItem[] = [
+      ...serp,
+      {
+        type: "organic",
+        rank_group: 4,
+        domain: "brand.com",
+        url: "https://brand.com/blog/cara-pakai-serum",
+      },
+    ];
+    const r = findDomainRank(withOrganic, "brand.com");
+    expect(r?.position).toBe(4);
+    expect(r?.viaFeaturedSnippet).toBe(false);
+  });
+
+  it("applies the targetUrl rule to featured snippets too", () => {
+    expect(findDomainRank(serp, "brand.com", "/produk")).toBeNull();
+    expect(findDomainRank(serp, "brand.com", "/blog")?.viaFeaturedSnippet).toBe(
+      true,
+    );
   });
 });
 

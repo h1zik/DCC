@@ -1,8 +1,11 @@
 import "server-only";
 
-import { SeoAnalysisStatus } from "@prisma/client";
+import { SeoAnalysisStatus, SeoJobStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { SEO_STALE_RUN_MESSAGE, SEO_STALE_RUN_MS } from "@/lib/seo/labels";
+
+/** Job SEO (mis. sinkron rank tracker) RUNNING lebih lama dari ini → terhenti. */
+const SEO_JOB_STALE_MS = 30 * 60 * 1000;
 
 const BUSY: SeoAnalysisStatus[] = [
   SeoAnalysisStatus.PENDING,
@@ -46,6 +49,7 @@ export async function failStaleSeoRuns(
     marketplaceAnalyses,
     reports,
     topicRuns,
+    jobs,
   ] = await Promise.all([
     prisma.seoKeywordProject.updateMany({ where: whereBusy, data }),
     prisma.seoKeywordGap.updateMany({ where: whereBusy, data }),
@@ -73,6 +77,20 @@ export async function failStaleSeoRuns(
     prisma.seoMarketplaceAnalysis.updateMany({ where: whereBusy, data }),
     prisma.seoReport.updateMany({ where: whereBusy, data }),
     prisma.seoContentTopicRun.updateMany({ where: whereBusy, data }),
+    prisma.seoJob.updateMany({
+      where: {
+        status: SeoJobStatus.RUNNING,
+        OR: [
+          { startedAt: { lt: new Date(now - SEO_JOB_STALE_MS) } },
+          { startedAt: null, createdAt: { lt: new Date(now - SEO_JOB_STALE_MS) } },
+        ],
+      },
+      data: {
+        status: SeoJobStatus.FAILED,
+        error: SEO_STALE_RUN_MESSAGE,
+        completedAt: new Date(now),
+      },
+    }),
   ]);
 
   const result: StaleSweepResult = {
@@ -88,6 +106,7 @@ export async function failStaleSeoRuns(
     marketplaceAnalyses: marketplaceAnalyses.count,
     reports: reports.count,
     topicRuns: topicRuns.count,
+    jobs: jobs.count,
   };
   const total = Object.values(result).reduce((a, b) => a + b, 0);
   if (total > 0) {

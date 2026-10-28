@@ -2,13 +2,16 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import {
   shareOfVoice,
-  visibilityScore,
+  visibilityBreakdown,
   type ShareOfVoiceEntry,
 } from "@/lib/seo/rank-tracker/visibility";
+import { buildVisibilitySeries } from "@/lib/seo/rank-tracker/visibility-series";
 import { rankDistribution } from "@/lib/seo/rank-tracker/distribution";
 import { detectCannibalization } from "@/lib/seo/rank-tracker/cannibalization";
+import { getLatestRankSyncJob } from "@/lib/seo/rank-tracker/rank-sync";
 import {
   RankTrackerDetailClient,
+  type RankSyncStatus,
   type TrackedKeywordRow,
 } from "./rank-tracker-detail-client";
 
@@ -17,14 +20,8 @@ function rankChartCutoff(): Date {
   return new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 }
 
-/** Batas time-series visibility (30 hari terakhir). */
-function visibilityCutoff(): Date {
-  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-}
-
-function dayKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+/** Rentang time-series visibility (hari kalender WIB). */
+const VISIBILITY_DAYS = 30;
 
 export default async function SeoRankTrackerDetailPage({
   params,
@@ -33,28 +30,32 @@ export default async function SeoRankTrackerDetailPage({
 }) {
   const { projectId } = await params;
 
-  const project = await prisma.seoRankProject.findUnique({
-    where: { id: projectId },
-    include: {
-      keywords: {
-        orderBy: { createdAt: "asc" },
-        include: {
-          snapshots: {
-            where: { capturedAt: { gte: rankChartCutoff() } },
-            orderBy: { capturedAt: "asc" },
-            select: {
-              position: true,
-              capturedAt: true,
-              serpFeatures: true,
-              competitorPositions: true,
-              foundUrl: true,
-              ownMatches: true,
+  const [project, lastJob] = await Promise.all([
+    prisma.seoRankProject.findUnique({
+      where: { id: projectId },
+      include: {
+        keywords: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            _count: { select: { snapshots: true } },
+            snapshots: {
+              where: { capturedAt: { gte: rankChartCutoff() } },
+              orderBy: { capturedAt: "asc" },
+              select: {
+                position: true,
+                capturedAt: true,
+                serpFeatures: true,
+                competitorPositions: true,
+                foundUrl: true,
+                ownMatches: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    getLatestRankSyncJob(projectId),
+  ]);
   if (!project) notFound();
 
   const keywords: TrackedKeywordRow[] = project.keywords.map((k) => {
@@ -77,6 +78,7 @@ export default async function SeoRankTrackerDetailPage({
       previousPosition: k.previousPosition,
       lastFoundUrl: k.lastFoundUrl,
       lastCheckedAt: k.lastCheckedAt?.toISOString() ?? null,
+      snapshotCount: k._count.snapshots,
       features,
       competitorPositions,
       points: k.snapshots.map((s) => ({
@@ -87,41 +89,28 @@ export default async function SeoRankTrackerDetailPage({
   });
 
   /* ------------------------- Visibility (sekarang + 30 hari) ------------------------ */
-  const visibilityNow = visibilityScore(
+  const { score: visibilityNow, unknownVolumeCount } = visibilityBreakdown(
     project.keywords.map((k) => ({
       position: k.lastPosition,
       searchVolume: k.searchVolume,
     })),
   );
 
-  // Time-series harian: posisi terakhir per keyword per hari.
-  const cutoff30 = visibilityCutoff();
-  const byDay = new Map<string, Map<string, number | null>>();
-  for (const k of project.keywords) {
-    for (const s of k.snapshots) {
-      if (s.capturedAt < cutoff30) continue;
-      const day = dayKey(s.capturedAt);
-      const dayMap = byDay.get(day) ?? new Map<string, number | null>();
-      dayMap.set(k.id, s.position);
-      byDay.set(day, dayMap);
-    }
-  }
-  const volumeByKeyword = new Map(
-    project.keywords.map((k) => [k.id, k.searchVolume]),
+  // Time-series harian (WIB) dengan carry-forward per keyword: snapshot 90 hari
+  // yang sudah dimuat jadi sumber carry-forward untuk rentang 30 hari.
+  const visibilitySeries = buildVisibilitySeries(
+    project.keywords.map((k) => ({
+      id: k.id,
+      searchVolume: k.searchVolume,
+      snapshots: k.snapshots.map((s) => ({
+        capturedAt: s.capturedAt,
+        position: s.position,
+      })),
+    })),
+    VISIBILITY_DAYS,
   );
-  const visibilitySeries = [...byDay.entries()]
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([day, positions]) => ({
-      date: day,
-      score: visibilityScore(
-        [...positions.entries()].map(([kwId, pos]) => ({
-          position: pos,
-          searchVolume: volumeByKeyword.get(kwId) ?? null,
-        })),
-      ),
-    }));
 
-  /* ------------------------------- Share of voice ------------------------------- */
+  /* --------------------------- Visibility per domain --------------------------- */
   let sov: ShareOfVoiceEntry[] = [];
   if (project.competitors.length > 0) {
     const rows = project.keywords
@@ -160,6 +149,18 @@ export default async function SeoRankTrackerDetailPage({
     })),
   );
 
+  const lastSync: RankSyncStatus | null = lastJob
+    ? {
+        status: lastJob.status,
+        percent: lastJob.percent,
+        stepLabel: lastJob.stepLabel,
+        error: lastJob.error,
+        startedAt: lastJob.startedAt?.toISOString() ?? null,
+        completedAt: lastJob.completedAt?.toISOString() ?? null,
+        stale: lastJob.stale,
+      }
+    : null;
+
   return (
     <RankTrackerDetailClient
       project={{
@@ -173,11 +174,13 @@ export default async function SeoRankTrackerDetailPage({
       keywords={keywords}
       insights={{
         visibilityNow,
+        unknownVolumeCount,
         visibilitySeries,
         shareOfVoice: sov,
         distribution,
         cannibalization,
       }}
+      lastSync={lastSync}
     />
   );
 }

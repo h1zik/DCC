@@ -1,8 +1,9 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { visibilityScore } from "@/lib/seo/rank-tracker/visibility";
+import { visibilityBreakdown } from "@/lib/seo/rank-tracker/visibility";
 import { topMovers, type Mover } from "@/lib/seo/rank-tracker/distribution";
+import { hasRankHistory } from "@/lib/seo/rank-tracker/rank-change";
 import { getMonthlySpend, type MonthlySpend } from "@/lib/seo/dataforseo/usage";
 import { getGscDashboardSummary } from "@/lib/seo/gsc/sync";
 
@@ -14,8 +15,11 @@ import { getGscDashboardSummary } from "@/lib/seo/gsc/sync";
 export type SeoDashboardData = {
   keywordCount: number;
   trackedCount: number;
+  /** Posisi rata-rata keyword yang ranking saja (null bila belum ada yang ranking). */
   avgPosition: number | null;
   visibility: number;
+  /** Keyword tanpa data volume (dibobot median pada visibility). */
+  unknownVolumeCount: number;
   technicalIssues: number;
   latestHealthScore: number | null;
   avgAuditScore: number | null;
@@ -58,6 +62,7 @@ export async function getSeoDashboardData(): Promise<SeoDashboardData> {
         lastPosition: true,
         previousPosition: true,
         searchVolume: true,
+        _count: { select: { snapshots: true } },
       },
     }),
     prisma.seoCrawlIssue.count(),
@@ -87,19 +92,27 @@ export async function getSeoDashboardData(): Promise<SeoDashboardData> {
         ) / 10
       : null;
 
-  const visibility = visibilityScore(
+  const { score: visibility, unknownVolumeCount } = visibilityBreakdown(
     trackedKeywords.map((k) => ({
       position: k.lastPosition,
       searchVolume: k.searchVolume,
     })),
   );
 
+  // Keyword yang baru dicek sekali belum punya pembanding — bukan mover.
   const movers = topMovers(
-    trackedKeywords.map((k) => ({
-      keyword: k.keyword,
-      previousPosition: k.previousPosition,
-      currentPosition: k.lastPosition,
-    })),
+    trackedKeywords
+      .filter((k) =>
+        hasRankHistory({
+          previousPosition: k.previousPosition,
+          snapshotCount: k._count.snapshots,
+        }),
+      )
+      .map((k) => ({
+        keyword: k.keyword,
+        previousPosition: k.previousPosition,
+        currentPosition: k.lastPosition,
+      })),
     5,
   );
 
@@ -108,6 +121,7 @@ export async function getSeoDashboardData(): Promise<SeoDashboardData> {
     trackedCount: trackedKeywords.length,
     avgPosition,
     visibility,
+    unknownVolumeCount,
     technicalIssues,
     latestHealthScore: latestCrawl?.healthScore ?? null,
     avgAuditScore:

@@ -8,20 +8,38 @@ import {
   generateResearchText,
   researchAiMetaFromSteps,
 } from "@/lib/research/llm";
+import { hasRankHistory } from "@/lib/seo/rank-tracker/rank-change";
 
 export type SeoReportMetrics = Record<string, number>;
 
 type Aggregate = {
+  /** Metrik hitungan untuk bar chart (hanya besaran "jumlah" yang sebanding). */
   metrics: SeoReportMetrics;
+  /** Posisi rata-rata keyword yang ranking — metrik teks, bukan bar. */
+  avgPosition: number | null;
   rankProjects: { name: string; domain: string; keywords: number; avgPosition: number | null }[];
-  topMovers: { keyword: string; from: number | null; to: number | null }[];
+  topMovers: { keyword: string; from: number | null; to: number | null; delta: number }[];
   audits: { url: string; score: number | null }[];
   crawls: { name: string; domain: string; issues: number; pagesCrawled: number }[];
 };
 
-function num(v: number | null | undefined): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+const AVG_POSITION_LABEL = "Posisi rata-rata (keyword yang ranking)";
+
+/** Rentang periode laporan (hari) menurut tipe: ringkasan/ranking mingguan, teknis/lengkap bulanan. */
+export function reportPeriodDays(type: SeoReportType): number {
+  switch (type) {
+    case SeoReportType.TECHNICAL:
+    case SeoReportType.FULL:
+      return 30;
+    case SeoReportType.RANK_TRACKING:
+    case SeoReportType.OVERVIEW:
+    default:
+      return 7;
+  }
 }
+
+/** Populasi rank tracker yang sama dengan dashboard: hanya proyek aktif. */
+const ACTIVE_TRACKED = { project: { isActive: true } } as const;
 
 async function aggregateSeoData(): Promise<Aggregate> {
   const [
@@ -38,10 +56,10 @@ async function aggregateSeoData(): Promise<Aggregate> {
     crawlsRaw,
   ] = await Promise.all([
     prisma.seoKeywordProject.count(),
-    prisma.seoTrackedKeyword.count(),
+    prisma.seoTrackedKeyword.count({ where: ACTIVE_TRACKED }),
     prisma.seoTrackedKeyword.aggregate({
       _avg: { lastPosition: true },
-      where: { lastPosition: { not: null } },
+      where: { ...ACTIVE_TRACKED, lastPosition: { not: null } },
     }),
     prisma.seoCrawlIssue.count(),
     prisma.seoOnPageAudit.aggregate({
@@ -51,13 +69,20 @@ async function aggregateSeoData(): Promise<Aggregate> {
     prisma.seoContentDraft.count(),
     prisma.seoMarketplaceAnalysis.count(),
     prisma.seoRankProject.findMany({
+      where: { isActive: true },
       include: { keywords: { select: { lastPosition: true } } },
+      orderBy: { createdAt: "asc" },
       take: 20,
     }),
+    // Semua keyword aktif yang punya pembanding; diurutkan di JS berdasarkan |Δ|.
     prisma.seoTrackedKeyword.findMany({
-      where: { lastPosition: { not: null }, previousPosition: { not: null } },
-      select: { keyword: true, lastPosition: true, previousPosition: true },
-      take: 200,
+      where: ACTIVE_TRACKED,
+      select: {
+        keyword: true,
+        lastPosition: true,
+        previousPosition: true,
+        _count: { select: { snapshots: true } },
+      },
     }),
     prisma.seoOnPageAudit.findMany({
       where: { status: "READY" },
@@ -75,28 +100,35 @@ async function aggregateSeoData(): Promise<Aggregate> {
   const avgRank = rankAgg._avg.lastPosition;
   const avgScore = auditAgg._avg.score;
 
+  // Δ positif = naik. null (di luar top 100) dihitung sebagai 101, konsisten
+  // dengan dashboard; keyword yang baru dicek sekali tidak punya pembanding.
   const topMovers = moversRaw
+    .filter((m) =>
+      hasRankHistory({
+        previousPosition: m.previousPosition,
+        snapshotCount: m._count.snapshots,
+      }),
+    )
     .map((m) => ({
       keyword: m.keyword,
       from: m.previousPosition,
       to: m.lastPosition,
-      delta: num(m.previousPosition) - num(m.lastPosition),
+      delta: (m.previousPosition ?? 101) - (m.lastPosition ?? 101),
     }))
-    .filter((m) => m.delta > 0)
-    .sort((a, b) => b.delta - a.delta)
-    .slice(0, 5)
-    .map(({ keyword, from, to }) => ({ keyword, from, to }));
+    .filter((m) => m.delta !== 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 10);
 
   return {
     metrics: {
       "Proyek keyword": keywordProjects,
       "Keyword dilacak": trackedKeywords,
-      "Posisi rata-rata": avgRank != null ? Math.round(avgRank) : 0,
       "Isu teknis": technicalIssues,
       "Skor audit rata-rata": avgScore != null ? Math.round(avgScore) : 0,
       "Draft konten": contentDrafts,
       "Analisis marketplace": marketplaceAnalyses,
     },
+    avgPosition: avgRank != null ? Math.round(avgRank * 10) / 10 : null,
     rankProjects: rankProjectsRaw.map((p) => {
       const positions = p.keywords
         .map((k) => k.lastPosition)
@@ -121,20 +153,37 @@ async function aggregateSeoData(): Promise<Aggregate> {
   };
 }
 
+function fmtPos(v: number | null): string {
+  return v == null ? "100+" : `#${v}`;
+}
+
 function rankSection(agg: Aggregate): ReportSection {
   const lines: string[] = [];
-  lines.push(`Posisi rata-rata: **${agg.metrics["Posisi rata-rata"] || "—"}** dari ${agg.metrics["Keyword dilacak"]} keyword dilacak.`);
+  lines.push(
+    `${AVG_POSITION_LABEL}: **${agg.avgPosition != null ? `#${agg.avgPosition}` : "—"}** dari ${agg.metrics["Keyword dilacak"]} keyword dilacak (proyek aktif).`,
+  );
   if (agg.rankProjects.length) {
     lines.push("");
     for (const p of agg.rankProjects.slice(0, 8)) {
-      lines.push(`- ${p.name} (${p.domain}): ${p.keywords} keyword, posisi rata-rata ${p.avgPosition ?? "—"}`);
+      lines.push(
+        `- ${p.name} (${p.domain}): ${p.keywords} keyword, posisi rata-rata (keyword yang ranking) ${p.avgPosition != null ? `#${p.avgPosition}` : "—"}`,
+      );
     }
   }
-  if (agg.topMovers.length) {
+  const up = agg.topMovers.filter((m) => m.delta > 0).slice(0, 5);
+  const down = agg.topMovers.filter((m) => m.delta < 0).slice(0, 5);
+  if (up.length) {
     lines.push("");
-    lines.push("**Top movers (naik):**");
-    for (const m of agg.topMovers) {
-      lines.push(`- "${m.keyword}": ${m.from ?? "—"} → ${m.to ?? "—"}`);
+    lines.push("**Top movers naik (vs cek sebelumnya):**");
+    for (const m of up) {
+      lines.push(`- "${m.keyword}": ${fmtPos(m.from)} → ${fmtPos(m.to)} (+${m.delta})`);
+    }
+  }
+  if (down.length) {
+    lines.push("");
+    lines.push("**Top movers turun (vs cek sebelumnya):**");
+    for (const m of down) {
+      lines.push(`- "${m.keyword}": ${fmtPos(m.from)} → ${fmtPos(m.to)} (${m.delta})`);
     }
   }
   return { id: "rank", title: "Ranking & SERP", body: lines.join("\n"), moduleRef: "Rank Tracker" };
@@ -183,12 +232,24 @@ export async function generateSeoReport(reportId: string): Promise<void> {
     const agg = await aggregateSeoData();
     const sections = buildSections(report.type, agg);
 
+    const periodEnd = new Date();
+    const periodStart = new Date(
+      periodEnd.getTime() - reportPeriodDays(report.type) * 24 * 60 * 60 * 1000,
+    );
+
     let aiSummary: string | null = null;
     let aiMeta: object | undefined;
     try {
       aiSummary = await generateResearchText(
         `Kamu analis SEO. Tulis executive summary singkat (3-4 kalimat, Bahasa Indonesia) untuk laporan SEO brand kosmetik berdasarkan metrik ini:
-${JSON.stringify(agg.metrics, null, 2)}
+${JSON.stringify(
+  {
+    ...agg.metrics,
+    [AVG_POSITION_LABEL]: agg.avgPosition ?? "belum ada yang ranking",
+  },
+  null,
+  2,
+)}
 Soroti kondisi ranking dan isu teknis. Tanpa basa-basi pembuka.`,
         { tier: "flash" },
       );
@@ -207,6 +268,8 @@ Soroti kondisi ranking dan isu teknis. Tanpa basa-basi pembuka.`,
         metrics: agg.metrics as unknown as Prisma.InputJsonValue,
         aiSummary: aiSummary?.trim() || null,
         aiMeta,
+        periodStart,
+        periodEnd,
         errorMessage: null,
       },
     });

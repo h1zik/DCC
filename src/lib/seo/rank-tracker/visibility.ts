@@ -1,6 +1,11 @@
 /**
  * Visibility score ala Semrush: Σ(CTR(posisi) × volume) / Σ(volume) × 100.
- * Pure agar mudah di-test. Volume null → 1 (degradasi ke bobot posisi murni).
+ * Pure agar mudah di-test.
+ *
+ * Volume null/0 → dibobot MEDIAN volume yang diketahui pada set keyword yang
+ * sama (bukan 1), agar keyword tanpa data volume tidak "hilang" dari skor.
+ * Bila tidak ada volume yang diketahui sama sekali, semua dibobot 1
+ * (tanpa bobot = murni posisi).
  */
 
 export type VisibilityKeyword = {
@@ -19,18 +24,55 @@ export function ctrForPosition(position: number | null): number {
   return CTR_CURVE[Math.floor(position) - 1];
 }
 
-/** Visibility 0–100 (%) untuk satu set keyword. */
-export function visibilityScore(keywords: VisibilityKeyword[]): number {
-  if (keywords.length === 0) return 0;
+function knownVolume(k: VisibilityKeyword): number | null {
+  return k.searchVolume != null && k.searchVolume > 0 ? k.searchVolume : null;
+}
+
+/** Median volume yang diketahui (> 0) dalam set; null bila tidak ada. */
+export function medianKnownVolume(keywords: VisibilityKeyword[]): number | null {
+  const vols = keywords
+    .map(knownVolume)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b);
+  if (vols.length === 0) return null;
+  const mid = Math.floor(vols.length / 2);
+  return vols.length % 2 === 1 ? vols[mid] : (vols[mid - 1] + vols[mid]) / 2;
+}
+
+export type VisibilityBreakdown = {
+  /** Skor 0–100 (%). */
+  score: number;
+  /** Jumlah keyword tanpa data volume (dibobot median). */
+  unknownVolumeCount: number;
+  /** Bobot pengganti yang dipakai untuk keyword tanpa volume (1 = tanpa bobot). */
+  fallbackVolume: number;
+};
+
+/** Visibility + rincian keyword tanpa volume untuk satu set keyword. */
+export function visibilityBreakdown(
+  keywords: VisibilityKeyword[],
+): VisibilityBreakdown {
+  if (keywords.length === 0) {
+    return { score: 0, unknownVolumeCount: 0, fallbackVolume: 1 };
+  }
+  const fallbackVolume = medianKnownVolume(keywords) ?? 1;
   let earned = 0;
   let possible = 0;
+  let unknownVolumeCount = 0;
   for (const k of keywords) {
-    const volume = k.searchVolume != null && k.searchVolume > 0 ? k.searchVolume : 1;
+    const known = knownVolume(k);
+    if (known == null) unknownVolumeCount += 1;
+    const volume = known ?? fallbackVolume;
     earned += ctrForPosition(k.position) * volume;
     possible += CTR_CURVE[0] * volume;
   }
-  if (possible === 0) return 0;
-  return Math.round((earned / possible) * 1000) / 10;
+  const score = possible === 0 ? 0 : Math.round((earned / possible) * 1000) / 10;
+  return { score, unknownVolumeCount, fallbackVolume };
+}
+
+/** Visibility 0–100 (%) untuk satu set keyword. */
+export function visibilityScore(keywords: VisibilityKeyword[]): number {
+  return visibilityBreakdown(keywords).score;
 }
 
 export type ShareOfVoiceEntry = {
@@ -39,8 +81,9 @@ export type ShareOfVoiceEntry = {
 };
 
 /**
- * Share of voice antar domain (milik sendiri + kompetitor) dari posisi per
- * keyword: { domain: posisi|null } per keyword + volume.
+ * Visibility per domain (milik sendiri + kompetitor) dari posisi per keyword:
+ * { domain: posisi|null } per keyword + volume. Nilainya visibility % per
+ * domain pada set keyword yang sama — bukan pangsa yang berjumlah 100%.
  */
 export function shareOfVoice(
   rows: { volume: number | null; positions: Record<string, number | null> }[],

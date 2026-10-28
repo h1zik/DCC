@@ -3,14 +3,17 @@ import "server-only";
 import { NotificationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/notify";
-import { visibilityScore } from "@/lib/seo/rank-tracker/visibility";
-import { buildWeeklySummary } from "@/lib/seo/rank-tracker/weekly-summary";
-import type { MoverKeyword } from "@/lib/seo/rank-tracker/distribution";
+import {
+  buildWeeklySummary,
+  computeWeeklyStats,
+  type WeeklyKeywordInput,
+} from "@/lib/seo/rank-tracker/weekly-summary";
 
 /**
  * Kirim ringkasan mingguan per proyek rank tracker ke pembuatnya
  * (cron `mode=weekly`, tiap Senin). Membandingkan posisi sekarang dengan
- * snapshot ~7 hari lalu.
+ * snapshot ~7 hari lalu pada SUBSET keyword yang sama (yang sudah punya
+ * snapshot berumur >= 7 hari); keyword baru dilaporkan terpisah.
  */
 export async function sendWeeklyRankSummaries(): Promise<{ sent: number }> {
   const projects = await prisma.seoRankProject.findMany({
@@ -34,54 +37,24 @@ export async function sendWeeklyRankSummaries(): Promise<{ sent: number }> {
     if (project.keywords.length === 0) continue;
 
     // Posisi ~7 hari lalu: snapshot terakhir SEBELUM batas 7 hari.
-    const movers: MoverKeyword[] = [];
-    let enteredTop10 = 0;
-    let droppedFromTop10 = 0;
-    const lastWeekPositions: (number | null)[] = [];
-
+    const inputs: WeeklyKeywordInput[] = [];
     for (const tk of project.keywords) {
       const old = await prisma.seoRankSnapshot.findFirst({
         where: { trackedKeywordId: tk.id, capturedAt: { lte: weekAgo } },
         orderBy: { capturedAt: "desc" },
         select: { position: true },
       });
-      const prevPos = old?.position ?? null;
-      lastWeekPositions.push(prevPos);
-      movers.push({
+      inputs.push({
         keyword: tk.keyword,
-        previousPosition: prevPos,
-        currentPosition: tk.lastPosition,
+        lastPosition: tk.lastPosition,
+        searchVolume: tk.searchVolume,
+        // undefined = belum ada snapshot setua itu (keyword baru).
+        weekAgoPosition: old ? old.position : undefined,
       });
-      const wasTop10 = prevPos != null && prevPos <= 10;
-      const isTop10 = tk.lastPosition != null && tk.lastPosition <= 10;
-      if (!wasTop10 && isTop10) enteredTop10 += 1;
-      if (wasTop10 && !isTop10) droppedFromTop10 += 1;
     }
 
-    const visibilityNow = visibilityScore(
-      project.keywords.map((k) => ({
-        position: k.lastPosition,
-        searchVolume: k.searchVolume,
-      })),
-    );
-    const hasHistory = lastWeekPositions.some((p) => p != null);
-    const visibilityLastWeek = hasHistory
-      ? visibilityScore(
-          project.keywords.map((k, i) => ({
-            position: lastWeekPositions[i],
-            searchVolume: k.searchVolume,
-          })),
-        )
-      : null;
-
-    const message = buildWeeklySummary({
-      projectName: project.name,
-      visibilityNow,
-      visibilityLastWeek,
-      keywords: movers,
-      enteredTop10,
-      droppedFromTop10,
-    });
+    const stats = computeWeeklyStats(inputs);
+    const message = buildWeeklySummary({ projectName: project.name, ...stats });
 
     try {
       await notifyUser(project.createdById, message, NotificationType.SEO_ALERT);

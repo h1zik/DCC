@@ -21,10 +21,18 @@ import { LabPageShell, LabSection, lab } from "@/components/lab/lab-primitives";
 import { cn } from "@/lib/utils";
 import { formatRankPosition, scoreToneClass } from "@/lib/seo/labels";
 import { getSeoDashboardData } from "@/lib/seo/dashboard/overview";
+import { buildAvgPositionSeries } from "@/lib/seo/rank-tracker/visibility-series";
 
-/** Batas waktu grafik tren dashboard (30 hari terakhir). */
+/** Rentang grafik tren dashboard (hari kalender WIB). */
+const DASHBOARD_TREND_DAYS = 30;
+
+/**
+ * Batas ambil snapshot untuk tren: rentang grafik + 14 hari ke belakang agar
+ * posisi keyword yang tidak dicek tepat di awal rentang tetap bisa
+ * di-carry-forward.
+ */
 function dashboardCutoff(): Date {
-  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  return new Date(Date.now() - (DASHBOARD_TREND_DAYS + 14) * 24 * 60 * 60 * 1000);
 }
 
 /** Kapsul ikon pastel untuk grid fitur (di-cycle berurutan). */
@@ -39,8 +47,11 @@ export default async function SeoOverviewPage() {
   const [data, snapshots, recentAudits] = await Promise.all([
     getSeoDashboardData(),
     prisma.seoRankSnapshot.findMany({
-      where: { capturedAt: { gte: dashboardCutoff() }, position: { not: null } },
-      select: { position: true, capturedAt: true },
+      where: {
+        capturedAt: { gte: dashboardCutoff() },
+        trackedKeyword: { project: { isActive: true } },
+      },
+      select: { trackedKeywordId: true, position: true, capturedAt: true },
       orderBy: { capturedAt: "asc" },
     }),
     prisma.seoOnPageAudit.findMany({
@@ -56,6 +67,7 @@ export default async function SeoOverviewPage() {
     trackedCount,
     avgPosition,
     visibility,
+    unknownVolumeCount,
     technicalIssues,
     latestHealthScore,
     avgAuditScore,
@@ -65,22 +77,25 @@ export default async function SeoOverviewPage() {
     gsc,
   } = data;
 
-  // Agregasi posisi rata-rata per hari untuk grafik tren.
-  const byDay = new Map<string, { total: number; count: number }>();
+  // Posisi rata-rata (keyword yang ranking) per hari WIB, carry-forward per
+  // keyword — cek ulang manual satu keyword tidak mengubah subset harian.
+  const snapshotsByKeyword = new Map<
+    string,
+    { capturedAt: Date; position: number | null }[]
+  >();
   for (const snap of snapshots) {
-    if (snap.position == null) continue;
-    const day = snap.capturedAt.toISOString().slice(0, 10);
-    const cur = byDay.get(day) ?? { total: 0, count: 0 };
-    cur.total += snap.position;
-    cur.count += 1;
-    byDay.set(day, cur);
+    const list = snapshotsByKeyword.get(snap.trackedKeywordId) ?? [];
+    list.push({ capturedAt: snap.capturedAt, position: snap.position });
+    snapshotsByKeyword.set(snap.trackedKeywordId, list);
   }
-  const trendPoints = [...byDay.entries()]
-    .map(([date, { total, count }]) => ({
-      date,
-      avgPosition: Math.round((total / count) * 10) / 10,
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const trendPoints = buildAvgPositionSeries(
+    [...snapshotsByKeyword.entries()].map(([id, snaps]) => ({
+      id,
+      searchVolume: null,
+      snapshots: snaps,
+    })),
+    DASHBOARD_TREND_DAYS,
+  );
 
   const features = [
     { href: "/seo/content/opportunities", icon: Lightbulb, title: "Content Opportunities", desc: "Rekomendasi artikel dari AI yang membaca riset keyword & posisi ranking Anda — pipeline ide → terbit." },
@@ -137,6 +152,9 @@ export default async function SeoOverviewPage() {
           </span>
           <span className="text-xs font-medium leading-snug text-teal-100/90 dark:text-teal-900/80">
             dari {trackedCount} keyword yang dilacak di Google.co.id
+            {unknownVolumeCount > 0
+              ? ` · ${unknownVolumeCount} keyword tanpa data volume (dibobot median)`
+              : ""}
           </span>
         </div>
 
@@ -161,13 +179,16 @@ export default async function SeoOverviewPage() {
           )}
         </div>
 
-        {/* Posisi rata-rata */}
+        {/* Posisi rata-rata (keyword yang ranking) */}
         <div className="bento-tile">
           <span className="bento-label">Posisi rata-rata</span>
           <span className="bento-value">
             {avgPosition != null
               ? formatRankPosition(Math.round(avgPosition))
               : "—"}
+          </span>
+          <span className="text-muted-foreground text-[11px] font-medium">
+            keyword yang ranking saja
           </span>
         </div>
 
