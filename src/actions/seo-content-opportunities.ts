@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSeoAccess } from "@/lib/seo/auth";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { refreshOpportunities } from "@/lib/seo/content/opportunity-feed";
+import { normalizeOpportunityKeyword } from "@/lib/seo/content/opportunity-feed-rules";
 import { generateContentBrief } from "@/lib/seo/content/generator";
 
 function titleCase(text: string): string {
@@ -92,11 +93,13 @@ export async function saveTopicSuggestionToFeed(
 ) {
   await requireSeoAccess();
   const data = saveSuggestionSchema.parse(input);
+  const keyword = normalizeOpportunityKeyword(data.keyword);
+  if (!keyword) throw new Error("Keyword kosong.");
 
   await prisma.seoContentOpportunity.upsert({
-    where: { keyword: data.keyword.trim() },
+    where: { keyword },
     create: {
-      keyword: data.keyword.trim(),
+      keyword,
       type: SeoOpportunityType.NEW_ARTICLE,
       searchVolume: data.searchVolume ?? null,
       difficulty: data.difficulty ?? null,

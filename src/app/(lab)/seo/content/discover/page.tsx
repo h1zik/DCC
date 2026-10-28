@@ -20,6 +20,7 @@ export default async function SeoTopicDiscoverPage() {
     dataNotice: r.dataNotice,
     errorMessage: r.errorMessage,
     createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
   }));
 
   return (

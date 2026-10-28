@@ -64,3 +64,29 @@ export function describeRankChange(
       return `"${keyword}" tetap di posisi ${formatRankPosition(next)}.`;
   }
 }
+
+/**
+ * Apakah keyword sudah punya riwayat pembanding. Pada cek PERTAMA
+ * `previousPosition` selalu null dan baru ada satu snapshot — jangan
+ * ditampilkan sebagai "masuk"/"+96" atau dihitung sebagai mover.
+ * "entered" tetap berlaku bila previousPosition null setelah >= 2 cek.
+ */
+export function hasRankHistory(k: {
+  previousPosition: number | null;
+  snapshotCount: number;
+}): boolean {
+  return k.previousPosition != null || k.snapshotCount >= 2;
+}
+
+/**
+ * Jenis perubahan untuk ditampilkan: `"none"` bila belum ada riwayat
+ * pembanding (cek pertama) — render sebagai "—".
+ */
+export function displayRankChangeKind(k: {
+  previousPosition: number | null;
+  lastPosition: number | null;
+  snapshotCount: number;
+}): RankChangeKind | "none" {
+  if (!hasRankHistory(k)) return "none";
+  return rankChangeKind(k.previousPosition, k.lastPosition);
+}

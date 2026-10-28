@@ -3,10 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { EChartsOption } from "echarts";
-import { SeoRankDevice } from "@prisma/client";
+import { SeoJobStatus, SeoRankDevice } from "@prisma/client";
 import {
   ArrowDownRight,
   ArrowUpRight,
+  CircleAlert,
   Minus,
   Plus,
   RefreshCw,
@@ -39,7 +40,7 @@ import { SeoDetailPage } from "@/components/seo/seo-module-page";
 import { SeoSparkline } from "@/components/seo/seo-sparkline";
 import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
 import { SEO_DEVICE_LABELS, formatRankPosition } from "@/lib/seo/labels";
-import { rankChangeKind } from "@/lib/seo/rank-tracker/rank-change";
+import { displayRankChangeKind } from "@/lib/seo/rank-tracker/rank-change";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
@@ -61,6 +62,8 @@ export type TrackedKeywordRow = {
   previousPosition: number | null;
   lastFoundUrl: string | null;
   lastCheckedAt: string | null;
+  /** Jumlah snapshot tersimpan — 1 berarti baru cek pertama (belum ada pembanding). */
+  snapshotCount: number;
   features: string[];
   competitorPositions: Record<string, number | null>;
   points: { t: string; position: number | null }[];
@@ -75,8 +78,21 @@ type ProjectInfo = {
   competitors: string[];
 };
 
+export type RankSyncStatus = {
+  status: SeoJobStatus;
+  percent: number;
+  stepLabel: string | null;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  /** RUNNING lebih lama dari jendela 30 menit — dihitung di server saat render. */
+  stale: boolean;
+};
+
 export type RankInsights = {
   visibilityNow: number;
+  /** Keyword tanpa data volume (dibobot median volume keyword lain). */
+  unknownVolumeCount: number;
   visibilitySeries: { date: string; score: number }[];
   shareOfVoice: { domain: string; visibility: number }[];
   distribution: {
@@ -125,6 +141,64 @@ function formatDateTime(iso: string | null): string {
   });
 }
 
+function formatWibTime(iso: string | null): string {
+  if (!iso) return "—";
+  return `${new Date(iso).toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  })} WIB`;
+}
+
+/** Baris status sinkron terakhir: progres, sukses, atau ringkasan kegagalan. */
+function SyncStatusLine({ sync }: { sync: RankSyncStatus | null }) {
+  if (!sync) return null;
+  const base =
+    "inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-full px-3 py-1.5 text-xs font-medium";
+
+  if (sync.status === SeoJobStatus.RUNNING || sync.status === SeoJobStatus.PENDING) {
+    if (sync.stale) {
+      return (
+        <div className={cn(base, "bg-amber-500/10 text-amber-800 dark:text-amber-300")}>
+          <CircleAlert className="size-3.5" />
+          Pengecekan {formatWibTime(sync.startedAt)} terhenti tanpa hasil
+          {sync.stepLabel ? ` (${sync.stepLabel})` : ""}. Jalankan ulang.
+        </div>
+      );
+    }
+    return (
+      <div className={cn(base, "bg-primary/10 text-primary")}>
+        <RefreshCw className="size-3.5 animate-spin" />
+        Pengecekan berjalan · {sync.percent}%
+        {sync.stepLabel ? ` · ${sync.stepLabel}` : ""}
+      </div>
+    );
+  }
+
+  const when = formatWibTime(sync.completedAt ?? sync.startedAt);
+  if (sync.status === SeoJobStatus.FAILED) {
+    return (
+      <div
+        className={cn(base, "bg-rose-500/10 text-rose-700 dark:text-rose-300")}
+        title={sync.error ?? undefined}
+      >
+        <CircleAlert className="size-3.5 shrink-0" />
+        <span>
+          Sinkron terakhir {when} · {sync.error ?? "gagal"}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={cn(base, "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300")}>
+      <ShieldCheck className="size-3.5" />
+      Sinkron terakhir {when} · semua keyword berhasil
+    </div>
+  );
+}
+
 /** Badge posisi dengan tone per jenjang (top 3 → hijau, hal. 1 → teal, dst.). */
 function PositionBadge({
   position,
@@ -167,13 +241,26 @@ function PositionBadge({
 function ChangeCell({
   prev,
   next,
+  snapshotCount,
 }: {
   prev: number | null;
   next: number | null;
+  snapshotCount: number;
 }) {
-  const kind = rankChangeKind(prev, next);
+  const kind = displayRankChangeKind({
+    previousPosition: prev,
+    lastPosition: next,
+    snapshotCount,
+  });
   const pill =
     "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums";
+  // Cek pertama: belum ada pembanding — jangan tampilkan sebagai "baru"/+N.
+  if (kind === "none")
+    return (
+      <span className="text-muted-foreground text-xs" title="Belum ada pembanding (cek pertama)">
+        —
+      </span>
+    );
   if (kind === "up")
     return (
       <span
@@ -221,10 +308,12 @@ export function RankTrackerDetailClient({
   project,
   keywords,
   insights,
+  lastSync = null,
 }: {
   project: ProjectInfo;
   keywords: TrackedKeywordRow[];
   insights: RankInsights;
+  lastSync?: RankSyncStatus | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -249,7 +338,11 @@ export function RankTrackerDetailClient({
     let up = 0;
     let down = 0;
     for (const k of keywords) {
-      const kind = rankChangeKind(k.previousPosition, k.lastPosition);
+      const kind = displayRankChangeKind({
+        previousPosition: k.previousPosition,
+        lastPosition: k.lastPosition,
+        snapshotCount: k.snapshotCount,
+      });
       if (kind === "up" || kind === "entered") up += 1;
       else if (kind === "down" || kind === "dropped") down += 1;
     }
@@ -469,6 +562,9 @@ export function RankTrackerDetailClient({
         </div>
       }
     >
+      {/* Status sinkron terakhir (job RANK_CHECK) */}
+      <SyncStatusLine sync={lastSync} />
+
       {/* Papan bento: visibility, distribusi, stat */}
       <div className="grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4">
         {/* Visibility — tile hero teal */}
@@ -492,6 +588,9 @@ export function RankTrackerDetailClient({
           ) : null}
           <span className="text-[11px] font-medium leading-snug text-teal-100/90 dark:text-teal-900/80">
             estimasi pangsa klik, berbobot volume · 30 hari
+            {insights.unknownVolumeCount > 0
+              ? ` · ${insights.unknownVolumeCount} keyword tanpa data volume (dibobot median)`
+              : ""}
           </span>
         </div>
 
@@ -539,13 +638,16 @@ export function RankTrackerDetailClient({
           </div>
         </div>
 
-        {/* Posisi rata-rata */}
+        {/* Posisi rata-rata (keyword yang ranking) */}
         <div className="bento-tile">
           <span className="bento-label">Posisi rata-rata</span>
           <span className="bento-value">
             {stats.avgPosition != null
               ? formatRankPosition(Math.round(stats.avgPosition))
               : "—"}
+          </span>
+          <span className="text-muted-foreground text-[11px] font-medium">
+            keyword yang ranking saja
           </span>
         </div>
 
@@ -567,9 +669,10 @@ export function RankTrackerDetailClient({
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="bento-tile justify-start gap-3">
           <div className="flex items-center justify-between">
-            <span className="bento-label">Share of voice</span>
+            <span className="bento-label">Visibility per domain</span>
             <span className="text-muted-foreground text-[11px]">
-              dari SERP yang sama, tanpa biaya ekstra
+              visibility % tiap domain pada keyword yang sama · dari SERP yang
+              sama, tanpa biaya ekstra
             </span>
           </div>
           {insights.shareOfVoice.length === 0 ? (
@@ -796,6 +899,7 @@ export function RankTrackerDetailClient({
                       <ChangeCell
                         prev={k.previousPosition}
                         next={k.lastPosition}
+                        snapshotCount={k.snapshotCount}
                       />
                     </TableCell>
                     <TableCell>

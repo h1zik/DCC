@@ -11,8 +11,12 @@ import { prisma } from "@/lib/prisma";
 import {
   classifyTrackedKeyword,
   deriveStage,
+  excludeTopRanking,
+  isTopRanking,
   mergeCandidates,
+  normalizeOpportunityKeyword,
   scoreCandidate,
+  selectPruneIds,
   type OpportunityCandidate,
 } from "@/lib/seo/content/opportunity-feed-rules";
 import { generateResearchJson } from "@/lib/research/llm";
@@ -59,14 +63,14 @@ export async function refreshOpportunities(): Promise<{
   });
 
   const projectKeywordSet = new Set(
-    keywords.map((k) => k.keyword.trim().toLowerCase()),
+    keywords.map((k) => normalizeOpportunityKeyword(k.keyword)),
   );
   const keywordDataByKey = new Map(
-    keywords.map((k) => [k.keyword.trim().toLowerCase(), k]),
+    keywords.map((k) => [normalizeOpportunityKeyword(k.keyword), k]),
   );
 
-  const fromProjects: OpportunityCandidate[] = keywords.map((k) => ({
-    keyword: k.keyword.trim(),
+  const fromProjectsRaw: OpportunityCandidate[] = keywords.map((k) => ({
+    keyword: normalizeOpportunityKeyword(k.keyword),
     type: SeoOpportunityType.NEW_ARTICLE,
     searchVolume: k.searchVolume,
     difficulty: k.difficulty,
@@ -98,9 +102,17 @@ export async function refreshOpportunities(): Promise<{
     take: 2000,
   });
 
+  // Keyword yang sudah di top 4 → tidak boleh direkomendasikan artikel baru.
+  const topRankingKeywords = new Set(
+    tracked
+      .filter((t) => isTopRanking(t.lastPosition))
+      .map((t) => normalizeOpportunityKeyword(t.keyword)),
+  );
+  const fromProjects = excludeTopRanking(fromProjectsRaw, topRankingKeywords);
+
   const fromTracker: OpportunityCandidate[] = [];
   for (const t of tracked) {
-    const key = t.keyword.trim().toLowerCase();
+    const key = normalizeOpportunityKeyword(t.keyword);
     const type = classifyTrackedKeyword({
       keyword: t.keyword,
       lastPosition: t.lastPosition,
@@ -110,7 +122,7 @@ export async function refreshOpportunities(): Promise<{
     if (!type) continue;
     const data = keywordDataByKey.get(key);
     fromTracker.push({
-      keyword: t.keyword.trim(),
+      keyword: key,
       type,
       searchVolume: data?.searchVolume ?? null,
       difficulty: data?.difficulty ?? null,
@@ -123,6 +135,7 @@ export async function refreshOpportunities(): Promise<{
           monthlyTrend: trendOf(data?.monthlyTrend ?? null),
         },
         type,
+        t.lastPosition,
       ),
       currentPosition: t.lastPosition,
       targetUrl: t.lastFoundUrl,
@@ -139,13 +152,13 @@ export async function refreshOpportunities(): Promise<{
   const clusterByKey = new Map(
     keywords
       .filter((k) => k.clusterLabel)
-      .map((k) => [k.keyword.trim().toLowerCase(), k.clusterLabel]),
+      .map((k) => [normalizeOpportunityKeyword(k.keyword), k.clusterLabel]),
   );
 
   /* --------------------------------- Upsert ----------------------------------- */
   const now = new Date();
   for (const cand of merged) {
-    const clusterLabel = clusterByKey.get(cand.keyword.toLowerCase()) ?? null;
+    const clusterLabel = clusterByKey.get(cand.keyword) ?? null;
     await prisma.seoContentOpportunity.upsert({
       where: { keyword: cand.keyword },
       create: {
@@ -181,14 +194,14 @@ export async function refreshOpportunities(): Promise<{
   /* ----------------------------- Stage sync + prune ---------------------------- */
   await syncOpportunityStages();
 
-  const keepKeywords = new Set(merged.map((c) => c.keyword.toLowerCase()));
+  // Hanya baris buatan engine yang dipangkas — simpanan manual (topic_run,
+  // gsc_decay) dibiarkan walau tidak muncul di hasil refresh.
+  const keepKeywords = new Set(merged.map((c) => c.keyword));
   const pruneTargets = await prisma.seoContentOpportunity.findMany({
     where: { stage: SeoOpportunityStage.IDEA, briefId: null },
-    select: { id: true, keyword: true },
+    select: { id: true, keyword: true, source: true },
   });
-  const toDelete = pruneTargets
-    .filter((p) => !keepKeywords.has(p.keyword.toLowerCase()))
-    .map((p) => p.id);
+  const toDelete = selectPruneIds(pruneTargets, keepKeywords);
   if (toDelete.length > 0) {
     await prisma.seoContentOpportunity.deleteMany({
       where: { id: { in: toDelete } },

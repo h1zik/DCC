@@ -1,6 +1,10 @@
 /**
- * Analisis pola listing marketplace + skor optimasi judul. Pure (tanpa server)
- * agar mudah di-test. Analyzer menyiapkan input dari hasil scraper-api.
+ * Analisis pola listing marketplace + skor judul (heuristik). Pure (tanpa
+ * server) agar mudah di-test. Analyzer menyiapkan input dari hasil scraper-api.
+ *
+ * Skor judul BUKAN metrik ranking marketplace — ia heuristik gabungan dari:
+ * keyword ada di judul (token-based), overlap dengan istilah teratas listing
+ * pesaing (di luar token keyword), dan panjang judul.
  */
 
 export type MarketplaceListing = {
@@ -21,11 +25,17 @@ export type ListingStats = {
   priceMin: number | null;
   priceMax: number | null;
   avgRating: number | null;
+  /**
+   * Akumulasi `soldCount` listing teratas. Semantiknya tergantung marketplace:
+   * Shopee = terjual/bulan, Tokopedia = total terjual (lifetime). UI melabeli
+   * per marketplace.
+   */
   totalSold: number;
   officialShopRate: number;
 };
 
 export type TitleScore = {
+  /** 0–100, heuristik (lihat komentar modul). */
   score: number;
   hasKeyword: boolean;
   lengthOk: boolean;
@@ -33,20 +43,54 @@ export type TitleScore = {
   missingTerms: string[];
 };
 
-/** Stopword umum (ID/EN) + token tak bermakna untuk pola judul. */
+/** Bobot komponen skor judul (total 100). */
+export const TITLE_SCORE_WEIGHTS = {
+  keyword: 30,
+  coverage: 50,
+  length: 20,
+} as const;
+
+/**
+ * Stopword umum (ID/EN) + filler judul marketplace Indonesia yang hampir
+ * selalu muncul dan tidak membedakan produk (ori, murah, promo, cod, ...).
+ */
 const STOPWORDS = new Set([
+  // Kata fungsi ID/EN
   "dan", "untuk", "yang", "dengan", "dari", "ini", "itu", "atau", "the",
-  "for", "and", "with", "pcs", "isi", "free", "new", "by", "di", "ke",
-  "pack", "set", "x", "ml", "gr", "gram",
+  "for", "and", "with", "by", "di", "ke", "bisa", "isi", "per",
+  // Unit & kemasan
+  "pcs", "pack", "set", "x", "ml", "gr", "gram", "kg",
+  // Filler marketplace
+  "original", "ori", "murah", "termurah", "promo", "cod", "ready", "stok",
+  "stock", "bpom", "gratis", "ongkir", "free", "best", "seller", "terlaris",
+  "diskon", "sale", "flash", "garansi", "resmi", "official", "new", "baru",
 ]);
 
-function tokenize(title: string): string[] {
-  return title
+/** Token mentah: lowercase, non-alfanumerik jadi spasi, buang token < `minLen`. */
+function rawTokens(text: string, minLen: number): string[] {
+  return text
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    // Buang stopword, token pendek, dan token berawalan angka (varian ukuran: 30ml, 200gr).
-    .filter((t) => t.length >= 3 && !STOPWORDS.has(t) && !/^\d/.test(t));
+    .filter((t) => t.length >= minLen);
+}
+
+/** Token judul untuk pola istilah: tanpa stopword, token pendek, dan varian ukuran (30ml). */
+function tokenize(title: string): string[] {
+  return rawTokens(title, 3).filter((t) => !STOPWORDS.has(t) && !/^\d/.test(t));
+}
+
+/** Token keyword: lowercase, pisah spasi, buang token < 2 karakter. Stopword TIDAK dibuang. */
+export function keywordTokens(keyword: string): string[] {
+  return [...new Set(rawTokens(keyword, 2))];
+}
+
+/** True bila semua token keyword ada di token judul (urutan bebas). */
+export function titleHasKeyword(title: string, keyword: string): boolean {
+  const kw = keywordTokens(keyword);
+  if (kw.length === 0) return false;
+  const titleSet = new Set(rawTokens(title, 2));
+  return kw.every((t) => titleSet.has(t));
 }
 
 function median(values: number[]): number | null {
@@ -103,7 +147,14 @@ export function analyzeListings(listings: MarketplaceListing[]): {
   };
 }
 
-/** Skor judul produk sendiri vs pola listing teratas. */
+/**
+ * Skor judul produk sendiri (heuristik) vs pola listing teratas.
+ * - keyword (30): semua token keyword ada di judul;
+ * - coverage (50): porsi 10 istilah teratas pesaing — DI LUAR token keyword,
+ *   supaya keyword tidak dihitung dua kali — yang ada di judul; bila tidak ada
+ *   istilah di luar keyword, komponen ini dianggap penuh (tidak ada yang kurang);
+ * - panjang (20): ≥ max(25, 50% rata-rata pesaing) dan ≤ 140 karakter.
+ */
 export function scoreOwnTitle(
   ownTitle: string,
   keyword: string,
@@ -111,10 +162,13 @@ export function scoreOwnTitle(
   avgTitleLength: number,
 ): TitleScore {
   const titleTokens = new Set(tokenize(ownTitle));
-  const lower = ownTitle.toLowerCase();
-  const hasKeyword = keyword.trim().length > 0 && lower.includes(keyword.toLowerCase());
+  const hasKeyword = titleHasKeyword(ownTitle, keyword);
 
-  const relevant = topTerms.slice(0, 10).map((t) => t.term);
+  const kwSet = new Set(keywordTokens(keyword));
+  const relevant = topTerms
+    .map((t) => t.term)
+    .filter((t) => !kwSet.has(t))
+    .slice(0, 10);
   const covered = relevant.filter((t) => titleTokens.has(t));
   const missing = relevant.filter((t) => !titleTokens.has(t)).slice(0, 8);
 
@@ -124,9 +178,11 @@ export function scoreOwnTitle(
   const minLen = Math.max(25, Math.round(avgTitleLength * 0.5));
   const lengthOk = len >= minLen && len <= 140;
 
-  const coverageRatio = relevant.length > 0 ? covered.length / relevant.length : 0;
+  const coverageRatio = relevant.length > 0 ? covered.length / relevant.length : 1;
   const score = Math.round(
-    (hasKeyword ? 30 : 0) + coverageRatio * 50 + (lengthOk ? 20 : 0),
+    (hasKeyword ? TITLE_SCORE_WEIGHTS.keyword : 0) +
+      coverageRatio * TITLE_SCORE_WEIGHTS.coverage +
+      (lengthOk ? TITLE_SCORE_WEIGHTS.length : 0),
   );
 
   return {

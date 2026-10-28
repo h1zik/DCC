@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   describeRankChange,
+  displayRankChangeKind,
+  hasRankHistory,
   isSignificantRankChange,
   rankChangeKind,
 } from "@/lib/seo/rank-tracker/rank-change";
@@ -49,5 +51,25 @@ describe("describeRankChange", () => {
 
   it("describes dropping out of the top 100", () => {
     expect(describeRankChange("toner", 8, null)).toContain("keluar");
+  });
+});
+
+describe("hasRankHistory / displayRankChangeKind", () => {
+  it("treats the very first check as having no comparable history", () => {
+    expect(hasRankHistory({ previousPosition: null, snapshotCount: 1 })).toBe(false);
+    expect(hasRankHistory({ previousPosition: null, snapshotCount: 0 })).toBe(false);
+    expect(
+      displayRankChangeKind({ previousPosition: null, lastPosition: 5, snapshotCount: 1 }),
+    ).toBe("none");
+  });
+
+  it("keeps 'entered' semantics after at least two checks", () => {
+    expect(hasRankHistory({ previousPosition: null, snapshotCount: 2 })).toBe(true);
+    expect(
+      displayRankChangeKind({ previousPosition: null, lastPosition: 5, snapshotCount: 2 }),
+    ).toBe("entered");
+    expect(
+      displayRankChangeKind({ previousPosition: 9, lastPosition: 5, snapshotCount: 2 }),
+    ).toBe("up");
   });
 });

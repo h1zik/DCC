@@ -1,4 +1,5 @@
 import TurndownService from "turndown";
+import { extractVerifyMarkersFromHtml } from "@/lib/seo/content/claims";
 
 /**
  * Builder ekspor artikel siap pakai (HTML bersih / Markdown / HTML untuk DOCX).
@@ -76,14 +77,7 @@ ${buildCleanHtml(draft)}
 
 /** Ekstrak daftar klaim yang perlu diverifikasi dari marker <!-- verify: ... -->. */
 export function extractVerifyMarkers(contentHtml: string): string[] {
-  const out: string[] = [];
-  const re = /<!--\s*verify:\s*([\s\S]*?)-->/gi;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(contentHtml)) !== null) {
-    const note = match[1].trim();
-    if (note) out.push(note);
-  }
-  return out;
+  return extractVerifyMarkersFromHtml(contentHtml);
 }
 
 function escapeHtml(text: string): string {

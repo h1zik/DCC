@@ -19,6 +19,11 @@ export type AuditPageRow = {
 /** Ambang klasifikasi. */
 const DECAY_MIN_PREV_CLICKS = 20;
 const DECAY_DROP_PCT = -30;
+/**
+ * Decay sekunder untuk halaman kecil (prev 6–19 klik): butuh penurunan lebih
+ * tajam agar noise harian tidak terbaca sebagai decay.
+ */
+const SMALL_PAGE_DECAY_DROP_PCT = -60;
 const RISING_GAIN_PCT = 30;
 const RISING_MIN_CLICKS = 10;
 const FRESH_MAX_PREV = 5;
@@ -30,14 +35,46 @@ export function classifyPageTrend(
   if (prevClicks <= FRESH_MAX_PREV) {
     return clicks > FRESH_MAX_PREV ? "fresh" : "stable";
   }
+  // Halaman yang dulu dapat klik berarti (> FRESH_MAX_PREV) lalu hilang total.
+  if (clicks === 0) return "decay";
   const deltaPct = ((clicks - prevClicks) / prevClicks) * 100;
   if (prevClicks >= DECAY_MIN_PREV_CLICKS && deltaPct <= DECAY_DROP_PCT) {
+    return "decay";
+  }
+  if (
+    prevClicks < DECAY_MIN_PREV_CLICKS &&
+    deltaPct <= SMALL_PAGE_DECAY_DROP_PCT
+  ) {
     return "decay";
   }
   if (deltaPct >= RISING_GAIN_PCT && clicks >= RISING_MIN_CLICKS) {
     return "rising";
   }
   return "stable";
+}
+
+/**
+ * Skor opportunity untuk OPTIMIZE_EXISTING dari halaman decay (50–95).
+ *
+ * Rumus: 50 (dasar: halaman sudah ranking → optimasi murah)
+ *   + sampai 25 poin dari trafik sebelumnya: log10(prevClicks) / 3 × 25
+ *     (10 klik ≈ +8, 100 ≈ +17, 1000 ≈ +25)
+ *   + sampai 20 poin dari tajamnya penurunan: (drop% − 30) / 70 × 20
+ *     (drop 30% = +0, drop 65% ≈ +10, drop 100% = +20)
+ * Semakin besar trafik yang hilang dan semakin tajam penurunannya, semakin
+ * tinggi prioritas refresh.
+ */
+export function decayOpportunityScore(input: {
+  prevClicks: number;
+  clicks: number;
+}): number {
+  const prev = Math.max(0, input.prevClicks);
+  const cur = Math.max(0, input.clicks);
+  const trafficPts =
+    prev > 0 ? Math.min(25, (Math.log10(prev) / 3) * 25) : 0;
+  const dropPct = prev > 0 ? ((prev - cur) / prev) * 100 : 0;
+  const dropPts = Math.max(0, Math.min(20, ((dropPct - 30) / 70) * 20));
+  return Math.max(50, Math.min(95, Math.round(50 + trafficPts + dropPts)));
 }
 
 export type AuditSummary = {

@@ -103,14 +103,21 @@ function parsePageItem(item: DfsPageItem): InstantPageSignals {
 /** Audit On-Page satu URL via instant_pages (live), di-cache 24 jam. */
 export async function fetchInstantPage(
   url: string,
+  opts: { fresh?: boolean } = {},
 ): Promise<InstantPageSignals | null> {
   const endpoint = "on_page/instant_pages";
   const payload = { url, enable_javascript: false };
 
-  const item = await withDataForSeoCache(endpoint, payload, async () => {
-    const result = await dataForSeoLive<DfsInstantPagesResult>(endpoint, payload);
-    return result[0]?.items?.[0] ?? null;
-  });
+  const item = await withDataForSeoCache(
+    endpoint,
+    payload,
+    async () => {
+      const result = await dataForSeoLive<DfsInstantPagesResult>(endpoint, payload);
+      return result[0]?.items?.[0] ?? null;
+    },
+    undefined,
+    { bypass: opts.fresh === true },
+  );
 
   return item ? parsePageItem(item) : null;
 }
@@ -200,18 +207,34 @@ type DfsSummaryResult = {
   } | null;
 };
 
-/** Ambil ringkasan crawl (GET on_page/summary/{id}). */
+export type OnPageSummaryResult = {
+  /** Null bila task belum punya hasil (masih antre) atau task-level error. */
+  summary: CrawlSummary | null;
+  /** Status task-level DataForSEO (20000 OK, 40601/40602 antre, 404xx error). */
+  taskStatusCode: number | null;
+  taskStatusMessage: string | null;
+};
+
+/**
+ * Ambil ringkasan crawl (GET on_page/summary/{id}). Status task-level ikut
+ * dikembalikan agar pemanggil bisa membedakan "belum ada hasil" (antre) dari
+ * error permanen seperti 40401 Task Not Found — tanpa itu crawl bisa
+ * COLLECTING selamanya.
+ */
 export async function fetchOnPageSummary(
   taskId: string,
-): Promise<CrawlSummary | null> {
+): Promise<OnPageSummaryResult> {
   const json = await dataForSeoGet<DfsSummaryResult>(
     `on_page/summary/${taskId}`,
   );
-  const result = json.tasks?.[0]?.result?.[0];
-  if (!result) return null;
+  const task = json.tasks?.[0];
+  const taskStatusCode = task?.status_code ?? null;
+  const taskStatusMessage = task?.status_message ?? null;
+  const result = task?.result?.[0];
+  if (!result) return { summary: null, taskStatusCode, taskStatusMessage };
 
   const pm = result.page_metrics ?? null;
-  return {
+  const summary: CrawlSummary = {
     crawlProgress: result.crawl_progress ?? null,
     pagesCrawled: result.crawl_status?.pages_crawled ?? null,
     pagesInQueue: result.crawl_status?.pages_in_queue ?? null,
@@ -241,6 +264,7 @@ export async function fetchOnPageSummary(
       : null,
     domainChecks: result.domain_info?.checks ?? {},
   };
+  return { summary, taskStatusCode, taskStatusMessage };
 }
 
 export type CrawlPageRow = {

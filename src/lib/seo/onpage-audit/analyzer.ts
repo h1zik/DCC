@@ -6,6 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { DataForSeoError, isDataForSeoConfigured } from "@/lib/seo/dataforseo/client";
 import { fetchInstantPage, type InstantPageSignals } from "@/lib/seo/dataforseo/onpage";
 import {
+  readTextCapped,
+  safeFetch,
+  UnsafeUrlError,
+} from "@/lib/seo/safe-fetch";
+import {
   buildOnPageIssues,
   computeOnPageScore,
   sortIssuesBySeverity,
@@ -57,26 +62,45 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-/** Ambil & parse HTML langsung untuk melengkapi sinyal (best-effort). */
+export type HtmlFetchResult = {
+  signals: HtmlSignals | null;
+  /** Alasan fetch ditolak/gagal (untuk ditampilkan ke pengguna), bila ada. */
+  reason: string | null;
+};
+
+/** Batas ukuran HTML yang dibaca (2 MB) — cukup untuk <head> + konten utama. */
+const HTML_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Ambil & parse HTML langsung untuk melengkapi sinyal (best-effort).
+ * URL berasal dari pengguna → lewat `safeFetch` (tiap hop redirect divalidasi
+ * terhadap alamat internal) dan body dibatasi `HTML_MAX_BYTES`.
+ */
 export async function fetchHtmlSignals(
   url: string,
   targetKeyword: string | null,
-): Promise<HtmlSignals | null> {
+): Promise<HtmlFetchResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; DCC-SEO-Audit/1.0; +https://dominatuscenter.com)",
+    const res = await safeFetch(
+      url,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; DCC-SEO-Audit/1.0; +https://dominatuscenter.com)",
+          Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+        },
+        signal: controller.signal,
       },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
+      { maxRedirects: 5 },
+    );
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => undefined);
+      return { signals: null, reason: `Halaman membalas HTTP ${res.status}.` };
+    }
 
-    const html = await res.text();
+    const html = await readTextCapped(res, HTML_MAX_BYTES);
     const $ = cheerio.load(html);
 
     const title = $("title").first().text().trim() || null;
@@ -130,20 +154,34 @@ export async function fetchHtmlSignals(
     }
 
     return {
-      title,
-      description,
-      htags,
-      imagesTotal: images.length,
-      imagesWithoutAlt,
-      schemaTypes: [...schema],
-      wordCount,
-      keywordInTitle,
-      keywordInDescription,
-      keywordInH1,
-      keywordDensity,
+      signals: {
+        title,
+        description,
+        htags,
+        imagesTotal: images.length,
+        imagesWithoutAlt,
+        schemaTypes: [...schema],
+        wordCount,
+        keywordInTitle,
+        keywordInDescription,
+        keywordInH1,
+        keywordDensity,
+      },
+      reason: null,
     };
-  } catch {
-    return null;
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      return { signals: null, reason: `Fetch HTML langsung ditolak: ${err.message}` };
+    }
+    const aborted = err instanceof Error && err.name === "AbortError";
+    return {
+      signals: null,
+      reason: aborted
+        ? "Fetch HTML langsung melewati batas waktu 12 detik."
+        : "Fetch HTML langsung gagal (host tidak merespons atau menolak koneksi).",
+    };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -164,7 +202,9 @@ export async function runOnPageAudit(auditId: string): Promise<void> {
     let dfsNotice: string | null = null;
     if (isDataForSeoConfigured()) {
       try {
-        dfs = await fetchInstantPage(audit.url);
+        // Audit (termasuk "Audit ulang") selalu minta data segar: hasil
+        // cache 24 jam akan menyembunyikan perbaikan yang baru di-deploy.
+        dfs = await fetchInstantPage(audit.url, { fresh: true });
       } catch (err) {
         if (err instanceof DataForSeoError && err.balanceExhausted) {
           dfsNotice = "Saldo DataForSEO habis — audit memakai analisis HTML langsung.";
@@ -177,19 +217,28 @@ export async function runOnPageAudit(auditId: string): Promise<void> {
       dfsNotice = "DataForSEO belum dikonfigurasi — audit memakai analisis HTML langsung.";
     }
 
-    const html = await fetchHtmlSignals(audit.url, audit.targetKeyword);
+    const htmlResult = await fetchHtmlSignals(audit.url, audit.targetKeyword);
+    const html = htmlResult.signals;
 
     if (!dfs && !html) {
       await prisma.seoOnPageAudit.update({
         where: { id: auditId },
         data: {
           status: SeoAnalysisStatus.FAILED,
-          errorMessage:
+          errorMessage: [
             "Tidak bisa mengambil data halaman (DataForSEO & fetch langsung gagal). Pastikan URL benar & dapat diakses.",
+            htmlResult.reason,
+          ]
+            .filter(Boolean)
+            .join(" "),
         },
       });
       return;
     }
+
+    const notices = [dfsNotice, htmlResult.reason].filter(
+      (n): n is string => !!n,
+    );
 
     await prisma.seoOnPageAudit.update({
       where: { id: auditId },
@@ -208,6 +257,7 @@ export async function runOnPageAudit(auditId: string): Promise<void> {
 
     const input: AuditInput = {
       onpageScore: dfs?.onpageScore ?? null,
+      url: audit.url,
       title,
       description,
       h1Count,
@@ -268,7 +318,7 @@ export async function runOnPageAudit(auditId: string): Promise<void> {
           ? (aiRecommendations as unknown as Prisma.InputJsonValue)
           : Prisma.JsonNull,
         aiMeta,
-        dataNotice: dfsNotice,
+        dataNotice: notices.length > 0 ? notices.join(" ") : null,
         errorMessage: null,
       },
     });

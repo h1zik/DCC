@@ -32,6 +32,20 @@ export type GapRow = {
   bucket: GapBucket;
 };
 
+/**
+ * Hasil verifikasi posisi target untuk keyword kompetitor yang tidak masuk
+ * sampel target. `verified` = semua batch sukses sehingga missing/untapped
+ * adalah fakta; `partial`/`failed` = sebagian/semua batch gagal sehingga
+ * angka masih berbasis sampel.
+ */
+export type GapTargetVerification = {
+  status: "verified" | "partial" | "failed";
+  /** Jumlah keyword yang diminta verifikasi. */
+  checked: number;
+  /** Jumlah keyword yang ternyata di-ranking target. */
+  found: number;
+};
+
 export type GapCoverage = {
   /** Jumlah baris yang benar-benar diambil per domain. */
   fetchedByDomain: Record<string, number>;
@@ -40,7 +54,52 @@ export type GapCoverage = {
   /** Domain yang datanya dipotong oleh batas API. */
   truncatedDomains: string[];
   perDomainLimit: number;
+  /**
+   * Ada bila sampel target dipotong dan dilakukan verifikasi lanjutan.
+   * Tidak ada pada hasil lama atau bila sampel target sudah lengkap.
+   */
+  targetVerification?: GapTargetVerification;
 };
+
+/**
+ * True bila label missing/untapped masih berbasis sampel: sampel target
+ * dipotong dan verifikasi lanjutan tidak lengkap. Dipakai UI untuk memberi
+ * label "(dalam sampel)" alih-alih menyajikannya sebagai fakta.
+ */
+export function isGapMissingSampleBased(
+  targetDomain: string,
+  coverage: GapCoverage | null | undefined,
+): boolean {
+  if (!coverage) return false;
+  if (!coverage.truncatedDomains.includes(targetDomain)) return false;
+  return coverage.targetVerification?.status !== "verified";
+}
+
+/**
+ * Keyword yang di-ranking minimal satu kompetitor tetapi tidak ada di sampel
+ * target — kandidat yang perlu diverifikasi sebelum dicap missing/untapped.
+ */
+export function keywordsAbsentFromTarget(
+  targetDomain: string,
+  sources: Record<string, GapDomainRow[]>,
+): string[] {
+  const targetKeys = new Set(
+    (sources[targetDomain] ?? []).map((row) => row.keyword.trim().toLowerCase()),
+  );
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const [domain, rows] of Object.entries(sources)) {
+    if (domain === targetDomain) continue;
+    for (const row of rows) {
+      const keyword = row.keyword.trim();
+      const key = keyword.toLowerCase();
+      if (!key || targetKeys.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      out.push(keyword);
+    }
+  }
+  return out;
+}
 
 export type GapSummary = {
   version: 2;

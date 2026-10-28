@@ -24,7 +24,6 @@ type CheckRule = {
 const CHECK_RULES: CheckRule[] = [
   { key: "is_5xx_code", severity: SeoIssueSeverity.CRITICAL, message: "Halaman mengembalikan status 5xx." },
   { key: "is_4xx_code", severity: SeoIssueSeverity.HIGH, message: "Halaman mengembalikan status 4xx." },
-  { key: "is_broken", severity: SeoIssueSeverity.HIGH, message: "Halaman broken / tidak dapat diakses." },
   { key: "no_title", severity: SeoIssueSeverity.HIGH, message: "Halaman tanpa title tag." },
   { key: "recursive_canonical", severity: SeoIssueSeverity.MEDIUM, message: "Canonical rekursif/berantai." },
   { key: "no_description", severity: SeoIssueSeverity.MEDIUM, message: "Halaman tanpa meta description." },
@@ -52,8 +51,26 @@ export function buildCrawlIssues(summary: CrawlSummary): CrawlIssueInput[] {
 
   const pm = summary.pageMetrics;
   if (pm) {
-    push("broken_links", SeoIssueSeverity.HIGH, pm.brokenLinks, "Broken link (tautan rusak).");
+    // Tautan ke target yang sama dihitung per tautan oleh DataForSEO; satu
+    // halaman rusak bisa memunculkan puluhan tautan → MEDIUM agar tidak
+    // mendominasi skor di samping is_4xx/is_5xx yang sudah menghukum halamannya.
+    push("broken_links", SeoIssueSeverity.MEDIUM, pm.brokenLinks, "Broken link (tautan rusak).");
     push("broken_resources", SeoIssueSeverity.MEDIUM, pm.brokenResources, "Resource rusak (gambar/script/CSS).");
+
+    // is_broken mencakup halaman 4xx/5xx yang sudah dihitung di atas; hanya
+    // sisa (timeout / koneksi gagal) yang dihitung terpisah.
+    const broken = pm.checks.is_broken;
+    if (typeof broken === "number" && broken > 0) {
+      const covered =
+        (typeof pm.checks.is_4xx_code === "number" ? pm.checks.is_4xx_code : 0) +
+        (typeof pm.checks.is_5xx_code === "number" ? pm.checks.is_5xx_code : 0);
+      push(
+        "is_broken",
+        SeoIssueSeverity.HIGH,
+        Math.max(0, broken - covered),
+        "Halaman tidak dapat diakses (timeout / koneksi gagal).",
+      );
+    }
     push("redirect_loop", SeoIssueSeverity.HIGH, pm.redirectLoop, "Redirect loop terdeteksi.");
     push("duplicate_title", SeoIssueSeverity.MEDIUM, pm.duplicateTitle, "Title duplikat antar halaman.");
     push("duplicate_description", SeoIssueSeverity.MEDIUM, pm.duplicateDescription, "Meta description duplikat.");

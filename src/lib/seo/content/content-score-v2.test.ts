@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeContentV2,
   hasUsableGrounding,
+  isQuestionAnswered,
   type ScoreGrounding,
 } from "@/lib/seo/content/content-score-v2";
 import { extractSignalsFromHtml } from "@/lib/seo/content/html-signals-server";
@@ -94,6 +95,60 @@ describe("analyzeContentV2", () => {
     expect(
       withMarker.checks.find((c) => c.id === "verify_markers")?.passed,
     ).toBe(false);
+  });
+
+  it("uses pendingClaims (aiMeta) instead of HTML markers when provided", () => {
+    const signals = extractSignalsFromHtml(GOOD_HTML); // tanpa marker di HTML
+    const withClaims = analyzeContentV2(signals, META, GROUNDING, {
+      pendingClaims: ["klaim uji klinis"],
+    });
+    expect(
+      withClaims.checks.find((c) => c.id === "verify_markers")?.passed,
+    ).toBe(false);
+    const resolved = analyzeContentV2(signals, META, GROUNDING, {
+      pendingClaims: [],
+    });
+    expect(resolved.checks.find((c) => c.id === "verify_markers")?.passed).toBe(
+      true,
+    );
+    // Daftar eksplisit kosong mengalahkan marker lama di HTML (sudah dipindah).
+    const legacy = extractSignalsFromHtml(GOOD_HTML + "<!-- verify: x -->");
+    expect(
+      analyzeContentV2(legacy, META, GROUNDING, { pendingClaims: [] }).checks.find(
+        (c) => c.id === "verify_markers",
+      )?.passed,
+    ).toBe(true);
+  });
+
+  it("requires PAA tokens to appear within a single heading or paragraph", () => {
+    // Semua kata pertanyaan ada, tapi tersebar di paragraf berbeda.
+    const scattered = `
+<h1>Serum Niacinamide Terbaik</h1>
+<p>Apakah serum ini cocok? Niacinamide populer.</p>
+<p>Produk aman dipakai pagi.</p>
+<p>Untuk kulit berminyak cocok.</p>
+<p>Sensitif terhadap harga? Tenang.</p>`;
+    const notAnswered = analyzeContentV2(
+      extractSignalsFromHtml(scattered),
+      META,
+      GROUNDING,
+    );
+    expect(
+      notAnswered.checks.find((c) => c.id === "paa_answered")?.label,
+    ).toContain("(0/1)");
+
+    const inHeading = scattered + "<h2>Apakah niacinamide aman untuk kulit sensitif?</h2>";
+    const answered = analyzeContentV2(
+      extractSignalsFromHtml(inHeading),
+      META,
+      GROUNDING,
+    );
+    expect(answered.checks.find((c) => c.id === "paa_answered")?.label).toContain(
+      "(1/1)",
+    );
+    expect(isQuestionAnswered("apakah niacinamide aman untuk kulit sensitif", [
+      "niacinamide aman untuk kulit sensitif bila dosis rendah",
+    ])).toBe(true);
   });
 
   it("flags over-usage of terms", () => {

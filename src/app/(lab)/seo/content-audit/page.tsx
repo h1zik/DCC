@@ -31,6 +31,7 @@ export default async function SeoContentAuditPage() {
     dataNotice: a.dataNotice,
     errorMessage: a.errorMessage,
     createdAt: a.createdAt.toISOString(),
+    updatedAt: a.updatedAt.toISOString(),
   }));
 
   return (

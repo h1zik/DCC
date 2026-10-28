@@ -21,7 +21,18 @@ import { extractSignalsFromHtml } from "@/lib/seo/content/html-signals-server";
 import {
   buildOriginalityReport,
   sampleDistinctiveSentences,
+  sentenceAppearsIn,
+  toExactPhraseQuery,
 } from "@/lib/seo/content/originality";
+import {
+  extractVerifyMarkersFromHtml,
+  readPendingClaims,
+  removeClaim,
+  stripVerifyMarkers,
+  unionClaims,
+  withPendingClaims,
+} from "@/lib/seo/content/claims";
+import { isSeoRunStale, isSeoStatusBusy } from "@/lib/seo/labels";
 
 /* ---------------------------------- brief ---------------------------------- */
 
@@ -64,15 +75,16 @@ export async function retryContentBrief(briefId: string) {
 
   const brief = await prisma.seoContentBrief.findUnique({
     where: { id: briefId },
-    select: { status: true },
+    select: { status: true, updatedAt: true },
   });
   if (!brief) throw new Error("Brief tidak ditemukan.");
+  // Busy & belum macet → tolak; busy tapi stale (>15 menit tanpa update) →
+  // proses lama hampir pasti mati, jadi boleh dijalankan ulang.
   if (
-    brief.status === "COLLECTING" ||
-    brief.status === "ANALYZING" ||
-    brief.status === "PENDING"
+    isSeoStatusBusy(brief.status) &&
+    !isSeoRunStale(brief.status, brief.updatedAt)
   ) {
-    throw new Error("Brief masih diproses.");
+    throw new Error("Masih diproses.");
   }
 
   after(async () => {
@@ -123,12 +135,15 @@ export async function resumeDraftGenerationAction(draftId: string) {
 
   const draft = await prisma.seoContentDraft.findUnique({
     where: { id: draftId },
-    select: { status: true, briefId: true },
+    select: { status: true, briefId: true, updatedAt: true },
   });
   if (!draft) throw new Error("Draft tidak ditemukan.");
   if (!draft.briefId) throw new Error("Draft ini tidak terhubung ke brief.");
-  if (draft.status === "ANALYZING" || draft.status === "COLLECTING") {
-    throw new Error("Draft masih diproses.");
+  if (
+    isSeoStatusBusy(draft.status) &&
+    !isSeoRunStale(draft.status, draft.updatedAt)
+  ) {
+    throw new Error("Masih diproses.");
   }
 
   after(async () => {
@@ -230,11 +245,24 @@ export async function checkDraftOriginality(draftId: string) {
       matches: { url: string; title: string | null }[];
     }[] = [];
     for (const sentence of sentences) {
-      const lookup = await fetchSerpLive(`"${sentence}"`, { depth: 10 });
+      const lookup = await fetchSerpLive(toExactPhraseQuery(sentence), {
+        depth: 10,
+      });
+      // Hanya hitung cocok bila kalimat (ternormalisasi) benar-benar muncul
+      // di title/description hasil — SERP sering tetap mengembalikan hasil
+      // "mirip" untuk pencarian frasa persis.
       results.push({
         sentence,
         matches: lookup.items
-          .filter((i) => i.type === "organic" && i.url)
+          .filter(
+            (i) =>
+              i.type === "organic" &&
+              i.url &&
+              sentenceAppearsIn(sentence, {
+                title: i.title,
+                description: (i as { description?: string | null }).description,
+              }),
+          )
           .slice(0, 3)
           .map((i) => ({ url: i.url!, title: i.title ?? null })),
       });
@@ -263,4 +291,72 @@ export async function deleteContentDraft(draftId: string) {
   z.string().min(1).parse(draftId);
   await prisma.seoContentDraft.delete({ where: { id: draftId } });
   revalidatePath("/seo/content");
+}
+
+/* --------------------------------- claims ---------------------------------- */
+
+/**
+ * Daftar klaim menunggu verifikasi = `aiMeta.pendingClaims` ∪ marker
+ * `<!-- verify -->` yang mungkin masih ada di HTML draft lama. Saat klaim
+ * diubah, marker HTML dipindahkan ke aiMeta (HTML dibersihkan) agar sumber
+ * kebenaran tunggal.
+ */
+async function loadDraftClaims(draftId: string) {
+  const draft = await prisma.seoContentDraft.findUnique({
+    where: { id: draftId },
+    select: { aiMeta: true, contentHtml: true },
+  });
+  if (!draft) throw new Error("Draft tidak ditemukan.");
+  const legacy = extractVerifyMarkersFromHtml(draft.contentHtml);
+  return {
+    draft,
+    claims: unionClaims(readPendingClaims(draft.aiMeta), legacy),
+    hasLegacyMarkers: legacy.length > 0,
+  };
+}
+
+async function persistDraftClaims(
+  draftId: string,
+  draft: { aiMeta: Prisma.JsonValue; contentHtml: string },
+  claims: string[],
+  hasLegacyMarkers: boolean,
+) {
+  await prisma.seoContentDraft.update({
+    where: { id: draftId },
+    data: {
+      aiMeta: withPendingClaims(draft.aiMeta, claims) as Prisma.InputJsonValue,
+      ...(hasLegacyMarkers
+        ? { contentHtml: stripVerifyMarkers(draft.contentHtml) }
+        : {}),
+    },
+  });
+  revalidatePath(`/seo/content/draft/${draftId}`);
+}
+
+const resolveClaimSchema = z.object({
+  draftId: z.string().min(1),
+  claim: z.string().min(1).max(1000),
+});
+
+/** Tandai satu klaim sudah diverifikasi manusia (dihapus dari daftar). */
+export async function resolveDraftClaim(
+  input: z.infer<typeof resolveClaimSchema>,
+): Promise<{ pendingClaims: string[] }> {
+  await requireSeoAccess();
+  const data = resolveClaimSchema.parse(input);
+  const { draft, claims, hasLegacyMarkers } = await loadDraftClaims(data.draftId);
+  const next = removeClaim(claims, data.claim);
+  await persistDraftClaims(data.draftId, draft, next, hasLegacyMarkers);
+  return { pendingClaims: next };
+}
+
+/** Hapus semua tanda klaim (semua dianggap sudah diverifikasi). */
+export async function clearDraftClaims(
+  draftId: string,
+): Promise<{ pendingClaims: string[] }> {
+  await requireSeoAccess();
+  z.string().min(1).parse(draftId);
+  const { draft, hasLegacyMarkers } = await loadDraftClaims(draftId);
+  await persistDraftClaims(draftId, draft, [], hasLegacyMarkers);
+  return { pendingClaims: [] };
 }

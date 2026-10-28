@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ctrForPosition,
+  medianKnownVolume,
+  visibilityBreakdown,
   shareOfVoice,
   visibilityScore,
 } from "@/lib/seo/rank-tracker/visibility";
@@ -70,5 +72,58 @@ describe("shareOfVoice", () => {
     expect(sov[0].domain).toBe("kompetitor.com");
     expect(sov[0].visibility).toBeGreaterThan(0);
     expect(sov.find((s) => s.domain === "brand.com")!.visibility).toBeGreaterThan(0);
+  });
+});
+
+describe("median fallback for unknown volumes", () => {
+  it("computes the median of known volumes", () => {
+    expect(medianKnownVolume([])).toBeNull();
+    expect(
+      medianKnownVolume([
+        { position: 1, searchVolume: null },
+        { position: 1, searchVolume: 0 },
+      ]),
+    ).toBeNull();
+    expect(
+      medianKnownVolume([
+        { position: 1, searchVolume: 100 },
+        { position: 1, searchVolume: 5000 },
+        { position: 1, searchVolume: 300 },
+      ]),
+    ).toBe(300);
+    expect(
+      medianKnownVolume([
+        { position: 1, searchVolume: 100 },
+        { position: 1, searchVolume: 300 },
+      ]),
+    ).toBe(200);
+  });
+
+  it("weights unknown-volume keywords by the median, not by 1", () => {
+    // Dua keyword volume besar ranking #1, satu keyword tanpa volume tidak ranking.
+    const withMedian = visibilityBreakdown([
+      { position: 1, searchVolume: 1000 },
+      { position: 1, searchVolume: 1000 },
+      { position: null, searchVolume: null },
+    ]);
+    expect(withMedian.unknownVolumeCount).toBe(1);
+    expect(withMedian.fallbackVolume).toBe(1000);
+    // Bobot median 1000 → keyword tanpa volume menyumbang 1/3 potensi → 66.7%.
+    expect(withMedian.score).toBeCloseTo(66.7, 1);
+  });
+
+  it("falls back to unweighted (1) when no volume is known", () => {
+    const b = visibilityBreakdown([
+      { position: 1, searchVolume: null },
+      { position: null, searchVolume: null },
+    ]);
+    expect(b.fallbackVolume).toBe(1);
+    expect(b.unknownVolumeCount).toBe(2);
+    expect(b.score).toBe(50);
+  });
+
+  it("reports zero unknown when every keyword has volume", () => {
+    const b = visibilityBreakdown([{ position: 3, searchVolume: 10 }]);
+    expect(b.unknownVolumeCount).toBe(0);
   });
 });

@@ -64,6 +64,34 @@ export function isSeoStatusBusy(status: SeoAnalysisStatus): boolean {
   );
 }
 
+/**
+ * Batas usia run "sibuk" sebelum dianggap macet (15 menit). Pipeline SEO
+ * berjalan di `after()`; bila proses server restart di tengah jalan tidak ada
+ * `catch` yang menulis FAILED, sehingga status busy tanpa `updatedAt` bergerak
+ * selama ini hampir pasti berarti proses sudah mati.
+ */
+export const SEO_STALE_RUN_MS = 15 * 60 * 1000;
+
+/**
+ * True bila run berstatus busy tetapi tidak ada aktivitas tulis selama
+ * `SEO_STALE_RUN_MS`. Dipakai UI untuk membuka kembali tombol pemulihan dan
+ * oleh sapuan cron untuk menandai FAILED.
+ */
+export function isSeoRunStale(
+  status: SeoAnalysisStatus,
+  updatedAt: Date | string,
+  now: number = Date.now(),
+): boolean {
+  if (!isSeoStatusBusy(status)) return false;
+  const t = typeof updatedAt === "string" ? Date.parse(updatedAt) : updatedAt.getTime();
+  if (!Number.isFinite(t)) return false;
+  return now - t > SEO_STALE_RUN_MS;
+}
+
+/** Pesan error standar untuk run yang ditandai macet. */
+export const SEO_STALE_RUN_MESSAGE =
+  "Proses terhenti tanpa hasil (kemungkinan server restart saat berjalan). Jalankan ulang.";
+
 /** Label posisi ranking yang ramah (null = di luar top 100). */
 export function formatRankPosition(position: number | null | undefined): string {
   if (position == null) return "—";

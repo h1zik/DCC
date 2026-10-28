@@ -94,6 +94,18 @@ function num(value: unknown): React.ReactNode {
   return typeof value === "number" ? value.toLocaleString("id-ID") : "—";
 }
 
+const HTML_ONLY_NOTICE =
+  "Skor dihitung dari HTML saja (DataForSEO tidak tersedia): cek kecepatan, status HTTP & checks lanjutan tidak termasuk.";
+
+/**
+ * Tone skor; bila sumber data hanya HTML, jangan tampil hijau — bagian cek
+ * yang hilang bisa menyembunyikan masalah, jadi paling tinggi amber.
+ */
+function cappedScoreTone(score: number | null, htmlOnly: boolean): string {
+  if (!htmlOnly || score == null || score < 80) return scoreToneClass(score);
+  return "text-amber-600 dark:text-amber-400";
+}
+
 export function OnPageAuditDetailClient({ audit }: { audit: AuditDetail }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -124,6 +136,9 @@ export function OnPageAuditDetailClient({ audit }: { audit: AuditDetail }) {
   const s = audit.signals ?? {};
   const schemaTypes = Array.isArray(s.schemaTypes) ? (s.schemaTypes as string[]) : [];
   const recs = audit.aiRecommendations?.recommendations ?? [];
+  const htmlOnly = s.source === "html";
+  const dataforseoScore =
+    typeof s.dataforseoScore === "number" ? s.dataforseoScore : null;
 
   const severityCounts = audit.issues.reduce<Record<SeoIssueSeverity, number>>(
     (acc, issue) => {
@@ -170,7 +185,16 @@ export function OnPageAuditDetailClient({ audit }: { audit: AuditDetail }) {
           {audit.errorMessage}
         </div>
       ) : null}
-      {audit.dataNotice ? (
+      {!busy && htmlOnly ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
+          <p className="font-semibold">{HTML_ONLY_NOTICE}</p>
+          {audit.dataNotice ? (
+            <p className="mt-1 text-amber-700/90 dark:text-amber-200/80">
+              {audit.dataNotice}
+            </p>
+          ) : null}
+        </div>
+      ) : audit.dataNotice ? (
         <div className={cn(lab.nestedPanel, "text-muted-foreground text-sm")}>
           {audit.dataNotice}
         </div>
@@ -192,7 +216,7 @@ export function OnPageAuditDetailClient({ audit }: { audit: AuditDetail }) {
               <span
                 className={cn(
                   "bento-value text-5xl",
-                  scoreToneClass(audit.score),
+                  cappedScoreTone(audit.score, htmlOnly),
                 )}
               >
                 {audit.score ?? "—"}
@@ -203,8 +227,15 @@ export function OnPageAuditDetailClient({ audit }: { audit: AuditDetail }) {
                 ) : null}
               </span>
               <span className="text-muted-foreground text-[11px] font-medium leading-snug">
-                gabungan title, meta, heading, link, alt, schema & readability
+                100 dikurangi penalti per isu: kritis −20, tinggi −12, sedang −6,
+                rendah −2
+                {htmlOnly ? " · sumber: HTML saja" : ""}
               </span>
+              {dataforseoScore != null ? (
+                <span className="text-muted-foreground text-[11px] font-medium tabular-nums">
+                  Skor DataForSEO: {dataforseoScore}/100
+                </span>
+              ) : null}
             </div>
 
             {/* Distribusi severity */}
@@ -217,7 +248,9 @@ export function OnPageAuditDetailClient({ audit }: { audit: AuditDetail }) {
               </div>
               {audit.issues.length === 0 ? (
                 <p className="text-muted-foreground m-auto text-sm">
-                  Tidak ada isu terdeteksi — halaman sudah rapi.
+                  {htmlOnly
+                    ? "Tidak ada isu dari cek HTML — cek DataForSEO (kecepatan, status HTTP, checks lanjutan) belum dijalankan."
+                    : "Tidak ada isu terdeteksi — halaman sudah rapi."}
                 </p>
               ) : (
                 <>
@@ -341,7 +374,9 @@ export function OnPageAuditDetailClient({ audit }: { audit: AuditDetail }) {
               </div>
               {audit.issues.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  Tidak ada isu mayor. 🎉
+                  {htmlOnly
+                    ? "Tidak ada isu dari cek HTML (cakupan terbatas)."
+                    : "Tidak ada isu mayor. 🎉"}
                 </p>
               ) : (
                 <ul className="flex flex-col gap-2">

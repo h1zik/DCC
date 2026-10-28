@@ -29,14 +29,53 @@ function baseInput(overrides: Partial<AuditInput> = {}): AuditInput {
 describe("buildOnPageIssues", () => {
   it("flags critical/high check-based issues", () => {
     const issues = buildOnPageIssues(
-      baseInput({ checks: { no_title: true, no_h1_tag: true, https: false } }),
+      baseInput({ checks: { no_title: true, no_h1_tag: true, is_https: false } }),
     );
     const types = issues.map((i) => i.type);
     expect(types).toContain("no_title");
     expect(types).toContain("no_h1_tag");
-    expect(types).toContain("https");
+    expect(types).toContain("is_https");
     const noTitle = issues.find((i) => i.type === "no_title");
     expect(noTitle?.severity).toBe(SeoIssueSeverity.CRITICAL);
+  });
+
+  it("reads the DataForSEO key is_https (not https)", () => {
+    const issues = buildOnPageIssues(baseInput({ checks: { https: false } }));
+    expect(issues.map((i) => i.type)).not.toContain("is_https");
+  });
+
+  it("falls back to value-based structural checks when DataForSEO checks are absent (HTML-only)", () => {
+    const issues = buildOnPageIssues(
+      baseInput({
+        checks: {},
+        url: "http://example.com/page",
+        title: null,
+        description: "",
+        h1Count: 0,
+        imagesWithoutAlt: 3,
+      }),
+    );
+    const types = issues.map((i) => i.type);
+    expect(types).toContain("no_title");
+    expect(types).toContain("no_description");
+    expect(types).toContain("no_h1_tag");
+    expect(types).toContain("is_https");
+    expect(types).toContain("images_without_alt");
+    // Tidak digandakan dengan aturan panjang title/description.
+    expect(types).not.toContain("title_length");
+    expect(types).not.toContain("description_length");
+  });
+
+  it("does not duplicate structural issues already flagged by DataForSEO checks", () => {
+    const issues = buildOnPageIssues(
+      baseInput({ checks: { no_title: true }, title: null }),
+    );
+    expect(issues.filter((i) => i.type === "no_title")).toHaveLength(1);
+  });
+
+  it("does not flag https for an https URL", () => {
+    const issues = buildOnPageIssues(baseInput({ url: "https://example.com/" }));
+    expect(issues.map((i) => i.type)).not.toContain("is_https");
   });
 
   it("flags thin content and long title from signals", () => {

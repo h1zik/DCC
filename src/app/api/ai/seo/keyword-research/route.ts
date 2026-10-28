@@ -31,7 +31,7 @@ export async function GET(req: Request) {
         cpc: k.cpc,
         intent: k.intent,
       }));
-    return aiApiOk({ seed, count: ideas.length, keywords }, guard.ctx.role);
+    return aiApiOk({ seed, count: keywords.length, keywords }, guard.ctx.role);
   } catch (err) {
     return aiApiError(
       err instanceof Error ? err.message : "Gagal riset keyword.",

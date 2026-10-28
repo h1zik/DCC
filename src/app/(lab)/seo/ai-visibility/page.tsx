@@ -7,13 +7,19 @@ import {
   type AiVisibilityRunRow,
 } from "./ai-visibility-client";
 
+/** Jumlah run terbaru yang dimuat ke daftar; tile "Total run" memakai count(). */
+const RUN_LIST_LIMIT = 50;
+
 export default async function SeoAiVisibilityPage() {
   await ensureSeoPage();
 
-  const runs = await prisma.seoAiVisibilityRun.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 12,
-  });
+  const [runs, totalRuns] = await Promise.all([
+    prisma.seoAiVisibilityRun.findMany({
+      orderBy: { createdAt: "desc" },
+      take: RUN_LIST_LIMIT,
+    }),
+    prisma.seoAiVisibilityRun.count(),
+  ]);
 
   const items: AiVisibilityRunRow[] = runs.map((r) => ({
     id: r.id,
@@ -32,6 +38,7 @@ export default async function SeoAiVisibilityPage() {
     dataNotice: r.dataNotice,
     errorMessage: r.errorMessage,
     createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
   }));
 
   return (
@@ -40,7 +47,7 @@ export default async function SeoAiVisibilityPage() {
       title="AI Visibility"
       description="Apakah brand Anda disebut saat orang bertanya ke ChatGPT, Gemini, Claude, atau Perplexity? Frontier baru SEO (AEO) — pantau mention brand di jawaban AI untuk keyword komersial Anda."
     >
-      <AiVisibilityClient items={items} />
+      <AiVisibilityClient items={items} totalRuns={totalRuns} />
     </SeoModulePage>
   );
 }

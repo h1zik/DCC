@@ -5,6 +5,17 @@ import { refreshOpportunities } from "@/lib/seo/content/opportunity-feed";
 import { sendWeeklyRankSummaries } from "@/lib/seo/rank-tracker/weekly-notify";
 import { runDueCrawlSchedules } from "@/lib/seo/crawler/crawl-schedule";
 import { syncGscDaily } from "@/lib/seo/gsc/sync";
+import { failStaleSeoRuns } from "@/lib/seo/stale-sweep";
+
+/** Sapu run macet (best-effort; tidak boleh menggagalkan mode cron lain). */
+async function failStaleSeoRunsSafe() {
+  try {
+    return await failStaleSeoRuns();
+  } catch (err) {
+    console.warn("[cron/seo-sync] sapuan run macet gagal", err);
+    return {};
+  }
+}
 
 /** Refresh feed Content Opportunities (best-effort setelah rank sync). */
 async function refreshOpportunitiesSafe() {
@@ -42,8 +53,9 @@ export async function GET(request: Request) {
   const mode = url.searchParams.get("mode") ?? "ranks";
 
   if (mode === "crawl-poll") {
+    const stale = await failStaleSeoRunsSafe();
     const result = await pollRunningSiteCrawls();
-    return Response.json({ ok: true, mode, ...result });
+    return Response.json({ ok: true, mode, ...result, stale });
   }
 
   if (mode === "prune") {
@@ -67,13 +79,22 @@ export async function GET(request: Request) {
   }
 
   if (mode === "full") {
+    const stale = await failStaleSeoRunsSafe();
     const [ranks, crawls, pruned] = await Promise.all([
       syncActiveRankProjects(),
       pollRunningSiteCrawls(),
       pruneDataForSeoCache(),
     ]);
     const opportunities = await refreshOpportunitiesSafe();
-    return Response.json({ ok: true, mode, ranks, crawls, pruned, opportunities });
+    return Response.json({
+      ok: true,
+      mode,
+      ranks,
+      crawls,
+      pruned,
+      opportunities,
+      stale,
+    });
   }
 
   // default: ranks (+ refresh feed opportunities dari posisi terbaru)

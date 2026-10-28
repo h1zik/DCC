@@ -87,6 +87,28 @@ function tokenOverlapRatio(a: string, b: string): number {
   return hit / ta.size;
 }
 
+/** Ambang token overlap agar satu blok dianggap menjawab pertanyaan PAA. */
+const PAA_ANSWER_OVERLAP = 0.6;
+
+/**
+ * Pertanyaan PAA dianggap terjawab bila SATU blok (heading atau paragraf)
+ * memuat ≥ 60% token pertanyaan — mencegah kata yang tersebar di seluruh
+ * artikel dihitung sebagai jawaban.
+ */
+export function isQuestionAnswered(question: string, blocks: string[]): boolean {
+  return blocks.some(
+    (block) => tokenOverlapRatio(question, block) >= PAA_ANSWER_OVERLAP,
+  );
+}
+
+export type AnalyzeContentV2Options = {
+  /**
+   * Klaim yang menunggu verifikasi (dari `aiMeta.pendingClaims`, digabung
+   * marker HTML lama). Bila tidak diberikan, pakai marker di HTML saja.
+   */
+  pendingClaims?: string[];
+};
+
 /** Apakah grounding cukup berisi untuk skoring v2 (kalau tidak → fallback v1). */
 export function hasUsableGrounding(g: ScoreGrounding | null): g is ScoreGrounding {
   if (!g) return false;
@@ -102,7 +124,9 @@ export function analyzeContentV2(
   signals: DocSignals,
   meta: ScoreMetaInput,
   grounding: ScoreGrounding,
+  opts: AnalyzeContentV2Options = {},
 ): ContentAnalysisV2 {
+  const pendingClaims = opts.pendingClaims ?? signals.verifyMarkers;
   const textLower = signals.text.toLowerCase();
   const kw = grounding.targetKeyword.toLowerCase().trim();
   const kwCount = countOccurrences(textLower, kw);
@@ -244,12 +268,15 @@ export function analyzeContentV2(
 
   /* -------------------------- 3. Pertanyaan (15%) --------------------------- */
   if (grounding.paaQuestions.length > 0) {
-    const headingAndText =
-      signals.headings.map((h) => h.text).join(" ").toLowerCase() +
-      " " +
-      textLower;
-    const answered = grounding.paaQuestions.filter(
-      (q) => tokenOverlapRatio(q, headingAndText) >= 0.6,
+    // Pertanyaan dianggap terjawab hanya bila ≥ 60% token-nya muncul dalam
+    // SATU blok (satu heading atau satu paragraf) — bukan kata tersebar di
+    // seluruh artikel.
+    const blocks = [
+      ...signals.headings.map((h) => h.text),
+      ...signals.paragraphs,
+    ];
+    const answered = grounding.paaQuestions.filter((q) =>
+      isQuestionAnswered(q, blocks),
     ).length;
     const ratio = answered / grounding.paaQuestions.length;
     categories.push({
@@ -395,16 +422,17 @@ export function analyzeContentV2(
       hint: "Gunakan list untuk poin-poin agar mudah dipindai.",
     });
 
-    // Penalti verify-marker: klaim belum diverifikasi menurunkan skor.
+    // Penalti klaim: klaim belum diverifikasi (aiMeta.pendingClaims ∪ marker
+    // HTML lama) menurunkan skor.
     max += 1;
-    const noMarkers = signals.verifyMarkers.length === 0;
+    const noMarkers = pendingClaims.length === 0;
     pts += noMarkers ? 1 : 0;
     checks.push({
       id: "verify_markers",
       label: "Tidak ada klaim menunggu verifikasi",
       passed: noMarkers,
       weight: 1,
-      hint: `${signals.verifyMarkers.length} klaim ditandai <!-- verify --> — verifikasi lalu hapus markernya.`,
+      hint: `${pendingClaims.length} klaim menunggu verifikasi — cek lalu tandai terverifikasi di panel klaim.`,
     });
 
     categories.push({

@@ -31,6 +31,7 @@ export default async function SeoKeywordGapDetailPage({
     target: gap.target,
     competitors: gap.competitors,
     status: gap.status,
+    updatedAt: gap.updatedAt.toISOString(),
     rows:
       !isLegacy && Array.isArray(gap.rows)
         ? (gap.rows as unknown as GapRow[])

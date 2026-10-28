@@ -32,6 +32,7 @@ export default async function SeoMarketplaceDetailPage({
       (analysis.recommendations as MarketplaceDetail["recommendations"]) ?? null,
     dataNotice: analysis.dataNotice,
     errorMessage: analysis.errorMessage,
+    updatedAt: analysis.updatedAt.toISOString(),
   };
 
   return <MarketplaceDetailClient analysis={detail} />;

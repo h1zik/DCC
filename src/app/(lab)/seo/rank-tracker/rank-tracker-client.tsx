@@ -214,7 +214,7 @@ export function RankTrackerClient({
                 : "—"}
             </span>
             <span className="text-muted-foreground text-[11px] font-medium">
-              semua keyword yang ranking
+              keyword yang ranking saja
             </span>
           </div>
 
@@ -396,7 +396,7 @@ export function RankTrackerClient({
                           className="h-10"
                         />
                         <p className="text-muted-foreground mt-1 text-[10px] font-medium">
-                          Posisi rata-rata · 30 hari terakhir
+                          Posisi rata-rata (keyword yang ranking) · 30 hari
                         </p>
                       </div>
                     ) : (

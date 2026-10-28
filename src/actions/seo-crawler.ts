@@ -9,6 +9,7 @@ import { requireSeoAccess } from "@/lib/seo/auth";
 import { normalizeDomain } from "@/lib/seo/dataforseo/serp";
 import {
   collectCrawlResults,
+  recoverStaleAnalyzingCrawls,
   startSiteCrawl,
 } from "@/lib/seo/crawler/crawler";
 
@@ -104,12 +105,14 @@ export async function pollSeoSiteCrawls(crawlIds: string[]) {
   ];
   if (ids.length === 0) return { checked: 0 };
 
+  // Crawl ANALYZING yang macet (>20 menit) dikembalikan ke COLLECTING dulu
+  // agar bisa di-poll ulang; yang masih segar sedang dikerjakan proses lain.
+  await recoverStaleAnalyzingCrawls(ids);
+
   const running = await prisma.seoSiteCrawl.findMany({
     where: {
       id: { in: ids },
-      status: {
-        in: [SeoAnalysisStatus.COLLECTING, SeoAnalysisStatus.ANALYZING],
-      },
+      status: SeoAnalysisStatus.COLLECTING,
       dataforseoTaskId: { not: null },
     },
     select: { id: true },

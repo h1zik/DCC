@@ -137,12 +137,19 @@ export async function generateContentBrief(briefId: string): Promise<void> {
       percent: 45,
     });
 
-    const terms: SemanticTerm[] = analyzeTerms(
-      okPages.map((p) => p.bodyText),
-      { targetKeyword: brief.targetKeyword },
-    );
+    // Term & target median hanya dipersist bila sampel kompetitor memadai
+    // (≥ MIN_COMPETITOR_OK halaman); sampel 1–2 halaman tidak representatif
+    // dan akan menyesatkan skor draft. Notice "grounding terbatas" sudah
+    // ditambahkan di atas.
+    const enoughSample = okPages.length >= MIN_COMPETITOR_OK;
+    const terms: SemanticTerm[] = enoughSample
+      ? analyzeTerms(
+          okPages.map((p) => p.bodyText),
+          { targetKeyword: brief.targetKeyword, minDocs: MIN_COMPETITOR_OK },
+        )
+      : [];
     const targets =
-      okPages.length > 0
+      enoughSample
         ? medianTargets(
             okPages.map((p) => ({
               wordCount: p.wordCount,

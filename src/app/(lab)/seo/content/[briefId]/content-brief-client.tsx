@@ -22,6 +22,7 @@ import { SeoDetailPage } from "@/components/seo/seo-module-page";
 import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
 import {
   SEO_STATUS_LABELS,
+  isSeoRunStale,
   isSeoStatusBusy,
   scoreToneClass,
 } from "@/lib/seo/labels";
@@ -44,6 +45,8 @@ export type BriefDetail = {
   dataNotice: string | null;
   stepLabel: string | null;
   percent: number;
+  /** ISO — untuk deteksi proses macet (busy > 15 menit tanpa update). */
+  updatedAt: string;
   serpData: { rank: number; title: string; url: string; domain: string }[];
   paaQuestions: string[];
   relatedSearches: string[];
@@ -101,6 +104,9 @@ export function ContentBriefClient({ brief }: { brief: BriefDetail }) {
   const [retrying, setRetrying] = useState(false);
 
   const busy = isSeoStatusBusy(brief.status);
+  // Busy > 15 menit tanpa update → proses hampir pasti mati; buka tombol
+  // "Riset ulang" (server action juga mengizinkan retry saat stale).
+  const stale = isSeoRunStale(brief.status, brief.updatedAt);
   useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
@@ -152,7 +158,7 @@ export function ContentBriefClient({ brief }: { brief: BriefDetail }) {
       right={
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill status={brief.status} />
-          {!busy ? (
+          {!busy || stale ? (
             <Button
               variant="outline"
               size="sm"
@@ -160,7 +166,7 @@ export function ContentBriefClient({ brief }: { brief: BriefDetail }) {
               disabled={pending || retrying}
             >
               {retrying ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-              Riset ulang
+              {stale ? "Jalankan ulang" : "Riset ulang"}
             </Button>
           ) : null}
           <Button
@@ -177,6 +183,12 @@ export function ContentBriefClient({ brief }: { brief: BriefDetail }) {
       {brief.status === SeoAnalysisStatus.FAILED && brief.errorMessage ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {brief.errorMessage}
+        </div>
+      ) : null}
+
+      {stale ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
+          Proses tampak terhenti — jalankan ulang.
         </div>
       ) : null}
 

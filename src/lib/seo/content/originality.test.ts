@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOriginalityReport,
+  normalizeForMatch,
   sampleDistinctiveSentences,
+  sentenceAppearsIn,
+  toExactPhraseQuery,
 } from "@/lib/seo/content/originality";
 
 const TEXT = `Niacinamide adalah salah satu bahan aktif paling populer dalam perawatan kulit modern. Apa itu niacinamide? Serum dengan kandungan niacinamide lima persen membantu menjaga skin barrier tetap sehat setiap hari. Ok. Pemakaian rutin di pagi hari sebaiknya selalu diikuti dengan sunscreen ber-SPF tiga puluh atau lebih. 123 456 789 000 111 222 333 444. Kulit kusam sering kali disebabkan oleh paparan sinar matahari dan kurangnya eksfoliasi yang teratur. Formula ringan ini mudah menyerap dan cocok untuk kulit berminyak maupun kombinasi tanpa rasa lengket.`;
@@ -40,5 +43,37 @@ describe("buildOriginalityReport", () => {
 
   it("returns 100 for empty input", () => {
     expect(buildOriginalityReport([], "t").score).toBe(100);
+  });
+});
+
+describe("sentenceAppearsIn / toExactPhraseQuery", () => {
+  it("strips quotes from the sample before quoting", () => {
+    expect(toExactPhraseQuery('Serum "ajaib" ini  membantu kulit')).toBe(
+      '"Serum ajaib ini membantu kulit"',
+    );
+  });
+
+  it("only counts a match when the normalised sentence appears in title/description", () => {
+    const sentence = "Niacinamide membantu menjaga skin barrier tetap sehat.";
+    expect(
+      sentenceAppearsIn(sentence, {
+        title: "Manfaat Niacinamide",
+        description:
+          "Menurut ahli, niacinamide membantu menjaga skin-barrier tetap sehat, terutama...",
+      }),
+    ).toBe(true);
+    expect(
+      sentenceAppearsIn(sentence, {
+        title: "Niacinamide dan skin barrier",
+        description: "Artikel tentang menjaga kulit sehat dengan niacinamide.",
+      }),
+    ).toBe(false);
+    expect(sentenceAppearsIn(sentence, { title: null, description: null })).toBe(
+      false,
+    );
+  });
+
+  it("normalises case, punctuation and whitespace", () => {
+    expect(normalizeForMatch("  Halo,  Dunia!  ")).toBe("halo dunia");
   });
 });

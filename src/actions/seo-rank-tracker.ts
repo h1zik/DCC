@@ -9,22 +9,28 @@ import { requireSeoAccess } from "@/lib/seo/auth";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { normalizeDomain } from "@/lib/seo/dataforseo/serp";
 import { runRankCheck } from "@/lib/seo/rank-tracker/rank-check";
-import { syncProjectRanks } from "@/lib/seo/rank-tracker/rank-sync";
+import {
+  isRankSyncRunning,
+  syncProjectRanks,
+} from "@/lib/seo/rank-tracker/rank-sync";
 import { backfillTrackedKeywordVolumes } from "@/lib/seo/rank-tracker/volume-backfill";
 
 const MAX_COMPETITORS = 5;
 
 const MAX_KEYWORDS_PER_PROJECT = 50;
 
+/** Bentuk kanonik keyword terlacak: trim + lowercase (kunci unik per proyek). */
+function normalizeKeyword(raw: string): string {
+  return raw.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function dedupeKeywords(keywords: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of keywords) {
-    const kw = raw.trim();
-    if (!kw) continue;
-    const key = kw.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const kw = normalizeKeyword(raw);
+    if (!kw || seen.has(kw)) continue;
+    seen.add(kw);
     out.push(kw);
     if (out.length >= MAX_KEYWORDS_PER_PROJECT) break;
   }
@@ -99,17 +105,30 @@ export async function addTrackedKeyword(
 ) {
   await requireSeoAccess();
   const data = addKeywordSchema.parse(input);
+  const keyword = normalizeKeyword(data.keyword);
+  if (!keyword) throw new Error("Keyword tidak valid.");
+
+  // Batas 50 keyword per proyek — sama seperti saat membuat proyek.
+  const [existing, count] = await Promise.all([
+    prisma.seoTrackedKeyword.findUnique({
+      where: { projectId_keyword: { projectId: data.projectId, keyword } },
+      select: { id: true },
+    }),
+    prisma.seoTrackedKeyword.count({ where: { projectId: data.projectId } }),
+  ]);
+  if (!existing && count >= MAX_KEYWORDS_PER_PROJECT) {
+    throw new Error(
+      `Maksimal ${MAX_KEYWORDS_PER_PROJECT} keyword per proyek. Hapus keyword lain dulu.`,
+    );
+  }
 
   const created = await prisma.seoTrackedKeyword.upsert({
     where: {
-      projectId_keyword: {
-        projectId: data.projectId,
-        keyword: data.keyword.trim(),
-      },
+      projectId_keyword: { projectId: data.projectId, keyword },
     },
     create: {
       projectId: data.projectId,
-      keyword: data.keyword.trim(),
+      keyword,
       targetUrl: data.targetUrl?.trim() || null,
     },
     update: { targetUrl: data.targetUrl?.trim() || null },
@@ -202,6 +221,13 @@ export async function checkRankNow(keywordId: string) {
 export async function checkProjectRanks(projectId: string) {
   await requireSeoAccess();
   z.string().min(1).parse(projectId);
+
+  // Jangan tumpuk dua sinkron untuk proyek yang sama.
+  if (await isRankSyncRunning(projectId)) {
+    throw new Error(
+      "Pengecekan masih berjalan. Tunggu sampai selesai sebelum menjalankan lagi.",
+    );
+  }
 
   after(async () => {
     try {

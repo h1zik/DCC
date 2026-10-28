@@ -2,16 +2,23 @@ import { LineChart } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { SeoModulePage } from "@/components/seo/seo-module-page";
 import { visibilityScore } from "@/lib/seo/rank-tracker/visibility";
-import { rankChangeKind } from "@/lib/seo/rank-tracker/rank-change";
+import { displayRankChangeKind } from "@/lib/seo/rank-tracker/rank-change";
+import { buildAvgPositionSeries } from "@/lib/seo/rank-tracker/visibility-series";
 import {
   RankTrackerClient,
   type RankProjectRow,
   type RankPortfolioSummary,
 } from "./rank-tracker-client";
 
-/** Batas waktu sparkline kartu proyek (30 hari terakhir). */
+/** Rentang sparkline kartu proyek (hari kalender WIB). */
+const SPARK_DAYS = 30;
+
+/**
+ * Batas ambil snapshot sparkline: rentang + 14 hari ke belakang agar posisi
+ * keyword yang tidak dicek tepat di awal rentang tetap bisa di-carry-forward.
+ */
 function sparkCutoff(): Date {
-  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  return new Date(Date.now() - (SPARK_DAYS + 14) * 24 * 60 * 60 * 1000);
 }
 
 export default async function SeoRankTrackerPage() {
@@ -25,14 +32,16 @@ export default async function SeoRankTrackerPage() {
             lastPosition: true,
             previousPosition: true,
             searchVolume: true,
+            _count: { select: { snapshots: true } },
           },
         },
       },
     }),
     prisma.seoRankSnapshot.findMany({
-      where: { capturedAt: { gte: sparkCutoff() }, position: { not: null } },
+      where: { capturedAt: { gte: sparkCutoff() } },
       orderBy: { capturedAt: "asc" },
       select: {
+        trackedKeywordId: true,
         position: true,
         capturedAt: true,
         trackedKeyword: { select: { projectId: true } },
@@ -40,22 +49,21 @@ export default async function SeoRankTrackerPage() {
     }),
   ]);
 
-  // Rata-rata posisi per hari per proyek → data sparkline kartu.
-  const sparkByProject = new Map<
+  // Snapshot per keyword per proyek → posisi rata-rata harian (WIB) dengan
+  // carry-forward per keyword untuk sparkline kartu.
+  const snapsByProject = new Map<
     string,
-    Map<string, { total: number; count: number }>
+    Map<string, { capturedAt: Date; position: number | null }[]>
   >();
   for (const s of snapshots) {
-    if (s.position == null) continue;
     const pid = s.trackedKeyword.projectId;
-    const day = s.capturedAt.toISOString().slice(0, 10);
-    const days =
-      sparkByProject.get(pid) ?? new Map<string, { total: number; count: number }>();
-    const cur = days.get(day) ?? { total: 0, count: 0 };
-    cur.total += s.position;
-    cur.count += 1;
-    days.set(day, cur);
-    sparkByProject.set(pid, days);
+    const byKeyword =
+      snapsByProject.get(pid) ??
+      new Map<string, { capturedAt: Date; position: number | null }[]>();
+    const list = byKeyword.get(s.trackedKeywordId) ?? [];
+    list.push({ capturedAt: s.capturedAt, position: s.position });
+    byKeyword.set(s.trackedKeywordId, list);
+    snapsByProject.set(pid, byKeyword);
   }
 
   const rows: RankProjectRow[] = projects.map((p) => {
@@ -69,7 +77,11 @@ export default async function SeoRankTrackerPage() {
     let moversUp = 0;
     let moversDown = 0;
     for (const k of p.keywords) {
-      const kind = rankChangeKind(k.previousPosition, k.lastPosition);
+      const kind = displayRankChangeKind({
+        previousPosition: k.previousPosition,
+        lastPosition: k.lastPosition,
+        snapshotCount: k._count.snapshots,
+      });
       if (kind === "up" || kind === "entered") moversUp += 1;
       else if (kind === "down" || kind === "dropped") moversDown += 1;
     }
@@ -79,9 +91,14 @@ export default async function SeoRankTrackerPage() {
         .filter((k) => k.lastPosition != null)
         .sort((a, b) => a.lastPosition! - b.lastPosition!)[0] ?? null;
 
-    const spark = [...(sparkByProject.get(p.id)?.entries() ?? [])]
-      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-      .map(([, v]) => Math.round((v.total / v.count) * 10) / 10);
+    const spark = buildAvgPositionSeries(
+      [...(snapsByProject.get(p.id)?.entries() ?? [])].map(([id, snaps]) => ({
+        id,
+        searchVolume: null,
+        snapshots: snaps,
+      })),
+      SPARK_DAYS,
+    ).map((pt) => pt.avgPosition);
 
     return {
       id: p.id,

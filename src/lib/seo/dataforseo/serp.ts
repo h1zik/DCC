@@ -52,6 +52,11 @@ export type SerpQueryOptions = {
   device?: SeoRankDevice;
   /** Kedalaman hasil (default 100 = top 100). */
   depth?: number;
+  /**
+   * Paksa ambil SERP segar (lewati cache baca). Wajib untuk rank check
+   * agar snapshot harian dan "Cek sekarang" tidak memakai SERP kemarin.
+   */
+  fresh?: boolean;
 };
 
 /**
@@ -73,10 +78,16 @@ export async function fetchSerpLive(
     depth: Math.min(700, Math.max(10, opts.depth ?? 100)),
   };
 
-  const items = await withDataForSeoCache(endpoint, payload, async () => {
-    const result = await dataForSeoLive<DfsSerpResult>(endpoint, payload);
-    return result[0]?.items ?? [];
-  });
+  const items = await withDataForSeoCache(
+    endpoint,
+    payload,
+    async () => {
+      const result = await dataForSeoLive<DfsSerpResult>(endpoint, payload);
+      return result[0]?.items ?? [];
+    },
+    undefined,
+    { bypass: opts.fresh === true },
+  );
 
   return { items, serpFeatures: extractSerpFeatures(items) };
 }

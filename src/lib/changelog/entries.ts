@@ -37,6 +37,30 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-10-28-seo-toolkit-reliability",
+    date: "2026-10-28",
+    title: "SEO Toolkit: angka yang lebih bisa dipercaya di semua modul",
+    category: "fixed",
+    description:
+      "Hasil audit menyeluruh SEO Toolkit diperbaiki: pengecekan ranking selalu memakai data segar, kegagalan tidak lagi disamarkan sebagai hasil bagus, proses yang macet otomatis ditandai dan bisa dijalankan ulang, serta sejumlah rumus dan label diluruskan.",
+    highlights: [
+      "Rank Tracker: cek posisi tidak lagi memakai SERP dari cache; satu snapshot per hari WIB sehingga panah perubahan tidak hilang saat cek ulang",
+      "Rank Tracker: grafik harian memakai hari WIB dan meneruskan posisi terakhir tiap keyword (tidak ada lagi lonjakan palsu); ringkasan mingguan mengabaikan keyword yang baru ditambah",
+      "Rank Tracker: status sinkron terakhir tampil di proyek (termasuk jumlah keyword gagal & alasannya); cek pertama tidak lagi dihitung sebagai kenaikan",
+      "Crawler: hasil tidak lagi terduplikasi saat beberapa tab/cron memproses crawl yang sama; crawl 0 halaman ditandai gagal, bukan Health 100",
+      "Crawler: crawl yang tasknya hilang di DataForSEO tidak lagi berputar selamanya; hitungan isu dibedakan antara halaman bermasalah dan jenis isu",
+      "On-Page Audit: audit ulang selalu segar; tanpa data DataForSEO cek title/meta/H1 tetap berjalan dan diberi label HTML-only; cek HTTPS kini benar-benar bekerja",
+      "Keyword Gap: keyword Missing diverifikasi langsung ke DataForSEO bila sampel domain terpotong, atau diberi label \"dalam sampel\"",
+      "Keyword Research: keyword terkait tidak lagi terbuang, keyword utama selalu punya volume/difficulty, impor dari Keyword Gap aman saat riset ulang",
+      "Content Opportunities: item yang disimpan manual tidak lagi terhapus saat refresh; keyword yang sudah ranking 1–4 tidak disarankan jadi artikel baru",
+      "Content Draft: tanda klaim yang perlu verifikasi tersimpan terpisah dan bisa ditandai terverifikasi; cek orisinalitas dilabeli jujur sebagai cek sampel",
+      "Content Audit & GSC: penurunan klik kecil tidak lagi berlabel Stabil; perbandingan 28 hari kini setara; data GSC dibaca lengkap (paginasi)",
+      "AI Visibility & Marketplace: jumlah cek gagal tampil di samping mention rate; scrape yang diblokir tidak lagi dilaporkan sebagai \"tidak ada listing\"",
+      "Semua modul: proses yang terhenti >15 menit otomatis ditandai gagal dan tombol jalankan ulang aktif kembali; refresh ganda dicegah; batas waktu request DataForSEO",
+      "Keamanan: URL yang di-audit diverifikasi agar tidak mengarah ke jaringan internal",
+    ],
+  },
+  {
     id: "2026-10-21-whiteboard-ux-overhaul",
     date: "2026-10-21",
     title: "Whiteboard: dock alat baru, konektor yang menempel, dan banyak perbaikan",

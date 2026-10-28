@@ -8,8 +8,13 @@ import { prisma } from "@/lib/prisma";
 import { requireSeoAccess } from "@/lib/seo/auth";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { normalizeDomain } from "@/lib/seo/dataforseo/serp-parse";
+import { isSeoRunStale, isSeoStatusBusy } from "@/lib/seo/labels";
 import { runKeywordGap } from "@/lib/seo/keyword-gap/analyzer";
 import type { GapRow } from "@/lib/seo/keyword-gap/gap-logic";
+import {
+  KEYWORD_GAP_SOURCE,
+  enqueueKeywordResearch,
+} from "@/lib/seo/keyword-research/analyzer";
 import { fetchPageIntersection } from "@/lib/seo/dataforseo/labs-domain";
 import { isDataForSeoConfigured } from "@/lib/seo/dataforseo/client";
 
@@ -63,6 +68,19 @@ export async function createSeoKeywordGap(input: z.infer<typeof createSchema>) {
 export async function refreshSeoKeywordGap(gapId: string) {
   await requireSeoAccess();
   z.string().min(1).parse(gapId);
+
+  const existing = await prisma.seoKeywordGap.findUnique({
+    where: { id: gapId },
+    select: { id: true, status: true, updatedAt: true },
+  });
+  if (!existing) throw new Error("Keyword gap tidak ditemukan.");
+  // Run yang masih aktif tidak boleh ditimpa; run macet (stale) boleh di-reset.
+  if (
+    isSeoStatusBusy(existing.status) &&
+    !isSeoRunStale(existing.status, existing.updatedAt)
+  ) {
+    throw new Error("Analisis masih berjalan.");
+  }
 
   await prisma.seoKeywordGap.update({
     where: { id: gapId },
@@ -123,7 +141,11 @@ const sendSchema = z.object({
 
 /**
  * "Kirim ke Keyword Research": buat SeoKeywordProject berisi keyword
- * missing/weak terpilih — glue lintas modul ala Semrush.
+ * missing/weak terpilih — glue lintas modul ala Semrush. Keyword disimpan
+ * dengan `source = "keyword_gap"` sehingga `runKeywordResearch` mengenali
+ * proyek impor dan hanya meng-enrich daftar ini (volume/CPC/competition/
+ * difficulty/intent via bulk endpoint + cluster), bukan meriset ulang seed.
+ * Enrichment pertama dijalankan segera di latar belakang.
  */
 export async function sendGapKeywordsToResearch(
   input: z.infer<typeof sendSchema>,
@@ -131,6 +153,7 @@ export async function sendGapKeywordsToResearch(
   const session = await requireSeoAccess();
   const data = sendSchema.parse(input);
 
+  let projectId: string;
   try {
     const gap = await prisma.seoKeywordGap.findUnique({
       where: { id: data.gapId },
@@ -140,22 +163,36 @@ export async function sendGapKeywordsToResearch(
     const rows = Array.isArray(gap.rows) ? (gap.rows as unknown as GapRow[]) : [];
     const byKeyword = new Map(rows.map((r) => [r.keyword.toLowerCase(), r]));
 
+    // Dedupe case-insensitive agar createMany tidak menyimpan duplikat kapital.
+    const seen = new Set<string>();
+    const keywords = data.keywords
+      .map((kw) => kw.trim())
+      .filter((kw) => {
+        const key = kw.toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    if (keywords.length === 0) throw new Error("Tidak ada keyword valid.");
+
     const project = await prisma.seoKeywordProject.create({
       data: {
         name: data.projectName.trim(),
         description: `Dari Keyword Gap "${gap.name}" (${gap.target} vs ${gap.competitors.join(", ")}).`,
-        seedKeyword: data.keywords[0],
-        status: SeoAnalysisStatus.READY,
+        seedKeyword: keywords[0]!,
+        locationCode: gap.locationCode,
+        languageCode: gap.languageCode,
+        status: SeoAnalysisStatus.PENDING,
         createdById: session.user.id,
         keywords: {
           createMany: {
-            data: data.keywords.map((kw) => {
+            data: keywords.map((kw) => {
               const row = byKeyword.get(kw.toLowerCase());
               return {
                 keyword: kw,
                 searchVolume: row?.searchVolume ?? null,
                 difficulty: row?.difficulty ?? null,
-                source: "keyword_gap",
+                source: KEYWORD_GAP_SOURCE,
               };
             }),
             skipDuplicates: true,
@@ -163,10 +200,22 @@ export async function sendGapKeywordsToResearch(
         },
       },
     });
-
-    revalidatePath("/seo/keyword-research");
-    return { projectId: project.id };
+    projectId = project.id;
   } catch (err) {
     throw new Error(actionErrorMessage(err, "Gagal mengirim keyword."));
   }
+
+  // Enrichment (intent/CPC/competition/difficulty) + cluster di latar belakang
+  // — jalur impor di runKeywordResearch mempertahankan daftar keyword.
+  after(async () => {
+    try {
+      await enqueueKeywordResearch(projectId);
+    } catch (err) {
+      console.error("[sendGapKeywordsToResearch] enrichment gagal", err);
+    }
+  });
+
+  revalidatePath("/seo/keyword-research");
+  revalidatePath(`/seo/keyword-research/${projectId}`);
+  return { projectId };
 }

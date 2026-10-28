@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
 import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
-import { isSeoStatusBusy } from "@/lib/seo/labels";
+import { isSeoRunStale, isSeoStatusBusy } from "@/lib/seo/labels";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
   createContentAudit,
@@ -53,6 +53,8 @@ export type ContentAuditListRow = {
   dataNotice: string | null;
   errorMessage: string | null;
   createdAt: string;
+  /** ISO — untuk deteksi proses macet (busy > 15 menit tanpa update). */
+  updatedAt: string;
 };
 
 /** Pill tinted per tren halaman: menurun → rose, naik → emerald, baru → sky. */
@@ -93,6 +95,9 @@ export function ContentAuditClient({
 
   const latest = items[0] ?? null;
   const busy = latest ? isSeoStatusBusy(latest.status) : false;
+  // Busy > 15 menit tanpa update → proses hampir pasti mati; buka kembali
+  // tombol "Jalankan audit" (server action juga mengizinkannya saat stale).
+  const stale = latest ? isSeoRunStale(latest.status, latest.updatedAt) : false;
 
   useEffect(() => {
     if (!busy) return;
@@ -156,7 +161,12 @@ export function ContentAuditClient({
     setActingPage(row.page);
     startTransition(async () => {
       try {
-        await createOpportunityFromDecay({ page: row.page, keyword });
+        await createOpportunityFromDecay({
+          page: row.page,
+          keyword,
+          prevClicks: row.prevClicks,
+          clicks: row.clicks,
+        });
         toast.success(`Masuk ke feed Opportunities (keyword: "${keyword}").`);
       } catch (err) {
         toast.error(actionErrorMessage(err, "Gagal membuat opportunity."));
@@ -267,16 +277,20 @@ export function ContentAuditClient({
           </div>
           <div className="flex items-center gap-2">
             {latest ? <SeoStatusBadge status={latest.status} /> : null}
-            <Button onClick={handleRun} disabled={pending || busy} size="sm">
-              {busy ? <Loader2 className="animate-spin" /> : <Play />}
-              Jalankan audit
+            <Button
+              onClick={handleRun}
+              disabled={pending || (busy && !stale)}
+              size="sm"
+            >
+              {busy && !stale ? <Loader2 className="animate-spin" /> : <Play />}
+              {stale ? "Jalankan ulang" : "Jalankan audit"}
             </Button>
             {latest ? (
               <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => handleDelete(latest.id)}
-                disabled={pending || busy}
+                disabled={pending || (busy && !stale)}
                 aria-label="Hapus audit"
               >
                 <Trash2 className="text-destructive" />
@@ -285,6 +299,11 @@ export function ContentAuditClient({
           </div>
         </div>
 
+        {stale ? (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
+            Proses tampak terhenti — jalankan ulang.
+          </div>
+        ) : null}
         {latest?.errorMessage ? (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
             {latest.errorMessage}

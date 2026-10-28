@@ -27,6 +27,7 @@ export default async function SeoDomainOverviewDetailPage({
     id: row.id,
     target: row.target,
     status: row.status,
+    updatedAt: row.updatedAt.toISOString(),
     overview:
       row.overview && typeof row.overview === "object" && !Array.isArray(row.overview)
         ? (row.overview as DomainRankOverview)

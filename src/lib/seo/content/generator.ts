@@ -18,6 +18,11 @@ import {
   type ScoreGrounding,
 } from "@/lib/seo/content/content-score-v2";
 import { extractSignalsFromHtml } from "@/lib/seo/content/html-signals-server";
+import {
+  readPendingClaims,
+  unionClaims,
+  withPendingClaims,
+} from "@/lib/seo/content/claims";
 
 function countOccurrences(haystack: string, needle: string): number {
   if (!needle) return 0;
@@ -115,6 +120,12 @@ export async function analyzeContentDraft(draftId: string): Promise<void> {
   const grounding = brief ? buildScoreGrounding(brief) : null;
 
   const signals = extractSignalsFromHtml(draft.contentHtml);
+  // Klaim menunggu verifikasi: aiMeta.pendingClaims (sumber utama) ∪ marker
+  // HTML yang mungkin tersisa di draft lama.
+  const pendingClaims = unionClaims(
+    readPendingClaims(draft.aiMeta),
+    signals.verifyMarkers,
+  );
 
   let score: number;
   let analysis: Record<string, unknown>;
@@ -131,6 +142,7 @@ export async function analyzeContentDraft(draftId: string): Promise<void> {
         slug: draft.slug,
       },
       grounding,
+      { pendingClaims },
     );
     score = v2.score;
     failingLabels = v2.checks.filter((c) => !c.passed).map((c) => c.label);
@@ -150,7 +162,7 @@ export async function analyzeContentDraft(draftId: string): Promise<void> {
         h2Count: signals.h2Count,
         avgWordsPerSentence: signals.avgWordsPerSentence,
       },
-      claims: signals.verifyMarkers,
+      claims: pendingClaims,
     };
   } else {
     const input = parseContentHtml(
@@ -171,7 +183,7 @@ export async function analyzeContentDraft(draftId: string): Promise<void> {
         h2Count: input.h2Count,
         avgWordsPerSentence: input.avgWordsPerSentence,
       },
-      claims: signals.verifyMarkers,
+      claims: pendingClaims,
     };
   }
 
@@ -205,10 +217,20 @@ Balas HANYA JSON: { "suggestions": ["string"], "claimWarnings": ["string"] }`,
     claimWarnings = Array.isArray(llm.claimWarnings)
       ? llm.claimWarnings.map((s) => String(s).trim()).filter(Boolean)
       : [];
-    aiMeta = mergeResearchAiMeta(
-      draft.aiMeta,
-      buildResearchAiStep("SEO content review", "flash"),
-    ) as object;
+    // mergeResearchAiMeta hanya mengembalikan { steps } — pertahankan
+    // pendingClaims (dan field lain) yang sudah ada di aiMeta.
+    aiMeta = withPendingClaims(
+      {
+        ...(draft.aiMeta && typeof draft.aiMeta === "object" && !Array.isArray(draft.aiMeta)
+          ? (draft.aiMeta as Record<string, unknown>)
+          : {}),
+        ...mergeResearchAiMeta(
+          draft.aiMeta,
+          buildResearchAiStep("SEO content review", "flash"),
+        ),
+      },
+      pendingClaims,
+    );
   } catch (err) {
     console.warn("[seo/content] saran LLM gagal (diabaikan)", err);
   }

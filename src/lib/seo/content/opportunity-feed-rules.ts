@@ -14,11 +14,30 @@ import {
  * engine (opportunity-feed.ts) agar mudah di-test.
  */
 
+/** Posisi 1–4 = sudah menang; tidak perlu artikel baru maupun optimasi. */
+export const TOP_RANKING_MAX = 4;
 /** Posisi 5–20 = "striking distance" → optimasi konten existing lebih murah. */
 export const STRIKING_DISTANCE_MIN = 5;
 export const STRIKING_DISTANCE_MAX = 20;
+/** Posisi 21–30 = halaman 2–3; optimasi tetap lebih murah dari artikel baru. */
+export const NEAR_STRIKING_MIN = 21;
+export const NEAR_STRIKING_MAX = 30;
 /** Boost skor untuk peluang optimasi (quick win). */
 export const STRIKING_DISTANCE_MULTIPLIER = 1.3;
+/** Posisi 21–30: tanpa boost (prioritas di bawah striking distance). */
+export const NEAR_STRIKING_MULTIPLIER = 1;
+
+/**
+ * Sumber baris yang DIBUAT engine refresh. Hanya baris bersumber ini yang
+ * boleh dipangkas saat refresh; simpanan manual ("topic_run", "gsc_decay",
+ * dsb.) tidak pernah dihapus otomatis.
+ */
+export const ENGINE_SOURCES = ["keyword_project", "rank_tracker"] as const;
+
+/** Normalisasi keyword untuk semua jalur tulis (kolom unik per keyword). */
+export function normalizeOpportunityKeyword(keyword: string): string {
+  return keyword.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 export type TrackedCandidate = {
   keyword: string;
@@ -46,29 +65,70 @@ export function classifyTrackedKeyword(
   cand: TrackedCandidate,
 ): SeoOpportunityType | null {
   const pos = cand.lastPosition;
-  if (
-    pos != null &&
-    pos >= STRIKING_DISTANCE_MIN &&
-    pos <= STRIKING_DISTANCE_MAX
-  ) {
+  // 5–20 (striking distance) dan 21–30 (near) → optimasi halaman yang ada.
+  if (pos != null && pos >= STRIKING_DISTANCE_MIN && pos <= NEAR_STRIKING_MAX) {
     return SeoOpportunityType.OPTIMIZE_EXISTING;
   }
   // Tidak ranking (atau jauh) tapi keyword-nya sudah diriset → artikel baru.
-  if ((pos == null || pos > 30) && cand.inKeywordProject) {
+  if ((pos == null || pos > NEAR_STRIKING_MAX) && cand.inKeywordProject) {
     return SeoOpportunityType.NEW_ARTICLE;
   }
   return null;
 }
 
-/** Skor peluang dengan boost striking distance untuk OPTIMIZE_EXISTING. */
+/** Apakah posisi tracked sudah di top 4 (tidak perlu masuk feed). */
+export function isTopRanking(position: number | null | undefined): boolean {
+  return position != null && position >= 1 && position <= TOP_RANKING_MAX;
+}
+
+/**
+ * Skor peluang dengan boost striking distance untuk OPTIMIZE_EXISTING.
+ * Posisi 21–30 memakai multiplier lebih rendah (prioritas di bawah 5–20).
+ */
 export function scoreCandidate(
   input: OpportunityInput,
   type: SeoOpportunityType,
+  position: number | null = null,
 ): number {
   const base = scoreKeywordOpportunity(input).score;
-  return type === SeoOpportunityType.OPTIMIZE_EXISTING
-    ? Math.min(100, Math.round(base * STRIKING_DISTANCE_MULTIPLIER))
-    : base;
+  if (type !== SeoOpportunityType.OPTIMIZE_EXISTING) return base;
+  const multiplier =
+    position != null && position >= NEAR_STRIKING_MIN
+      ? NEAR_STRIKING_MULTIPLIER
+      : STRIKING_DISTANCE_MULTIPLIER;
+  return Math.min(100, Math.round(base * multiplier));
+}
+
+/**
+ * Buang kandidat yang keyword-nya sudah ranking top 4 di rank tracker
+ * (artikel baru untuk keyword yang sudah menang = kanibalisasi).
+ */
+export function excludeTopRanking(
+  candidates: OpportunityCandidate[],
+  topRankingKeywords: Set<string>,
+): OpportunityCandidate[] {
+  return candidates.filter(
+    (c) => !topRankingKeywords.has(normalizeOpportunityKeyword(c.keyword)),
+  );
+}
+
+/**
+ * Pilih id baris IDEA tanpa brief yang boleh dipangkas: hanya baris bersumber
+ * engine (`engineSources`) yang keyword-nya tidak lagi ada di hasil refresh.
+ */
+export function selectPruneIds(
+  rows: { id: string; keyword: string; source: string }[],
+  keepKeywords: Set<string>,
+  engineSources: readonly string[] = ENGINE_SOURCES,
+): string[] {
+  const engine = new Set(engineSources);
+  return rows
+    .filter(
+      (r) =>
+        engine.has(r.source) &&
+        !keepKeywords.has(normalizeOpportunityKeyword(r.keyword)),
+    )
+    .map((r) => r.id);
 }
 
 /** Derivasi stage dari relasi aktual (stage tidak pernah turun otomatis). */

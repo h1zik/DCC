@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyWrittenSections,
   assignTermsToSections,
+  isSectionHtmlFilled,
   planDraftSections,
   tailWords,
   type PlannedSection,
@@ -58,6 +60,37 @@ describe("assignTermsToSections", () => {
     expect(out[0].terms).toEqual([]);
     expect(out[1].terms).toEqual(["t1", "t3"]);
     expect(out[2].terms).toEqual(["t2"]);
+  });
+});
+
+describe("applyWrittenSections", () => {
+  const sections: PlannedSection[] = [
+    { id: "opening", heading: null, points: [], terms: [], wordBudget: 100 },
+    { id: "s1", heading: "A", points: [], terms: [], wordBudget: 100 },
+    { id: "s2", heading: "B", points: [], terms: [], wordBudget: 100 },
+  ];
+
+  it("marks only non-empty sections done and reports the empty ones", () => {
+    const { sections: next, missingIds } = applyWrittenSections(sections, [
+      { id: "opening", html: "<p>pembuka</p>" },
+      { id: "s1", html: "   " },
+      { id: "s2", html: "" },
+    ]);
+    expect(next[0].done).toBe(true);
+    expect(next[0].html).toBe("<p>pembuka</p>");
+    expect(next[1].done).toBe(false);
+    expect(next[2].done).toBe(false);
+    expect(missingIds).toEqual(["s1", "s2"]);
+  });
+
+  it("leaves sections outside the batch untouched", () => {
+    const { sections: next } = applyWrittenSections(sections, [
+      { id: "s2", html: "<h2>B</h2><p>b</p>" },
+    ]);
+    expect(next[0].done).toBeUndefined();
+    expect(next[2].done).toBe(true);
+    expect(isSectionHtmlFilled("")).toBe(false);
+    expect(isSectionHtmlFilled(" <p>x</p> ")).toBe(true);
   });
 });
 

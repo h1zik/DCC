@@ -20,6 +20,13 @@ import {
 
 const MAX_ITEMS = 40;
 
+/** Pesan FAILED saat scraper mengembalikan 0 listing (anti-bot/cooldown). */
+export const EMPTY_SCRAPE_MESSAGE =
+  "Scraper tidak mengembalikan listing — kemungkinan diblokir (anti-bot) atau cooldown. Coba lagi beberapa menit.";
+
+/** Notice saat rekomendasi LLM gagal (analisis tetap READY). */
+export const LLM_FAILED_NOTICE = "Rekomendasi AI gagal dibuat.";
+
 /** Marketplace yang didukung Marketplace SEO (punya data harga/terjual andal). */
 export const MARKETPLACE_SEO_SUPPORTED: ResearchMarketplace[] = [
   ResearchMarketplace.SHOPEE,
@@ -70,11 +77,16 @@ export async function runMarketplaceAnalysis(analysisId: string): Promise<void> 
     const products = await searchMarketplace(analysis.marketplace, analysis.keyword);
 
     if (products.length === 0) {
+      // Hasil kosong hampir selalu berarti scraper diblokir (anti-bot Shopee)
+      // atau VPS sedang cooldown — bukan "tidak ada listing". Scraper tidak
+      // mengekspos status/error run saat hasil kosong (run failed sudah throw),
+      // jadi tandai FAILED agar bisa diulang, bukan READY kosong.
       await prisma.seoMarketplaceAnalysis.update({
         where: { id: analysisId },
         data: {
-          status: SeoAnalysisStatus.READY,
-          dataNotice: "Tidak ada listing ditemukan untuk keyword ini.",
+          status: SeoAnalysisStatus.FAILED,
+          errorMessage: EMPTY_SCRAPE_MESSAGE,
+          dataNotice: null,
         },
       });
       return;
@@ -141,6 +153,7 @@ export async function runMarketplaceAnalysis(analysisId: string): Promise<void> 
               buildResearchAiStep("Marketplace SEO recommendations", "flash"),
             ]) as object)
           : undefined,
+        dataNotice: recommendations.llmFailed ? LLM_FAILED_NOTICE : null,
         errorMessage: null,
       },
     });
@@ -168,11 +181,13 @@ async function generateRecommendations(
   ownTitle: string | null,
   titleScore: ReturnType<typeof scoreOwnTitle> | null,
 ) {
-  const prompt = `Kamu adalah spesialis marketplace SEO (${marketplace}) untuk produk kosmetik/skincare Indonesia.
+  // Netral: analisis tidak punya field kategori, jadi jangan asumsikan
+  // kosmetik/skincare — biarkan LLM menyimpulkan kategori dari keyword & istilah.
+  const prompt = `Kamu adalah spesialis marketplace SEO (${marketplace}) untuk produk di marketplace Indonesia. Simpulkan kategori produk dari keyword dan istilah judul.
 Keyword: "${keyword}".
 Statistik listing teratas: ${JSON.stringify(stats)}.
 Istilah judul tersering: ${topTerms.map((t) => `${t.term}(${t.count})`).join(", ")}.
-${ownTitle ? `Judul produk saya: "${ownTitle}" (skor ${titleScore?.score}/100, kurang: ${titleScore?.missingTerms.join(", ") || "-"}).` : "Belum ada judul produk sendiri."}
+${ownTitle ? `Judul produk saya: "${ownTitle}" (skor heuristik ${titleScore?.score}/100, istilah pesaing yang belum ada: ${titleScore?.missingTerms.join(", ") || "-"}).` : "Belum ada judul produk sendiri."}
 
 Tugas:
 1. Beri 3-6 rekomendasi optimasi judul/tag yang konkret (Bahasa Indonesia).
@@ -193,9 +208,16 @@ Balas HANYA JSON valid:
         : [],
       improvedTitle: result.improvedTitle?.trim() || null,
       usedLlm: true as const,
+      llmFailed: false as const,
     };
   } catch (err) {
-    console.warn("[seo/marketplace] rekomendasi LLM gagal (diabaikan)", err);
-    return { titleScore, recommendations: [], improvedTitle: null, usedLlm: false as const };
+    console.warn("[seo/marketplace] rekomendasi LLM gagal", err);
+    return {
+      titleScore,
+      recommendations: [],
+      improvedTitle: null,
+      usedLlm: false as const,
+      llmFailed: true as const,
+    };
   }
 }
