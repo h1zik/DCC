@@ -71,13 +71,16 @@ export default async function SeoCrawlerDetailPage({
         b.count - a.count,
     );
 
-  // Tren health score: crawl READY untuk domain yang sama (maks 12 terakhir).
-  const historyRows = await prisma.seoSiteCrawl.findMany({
-    where: { domain: crawl.domain, status: "READY", healthScore: { not: null } },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, healthScore: true, createdAt: true },
-    take: 12,
-  });
+  // Tren health score: 12 crawl READY TERBARU untuk domain yang sama, lalu
+  // dibalik agar kronologis (asc + take 12 akan mengambil 12 tertua).
+  const historyRows = (
+    await prisma.seoSiteCrawl.findMany({
+      where: { domain: crawl.domain, status: "READY", healthScore: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, healthScore: true, createdAt: true },
+      take: 12,
+    })
+  ).reverse();
 
   const detail: CrawlDetail = {
     id: crawl.id,

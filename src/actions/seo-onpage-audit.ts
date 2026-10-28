@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSeoAccess } from "@/lib/seo/auth";
+import { checkPublicUrlSyntax } from "@/lib/seo/safe-fetch-rules";
 import { enqueueOnPageAudit } from "@/lib/seo/onpage-audit/analyzer";
 
 /** Tambahkan protokol bila user hanya menempel domain/path. */
@@ -25,8 +26,10 @@ export async function createSeoOnPageAudit(
   const session = await requireSeoAccess();
   const data = createSchema.parse(input);
   const url = normalizeUrl(data.url);
-  // Validasi bentuk URL.
-  z.string().url().parse(url);
+  // Validasi bentuk URL + tolak host internal/IP privat sejak submit (server
+  // akan mem-fetch URL ini; lihat safe-fetch-rules untuk daftar yang diblokir).
+  const verdict = checkPublicUrlSyntax(url);
+  if (!verdict.ok) throw new Error(verdict.reason);
 
   const audit = await prisma.seoOnPageAudit.create({
     data: {

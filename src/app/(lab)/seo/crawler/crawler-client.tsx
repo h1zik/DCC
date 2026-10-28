@@ -33,7 +33,10 @@ export type CrawlRow = {
   pagesCrawled: number;
   maxPages: number;
   includeLighthouse: boolean;
-  issueCount: number;
+  /** URL unik yang punya isu per-halaman (definisi sama dengan halaman detail). */
+  pagesWithIssues: number;
+  /** Jumlah jenis isu agregat (dipakai bila daftar halaman tidak tersedia). */
+  issueTypes: number;
   healthScore: number | null;
   errorMessage: string | null;
   createdAt: string;
@@ -208,7 +211,7 @@ export function CrawlerClient({
           </div>
 
           <div className="bento-tile">
-            <span className="bento-label">Isu ditemukan</span>
+            <span className="bento-label">Halaman bermasalah</span>
             <span className="bento-value">
               {summary.lastReadyIssues ?? "—"}
             </span>
@@ -392,18 +395,29 @@ export function CrawlerClient({
                         </>
                       }
                     />
-                    <CardStat
-                      label="Isu"
-                      value={
-                        c.issueCount > 0 ? (
+                    {c.pagesWithIssues === 0 && c.issueTypes > 0 ? (
+                      <CardStat
+                        label="Jenis isu"
+                        value={
                           <span className="text-amber-600 dark:text-amber-400">
-                            {c.issueCount}
+                            {c.issueTypes}
                           </span>
-                        ) : (
-                          c.issueCount
-                        )
-                      }
-                    />
+                        }
+                      />
+                    ) : (
+                      <CardStat
+                        label="Hal. bermasalah"
+                        value={
+                          c.pagesWithIssues > 0 ? (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              {c.pagesWithIssues}
+                            </span>
+                          ) : (
+                            c.pagesWithIssues
+                          )
+                        }
+                      />
+                    )}
                     <CardStat
                       label="Skor"
                       value={

@@ -2,7 +2,12 @@ import "server-only";
 
 import { SeoCrawlFrequency } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { startSiteCrawl } from "@/lib/seo/crawler/crawler";
+import {
+  ANALYZING_STALE_MS,
+  CRAWL_TIMEOUT_MS,
+  startSiteCrawl,
+} from "@/lib/seo/crawler/crawler";
+import { SEO_STALE_RUN_MS } from "@/lib/seo/labels";
 
 /**
  * Jalankan jadwal crawl yang due (cron `mode=crawls`, harian). Maksimal 2
@@ -34,9 +39,18 @@ export async function runDueCrawlSchedules(): Promise<{
   });
   if (due.length === 0) return { started: 0, skipped: 0 };
 
-  // Jangan menumpuk: hitung crawl yang masih berjalan.
+  // Jangan menumpuk: hitung crawl yang masih berjalan. Baris macet (tidak
+  // bergerak melewati batas waktunya masing-masing) tidak dihitung agar dua
+  // crawl yang nyangkut tidak memblokir jadwal selamanya.
+  const now = Date.now();
   const running = await prisma.seoSiteCrawl.count({
-    where: { status: { in: ["PENDING", "COLLECTING", "ANALYZING"] } },
+    where: {
+      OR: [
+        { status: "PENDING", updatedAt: { gte: new Date(now - SEO_STALE_RUN_MS) } },
+        { status: "COLLECTING", updatedAt: { gte: new Date(now - CRAWL_TIMEOUT_MS) } },
+        { status: "ANALYZING", updatedAt: { gte: new Date(now - ANALYZING_STALE_MS) } },
+      ],
+    },
   });
   const slots = Math.max(0, MAX_CONCURRENT_SCHEDULED - running);
 

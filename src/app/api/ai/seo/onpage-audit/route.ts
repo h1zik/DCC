@@ -3,6 +3,7 @@ import { aiApiError, aiApiOk } from "@/lib/ai-api/response";
 import { isDataForSeoConfigured } from "@/lib/seo/dataforseo/client";
 import { fetchInstantPage } from "@/lib/seo/dataforseo/onpage";
 import { fetchHtmlSignals } from "@/lib/seo/onpage-audit/analyzer";
+import { checkPublicUrlSyntax } from "@/lib/seo/safe-fetch-rules";
 import {
   buildOnPageIssues,
   computeOnPageScore,
@@ -22,6 +23,8 @@ export async function GET(req: Request) {
   const target = reqUrl.searchParams.get("url")?.trim();
   const keyword = reqUrl.searchParams.get("keyword")?.trim() || null;
   if (!target) return aiApiError("Parameter 'url' wajib.", 400);
+  const verdict = checkPublicUrlSyntax(target);
+  if (!verdict.ok) return aiApiError(verdict.reason, 400);
   if (!isDataForSeoConfigured()) {
     return aiApiError("DataForSEO belum dikonfigurasi.", 503);
   }
@@ -31,12 +34,13 @@ export async function GET(req: Request) {
     if (!signals) return aiApiError("Tidak bisa menganalisis URL.", 502);
 
     // Lengkapi sinyal dari HTML langsung (best-effort — null bila fetch gagal).
-    const html = await fetchHtmlSignals(target, keyword);
+    const { signals: html } = await fetchHtmlSignals(target, keyword);
 
     const h1 = Array.isArray(signals.htags.h1) ? signals.htags.h1 : [];
     const kw = keyword?.toLowerCase() ?? null;
     const input: AuditInput = {
       onpageScore: signals.onpageScore,
+      url: target,
       title: signals.title,
       description: signals.description,
       h1Count: h1.length,

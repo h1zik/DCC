@@ -157,6 +157,13 @@ function MiniStat({
   );
 }
 
+/** Isu agregat yang satuannya tautan/resource, bukan halaman. */
+const LINK_UNIT_TYPES = new Set(["broken_links", "broken_resources"]);
+
+function aggregateUnit(type: string): string {
+  return LINK_UNIT_TYPES.has(type) ? "tautan" : "hal.";
+}
+
 type PerPageSort = "severity" | "url";
 
 const PER_PAGE_SORT_ITEMS: SelectItemDef[] = [
@@ -183,13 +190,28 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
     };
   }, [crawl.issues]);
 
+  // Definisi hitungan (sama dengan halaman daftar): "halaman bermasalah" =
+  // URL unik pada isu per-URL; distribusi severity dari baris per-URL. Bila
+  // daftar halaman tidak tersedia, distribusi memakai jumlah `count` agregat.
+  // Menjumlahkan agregat + per-URL sekaligus akan menghitung ganda.
+  const pagesWithIssues = useMemo(
+    () => new Set(perPage.map((i) => i.url)).size,
+    [perPage],
+  );
+  const distributionSource = perPage.length > 0 ? perPage : aggregate;
   const severityCounts = useMemo(() => {
     const counts = Object.fromEntries(
       SEVERITY_ORDER.map((s) => [s, 0]),
     ) as Record<SeoIssueSeverity, number>;
-    for (const i of crawl.issues) counts[i.severity] += 1;
+    for (const i of distributionSource) {
+      counts[i.severity] += i.url ? 1 : Math.max(1, i.count);
+    }
     return counts;
-  }, [crawl.issues]);
+  }, [distributionSource]);
+  const distributionTotal = useMemo(
+    () => Object.values(severityCounts).reduce((a, b) => a + b, 0),
+    [severityCounts],
+  );
 
   const visiblePerPage = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -228,13 +250,17 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
   }
 
   const lh = crawl.lighthouse;
-  const distTotal = crawl.issues.length || 1;
+  const distTotal = distributionTotal || 1;
+  const headlineIssues =
+    perPage.length > 0
+      ? `${pagesWithIssues} halaman bermasalah`
+      : `${aggregate.length} jenis isu`;
 
   return (
     <SeoDetailPage
       icon={Bug}
       title={crawl.name}
-      description={`${crawl.domain} · ${crawl.pagesCrawled}/${crawl.maxPages} halaman · ${crawl.issues.length} isu`}
+      description={`${crawl.domain} · ${crawl.pagesCrawled}/${crawl.maxPages} halaman · ${headlineIssues}`}
       right={
         <div className="flex items-center gap-2">
           <SeoStatusBadge status={crawl.status} />
@@ -275,16 +301,21 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
         <div className="flex flex-col gap-5">
           {/* Papan bento: health score + distribusi isu + stat */}
           <div className="grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4">
-            {/* Health score — tile hero teal */}
-            <div className="bento-tile col-span-2 row-span-2 border-transparent bg-teal-600 shadow-md shadow-teal-600/20 lg:col-span-1 dark:bg-teal-500">
-              <span className="text-[11.5px] font-semibold text-teal-100 dark:text-teal-950/70">
-                Health score
-              </span>
-              <span className="bento-value text-5xl text-white dark:text-teal-950">
+            {/* Health score — tile hero, warna mengikuti skor */}
+            <div className="bento-tile col-span-2 row-span-2 lg:col-span-1">
+              <span className="bento-label">Health score</span>
+              <span
+                className={cn(
+                  "bento-value text-5xl",
+                  scoreToneClass(crawl.healthScore),
+                )}
+              >
                 {crawl.healthScore ?? "—"}
-                <span className="text-2xl font-bold text-teal-200/80 dark:text-teal-900/60">
-                  /100
-                </span>
+                {crawl.healthScore != null ? (
+                  <span className="text-muted-foreground/50 text-2xl font-bold">
+                    /100
+                  </span>
+                ) : null}
               </span>
               {crawl.healthHistory.length >= 2 ? (
                 <div className="flex items-end gap-1">
@@ -293,9 +324,7 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
                       key={h.date + String(h.current)}
                       className={cn(
                         "w-4 rounded-t",
-                        h.current
-                          ? "bg-white/90 dark:bg-teal-950/90"
-                          : "bg-white/30 dark:bg-teal-950/30",
+                        h.current ? "bg-foreground/80" : "bg-foreground/20",
                       )}
                       style={{ height: `${Math.max(6, h.score * 0.4)}px` }}
                       title={`${h.date}: ${h.score}`}
@@ -303,10 +332,12 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
                   ))}
                 </div>
               ) : null}
-              <span className="text-[11px] font-medium leading-snug text-teal-100/90 dark:text-teal-900/80">
-                {crawl.healthHistory.length >= 2
-                  ? `tren ${crawl.healthHistory.length} crawl untuk ${crawl.domain}`
-                  : "tren muncul setelah beberapa crawl domain ini"}
+              <span className="text-muted-foreground text-[11px] font-medium leading-snug">
+                {crawl.healthScore == null
+                  ? "Skor tidak dihitung: DataForSEO tidak mengirim metrik/halaman untuk crawl ini."
+                  : crawl.healthHistory.length >= 2
+                    ? `tren ${crawl.healthHistory.length} crawl untuk ${crawl.domain}`
+                    : "tren muncul setelah beberapa crawl domain ini"}
               </span>
             </div>
 
@@ -315,7 +346,9 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
               <div className="flex items-center justify-between">
                 <span className="bento-label">Distribusi isu</span>
                 <span className="text-muted-foreground text-[11px] tabular-nums">
-                  {crawl.issues.length} isu
+                  {perPage.length > 0
+                    ? `${perPage.length} isu di ${pagesWithIssues} halaman`
+                    : `${distributionTotal} kemunculan (agregat)`}
                 </span>
               </div>
               <div className="bg-muted flex h-2.5 overflow-hidden rounded-full">
@@ -535,7 +568,7 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
             <div className="flex items-center justify-between">
               <span className="bento-label">Isu prioritas</span>
               <span className="text-muted-foreground text-[11px] tabular-nums">
-                {aggregate.length} isu agregat
+                {aggregate.length} jenis isu
               </span>
             </div>
             {aggregate.length === 0 ? (
@@ -554,7 +587,7 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
                       {issue.message}
                     </span>
                     <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                      {issue.count} hal.
+                      {issue.count} {aggregateUnit(issue.type)}
                     </span>
                   </li>
                 ))}
@@ -572,7 +605,7 @@ export function CrawlerDetailClient({ crawl }: { crawl: CrawlDetail }) {
                   </p>
                   <p className="text-muted-foreground text-xs">
                     {visiblePerPage.length === perPage.length
-                      ? `${perPage.length} isu`
+                      ? `${perPage.length} isu di ${pagesWithIssues} halaman`
                       : `${visiblePerPage.length} dari ${perPage.length} isu`}
                   </p>
                 </div>

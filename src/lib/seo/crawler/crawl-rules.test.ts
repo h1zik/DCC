@@ -41,8 +41,38 @@ describe("buildCrawlIssues", () => {
     );
     const byType = Object.fromEntries(issues.map((i) => [i.type, i]));
     expect(byType.broken_links.count).toBe(5);
-    expect(byType.broken_links.severity).toBe(SeoIssueSeverity.HIGH);
+    // Tautan ke target yang sama = satu masalah → MEDIUM, bukan HIGH.
+    expect(byType.broken_links.severity).toBe(SeoIssueSeverity.MEDIUM);
     expect(byType.duplicate_title.count).toBe(3);
+  });
+
+  it("does not double-count is_broken pages already covered by 4xx/5xx", () => {
+    const issues = buildCrawlIssues(
+      summary({
+        pageMetrics: {
+          ...summary().pageMetrics!,
+          checks: { is_broken: 5, is_4xx_code: 3, is_5xx_code: 2 },
+        },
+      }),
+    );
+    const types = issues.map((i) => i.type);
+    expect(types).toContain("is_4xx_code");
+    expect(types).toContain("is_5xx_code");
+    expect(types).not.toContain("is_broken");
+  });
+
+  it("keeps the remainder of is_broken (timeouts) beyond 4xx/5xx", () => {
+    const issues = buildCrawlIssues(
+      summary({
+        pageMetrics: {
+          ...summary().pageMetrics!,
+          checks: { is_broken: 6, is_4xx_code: 4 },
+        },
+      }),
+    );
+    const broken = issues.find((i) => i.type === "is_broken");
+    expect(broken?.count).toBe(2);
+    expect(broken?.severity).toBe(SeoIssueSeverity.HIGH);
   });
 
   it("builds issues from page_metrics.checks counts", () => {

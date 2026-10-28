@@ -8,6 +8,8 @@ import { SeoIssueSeverity } from "@prisma/client";
 export type AuditInput = {
   /** Skor On-Page DataForSEO (referensi, tidak dipakai untuk skor headline). */
   onpageScore: number | null;
+  /** URL halaman (untuk fallback cek HTTPS bila DataForSEO tidak ada). */
+  url?: string | null;
   title: string | null;
   description: string | null;
   h1Count: number;
@@ -76,7 +78,8 @@ const CHECK_RULES: CheckRule[] = [
     recommendation: "Tulis meta description 120–160 karakter yang persuasif.",
   },
   {
-    key: "https",
+    // DataForSEO instant_pages mengirim `is_https` (bukan `https`).
+    key: "is_https",
     problemWhen: false,
     severity: SeoIssueSeverity.HIGH,
     message: "Halaman tidak memakai HTTPS.",
@@ -86,8 +89,8 @@ const CHECK_RULES: CheckRule[] = [
     key: "duplicate_title_tag",
     problemWhen: true,
     severity: SeoIssueSeverity.MEDIUM,
-    message: "Title tag duplikat dengan halaman lain.",
-    recommendation: "Buat title unik per halaman.",
+    message: "Lebih dari satu tag <title> di halaman.",
+    recommendation: "Sisakan satu <title> di <head>; hapus duplikatnya.",
   },
   {
     key: "title_too_long",
@@ -154,6 +157,12 @@ const CHECK_RULES: CheckRule[] = [
   },
 ];
 
+function ruleByKey(key: string): CheckRule {
+  const rule = CHECK_RULES.find((r) => r.key === key);
+  if (!rule) throw new Error(`Aturan audit tidak ditemukan: ${key}`);
+  return rule;
+}
+
 /** Bobot penalti per severity untuk skor 0-100. */
 const SEVERITY_PENALTY: Record<SeoIssueSeverity, number> = {
   CRITICAL: 20,
@@ -179,6 +188,24 @@ export function buildOnPageIssues(input: AuditInput): AuditIssue[] {
       flagged.add(rule.key);
     }
   }
+
+  // Fallback struktural berbasis nilai (bukan checks) — penting saat
+  // DataForSEO tidak tersedia dan sinyal hanya datang dari parsing HTML.
+  // Mencerminkan logika crawler (buildPageIssueRows).
+  const fallback = (rule: CheckRule) => {
+    if (flagged.has(rule.key)) return;
+    issues.push({
+      type: rule.key,
+      severity: rule.severity,
+      message: rule.message,
+      recommendation: rule.recommendation,
+    });
+    flagged.add(rule.key);
+  };
+  if (!input.title?.trim()) fallback(ruleByKey("no_title"));
+  if (!input.description?.trim()) fallback(ruleByKey("no_description"));
+  if (input.h1Count === 0) fallback(ruleByKey("no_h1_tag"));
+  if (input.url && /^http:\/\//i.test(input.url)) fallback(ruleByKey("is_https"));
 
   // Schema markup absen (bila DataForSEO menandai has_micromarkup === false).
   if (input.hasSchema === false && !flagged.has("has_micromarkup")) {

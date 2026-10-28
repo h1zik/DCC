@@ -9,6 +9,7 @@ import {
   fetchOnPageSummary,
   postOnPageCrawlTask,
   type CrawlPageRow,
+  type CrawlSummary,
   type LighthouseMetrics,
 } from "@/lib/seo/dataforseo/onpage";
 import { buildCrawlIssues } from "@/lib/seo/crawler/crawl-rules";
@@ -20,10 +21,24 @@ import { computeHealthScore } from "@/lib/seo/crawler/health-score";
 import { notifyUser } from "@/lib/notify";
 import { NotificationType } from "@prisma/client";
 
-/** Batas waktu crawl sebelum dianggap gagal (2 jam). */
-const CRAWL_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+/** Batas waktu crawl (COLLECTING tanpa progres) sebelum dianggap gagal (2 jam). */
+export const CRAWL_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+/**
+ * Batas usia status ANALYZING. Pengumpulan hasil (pages + Lighthouse + tulis
+ * DB) normalnya < 5 menit; lebih dari ini hampir pasti proses mati di tengah
+ * jalan, sehingga baris dikembalikan ke COLLECTING agar poll berikutnya
+ * mencoba lagi.
+ */
+export const ANALYZING_STALE_MS = 20 * 60 * 1000;
 /** Maksimum baris isu per-halaman yang disimpan. */
 const MAX_PAGE_ISSUES = 5_000;
+
+export const CRAWL_NO_PAGES_MESSAGE =
+  "Crawl tidak menghasilkan halaman (kemungkinan domain memblokir bot DataForSEO atau host salah).";
+export const CRAWL_PAGES_UNAVAILABLE_NOTICE =
+  "Daftar halaman DataForSEO gagal diambil: isu per-URL & inventaris halaman tidak diperbarui, dan perbandingan dengan crawl sebelumnya hanya memakai isu agregat.";
+export const CRAWL_NO_METRICS_NOTICE =
+  "Health score tidak dihitung: DataForSEO tidak mengirim metrik halaman untuk crawl ini.";
 
 const PAGE_CHECK_RULES: Array<{
   key: string;
@@ -97,6 +112,37 @@ export async function startSiteCrawl(crawlId: string): Promise<void> {
   }
 }
 
+/**
+ * True bila status task-level DataForSEO berarti task tidak akan pernah
+ * menghasilkan ringkasan (mis. 40401 Task Not Found, 40000 Bad Request).
+ * Status antre (40601/40602) dan 40402 "Task Handed" masih diproses; 5xxxx
+ * dianggap transien dan diserahkan ke timeout.
+ */
+export function isTerminalTaskStatus(code: number | null): boolean {
+  if (code == null) return false;
+  if (code === 40601 || code === 40602 || code === 40402) return false;
+  return code >= 40000 && code < 50000;
+}
+
+/** True bila ringkasan membawa metrik halaman yang bisa dinilai. */
+export function hasPageMetrics(summary: CrawlSummary): boolean {
+  const pm = summary.pageMetrics;
+  if (!pm) return false;
+  if (Object.keys(pm.checks ?? {}).length > 0) return true;
+  return (
+    pm.onpageScore != null ||
+    pm.brokenLinks != null ||
+    pm.brokenResources != null ||
+    pm.duplicateTitle != null ||
+    pm.duplicateDescription != null ||
+    pm.duplicateContent != null ||
+    pm.redirectLoop != null ||
+    pm.nonIndexable != null ||
+    pm.linksInternal != null ||
+    pm.linksExternal != null
+  );
+}
+
 /** Map status code halaman → isu URL-level. */
 function pageStatusIssue(page: CrawlPageRow): {
   type: string;
@@ -132,6 +178,8 @@ function buildPageIssueRows(
     }
     for (const rule of PAGE_CHECK_RULES) {
       if (page.checks[rule.key] !== true) continue;
+      // Status 4xx/5xx sudah dicatat di atas — jangan hukum dua kali lewat is_broken.
+      if (rule.key === "is_broken" && status) continue;
       rows.push({
         crawlId,
         type: rule.key,
@@ -208,25 +256,75 @@ function buildCrawlPageRows(
   );
 }
 
-/** Ambil hasil crawl bila sudah selesai; update isu, summary, dan Lighthouse. */
+/**
+ * Kembalikan crawl ANALYZING yang macet (proses mati setelah klaim) ke
+ * COLLECTING agar poll berikutnya mengulang pengumpulan. Tanpa ini baris
+ * ANALYZING terkunci selamanya karena poll sengaja melewatinya.
+ */
+export async function recoverStaleAnalyzingCrawls(
+  crawlIds?: string[],
+  now: number = Date.now(),
+): Promise<number> {
+  if (crawlIds && crawlIds.length === 0) return 0;
+  const res = await prisma.seoSiteCrawl.updateMany({
+    where: {
+      ...(crawlIds ? { id: { in: crawlIds } } : {}),
+      status: SeoAnalysisStatus.ANALYZING,
+      updatedAt: { lt: new Date(now - ANALYZING_STALE_MS) },
+    },
+    data: { status: SeoAnalysisStatus.COLLECTING },
+  });
+  if (res.count > 0) {
+    console.warn("[seo/crawler] crawl ANALYZING macet dikembalikan ke COLLECTING", res.count);
+  }
+  return res.count;
+}
+
+/**
+ * Ambil hasil crawl bila sudah selesai; update isu, summary, dan Lighthouse.
+ *
+ * Aman dipanggil bersamaan (polling browser 6 detik × banyak tab + cron):
+ * hanya pemanggil yang berhasil mengklaim baris COLLECTING → ANALYZING yang
+ * melanjutkan ke pengumpulan (Lighthouse berbayar, tulis isu, notifikasi).
+ */
 export async function collectCrawlResults(crawlId: string): Promise<void> {
   const crawl = await prisma.seoSiteCrawl.findUnique({ where: { id: crawlId } });
   if (!crawl || !crawl.dataforseoTaskId) return;
+  // Hanya COLLECTING yang di-poll; ANALYZING sedang dikerjakan proses lain
+  // (atau macet → dipulihkan recoverStaleAnalyzingCrawls).
+  if (crawl.status !== SeoAnalysisStatus.COLLECTING) return;
 
-  let summary;
+  let summary: CrawlSummary | null;
+  let taskStatusCode: number | null;
+  let taskStatusMessage: string | null;
   try {
-    summary = await fetchOnPageSummary(crawl.dataforseoTaskId);
+    ({ summary, taskStatusCode, taskStatusMessage } = await fetchOnPageSummary(
+      crawl.dataforseoTaskId,
+    ));
   } catch (err) {
     console.error("[seo/crawler] summary gagal", crawlId, err);
     return; // coba lagi pada poll berikutnya
   }
-  if (!summary) return;
+
+  // Task-level error permanen (mis. 40401 Task Not Found) → gagal sekarang,
+  // jangan menunggu timeout 2 jam.
+  if (!summary && isTerminalTaskStatus(taskStatusCode)) {
+    await prisma.seoSiteCrawl.update({
+      where: { id: crawlId },
+      data: {
+        status: SeoAnalysisStatus.FAILED,
+        errorMessage: `DataForSEO: ${taskStatusMessage ?? "task gagal"} (${taskStatusCode}).`,
+      },
+    });
+    return;
+  }
 
   // Periksa hasil lebih dulu: task yang sudah selesai tetap harus dikumpulkan
   // walaupun cron/polling sempat mati lebih dari batas timeout.
-  if (summary.crawlProgress !== "finished") {
+  if (!summary || summary.crawlProgress !== "finished") {
     // updatedAt bergerak saat task dimulai/di-refresh atau progress bertambah,
     // sehingga refresh crawl lama tidak langsung timeout berdasarkan createdAt.
+    // Cek ini juga berlaku saat ringkasan masih kosong (task antre terlalu lama).
     if (Date.now() - crawl.updatedAt.getTime() > CRAWL_TIMEOUT_MS) {
       await prisma.seoSiteCrawl.update({
         where: { id: crawlId },
@@ -239,7 +337,11 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
     }
 
     // Update progress meski belum selesai.
-    if (summary.pagesCrawled != null && summary.pagesCrawled !== crawl.pagesCrawled) {
+    if (
+      summary &&
+      summary.pagesCrawled != null &&
+      summary.pagesCrawled !== crawl.pagesCrawled
+    ) {
       await prisma.seoSiteCrawl.update({
         where: { id: crawlId },
         data: { pagesCrawled: summary.pagesCrawled },
@@ -248,19 +350,66 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
     return;
   }
 
-  // Selesai → kumpulkan halaman + (opsional) Lighthouse.
-  await prisma.seoSiteCrawl.update({
-    where: { id: crawlId },
+  // Selesai → klaim baris secara atomik. count === 0 berarti proses lain
+  // sudah mengambil alih (atau status berubah) → berhenti tanpa efek samping.
+  const claimed = await prisma.seoSiteCrawl.updateMany({
+    where: { id: crawlId, status: SeoAnalysisStatus.COLLECTING },
     data: { status: SeoAnalysisStatus.ANALYZING },
   });
+  if (claimed.count === 0) return;
+
+  try {
+    await finalizeCrawl(crawl, summary);
+  } catch (err) {
+    // Lepaskan klaim agar poll berikutnya mencoba lagi (bukan menunggu 20 menit).
+    await prisma.seoSiteCrawl
+      .updateMany({
+        where: { id: crawlId, status: SeoAnalysisStatus.ANALYZING },
+        data: { status: SeoAnalysisStatus.COLLECTING },
+      })
+      .catch(() => undefined);
+    throw err;
+  }
+}
+
+type ClaimedCrawl = NonNullable<
+  Awaited<ReturnType<typeof prisma.seoSiteCrawl.findUnique>>
+>;
+
+/** Kumpulkan halaman + Lighthouse, hitung isu/health, tulis hasil (setelah klaim). */
+async function finalizeCrawl(
+  crawl: ClaimedCrawl,
+  summary: CrawlSummary,
+): Promise<void> {
+  const crawlId = crawl.id;
+  const taskId = crawl.dataforseoTaskId!;
 
   let pages: CrawlPageRow[] = [];
   let pagesFetched = false;
   try {
-    pages = await fetchOnPagePages(crawl.dataforseoTaskId, crawl.maxPages);
+    pages = await fetchOnPagePages(taskId, crawl.maxPages);
     pagesFetched = true;
   } catch (err) {
     console.warn("[seo/crawler] pages gagal (lanjut dengan agregat)", err);
+  }
+
+  const pagesCrawled = summary.pagesCrawled ?? pages.length;
+  const metricsAvailable = hasPageMetrics(summary);
+
+  // Tidak ada data yang bisa dinilai → FAILED, bukan "Health 100".
+  if (pagesCrawled === 0 || (!pagesFetched && !metricsAvailable)) {
+    await prisma.seoSiteCrawl.update({
+      where: { id: crawlId },
+      data: {
+        status: SeoAnalysisStatus.FAILED,
+        pagesCrawled,
+        summary: summary as unknown as Prisma.InputJsonValue,
+        healthScore: null,
+        errorMessage: CRAWL_NO_PAGES_MESSAGE,
+        dataNotice: pagesFetched ? null : CRAWL_PAGES_UNAVAILABLE_NOTICE,
+      },
+    });
+    return;
   }
 
   let lighthouse: LighthouseMetrics | null = null;
@@ -284,17 +433,24 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
   const allIssues = [...aggregateIssues, ...pageIssues];
   const pageRows = buildCrawlPageRows(crawlId, pages);
 
-  const pagesCrawled = summary.pagesCrawled ?? pages.length;
   // Agregat DataForSEO sudah menghitung dampak per halaman. Jangan menghukum
   // health score dua kali dengan isu agregat + salinan isu URL yang sama.
-  const scoreIssues = aggregateIssues.length > 0 ? aggregateIssues : pageIssues;
-  const healthScore = computeHealthScore(
-    scoreIssues.map((i) => ({
-      severity: i.severity,
-      count: "count" in i && i.count != null ? i.count : 1,
-    })),
-    pagesCrawled,
-  );
+  // Tanpa metrik agregat maupun daftar halaman, skor tidak dihitung sama sekali.
+  const scoreIssues = metricsAvailable ? aggregateIssues : pageIssues;
+  const canScore = metricsAvailable || (pagesFetched && pages.length > 0);
+  const healthScore = canScore
+    ? computeHealthScore(
+        scoreIssues.map((i) => ({
+          severity: i.severity,
+          count: "count" in i && i.count != null ? i.count : 1,
+        })),
+        pagesCrawled,
+      )
+    : null;
+
+  const notices: string[] = [];
+  if (!pagesFetched) notices.push(CRAWL_PAGES_UNAVAILABLE_NOTICE);
+  if (!canScore) notices.push(CRAWL_NO_METRICS_NOTICE);
 
   // Diff vs crawl READY sebelumnya untuk domain + maxPages yang sama.
   const previous = await prisma.seoSiteCrawl.findFirst({
@@ -307,30 +463,40 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
     orderBy: { createdAt: "desc" },
     include: { issues: true },
   });
+  // Bila daftar halaman gagal diambil, jangan bandingkan isu per-URL: semua
+  // isu lama akan tampak "diperbaiki" padahal datanya saja yang tidak ada.
+  const toDiffable = (i: {
+    type: string;
+    url: string | null;
+    severity: string;
+    message: string | null;
+    count: number | null;
+  }): DiffableIssue => ({
+    type: i.type,
+    url: i.url ?? null,
+    severity: i.severity,
+    message: i.message ?? "",
+    count: i.count != null ? i.count : 1,
+  });
   const issueDiff = previous
     ? diffCrawlIssues(
-        previous.issues.map(
-          (i): DiffableIssue => ({
-            type: i.type,
-            url: i.url,
-            severity: i.severity,
-            message: i.message,
-            count: i.count,
-          }),
-        ),
-        allIssues.map(
-          (i): DiffableIssue => ({
+        previous.issues
+          .filter((i) => pagesFetched || i.url == null)
+          .map(toDiffable),
+        (pagesFetched ? allIssues : aggregateIssues).map((i) =>
+          toDiffable({
             type: i.type,
             url: i.url ?? null,
             severity: i.severity,
-            message: i.message ?? "",
-            count: "count" in i && i.count != null ? i.count : 1,
+            message: i.message ?? null,
+            count: "count" in i && i.count != null ? i.count : null,
           }),
         ),
       )
     : null;
 
   const mutations: Prisma.PrismaPromise<unknown>[] = [
+    // Idempoten: hapus semua isu crawl ini lalu tulis ulang dalam satu transaksi.
     prisma.seoCrawlIssue.deleteMany({ where: { crawlId } }),
     prisma.seoCrawlIssue.createMany({ data: allIssues }),
   ];
@@ -357,6 +523,7 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
         issueDiff: issueDiff
           ? (issueDiff as unknown as Prisma.InputJsonValue)
           : Prisma.JsonNull,
+        dataNotice: notices.length > 0 ? notices.join(" ") : null,
         errorMessage: null,
       },
     }),
@@ -370,9 +537,10 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
     );
     if (seriousNew.length > 0) {
       try {
+        const healthLabel = healthScore != null ? `${healthScore}/100` : "—";
         await notifyUser(
           crawl.createdById,
-          `Audit terjadwal ${crawl.domain}: ${seriousNew.length} isu berat baru (health ${healthScore}/100). Contoh: ${seriousNew[0].message}`,
+          `Audit terjadwal ${crawl.domain}: ${seriousNew.length} isu berat baru (health ${healthLabel}). Contoh: ${seriousNew[0].message}`,
           NotificationType.SEO_ALERT,
         );
       } catch (err) {
@@ -386,10 +554,13 @@ export async function collectCrawlResults(crawlId: string): Promise<void> {
 export async function pollRunningSiteCrawls(): Promise<{
   checked: number;
   finished: number;
+  recovered: number;
 }> {
+  const recovered = await recoverStaleAnalyzingCrawls();
   const running = await prisma.seoSiteCrawl.findMany({
     where: {
-      status: { in: [SeoAnalysisStatus.COLLECTING, SeoAnalysisStatus.ANALYZING] },
+      // ANALYZING sengaja tidak di-poll: sedang dikerjakan proses lain.
+      status: SeoAnalysisStatus.COLLECTING,
       dataforseoTaskId: { not: null },
     },
     select: { id: true },
@@ -408,5 +579,5 @@ export async function pollRunningSiteCrawls(): Promise<{
       console.error("[seo/crawler] poll gagal", crawl.id, err);
     }
   }
-  return { checked: running.length, finished };
+  return { checked: running.length, finished, recovered };
 }
