@@ -224,6 +224,139 @@ export async function fetchRankedKeywords(
   return (await fetchRankedKeywordsWithMeta(target, opts)).rows;
 }
 
+/* ----------------------- ranked keywords: verifikasi keyword ----------------------- */
+
+/** Maksimum keyword per permintaan verifikasi (`filters ... in [...]`). */
+export const RANKED_KEYWORDS_VERIFY_BATCH = 100;
+
+/** Pecah daftar keyword (unik, case-insensitive, tanpa kosong) menjadi batch. */
+export function chunkKeywordsForVerification(
+  keywords: string[],
+  size: number = RANKED_KEYWORDS_VERIFY_BATCH,
+): string[][] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const raw of keywords) {
+    const kw = raw.trim();
+    const key = kw.toLowerCase();
+    if (!kw || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(kw);
+  }
+  const batchSize = Math.max(1, Math.min(RANKED_KEYWORDS_VERIFY_BATCH, Math.floor(size)));
+  const batches: string[][] = [];
+  for (let i = 0; i < unique.length; i += batchSize) {
+    batches.push(unique.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+/**
+ * Payload `ranked_keywords/live` yang dibatasi ke daftar keyword tertentu —
+ * dipakai Keyword Gap untuk memastikan target benar-benar tidak ranking (bukan
+ * sekadar tidak masuk sampel top-N by ETV).
+ */
+export function buildRankedKeywordsForKeywordsPayload(
+  target: string,
+  keywords: string[],
+  opts: LabsDomainOptions = {},
+): Record<string, unknown> {
+  const list = keywords.slice(0, RANKED_KEYWORDS_VERIFY_BATCH);
+  return {
+    target,
+    ...baseParams(opts),
+    item_types: ["organic"],
+    filters: ["keyword_data.keyword", "in", list],
+    // Satu keyword bisa punya >1 URL ranking; ambil ruang lebih agar posisi
+    // terbaik tiap keyword tidak terpotong.
+    limit: Math.min(1000, Math.max(10, list.length * 3)),
+    order_by: ["ranked_serp_element.serp_item.rank_group,asc"],
+  };
+}
+
+/**
+ * Pilih posisi terbaik (rank_group terkecil) per keyword; kunci lower-case.
+ */
+export function pickBestRankedPositions(
+  rows: RankedKeyword[],
+): Map<string, RankedKeyword> {
+  const out = new Map<string, RankedKeyword>();
+  for (const row of rows) {
+    const key = row.keyword.trim().toLowerCase();
+    if (!key) continue;
+    const prev = out.get(key);
+    if (!prev) {
+      out.set(key, row);
+      continue;
+    }
+    const prevPos = prev.position ?? Number.POSITIVE_INFINITY;
+    const nextPos = row.position ?? Number.POSITIVE_INFINITY;
+    if (nextPos < prevPos) out.set(key, row);
+  }
+  return out;
+}
+
+export type RankedKeywordsVerification = {
+  /** Keyword yang ditemukan ranking (kunci lower-case). */
+  found: Map<string, RankedKeyword>;
+  /** Jumlah keyword yang diminta verifikasi. */
+  checked: number;
+  /** Jumlah batch yang gagal (0 = verifikasi lengkap). */
+  failedBatches: number;
+  /** Error pertama yang dijumpai (untuk log/notice). */
+  firstError: unknown;
+};
+
+/**
+ * Verifikasi posisi `target` untuk daftar keyword spesifik via
+ * `ranked_keywords/live` + `filters`. Dipanggil per batch ≤ 100 keyword,
+ * berurutan untuk menjaga concurrency akun. Batch yang gagal dicatat — hasil
+ * batch lain tetap dikembalikan sehingga pemanggil dapat memutuskan fallback.
+ */
+export async function fetchRankedKeywordsForKeywords(
+  target: string,
+  keywords: string[],
+  opts: LabsDomainOptions = {},
+): Promise<RankedKeywordsVerification> {
+  const endpoint = "dataforseo_labs/google/ranked_keywords/live";
+  const batches = chunkKeywordsForVerification(keywords);
+  const rows: RankedKeyword[] = [];
+  let failedBatches = 0;
+  let firstError: unknown = null;
+
+  for (const batch of batches) {
+    const payload = buildRankedKeywordsForKeywordsPayload(target, batch, opts);
+    try {
+      const batchRows = await withDataForSeoCache(
+        endpoint,
+        { ...payload, _cacheParserVersion: 2 },
+        async () => {
+          const response = await dataForSeoLive<DfsItemsResult<DfsRankedItem>>(
+            endpoint,
+            payload,
+          );
+          return parseRankedKeywords(response[0]?.items ?? []);
+        },
+      );
+      rows.push(...batchRows);
+    } catch (err) {
+      failedBatches += 1;
+      if (firstError == null) firstError = err;
+      console.warn(
+        `[seo/labs-domain] verifikasi ranked_keywords gagal untuk ${target} (batch ${batch.length} keyword)`,
+        err,
+      );
+    }
+  }
+
+  return {
+    found: pickBestRankedPositions(rows),
+    checked: batches.reduce((acc, b) => acc + b.length, 0),
+    failedBatches,
+    firstError,
+  };
+}
+
 /* ---------------------------- competitors domain ---------------------------- */
 
 export type CompetitorDomain = {

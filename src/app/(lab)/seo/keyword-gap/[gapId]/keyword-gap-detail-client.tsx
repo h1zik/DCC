@@ -27,7 +27,11 @@ import { SeoDetailPage } from "@/components/seo/seo-module-page";
 import { SeoStatusBadge } from "@/components/seo/seo-status-badge";
 import { SeoGapVenn } from "@/components/seo/seo-gap-venn";
 import { lab } from "@/components/lab/lab-primitives";
-import { isSeoStatusBusy, formatRankPosition } from "@/lib/seo/labels";
+import {
+  formatRankPosition,
+  isSeoRunStale,
+  isSeoStatusBusy,
+} from "@/lib/seo/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import {
@@ -38,10 +42,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { PageIntersectionRow } from "@/lib/seo/dataforseo/labs-domain";
-import type {
-  GapBucket,
-  GapRow,
-  GapSummary,
+import {
+  isGapMissingSampleBased,
+  type GapBucket,
+  type GapRow,
+  type GapSummary,
 } from "@/lib/seo/keyword-gap/gap-logic";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +56,8 @@ export type KeywordGapDetail = {
   target: string;
   competitors: string[];
   status: SeoAnalysisStatus;
+  /** ISO string — dipakai mendeteksi run yang macet (stale). */
+  updatedAt: string;
   rows: GapRow[];
   summary: GapSummary | null;
   dataNotice: string | null;
@@ -76,6 +83,27 @@ const BUCKET_HINTS: Record<GapBucket, string> = {
   unique: "Hanya domain Anda yang ranking — kekuatan eksklusif.",
   mixed: "Anda dan sebagian kompetitor ranking dengan posisi campuran.",
 };
+
+/** Bucket yang maknanya bergantung pada "target tidak ranking". */
+const SAMPLE_SENSITIVE_BUCKETS: ReadonlySet<GapBucket> = new Set<GapBucket>([
+  "missing",
+  "untapped",
+]);
+
+const SAMPLE_HINT =
+  "Sampel keyword domain Anda dipotong (hanya top keyword by trafik) dan verifikasi posisi tidak lengkap — keyword di sini mungkin sebenarnya Anda ranking di luar sampel.";
+
+function bucketLabel(bucket: GapBucket, sampleBased: boolean): string {
+  return sampleBased && SAMPLE_SENSITIVE_BUCKETS.has(bucket)
+    ? `${BUCKET_LABELS[bucket]} (dalam sampel)`
+    : BUCKET_LABELS[bucket];
+}
+
+function bucketHint(bucket: GapBucket, sampleBased: boolean): string {
+  return sampleBased && SAMPLE_SENSITIVE_BUCKETS.has(bucket)
+    ? `${BUCKET_HINTS[bucket]} ${SAMPLE_HINT}`
+    : BUCKET_HINTS[bucket];
+}
 
 const BUCKET_COLORS: Record<GapBucket, string> = {
   missing: "var(--destructive)",
@@ -122,16 +150,22 @@ function num(v: number | null | undefined): string {
   return v == null ? "—" : v.toLocaleString("id-ID");
 }
 
-function BucketBadge({ bucket }: { bucket: GapBucket }) {
+function BucketBadge({
+  bucket,
+  sampleBased,
+}: {
+  bucket: GapBucket;
+  sampleBased: boolean;
+}) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-lg px-2 py-1 text-[11px] font-bold",
         BUCKET_TONES[bucket],
       )}
-      title={BUCKET_HINTS[bucket]}
+      title={bucketHint(bucket, sampleBased)}
     >
-      {BUCKET_LABELS[bucket]}
+      {bucketLabel(bucket, sampleBased)}
     </span>
   );
 }
@@ -173,7 +207,16 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("volume");
 
+  // Missing/untapped hanya fakta bila sampel target lengkap atau sudah
+  // diverifikasi; selain itu label diberi "(dalam sampel)".
+  const sampleBased = isGapMissingSampleBased(
+    detail.target,
+    detail.summary?.coverage,
+  );
+
   const busy = isSeoStatusBusy(detail.status);
+  // Run busy tanpa aktivitas >15 menit dianggap macet: tombol dibuka lagi.
+  const stale = isSeoRunStale(detail.status, detail.updatedAt);
   useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
@@ -225,7 +268,7 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
       xAxis: { type: "log", name: "Volume", nameLocation: "middle", nameGap: 26, min: 1 },
       yAxis: { type: "value", name: "Difficulty", max: 100 },
       series: buckets.map((b) => ({
-        name: BUCKET_LABELS[b],
+        name: bucketLabel(b, sampleBased),
         type: "scatter" as const,
         symbolSize: 9,
         itemStyle: { opacity: 0.75 },
@@ -234,7 +277,7 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
           .map((p) => [p.searchVolume!, p.difficulty!, p.keyword]),
       })),
     };
-  }, [detail.rows]);
+  }, [detail.rows, sampleBased]);
 
   function toggleSelect(keyword: string) {
     setSelected((prev) => {
@@ -318,7 +361,12 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
       right={
         <div className="flex flex-wrap items-center gap-2">
           <SeoStatusBadge status={detail.status} />
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={pending || busy}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={pending || (busy && !stale)}
+          >
             <RefreshCw />
             Refresh
           </Button>
@@ -338,9 +386,25 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
           {detail.errorMessage}
         </div>
       ) : null}
+      {stale ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
+          Proses tampak terhenti — jalankan ulang.
+        </div>
+      ) : null}
       {detail.dataNotice ? (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
           {detail.dataNotice}
+        </div>
+      ) : null}
+      {!busy && sampleBased && summary ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
+          Angka Missing/Untapped dihitung dalam sampel: keyword organik{" "}
+          {detail.target} dipotong pada {coverage?.perDomainLimit.toLocaleString("id-ID") ?? "1.000"}{" "}
+          teratas dan verifikasi posisi untuk keyword kompetitor tidak lengkap
+          {coverage?.targetVerification
+            ? ` (${coverage.targetVerification.found} dari ${coverage.targetVerification.checked} keyword terverifikasi ranking)`
+            : ""}
+          . Klik Refresh untuk mencoba verifikasi ulang.
         </div>
       ) : null}
 
@@ -357,15 +421,20 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
           {summary ? (
             <div className="grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4">
               {/* Missing — tile hero teal */}
-              <div className="bento-tile col-span-2 row-span-2 border-transparent bg-teal-600 shadow-md shadow-teal-600/20 lg:col-span-1 dark:bg-teal-500">
+              <div
+                className="bento-tile col-span-2 row-span-2 border-transparent bg-teal-600 shadow-md shadow-teal-600/20 lg:col-span-1 dark:bg-teal-500"
+                title={sampleBased ? SAMPLE_HINT : undefined}
+              >
                 <span className="text-[11.5px] font-semibold text-teal-100 dark:text-teal-950/70">
-                  Keyword missing
+                  {sampleBased ? "Keyword missing (dalam sampel)" : "Keyword missing"}
                 </span>
                 <span className="bento-value text-5xl text-white dark:text-teal-950">
                   {(summary.buckets.missing ?? 0).toLocaleString("id-ID")}
                 </span>
                 <span className="text-[11px] font-medium leading-snug text-teal-100/90 dark:text-teal-900/80">
-                  semua kompetitor ranking, Anda belum — peluang prioritas
+                  {sampleBased
+                    ? "semua kompetitor ranking, Anda tidak ada di sampel — perlu verifikasi"
+                    : "semua kompetitor ranking, Anda belum — peluang prioritas"}
                 </span>
               </div>
 
@@ -386,7 +455,7 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                         key={s.key}
                         className={s.dot}
                         style={{ width: `${(count / bucketTagTotal) * 100}%` }}
-                        title={`${BUCKET_LABELS[s.key]}: ${count}`}
+                        title={`${bucketLabel(s.key, sampleBased)}: ${count}`}
                       />
                     );
                   })}
@@ -398,14 +467,14 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                       <div
                         key={s.key}
                         className="flex items-center gap-2 text-xs"
-                        title={BUCKET_HINTS[s.key]}
+                        title={bucketHint(s.key, sampleBased)}
                       >
                         <span
                           className={cn("size-2 shrink-0 rounded-full", s.dot)}
                           aria-hidden
                         />
                         <span className="text-muted-foreground flex-1">
-                          {BUCKET_LABELS[s.key]}
+                          {bucketLabel(s.key, sampleBased)}
                         </span>
                         <span className="font-semibold tabular-nums">
                           {count.toLocaleString("id-ID")}
@@ -484,6 +553,20 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                     : ""}
                 </span>
               ))}
+              {coverage.targetVerification ? (
+                <span
+                  title="Keyword kompetitor yang absen dari sampel target dicek langsung posisinya ke DataForSEO Labs."
+                >
+                  Verifikasi target:{" "}
+                  {coverage.targetVerification.status === "verified"
+                    ? "lengkap"
+                    : coverage.targetVerification.status === "partial"
+                      ? "sebagian"
+                      : "gagal"}{" "}
+                  ({coverage.targetVerification.found}/
+                  {coverage.targetVerification.checked} ranking)
+                </span>
+              ) : null}
             </div>
           ) : null}
 
@@ -502,13 +585,13 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                 variant={bucket === b ? "default" : "outline"}
                 size="sm"
                 onClick={() => setBucket(b)}
-                title={BUCKET_HINTS[b]}
+                title={bucketHint(b, sampleBased)}
               >
                 <span
                   className="size-2 rounded-full"
                   style={{ backgroundColor: BUCKET_COLORS[b] }}
                 />
-                {BUCKET_LABELS[b]} ({summary?.buckets[b] ?? 0})
+                {bucketLabel(b, sampleBased)} ({summary?.buckets[b] ?? 0})
               </Button>
             ))}
           </div>
@@ -608,7 +691,11 @@ export function KeywordGapDetailClient({ detail }: { detail: KeywordGapDetail })
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {(row.buckets ?? [row.bucket]).map((rowBucket) => (
-                            <BucketBadge key={rowBucket} bucket={rowBucket} />
+                            <BucketBadge
+                              key={rowBucket}
+                              bucket={rowBucket}
+                              sampleBased={sampleBased}
+                            />
                           ))}
                         </div>
                       </TableCell>

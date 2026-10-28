@@ -6,12 +6,20 @@ import {
   DataForSeoError,
   isDataForSeoConfigured,
 } from "@/lib/seo/dataforseo/client";
-import { fetchRankedKeywordsWithMeta } from "@/lib/seo/dataforseo/labs-domain";
 import {
+  fetchRankedKeywordsForKeywords,
+  fetchRankedKeywordsWithMeta,
+} from "@/lib/seo/dataforseo/labs-domain";
+import {
+  keywordsAbsentFromTarget,
   mergeGapRows,
   type GapCoverage,
   type GapDomainRow,
 } from "@/lib/seo/keyword-gap/gap-logic";
+
+/** Notice saat missing/untapped tidak bisa dipastikan (verifikasi gagal). */
+export const GAP_SAMPLE_NOTICE =
+  "Jumlah Missing/Untapped berbasis sampel keyword teratas target — verifikasi posisi target untuk keyword kompetitor tidak dapat diselesaikan, sehingga sebagian keyword yang sebenarnya di-ranking target mungkin ikut terhitung.";
 
 function failMessage(err: unknown): string {
   if (err instanceof DataForSeoError) {
@@ -79,6 +87,44 @@ export async function runKeywordGap(gapId: string): Promise<void> {
       if (result.truncated) coverage.truncatedDomains.push(domain);
       if (result.rows.length === 0) {
         notices.push(`Tidak ada keyword organik terdeteksi untuk ${domain}.`);
+      }
+    }
+
+    // Verifikasi: sampel target hanya top-N by ETV, jadi "target tidak punya
+    // posisi" belum tentu berarti tidak ranking. Tanyakan langsung ke Labs
+    // untuk keyword kompetitor yang absen dari sampel target (batch ≤ 100).
+    if (coverage.truncatedDomains.includes(gap.target)) {
+      const candidates = keywordsAbsentFromTarget(gap.target, sources);
+      if (candidates.length > 0) {
+        const verification = await fetchRankedKeywordsForKeywords(
+          gap.target,
+          candidates,
+          { locationCode: gap.locationCode, languageCode: gap.languageCode },
+        );
+        const targetRows = sources[gap.target] ?? [];
+        for (const row of verification.found.values()) {
+          if (row.position == null) continue;
+          targetRows.push({
+            keyword: row.keyword,
+            searchVolume: row.searchVolume,
+            difficulty: row.difficulty,
+            position: row.position,
+          });
+        }
+        sources[gap.target] = targetRows;
+        coverage.targetVerification = {
+          status:
+            verification.failedBatches === 0
+              ? "verified"
+              : verification.found.size > 0
+                ? "partial"
+                : "failed",
+          checked: verification.checked,
+          found: verification.found.size,
+        };
+        if (verification.failedBatches > 0) notices.push(GAP_SAMPLE_NOTICE);
+      } else {
+        coverage.targetVerification = { status: "verified", checked: 0, found: 0 };
       }
     }
 

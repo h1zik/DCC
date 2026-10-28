@@ -2,9 +2,80 @@ import { describe, expect, it } from "vitest";
 import {
   classifyBucket,
   classifyBuckets,
+  isGapMissingSampleBased,
+  keywordsAbsentFromTarget,
   mergeGapRows,
+  type GapCoverage,
   type GapDomainRow,
 } from "@/lib/seo/keyword-gap/gap-logic";
+
+describe("keywordsAbsentFromTarget", () => {
+  const row = (keyword: string, position: number | null = 5): GapDomainRow => ({
+    keyword,
+    searchVolume: null,
+    difficulty: null,
+    position,
+  });
+
+  it("lists competitor keywords missing from the target sample, deduped", () => {
+    const absent = keywordsAbsentFromTarget("brand.com", {
+      "brand.com": [row("serum"), row("Toner")],
+      "a.com": [row("serum"), row("sunscreen"), row("Cushion")],
+      "b.com": [row("toner"), row("cushion"), row("masker")],
+    });
+    expect(absent).toEqual(["sunscreen", "Cushion", "masker"]);
+  });
+
+  it("returns nothing when the target already covers every competitor keyword", () => {
+    expect(
+      keywordsAbsentFromTarget("brand.com", {
+        "brand.com": [row("serum")],
+        "a.com": [row("SERUM")],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("isGapMissingSampleBased", () => {
+  const base: GapCoverage = {
+    fetchedByDomain: { "brand.com": 1000 },
+    totalByDomain: { "brand.com": 4200 },
+    truncatedDomains: ["brand.com"],
+    perDomainLimit: 1000,
+  };
+
+  it("is false without coverage or when the target sample is complete", () => {
+    expect(isGapMissingSampleBased("brand.com", null)).toBe(false);
+    expect(
+      isGapMissingSampleBased("brand.com", { ...base, truncatedDomains: ["a.com"] }),
+    ).toBe(false);
+  });
+
+  it("is true when the target is truncated and verification is absent or incomplete", () => {
+    expect(isGapMissingSampleBased("brand.com", base)).toBe(true);
+    expect(
+      isGapMissingSampleBased("brand.com", {
+        ...base,
+        targetVerification: { status: "failed", checked: 300, found: 0 },
+      }),
+    ).toBe(true);
+    expect(
+      isGapMissingSampleBased("brand.com", {
+        ...base,
+        targetVerification: { status: "partial", checked: 300, found: 12 },
+      }),
+    ).toBe(true);
+  });
+
+  it("is false once verification completed", () => {
+    expect(
+      isGapMissingSampleBased("brand.com", {
+        ...base,
+        targetVerification: { status: "verified", checked: 300, found: 12 },
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("classifyBucket", () => {
   it("separates missing from untapped for an unranked target", () => {

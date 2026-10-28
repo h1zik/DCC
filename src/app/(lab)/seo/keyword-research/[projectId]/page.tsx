@@ -43,6 +43,7 @@ export default async function SeoKeywordResearchDetailPage({
         name: project.name,
         seedKeyword: project.seedKeyword,
         status: project.status,
+        updatedAt: project.updatedAt.toISOString(),
         aiSummary: project.aiSummary,
         dataNotice: project.dataNotice,
         errorMessage: project.errorMessage,

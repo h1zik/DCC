@@ -32,6 +32,7 @@ import { LabEmptyState, lab } from "@/components/lab/lab-primitives";
 import {
   SEO_INTENT_LABELS,
   SEO_STATUS_LABELS,
+  isSeoRunStale,
   isSeoStatusBusy,
 } from "@/lib/seo/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
@@ -56,6 +57,8 @@ type ProjectInfo = {
   name: string;
   seedKeyword: string;
   status: SeoAnalysisStatus;
+  /** ISO string — dipakai mendeteksi run yang macet (stale). */
+  updatedAt: string;
   aiSummary: string | null;
   dataNotice: string | null;
   errorMessage: string | null;
@@ -171,6 +174,8 @@ export function KeywordResearchDetailClient({
   const [sortBy, setSortBy] = useState<SortKey>("volume");
 
   const busy = isSeoStatusBusy(project.status);
+  // Run busy tanpa aktivitas >15 menit dianggap macet: tombol dibuka lagi.
+  const stale = isSeoRunStale(project.status, project.updatedAt);
   useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
@@ -271,7 +276,7 @@ export function KeywordResearchDetailClient({
             variant="outline"
             size="sm"
             onClick={handleRefresh}
-            disabled={pending || busyRefresh || busy}
+            disabled={pending || busyRefresh || (busy && !stale)}
           >
             <RefreshCw className={cn(busyRefresh && "animate-spin")} />
             Riset ulang
@@ -282,6 +287,12 @@ export function KeywordResearchDetailClient({
       {project.status === SeoAnalysisStatus.FAILED && project.errorMessage ? (
         <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-xl border p-4 text-sm">
           {project.errorMessage}
+        </div>
+      ) : null}
+
+      {stale ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
+          Proses tampak terhenti — jalankan ulang.
         </div>
       ) : null}
 

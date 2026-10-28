@@ -31,7 +31,11 @@ import {
 } from "@/components/ui/table";
 import { SeoDetailPage } from "@/components/seo/seo-module-page";
 import { lab } from "@/components/lab/lab-primitives";
-import { SEO_STATUS_LABELS, isSeoStatusBusy } from "@/lib/seo/labels";
+import {
+  SEO_STATUS_LABELS,
+  isSeoRunStale,
+  isSeoStatusBusy,
+} from "@/lib/seo/labels";
 import type { SelectItemDef } from "@/lib/select-option-items";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { refreshSeoDomainOverview } from "@/actions/seo-domain-overview";
@@ -49,6 +53,8 @@ export type DomainOverviewDetail = {
   id: string;
   target: string;
   status: SeoAnalysisStatus;
+  /** ISO string — dipakai mendeteksi run yang macet (stale). */
+  updatedAt: string;
   overview: DomainRankOverview | null;
   topKeywords: RankedKeyword[];
   competitors: CompetitorDomain[];
@@ -203,6 +209,8 @@ export function DomainOverviewDetailClient({
       : null;
 
   const busy = isSeoStatusBusy(detail.status);
+  // Run busy tanpa aktivitas >15 menit dianggap macet: tombol dibuka lagi.
+  const stale = isSeoRunStale(detail.status, detail.updatedAt);
   useEffect(() => {
     if (!busy) return;
     const timer = setInterval(() => { if (document.visibilityState !== "hidden") router.refresh(); }, 4000);
@@ -273,7 +281,7 @@ export function DomainOverviewDetailClient({
             variant="outline"
             size="sm"
             onClick={handleRefresh}
-            disabled={pending || busy}
+            disabled={pending || (busy && !stale)}
           >
             <RefreshCw />
             Refresh
@@ -295,6 +303,11 @@ export function DomainOverviewDetailClient({
       {detail.status === SeoAnalysisStatus.FAILED && detail.errorMessage ? (
         <div className="border-destructive/30 bg-destructive/5 text-destructive rounded-xl border p-4 text-sm">
           {detail.errorMessage}
+        </div>
+      ) : null}
+      {stale ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-400">
+          Proses tampak terhenti — jalankan ulang.
         </div>
       ) : null}
       {detail.dataNotice ? (

@@ -6,6 +6,7 @@ import { ResearchMarketplace } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSeoAccess } from "@/lib/seo/auth";
+import { isSeoRunStale, isSeoStatusBusy } from "@/lib/seo/labels";
 import { enqueueKeywordResearch } from "@/lib/seo/keyword-research/analyzer";
 
 const createSchema = z.object({
@@ -54,9 +55,16 @@ export async function refreshSeoKeywordProject(projectId: string) {
 
   const existing = await prisma.seoKeywordProject.findUnique({
     where: { id: projectId },
-    select: { id: true },
+    select: { id: true, status: true, updatedAt: true },
   });
   if (!existing) throw new Error("Proyek tidak ditemukan.");
+  // Run yang masih aktif tidak boleh ditimpa; run macet (stale) boleh di-reset.
+  if (
+    isSeoStatusBusy(existing.status) &&
+    !isSeoRunStale(existing.status, existing.updatedAt)
+  ) {
+    throw new Error("Analisis masih berjalan.");
+  }
 
   await prisma.seoKeywordProject.update({
     where: { id: projectId },

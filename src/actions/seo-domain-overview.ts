@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSeoAccess } from "@/lib/seo/auth";
 import { normalizeDomain } from "@/lib/seo/dataforseo/serp-parse";
+import { isSeoRunStale, isSeoStatusBusy } from "@/lib/seo/labels";
 import { runDomainOverview } from "@/lib/seo/domain-overview/analyzer";
 
 const createSchema = z.object({
@@ -40,6 +41,19 @@ export async function createSeoDomainOverview(
 export async function refreshSeoDomainOverview(overviewId: string) {
   await requireSeoAccess();
   z.string().min(1).parse(overviewId);
+
+  const existing = await prisma.seoDomainOverview.findUnique({
+    where: { id: overviewId },
+    select: { id: true, status: true, updatedAt: true },
+  });
+  if (!existing) throw new Error("Domain overview tidak ditemukan.");
+  // Run yang masih aktif tidak boleh ditimpa; run macet (stale) boleh di-reset.
+  if (
+    isSeoStatusBusy(existing.status) &&
+    !isSeoRunStale(existing.status, existing.updatedAt)
+  ) {
+    throw new Error("Analisis masih berjalan.");
+  }
 
   await prisma.seoDomainOverview.update({
     where: { id: overviewId },
