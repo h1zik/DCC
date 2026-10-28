@@ -229,15 +229,22 @@ export function collectLlmAnswer(node: unknown): LlmAnswer {
 export async function fetchLlmResponse(
   platform: AiPlatform,
   prompt: string,
+  opts: { fresh?: boolean } = {},
 ): Promise<LlmAnswer> {
   const model = await resolveLlmModel(platform);
   const { endpoint, payload } = buildLlmRequest(platform, prompt, model);
 
-  const result = await withDataForSeoCache(endpoint, payload, async () => {
-    return await dataForSeoLive<unknown>(endpoint, payload, {
-      maxRetries: 1,
-    });
-  });
+  const result = await withDataForSeoCache(
+    endpoint,
+    payload,
+    async () => {
+      return await dataForSeoLive<unknown>(endpoint, payload, {
+        maxRetries: 1,
+      });
+    },
+    undefined,
+    { bypass: opts.fresh === true },
+  );
 
   return collectLlmAnswer(result);
 }

@@ -103,14 +103,21 @@ function parsePageItem(item: DfsPageItem): InstantPageSignals {
 /** Audit On-Page satu URL via instant_pages (live), di-cache 24 jam. */
 export async function fetchInstantPage(
   url: string,
+  opts: { fresh?: boolean } = {},
 ): Promise<InstantPageSignals | null> {
   const endpoint = "on_page/instant_pages";
   const payload = { url, enable_javascript: false };
 
-  const item = await withDataForSeoCache(endpoint, payload, async () => {
-    const result = await dataForSeoLive<DfsInstantPagesResult>(endpoint, payload);
-    return result[0]?.items?.[0] ?? null;
-  });
+  const item = await withDataForSeoCache(
+    endpoint,
+    payload,
+    async () => {
+      const result = await dataForSeoLive<DfsInstantPagesResult>(endpoint, payload);
+      return result[0]?.items?.[0] ?? null;
+    },
+    undefined,
+    { bypass: opts.fresh === true },
+  );
 
   return item ? parsePageItem(item) : null;
 }

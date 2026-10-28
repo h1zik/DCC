@@ -33,22 +33,35 @@ export function buildCacheKey(
  *
  * Kegagalan tulis cache tidak menjatuhkan request — data segar tetap dikembalikan.
  */
+export type DataForSeoCacheOptions = {
+  /**
+   * Lewati pembacaan cache dan selalu ambil data segar (hasil tetap disimpan
+   * agar pemanggil lain bisa memakainya). Dipakai untuk pengukuran yang harus
+   * mencerminkan kondisi saat ini: rank check harian, "Audit ulang", rerun
+   * AI Visibility.
+   */
+  bypass?: boolean;
+};
+
 export async function withDataForSeoCache<T>(
   endpoint: string,
   params: Record<string, unknown>,
   fetcher: () => Promise<T>,
   ttlMs: number = defaultTtlMs(),
+  opts: DataForSeoCacheOptions = {},
 ): Promise<T> {
   const cacheKey = buildCacheKey(endpoint, params);
   const now = Date.now();
 
-  try {
-    const hit = await prisma.dataForSeoCache.findUnique({ where: { cacheKey } });
-    if (hit && hit.expiresAt.getTime() > now) {
-      return hit.payload as T;
+  if (!opts.bypass) {
+    try {
+      const hit = await prisma.dataForSeoCache.findUnique({ where: { cacheKey } });
+      if (hit && hit.expiresAt.getTime() > now) {
+        return hit.payload as T;
+      }
+    } catch (err) {
+      console.warn("[seo/dataforseo-cache] baca cache gagal", err);
     }
-  } catch (err) {
-    console.warn("[seo/dataforseo-cache] baca cache gagal", err);
   }
 
   const fresh = await fetcher();

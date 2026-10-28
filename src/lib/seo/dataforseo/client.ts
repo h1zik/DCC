@@ -109,12 +109,25 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type RequestOpts = {
+export type RequestOpts = {
   /** Jumlah retry untuk error transien (default 2). */
   maxRetries?: number;
   /** Delay dasar backoff dalam ms (default 800). */
   baseDelayMs?: number;
+  /**
+   * Batas waktu satu percobaan HTTP dalam ms (default 90 detik). Tanpa batas,
+   * request yang menggantung membuat server action / cron tidak pernah selesai
+   * dan run tersangkut di status COLLECTING.
+   */
+  timeoutMs?: number;
 };
+
+const DEFAULT_TIMEOUT_MS = 90_000;
+
+function requestSignal(timeoutMs: number | undefined): AbortSignal {
+  const ms = timeoutMs != null && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
+  return AbortSignal.timeout(ms);
+}
 
 /**
  * Kirim POST ke endpoint DataForSEO dengan body array task. Mengembalikan
@@ -149,6 +162,7 @@ export async function dataForSeoRequest<T>(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+        signal: requestSignal(opts.timeoutMs),
       });
 
       const json = (await res.json().catch(() => null)) as DfsResponse<T> | null;
@@ -226,6 +240,7 @@ export async function dataForSeoGet<T>(
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: authHeader(creds.login, creds.password) },
+        signal: requestSignal(opts.timeoutMs),
       });
       const json = (await res.json().catch(() => null)) as DfsResponse<T> | null;
 
