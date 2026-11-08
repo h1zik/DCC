@@ -3,7 +3,7 @@ import {
   normalizeGenericReviewItems,
   normalizeJsonLdReviewItems,
   normalizeKulqizProductReviews,
-  normalizeShopeeProductDetailReviews,
+  normalizeShopeeShopReviews,
 } from "@/lib/apify/normalize";
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | null {
@@ -156,8 +156,8 @@ export function normalizeReviewItemsForPlatform(
 ): NormalizedReview[] {
   switch (platformKey) {
     case "shopee": {
-      const fromPdp = normalizeShopeeProductDetailReviews(items);
-      if (fromPdp.length > 0) return fromPdp;
+      const fromShop = normalizeShopeeShopReviews(items);
+      if (fromShop.length > 0) return fromShop;
       break;
     }
     case "tiktok_shop": {

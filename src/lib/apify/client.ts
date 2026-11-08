@@ -26,7 +26,7 @@ type ApifyRunStatus = {
   };
 };
 
-/** Terima `gio21/shopee-scraper` atau `gio21~shopee-scraper`. */
+/** Terima `xtracto/shopee-search` atau `xtracto~shopee-search`. */
 export function normalizeApifyActorId(actorId: string): string {
   return actorId.trim().replace(/\//g, "~");
 }

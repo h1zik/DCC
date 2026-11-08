@@ -278,7 +278,7 @@ Use `.env.example` as the source of truth for local setup. The most important gr
 | `APIFY_API_TOKEN` | Apify API token for fallback scrapers |
 | `APIFY_ACTOR_TOKOPEDIA_*` | Tokopedia scraping actors |
 | `APIFY_ACTOR_TIKTOK_*` | TikTok Shop, trends and comments actors |
-| `APIFY_ACTOR_SHOPEE_*` | Shopee product/review/autocomplete actors |
+| `APIFY_ACTOR_SHOPEE_*` | Shopee actors: `_SEARCH` (xtracto~shopee-search), `_SHOP` (xtracto~shopee-shop-scraper), `_PRODUCT` (xtracto~shopee-scraper), `_REVIEWS` (dami_studio~shopee-shop-reviews-scraper), `_AUTOCOMPLETE` (xtracto~shopee-search-hint) |
 | `APIFY_ACTOR_INSTAGRAM` | Instagram scraping actor |
 | `APIFY_ACTOR_PINTEREST` | Pinterest scraping actor |
 | `APIFY_ACTOR_META_AD_LIBRARY` | Meta ad library scraping actor |

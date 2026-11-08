@@ -81,6 +81,35 @@ function pickNumber(obj: Record<string, unknown>, keys: string[]): number | null
   return null;
 }
 
+/** ID bisa string atau angka (mis. xtracto `item_id`, dami `cmtid`). */
+function pickId(obj: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+/** Nama toko: field datar atau objek `shop` ({ name } dari detail xtracto). */
+function pickShopName(item: Record<string, unknown>): string | null {
+  const flat = pickString(item, [
+    "shopName",
+    "shop_name",
+    "sellerName",
+    "seller_name",
+    "seller",
+    "brandName",
+    "storeName",
+  ]);
+  if (flat) return flat;
+  const shop = item.shop;
+  if (shop && typeof shop === "object" && !Array.isArray(shop)) {
+    return pickString(shop as Record<string, unknown>, ["name", "shop_name", "username"]);
+  }
+  return null;
+}
+
 function pickImageUrl(obj: Record<string, unknown>): string | null {
   const direct = pickString(obj, [
     "imageUrl",
@@ -172,34 +201,47 @@ function pickDate(obj: Record<string, unknown>, keys: string[]): Date | null {
   return null;
 }
 
-/** gio21/shopee-product-detail — review ada di `recentReviews` per produk. */
-export function normalizeShopeeProductDetailReviews(
+/** Baris dataset dami_studio/shopee-shop-reviews-scraper: `type` = review | shop | notice. */
+function damiRowType(item: Record<string, unknown>): string | null {
+  return typeof item.type === "string" ? item.type : null;
+}
+
+function isDamiReviewRow(item: Record<string, unknown>): boolean {
+  const type = damiRowType(item);
+  if (type) return type === "review";
+  return item.cmtid != null && "rating_star" in item;
+}
+
+/** Notice dami yang bukan kegagalan (berhenti karena filter / batas run). */
+const DAMI_BENIGN_NOTICES = new Set(["FILTER_STOP", "TIME_LIMIT", "COST_LIMIT"]);
+const DAMI_TRUNCATING_NOTICES = new Set(["TIME_LIMIT", "COST_LIMIT"]);
+
+/** dami_studio/shopee-shop-reviews-scraper — satu baris datar per review. */
+export function normalizeShopeeShopReviews(
   items: Record<string, unknown>[],
 ): NormalizedReview[] {
   const out: NormalizedReview[] = [];
-  for (const item of items) {
-    if (item.error != null) continue;
+  const seen = new Set<string>();
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i]!;
+    if (!isDamiReviewRow(item)) continue;
 
-    const recent = item.recentReviews;
-    if (!Array.isArray(recent)) continue;
+    const text = pickString(item, ["comment", "text"]) ?? "";
+    if (!text) continue;
 
-    const itemId = item.itemId != null ? String(item.itemId) : "product";
-    for (let i = 0; i < recent.length; i += 1) {
-      const r = recent[i] as Record<string, unknown>;
-      const text =
-        pickString(r, ["comment", "text", "review", "content"]) ?? "";
-      if (!text.trim()) continue;
+    const externalId =
+      pickId(item, ["cmtid", "reviewId"]) ??
+      `${pickId(item, ["itemid"]) ?? "shopee"}-${i}`;
+    if (seen.has(externalId)) continue;
+    seen.add(externalId);
 
-      out.push({
-        externalId:
-          pickString(r, ["id", "reviewId", "cmtid"]) ??
-          `${itemId}-${i}`,
-        author: pickString(r, ["author", "username", "userName"]),
-        rating: pickNumber(r, ["rating", "rating_star", "stars"]),
-        text: text.trim(),
-        reviewDate: pickDate(r, ["date", "reviewDate", "ctime", "create_time"]),
-      });
-    }
+    out.push({
+      externalId,
+      author: pickString(item, ["author_username", "author", "username"]),
+      rating: pickNumber(item, ["rating_star", "rating"]),
+      text,
+      reviewDate: pickDate(item, ["review_date", "ctime"]),
+    });
   }
   return out;
 }
@@ -236,17 +278,21 @@ export function extractDatasetScrapeErrors(
   return [...new Set(messages)].join("; ");
 }
 
-/** Pesan error dari output actor Apify (mis. gio21 `no_pdp_payload`). */
+/** Pesan error dari output actor Apify (`error` string, atau baris notice dami). */
 export function extractApifyScrapeErrorMessage(
   items: Record<string, unknown>[],
 ): string | null {
   for (const item of items) {
     const err = item.error;
-    if (typeof err !== "string" || !err.trim()) continue;
-    if (err === "no_pdp_payload") {
-      return "Gio21 tidak bisa membaca halaman produk Shopee. Coba scrape ulang atau pastikan URL produk valid.";
+    if (typeof err === "string" && err.trim()) {
+      return `Scraper Apify: ${err}`;
     }
-    return `Scraper Apify: ${err}`;
+    if (damiRowType(item) === "notice") {
+      const reason = pickString(item, ["reason"]);
+      if (reason && DAMI_BENIGN_NOTICES.has(reason)) continue;
+      const message = pickString(item, ["message"]) ?? "scrape gagal";
+      return `Scraper Apify${reason ? ` (${reason})` : ""}: ${message}`;
+    }
   }
   return null;
 }
@@ -263,14 +309,15 @@ export type ReviewScrapeMeta = {
 };
 
 /**
- * Ekstrak metadata review dari item product-detail (gio21/shopee-product-detail).
- * Dipakai untuk menandai "data parsial" di UI ketika marketplace membatasi akses review.
+ * Metadata review dari dataset dami_studio. Shopee tidak punya feed review per
+ * produk, jadi total resmi per produk tidak tersedia; run yang terpotong
+ * (TIME_LIMIT / COST_LIMIT) ditandai tidak lengkap.
  */
 export function extractReviewScrapeMeta(
   items: Record<string, unknown>[],
 ): ReviewScrapeMeta {
-  const product = items.find((x) => x.error == null && x.recentReviews != null);
-  if (!product) {
+  const reviewRows = items.filter(isDamiReviewRow);
+  if (reviewRows.length === 0) {
     return {
       totalReviewsReported: null,
       reviewsAccessible: null,
@@ -278,15 +325,16 @@ export function extractReviewScrapeMeta(
     };
   }
 
-  const reviewsComplete =
-    typeof product.reviewsComplete === "boolean"
-      ? product.reviewsComplete
-      : null;
+  const truncated = items.some((item) => {
+    if (damiRowType(item) !== "notice") return false;
+    const reason = pickString(item, ["reason"]);
+    return !!reason && DAMI_TRUNCATING_NOTICES.has(reason);
+  });
 
   return {
-    totalReviewsReported: pickNumber(product, ["reviewCount", "totalReviews"]),
-    reviewsAccessible: pickNumber(product, ["reviewsAccessible"]),
-    reviewsComplete,
+    totalReviewsReported: null,
+    reviewsAccessible: reviewRows.length,
+    reviewsComplete: truncated ? false : null,
   };
 }
 
@@ -461,8 +509,8 @@ export function normalizeGenericReviewItems(
 export function normalizeReviewItems(
   items: Record<string, unknown>[],
 ): NormalizedReview[] {
-  const fromPdp = normalizeShopeeProductDetailReviews(items);
-  if (fromPdp.length > 0) return fromPdp;
+  const fromShopee = normalizeShopeeShopReviews(items);
+  if (fromShopee.length > 0) return fromShopee;
 
   const fromKulqiz = normalizeKulqizProductReviews(items);
   if (fromKulqiz.length > 0) return fromKulqiz;
@@ -497,16 +545,15 @@ export function normalizeShopProducts(
     if (!name.trim() || !productUrl.trim()) continue;
 
     const externalId =
-      pickString(item, ["id", "productId", "product_id", "itemId", "skuId"]) ??
-      (item.itemId != null
-        ? String(item.itemId)
-        : contentHashId("sku", name.trim(), productUrl.trim()));
+      pickId(item, ["id", "productId", "product_id", "itemId", "item_id", "itemid", "skuId"]) ??
+      contentHashId("sku", name.trim(), productUrl.trim());
 
     let discountPct = pickNumber(item, [
       "discountPercent",
       "discount",
       "discount_rate",
       "discount_percent",
+      "discount_pct",
     ]);
     const discountRate = pickNumber(item, ["discountRate"]);
     if (
@@ -547,15 +594,7 @@ export function normalizeShopProducts(
         "rank_global",
         "rank_on_page",
       ]),
-      shopName: pickString(item, [
-        "shopName",
-        "shop_name",
-        "sellerName",
-        "seller_name",
-        "seller",
-        "brandName",
-        "storeName",
-      ]),
+      shopName: pickShopName(item),
       soldCount: metrics.soldCount ?? sold,
       exactSold: metrics.exactSold ?? sold,
       historicalSold: metrics.historicalSold ?? sold,

@@ -1,12 +1,18 @@
 import "server-only";
 
 import { ResearchMarketplace, ResearchScrapeJobType } from "@prisma/client";
-import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
+import {
+  buildShopeeSearchInput,
+  buildShopeeShopInput,
+  getShopeeReviewsActorId,
+  getShopeeSearchActorId,
+  getShopeeShopActorId,
+  SHOPEE_ACTOR_DEFAULTS,
+} from "@/lib/apify/shopee-actors";
 import { isApifyConfigured } from "@/lib/apify/client";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import {
   buildKulqizDiscoveryInput,
-  buildKulqizReviewInput,
   buildKulqizShopInput,
   isKulqizTikTokShopActor,
 } from "@/lib/apify/tiktok-kulqiz";
@@ -17,17 +23,10 @@ import {
 } from "@/lib/review-platforms/registry";
 import { marketplaceFromPlatformKey } from "@/lib/review-platforms/platforms";
 
-const GIO21_SHOPEE_SCRAPER = "gio21~shopee-scraper";
-const GIO21_SHOPEE_PRODUCT_DETAIL = "gio21~shopee-product-detail";
-
-function normalizeActorId(actorId: string | null): string {
-  return (actorId ?? "").replace(/\//g, "~").toLowerCase();
-}
-
 export function getReviewActorId(marketplace: ResearchMarketplace): string | null {
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      return process.env.APIFY_ACTOR_SHOPEE_REVIEWS?.trim() || null;
+      return getShopeeReviewsActorId();
     case ResearchMarketplace.TOKOPEDIA:
       return process.env.APIFY_ACTOR_TOKOPEDIA_REVIEWS?.trim() || null;
     case ResearchMarketplace.TIKTOK_SHOP:
@@ -60,7 +59,7 @@ export function marketplaceToPlatformKey(
 export function getShopActorId(marketplace: ResearchMarketplace): string | null {
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      return process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim() || null;
+      return getShopeeShopActorId();
     case ResearchMarketplace.TOKOPEDIA:
       return process.env.APIFY_ACTOR_TOKOPEDIA_SHOP?.trim() || null;
     case ResearchMarketplace.TIKTOK_SHOP:
@@ -68,39 +67,6 @@ export function getShopActorId(marketplace: ResearchMarketplace): string | null 
     default:
       return null;
   }
-}
-
-/** Deteksi kode negara Shopee dari URL (default Indonesia). */
-export function shopeeCountryFromUrl(url: string): string {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    if (host.includes("shopee.co.id")) return "ID";
-    if (host.includes("shopee.com.br")) return "BR";
-    if (host.includes("shopee.sg")) return "SG";
-    if (host.includes("shopee.com.my")) return "MY";
-    if (host.includes("shopee.co.th")) return "TH";
-    if (host.includes("shopee.vn")) return "VN";
-    if (host.includes("shopee.ph")) return "PH";
-    if (host.includes("shopee.com.mx")) return "MX";
-  } catch {
-    /* ignore */
-  }
-  return "ID";
-}
-
-function isGio21ProductDetailActor(actorId: string | null): boolean {
-  if (!actorId) return false;
-  const n = normalizeActorId(actorId);
-  return n.includes("shopee-product-detail") || n === GIO21_SHOPEE_PRODUCT_DETAIL;
-}
-
-function isGio21ShopeeScraperActor(actorId: string | null): boolean {
-  if (!actorId) return false;
-  const n = normalizeActorId(actorId);
-  return (
-    (n.includes("gio21") && n.includes("shopee-scraper")) ||
-    n === GIO21_SHOPEE_SCRAPER
-  );
 }
 
 export function buildTikTokSearchActorInput(
@@ -116,40 +82,6 @@ export function buildTikTokSearchActorInput(
   return { searchKeywords: [_keyword.trim()], maxProducts: Math.max(limit, 20) };
 }
 
-export function buildReviewActorInput(
-  marketplace: ResearchMarketplace,
-  productUrl: string,
-): Record<string, unknown> {
-  const actorId = getReviewActorId(marketplace);
-
-  switch (marketplace) {
-    case ResearchMarketplace.SHOPEE:
-      if (isGio21ProductDetailActor(actorId)) {
-        const url = cleanShopeeUrl(productUrl);
-        return {
-          productUrls: [url],
-          country: shopeeCountryFromUrl(url),
-          includeReviews: true,
-          reviewsLimit: 500,
-        };
-      }
-      return { productUrls: [productUrl], maxReviews: 500 };
-    case ResearchMarketplace.TOKOPEDIA:
-      return {
-        product_url: productUrl,
-        results_wanted: 500,
-        max_pages: 50,
-      };
-    case ResearchMarketplace.TIKTOK_SHOP:
-      if (isKulqizTikTokShopActor(actorId)) {
-        return buildKulqizReviewInput(productUrl);
-      }
-      return { url: productUrl, maxReviews: 500 };
-    default:
-      return { url: productUrl, maxReviews: 500 };
-  }
-}
-
 export function buildShopActorInput(
   marketplace: ResearchMarketplace,
   shopUrl: string,
@@ -158,15 +90,7 @@ export function buildShopActorInput(
 
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      if (isGio21ShopeeScraperActor(actorId)) {
-        const url = cleanShopeeUrl(shopUrl);
-        return {
-          shopUrls: [url],
-          country: shopeeCountryFromUrl(url),
-          maxItems: 100,
-        };
-      }
-      return { shopUrls: [shopUrl], maxProducts: 100 };
+      return buildShopeeShopInput(shopUrl);
     case ResearchMarketplace.TOKOPEDIA:
       return { shopUrl, maxProducts: 100 };
     case ResearchMarketplace.TIKTOK_SHOP:
@@ -184,7 +108,7 @@ export function getSearchActorId(
 ): string | null {
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      return process.env.APIFY_ACTOR_SHOPEE_SHOP?.trim() || null;
+      return getShopeeSearchActorId();
     case ResearchMarketplace.TOKOPEDIA:
       return (
         process.env.APIFY_ACTOR_TOKOPEDIA_SEARCH?.trim() ||
@@ -239,14 +163,7 @@ export function buildSearchActorInput(
 
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      if (isGio21ShopeeScraperActor(actorId)) {
-        return {
-          location: keyword.trim(),
-          country: "ID",
-          maxItems: limit,
-        };
-      }
-      return { keywords: [keyword.trim()], maxProducts: limit };
+      return buildShopeeSearchInput(keyword, limit);
     case ResearchMarketplace.TOKOPEDIA:
       return { keyword: keyword.trim(), maxProducts: limit };
     case ResearchMarketplace.TIKTOK_SHOP:
@@ -261,7 +178,7 @@ export function searchActorEnvHint(marketplace: ResearchMarketplace): string {
     case ResearchMarketplace.SHOPEE:
       return isScraperApiConfigured()
         ? "Shopee search via VPS (SCRAPER_API_URL), fallback Apify."
-        : "Set APIFY_ACTOR_SHOPEE_SHOP (gio21~shopee-scraper mendukung keyword search).";
+        : `Set APIFY_ACTOR_SHOPEE_SEARCH (default ${SHOPEE_ACTOR_DEFAULTS.search}).`;
     case ResearchMarketplace.TOKOPEDIA:
       return isScraperApiConfigured()
         ? "Tokopedia search via VPS (SCRAPER_API_URL)."
@@ -285,7 +202,7 @@ export function actorEnvHint(
     ) {
       return "Shopee reviews via VPS (SCRAPER_API_URL), fallback Apify.";
     }
-    return `Set env APIFY_ACTOR_*_REVIEWS untuk ${marketplace} (Shopee: gio21~shopee-product-detail).`;
+    return `Set env APIFY_ACTOR_*_REVIEWS untuk ${marketplace} (Shopee: ${SHOPEE_ACTOR_DEFAULTS.reviews}).`;
   }
   if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
     return "Set APIFY_ACTOR_TIKTOK_SHOP (kulqiz~tiktok-shop-scraper).";
@@ -302,7 +219,7 @@ export function actorEnvHint(
   ) {
     return "Shopee shop scrape via VPS (SCRAPER_API_URL), fallback Apify.";
   }
-  return `Set env APIFY_ACTOR_*_SHOP untuk ${marketplace} (Shopee: gio21~shopee-scraper).`;
+  return `Set env APIFY_ACTOR_*_SHOP untuk ${marketplace} (Shopee: ${SHOPEE_ACTOR_DEFAULTS.shop}).`;
 }
 
 export function getPinterestActorId(): string | null {
