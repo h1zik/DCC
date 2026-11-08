@@ -79,9 +79,8 @@ export function ResearchHubSubNav({ className }: { className?: string }) {
               : undefined
           }
           className={cn(
-            "relative z-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap",
-            "transition-[colors,transform] duration-200 ease-out motion-reduce:transition-none",
-            "hover:-translate-y-px motion-reduce:hover:translate-y-0",
+            "relative z-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap",
+            "transition-colors duration-200 ease-out motion-reduce:transition-none",
             isResearchHubNavActive(RESEARCH_HUB_OVERVIEW.href, pathname)
               ? "text-[var(--lab-accent,var(--primary))]"
               : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -94,9 +93,12 @@ export function ResearchHubSubNav({ className }: { className?: string }) {
         {RESEARCH_HUB_ZONES.map((zone) => (
           <span key={zone.id} className="contents">
             <span
-              aria-hidden
-              className="bg-border/60 mx-0.5 hidden h-4 w-px shrink-0 sm:block"
-            />
+              className="rh-step-dot ms-2 me-0.5 shrink-0"
+              title={`Tahap ${zone.step}: ${zone.label}`}
+              aria-label={`Tahap ${zone.step}: ${zone.label}`}
+            >
+              {zone.step}
+            </span>
             {zone.items.map((item) => {
               const active = isResearchHubNavActive(item.href, pathname);
               return (
@@ -108,9 +110,8 @@ export function ResearchHubSubNav({ className }: { className?: string }) {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "relative z-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium whitespace-nowrap",
-                    "transition-[colors,transform] duration-200 ease-out motion-reduce:transition-none",
-                    "hover:-translate-y-px motion-reduce:hover:translate-y-0",
+                    "relative z-10 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap",
+                    "transition-colors duration-200 ease-out motion-reduce:transition-none",
                     active
                       ? "text-primary"
                       : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",

@@ -62,7 +62,7 @@ export function DiscoveryBubbleChart({ points }: { points: BubblePoint[] }) {
         nameGap: 32,
         axisLabel: {
           formatter: (v: number) => `${Math.round(v / 1000)}k`,
-          fontSize: 10,
+          fontSize: 12,
         },
       },
       yAxis: {

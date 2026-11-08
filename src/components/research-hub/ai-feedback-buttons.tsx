@@ -55,7 +55,7 @@ export function AiFeedbackButtons({
   return (
     <div
       className={cn(
-        "text-muted-foreground flex items-center gap-1.5 text-[11px]",
+        "text-muted-foreground flex items-center gap-1.5 text-xs",
         className,
       )}
     >

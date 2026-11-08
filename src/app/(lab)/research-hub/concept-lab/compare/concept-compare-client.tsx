@@ -3,7 +3,7 @@
 import { GitCompare, Trophy } from "lucide-react";
 import { ConceptCompareTable } from "@/components/research-hub/concept-compare-table";
 import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
-import { lab } from "@/components/lab/lab-primitives";
+import { ResearchPanelEmpty } from "@/components/research-hub/kit/research-states";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
@@ -32,11 +32,7 @@ function averageScores(
   const totals = new Map<string, { title: string; total: number; n: number }>();
   for (const dim of data.dimensions) {
     for (const s of dim.scores) {
-      const cur = totals.get(s.conceptId) ?? {
-        title: s.conceptTitle,
-        total: 0,
-        n: 0,
-      };
+      const cur = totals.get(s.conceptId) ?? { title: s.conceptTitle, total: 0, n: 0 };
       cur.total += s.score;
       cur.n += 1;
       totals.set(s.conceptId, cur);
@@ -51,6 +47,26 @@ function averageScores(
     .sort((a, b) => b.avg - a.avg);
 }
 
+function Section({
+  title,
+  meta,
+  children,
+}: {
+  title: string;
+  meta?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="space-y-0.5">
+        <h2 className="rh-section-title">{title}</h2>
+        {meta ? <p className="rh-meta">{meta}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function ConceptCompareClient({ data }: { data: ComparePageData }) {
   const averages = averageScores(data);
   const winner = averages.find((a) => a.conceptId === data.winnerId) ?? null;
@@ -60,121 +76,96 @@ export function ConceptCompareClient({ data }: { data: ComparePageData }) {
     <ResearchHubDetailPage
       icon={GitCompare}
       backHref="/research-hub/concept-lab"
-      title="Perbandingan Konsep"
-      description={`${data.conceptIds.length} konsep dibandingkan head-to-head per dimensi validasi`}
-      right={<ResearchModelBadgeGroup meta={data.aiMeta} />}
+      title="Perbandingan konsep"
+      description="Konsep diadu langsung per dimensi validasi."
+      meta={
+        <>
+          <span>{data.conceptIds.length} konsep</span>
+          <span>{data.dimensions.length} dimensi dinilai</span>
+          <ResearchModelBadgeGroup meta={data.aiMeta} />
+        </>
+      }
     >
-      {/* Papan hero bento */}
-      <div
-        className={cn(
-          lab.entrance,
-          "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
-        )}
-      >
-        <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
-            {winner ? "Skor pemenang" : "Skor tertinggi"}
-          </span>
-          <span className="bento-value text-5xl text-white dark:text-violet-950">
-            {Math.round(winner?.avg ?? maxAvg)}
-          </span>
-          <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
-            {winner
-              ? winner.conceptTitle
-              : "rata-rata semua dimensi validasi"}
-          </span>
-        </div>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+        <section aria-labelledby="compare-winner-title" className="flex flex-col gap-1">
+          <h2 id="compare-winner-title" className="rh-meta">
+            {winner ? "Pemenang" : "Skor rata-rata tertinggi"}
+          </h2>
+          {winner ? (
+            <p className="text-foreground flex items-center gap-2 text-lg font-semibold">
+              <Trophy className="size-4 shrink-0 text-amber-500" aria-hidden />
+              {winner.conceptTitle}
+            </p>
+          ) : null}
+          <p className="rh-num text-foreground text-4xl font-semibold tracking-tight">
+            {winner?.avg ?? averages[0]?.avg ?? "—"}
+          </p>
+          <p className="rh-meta">Rata-rata skor semua dimensi validasi.</p>
+        </section>
 
-        {/* Skor rata-rata per konsep — tile lebar */}
-        <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
-          <div className="flex items-center justify-between">
-            <span className="bento-label">Skor rata-rata per konsep</span>
-            <span className="text-muted-foreground text-[11px] tabular-nums">
-              {data.dimensions.length} dimensi
-            </span>
-          </div>
-          <div className="flex flex-col gap-2.5">
+        <Section title="Skor rata-rata per konsep">
+          <ol className="flex flex-col gap-2.5">
             {averages.map((a) => {
               const isWinner = a.conceptId === data.winnerId;
               return (
-                <div key={a.conceptId} className="flex items-center gap-2.5">
+                <li key={a.conceptId} className="flex items-center gap-3">
                   <span
                     className={cn(
-                      "w-40 shrink-0 truncate text-xs",
-                      isWinner
-                        ? "text-foreground font-semibold"
-                        : "text-muted-foreground",
+                      "w-44 shrink-0 truncate text-sm",
+                      isWinner ? "text-foreground font-medium" : "text-muted-foreground",
                     )}
                     title={a.conceptTitle}
                   >
-                    {isWinner ? (
-                      <Trophy
-                        className="mr-1 inline size-3 text-amber-500"
-                        aria-hidden
-                      />
-                    ) : null}
                     {a.conceptTitle}
+                    {isWinner ? <span className="sr-only"> (pemenang)</span> : null}
                   </span>
-                  <div className="bg-muted h-2.5 flex-1 overflow-hidden rounded-full">
+                  <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full" aria-hidden>
                     <div
                       className={cn(
                         "h-full rounded-full",
-                        isWinner
-                          ? "bg-violet-600 dark:bg-violet-400"
-                          : "bg-muted-foreground/40",
+                        isWinner ? "bg-primary" : "bg-muted-foreground/40",
                       )}
                       style={{ width: `${(a.avg / maxAvg) * 100}%` }}
                     />
                   </div>
-                  <span className="w-10 shrink-0 text-right text-xs font-semibold tabular-nums">
-                    {a.avg}
-                  </span>
-                </div>
+                  <span className="rh-num w-10 shrink-0 text-right text-sm font-medium">{a.avg}</span>
+                </li>
               );
             })}
-          </div>
-        </div>
-
-        <div className="bento-tile">
-          <span className="bento-label">Konsep dibandingkan</span>
-          <span className="bento-value">{data.conceptIds.length}</span>
-        </div>
-
-        <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-          <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
-            Dimensi dinilai
-          </span>
-          <span className="bento-value text-violet-900 dark:text-violet-300">
-            {data.dimensions.length}
-          </span>
-        </div>
+          </ol>
+        </Section>
       </div>
 
-      {/* Ringkasan AI */}
-      <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
-        <span className="bento-label">Ringkasan AI</span>
-        <p className="text-sm leading-relaxed">{data.summary}</p>
+      <Section title="Ringkasan AI">
+        {data.summary ? (
+          <p className="max-w-[68ch] text-sm leading-relaxed">{data.summary}</p>
+        ) : (
+          <ResearchPanelEmpty
+            title="Ringkasan belum tersedia"
+            description="AI tidak mengembalikan ringkasan untuk perbandingan ini. Muat ulang halaman untuk membandingkan lagi."
+          />
+        )}
         {data.recommendation ? (
-          <p className="flex items-start gap-2.5 rounded-xl bg-emerald-500/10 p-3 text-sm font-medium text-emerald-800 dark:text-emerald-200">
-            <Trophy
-              className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
-              aria-hidden
-            />
-            {data.recommendation}
-          </p>
+          <div className="max-w-[68ch] rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+            <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">Rekomendasi</p>
+            <p className="mt-0.5 text-sm leading-relaxed">{data.recommendation}</p>
+          </div>
         ) : null}
-      </div>
+      </Section>
 
-      {/* Matrix perbandingan */}
-      <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
-        <div className="flex items-center justify-between">
-          <span className="bento-label">Matrix perbandingan</span>
-          <span className="text-muted-foreground text-[11px]">
-            skor per dimensi validasi untuk setiap konsep
-          </span>
-        </div>
-        <ConceptCompareTable dimensions={data.dimensions} />
-      </div>
+      <Section title="Matrix perbandingan" meta="Skor tiap dimensi validasi untuk setiap konsep.">
+        {data.dimensions.length === 0 ? (
+          <ResearchPanelEmpty
+            icon={GitCompare}
+            title="Belum ada dimensi yang dinilai"
+            description="Validasi tiap konsep dulu agar skornya bisa dibandingkan."
+          />
+        ) : (
+          <div className="border-border bg-card overflow-hidden rounded-xl border">
+            <ConceptCompareTable dimensions={data.dimensions} />
+          </div>
+        )}
+      </Section>
     </ResearchHubDetailPage>
   );
 }

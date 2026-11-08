@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { canUseAgent } from "@/lib/agent/access";
-import { runAgentChat } from "@/lib/agent/chat";
+import { AGENT_API_KEY_MISSING_MESSAGE, runAgentChat } from "@/lib/agent/chat";
 import { resolveAgentApiKey } from "@/lib/agent/provider";
 
 const bodySchema = z.object({
@@ -39,10 +39,7 @@ export async function POST(req: Request) {
 
   if (!resolveAgentApiKey()) {
     return NextResponse.json(
-      {
-        error:
-          "GEMINI_API_KEY belum diset. Dapatkan di https://aistudio.google.com/apikey",
-      },
+      { error: AGENT_API_KEY_MISSING_MESSAGE },
       { status: 503 },
     );
   }

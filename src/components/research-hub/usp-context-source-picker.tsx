@@ -406,21 +406,21 @@ export function ModuleSourceBox({
             <span className="text-foreground flex flex-wrap items-center gap-2 text-sm font-medium">
               {config.label}
               {!hasData ? (
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   Belum ada data
                 </Badge>
               ) : enabled ? (
                 selectionCount != null && selectionCount > 0 ? (
-                  <Badge variant="default" className="text-[10px]">
+                  <Badge variant="default" className="text-xs">
                     {selectionCount} dipilih
                   </Badge>
                 ) : (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <Badge variant="secondary" className="text-xs">
                     Auto
                   </Badge>
                 )
               ) : (
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   Off
                 </Badge>
               )}
@@ -467,7 +467,7 @@ export function SourceTileList({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
+        <span className="text-muted-foreground text-xs font-medium">
           Pilih sumber
         </span>
         <div className="flex gap-1">
@@ -475,7 +475,7 @@ export function SourceTileList({
             type="button"
             variant="ghost"
             size="sm"
-            className="text-muted-foreground h-7 px-2 text-[11px]"
+            className="text-muted-foreground h-7 px-2 text-xs"
             onClick={() => onSelectAll(items.map((i) => i.id))}
           >
             Semua
@@ -484,7 +484,7 @@ export function SourceTileList({
             type="button"
             variant="ghost"
             size="sm"
-            className="text-muted-foreground h-7 px-2 text-[11px]"
+            className="text-muted-foreground h-7 px-2 text-xs"
             disabled={selected.length === 0}
             onClick={onClear}
           >
@@ -524,7 +524,7 @@ export function SourceTileList({
                 <span className="text-foreground line-clamp-2 text-xs font-medium leading-snug">
                   {item.label}
                 </span>
-                <span className="text-muted-foreground mt-0.5 block truncate text-[10px]">
+                <span className="text-muted-foreground mt-0.5 block truncate text-xs">
                   {item.meta}
                 </span>
               </span>
@@ -559,7 +559,7 @@ export function SingleSelectField({
 
   return (
     <div className="space-y-2">
-      <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
+      <span className="text-muted-foreground text-xs font-medium">
         Pilih sumber
       </span>
       <Select
@@ -576,7 +576,7 @@ export function SingleSelectField({
               <span className="text-foreground truncate font-medium">
                 {selected.label}
               </span>
-              <span className="text-muted-foreground truncate text-[10px]">
+              <span className="text-muted-foreground truncate text-xs">
                 {selected.meta}
               </span>
             </span>
@@ -588,7 +588,7 @@ export function SingleSelectField({
           <SelectItem value="__auto__">
             <span className="flex flex-col gap-0.5">
               <span>{placeholder}</span>
-              <span className="text-muted-foreground text-[10px]">
+              <span className="text-muted-foreground text-xs">
                 Rekomendasi berdasarkan kategori
               </span>
             </span>
@@ -597,7 +597,7 @@ export function SingleSelectField({
             <SelectItem key={item.id} value={item.id}>
               <span className="flex flex-col gap-0.5">
                 <span>{item.label}</span>
-                <span className="text-muted-foreground text-[10px]">
+                <span className="text-muted-foreground text-xs">
                   {item.meta}
                 </span>
               </span>
@@ -635,7 +635,7 @@ export function UspModuleSummaryChips({
         return (
           <span
             key={key}
-            className="border-primary/25 bg-primary/8 text-foreground inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+            className="border-primary/25 bg-primary/8 text-foreground inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
           >
             <Icon className="text-primary size-3" aria-hidden />
             {MODULE_CONFIG[key].short}

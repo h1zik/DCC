@@ -49,21 +49,27 @@ export function resolveGeminiModelCandidates(
   return out;
 }
 
+/**
+ * Provider global. Default: Ollama Cloud (Kimi K3.1 Pro). Gemini hanya dipakai
+ * bila RESEARCH_LLM_PROVIDER=gemini diset eksplisit, atau sebagai cadangan
+ * darurat saat OLLAMA_API_KEY kosong tapi GEMINI_API_KEY ada.
+ */
 export function resolveResearchProvider(): ResearchLlmProvider {
   const raw = process.env.RESEARCH_LLM_PROVIDER?.trim().toLowerCase();
-  if (raw === "ollama" || raw === "ollama-cloud") {
-    if (resolveOllamaApiKey()) return "ollama-cloud";
+  if (raw === "gemini") return "gemini";
+  if (resolveOllamaApiKey()) return "ollama-cloud";
+  if (resolveGeminiApiKey()) {
     console.warn(
-      "[research/llm] RESEARCH_LLM_PROVIDER=ollama-cloud tapi OLLAMA_API_KEY kosong — fallback ke Gemini",
+      "[research/llm] OLLAMA_API_KEY kosong — sementara fallback ke Gemini. Set OLLAMA_API_KEY untuk Kimi K3.1 Pro.",
     );
     return "gemini";
   }
-  return "gemini";
+  // Tidak ada key sama sekali → assertResearchProviderConfigured memberi pesan Ollama.
+  return "ollama-cloud";
 }
 
 /**
- * Provider per tier — mis. flash di Gemini (murah, job massal) sementara pro
- * di DeepSeek V4 Pro via Ollama Cloud (report/USP/concept/trend).
+ * Provider per tier (opsional) — mis. memaksa satu tier ke Gemini.
  * Override via RESEARCH_LLM_PROVIDER_PRO / RESEARCH_LLM_PROVIDER_FLASH;
  * bila kosong, ikut RESEARCH_LLM_PROVIDER global.
  */
@@ -87,6 +93,23 @@ export function resolveResearchProviderForTier(
   }
   if (raw === "gemini") return "gemini";
   return resolveResearchProvider();
+}
+
+function resolveGeminiApiKey(): string | null {
+  return (
+    process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GOOGLE_AI_API_KEY?.trim() ||
+    null
+  );
+}
+
+/**
+ * Apakah tier ini bisa menerima gambar. Gemini selalu bisa; di Ollama Cloud
+ * tergantung model (Kimi K3.1 Pro: teks + gambar; DeepSeek V4: teks saja).
+ */
+export function researchTierSupportsVision(tier: ResearchModelTier): boolean {
+  if (resolveResearchProviderForTier(tier) === "gemini") return true;
+  return /kimi|qwen[\w.-]*vl|llava|gemma3|vision/i.test(resolveOllamaModel(tier));
 }
 
 export function resolveOllamaApiKey(): string | null {
@@ -144,16 +167,13 @@ export function assertResearchProviderConfigured(
   if (provider === "ollama-cloud") {
     if (!resolveOllamaApiKey()) {
       throw new Error(
-        "OLLAMA_API_KEY belum diset. Buat di https://ollama.com/settings/keys dan set RESEARCH_LLM_PROVIDER=ollama-cloud",
+        "OLLAMA_API_KEY belum diset. Buat di https://ollama.com/settings/keys (model default: kimi-k3.1-pro:cloud).",
       );
     }
     return;
   }
 
-  const geminiKey =
-    process.env.GEMINI_API_KEY?.trim() ||
-    process.env.GOOGLE_AI_API_KEY?.trim();
-  if (!geminiKey) {
+  if (!resolveGeminiApiKey()) {
     throw new Error(
       "GEMINI_API_KEY belum diset. Dapatkan gratis di https://aistudio.google.com/apikey",
     );

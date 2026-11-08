@@ -57,7 +57,7 @@ export function UspCandidateCards({
           </div>
 
           <div>
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            <p className="text-muted-foreground text-xs font-semibold">
               Reason to believe
             </p>
             <p className="mt-1 text-sm leading-relaxed">{c.rtb}</p>
@@ -65,7 +65,7 @@ export function UspCandidateCards({
 
           {c.risks?.length > 0 ? (
             <div>
-              <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              <p className="text-muted-foreground text-xs font-semibold">
                 Risiko
               </p>
               <ul className="mt-1 flex flex-col gap-1">

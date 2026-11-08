@@ -110,7 +110,7 @@ export function CompetitorSkuTable({
                 </a>
               )}
               {sku.isNew ? (
-                <span className="mt-1 inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                <span className="mt-1 inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                   Baru
                 </span>
               ) : null}
@@ -122,7 +122,7 @@ export function CompetitorSkuTable({
               {sku.priceDeltaPct != null && sku.priceDirection ? (
                 <span
                   className={cn(
-                    "mt-0.5 block text-[10px] font-semibold",
+                    "mt-0.5 block text-xs font-semibold",
                     sku.priceDirection === "up"
                       ? "text-rose-600 dark:text-rose-400"
                       : "text-emerald-600 dark:text-emerald-400",
@@ -146,7 +146,7 @@ export function CompetitorSkuTable({
             </TableCell>
             <TableCell>
               {sku.hasPromo ? (
-                <span className="inline-flex max-w-36 items-center truncate rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                <span className="inline-flex max-w-36 items-center truncate rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
                   {sku.promoText ?? "Promo"}
                 </span>
               ) : (
@@ -188,7 +188,7 @@ export function CompetitorSkuTable({
                       {sku.reviewIntelSourceId ? "Lihat Intel" : "Analisis"}
                     </Button>
                     {sku.reviewIntelStatus ? (
-                      <p className="text-muted-foreground mt-1 text-center text-[10px]">
+                      <p className="text-muted-foreground mt-1 text-center text-xs">
                         {SOURCE_STATUS_LABELS[sku.reviewIntelStatus]}
                       </p>
                     ) : null}

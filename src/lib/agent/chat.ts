@@ -1,15 +1,13 @@
 import {
-  GoogleGenerativeAI,
-  type Content,
-  type Part,
-} from "@google/generative-ai";
-import {
   buildAgentSystemPrompt,
   isTransientLlmError,
   resolveAgentApiKey,
   resolveAgentModelCandidates,
+  resolveAgentThink,
   withLlmRetry,
 } from "./provider";
+import { resolveOllamaBaseUrl } from "@/lib/research/llm/config";
+import { parseToolArguments, toOllamaTools, type OllamaTool } from "./ollama-tools";
 import { AGENT_TOOLS } from "./tools";
 import { getAgentUserAccessSummary } from "./queries";
 import { synthesizeAgentReply } from "./synthesize-reply";
@@ -33,37 +31,79 @@ export type AgentChatResult = {
   modelUsed?: string;
 };
 
-function toGeminiContents(messages: AgentMessage[]): Content[] {
-  return messages.map((message) => ({
-    role: message.role === "assistant" ? "model" : "user",
-    parts: [{ text: message.content }],
-  }));
+/** Pesan format native Ollama /api/chat. */
+export type OllamaChatMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  tool_calls?: OllamaToolCall[];
+  tool_name?: string;
+};
+
+export type OllamaToolCall = {
+  function: { name: string; arguments?: unknown };
+};
+
+type OllamaChatResponse = {
+  message?: {
+    role?: string;
+    content?: string;
+    tool_calls?: OllamaToolCall[];
+  };
+  error?: string;
+};
+
+let cachedTools: OllamaTool[] | null = null;
+function agentTools(): OllamaTool[] {
+  cachedTools ??= toOllamaTools(AGENT_TOOLS);
+  return cachedTools;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** functionResponse.response harus berupa objek JSON. */
-function toFunctionResponsePayload(run: {
-  ok: boolean;
-  data?: unknown;
-  error?: string;
-}): Record<string, unknown> {
-  if (!run.ok) return { error: run.error ?? "Tool gagal." };
-  if (isPlainObject(run.data)) return run.data;
-  return { result: run.data ?? null };
+function toolResultContent(run: ToolRun): string {
+  if (!run.ok) return JSON.stringify({ error: run.error ?? "Tool gagal." });
+  return JSON.stringify(isPlainObject(run.data) ? run.data : { result: run.data ?? null });
 }
 
-/** Ambil teks dari response Gemini tanpa melempar saat hanya ada function call. */
-function safeResponseText(response: {
-  text: () => string;
-}): string {
+async function ollamaAgentCall(
+  apiKey: string,
+  model: string,
+  messages: OllamaChatMessage[],
+  withTools: boolean,
+): Promise<NonNullable<OllamaChatResponse["message"]>> {
+  const res = await fetch(`${resolveOllamaBaseUrl()}/api/chat`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      ...(withTools ? { tools: agentTools() } : {}),
+      stream: false,
+      think: resolveAgentThink(),
+      options: { temperature: TEMPERATURE },
+    }),
+  });
+
+  let payload: OllamaChatResponse;
   try {
-    return response.text()?.trim() ?? "";
+    payload = (await res.json()) as OllamaChatResponse;
   } catch {
-    return "";
+    payload = {};
   }
+
+  if (!res.ok) {
+    const err = new Error(
+      `Ollama Cloud error ${res.status}: ${payload.error ?? res.statusText}`,
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return payload.message ?? {};
 }
 
 async function runAgentChatWithModel(
@@ -73,15 +113,10 @@ async function runAgentChatWithModel(
   modelName: string,
   accessContext: string,
 ): Promise<AgentChatResult> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: buildAgentSystemPrompt(user, accessContext),
-    tools: AGENT_TOOLS,
-  });
-
-  const contents: Content[] = toGeminiContents(messages);
-  const generationConfig = { temperature: TEMPERATURE };
+  const history: OllamaChatMessage[] = [
+    { role: "system", content: buildAgentSystemPrompt(user, accessContext) },
+    ...messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
 
   // Pesan user terakhir — dipakai server untuk memverifikasi konfirmasi
   // eksplisit pada aksi destruktif (bukan sekadar percaya confirmed:true).
@@ -91,70 +126,59 @@ async function runAgentChatWithModel(
   const toolCalls: { name: string; ok: boolean }[] = [];
   const toolRuns: ToolRun[] = [];
 
-  let result = await model.generateContent({ contents, generationConfig });
+  let reply = await ollamaAgentCall(apiKey, modelName, history, true);
   let round = 0;
 
   while (round < MAX_TOOL_ROUNDS) {
-    const calls = result.response.functionCalls() ?? [];
+    const calls = reply.tool_calls ?? [];
     if (calls.length === 0) break;
 
-    // Echo balik giliran model (berisi function call) ke histori.
-    const modelContent = result.response.candidates?.[0]?.content;
-    if (modelContent) {
-      contents.push(modelContent);
-    }
+    // Echo balik giliran assistant (berisi tool_calls) ke histori.
+    history.push({
+      role: "assistant",
+      content: reply.content ?? "",
+      tool_calls: calls,
+    });
 
-    const responseParts: Part[] = [];
     for (const call of calls) {
-      const args = isPlainObject(call.args) ? call.args : {};
-      const toolResult = await executeAgentTool(user, call.name, args, {
+      const name = call.function?.name ?? "";
+      const args = parseToolArguments(call.function?.arguments);
+      const toolResult = await executeAgentTool(user, name, args, {
         latestUserMessage,
       });
 
-      toolCalls.push({ name: call.name, ok: toolResult.ok });
+      toolCalls.push({ name, ok: toolResult.ok });
       const run: ToolRun = {
-        name: call.name,
+        name,
         ok: toolResult.ok,
         data: toolResult.ok ? toolResult.data : undefined,
         error: toolResult.ok ? undefined : toolResult.error,
       };
       toolRuns.push(run);
-
-      responseParts.push({
-        functionResponse: {
-          name: call.name,
-          response: toFunctionResponsePayload(run),
-        },
-      });
+      history.push({ role: "tool", tool_name: name, content: toolResultContent(run) });
     }
 
-    contents.push({ role: "user", parts: responseParts });
-
-    result = await withLlmRetry(() =>
-      model.generateContent({ contents, generationConfig }),
+    reply = await withLlmRetry(() =>
+      ollamaAgentCall(apiKey, modelName, history, true),
     );
     round += 1;
   }
 
-  let text = safeResponseText(result.response);
+  let text = reply.content?.trim() ?? "";
 
   if (!text && toolRuns.some((t) => t.ok)) {
-    const modelContent = result.response.candidates?.[0]?.content;
-    if (modelContent) contents.push(modelContent);
-    contents.push({
+    history.push({ role: "assistant", content: "" });
+    history.push({
       role: "user",
-      parts: [
-        {
-          text: "Rangkum hasil tool di atas untuk user dalam Bahasa Indonesia: sertakan angka konkret, perbandingan, insight bisnis, dan rekomendasi jika relevan. Untuk data harga: sebutkan angka IDR per produk/kompetitor. Jangan bilang tidak ada data jika tool sudah mengembalikan harga. Jangan hanya bilang 'selesai'.",
-        },
-      ],
+      content:
+        "Rangkum hasil tool di atas untuk user dalam Bahasa Indonesia: sertakan angka konkret, perbandingan, insight bisnis, dan rekomendasi jika relevan. Untuk data harga: sebutkan angka IDR per produk/kompetitor. Jangan bilang tidak ada data jika tool sudah mengembalikan harga. Jangan hanya bilang 'selesai'.",
     });
 
     try {
       const nudge = await withLlmRetry(() =>
-        model.generateContent({ contents, generationConfig }),
+        ollamaAgentCall(apiKey, modelName, history, false),
       );
-      text = safeResponseText(nudge.response);
+      text = nudge.content?.trim() ?? "";
     } catch {
       // fallback ke synthesize di bawah
     }
@@ -173,15 +197,16 @@ async function runAgentChatWithModel(
   };
 }
 
+export const AGENT_API_KEY_MISSING_MESSAGE =
+  "OLLAMA_API_KEY belum diset. Buat di https://ollama.com/settings/keys (model agent: kimi-k3.1-pro:cloud).";
+
 export async function runAgentChat(
   user: AgentUser,
   messages: AgentMessage[],
 ): Promise<AgentChatResult> {
   const apiKey = resolveAgentApiKey();
   if (!apiKey) {
-    throw new Error(
-      "GEMINI_API_KEY belum diset. Dapatkan di https://aistudio.google.com/apikey",
-    );
+    throw new Error(AGENT_API_KEY_MISSING_MESSAGE);
   }
 
   const accessSummary = await getAgentUserAccessSummary(user);
@@ -211,8 +236,8 @@ export async function runAgentChat(
   }
 
   const detail =
-    lastError instanceof Error ? lastError.message : "layanan Gemini sibuk";
+    lastError instanceof Error ? lastError.message : "layanan Ollama Cloud sibuk";
   throw new Error(
-    `Semua model Gemini sedang sibuk. Coba lagi dalam 1–2 menit. (${detail})`,
+    `Model AI sedang sibuk. Coba lagi dalam 1–2 menit. (${detail})`,
   );
 }

@@ -63,7 +63,7 @@ export function BackgroundJobIndicator() {
               <p className="text-foreground truncate text-xs font-semibold">
                 {job.label}
               </p>
-              <p className="text-muted-foreground truncate text-[11px]">
+              <p className="text-muted-foreground truncate text-xs">
                 {job.stepLabel ?? "Memproses di background…"}
               </p>
             </div>
@@ -90,7 +90,7 @@ export function BackgroundJobIndicator() {
           </div>
           <Link
             href={job.href}
-            className="text-primary mt-2 inline-block text-[11px] font-medium hover:underline"
+            className="text-primary mt-2 inline-block text-xs font-medium hover:underline"
           >
             Buka detail →
           </Link>

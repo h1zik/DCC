@@ -93,14 +93,17 @@ export function parseSoldDisplay(item: Record<string, unknown>): number | null {
 
 /** Shopee returns rating_count as star histogram array; first element = total reviews. */
 export function pickMarketplaceReviewCount(item: Record<string, unknown>): number {
-  const raw = item.rating_count ?? item.ratingCount ?? item.review_count ?? item.reviewCount;
+  const raw =
+    item.rating_count ?? item.ratingCount ?? item.review_count ?? item.reviewCount ?? item.total_ratings;
   if (Array.isArray(raw)) {
     const nums = raw.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
     if (nums.length === 0) return 0;
     if (nums.length >= 6) return nums[0]!;
     return nums.reduce((sum, n) => sum + n, 0);
   }
-  return pickNumber(item, ["rating_count", "reviewCount", "review_count", "reviews"]) ?? 0;
+  return (
+    pickNumber(item, ["rating_count", "reviewCount", "review_count", "total_ratings", "reviews"]) ?? 0
+  );
 }
 
 /** Extract VPS marketplace sales metrics from raw scraper item. */
@@ -153,8 +156,8 @@ export function extractVpsProductMetrics(
   }
 
   const stock = pickNestedMetrics(item, ["stock", "stock_count", "stockCount"]);
-  const shopLocation = pickString(item, ["shop_location", "shopLocation"]);
-  const isOfficialShop = pickBool(item, ["is_official_shop", "isOfficialShop"]);
+  const shopLocation = pickString(item, ["shop_location", "shopLocation", "location"]);
+  const isOfficialShop = pickBool(item, ["is_official_shop", "isOfficialShop", "is_mall"]);
 
   const soldCount = primarySoldCount({
     exactSold,

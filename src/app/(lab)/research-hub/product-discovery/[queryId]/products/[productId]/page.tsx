@@ -1,14 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { LabPageShell } from "@/components/lab/lab-primitives";
+import { ResearchBackLink } from "@/components/research-hub/kit/research-locator";
 import {
   ShopProductDetailPanel,
   type ShopProductDetailData,
 } from "@/components/research-hub/shop-product-detail-panel";
 import { mapDiscoveryProductToRow } from "@/lib/research/shop-product-mappers";
-import { Button } from "@/components/ui/button";
 
 export default async function ProductDiscoveryProductDetailPage({
   params,
@@ -49,23 +46,17 @@ export default async function ProductDiscoveryProductDetailPage({
   };
 
   return (
-    <LabPageShell>
+    <div className="flex w-full flex-col gap-8 pb-12">
       <ShopProductDetailPanel
         product={data}
         breadcrumbs={
-          <Button
-            size="sm"
-            variant="ghost"
-            className="w-fit gap-1 px-0"
-            render={
-              <Link href={`/research-hub/product-discovery/${queryId}`} />
-            }
-          >
-            <ChevronLeft className="size-4" />
-            Kembali ke {product.query.keyword}
-          </Button>
+          <ResearchBackLink
+            href={`/research-hub/product-discovery/${queryId}`}
+            label={product.query.keyword}
+            className="self-start"
+          />
         }
       />
-    </LabPageShell>
+    </div>
   );
 }

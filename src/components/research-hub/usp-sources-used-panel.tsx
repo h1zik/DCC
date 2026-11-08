@@ -129,13 +129,13 @@ export function UspSourcesUsedPanel({
                 {matchQuality?.[key] === "fallback" ? (
                   <Badge
                     variant="outline"
-                    className="shrink-0 border-amber-500/40 text-[10px] text-amber-600 dark:text-amber-400"
+                    className="shrink-0 border-amber-500/40 text-xs text-amber-600 dark:text-amber-400"
                     title="Tidak ada sumber yang cocok kategori — dipakai data terbaru lintas-kategori."
                   >
                     lintas-kategori
                   </Badge>
                 ) : null}
-                <Badge variant="outline" className="shrink-0 text-[10px]">
+                <Badge variant="outline" className="shrink-0 text-xs">
                   {refs.length}
                 </Badge>
               </div>
@@ -165,7 +165,7 @@ function SourceLink({ source }: { source: ResolvedSourceRef }) {
           {source.label}
         </span>
         {source.meta ? (
-          <span className="text-muted-foreground block truncate text-[11px]">
+          <span className="text-muted-foreground block truncate text-xs">
             {source.meta}
           </span>
         ) : null}

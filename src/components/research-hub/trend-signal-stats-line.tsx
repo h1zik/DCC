@@ -60,7 +60,7 @@ function SignalStatTile({
     >
       <span
         className={cn(
-          "text-[10px] font-semibold uppercase tracking-wide",
+          "text-xs font-semibold",
           accent
             ? "text-[var(--lab-accent,var(--primary))]"
             : "text-muted-foreground",

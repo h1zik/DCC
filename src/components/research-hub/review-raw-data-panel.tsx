@@ -259,7 +259,7 @@ export function ReviewRawDataPanel({
         role="group"
         aria-label="Filter sentimen"
       >
-        <span className="text-muted-foreground mr-1 text-[11px] font-medium uppercase tracking-wide">
+        <span className="text-muted-foreground mr-1 text-xs font-medium">
           Sentimen
         </span>
         {SENTIMENT_FILTERS.map((f) => {
@@ -328,7 +328,7 @@ export function ReviewRawDataPanel({
                     {row.sentiment ? (
                       <span
                         className={cn(
-                          "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
                           row.sentiment === "POSITIVE" &&
                             "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
                           row.sentiment === "NEUTRAL" &&

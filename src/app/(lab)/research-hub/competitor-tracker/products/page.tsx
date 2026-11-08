@@ -32,8 +32,8 @@ export default async function CompetitorProductTrackerPage() {
   return (
     <ResearchHubModulePage
       icon={Package}
-      title="Competitor Tracker — Products"
-      description="Kelompokkan produk kompetitor per kategori (mis. Deodorant) dan pantau URL produk spesifik — harga, rating, promo."
+      title="Competitor products"
+      description="Kelompokkan produk kompetitor per kategori, mis. Deodorant, lalu pantau harga, rating, dan promo tiap URL produk."
     >
       <CompetitorProductTrackerClient categories={cards} />
     </ResearchHubModulePage>

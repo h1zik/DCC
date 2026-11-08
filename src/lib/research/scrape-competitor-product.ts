@@ -26,6 +26,10 @@ import {
   normalizeShopProducts,
   type NormalizedShopProduct,
 } from "@/lib/apify/normalize";
+import {
+  buildShopeeProductInput,
+  getShopeeProductActorId,
+} from "@/lib/apify/shopee-actors";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
 import { applyCompetitorProductSnapshot } from "@/lib/research/competitor-product-diff";
 import { snapshotMetricsFromProduct } from "@/lib/research/shop-product-ingest";
@@ -77,13 +81,22 @@ async function fetchProductDetailFromApify(
   productUrl: string,
   marketplace: ResearchMarketplace,
 ): Promise<NormalizedShopProduct> {
-  const platformKey = marketplaceToPlatformKey(marketplace);
-  const actorId = getReviewActorIdByPlatformKey(platformKey);
-  if (!actorId) {
-    throw new Error(reviewActorEnvHintByPlatformKey(platformKey));
+  let actorId: string | null;
+  let input: Record<string, unknown>;
+  if (marketplace === ResearchMarketplace.SHOPEE) {
+    // Shopee: actor detail produk khusus (xtracto all-in-one, mode url).
+    actorId = getShopeeProductActorId();
+    input = buildShopeeProductInput(productUrl);
+  } else {
+    // Marketplace lain: actor review sekaligus mengembalikan data produk.
+    const platformKey = marketplaceToPlatformKey(marketplace);
+    actorId = getReviewActorIdByPlatformKey(platformKey);
+    if (!actorId) {
+      throw new Error(reviewActorEnvHintByPlatformKey(platformKey));
+    }
+    input = buildReviewActorInputByPlatformKey(platformKey, productUrl);
   }
 
-  const input = buildReviewActorInputByPlatformKey(platformKey, productUrl);
   const { runId } = await startApifyActor(actorId, input);
   const { status, datasetId } = await waitForApifyRun(runId);
 

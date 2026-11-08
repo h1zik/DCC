@@ -11,6 +11,7 @@ import { withLlmRetry } from "./retry";
 import type {
   GenerateResearchJsonOpts,
   GenerateResearchTextOpts,
+  LlmImagePart,
   OllamaThinkLevel,
   ResearchModelTier,
 } from "./types";
@@ -35,6 +36,36 @@ const JSON_REPAIR_SUFFIX =
   "\n\nPERINGATAN: Respons sebelumnya bukan JSON valid. " +
   "Output HARUS satu objek JSON parsable saja — tanpa kalimat penjelasan dalam bahasa Indonesia atau Inggris.";
 
+/**
+ * Level thinking string ("low".."max") hanya dikenal sebagian model (gpt-oss,
+ * DeepSeek). Model lain (mis. Kimi) menerima boolean — level apa pun = aktif.
+ */
+export function ollamaThinkForModel(
+  model: string,
+  think: OllamaThinkLevel,
+): OllamaThinkLevel {
+  if (typeof think === "boolean") return think;
+  return /gpt-oss|deepseek/i.test(model) ? think : true;
+}
+
+/**
+ * Bangun pesan user Ollama. Gambar dikirim sebagai base64 di `images`
+ * (format native /api/chat); label gambar ditulis di teks agar model tahu
+ * urutannya.
+ */
+export function buildOllamaUserMessage(
+  content: string,
+  imageParts?: LlmImagePart[],
+): Record<string, unknown> {
+  const images = (imageParts ?? []).filter((img) => img.data);
+  if (images.length === 0) return { role: "user", content };
+  const labels = images
+    .map((img, i) => (img.label ? `Gambar ${i + 1}: ${img.label}` : null))
+    .filter(Boolean);
+  const text = labels.length > 0 ? `${content}\n\n${labels.join("\n")}` : content;
+  return { role: "user", content: text, images: images.map((img) => img.data) };
+}
+
 async function ollamaChat(
   prompt: string,
   tier: ResearchModelTier,
@@ -42,6 +73,7 @@ async function ollamaChat(
     json: boolean;
     temperature: number;
     maxRetries?: number;
+    imageParts?: LlmImagePart[];
   },
 ): Promise<string> {
   const apiKey = resolveOllamaApiKey();
@@ -56,9 +88,9 @@ async function ollamaChat(
 
   const body: Record<string, unknown> = {
     model,
-    messages: [{ role: "user", content }],
+    messages: [buildOllamaUserMessage(content, opts.imageParts)],
     stream: false,
-    think: think as OllamaThinkLevel,
+    think: ollamaThinkForModel(model, think),
     options: { temperature: opts.temperature },
   };
 
@@ -123,6 +155,7 @@ export async function ollamaGenerateJson<T>(
         json: true,
         temperature: attempt === 0 ? 0.2 : 0.1,
         maxRetries: opts?.maxRetries,
+        imageParts: opts?.imageParts,
       });
 
       const parsed = parseExtractedJson<T>(text);

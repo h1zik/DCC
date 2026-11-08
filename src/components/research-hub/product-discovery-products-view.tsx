@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink, LayoutGrid, List, LineChart, MessageSquareText, Star } from "lucide-react";
+import {
+  ExternalLink,
+  LayoutGrid,
+  LineChart,
+  List,
+  MessageSquareText,
+  PackageSearch,
+  Star,
+} from "lucide-react";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
 import {
   ProductDiscoveryTable,
@@ -13,12 +21,11 @@ import {
   ShopProductMetricsStrip,
 } from "@/components/research-hub/shop-product-metrics";
 import { DiscoveryCompetitorTrackerDialog } from "@/components/research-hub/discovery-competitor-tracker-dialog";
-import { hub } from "@/components/research-hub/research-hub-primitives";
+import { ResearchPanelEmpty } from "@/components/research-hub/kit/research-states";
 import { Button } from "@/components/ui/button";
 import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
 import { MARKETPLACE_LABELS } from "@/lib/research/labels";
 import { formatRp } from "@/lib/research/labels";
-import { cn } from "@/lib/utils";
 
 export type ProductViewMode = "card" | "list";
 
@@ -54,16 +61,13 @@ function ProductDiscoveryCard({
   const hideMetrics = isCommunityMarketplace(row.marketplace);
 
   return (
-    <article
-      className={cn(
-        hub.panel,
-        hub.cardHover,
-        "flex flex-col overflow-hidden p-0",
-      )}
-    >
+    <article className="border-border bg-card flex flex-col overflow-hidden rounded-xl border">
       <Link
         href={detailHref ?? row.productUrl}
-        className="relative block aspect-[4/3] w-full overflow-hidden border-b border-border/40"
+        className="focus-visible:ring-ring relative block aspect-[4/3] w-full overflow-hidden border-b border-border/40 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
+        aria-label={
+          detailHref ? `Detail ${row.name}` : `Buka ${row.name} di ${marketplaceLabel}`
+        }
         {...(detailHref ? {} : { target: "_blank", rel: "noopener noreferrer" })}
       >
         <ProductDiscoveryProductThumb
@@ -72,12 +76,12 @@ function ProductDiscoveryCard({
           className="size-full"
         />
         {row.hasPromo && row.promoText ? (
-          <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold">
+          <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-xs font-semibold">
             {row.promoText}
           </span>
         ) : null}
         {row.categoryRank != null ? (
-          <span className="bg-background/90 text-foreground absolute top-2 right-2 rounded-md px-2 py-0.5 text-[10px] font-semibold tabular-nums backdrop-blur-sm">
+          <span className="bg-background/90 text-foreground absolute top-2 right-2 rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums backdrop-blur-sm">
             #{row.categoryRank}
           </span>
         ) : null}
@@ -90,40 +94,36 @@ function ProductDiscoveryCard({
           ) : (
             <h3 className="line-clamp-2 text-sm leading-snug font-medium">{row.name}</h3>
           )}
-          <p className="text-muted-foreground flex items-center gap-1 text-xs">
-            <span className="truncate">{row.shopName ?? "—"}</span>
-            <span aria-hidden>·</span>
-            <MarketplaceLogo
-              marketplace={row.marketplace}
-              className="size-3.5"
-            />
-            <span className="truncate">
-              {marketplaceLabel}
-              {row.shopLocation ? ` · ${row.shopLocation}` : ""}
+          <p className="text-muted-foreground truncate text-xs">
+            {row.shopName ?? "Toko tidak diketahui"}
+          </p>
+          <p className="text-muted-foreground flex min-w-0 items-center gap-x-3 text-xs">
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <MarketplaceLogo marketplace={row.marketplace} className="size-3.5" />
+              <span className="truncate">{marketplaceLabel}</span>
             </span>
+            {row.shopLocation ? (
+              <span className="truncate">{row.shopLocation}</span>
+            ) : null}
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-center">
-          <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-              Harga
-            </p>
-            <p className="mt-0.5 text-xs font-extrabold tabular-nums tracking-tight">
+        <dl className="grid grid-cols-2 gap-3">
+          <div>
+            <dt className="text-muted-foreground text-xs">Harga</dt>
+            <dd className="text-sm font-semibold tabular-nums">
               {row.price != null ? formatRp(row.price) : "—"}
-            </p>
+            </dd>
           </div>
-          <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
-              Rating
-            </p>
-            <p className="mt-0.5 flex items-center justify-center gap-1 text-xs font-extrabold tabular-nums tracking-tight">
+          <div>
+            <dt className="text-muted-foreground text-xs">Rating</dt>
+            <dd className="flex items-center gap-1 text-sm font-semibold tabular-nums">
               {row.rating != null ? (
                 <>
                   <Star className="size-3 fill-amber-400 text-amber-400" aria-hidden />
                   {row.rating.toFixed(1)}
                   {row.reviewCount > 0 ? (
-                    <span className="text-muted-foreground font-normal">
+                    <span className="text-muted-foreground text-xs font-normal">
                       ({row.reviewCount.toLocaleString("id-ID")})
                     </span>
                   ) : null}
@@ -131,9 +131,9 @@ function ProductDiscoveryCard({
               ) : (
                 "—"
               )}
-            </p>
+            </dd>
           </div>
-        </div>
+        </dl>
 
         <ShopProductMetricsStrip metrics={row} compact hidden={hideMetrics} />
 
@@ -159,7 +159,7 @@ function ProductDiscoveryCard({
                   href={row.productUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={`Buka ${row.name}`}
+                  aria-label={`Buka ${row.name} di ${marketplaceLabel}`}
                 />
               }
             >
@@ -174,9 +174,10 @@ function ProductDiscoveryCard({
                 className="min-w-0 flex-1 text-xs"
                 disabled={reviewLoadingId === row.id || actionsDisabled}
                 onClick={() => onReview(row.id)}
+                aria-label={`Kirim "${row.name}" ke Review Intelligence`}
               >
                 <MessageSquareText className="size-3.5" aria-hidden />
-                {reviewLoadingId === row.id ? "..." : "Review"}
+                {reviewLoadingId === row.id ? "Mengirim…" : "Review Intel"}
               </Button>
             ) : null}
             <DiscoveryCompetitorTrackerDialog
@@ -201,6 +202,7 @@ export function ProductDiscoveryProductsView({
   reviewLoadingId,
   actionsDisabled,
   defaultView = "card",
+  emptyDescription,
 }: {
   rows: ProductDiscoveryRow[];
   queryId?: string;
@@ -209,6 +211,8 @@ export function ProductDiscoveryProductsView({
   reviewLoadingId?: string | null;
   actionsDisabled?: boolean;
   defaultView?: ProductViewMode;
+  /** Kalimat state kosong: kenapa belum ada produk & apa yang bisa dilakukan. */
+  emptyDescription?: string;
 }) {
   const [view, setView] = useState<ProductViewMode>(defaultView);
 
@@ -237,7 +241,14 @@ export function ProductDiscoveryProductsView({
 
   if (rows.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">Belum ada produk ditemukan.</p>
+      <ResearchPanelEmpty
+        icon={PackageSearch}
+        title="Belum ada produk"
+        description={
+          emptyDescription ??
+          "Belum ada produk untuk pencarian ini. Ambil ulang produk atau coba keyword lain."
+        }
+      />
     );
   }
 
@@ -247,7 +258,11 @@ export function ProductDiscoveryProductsView({
         <p className="text-muted-foreground text-sm tabular-nums">
           {rows.length} produk
         </p>
-        <div className="bg-muted inline-flex rounded-lg p-0.5">
+        <div
+          className="bg-muted inline-flex rounded-lg p-0.5"
+          role="group"
+          aria-label="Tampilan produk"
+        >
           <Button
             size="sm"
             variant={view === "card" ? "secondary" : "ghost"}
@@ -273,41 +288,28 @@ export function ProductDiscoveryProductsView({
 
       {view === "card" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {rows.map((row, index) => (
-            <div
+          {rows.map((row) => (
+            <ProductDiscoveryCard
               key={row.id}
-              className={hub.entrance}
-              style={
-                index > 0 && index < 12
-                  ? { animationDelay: `${Math.min(index * 30, 300)}ms` }
-                  : undefined
-              }
-            >
-              <ProductDiscoveryCard
-                row={row}
-                queryId={queryId}
-                defaultCategoryName={defaultCategoryName}
-                onReview={onReview}
-                reviewLoadingId={reviewLoadingId}
-                actionsDisabled={actionsDisabled}
-              />
-            </div>
+              row={row}
+              queryId={queryId}
+              defaultCategoryName={defaultCategoryName}
+              onReview={onReview}
+              reviewLoadingId={reviewLoadingId}
+              actionsDisabled={actionsDisabled}
+            />
           ))}
         </div>
       ) : (
-        <div
-          className={cn(hub.panel, "p-0 sm:p-1", hub.entrance)}
-        >
-          <ProductDiscoveryTable
-            rows={rows}
-            queryId={queryId}
-            defaultCategoryName={defaultCategoryName}
-            onReview={onReview}
-            reviewLoadingId={reviewLoadingId}
-            actionsDisabled={actionsDisabled}
-            showImages
-          />
-        </div>
+        <ProductDiscoveryTable
+          rows={rows}
+          queryId={queryId}
+          defaultCategoryName={defaultCategoryName}
+          onReview={onReview}
+          reviewLoadingId={reviewLoadingId}
+          actionsDisabled={actionsDisabled}
+          showImages
+        />
       )}
     </div>
   );

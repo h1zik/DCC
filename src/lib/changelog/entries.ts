@@ -37,6 +37,32 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-08-research-hub-ui-foundation",
+    date: "2026-11-08",
+    title: "Research Hub: tampilan baru di semua modul",
+    category: "improved",
+    description:
+      "Navigasi Research Hub kini mengikuti alur riset (temukan peluang, pahami pasar, susun strategi) dan bisa diciutkan agar tabel lebih lega. Setiap modul menampilkan status semua job dalam satu bar, daftar bisa dicari, difilter per status, dan diurutkan. Halaman detail lebih rapi, menjelaskan kenapa sebuah bagian masih kosong, dan aksi hapus atau ambil ulang kini meminta konfirmasi.",
+    highlights: [
+      "Overview disusun per tahap riset dengan status kesehatan data tiap modul",
+      "Teks minimal 12px dan angka sejajar agar mudah dibandingkan",
+      "Progress palsu diganti status nyata; loading dan pesan error per halaman",
+    ],
+  },
+  {
+    id: "2026-11-08-kimi-k3-1-pro-shopee-actors",
+    date: "2026-11-08",
+    title: "Semua fitur AI kini memakai Kimi K3.1 Pro & scraper Shopee baru",
+    category: "improved",
+    description:
+      "Seluruh analisis AI (Research Hub, Brand Hub, SEO, Content) dan AI Agent kini berjalan di Kimi K3.1 Pro, termasuk analisis gambar untuk Brand Strategy dan Creative Guideline. Scraper cadangan Shopee diganti ke actor baru untuk pencarian produk, katalog toko, detail produk, dan review.",
+    highlights: [
+      "AI Agent memakai Kimi K3.1 Pro dengan dukungan tool",
+      "Analisis visual Brand Strategy/Creative Guideline tidak lagi butuh Gemini",
+      "Review Shopee diambil dari review toko lalu disaring per produk",
+    ],
+  },
+  {
     id: "2026-10-28-content-planning-edit-sheet-storyboard",
     date: "2026-10-28",
     title: "Content Planning: form edit baru & urutan slide carousel bisa diseret",

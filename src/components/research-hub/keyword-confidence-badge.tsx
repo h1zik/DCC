@@ -19,7 +19,7 @@ export function KeywordConfidenceBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold tabular-nums",
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums",
         tone,
       )}
     >

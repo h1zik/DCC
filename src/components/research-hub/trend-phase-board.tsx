@@ -81,7 +81,7 @@ export function TrendPhaseBoard({
               <span className="bento-label text-foreground/80 flex-1">
                 {TREND_PHASE_LABELS[phase]}
               </span>
-              <span className="bg-card text-foreground rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums shadow-sm">
+              <span className="bg-card text-foreground rounded-full px-2 py-0.5 text-xs font-bold tabular-nums shadow-sm">
                 {phaseItems.length}
               </span>
             </div>

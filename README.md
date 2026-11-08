@@ -106,7 +106,7 @@ The application is built on a single **Next.js 16 App Router** codebase backed b
 
 - **In-app AI Agent** — chat-style assistant panel/module connected to DCC data APIs.
 - **AI read APIs** — guarded `/api/ai/*` endpoints for summaries, research, finance, SEO, tasks, rooms and organization data.
-- **LLM Providers** — Gemini by default, with Groq package support and Ollama/Ollama Cloud-style provider configuration for research tiers.
+- **LLM Providers** — Kimi K3.1 Pro (`kimi-k3.1-pro:cloud`) via Ollama Cloud for all AI features (research tiers, vision, in-app AI Agent with tool calling); Gemini remains optional.
 - **Research Jobs & Cron** — scheduled sync endpoints for research, SEO and task workflows.
 - **Marketplace Data Pipeline** — custom VPS scraper API for Shopee/Tokopedia/Lazada-style data, with Apify fallback actors.
 - **MCP Server** — optional read-only MCP bridge for external AI/agent access.
@@ -137,7 +137,7 @@ DCC is organized around role-aware navigation and route access. Main role areas 
 | **Styling / UI** | Tailwind CSS 4, Base UI, shadcn-style components, `lucide-react`, `next-themes`, per-user multi-theme system (16 presets), `sonner` |
 | **Database / ORM** | PostgreSQL, Prisma 6.19.x, 154 Prisma models and 72 enums |
 | **Auth** | NextAuth v5 beta + Prisma adapter, `bcryptjs` |
-| **AI / LLM** | Google Generative AI / Gemini, Groq SDK, Ollama/Ollama Cloud-style research provider config |
+| **AI / LLM** | Ollama Cloud (Kimi K3.1 Pro) by default; Google Generative AI / Gemini optional |
 | **Research / Scraping** | Custom scraper API, Apify, `cheerio`, `rss-parser`, `google-trends-api`, DataForSEO |
 | **Charts / Tables** | ECharts, Recharts, TanStack Table |
 | **Editor / Docs** | TipTap, `html-to-docx`, `jspdf`, `pdf-parse`, `pdfjs-dist`, `react-markdown` |
@@ -155,7 +155,7 @@ DCC is organized around role-aware navigation and route access. Main role areas 
 - **Node.js 20+**
 - **PostgreSQL 14+** or another reachable PostgreSQL-compatible database
 - A package manager; this repo uses npm scripts by default
-- Optional integration credentials for Gemini, DataForSEO, Apify, scraper API, Web Push and Fonnte
+- Optional integration credentials for Ollama Cloud (AI), DataForSEO, Apify, scraper API, Web Push and Fonnte
 
 ### 1. Install dependencies
 
@@ -256,14 +256,14 @@ Use `.env.example` as the source of truth for local setup. The most important gr
 
 | Variable | Description |
 |---|---|
-| `RESEARCH_LLM_PROVIDER` | Default research provider, e.g. `gemini` or `ollama-cloud` |
+| `RESEARCH_LLM_PROVIDER` | Research provider: `ollama-cloud` (default) or `gemini` |
 | `RESEARCH_LLM_PROVIDER_PRO` | Optional provider override for pro/report-grade tasks |
 | `RESEARCH_LLM_PROVIDER_FLASH` | Optional provider override for flash/bulk tasks |
-| `GEMINI_API_KEY` / `GOOGLE_AI_API_KEY` | Google Gemini credentials |
-| `AGENT_LLM_MODEL` | Model used by the in-app AI Agent |
+| `GEMINI_API_KEY` / `GOOGLE_AI_API_KEY` | Optional Google Gemini credentials (used only when `RESEARCH_LLM_PROVIDER=gemini`, or as fallback when `OLLAMA_API_KEY` is empty) |
+| `AGENT_LLM_MODEL` / `AGENT_LLM_THINK` | Ollama model (default `kimi-k3.1-pro:cloud`) and thinking toggle for the in-app AI Agent |
 | `GEMINI_MODEL` | Optional Gemini flash-tier override |
 | `GEMINI_MODEL_PRO` | Optional Gemini pro-tier override |
-| `OLLAMA_API_KEY` | Ollama/Ollama Cloud API key |
+| `OLLAMA_API_KEY` | Ollama Cloud API key — required for all AI features |
 | `OLLAMA_BASE_URL` | Ollama-compatible API base URL |
 | `RESEARCH_OLLAMA_MODEL_FLASH` | Ollama model for flash-tier research tasks |
 | `RESEARCH_OLLAMA_MODEL_PRO` | Ollama model for pro-tier research tasks |
@@ -278,7 +278,7 @@ Use `.env.example` as the source of truth for local setup. The most important gr
 | `APIFY_API_TOKEN` | Apify API token for fallback scrapers |
 | `APIFY_ACTOR_TOKOPEDIA_*` | Tokopedia scraping actors |
 | `APIFY_ACTOR_TIKTOK_*` | TikTok Shop, trends and comments actors |
-| `APIFY_ACTOR_SHOPEE_*` | Shopee product/review/autocomplete actors |
+| `APIFY_ACTOR_SHOPEE_*` | Shopee actors: `_SEARCH` (xtracto~shopee-search), `_SHOP` (xtracto~shopee-shop-scraper), `_PRODUCT` (xtracto~shopee-scraper), `_REVIEWS` (dami_studio~shopee-shop-reviews-scraper), `_AUTOCOMPLETE` (xtracto~shopee-search-hint) |
 | `APIFY_ACTOR_INSTAGRAM` | Instagram scraping actor |
 | `APIFY_ACTOR_PINTEREST` | Pinterest scraping actor |
 | `APIFY_ACTOR_META_AD_LIBRARY` | Meta ad library scraping actor |

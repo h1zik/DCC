@@ -15,14 +15,14 @@ function Stat({
 }) {
   return (
     <div className="bg-muted/40 flex flex-col rounded-xl px-3.5 py-3">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground text-xs font-semibold">
         {label}
       </p>
       <p className="text-foreground mt-1 text-xl font-extrabold tabular-nums tracking-tight">
         {value}
       </p>
       {hint ? (
-        <p className="text-muted-foreground mt-0.5 text-[10px]">{hint}</p>
+        <p className="text-muted-foreground mt-0.5 text-xs">{hint}</p>
       ) : null}
     </div>
   );

@@ -1,9 +1,8 @@
 import { ensureResearchHubPage } from "@/lib/ensure-research-hub-page";
 import { ResearchHubSubNav } from "@/components/research-hub/research-hub-sub-nav";
-import { ResearchHubModuleHint } from "@/components/research-hub/research-hub-module-hint";
 import { BackgroundJobIndicator } from "@/components/research-hub/background-job-indicator";
 import { ResearchHubModuleSidebar } from "@/components/research-hub/research-hub-module-sidebar";
-import { cn } from "@/lib/utils";
+import "@/components/research-hub/kit/research-hub.css";
 
 export default async function ResearchHubLayout({
   children,
@@ -12,17 +11,13 @@ export default async function ResearchHubLayout({
 }) {
   await ensureResearchHubPage();
   return (
-    // Skin bento global dari lab-theme/lab-bento; hue violet khusus Research Hub.
-    <div className="lab-hue-violet flex w-full min-w-0 gap-6 lg:gap-8">
+    // Skin bento global dari lab-theme/lab-bento; hue violet + skala tipe
+    // "meja riset" (rh-scope) khusus Research Hub.
+    <div className="lab-hue-violet rh-scope flex w-full min-w-0 gap-6 lg:gap-8">
       <ResearchHubModuleSidebar className="lg:flex" />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <ResearchHubSubNav className="lg:hidden" />
-        <ResearchHubModuleHint />
-        <div
-          className={cn(
-            "animate-in fade-in duration-300 motion-reduce:animate-none",
-          )}
-        >
+        <div className="animate-in fade-in duration-300 motion-reduce:animate-none">
           {children}
         </div>
         <BackgroundJobIndicator />

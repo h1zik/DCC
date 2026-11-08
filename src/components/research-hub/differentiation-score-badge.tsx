@@ -24,7 +24,7 @@ export function DifferentiationScoreBadge({
       <span className="text-2xl font-extrabold tabular-nums tracking-tight">
         {Math.round(score)}
       </span>
-      <span className="text-[10px] font-semibold uppercase tracking-wide">
+      <span className="text-xs font-semibold">
         Diff. score
       </span>
     </div>

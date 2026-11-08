@@ -111,7 +111,7 @@ export function DemographicDonut({
   if (data.length === 0) {
     return (
       <div>
-        <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+        <p className="text-muted-foreground mb-1 text-xs font-medium">
           {title}
         </p>
         <p className="text-muted-foreground text-sm">Tidak terdeteksi.</p>
@@ -121,7 +121,7 @@ export function DemographicDonut({
 
   return (
     <div>
-      <p className="text-muted-foreground mb-1 text-xs font-medium uppercase">
+      <p className="text-muted-foreground mb-1 text-xs font-medium">
         {title}
       </p>
       <div className="h-40 w-full">
@@ -145,7 +145,7 @@ export function DemographicDonut({
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-1 flex flex-wrap justify-center gap-2 text-[11px]">
+      <div className="mt-1 flex flex-wrap justify-center gap-2 text-xs">
         {data.map((d) => (
           <span key={d.name} className="inline-flex items-center gap-1 capitalize">
             <span

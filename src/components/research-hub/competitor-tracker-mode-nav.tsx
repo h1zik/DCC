@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   {
     href: "/research-hub/competitor-tracker",
-    label: "By Shop",
+    label: "Toko",
     icon: Store,
     match: (pathname: string) =>
       pathname.startsWith("/research-hub/competitor-tracker") &&
@@ -16,37 +16,46 @@ const TABS = [
   },
   {
     href: "/research-hub/competitor-tracker/products",
-    label: "By Products",
+    label: "Produk",
     icon: Package,
     match: (pathname: string) =>
       pathname.startsWith("/research-hub/competitor-tracker/products"),
   },
 ] as const;
 
-export function CompetitorTrackerModeNav() {
+/**
+ * Sakelar Toko/Produk Competitor Tracker — segmented control tenang.
+ * Di desktop sidebar modul sudah memuat kedua entri, jadi pemanggil biasanya
+ * menyembunyikannya di `lg` (`className="lg:hidden"`); di mobile sakelar ini
+ * menegaskan bahwa kedua halaman adalah dua sisi satu tracker.
+ */
+export function CompetitorTrackerModeNav({ className }: { className?: string }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {TABS.map((tab) => {
-        const active = tab.match(pathname);
-        const Icon = tab.icon;
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
-              active
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-            )}
-          >
-            <Icon className="size-4" />
-            {tab.label}
-          </Link>
-        );
-      })}
-    </div>
+    <nav aria-label="Tampilan Competitor Tracker" className={className}>
+      <div className="bg-muted/60 inline-flex items-center rounded-lg p-0.5">
+        {TABS.map((tab) => {
+          const active = tab.match(pathname);
+          const Icon = tab.icon;
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "focus-visible:ring-ring inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                active
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="size-3.5" aria-hidden />
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

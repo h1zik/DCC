@@ -1,7 +1,10 @@
 import "server-only";
 
 import { ResearchMarketplace } from "@prisma/client";
-import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
+import {
+  buildShopeeReviewsInput,
+  getShopeeReviewsActorId,
+} from "@/lib/apify/shopee-actors";
 import {
   buildKulqizReviewInput,
   isKulqizTikTokShopActor,
@@ -14,36 +17,6 @@ import {
   type ReviewPlatformMeta,
 } from "@/lib/review-platforms/platforms";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
-
-const GIO21_SHOPEE_PRODUCT_DETAIL = "gio21~shopee-product-detail";
-
-function normalizeActorId(actorId: string | null): string {
-  return (actorId ?? "").replace(/\//g, "~").toLowerCase();
-}
-
-function isGio21ProductDetailActor(actorId: string | null): boolean {
-  if (!actorId) return false;
-  const n = normalizeActorId(actorId);
-  return n.includes("shopee-product-detail") || n === GIO21_SHOPEE_PRODUCT_DETAIL;
-}
-
-/** Deteksi kode negara Shopee dari URL (default Indonesia). */
-export function shopeeCountryFromUrl(url: string): string {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    if (host.includes("shopee.co.id")) return "ID";
-    if (host.includes("shopee.com.br")) return "BR";
-    if (host.includes("shopee.sg")) return "SG";
-    if (host.includes("shopee.com.my")) return "MY";
-    if (host.includes("shopee.co.th")) return "TH";
-    if (host.includes("shopee.vn")) return "VN";
-    if (host.includes("shopee.ph")) return "PH";
-    if (host.includes("shopee.com.mx")) return "MX";
-  } catch {
-    /* ignore */
-  }
-  return "ID";
-}
 
 function readActorEnv(envKey: string): string | null {
   if (!envKey) return null;
@@ -61,6 +34,9 @@ export function getReviewActorIdForPlatform(platformKey: string): string | null 
 
   const dedicated = readActorEnv(meta.actorEnvKey);
   if (dedicated) return dedicated;
+
+  // Shopee punya actor default (dami_studio) sehingga tetap jalan tanpa env.
+  if (platformKey === "shopee") return getShopeeReviewsActorId();
 
   if (meta.category === "community") {
     return jsonLdActorId();
@@ -143,16 +119,7 @@ export function buildReviewActorInputForPlatform(
 
   switch (platformKey) {
     case "shopee":
-      if (isGio21ProductDetailActor(actorId)) {
-        const cleaned = cleanShopeeUrl(url);
-        return {
-          productUrls: [cleaned],
-          country: shopeeCountryFromUrl(cleaned),
-          includeReviews: true,
-          reviewsLimit: 500,
-        };
-      }
-      return { productUrls: [url], maxReviews: 500 };
+      return buildShopeeReviewsInput(url);
     case "tokopedia":
     case "lazada":
       return {

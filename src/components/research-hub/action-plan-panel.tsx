@@ -165,7 +165,7 @@ export function ActionPlanPanel({
                   {rec.evidence.map((ev, i) => (
                     <span
                       key={`${rec.id}-ev-${i}`}
-                      className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                      className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                       title={`${ev.module}: ${ev.label}`}
                     >
                       <ArrowUpRight className="size-3 shrink-0" aria-hidden />

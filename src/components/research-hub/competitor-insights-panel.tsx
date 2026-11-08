@@ -17,14 +17,14 @@ function KpiCard({
 }) {
   return (
     <div className="bg-muted/50 rounded-xl px-3.5 py-3">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground text-xs font-semibold">
         {label}
       </p>
       <p className="text-foreground mt-0.5 truncate text-lg font-extrabold tabular-nums tracking-tight">
         {value}
       </p>
       {sub ? (
-        <p className="text-muted-foreground mt-0.5 text-[10px] font-medium">
+        <p className="text-muted-foreground mt-0.5 text-xs font-medium">
           {sub}
         </p>
       ) : null}

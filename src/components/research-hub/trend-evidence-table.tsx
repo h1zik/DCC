@@ -61,7 +61,7 @@ export function TrendEvidenceTable({
                 className="hover:bg-muted/40 transition-colors duration-150 motion-reduce:transition-none"
               >
                 <TableCell className="text-xs">
-                  <span className="bg-muted/70 text-foreground/80 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                  <span className="bg-muted/70 text-foreground/80 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold">
                     {SOURCE_LABELS[row.source] ?? row.source}
                   </span>
                 </TableCell>
@@ -78,7 +78,7 @@ export function TrendEvidenceTable({
                   {row.deltaPct != null ? (
                     <span
                       className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
                         row.deltaPct > 0
                           ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                           : row.deltaPct < 0

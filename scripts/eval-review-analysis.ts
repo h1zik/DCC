@@ -1,7 +1,8 @@
 /**
  * Eval golden-set prompt klasifikasi review.
  *
- * Jalankan manual (butuh GEMINI_API_KEY di env / .env):
+ * Jalankan manual (butuh OLLAMA_API_KEY di env / .env; model = RESEARCH_OLLAMA_MODEL_FLASH
+ * atau default kimi-k3.1-pro:cloud):
  *   npx tsx scripts/eval-review-analysis.ts
  *
  * Jalankan SETIAP KALI mengubah prompt di src/lib/research/prompts/review-analysis.ts.
@@ -10,7 +11,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { RESEARCH_DEFAULT_OLLAMA_MODELS } from "../src/lib/research/llm/defaults";
 import { buildReviewBatchPrompt } from "../src/lib/research/prompts/review-analysis";
 import { parseExtractedJson } from "../src/lib/research/llm/extract-json";
 
@@ -43,10 +44,9 @@ type ModelReviewResult = {
 };
 
 async function main() {
-  const apiKey =
-    process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_AI_API_KEY?.trim();
+  const apiKey = process.env.OLLAMA_API_KEY?.trim();
   if (!apiKey) {
-    console.error("GEMINI_API_KEY belum diset — eval butuh akses model nyata.");
+    console.error("OLLAMA_API_KEY belum diset — eval butuh akses model nyata.");
     process.exit(1);
   }
 
@@ -62,19 +62,34 @@ async function main() {
     golden.cases.map((c) => ({ idx: c.idx, text: c.text, rating: c.rating })),
   );
 
-  const modelName = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-  });
+  const modelName =
+    process.env.RESEARCH_OLLAMA_MODEL_FLASH?.trim() ||
+    process.env.RESEARCH_OLLAMA_MODEL?.trim() ||
+    RESEARCH_DEFAULT_OLLAMA_MODELS.flash;
+  const baseUrl = (process.env.OLLAMA_BASE_URL?.trim() || "https://ollama.com").replace(/\/+$/, "");
 
   console.log(
     `Eval prompt v${golden.promptVersion} · model ${modelName} · ${golden.cases.length} kasus…\n`,
   );
 
-  const result = await model.generateContent(prompt);
-  const parsed = parseExtractedJson<ModelReviewResult>(result.response.text());
+  const res = await fetch(`${baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [{ role: "user", content: prompt }],
+      stream: false,
+      think: false,
+      format: "json",
+      options: { temperature: 0.2 },
+    }),
+  });
+  const payload = (await res.json()) as { message?: { content?: string }; error?: string };
+  if (!res.ok) {
+    console.error(`Ollama Cloud error ${res.status}: ${payload.error ?? res.statusText}`);
+    process.exit(1);
+  }
+  const parsed = parseExtractedJson<ModelReviewResult>(payload.message?.content ?? "");
   const byIdx = new Map((parsed.reviews ?? []).map((r) => [r.idx, r]));
 
   let sentimentHits = 0;

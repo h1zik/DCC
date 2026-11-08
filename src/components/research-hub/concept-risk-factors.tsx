@@ -66,7 +66,7 @@ export function ConceptRiskFactorList({ items }: { items: RiskFactor[] }) {
               <p className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                 <span
                   className={cn(
-                    "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
                     SEVERITY_PILL[risk.severity],
                   )}
                 >
