@@ -93,7 +93,7 @@ export function ConceptValidationPanel({
                 scoreTone(s.value),
               )}
             >
-              <span className="text-[10px] font-semibold uppercase tracking-wide opacity-80">
+              <span className="text-xs font-semibold opacity-80">
                 {s.label}
               </span>
               <span className="text-2xl font-extrabold tabular-nums tracking-tight">
@@ -118,7 +118,7 @@ export function ConceptValidationPanel({
       ) : null}
       {data.risks.length > 0 ? (
         <div>
-          <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[0.14em]">
+          <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em]">
             Risiko
           </p>
           <ul className="mt-1.5 space-y-1.5 text-sm">
@@ -135,7 +135,7 @@ export function ConceptValidationPanel({
         </div>
       ) : null}
 
-      <p className="text-muted-foreground border-border/60 border-t pt-3 text-[11px] leading-relaxed">
+      <p className="text-muted-foreground border-border/60 border-t pt-3 text-xs leading-relaxed">
         Metodologi: skor mentah dari AI, lalu dikoreksi deterministik — penalti
         bila harga target menyimpang jauh dari rentang harga kompetitor, dan
         skor overall dibatasi maksimal 72 bila konteks riset &le; 1 modul.

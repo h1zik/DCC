@@ -72,12 +72,12 @@ function ProductDiscoveryCard({
           className="size-full"
         />
         {row.hasPromo && row.promoText ? (
-          <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold">
+          <span className="bg-primary text-primary-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 text-xs font-semibold">
             {row.promoText}
           </span>
         ) : null}
         {row.categoryRank != null ? (
-          <span className="bg-background/90 text-foreground absolute top-2 right-2 rounded-md px-2 py-0.5 text-[10px] font-semibold tabular-nums backdrop-blur-sm">
+          <span className="bg-background/90 text-foreground absolute top-2 right-2 rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums backdrop-blur-sm">
             #{row.categoryRank}
           </span>
         ) : null}
@@ -106,7 +106,7 @@ function ProductDiscoveryCard({
 
         <div className="grid grid-cols-2 gap-2 text-center">
           <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            <p className="text-muted-foreground text-xs font-semibold">
               Harga
             </p>
             <p className="mt-0.5 text-xs font-extrabold tabular-nums tracking-tight">
@@ -114,7 +114,7 @@ function ProductDiscoveryCard({
             </p>
           </div>
           <div className={hub.nestedPanel}>
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            <p className="text-muted-foreground text-xs font-semibold">
               Rating
             </p>
             <p className="mt-0.5 flex items-center justify-center gap-1 text-xs font-extrabold tabular-nums tracking-tight">

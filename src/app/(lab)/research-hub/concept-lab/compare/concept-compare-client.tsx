@@ -72,7 +72,7 @@ export function ConceptCompareClient({ data }: { data: ComparePageData }) {
         )}
       >
         <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+          <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
             {winner ? "Skor pemenang" : "Skor tertinggi"}
           </span>
           <span className="bento-value text-5xl text-white dark:text-violet-950">
@@ -89,7 +89,7 @@ export function ConceptCompareClient({ data }: { data: ComparePageData }) {
         <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
           <div className="flex items-center justify-between">
             <span className="bento-label">Skor rata-rata per konsep</span>
-            <span className="text-muted-foreground text-[11px] tabular-nums">
+            <span className="text-muted-foreground text-xs tabular-nums">
               {data.dimensions.length} dimensi
             </span>
           </div>
@@ -141,7 +141,7 @@ export function ConceptCompareClient({ data }: { data: ComparePageData }) {
         </div>
 
         <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-          <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+          <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
             Dimensi dinilai
           </span>
           <span className="bento-value text-violet-900 dark:text-violet-300">
@@ -169,7 +169,7 @@ export function ConceptCompareClient({ data }: { data: ComparePageData }) {
       <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
         <div className="flex items-center justify-between">
           <span className="bento-label">Matrix perbandingan</span>
-          <span className="text-muted-foreground text-[11px]">
+          <span className="text-muted-foreground text-xs">
             skor per dimensi validasi untuk setiap konsep
           </span>
         </div>

@@ -236,7 +236,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
         <>
           <span
             className={cn(
-              "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+              "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
               statusPillTone(data.status),
             )}
           >
@@ -255,7 +255,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
       >
         {/* Hero violet — total sinyal */}
         <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+          <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
             Sinyal terkumpul
           </span>
           <span className="bento-value text-5xl text-white dark:text-violet-950">
@@ -270,7 +270,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
         <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
           <div className="flex items-center justify-between">
             <span className="bento-label">Distribusi fase tren</span>
-            <span className="text-muted-foreground text-[11px] tabular-nums">
+            <span className="text-muted-foreground text-xs tabular-nums">
               {data.items.length} tren
             </span>
           </div>
@@ -301,7 +301,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
                     {TREND_PHASE_LABELS[s.key]}
                   </span>
                   <span className="font-semibold tabular-nums">{count}</span>
-                  <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                  <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
                     {Math.round((count / distTotal) * 100)}%
                   </span>
                 </div>
@@ -323,7 +323,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
 
         {/* WoW naik — amber pastel */}
         <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+          <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
             WoW baru / mempercepat
           </span>
           <span className="bento-value text-amber-900 dark:text-amber-300">
@@ -337,7 +337,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
         dataNotice={data.dataNotice}
       />
 
-      <p className="text-muted-foreground text-[11px] leading-relaxed">
+      <p className="text-muted-foreground text-xs leading-relaxed">
         Metodologi TMI: skor gabungan deterministik — search 30% · social 25% ·
         market 25% · consumer 20% (skala log per keluarga sumber) + boost
         velocity. Confidence dihitung dari jumlah keluarga sumber yang berisi
@@ -359,7 +359,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
               <Layers className="size-3.5" aria-hidden />
               Tren
               {data.items.length > 0 ? (
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
                   {data.items.length}
                 </Badge>
               ) : null}
@@ -436,7 +436,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
                         {item.name}
                       </h3>
                       <TrendDimensionBadge dimension={item.dimension} />
-                      <span className="bg-muted/70 text-muted-foreground inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                      <span className="bg-muted/70 text-muted-foreground inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold">
                         {TREND_PHASE_LABELS[item.phase]}
                       </span>
                       {typeof item.tmiScore === "number" ||
@@ -448,7 +448,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
                       ) : null}
                       <TrendWowBadge status={item.wowStatus} />
                       {item.isGlobalPipeline ? (
-                        <span className="text-muted-foreground inline-flex items-center gap-0.5 text-[10px]">
+                        <span className="text-muted-foreground inline-flex items-center gap-0.5 text-xs">
                           <Globe className="size-3" aria-hidden />
                           Global → Local
                         </span>
@@ -480,14 +480,14 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
 
                   {item.evidence.length > 0 ? (
                     <div>
-                      <p className="text-muted-foreground mb-2 text-[10px] font-semibold uppercase tracking-wide">
+                      <p className="text-muted-foreground mb-2 text-xs font-semibold">
                         Bukti sinyal
                       </p>
                       <TrendEvidenceTable evidence={item.evidence} />
                     </div>
                   ) : item.sources.length > 0 ? (
                     <div>
-                      <p className="text-muted-foreground mb-1 text-[10px] font-semibold uppercase tracking-wide">
+                      <p className="text-muted-foreground mb-1 text-xs font-semibold">
                         Sumber data
                       </p>
                       <ul className="text-muted-foreground space-y-1 text-xs">
@@ -516,7 +516,7 @@ export function TrendDetailClient({ data }: { data: TrendDetailData }) {
 
                   {item.relatedProducts.length > 0 ? (
                     <div>
-                      <p className="text-muted-foreground mb-1 text-[10px] font-semibold uppercase tracking-wide">
+                      <p className="text-muted-foreground mb-1 text-xs font-semibold">
                         Produk terkait
                       </p>
                       <div className="flex flex-wrap gap-1.5">

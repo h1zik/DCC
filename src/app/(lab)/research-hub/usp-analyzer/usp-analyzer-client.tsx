@@ -91,7 +91,7 @@ function AnalysisStatusPill({ status }: { status: UspGapStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
         tone,
       )}
     >
@@ -110,7 +110,7 @@ function CardStat({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground text-xs font-semibold">
         {label}
       </p>
       <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -280,13 +280,13 @@ export function UspAnalyzerClient({
         >
           {/* Hero violet */}
           <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Analisis
             </span>
             <span className="bento-value text-white dark:text-violet-950">
               {analyses.length}
             </span>
-            <span className="text-[11px] font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+            <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
               {readyCount} siap
               {runningCount > 0 ? ` · ${runningCount} berjalan` : ""}
               {failedCount > 0 ? ` · ${failedCount} gagal` : ""}
@@ -298,13 +298,13 @@ export function UspAnalyzerClient({
             <span className="bento-value">
               {totalUsps.toLocaleString("id-ID")}
             </span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               dari semua kategori
             </span>
           </div>
 
           <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
               Rata-rata skor
             </span>
             <span className="bento-value text-violet-900 dark:text-violet-300">
@@ -315,32 +315,32 @@ export function UspAnalyzerClient({
                 </span>
               ) : null}
             </span>
-            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/50">
+            <span className="text-xs font-medium text-violet-700/60 dark:text-violet-300/50">
               skor diferensiasi
             </span>
           </div>
 
           {failedCount > 0 ? (
             <div className="bento-tile border-transparent bg-[#fbdcd7] dark:bg-rose-400/10">
-              <span className="text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60">
+              <span className="text-xs font-semibold text-rose-800/70 dark:text-rose-200/60">
                 Gagal
               </span>
               <span className="bento-value text-rose-900 dark:text-rose-300">
                 {failedCount}
               </span>
-              <span className="text-[11px] font-medium text-rose-800/60 dark:text-rose-200/50">
+              <span className="text-xs font-medium text-rose-800/60 dark:text-rose-200/50">
                 refresh untuk mengulang
               </span>
             </div>
           ) : (
             <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-              <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+              <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
                 Sedang berjalan
               </span>
               <span className="bento-value text-amber-900 dark:text-amber-300">
                 {runningCount}
               </span>
-              <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+              <span className="text-xs font-medium text-amber-800/60 dark:text-amber-200/50">
                 pipeline modul + AI
               </span>
             </div>
@@ -442,7 +442,7 @@ export function UspAnalyzerClient({
 
               <DialogFooter className="border-border/60 bg-muted/15 flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="w-full min-w-0 sm:flex-1">
-                  <p className="text-muted-foreground mb-1.5 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide">
+                  <p className="text-muted-foreground mb-1.5 flex items-center gap-1 text-xs font-medium">
                     <Layers className="size-3" aria-hidden />
                     Modul aktif
                   </p>
@@ -494,7 +494,7 @@ export function UspAnalyzerClient({
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <span
-                        className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold uppercase"
+                        className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold"
                         aria-hidden
                       >
                         {a.category.trim().charAt(0) || "?"}

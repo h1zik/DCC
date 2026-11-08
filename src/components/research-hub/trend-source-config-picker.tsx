@@ -201,7 +201,7 @@ export function TrendSourceConfigPicker({
                       />
                       <span className="min-w-0 flex-1">
                         <span className="font-medium">{feed.label ?? labelFromRssUrl(feed.url)}</span>
-                        <span className="text-muted-foreground block truncate text-[10px]">
+                        <span className="text-muted-foreground block truncate text-xs">
                           {feed.url}
                         </span>
                       </span>
@@ -253,7 +253,7 @@ export function TrendSourceConfigPicker({
                   onChange={(e) => updateHashtags(e.target.value)}
                   className="text-sm"
                 />
-                <p className="text-muted-foreground text-[11px]">
+                <p className="text-muted-foreground text-xs">
                   Default hashtag beauty Indonesia — bisa disesuaikan.
                 </p>
               </div>

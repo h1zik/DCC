@@ -38,7 +38,7 @@ function FormStep({
         >
           {step}
         </span>
-        <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[0.14em]">
+        <span className="text-muted-foreground text-xs font-semibold tracking-[0.14em]">
           {title}
         </span>
       </h3>

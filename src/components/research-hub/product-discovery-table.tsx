@@ -104,7 +104,7 @@ export function ProductDiscoveryTable({
             <TableCell className="max-w-[240px]">
               <p className="line-clamp-2 font-medium">{row.name}</p>
               {row.hasPromo && row.promoText ? (
-                <span className="mt-1 inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[var(--lab-accent,var(--primary))]">
+                <span className="mt-1 inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--lab-accent,var(--primary))]">
                   {row.promoText}
                 </span>
               ) : null}
@@ -113,7 +113,7 @@ export function ProductDiscoveryTable({
               {row.shopName ?? "—"}
             </TableCell>
             <TableCell>
-              <span className="bg-muted text-muted-foreground inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide">
+              <span className="bg-muted text-muted-foreground inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold">
                 <MarketplaceLogo
                   marketplace={row.marketplace}
                   className="size-3.5"
@@ -130,7 +130,7 @@ export function ProductDiscoveryTable({
             <TableCell className="text-right tabular-nums">
               {row.rating != null ? row.rating.toFixed(1) : "—"}
               {row.reviewCount > 0 ? (
-                <span className="text-muted-foreground block text-[10px]">
+                <span className="text-muted-foreground block text-xs">
                   ({row.reviewCount.toLocaleString("id-ID")})
                 </span>
               ) : null}

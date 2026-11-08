@@ -39,7 +39,7 @@ export function SocialViralCards({ items }: { items: ViralContentRow[] }) {
             <span className="truncate text-sm font-bold tracking-tight">
               {item.author ? `@${item.author}` : "Anonim"}
             </span>
-            <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:text-amber-300">
+            <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
               {item.platform}
             </span>
           </div>

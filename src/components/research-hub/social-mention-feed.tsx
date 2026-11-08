@@ -149,7 +149,7 @@ export function SocialMentionFeed({ rows }: { rows: MentionFeedRow[] }) {
                   <TableCell>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
                         classTone(row.classification),
                       )}
                     >
@@ -163,7 +163,7 @@ export function SocialMentionFeed({ rows }: { rows: MentionFeedRow[] }) {
                     <p className="text-muted-foreground mt-1 text-xs">
                       {row.author ? `@${row.author}` : "—"} · {row.platform}
                       {row.isViral ? (
-                        <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
+                        <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
                           Viral
                         </span>
                       ) : null}

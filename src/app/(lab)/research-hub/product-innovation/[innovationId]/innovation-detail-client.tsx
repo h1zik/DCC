@@ -163,7 +163,7 @@ export function InnovationDetailClient({
           )}
         >
           <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Ide dihasilkan
             </span>
             <span className="bento-value text-5xl text-white dark:text-violet-950">
@@ -178,7 +178,7 @@ export function InnovationDetailClient({
           <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
             <div className="flex items-center justify-between">
               <span className="bento-label">Distribusi lensa</span>
-              <span className="text-muted-foreground text-[11px] tabular-nums">
+              <span className="text-muted-foreground text-xs tabular-nums">
                 {data.ideas.length} ide
               </span>
             </div>
@@ -220,7 +220,7 @@ export function InnovationDetailClient({
             >
               {promotedCount}
             </span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               jadi konsep di Concept Lab
             </span>
           </div>
@@ -236,7 +236,7 @@ export function InnovationDetailClient({
             <span
               className={cn(
                 data.riskFactors.length > 0
-                  ? "text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60"
+                  ? "text-xs font-semibold text-rose-800/70 dark:text-rose-200/60"
                   : "bento-label",
               )}
             >
@@ -253,7 +253,7 @@ export function InnovationDetailClient({
             </span>
             <span
               className={cn(
-                "text-[11px] font-medium",
+                "text-xs font-medium",
                 data.riskFactors.length > 0
                   ? "text-rose-800/70 dark:text-rose-200/60"
                   : "text-muted-foreground",
@@ -287,7 +287,7 @@ export function InnovationDetailClient({
               >
                 <span
                   className={cn(
-                    "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                    "rounded-full px-1.5 py-0.5 text-xs font-semibold",
                     SEVERITY_PILL[r.severity],
                   )}
                 >

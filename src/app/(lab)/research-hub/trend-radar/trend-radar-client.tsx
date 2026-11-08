@@ -137,7 +137,7 @@ function DigestStatusPill({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
         tone,
       )}
     >
@@ -156,7 +156,7 @@ function CardStat({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground text-xs font-semibold">
         {label}
       </p>
       <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -365,13 +365,13 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
         >
           {/* Hero violet */}
           <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Tren terdeteksi
             </span>
             <span className="bento-value text-white dark:text-violet-950">
               {trendCount}
             </span>
-            <span className="text-[11px] font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+            <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
               {totalSignals != null
                 ? `dari ${totalSignals.toLocaleString("id-ID")} sinyal digest global`
                 : data.latestGlobal?.generatedAt
@@ -383,7 +383,7 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
           <div className="bento-tile">
             <span className="bento-label">Digest siap</span>
             <span className="bento-value">{readyDigests}</span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               dari {data.digests.length} digest di arsip
             </span>
           </div>
@@ -391,25 +391,25 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
           {/* Berjalan / gagal — amber atau rose pastel */}
           {failedDigests > 0 && runningDigests === 0 ? (
             <div className="bento-tile border-transparent bg-[#fbdcd7] dark:bg-rose-400/10">
-              <span className="text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60">
+              <span className="text-xs font-semibold text-rose-800/70 dark:text-rose-200/60">
                 Digest gagal
               </span>
               <span className="bento-value text-rose-900 dark:text-rose-300">
                 {failedDigests}
               </span>
-              <span className="text-[11px] font-medium text-rose-800/60 dark:text-rose-200/50">
+              <span className="text-xs font-medium text-rose-800/60 dark:text-rose-200/50">
                 cek arsip lalu generate ulang
               </span>
             </div>
           ) : (
             <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-              <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+              <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
                 Sedang berjalan
               </span>
               <span className="bento-value text-amber-900 dark:text-amber-300">
                 {runningDigests}
               </span>
-              <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+              <span className="text-xs font-medium text-amber-800/60 dark:text-amber-200/50">
                 {failedDigests > 0
                   ? `${failedDigests} gagal di arsip`
                   : "digest dalam proses"}
@@ -418,13 +418,13 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
           )}
 
           <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
               Watchlist
             </span>
             <span className="bento-value text-violet-900 dark:text-violet-300">
               {data.watchlists.length}
             </span>
-            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/50">
+            <span className="text-xs font-medium text-violet-700/60 dark:text-violet-300/50">
               {activeWatchlists} aktif dipantau
             </span>
           </div>
@@ -446,7 +446,7 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
               <List className="size-3.5" aria-hidden />
               Watchlist
               {data.watchlists.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.watchlists.length}
                 </span>
               ) : null}
@@ -455,7 +455,7 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
               <Archive className="size-3.5" aria-hidden />
               Arsip
               {data.digests.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.digests.length}
                 </span>
               ) : null}
@@ -580,7 +580,7 @@ export function TrendRadarClient({ data }: { data: TrendRadarPageData }) {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                           <span
-                            className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold uppercase"
+                            className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold"
                             aria-hidden
                           >
                             {w.name.trim().charAt(0) || "?"}

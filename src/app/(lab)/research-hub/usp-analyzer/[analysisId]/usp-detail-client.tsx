@@ -268,7 +268,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
         <>
           <span
             className={cn(
-              "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+              "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
               statusPillTone(data.status),
             )}
           >
@@ -305,7 +305,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
       >
         {/* Hero violet — differentiation score */}
         <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+          <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
             Differentiation score
           </span>
           <span className="bento-value text-5xl text-white dark:text-violet-950">
@@ -385,7 +385,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
 
         {/* Gap besar — amber pastel */}
         <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+          <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
             Gap skor ≥ 70
           </span>
           <span className="bento-value text-amber-900 dark:text-amber-300">
@@ -394,7 +394,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
               /{data.gapMatrix.length}
             </span>
           </span>
-          <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+          <span className="text-xs font-medium text-amber-800/60 dark:text-amber-200/50">
             {heroStats.p0 > 0 ? `${heroStats.p0} prioritas P0` : "peluang besar"}
           </span>
         </div>
@@ -415,7 +415,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
 
         {/* Cakupan data — lavender pastel */}
         <div className="bento-tile col-span-2 border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-          <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+          <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
             Cakupan data konteks
           </span>
           <span className="bento-value text-violet-900 dark:text-violet-300">
@@ -452,7 +452,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
               <Grid3x3 className="size-3.5" aria-hidden />
               Gap Matrix
               {data.gapMatrix.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.gapMatrix.length}
                 </span>
               ) : null}
@@ -465,7 +465,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
               <Target className="size-3.5" aria-hidden />
               USP
               {data.uspCandidates.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.uspCandidates.length}
                 </span>
               ) : null}
@@ -551,7 +551,7 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
                 <span className="bento-label">
                   {data.positioningMap.axisX} × {data.positioningMap.axisY}
                 </span>
-                <span className="text-muted-foreground text-[11px] tabular-nums">
+                <span className="text-muted-foreground text-xs tabular-nums">
                   {data.positioningMap.points.length} produk
                 </span>
               </div>

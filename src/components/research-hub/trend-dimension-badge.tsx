@@ -14,7 +14,7 @@ export function TrendDimensionBadge({
   return (
     <span
       className={cn(
-        "bg-muted/70 text-muted-foreground inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "bg-muted/70 text-muted-foreground inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
         className,
       )}
     >

@@ -106,7 +106,7 @@ function HealthBadge({ level }: { level: DataHealthLevel }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold",
         meta.text,
       )}
     >
@@ -151,7 +151,7 @@ function ModuleGrid({
               {MODULE_DESCRIPTIONS[mod.key] ?? ""}
             </p>
             {h?.detail ? (
-              <p className="text-muted-foreground/70 text-[11px] tabular-nums">
+              <p className="text-muted-foreground/70 text-xs tabular-nums">
                 {h.detail}
               </p>
             ) : null}
@@ -273,7 +273,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
       >
         {/* Status — tile hero violet, dua baris */}
         <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+          <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
             Status riset
           </span>
           <span className="bento-value text-4xl text-white dark:text-violet-950">
@@ -298,7 +298,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
           ))}
 
         <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-          <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+          <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
             Alert belum dibaca
           </span>
           <span className="bento-value text-2xl text-violet-950 dark:text-violet-200">
@@ -306,7 +306,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
           </span>
         </div>
         <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+          <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
             Job berjalan
           </span>
           <span className="bento-value text-2xl text-amber-900 dark:text-amber-300">
@@ -340,7 +340,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
             <header className="mb-3">
               <h2 className="text-[13px] font-semibold">
                 Action Center
-                <span className="text-primary ml-2 text-[11px] font-medium">
+                <span className="text-primary ml-2 text-xs font-medium">
                   rekomendasi lintas-modul
                 </span>
               </h2>
@@ -365,7 +365,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
                   </li>
                 ))}
               </ul>
-              <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+              <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
                 Pastikan cron eksternal (Railway) memanggil
                 /api/cron/research-sync sesuai jadwal.
               </p>
@@ -376,7 +376,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
           <section>
             <div className="mb-2 flex items-baseline justify-between gap-3">
               <p className="bento-label">Yang perlu perhatian</p>
-              <p className="text-muted-foreground text-[11px]">
+              <p className="text-muted-foreground text-xs">
                 Alert kompetitor & sinyal tren terbaru
               </p>
             </div>
@@ -420,7 +420,7 @@ export function ResearchCommandCenter({ data }: { data: DashboardData }) {
                             {a.subtitle}
                           </span>
                         </span>
-                        <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+                        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
                           {formatRelativeTime(new Date(a.createdAt))}
                         </span>
                       </Link>

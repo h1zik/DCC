@@ -436,13 +436,13 @@ export function ReviewDetailClient({
           >
             {/* Total review — hero violet */}
             <div className="bento-tile col-span-2 row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 lg:col-span-1 dark:bg-violet-500">
-              <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+              <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
                 Review dianalisis
               </span>
               <span className="bento-value text-5xl text-white dark:text-violet-950">
                 {source.reviewCount.toLocaleString("id-ID")}
               </span>
-              <span className="text-[11px] font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+              <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
                 {isPartial
                   ? `sampel dari ${source.totalReviewsReported!.toLocaleString("id-ID")} review di ${getReviewPlatformLabel(source.platformKey)}`
                   : `dari ${getReviewPlatformLabel(source.platformKey)} · ${source.competitorBrand}`}
@@ -453,7 +453,7 @@ export function ReviewDetailClient({
             <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
               <div className="flex items-center justify-between">
                 <span className="bento-label">Distribusi sentimen</span>
-                <span className="text-muted-foreground text-[11px] tabular-nums">
+                <span className="text-muted-foreground text-xs tabular-nums">
                   {source.reviewCount.toLocaleString("id-ID")} review
                 </span>
               </div>
@@ -494,13 +494,13 @@ export function ReviewDetailClient({
 
             {/* Tema keluhan — rose pastel */}
             <div className="bento-tile border-transparent bg-[#fbdcd7] dark:bg-rose-400/10">
-              <span className="text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60">
+              <span className="text-xs font-semibold text-rose-800/70 dark:text-rose-200/60">
                 Tema keluhan
               </span>
               <span className="bento-value text-rose-900 dark:text-rose-300">
                 {source.summary.topComplaints.length}
               </span>
-              <span className="line-clamp-1 text-[11px] font-medium capitalize text-rose-800/60 dark:text-rose-200/50">
+              <span className="line-clamp-1 text-xs font-medium capitalize text-rose-800/60 dark:text-rose-200/50">
                 {source.summary.topComplaints[0]?.theme ?? "tidak ada keluhan"}
               </span>
             </div>
@@ -511,7 +511,7 @@ export function ReviewDetailClient({
               <span className="bento-value text-emerald-600 dark:text-emerald-400">
                 {source.summary.topPraises.length}
               </span>
-              <span className="text-muted-foreground line-clamp-1 text-[11px] font-medium capitalize">
+              <span className="text-muted-foreground line-clamp-1 text-xs font-medium capitalize">
                 {source.summary.topPraises[0]?.theme ?? "belum terdeteksi"}
               </span>
             </div>
@@ -536,7 +536,7 @@ export function ReviewDetailClient({
                   <BarChart3 className="size-3.5" aria-hidden />
                   Review
                   {source.reviewCount > 0 ? (
-                    <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                    <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                       {source.reviewCount}
                     </span>
                   ) : null}
@@ -686,7 +686,7 @@ export function ReviewDetailClient({
                   );
                   const undated = Math.max(0, source.reviewCount - dated);
                   return undated > 0 ? (
-                    <p className="text-muted-foreground text-[11px]">
+                    <p className="text-muted-foreground text-xs">
                       {undated.toLocaleString("id-ID")} review tanpa tanggal
                       valid tidak ditampilkan di timeline (tetap dihitung di
                       sentimen &amp; tema).

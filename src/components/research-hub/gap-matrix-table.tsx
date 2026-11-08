@@ -86,7 +86,7 @@ export function GapMatrixTable({ rows }: { rows: GapMatrixRow[] }) {
                 {row.priority ? (
                   <span
                     className={cn(
-                      "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold",
+                      "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold",
                       priorityTone(row.priority),
                     )}
                   >
@@ -108,7 +108,7 @@ export function GapMatrixTable({ rows }: { rows: GapMatrixRow[] }) {
                     {row.evidenceRefs.slice(0, 4).map((ref, j) => (
                       <span
                         key={j}
-                        className="bg-muted/60 text-muted-foreground rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                        className="bg-muted/60 text-muted-foreground rounded-md px-1.5 py-0.5 text-xs font-medium"
                       >
                         {ref}
                       </span>

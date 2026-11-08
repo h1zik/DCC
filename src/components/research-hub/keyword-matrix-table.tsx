@@ -124,7 +124,7 @@ export function KeywordMatrixTable({
   return (
     <div className="flex flex-col gap-2">
       {!hasGoogleVolume ? (
-        <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+        <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
           DataForSEO tidak aktif — semua angka volume adalah estimasi proxy dari
           rank/listing marketplace (ditandai <span className="font-semibold">est.</span>),
           bukan volume pencarian Google terukur.
@@ -208,7 +208,7 @@ export function KeywordMatrixTable({
                         {row.volume.toLocaleString("id-ID")}
                         {volEstimated ? (
                           <span
-                            className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300"
+                            className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300"
                             title="Estimasi proxy dari rank/listing marketplace — bukan volume pencarian Google terukur."
                           >
                             est.
@@ -238,7 +238,7 @@ export function KeywordMatrixTable({
                   <TableCell>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold",
+                        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
                         row.intent === "transactional"
                           ? "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] text-[var(--lab-accent,var(--primary))]"
                           : "bg-muted text-muted-foreground",
@@ -252,7 +252,7 @@ export function KeywordMatrixTable({
                       {row.source.slice(0, 3).map((s) => (
                         <span
                           key={s}
-                          className="bg-muted text-muted-foreground rounded px-1 py-0.5 text-[9px]"
+                          className="bg-muted text-muted-foreground rounded px-1 py-0.5 text-xs"
                         >
                           {s.replace(/_/g, " ").slice(0, 12)}
                         </span>

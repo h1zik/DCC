@@ -28,7 +28,7 @@ export function ThemeRankList({
         >
           <span
             className={cn(
-              "flex size-6 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold tabular-nums",
+              "flex size-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold tabular-nums",
               "bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_14%,transparent)] text-[var(--lab-accent,var(--primary))]",
             )}
             aria-hidden

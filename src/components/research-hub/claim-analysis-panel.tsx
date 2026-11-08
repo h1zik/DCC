@@ -23,11 +23,11 @@ function ClaimList({
       <div className="flex items-center gap-2">
         <span className={cn("size-2 shrink-0 rounded-full", dot)} aria-hidden />
         <span className="bento-label flex-1">{title}</span>
-        <span className="text-muted-foreground text-[11px] tabular-nums">
+        <span className="text-muted-foreground text-xs tabular-nums">
           {items.length}
         </span>
       </div>
-      <p className="text-muted-foreground -mt-1 text-[11px] leading-relaxed">
+      <p className="text-muted-foreground -mt-1 text-xs leading-relaxed">
         {hint}
       </p>
       {items.length === 0 ? (

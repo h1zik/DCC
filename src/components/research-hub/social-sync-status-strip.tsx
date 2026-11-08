@@ -96,7 +96,7 @@ export function SocialSyncStatusStrip({
                 </span>
                 <span
                   className={cn(
-                    "text-[10px] font-semibold uppercase",
+                    "text-xs font-semibold",
                     platformStatusTone(status),
                   )}
                 >
@@ -104,7 +104,7 @@ export function SocialSyncStatusStrip({
                 </span>
               </div>
               {message ? (
-                <p className="text-muted-foreground line-clamp-1 pl-3.5 text-[10px]">
+                <p className="text-muted-foreground line-clamp-1 pl-3.5 text-xs">
                   {message}
                 </p>
               ) : null}

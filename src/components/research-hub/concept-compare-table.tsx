@@ -31,7 +31,7 @@ export function ConceptCompareTable({
         const max = Math.max(...dim.scores.map((s) => s.score), 1);
         return (
           <div key={dim.label} className="flex flex-col gap-2.5">
-            <h3 className="text-muted-foreground text-[11px] font-semibold uppercase tracking-[0.14em]">
+            <h3 className="text-muted-foreground text-xs font-semibold tracking-[0.14em]">
               {dim.label}
             </h3>
             <div className="flex flex-col gap-2.5">

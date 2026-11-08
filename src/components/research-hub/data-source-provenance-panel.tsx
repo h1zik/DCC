@@ -33,7 +33,7 @@ export function DataSourceProvenancePanel({
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
         <div className="flex shrink-0 items-center gap-2">
           <Database className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
-          <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
+          <p className="text-muted-foreground text-xs font-semibold">
             Sumber data
           </p>
         </div>
@@ -43,12 +43,12 @@ export function DataSourceProvenancePanel({
           return (
             <li
               key={`${entry.label}-${entry.provider}`}
-              className="bg-card inline-flex items-center gap-1.5 rounded-full py-1 pl-3 pr-1 text-[11px] shadow-sm"
+              className="bg-card inline-flex items-center gap-1.5 rounded-full py-1 pl-3 pr-1 text-xs shadow-sm"
             >
               <span className="text-muted-foreground">{entry.label}</span>
               <span
                 className={cn(
-                  "rounded-full px-2 py-0.5 font-semibold uppercase tracking-wide",
+                  "rounded-full px-2 py-0.5 font-semibold",
                   tone === "warning" &&
                     "bg-amber-500/15 text-amber-700 dark:text-amber-300",
                   tone === "default" &&
@@ -67,14 +67,14 @@ export function DataSourceProvenancePanel({
         </ul>
       </div>
       {hasDemo ? (
-        <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-[11px] font-medium leading-relaxed text-rose-800 dark:text-rose-200">
+        <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs font-medium leading-relaxed text-rose-800 dark:text-rose-200">
           DATA DEMO (sintetis) — angka di modul ini bukan hasil scrape nyata dan
           TIDAK boleh dipakai untuk keputusan produk. Konfigurasi scraper
           (VPS/Apify) lalu jalankan refresh untuk data asli.
         </p>
       ) : null}
       {hasApifyFallback ? (
-        <p className="text-muted-foreground text-[10px] leading-relaxed">
+        <p className="text-muted-foreground text-xs leading-relaxed">
           Apify dipakai sebagai fallback. Jika ini tidak diharapkan, periksa scraper
           VPS (SCRAPER_API_URL) dan log server.
         </p>

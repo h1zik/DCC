@@ -81,7 +81,7 @@ export type ConceptDetailData = {
 };
 
 const PILL_CLASS =
-  "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold";
+  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold";
 
 function statusPillTone(status: ProductConceptStatus): string {
   switch (status) {
@@ -316,7 +316,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
           )}
         >
           <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Skor keseluruhan
             </span>
             <span className="bento-value text-5xl text-white dark:text-violet-950">
@@ -361,7 +361,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
           </div>
 
           <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
               Keputusan
             </span>
             <span
@@ -386,7 +386,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
             <span
               className={cn(
                 data.riskFactors.length > 0
-                  ? "text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60"
+                  ? "text-xs font-semibold text-rose-800/70 dark:text-rose-200/60"
                   : "bento-label",
               )}
             >
@@ -403,7 +403,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
             </span>
             <span
               className={cn(
-                "text-[11px] font-medium",
+                "text-xs font-medium",
                 data.riskFactors.length > 0
                   ? "text-rose-800/70 dark:text-rose-200/60"
                   : "text-muted-foreground",
@@ -443,7 +443,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
               <AlertTriangle className="size-3.5" aria-hidden />
               Risiko
               {data.riskFactors.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.riskFactors.length}
                 </span>
               ) : null}
@@ -459,7 +459,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
           <div className="bento-tile justify-start gap-3">
             <div className="flex items-center justify-between">
               <span className="bento-label">Concept Validator</span>
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-xs">
                 skor disesuaikan data kompetitor & cakupan riset
               </span>
             </div>
@@ -474,7 +474,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
           <div className="bento-tile justify-start gap-3">
             <div className="flex items-center justify-between">
               <span className="bento-label">Concept Builder</span>
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-xs">
                 positioning, ingredients, claims & packaging
               </span>
             </div>
@@ -488,7 +488,7 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
               <span className="bento-label">
                 Faktor risiko dari riset pasar
               </span>
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-xs">
                 terhubung ke modul sumber — bukan tebakan AI semata
               </span>
             </div>

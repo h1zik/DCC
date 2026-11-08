@@ -245,13 +245,13 @@ export function CompetitorProductCategoryClient({
       {category.tracks.length > 0 ? (
         <div className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}>
           <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Produk dipantau
             </span>
             <span className="bento-value text-white dark:text-violet-950">
               {category.tracks.length.toLocaleString("id-ID")}
             </span>
-            <span className="text-[11px] font-medium text-violet-100/90 dark:text-violet-900/80">
+            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
               {stats.errorCount > 0
                 ? `${stats.errorCount} gagal scrape — cek daftar di bawah`
                 : "semua ter-scrape tanpa error"}
@@ -264,7 +264,7 @@ export function CompetitorProductCategoryClient({
               {stats.avgPrice != null ? formatRp(Math.round(stats.avgPrice)) : "—"}
             </span>
             {stats.minPrice != null && stats.maxPrice != null ? (
-              <span className="text-muted-foreground text-[11px] font-medium">
+              <span className="text-muted-foreground text-xs font-medium">
                 rentang {Math.round(stats.minPrice / 1000)}–
                 {Math.round(stats.maxPrice / 1000)}rb
               </span>
@@ -272,13 +272,13 @@ export function CompetitorProductCategoryClient({
           </div>
 
           <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
               Rating rata-rata
             </span>
             <span className="bento-value text-violet-900 dark:text-violet-300">
               {stats.avgRating != null ? stats.avgRating.toFixed(1) : "—"}
             </span>
-            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/60">
+            <span className="text-xs font-medium text-violet-700/60 dark:text-violet-300/60">
               {stats.promoCount > 0
                 ? `${stats.promoCount} produk sedang promo`
                 : "tidak ada promo aktif"}
@@ -286,13 +286,13 @@ export function CompetitorProductCategoryClient({
           </div>
 
           <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-            <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
               Alert belum dibaca
             </span>
             <span className="bento-value text-amber-900 dark:text-amber-300">
               {unreadAlerts.toLocaleString("id-ID")}
             </span>
-            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-300/60">
+            <span className="text-xs font-medium text-amber-800/60 dark:text-amber-300/60">
               harga, rating, dan promo
             </span>
           </div>
@@ -366,13 +366,13 @@ export function CompetitorProductCategoryClient({
                         </span>
                       ) : null}
                       {track.hasPromo ? (
-                        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
                           {track.promoText ?? "Promo"}
                         </span>
                       ) : null}
                     </div>
                     {track.scrapeError ? (
-                      <p className="mt-1 inline-flex items-center rounded-full bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                      <p className="mt-1 inline-flex items-center rounded-full bg-rose-500/15 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
                         {track.scrapeError}
                       </p>
                     ) : null}
@@ -497,12 +497,12 @@ export function CompetitorProductCategoryClient({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block">{alert.message}</span>
-                  <span className="text-muted-foreground mt-0.5 block text-[10px]">
+                  <span className="text-muted-foreground mt-0.5 block text-xs">
                     {new Date(alert.createdAt).toLocaleString("id-ID")}
                   </span>
                 </span>
                 {!alert.isRead ? (
-                  <span className="inline-flex shrink-0 items-center rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
                     Baru
                   </span>
                 ) : null}

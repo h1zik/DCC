@@ -42,7 +42,7 @@ function StatusDot({ active }: { active: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
         active
           ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
           : "bg-muted text-muted-foreground",
@@ -68,7 +68,7 @@ function CardStat({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground text-xs font-semibold">
         {label}
       </p>
       <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -119,13 +119,13 @@ export function CompetitorProductTrackerClient({
       {categories.length > 0 ? (
         <div className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}>
           <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Kategori produk
             </span>
             <span className="bento-value text-white dark:text-violet-950">
               {categories.length.toLocaleString("id-ID")}
             </span>
-            <span className="text-[11px] font-medium text-violet-100/90 dark:text-violet-900/80">
+            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
               {activeCount} aktif dipantau
             </span>
           </div>
@@ -135,13 +135,13 @@ export function CompetitorProductTrackerClient({
             <span className="bento-value">
               {totalProducts.toLocaleString("id-ID")}
             </span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               URL produk lintas marketplace
             </span>
           </div>
 
           <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
               Rata-rata per kategori
             </span>
             <span className="bento-value text-violet-900 dark:text-violet-300">
@@ -151,19 +151,19 @@ export function CompetitorProductTrackerClient({
                   )
                 : "—"}
             </span>
-            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/60">
+            <span className="text-xs font-medium text-violet-700/60 dark:text-violet-300/60">
               produk per kategori
             </span>
           </div>
 
           <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-            <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
               Alert belum dibaca
             </span>
             <span className="bento-value text-amber-900 dark:text-amber-300">
               {totalAlerts.toLocaleString("id-ID")}
             </span>
-            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-300/60">
+            <span className="text-xs font-medium text-amber-800/60 dark:text-amber-300/60">
               harga, rating, dan promo
             </span>
           </div>

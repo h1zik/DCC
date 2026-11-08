@@ -377,7 +377,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
             >
               {/* Keyword — tile hero violet */}
               <div className="bento-tile col-span-2 row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 lg:col-span-1 dark:bg-violet-500">
-                <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+                <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
                   Keyword teranalisis
                 </span>
                 <span className="bento-value text-5xl text-white dark:text-violet-950">
@@ -394,7 +394,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
               <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
                 <div className="flex items-center justify-between">
                   <span className="bento-label">Sinyal per sumber</span>
-                  <span className="text-muted-foreground text-[11px] tabular-nums">
+                  <span className="text-muted-foreground text-xs tabular-nums">
                     {signalTotal.toLocaleString("id-ID")} sinyal
                   </span>
                 </div>
@@ -436,7 +436,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                             <span className="font-semibold tabular-nums">
                               {counts[s.key]}
                             </span>
-                            <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                            <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
                               {Math.round((counts[s.key] / signalDenom) * 100)}
                               %
                             </span>
@@ -454,20 +454,20 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
 
               {/* Gap — amber pastel */}
               <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-                <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+                <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
                   Keyword gap
                 </span>
                 <span className="bento-value text-amber-900 dark:text-amber-300">
                   {data.gaps.length.toLocaleString("id-ID")}
                 </span>
-                <span className="text-[11px] font-medium text-amber-800/70 dark:text-amber-300/70">
+                <span className="text-xs font-medium text-amber-800/70 dark:text-amber-300/70">
                   peluang belum tergarap
                 </span>
               </div>
 
               {/* Naming — lavender pastel */}
               <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-                <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+                <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
                   Saran naming
                 </span>
                 <span className="bento-value text-violet-900 dark:text-violet-300">
@@ -475,7 +475,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                     ? data.namingSuggestions.length.toLocaleString("id-ID")
                     : "—"}
                 </span>
-                <span className="text-[11px] font-medium text-violet-700/70 dark:text-violet-300/70">
+                <span className="text-xs font-medium text-violet-700/70 dark:text-violet-300/70">
                   dari pola keyword
                 </span>
               </div>
@@ -496,7 +496,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                 <span className="bento-value text-2xl">
                   {data.hasGoogleVolume ? "Aktif" : "Estimasi"}
                 </span>
-                <span className="text-muted-foreground text-[11px] font-medium">
+                <span className="text-muted-foreground text-xs font-medium">
                   {data.hasGoogleVolume
                     ? "volume pencarian terukur"
                     : "proxy dari rank/listing"}
@@ -519,7 +519,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                   <Grid3x3 className="size-3.5" aria-hidden />
                   Matrix
                   {data.matrix.length > 0 ? (
-                    <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                    <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                       {data.matrix.length}
                     </span>
                   ) : null}
@@ -528,7 +528,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                   <Copy className="size-3.5" aria-hidden />
                   Gap & Copy
                   {data.gaps.length > 0 ? (
-                    <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                    <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                       {data.gaps.length}
                     </span>
                   ) : null}
@@ -559,7 +559,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                 <div className="bento-tile justify-start gap-3">
                   <div className="flex items-center justify-between">
                     <span className="bento-label">Peta peluang</span>
-                    <span className="text-muted-foreground text-[11px]">
+                    <span className="text-muted-foreground text-xs">
                       volume vs saturasi listing · kanan-atas = peluang tinggi
                     </span>
                   </div>
@@ -620,7 +620,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
               <div className="bento-tile justify-start gap-3">
                 <div className="flex items-center justify-between">
                   <span className="bento-label">Keyword gap</span>
-                  <span className="text-muted-foreground text-[11px] tabular-nums">
+                  <span className="text-muted-foreground text-xs tabular-nums">
                     {data.gaps.length} peluang
                   </span>
                 </div>
@@ -660,7 +660,7 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                 <div className="bento-tile justify-start gap-3">
                   <div className="flex items-center justify-between">
                     <span className="bento-label">Keyword clusters</span>
-                    <span className="text-muted-foreground text-[11px] tabular-nums">
+                    <span className="text-muted-foreground text-xs tabular-nums">
                       {data.clusters.length} tema
                     </span>
                   </div>

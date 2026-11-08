@@ -42,7 +42,7 @@ export function SocialInfluencerTable({ rows }: { rows: InfluencerRow[] }) {
             >
               <TableCell>
                 <span
-                  className="flex size-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_14%,transparent)] text-[11px] font-bold tabular-nums text-[var(--lab-accent,var(--primary))]"
+                  className="flex size-6 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_14%,transparent)] text-xs font-bold tabular-nums text-[var(--lab-accent,var(--primary))]"
                   aria-hidden
                 >
                   {idx + 1}
@@ -63,7 +63,7 @@ export function SocialInfluencerTable({ rows }: { rows: InfluencerRow[] }) {
                 )}
               </TableCell>
               <TableCell>
-                <span className="bg-muted text-muted-foreground inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase">
+                <span className="bg-muted text-muted-foreground inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold">
                   {row.platform}
                 </span>
               </TableCell>

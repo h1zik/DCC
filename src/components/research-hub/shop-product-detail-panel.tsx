@@ -127,7 +127,7 @@ export function ShopProductDetailPanel({
             <div className="flex flex-wrap items-center gap-2">
               <Badge
                 variant="secondary"
-                className="gap-1.5 text-[10px] uppercase"
+                className="gap-1.5 text-xs"
               >
                 <MarketplaceLogo
                   marketplace={product.marketplace}
@@ -136,15 +136,15 @@ export function ShopProductDetailPanel({
                 {marketplaceLabel}
               </Badge>
               {product.isOfficialShop ? (
-                <Badge className="text-[10px]">Official Store</Badge>
+                <Badge className="text-xs">Official Store</Badge>
               ) : null}
               {product.categoryRank != null ? (
-                <Badge variant="outline" className="text-[10px] tabular-nums">
+                <Badge variant="outline" className="text-xs tabular-nums">
                   Rank #{product.categoryRank}
                 </Badge>
               ) : null}
               {product.brand ? (
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   {product.brand}
                 </Badge>
               ) : null}
@@ -171,7 +171,7 @@ export function ShopProductDetailPanel({
             )}
           >
             <div className={hub.nestedPanel}>
-              <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              <p className="text-muted-foreground text-xs font-semibold">
                 Harga
               </p>
               <p className="mt-0.5 text-lg font-extrabold tabular-nums tracking-tight">
@@ -179,7 +179,7 @@ export function ShopProductDetailPanel({
               </p>
             </div>
             <div className={hub.nestedPanel}>
-              <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+              <p className="text-muted-foreground text-xs font-semibold">
                 Rating
               </p>
               <p className="mt-0.5 text-lg font-extrabold tabular-nums tracking-tight">
@@ -193,7 +193,7 @@ export function ShopProductDetailPanel({
             </div>
             {product.stock != null ? (
               <div className={hub.nestedPanel}>
-                <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                <p className="text-muted-foreground text-xs font-semibold">
                   Stok
                 </p>
                 <p className="mt-0.5 text-lg font-extrabold tabular-nums tracking-tight">
@@ -287,7 +287,7 @@ export function ShopProductDetailPanel({
               <p className="text-muted-foreground text-xs">{variation.name}</p>
               <div className="flex flex-wrap gap-1.5">
                 {variation.options.map((option) => (
-                  <Badge key={option} variant="secondary" className="text-[11px]">
+                  <Badge key={option} variant="secondary" className="text-xs">
                     {option}
                   </Badge>
                 ))}

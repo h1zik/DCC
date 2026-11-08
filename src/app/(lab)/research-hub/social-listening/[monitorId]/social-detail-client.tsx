@@ -437,13 +437,13 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
         >
           {/* Total mention — hero violet */}
           <div className="bento-tile col-span-2 row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 lg:col-span-1 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Total mention
             </span>
             <span className="bento-value text-5xl text-white dark:text-violet-950">
               {totalMentions.toLocaleString("id-ID")}
             </span>
-            <span className="text-[11px] font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+            <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
               {mentionCounts
                 .map(
                   (m) =>
@@ -457,7 +457,7 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
           <div className="bento-tile col-span-2 row-span-2 justify-start gap-2.5">
             <div className="flex items-center justify-between">
               <span className="bento-label">Klasifikasi mention</span>
-              <span className="text-muted-foreground text-[11px] tabular-nums">
+              <span className="text-muted-foreground text-xs tabular-nums">
                 {totalMentions.toLocaleString("id-ID")} mention
               </span>
             </div>
@@ -504,7 +504,7 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
                         <span className="font-semibold tabular-nums">
                           {row.count.toLocaleString("id-ID")}
                         </span>
-                        <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                        <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
                           {Math.round((row.count / classTotal) * 100)}%
                         </span>
                       </div>
@@ -521,20 +521,20 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
             <span className="bento-value">
               {data.comments.length.toLocaleString("id-ID")}
             </span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               dari video/post teratas
             </span>
           </div>
 
           {/* Konten viral — amber pastel */}
           <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-            <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+            <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
               Konten viral
             </span>
             <span className="bento-value text-amber-900 dark:text-amber-300">
               {data.viralContent.length}
             </span>
-            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-200/50">
+            <span className="text-xs font-medium text-amber-800/60 dark:text-amber-200/50">
               {data.influencers.length} kreator terdeteksi
             </span>
           </div>
@@ -621,7 +621,7 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
               <MessageSquare className="size-3.5" aria-hidden />
               Mention
               {totalMentions > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {totalMentions}
                 </span>
               ) : null}
@@ -629,7 +629,7 @@ export function SocialDetailClient({ data }: { data: SocialDetailData }) {
             <TabsTrigger value="komentar" className="px-1">
               Komentar
               {data.comments.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.comments.length}
                 </span>
               ) : null}

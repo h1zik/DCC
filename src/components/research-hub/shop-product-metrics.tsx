@@ -60,17 +60,17 @@ export function ShopProductMetricsStrip({
     return (
       <div className={cn("flex flex-wrap gap-1.5", className)}>
         {m.historicalSold != null ? (
-          <span className="bg-primary/10 text-primary rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+          <span className="bg-primary/10 text-primary rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums">
             {formatSoldThreshold(m.historicalSold)} terjual
           </span>
         ) : null}
         {m.monthlySold != null ? (
-          <span className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+          <span className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums">
             {formatSoldThreshold(m.monthlySold)}/bln
           </span>
         ) : null}
         {m.estimatedRevenue != null ? (
-          <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+          <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums">
             {formatRevenueIdr(m.estimatedRevenue)}
           </span>
         ) : null}
@@ -88,7 +88,7 @@ export function ShopProductMetricsStrip({
     >
       {cells.map((c) => (
         <div key={c.label} className={hub.nestedPanel}>
-          <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+          <p className="text-muted-foreground text-xs font-semibold">
             {c.label}
           </p>
           <p

@@ -43,7 +43,7 @@ export function SkuSoldHistoryChart({ data }: { data: SoldHistoryPoint[] }) {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {single.map((s) => (
           <div key={s.label} className="bg-muted/50 rounded-xl px-3.5 py-3">
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            <p className="text-muted-foreground text-xs font-semibold">
               {s.label}
             </p>
             <p className="text-foreground mt-0.5 truncate text-lg font-extrabold tabular-nums tracking-tight">

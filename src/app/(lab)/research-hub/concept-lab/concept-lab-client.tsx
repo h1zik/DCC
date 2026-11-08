@@ -77,7 +77,7 @@ function StatusPill({ status }: { status: ProductConceptStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        "inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold",
         tone,
       )}
     >
@@ -95,7 +95,7 @@ function CardStat({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground text-xs font-semibold">
         {label}
       </p>
       <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -195,13 +195,13 @@ export function ConceptLabClient({ concepts }: { concepts: ConceptRow[] }) {
           className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
         >
           <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Total konsep
             </span>
             <span className="bento-value text-white dark:text-violet-950">
               {concepts.length}
             </span>
-            <span className="text-[11px] font-medium text-violet-100/90 dark:text-violet-900/80">
+            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
               {readyCount} siap brief · {fromUspCount} dari USP Analyzer
             </span>
           </div>
@@ -209,19 +209,19 @@ export function ConceptLabClient({ concepts }: { concepts: ConceptRow[] }) {
           <div className="bento-tile">
             <span className="bento-label">Siap brief</span>
             <span className="bento-value">{readyCount}</span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               tervalidasi & siap ke R&D
             </span>
           </div>
 
           <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
               Keputusan GO
             </span>
             <span className="bento-value text-violet-900 dark:text-violet-300">
               {goCount}
             </span>
-            <span className="text-[11px] font-medium text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-medium text-violet-700/70 dark:text-violet-300/70">
               lolos validasi AI
             </span>
           </div>
@@ -229,7 +229,7 @@ export function ConceptLabClient({ concepts }: { concepts: ConceptRow[] }) {
           <div className="bento-tile">
             <span className="bento-label">Dari USP Analyzer</span>
             <span className="bento-value">{fromUspCount}</span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               membawa konteks riset
             </span>
           </div>
@@ -415,7 +415,7 @@ export function ConceptLabClient({ concepts }: { concepts: ConceptRow[] }) {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <span
-                        className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold uppercase"
+                        className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold"
                         aria-hidden
                       >
                         {c.title.trim().charAt(0) || "?"}

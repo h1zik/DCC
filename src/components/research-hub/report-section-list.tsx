@@ -44,7 +44,7 @@ export function ReportSectionList({ sections }: { sections: ReportSectionRow[] }
               {section.title}
             </h2>
             {section.moduleRef ? (
-              <span className="inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--lab-accent,var(--primary))]">
+              <span className="inline-flex items-center rounded-full bg-[color-mix(in_srgb,var(--lab-accent,var(--primary))_12%,transparent)] px-2.5 py-1 text-xs font-semibold text-[var(--lab-accent,var(--primary))]">
                 {MODULE_LABELS[section.moduleRef] ?? section.moduleRef}
               </span>
             ) : null}

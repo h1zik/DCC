@@ -169,7 +169,7 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
           <ResearchModelBadgeGroup meta={data.aiMeta} />
           <span
             className={cn(
-              "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+              "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
               statusPillTone(data.status),
             )}
           >
@@ -222,7 +222,7 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
           )}
         >
           <div className="bento-tile row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Rekomendasi aksi
             </span>
             <span className="bento-value text-5xl text-white dark:text-violet-950">
@@ -238,7 +238,7 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
             <div className="bento-tile col-span-2 row-span-2 justify-start gap-2.5">
               <div className="flex items-center justify-between">
                 <span className="bento-label">Aktivitas modul</span>
-                <span className="text-muted-foreground text-[11px]">
+                <span className="text-muted-foreground text-xs">
                   volume sinyal dalam periode laporan
                 </span>
               </div>
@@ -282,13 +282,13 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
           </div>
 
           <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
               Versi
             </span>
             <span className="bento-value text-violet-900 dark:text-violet-300">
               v{data.version}
             </span>
-            <span className="text-[11px] font-medium text-violet-700/70 dark:text-violet-300/70">
+            <span className="text-xs font-medium text-violet-700/70 dark:text-violet-300/70">
               {data.revisionCount > 0
                 ? `${data.revisionCount} versi diarsip`
                 : "belum ada arsip revisi"}
@@ -308,7 +308,7 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
               <ListChecks className="size-3.5" aria-hidden />
               Aksi
               {data.actionItems.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.actionItems.length}
                 </span>
               ) : null}
@@ -321,7 +321,7 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
               <FileText className="size-3.5" aria-hidden />
               Isi
               {data.sections.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {data.sections.length}
                 </span>
               ) : null}
@@ -361,7 +361,7 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
                   >
                     <span
                       className={cn(
-                        "mt-0.5 inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold",
+                        "mt-0.5 inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-bold",
                         PRIORITY_TONE[item.priority] ??
                           "bg-muted text-muted-foreground",
                       )}
@@ -380,14 +380,14 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
                           {item.evidence.map((e, j) => (
                             <span
                               key={j}
-                              className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px]"
+                              className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs"
                             >
                               {e.label}
                             </span>
                           ))}
                         </div>
                       ) : null}
-                      <p className="text-muted-foreground mt-1.5 text-[10px] font-semibold uppercase tracking-wide">
+                      <p className="text-muted-foreground mt-1.5 text-xs font-semibold">
                         {item.owner}
                         {item.sourceLabel ? ` · ${item.sourceLabel}` : ""}
                         {typeof item.confidence === "number"
@@ -418,12 +418,12 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
             <div className="bento-tile justify-start gap-3">
               <div className="flex items-center justify-between">
                 <span className="bento-label">Volume aktivitas riset</span>
-                <span className="text-muted-foreground text-[11px]">
+                <span className="text-muted-foreground text-xs">
                   record nyata per modul dalam periode laporan
                 </span>
               </div>
               <ReportFeedbackSankey data={data.feedbackLoop} />
-              <p className="text-muted-foreground text-[11px] leading-relaxed">
+              <p className="text-muted-foreground text-xs leading-relaxed">
                 Bukan lineage per-item — hanya link USP → Konsep yang merupakan
                 relasi langsung.
               </p>

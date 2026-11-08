@@ -88,7 +88,7 @@ function StatusPill({ status }: { status: ResearchReportStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
         tone,
       )}
     >
@@ -109,7 +109,7 @@ function CardStat({
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+      <p className="text-muted-foreground text-xs font-semibold">
         {label}
       </p>
       <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -305,13 +305,13 @@ export function ResearchReportsClient({
           className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
         >
           <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
               Total laporan
             </span>
             <span className="bento-value text-white dark:text-violet-950">
               {reports.length}
             </span>
-            <span className="text-[11px] font-medium text-violet-100/90 dark:text-violet-900/80">
+            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
               weekly digest, deep dive & battle card
             </span>
           </div>
@@ -319,7 +319,7 @@ export function ResearchReportsClient({
           <div className="bento-tile">
             <span className="bento-label">Siap dibaca</span>
             <span className="bento-value">{readyCount}</span>
-            <span className="text-muted-foreground text-[11px] font-medium">
+            <span className="text-muted-foreground text-xs font-medium">
               export PDF & share link
             </span>
           </div>
@@ -335,7 +335,7 @@ export function ResearchReportsClient({
             <span
               className={cn(
                 inProgressCount > 0
-                  ? "text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60"
+                  ? "text-xs font-semibold text-amber-800/70 dark:text-amber-200/60"
                   : "bento-label",
               )}
             >
@@ -351,7 +351,7 @@ export function ResearchReportsClient({
             </span>
             <span
               className={cn(
-                "text-[11px] font-medium",
+                "text-xs font-medium",
                 inProgressCount > 0
                   ? "text-amber-800/70 dark:text-amber-200/60"
                   : "text-muted-foreground",
@@ -374,7 +374,7 @@ export function ResearchReportsClient({
             <span
               className={cn(
                 failedCount > 0
-                  ? "text-[11.5px] font-semibold text-rose-800/70 dark:text-rose-200/60"
+                  ? "text-xs font-semibold text-rose-800/70 dark:text-rose-200/60"
                   : "bento-label",
               )}
             >
@@ -390,7 +390,7 @@ export function ResearchReportsClient({
             </span>
             <span
               className={cn(
-                "text-[11px] font-medium",
+                "text-xs font-medium",
                 failedCount > 0
                   ? "text-rose-800/70 dark:text-rose-200/60"
                   : "text-muted-foreground",

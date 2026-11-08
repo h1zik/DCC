@@ -32,7 +32,7 @@ export function TrendWowBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
         WOW_STYLES[key],
         className,
       )}

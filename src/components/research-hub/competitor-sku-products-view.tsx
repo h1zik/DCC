@@ -71,12 +71,12 @@ function CompetitorSkuCard({
             className="size-full"
           />
           {sku.isNew ? (
-            <span className="absolute top-2 left-2 inline-flex items-center rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-semibold uppercase text-white">
+            <span className="absolute top-2 left-2 inline-flex items-center rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white">
               Baru
             </span>
           ) : null}
           {sku.hasPromo && sku.promoText ? (
-            <span className="absolute top-2 right-2 inline-flex max-w-[70%] items-center truncate rounded-full bg-amber-500 px-2.5 py-1 text-[10px] font-semibold text-amber-950">
+            <span className="absolute top-2 right-2 inline-flex max-w-[70%] items-center truncate rounded-full bg-amber-500 px-2.5 py-1 text-xs font-semibold text-amber-950">
               {sku.promoText}
             </span>
           ) : null}
@@ -102,7 +102,7 @@ function CompetitorSkuCard({
 
         <div className="grid grid-cols-3 gap-2">
           <div className="min-w-0">
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            <p className="text-muted-foreground text-xs font-semibold">
               Harga
             </p>
             <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -110,7 +110,7 @@ function CompetitorSkuCard({
             </p>
           </div>
           <div className="min-w-0">
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            <p className="text-muted-foreground text-xs font-semibold">
               Rating
             </p>
             <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
@@ -118,7 +118,7 @@ function CompetitorSkuCard({
             </p>
           </div>
           <div className="min-w-0">
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+            <p className="text-muted-foreground text-xs font-semibold">
               Δ Harga
             </p>
             <p
@@ -198,7 +198,7 @@ function CompetitorSkuCard({
           ) : null}
         </div>
         {sku.reviewIntelStatus ? (
-          <p className="text-muted-foreground text-center text-[10px]">
+          <p className="text-muted-foreground text-center text-xs">
             {SOURCE_STATUS_LABELS[sku.reviewIntelStatus as ReviewIntelSourceStatus]}
           </p>
         ) : null}

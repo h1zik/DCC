@@ -115,7 +115,7 @@ function SeverityPill({ severity }: { severity: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
+        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
         tone,
       )}
     >
@@ -297,13 +297,13 @@ export function CompetitorDetailClient({
       >
         {/* SKU dipantau — hero violet */}
         <div className="bento-tile col-span-2 row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 lg:col-span-1 dark:bg-violet-500">
-          <span className="text-[11.5px] font-semibold text-violet-100 dark:text-violet-950/70">
+          <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
             SKU dipantau
           </span>
           <span className="bento-value text-5xl text-white dark:text-violet-950">
             {competitor.skus.length.toLocaleString("id-ID")}
           </span>
-          <span className="text-[11px] font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
+          <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
             sampel ±100 SKU teratas sesuai urutan listing marketplace
           </span>
         </div>
@@ -312,7 +312,7 @@ export function CompetitorDetailClient({
         <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
           <div className="flex items-center justify-between">
             <span className="bento-label">Pergerakan harga</span>
-            <span className="text-muted-foreground text-[11px] tabular-nums">
+            <span className="text-muted-foreground text-xs tabular-nums">
               vs snapshot sebelumnya
             </span>
           </div>
@@ -338,7 +338,7 @@ export function CompetitorDetailClient({
                 />
                 <span className="text-muted-foreground flex-1">{s.label}</span>
                 <span className="font-semibold tabular-nums">{s.count}</span>
-                <span className="text-muted-foreground w-10 text-right text-[11px] tabular-nums">
+                <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
                   {Math.round((s.count / moveTotal) * 100)}%
                 </span>
               </div>
@@ -388,7 +388,7 @@ export function CompetitorDetailClient({
 
         {/* SKU promo — lavender */}
         <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-          <span className="text-[11.5px] font-semibold text-violet-700/70 dark:text-violet-300/70">
+          <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
             SKU promo
           </span>
           <span className="bento-value text-violet-900 dark:text-violet-300">
@@ -403,7 +403,7 @@ export function CompetitorDetailClient({
             ) : null}
           </span>
           {ai?.discountDepthPct != null ? (
-            <span className="text-[11px] font-medium text-violet-700/60 dark:text-violet-300/60">
+            <span className="text-xs font-medium text-violet-700/60 dark:text-violet-300/60">
               kedalaman diskon ~{ai.discountDepthPct.toFixed(0)}%
             </span>
           ) : null}
@@ -411,14 +411,14 @@ export function CompetitorDetailClient({
 
         {/* Alert — amber */}
         <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-          <span className="text-[11.5px] font-semibold text-amber-800/70 dark:text-amber-200/60">
+          <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
             Alert belum dibaca
           </span>
           <span className="bento-value text-amber-900 dark:text-amber-300">
             {unreadAlerts.toLocaleString("id-ID")}
           </span>
           {ai?.shareOfCategoryPct != null ? (
-            <span className="text-[11px] font-medium text-amber-800/60 dark:text-amber-300/60">
+            <span className="text-xs font-medium text-amber-800/60 dark:text-amber-300/60">
               share kategori {ai.shareOfCategoryPct.toFixed(1)}%
             </span>
           ) : null}
@@ -438,7 +438,7 @@ export function CompetitorDetailClient({
               <Package className="size-3.5" aria-hidden />
               SKU
               {competitor.skus.length > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {competitor.skus.length}
                 </span>
               ) : null}
@@ -451,7 +451,7 @@ export function CompetitorDetailClient({
               <Bell className="size-3.5" aria-hidden />
               Alert
               {unreadAlerts > 0 ? (
-                <span className="text-muted-foreground ml-1 text-[10px] tabular-nums">
+                <span className="text-muted-foreground ml-1 text-xs tabular-nums">
                   {unreadAlerts}
                 </span>
               ) : null}
@@ -477,7 +477,7 @@ export function CompetitorDetailClient({
           <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
             <div className="flex items-center justify-between">
               <span className="bento-label">Performa penjualan toko</span>
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-xs">
                 agregat seluruh SKU kompetitor
               </span>
             </div>
@@ -494,7 +494,7 @@ export function CompetitorDetailClient({
           <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
             <div className="flex items-center justify-between">
               <span className="bento-label">Harga saat ini (top SKU)</span>
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-xs">
                 snapshot terakhir per hero SKU
               </span>
             </div>
@@ -523,7 +523,7 @@ export function CompetitorDetailClient({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="bento-label">Trend harga</span>
-                <p className="text-muted-foreground text-[11px]">
+                <p className="text-muted-foreground text-xs">
                   pergerakan harga per hari (butuh refresh harian / cron)
                 </p>
               </div>
@@ -554,7 +554,7 @@ export function CompetitorDetailClient({
           <div className={cn(lab.entrance, "bento-tile justify-start gap-3")}>
             <div className="flex items-center justify-between">
               <span className="bento-label">Share of review</span>
-              <span className="text-muted-foreground text-[11px]">
+              <span className="text-muted-foreground text-xs">
                 proporsi review antar SKU teratas
               </span>
             </div>
@@ -615,7 +615,7 @@ export function CompetitorDetailClient({
                       <SeverityPill severity={alert.severity} />
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-muted-foreground text-[10px]">
+                      <span className="text-muted-foreground text-xs">
                         {new Date(alert.createdAt).toLocaleString("id-ID")}
                       </span>
                       {!alert.isRead ? (
@@ -623,7 +623,7 @@ export function CompetitorDetailClient({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="h-6 text-[10px]"
+                          className="h-6 text-xs"
                           onClick={() =>
                             startTransition(async () => {
                               try {
