@@ -35,7 +35,7 @@ export default async function ConceptLabPage() {
     <ResearchHubModulePage
       icon={FlaskConical}
       title="Product Concept Lab"
-      description="Bangun dan validasi konsep produk siap brief ke R&D — manual atau AI generate."
+      description="Bangun dan validasi konsep produk yang siap dikirim ke R&D, secara manual atau disusun AI."
     >
       <ConceptLabClient concepts={rows} />
     </ResearchHubModulePage>

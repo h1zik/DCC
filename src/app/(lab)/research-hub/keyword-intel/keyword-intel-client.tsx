@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { KeywordIntelStatus, ResearchMarketplace } from "@prisma/client";
 import { Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -16,10 +16,17 @@ import {
   KeywordSourceConfigPicker,
   validateKeywordConfigClient,
 } from "@/components/research-hub/keyword-source-config-picker";
-import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   KEYWORD_INTEL_STATUS_LABELS,
   MARKETPLACE_LABELS,
@@ -30,6 +37,18 @@ import type { KeywordSourceConfig } from "@/lib/research/keyword-intel/keyword-s
 import type { KeywordSignalStats } from "@/lib/research/keyword-intel/keyword-signal-types";
 import { lab, LabEmptyState } from "@/components/lab/lab-primitives";
 import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
+import { RunLedger, countRunTones } from "@/components/research-hub/kit/run-ledger";
+import { RunStatusBadge, type RunTone } from "@/components/research-hub/kit/run-status";
+import {
+  ResearchFilterBar,
+  filterRuns,
+  type RunToneFilter,
+} from "@/components/research-hub/kit/research-filter-bar";
+import {
+  ResearchTable,
+  SortableHead,
+  useSortedRows,
+} from "@/components/research-hub/kit/research-table";
 import { cn } from "@/lib/utils";
 
 export type KeywordQueryRow = {
@@ -54,61 +73,14 @@ function isInProgress(status: KeywordIntelStatus) {
   );
 }
 
-/** Pill status bergaya bento: emerald siap, amber berjalan, rose gagal. */
-function StatusPill({ status }: { status: KeywordIntelStatus }) {
-  const tone =
-    status === "READY"
-      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-      : status === "FAILED"
-        ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
-        : isInProgress(status)
-          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-          : "bg-muted text-muted-foreground";
-  const dot =
-    status === "READY"
-      ? "bg-emerald-500"
-      : status === "FAILED"
-        ? "bg-rose-500"
-        : isInProgress(status)
-          ? "bg-amber-500"
-          : "bg-muted-foreground/50";
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
-        tone,
-      )}
-    >
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          dot,
-          isInProgress(status) && "animate-pulse",
-        )}
-      />
-      {KEYWORD_INTEL_STATUS_LABELS[status]}
-    </span>
-  );
+function toneOf(status: KeywordIntelStatus): RunTone {
+  if (status === "READY") return "ready";
+  if (status === "FAILED") return "failed";
+  if (isInProgress(status)) return "running";
+  return "idle";
 }
 
-function CardStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-muted-foreground text-xs font-semibold">
-        {label}
-      </p>
-      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
-        {value}
-      </p>
-    </div>
-  );
-}
+const LEDGER_LABELS = { running: "Sedang dianalisis" } as const;
 
 export function KeywordIntelClient({
   queries,
@@ -124,12 +96,14 @@ export function KeywordIntelClient({
   const [seedKeyword, setSeedKeyword] = useState("");
   const [sourceConfig, setSourceConfig] =
     useState<KeywordSourceConfig>(defaultSourceConfig);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<RunToneFilter>("all");
+  const [deleteTarget, setDeleteTarget] = useState<KeywordQueryRow | null>(null);
 
   const hasInProgress = queries.some((q) => isInProgress(q.status));
-  const readyCount = queries.filter((q) => q.status === "READY").length;
-  const runningCount = queries.filter((q) => isInProgress(q.status)).length;
   const totalKeywords = queries.reduce((sum, q) => sum + q.keywordCount, 0);
   const totalGaps = queries.reduce((sum, q) => sum + q.gapCount, 0);
+  const counts = useMemo(() => countRunTones(queries, (q) => toneOf(q.status)), [queries]);
 
   useEffect(() => {
     if (!hasInProgress) return;
@@ -137,7 +111,31 @@ export function KeywordIntelClient({
     return () => window.clearInterval(id);
   }, [hasInProgress, router]);
 
+  const filtered = useMemo(
+    () =>
+      filterRuns(queries, {
+        search,
+        status,
+        text: (q) =>
+          `${q.category} ${q.seedKeyword ?? ""} ${q.marketplace ? MARKETPLACE_LABELS[q.marketplace] : ""}`,
+        tone: (q) => toneOf(q.status),
+      }),
+    [queries, search, status],
+  );
+
+  const { sorted, sort, toggle } = useSortedRows(filtered, {
+    category: (q) => q.category,
+    keywords: (q) => q.keywordCount,
+    gaps: (q) => q.gapCount,
+    signals: (q) => q.signalStats?.total ?? null,
+    created: (q) => q.createdAt,
+  });
+
   function handleCreate() {
+    if (!category.trim()) {
+      toast.error("Isi kategori produk dulu, mis. \"body serum brightening\".");
+      return;
+    }
     const validationError = validateKeywordConfigClient(sourceConfig);
     if (validationError) {
       toast.error(validationError);
@@ -151,332 +149,333 @@ export function KeywordIntelClient({
           marketplace: ResearchMarketplace.SHOPEE,
           sourceConfig: sourceConfig as Record<string, unknown>,
         });
-        toast.success("Analisis keyword dimulai.");
+        toast.success("Analisis dimulai. Sinyal dikumpulkan di background.");
         setFormOpen(false);
         setCategory("");
         setSeedKeyword("");
         router.push(`/research-hub/keyword-intel/${result.id}`);
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+        toast.error(actionErrorMessage(err, "Analisis gagal dimulai."));
       }
     });
   }
 
-  function handleRefresh(id: string) {
+  function handleRefresh(q: KeywordQueryRow) {
     startTransition(async () => {
       try {
-        await refreshKeywordIntelQuery(id);
-        toast.success("Refresh dimulai.");
+        await refreshKeywordIntelQuery(q.id);
+        toast.success(`"${q.category}" dianalisis ulang.`);
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+        toast.error(actionErrorMessage(err, "Gagal menganalisis ulang."));
       }
     });
   }
 
-  function handleDelete(id: string) {
-    if (!confirm("Hapus analisis keyword ini?")) return;
+  function handleDelete() {
+    const target = deleteTarget;
+    if (!target) return;
     startTransition(async () => {
       try {
-        await deleteKeywordIntelQuery(id);
-        toast.success("Dihapus.");
+        await deleteKeywordIntelQuery(target.id);
+        toast.success(`"${target.category}" dihapus.`);
+        setDeleteTarget(null);
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+        toast.error(actionErrorMessage(err, "Gagal menghapus."));
       }
     });
   }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Strip ringkasan bento */}
       {queries.length > 0 ? (
-        <div
-          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
-        >
-          <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
-              Total keyword
-            </span>
-            <span className="bento-value text-white dark:text-violet-950">
-              {totalKeywords.toLocaleString("id-ID")}
-            </span>
-            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
-              dari {queries.length} analisis kategori
-            </span>
-          </div>
-
-          <div className="bento-tile">
-            <span className="bento-label">Analisis</span>
-            <span className="bento-value">
-              {queries.length.toLocaleString("id-ID")}
-            </span>
-            <span className="text-muted-foreground text-xs font-medium">
-              {runningCount > 0
-                ? `${runningCount} sedang berjalan`
-                : "semua selesai diproses"}
-            </span>
-          </div>
-
-          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
-              Siap dianalisis
-            </span>
-            <span className="bento-value text-violet-900 dark:text-violet-300">
-              {readyCount.toLocaleString("id-ID")}
-            </span>
-            <span className="text-xs font-medium text-violet-700/70 dark:text-violet-300/70">
-              analisis berstatus siap
-            </span>
-          </div>
-
-          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-            <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
-              Keyword gap
-            </span>
-            <span className="bento-value text-amber-900 dark:text-amber-300">
-              {totalGaps.toLocaleString("id-ID")}
-            </span>
-            <span className="text-xs font-medium text-amber-800/70 dark:text-amber-300/70">
-              peluang belum tergarap
-            </span>
-          </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+          <RunLedger
+            className="flex-1"
+            counts={counts}
+            noun="analisis keyword"
+            labels={LEDGER_LABELS}
+            detail={`${totalKeywords.toLocaleString("id-ID")} keyword, ${totalGaps.toLocaleString("id-ID")} gap`}
+          />
+          <Button
+            variant={formOpen ? "outline" : "default"}
+            onClick={() => setFormOpen((v) => !v)}
+            aria-expanded={formOpen}
+            aria-controls="ki-form"
+          >
+            {formOpen ? <X aria-hidden /> : <Plus aria-hidden />}
+            {formOpen ? "Tutup form" : "Analisis baru"}
+          </Button>
         </div>
       ) : null}
 
       {hasInProgress ? (
-        <div className={lab.entrance}>
-          <JobProgressBar
-            title="Analisis keyword berjalan"
-            percent={40}
-            stepLabel="Satu atau lebih query sedang mengumpulkan sinyal & menjalankan AI."
-          />
-          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
-            Halaman diperbarui otomatis setiap beberapa detik.
-          </p>
-        </div>
+        <p className="rh-meta" aria-live="polite">
+          Ada analisis yang masih mengumpulkan sinyal. Halaman ini diperbarui
+          otomatis setiap beberapa detik.
+        </p>
       ) : null}
 
-      {/* Daftar analisis + form collapsible */}
-      <section className={cn(lab.section, lab.entrance)}>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className={lab.sectionTitle}>Analisis keyword</h2>
-            <p className={lab.sectionDesc}>
-              {queries.length === 0
-                ? "Mulai dengan kategori produk pertama Anda di bawah."
-                : `${queries.length} analisis · peluang, gap, dan copywriting dari marketplace & sinyal internal.`}
+      {formOpen ? (
+        <section
+          id="ki-form"
+          aria-labelledby="ki-form-title"
+          className={cn(
+            lab.panel,
+            "grid gap-5",
+            "animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none",
+          )}
+        >
+          <div className="space-y-1">
+            <h2 id="ki-form-title" className="rh-section-title">
+              Analisis keyword baru
+            </h2>
+            <p className="rh-lede">
+              Sistem mengumpulkan volume, gap, dan rekomendasi naming dari
+              kategori yang Anda teliti.
             </p>
           </div>
-          {queries.length > 0 ? (
-            <Button
-              variant={formOpen ? "outline" : "default"}
-              onClick={() => setFormOpen((v) => !v)}
+          <div className="grid gap-2">
+            <p id="ki-presets-label" className="rh-meta">
+              Contoh kategori
+            </p>
+            <div
+              className="flex flex-wrap gap-1.5"
+              role="group"
+              aria-labelledby="ki-presets-label"
             >
-              {formOpen ? <X /> : <Plus />}
-              {formOpen ? "Tutup" : "Analisis baru"}
-            </Button>
-          ) : null}
-        </div>
-
-        {formOpen ? (
-          <div
-            className={cn(
-              lab.panel,
-              "grid gap-4",
-              "animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none",
-            )}
-          >
-            <div>
-              <p className="text-foreground font-bold tracking-tight">
-                Analisis keyword baru
-              </p>
-              <p className="text-muted-foreground text-sm">
-                Sistem mengumpulkan volume, gap, dan rekomendasi naming dari
-                kategori yang Anda teliti.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
               {DEFAULT_CATEGORY_PRESETS.map((preset) => (
                 <button
                   key={preset}
                   type="button"
-                  className="bg-muted hover:bg-muted/80 rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 motion-reduce:transition-none"
+                  className="bg-muted hover:bg-muted/80 focus-visible:ring-ring rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
                   onClick={() => setCategory(preset)}
                 >
                   {preset}
                 </button>
               ))}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="category">Kategori produk</Label>
-                <Input
-                  id="category"
-                  placeholder="body serum brightening"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  disabled={pending}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="seed">Seed keyword (opsional)</Label>
-                <Input
-                  id="seed"
-                  placeholder="serum pemutih badan"
-                  value={seedKeyword}
-                  onChange={(e) => setSeedKeyword(e.target.value)}
-                  disabled={pending}
-                />
-              </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ki-category">Kategori produk</Label>
+              <Input
+                id="ki-category"
+                placeholder="Mis. body serum brightening"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                disabled={pending}
+              />
             </div>
-            <KeywordSourceConfigPicker
-              config={sourceConfig}
-              onChange={setSourceConfig}
-            />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-muted-foreground text-xs">
-                Pipeline sinyal & AI berjalan di background setelah dimulai.
-              </p>
-              <Button
-                onClick={handleCreate}
-                disabled={pending || !category.trim()}
-              >
-                {pending ? <RefreshCw className="animate-spin" /> : <Search />}
-                {pending ? "Memproses…" : "Mulai analisis"}
+            <div className="grid gap-1.5">
+              <Label htmlFor="ki-seed">Seed keyword (opsional)</Label>
+              <Input
+                id="ki-seed"
+                placeholder="Mis. serum pemutih badan"
+                value={seedKeyword}
+                onChange={(e) => setSeedKeyword(e.target.value)}
+                disabled={pending}
+              />
+            </div>
+          </div>
+          <KeywordSourceConfigPicker
+            config={sourceConfig}
+            onChange={setSourceConfig}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="rh-meta">
+              Pengumpulan sinyal dan analisis AI berjalan di background setelah
+              dimulai.
+            </p>
+            <div className="flex items-center gap-3">
+              {queries.length > 0 ? (
+                <Button variant="ghost" onClick={() => setFormOpen(false)} disabled={pending}>
+                  Batal
+                </Button>
+              ) : null}
+              <Button onClick={handleCreate} disabled={pending}>
+                {pending ? (
+                  <RefreshCw className="animate-spin" aria-hidden />
+                ) : (
+                  <Search aria-hidden />
+                )}
+                {pending ? "Memulai…" : "Mulai analisis"}
               </Button>
             </div>
           </div>
-        ) : null}
+        </section>
+      ) : null}
 
-        {queries.length === 0 && !formOpen ? (
-          <LabEmptyState
-            icon={Search}
-            title="Belum ada analisis keyword"
-            description="Mulai dengan kategori produk yang ingin diteliti — sistem akan mengumpulkan volume, gap, dan rekomendasi naming."
-            action={
-              <Button size="sm" onClick={() => setFormOpen(true)}>
-                <Plus className="size-3.5" aria-hidden />
-                Analisis Baru
-              </Button>
-            }
+      {queries.length === 0 && !formOpen ? (
+        <LabEmptyState
+          icon={Search}
+          title="Belum ada analisis keyword"
+          description="Mulai dari kategori produk yang ingin diteliti. Sistem mengumpulkan volume, gap, dan rekomendasi naming."
+          action={
+            <Button size="sm" onClick={() => setFormOpen(true)}>
+              <Plus className="size-3.5" aria-hidden />
+              Analisis baru
+            </Button>
+          }
+        />
+      ) : null}
+
+      {queries.length > 0 ? (
+        <section aria-label="Daftar analisis keyword" className="flex flex-col gap-3">
+          <ResearchFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Cari kategori atau seed keyword…"
+            status={status}
+            onStatusChange={setStatus}
+            statusCounts={counts}
+            statusLabels={LEDGER_LABELS}
+            resultCount={filtered.length}
+            totalCount={queries.length}
+            onReset={() => {
+              setSearch("");
+              setStatus("all");
+            }}
           />
-        ) : queries.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {queries.map((q) => (
-              <div
-                key={q.id}
-                className={cn(lab.card, "group flex flex-col p-0")}
-              >
-                <Link
-                  href={`/research-hub/keyword-intel/${q.id}`}
-                  className="flex flex-1 flex-col gap-4 p-5 pb-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl"
-                        aria-hidden
-                      >
-                        <Search className="size-4.5" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-foreground truncate font-bold tracking-tight">
-                          {q.category}
-                        </p>
-                        <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                          {q.seedKeyword ? (
-                            <span className="truncate">
-                              Seed: {q.seedKeyword} ·
-                            </span>
-                          ) : null}
-                          {q.marketplace ? (
-                            <>
-                              <MarketplaceLogo
-                                marketplace={q.marketplace}
-                                className="size-3.5"
-                              />
-                              <span className="truncate">
-                                {MARKETPLACE_LABELS[q.marketplace]}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="truncate">Semua marketplace</span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <StatusPill status={q.status} />
-                  </div>
 
-                  <div className="grid grid-cols-4 gap-2">
-                    <CardStat
-                      label="Keyword"
-                      value={
-                        q.keywordCount > 0
-                          ? q.keywordCount.toLocaleString("id-ID")
-                          : "—"
-                      }
-                    />
-                    <CardStat
-                      label="Gap"
-                      value={
-                        q.gapCount > 0 ? (
-                          <span className="text-amber-700 dark:text-amber-300">
-                            {q.gapCount.toLocaleString("id-ID")}
+          {sorted.length === 0 ? (
+            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
+              Tidak ada analisis yang cocok dengan filter ini.
+            </p>
+          ) : (
+            <ResearchTable maxHeight="70vh">
+              <TableHeader sticky>
+                <TableRow>
+                  <SortableHead sortKey="category" sort={sort} onSort={toggle}>
+                    Kategori
+                  </SortableHead>
+                  <TableHead>Marketplace</TableHead>
+                  <TableHead>Status</TableHead>
+                  <SortableHead sortKey="keywords" sort={sort} onSort={toggle} align="right">
+                    Keyword
+                  </SortableHead>
+                  <SortableHead sortKey="gaps" sort={sort} onSort={toggle} align="right">
+                    Gap
+                  </SortableHead>
+                  <SortableHead sortKey="signals" sort={sort} onSort={toggle} align="right">
+                    Sinyal
+                  </SortableHead>
+                  <SortableHead sortKey="created" sort={sort} onSort={toggle}>
+                    Dibuat
+                  </SortableHead>
+                  <TableHead className="w-0 text-right">
+                    <span className="sr-only">Aksi</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sorted.map((q) => {
+                  const tone = toneOf(q.status);
+                  return (
+                    <TableRow key={q.id}>
+                      <TableCell className="max-w-[22rem] whitespace-normal">
+                        <Link
+                          href={`/research-hub/keyword-intel/${q.id}`}
+                          className="text-foreground focus-visible:ring-ring rounded font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
+                        >
+                          {q.category}
+                        </Link>
+                        {q.seedKeyword ? (
+                          <p className="rh-meta mt-0.5 truncate">
+                            Seed: {q.seedKeyword}
+                          </p>
+                        ) : null}
+                        {tone === "failed" && q.errorMessage ? (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-rose-700 dark:text-rose-300">
+                            {q.errorMessage}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>
+                        {q.marketplace ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <MarketplaceLogo marketplace={q.marketplace} className="size-4" />
+                            {MARKETPLACE_LABELS[q.marketplace]}
                           </span>
                         ) : (
-                          "—"
-                        )
-                      }
-                    />
-                    <CardStat
-                      label="Sinyal"
-                      value={
-                        q.signalStats
-                          ? q.signalStats.total.toLocaleString("id-ID")
-                          : "—"
-                      }
-                    />
-                    <CardStat
-                      label="Dibuat"
-                      value={formatRelativeTime(new Date(q.createdAt))}
-                    />
-                  </div>
+                          <span className="text-muted-foreground">Semua</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <RunStatusBadge tone={tone} label={KEYWORD_INTEL_STATUS_LABELS[q.status]} />
+                      </TableCell>
+                      <TableCell className="rh-num text-right">
+                        {q.keywordCount > 0 ? (
+                          q.keywordCount.toLocaleString("id-ID")
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="rh-num text-right">
+                        {q.gapCount > 0 ? (
+                          q.gapCount.toLocaleString("id-ID")
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="rh-num text-right">
+                        {q.signalStats ? (
+                          q.signalStats.total.toLocaleString("id-ID")
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <time dateTime={q.createdAt} title={new Date(q.createdAt).toLocaleString("id-ID")}>
+                          {formatRelativeTime(new Date(q.createdAt))}
+                        </time>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-0.5">
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={pending || isInProgress(q.status)}
+                            onClick={() => handleRefresh(q)}
+                            aria-label={`Analisis ulang "${q.category}"`}
+                            title="Analisis ulang"
+                          >
+                            <RefreshCw aria-hidden />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive"
+                            disabled={pending}
+                            onClick={() => setDeleteTarget(q)}
+                            aria-label={`Hapus "${q.category}"`}
+                            title="Hapus"
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </ResearchTable>
+          )}
+        </section>
+      ) : null}
 
-                  {q.status === "FAILED" && q.errorMessage ? (
-                    <p className="text-rose-600 dark:text-rose-400 line-clamp-2 text-xs">
-                      {q.errorMessage}
-                    </p>
-                  ) : null}
-                </Link>
-
-                <div className="border-border/60 flex items-center justify-end gap-1 border-t px-3 py-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending || isInProgress(q.status)}
-                    onClick={() => handleRefresh(q.id)}
-                  >
-                    <RefreshCw className="size-3.5" aria-hidden />
-                    Refresh
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    disabled={pending}
-                    onClick={() => handleDelete(q.id)}
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                    Hapus
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </section>
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Hapus analisis "${deleteTarget?.category ?? ""}"?`}
+        description={`${(deleteTarget?.keywordCount ?? 0).toLocaleString("id-ID")} keyword, ${(deleteTarget?.gapCount ?? 0).toLocaleString("id-ID")} gap, dan rekomendasi copywriting-nya ikut terhapus. Tindakan ini tidak bisa dibatalkan.`}
+        confirmLabel="Hapus analisis"
+        pending={pending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

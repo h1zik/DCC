@@ -2,46 +2,47 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
-import {
-  ArrowUpRight,
-  MessageSquare,
-  Plus,
-  RefreshCw,
-  Trash2,
-  X,
-} from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { MessageSquare, Pause, Play, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import {
   SocialListeningPlatform,
   SocialListeningStatus,
 } from "@prisma/client";
 import { toast } from "sonner";
 import {
-  createSocialListeningMonitor,
   deleteSocialListeningMonitor,
   refreshSocialListeningMonitor,
   toggleSocialListeningMonitorActive,
 } from "@/actions/research-social-listening";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   SOCIAL_LISTENING_PLATFORM_LABELS,
   SOCIAL_LISTENING_STATUS_LABELS,
   formatRelativeTime,
 } from "@/lib/research/labels";
-import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
+import { LabEmptyState } from "@/components/lab/lab-primitives";
+import { RunLedger, countRunTones } from "@/components/research-hub/kit/run-ledger";
+import { RunStatusBadge, type RunTone } from "@/components/research-hub/kit/run-status";
 import {
-  DEFAULT_INSTAGRAM_SEARCH_LIMIT,
-  DEFAULT_TIKTOK_SEARCH_LIMIT,
-  MAX_INSTAGRAM_SEARCH_LIMIT,
-  MAX_TIKTOK_SEARCH_LIMIT,
-  parseSearchLimitInput,
-} from "@/lib/research/social-listening/search-limits-public";
-import { cn } from "@/lib/utils";
+  ResearchFilterBar,
+  filterRuns,
+  type RunToneFilter,
+} from "@/components/research-hub/kit/research-filter-bar";
+import {
+  ResearchTable,
+  SortableHead,
+  useSortedRows,
+} from "@/components/research-hub/kit/research-table";
+import { SocialMonitorForm } from "./social-monitor-form";
 
 export type SocialMonitorRow = {
   id: string;
@@ -56,65 +57,20 @@ export type SocialMonitorRow = {
 };
 
 function isInProgress(status: SocialListeningStatus | null) {
-  return (
-    status === "COLLECTING" ||
-    status === "ANALYZING" ||
-    status === "PENDING"
-  );
+  return status === "COLLECTING" || status === "ANALYZING" || status === "PENDING";
 }
 
-const ALL_PLATFORMS: SocialListeningPlatform[] = [
-  SocialListeningPlatform.TIKTOK,
-  SocialListeningPlatform.INSTAGRAM,
-];
-
-/** Pill status sync tinted: emerald siap, amber berjalan, rose gagal. */
-function StatusPill({ status }: { status: SocialListeningStatus | null }) {
-  const running = isInProgress(status);
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
-        status === "READY" &&
-          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-        status === "FAILED" &&
-          "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-        running && "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-        status == null && "bg-muted text-muted-foreground",
-      )}
-    >
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          status === "READY" && "bg-emerald-500",
-          status === "FAILED" && "bg-rose-500",
-          running && "bg-amber-500 animate-pulse motion-reduce:animate-none",
-          status == null && "bg-muted-foreground/50",
-        )}
-        aria-hidden
-      />
-      {status ? SOCIAL_LISTENING_STATUS_LABELS[status] : "Belum sync"}
-    </span>
-  );
+function toneOf(status: SocialListeningStatus | null): RunTone {
+  if (status === "READY") return "ready";
+  if (status === "FAILED") return "failed";
+  if (isInProgress(status)) return "running";
+  return "idle";
 }
 
-function CardStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-muted-foreground text-xs font-semibold">
-        {label}
-      </p>
-      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
-        {value}
-      </p>
-    </div>
-  );
+const LEDGER_LABELS = { running: "Sync berjalan", idle: "Belum sync" } as const;
+
+function platformText(platforms: SocialListeningPlatform[]) {
+  return platforms.map((p) => SOCIAL_LISTENING_PLATFORM_LABELS[p]).join(", ");
 }
 
 export function SocialListeningClient({
@@ -125,26 +81,17 @@ export function SocialListeningClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [formOpen, setFormOpen] = useState(monitors.length === 0);
-  const [name, setName] = useState("");
-  const [keywordsText, setKeywordsText] = useState("");
-  const [platforms, setPlatforms] = useState<SocialListeningPlatform[]>([
-    SocialListeningPlatform.TIKTOK,
-    SocialListeningPlatform.INSTAGRAM,
-  ]);
-  const [tiktokLimit, setTiktokLimit] = useState(
-    String(DEFAULT_TIKTOK_SEARCH_LIMIT),
-  );
-  const [instagramLimit, setInstagramLimit] = useState(
-    String(DEFAULT_INSTAGRAM_SEARCH_LIMIT),
-  );
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<RunToneFilter>("all");
+  const [deleteTarget, setDeleteTarget] = useState<SocialMonitorRow | null>(null);
 
   const hasInProgress = monitors.some((m) => isInProgress(m.latestStatus));
-  const inProgressCount = monitors.filter((m) =>
-    isInProgress(m.latestStatus),
-  ).length;
-  const readyCount = monitors.filter((m) => m.latestStatus === "READY").length;
   const activeCount = monitors.filter((m) => m.isActive).length;
   const totalMentions = monitors.reduce((sum, m) => sum + m.mentionCount, 0);
+  const counts = useMemo(
+    () => countRunTones(monitors, (m) => toneOf(m.latestStatus)),
+    [monitors],
+  );
 
   useEffect(() => {
     if (!hasInProgress) return;
@@ -152,416 +99,270 @@ export function SocialListeningClient({
     return () => window.clearInterval(id);
   }, [hasInProgress, router]);
 
-  function togglePlatform(platform: SocialListeningPlatform) {
-    setPlatforms((prev) =>
-      prev.includes(platform)
-        ? prev.filter((p) => p !== platform)
-        : [...prev, platform],
-    );
-  }
+  const filtered = useMemo(
+    () =>
+      filterRuns(monitors, {
+        search,
+        status,
+        text: (m) => `${m.name} ${m.keywords.join(" ")} ${platformText(m.platforms)}`,
+        tone: (m) => toneOf(m.latestStatus),
+      }),
+    [monitors, search, status],
+  );
 
-  function handleCreate() {
-    const keywords = keywordsText
-      .split(",")
-      .map((k) => k.trim())
-      .filter(Boolean);
+  const { sorted, sort, toggle } = useSortedRows(filtered, {
+    name: (m) => m.name,
+    mentions: (m) => m.mentionCount,
+    synced: (m) => m.collectedAt ?? "",
+  });
 
-    if (keywords.length === 0) {
-      toast.error("Masukkan minimal satu keyword.");
-      return;
-    }
-    if (platforms.length === 0) {
-      toast.error("Pilih minimal satu platform.");
-      return;
-    }
-
+  function handleRefresh(m: SocialMonitorRow) {
     startTransition(async () => {
       try {
-        const result = await createSocialListeningMonitor({
-          name,
-          keywords,
-          platforms,
-          tiktokSearchLimit: platforms.includes(SocialListeningPlatform.TIKTOK)
-            ? parseSearchLimitInput(
-                tiktokLimit,
-                DEFAULT_TIKTOK_SEARCH_LIMIT,
-                MAX_TIKTOK_SEARCH_LIMIT,
-              )
-            : DEFAULT_TIKTOK_SEARCH_LIMIT,
-          instagramSearchLimit: platforms.includes(
-            SocialListeningPlatform.INSTAGRAM,
-          )
-            ? parseSearchLimitInput(
-                instagramLimit,
-                DEFAULT_INSTAGRAM_SEARCH_LIMIT,
-                MAX_INSTAGRAM_SEARCH_LIMIT,
-              )
-            : DEFAULT_INSTAGRAM_SEARCH_LIMIT,
-        });
-        toast.success("Monitor dibuat. Jalankan refresh untuk mulai sync.");
-        setFormOpen(false);
-        setName("");
-        setKeywordsText("");
-        router.push(`/research-hub/social-listening/${result.id}`);
+        await refreshSocialListeningMonitor(m.id);
+        toast.success(`Sync "${m.name}" dimulai.`);
+        router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal membuat monitor."));
+        toast.error(actionErrorMessage(err, "Sync gagal dimulai. Coba lagi sebentar lagi."));
       }
     });
   }
 
-  function handleRefresh(id: string) {
+  function handleDelete() {
+    const target = deleteTarget;
+    if (!target) return;
     startTransition(async () => {
       try {
-        await refreshSocialListeningMonitor(id);
-        toast.success("Sync social listening dimulai.");
+        await deleteSocialListeningMonitor(target.id);
+        toast.success(`Monitor "${target.name}" dihapus.`);
+        setDeleteTarget(null);
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal refresh monitor."));
+        toast.error(actionErrorMessage(err, "Monitor gagal dihapus."));
       }
     });
   }
 
-  function handleDelete(id: string) {
-    if (!confirm("Hapus monitor ini?")) return;
+  function handleToggleActive(m: SocialMonitorRow) {
+    const next = !m.isActive;
     startTransition(async () => {
       try {
-        await deleteSocialListeningMonitor(id);
-        toast.success("Monitor dihapus.");
+        await toggleSocialListeningMonitorActive(m.id, next);
+        toast.success(`"${m.name}" ${next ? "diaktifkan" : "dinonaktifkan"}.`);
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal menghapus monitor."));
-      }
-    });
-  }
-
-  function handleToggleActive(id: string, isActive: boolean) {
-    startTransition(async () => {
-      try {
-        await toggleSocialListeningMonitorActive(id, isActive);
-        router.refresh();
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal mengubah status monitor."));
+        toast.error(actionErrorMessage(err, "Status monitor gagal diubah."));
       }
     });
   }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Strip ringkasan bento */}
       {monitors.length > 0 ? (
-        <div
-          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
-        >
-          <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
-              Total mention
-            </span>
-            <span className="bento-value text-white dark:text-violet-950">
-              {totalMentions.toLocaleString("id-ID")}
-            </span>
-            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
-              dari sync terakhir {monitors.length} monitor
-            </span>
-          </div>
-
-          <div className="bento-tile">
-            <span className="bento-label">Monitor aktif</span>
-            <span className="bento-value">
-              {activeCount}
-              <span className="text-muted-foreground/60 text-lg font-bold">
-                {" "}
-                / {monitors.length}
-              </span>
-            </span>
-            <span className="text-muted-foreground text-xs font-medium">
-              ikut sync terjadwal
-            </span>
-          </div>
-
-          <div className="bento-tile">
-            <span className="bento-label">Siap dianalisis</span>
-            <span className="bento-value">{readyCount}</span>
-            <span className="text-muted-foreground text-xs font-medium">
-              sync terakhir selesai
-            </span>
-          </div>
-
-          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-            <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
-              Berjalan
-            </span>
-            <span className="bento-value text-amber-900 dark:text-amber-300">
-              {inProgressCount}
-            </span>
-            <span className="text-xs font-medium text-amber-800/60 dark:text-amber-200/50">
-              sedang mengumpulkan mention
-            </span>
-          </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+          <RunLedger
+            className="flex-1"
+            counts={counts}
+            noun="monitor"
+            labels={LEDGER_LABELS}
+            detail={`${totalMentions.toLocaleString("id-ID")} mention dari sync terakhir, ${activeCount} monitor aktif`}
+          />
+          <Button
+            variant={formOpen ? "outline" : "default"}
+            onClick={() => setFormOpen((v) => !v)}
+            aria-expanded={formOpen}
+            aria-controls="sl-form"
+          >
+            {formOpen ? <X aria-hidden /> : <Plus aria-hidden />}
+            {formOpen ? "Tutup form" : "Monitor baru"}
+          </Button>
         </div>
       ) : null}
 
       {hasInProgress ? (
-        <div className={lab.entrance}>
-          <JobProgressBar
-            title="Sync social listening berjalan"
-            percent={40}
-            stepLabel="Satu atau lebih monitor sedang mengumpulkan mention dari TikTok & Instagram."
-          />
-          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
-            Halaman diperbarui otomatis setiap beberapa detik.
-          </p>
-        </div>
+        <p className="rh-meta" aria-live="polite">
+          Ada monitor yang masih mengumpulkan mention. Halaman ini diperbarui
+          otomatis setiap beberapa detik.
+        </p>
       ) : null}
 
-      <LabSection
-        title="Monitor Social Listening"
-        description={
-          monitors.length === 0
-            ? "Mulai dengan monitor pertama Anda di bawah."
-            : `${monitors.length} monitor · ${totalMentions.toLocaleString("id-ID")} mention terkumpul dari TikTok & Instagram.`
-        }
-        action={
-          monitors.length > 0 ? (
-            <Button
-              variant={formOpen ? "outline" : "default"}
-              onClick={() => setFormOpen((v) => !v)}
-            >
-              {formOpen ? <X /> : <Plus />}
-              {formOpen ? "Tutup" : "Monitor baru"}
+      {formOpen ? (
+        <SocialMonitorForm
+          id="sl-form"
+          onCancel={monitors.length > 0 ? () => setFormOpen(false) : undefined}
+        />
+      ) : null}
+
+      {monitors.length === 0 && !formOpen ? (
+        <LabEmptyState
+          icon={MessageSquare}
+          title="Belum ada monitor"
+          description="Buat monitor dari beberapa keyword untuk mengumpulkan mention, pain point, wishlist, dan konten viral dari TikTok dan Instagram."
+          action={
+            <Button size="sm" onClick={() => setFormOpen(true)}>
+              <Plus className="size-3.5" aria-hidden />
+              Monitor baru
             </Button>
-          ) : null
-        }
-      >
-        {/* Form monitor baru (collapsible) */}
-        {formOpen ? (
-          <div
-            className={cn(
-              lab.panel,
-              "grid gap-4",
-              "animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none",
-            )}
-          >
-            <div>
-              <p className="text-foreground font-bold tracking-tight">
-                Monitor baru
-              </p>
-              <p className="text-muted-foreground text-sm">
-                Masukkan keyword yang ingin dipantau percakapannya di TikTok
-                dan Instagram.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="sl-name">Nama monitor</Label>
-                <Input
-                  id="sl-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Body care trending"
-                  disabled={pending}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="sl-keywords">Keywords (pisahkan koma)</Label>
-                <Input
-                  id="sl-keywords"
-                  value={keywordsText}
-                  onChange={(e) => setKeywordsText(e.target.value)}
-                  placeholder="body lotion, sunscreen kulit gelap"
-                  disabled={pending}
-                />
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Platform</Label>
-              <div className="flex flex-wrap gap-4">
-                {ALL_PLATFORMS.map((p) => (
-                  <label key={p} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={platforms.includes(p)}
-                      onCheckedChange={() => togglePlatform(p)}
-                    />
-                    {SOCIAL_LISTENING_PLATFORM_LABELS[p]}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {platforms.includes(SocialListeningPlatform.TIKTOK) ? (
-                <div className="grid gap-1.5">
-                  <Label htmlFor="sl-tiktok-limit">
-                    Limit video TikTok per keyword
-                  </Label>
-                  <Input
-                    id="sl-tiktok-limit"
-                    type="number"
-                    min={1}
-                    max={MAX_TIKTOK_SEARCH_LIMIT}
-                    value={tiktokLimit}
-                    onChange={(e) => setTiktokLimit(e.target.value)}
-                    disabled={pending}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Maks {MAX_TIKTOK_SEARCH_LIMIT} video per keyword.
-                  </p>
-                </div>
-              ) : null}
-              {platforms.includes(SocialListeningPlatform.INSTAGRAM) ? (
-                <div className="grid gap-1.5">
-                  <Label htmlFor="sl-instagram-limit">
-                    Limit post Instagram per hashtag
-                  </Label>
-                  <Input
-                    id="sl-instagram-limit"
-                    type="number"
-                    min={1}
-                    max={MAX_INSTAGRAM_SEARCH_LIMIT}
-                    value={instagramLimit}
-                    onChange={(e) => setInstagramLimit(e.target.value)}
-                    disabled={pending}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Maks {MAX_INSTAGRAM_SEARCH_LIMIT} post per hashtag.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-muted-foreground text-xs">
-                Mention dikumpulkan lalu diklasifikasi AI — pain points,
-                wishlist, influencer, dan konten viral.
-              </p>
-              <Button onClick={handleCreate} disabled={pending || !name.trim()}>
-                <Plus />
-                {pending ? "Memproses…" : "Buat Monitor"}
-              </Button>
-            </div>
-          </div>
-        ) : null}
+          }
+        />
+      ) : null}
 
-        {monitors.length === 0 ? (
-          !formOpen ? (
-            <LabEmptyState
-              icon={MessageSquare}
-              title="Belum ada monitor"
-              description="Tambahkan keyword untuk mulai listening — sistem akan mengumpulkan mention, pain points, wishlist, dan konten viral."
-              action={
-                <Button size="sm" onClick={() => setFormOpen(true)}>
-                  <Plus className="size-3.5" aria-hidden />
-                  Tambah Monitor
-                </Button>
-              }
-            />
-          ) : null
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {monitors.map((m) => (
-              <div
-                key={m.id}
-                className={cn(
-                  lab.card,
-                  "group flex flex-col p-0",
-                  !m.isActive && "opacity-80",
-                )}
-              >
-                <Link
-                  href={`/research-hub/social-listening/${m.id}`}
-                  className="flex flex-1 flex-col gap-4 p-5 pb-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold"
-                        aria-hidden
-                      >
-                        {m.name.trim().charAt(0) || "?"}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-foreground flex items-center gap-1 truncate font-bold tracking-tight">
-                          <span className="truncate">{m.name}</span>
-                          <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
-                        </p>
-                        <p className="text-muted-foreground line-clamp-1 text-xs">
-                          {m.keywords.join(", ")}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1.5">
-                      <StatusPill status={m.latestStatus} />
-                      {!m.isActive ? (
-                        <span className="bg-muted text-muted-foreground inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold">
-                          Nonaktif
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
+      {monitors.length > 0 ? (
+        <section aria-label="Daftar monitor" className="flex flex-col gap-3">
+          <ResearchFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Cari monitor atau keyword…"
+            status={status}
+            onStatusChange={setStatus}
+            statusCounts={counts}
+            statusLabels={LEDGER_LABELS}
+            resultCount={filtered.length}
+            totalCount={monitors.length}
+            onReset={() => {
+              setSearch("");
+              setStatus("all");
+            }}
+          />
 
-                  {m.latestStatus === "FAILED" && m.errorMessage ? (
-                    <p className="line-clamp-2 text-xs leading-relaxed text-rose-700 dark:text-rose-300">
-                      {m.errorMessage}
-                    </p>
-                  ) : null}
+          {sorted.length === 0 ? (
+            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
+              Tidak ada monitor yang cocok dengan filter ini.
+            </p>
+          ) : (
+            <ResearchTable maxHeight="70vh">
+              <TableHeader sticky>
+                <TableRow>
+                  <SortableHead sortKey="name" sort={sort} onSort={toggle}>
+                    Monitor
+                  </SortableHead>
+                  <TableHead>Platform</TableHead>
+                  <TableHead>Status</TableHead>
+                  <SortableHead sortKey="mentions" sort={sort} onSort={toggle} align="right">
+                    Mention
+                  </SortableHead>
+                  <SortableHead sortKey="synced" sort={sort} onSort={toggle}>
+                    Sync terakhir
+                  </SortableHead>
+                  <TableHead className="w-0 text-right">
+                    <span className="sr-only">Aksi</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sorted.map((m) => {
+                  const tone = toneOf(m.latestStatus);
+                  const running = isInProgress(m.latestStatus);
+                  return (
+                    <TableRow key={m.id} className="group">
+                      <TableCell className="max-w-[24rem] whitespace-normal">
+                        <Link
+                          href={`/research-hub/social-listening/${m.id}`}
+                          className="text-foreground focus-visible:ring-ring rounded font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
+                        >
+                          {m.name}
+                        </Link>
+                        <p className="rh-meta mt-0.5 line-clamp-1">{m.keywords.join(", ")}</p>
+                        {tone === "failed" && m.errorMessage ? (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-rose-700 dark:text-rose-300">
+                            {m.errorMessage}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {platformText(m.platforms)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col items-start gap-0.5">
+                          <RunStatusBadge
+                            tone={tone}
+                            label={
+                              m.latestStatus
+                                ? SOCIAL_LISTENING_STATUS_LABELS[m.latestStatus]
+                                : "Belum sync"
+                            }
+                          />
+                          {!m.isActive ? <span className="rh-meta">Nonaktif</span> : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="rh-num text-right">
+                        {m.mentionCount > 0 ? (
+                          m.mentionCount.toLocaleString("id-ID")
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {m.collectedAt ? (
+                          <time
+                            dateTime={m.collectedAt}
+                            title={new Date(m.collectedAt).toLocaleString("id-ID")}
+                          >
+                            {formatRelativeTime(new Date(m.collectedAt))}
+                          </time>
+                        ) : (
+                          "Belum pernah"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-0.5">
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={pending || running}
+                            onClick={() => handleRefresh(m)}
+                            aria-label={`Sync ulang "${m.name}"`}
+                            title="Sync ulang"
+                          >
+                            <RefreshCw aria-hidden />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            disabled={pending}
+                            onClick={() => handleToggleActive(m)}
+                            aria-label={
+                              m.isActive
+                                ? `Nonaktifkan sync terjadwal "${m.name}"`
+                                : `Aktifkan sync terjadwal "${m.name}"`
+                            }
+                            title={m.isActive ? "Nonaktifkan" : "Aktifkan"}
+                          >
+                            {m.isActive ? <Pause aria-hidden /> : <Play aria-hidden />}
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive"
+                            disabled={pending}
+                            onClick={() => setDeleteTarget(m)}
+                            aria-label={`Hapus "${m.name}"`}
+                            title="Hapus"
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </ResearchTable>
+          )}
+        </section>
+      ) : null}
 
-                  <div className="grid grid-cols-3 gap-2">
-                    <CardStat
-                      label="Mention"
-                      value={m.mentionCount.toLocaleString("id-ID")}
-                    />
-                    <CardStat
-                      label="Keyword"
-                      value={m.keywords.length.toLocaleString("id-ID")}
-                    />
-                    <CardStat
-                      label="Sync"
-                      value={formatRelativeTime(
-                        m.collectedAt ? new Date(m.collectedAt) : null,
-                      )}
-                    />
-                  </div>
-                </Link>
-
-                <div className="border-border/60 flex items-center justify-between gap-2 border-t px-3 py-2">
-                  <span className="text-muted-foreground inline-flex items-center gap-1.5 truncate text-xs">
-                    <MessageSquare className="size-3.5 shrink-0" aria-hidden />
-                    {m.platforms
-                      .map((p) => SOCIAL_LISTENING_PLATFORM_LABELS[p])
-                      .join(" · ")}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pending || isInProgress(m.latestStatus)}
-                      onClick={() => handleRefresh(m.id)}
-                    >
-                      <RefreshCw className="size-3.5" aria-hidden />
-                      Refresh
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pending}
-                      onClick={() => handleToggleActive(m.id, !m.isActive)}
-                    >
-                      {m.isActive ? "Nonaktifkan" : "Aktifkan"}
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive"
-                      disabled={pending}
-                      aria-label="Hapus monitor"
-                      onClick={() => handleDelete(m.id)}
-                    >
-                      <Trash2 className="size-3.5" aria-hidden />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </LabSection>
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Hapus monitor "${deleteTarget?.name ?? ""}"?`}
+        description="Semua batch sync, mention, dan hasil klasifikasi AI monitor ini ikut terhapus. Tindakan ini tidak bisa dibatalkan."
+        confirmLabel="Hapus monitor"
+        pending={pending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

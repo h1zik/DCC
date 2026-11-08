@@ -42,8 +42,8 @@ export default async function ProductInnovationPage() {
   return (
     <ResearchHubModulePage
       icon={Lightbulb}
-      title="Product Innovation — SCAMPER"
-      description="Hasilkan alternatif inovasi produk dengan metode SCAMPER, berbasis evidence riset. Promosikan ide terbaik menjadi konsep di Concept Lab."
+      title="Product Innovation"
+      description="Susun alternatif inovasi produk dengan metode SCAMPER, berbasis bukti riset. Ide terbaik bisa dijadikan konsep di Concept Lab."
     >
       <ProductInnovationClient innovations={rows} baseConcepts={baseConcepts} />
     </ResearchHubModulePage>

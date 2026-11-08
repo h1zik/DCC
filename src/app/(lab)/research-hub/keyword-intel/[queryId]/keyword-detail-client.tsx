@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useTransition } from "react";
 import {
   CalendarRange,
   Copy,
-  FileText,
   Grid3x3,
   RefreshCw,
   Search,
@@ -14,12 +13,10 @@ import {
 } from "lucide-react";
 import { KeywordIntelStatus, ResearchMarketplace } from "@prisma/client";
 import { toast } from "sonner";
-import { createProductBriefFromKeyword } from "@/actions/research-brief";
 import { refreshKeywordIntelQuery } from "@/actions/research-keyword-intel";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { ActionPlanPanel } from "@/components/research-hub/action-plan-panel";
 import { CopyKeywordsPanel } from "@/components/research-hub/copy-keywords-panel";
-import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { KeywordEvidenceTable } from "@/components/research-hub/keyword-evidence-table";
 import { KeywordGapList } from "@/components/research-hub/keyword-gap-list";
 import { KeywordMatrixTable } from "@/components/research-hub/keyword-matrix-table";
@@ -32,28 +29,11 @@ import {
   type SeasonalMonth,
 } from "@/components/research-hub/seasonal-keyword-chart";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   KEYWORD_INTEL_STATUS_LABELS,
   MARKETPLACE_LABELS,
 } from "@/lib/research/labels";
-import type { SelectItemDef } from "@/lib/select-option-items";
 import type {
   GapKeywordRow,
   KeywordMatrixRow,
@@ -62,10 +42,14 @@ import type {
 } from "@/lib/research/keyword-intel/keyword-signal-types";
 import { lab } from "@/components/lab/lab-primitives";
 import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
+import { RunStatusBadge, type RunTone } from "@/components/research-hub/kit/run-status";
+import { ResearchPanelEmpty } from "@/components/research-hub/kit/research-states";
 import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 import type { DataProvenanceEntry } from "@/lib/research/scrape-data-provider";
+import { KeywordBriefDialog } from "./keyword-brief-dialog";
+import { DetailSection, KeywordOverview, KeywordProgress } from "./keyword-overview";
 
 export type KeywordDetailData = {
   id: string;
@@ -108,88 +92,30 @@ function isInProgress(status: KeywordIntelStatus) {
   );
 }
 
-function StatusPill({ status }: { status: KeywordIntelStatus }) {
-  const tone =
-    status === "READY"
-      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-      : status === "FAILED"
-        ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
-        : isInProgress(status)
-          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-          : "bg-muted text-muted-foreground";
-  const dot =
-    status === "READY"
-      ? "bg-emerald-500"
-      : status === "FAILED"
-        ? "bg-rose-500"
-        : isInProgress(status)
-          ? "bg-amber-500"
-          : "bg-muted-foreground/50";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold",
-        tone,
-      )}
-    >
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          dot,
-          isInProgress(status) && "animate-pulse",
-        )}
-      />
-      {KEYWORD_INTEL_STATUS_LABELS[status]}
-    </span>
-  );
+function toneOf(status: KeywordIntelStatus): RunTone {
+  if (status === "READY") return "ready";
+  if (status === "FAILED") return "failed";
+  if (isInProgress(status)) return "running";
+  return "idle";
 }
 
-/** Segmen distribusi sinyal per sumber untuk stacked bar hero. */
-const SIGNAL_SEGMENTS = [
-  { key: "shopee", label: "Shopee", dot: "bg-violet-500" },
-  { key: "tokopedia", label: "Tokopedia", dot: "bg-teal-500" },
-  { key: "googleTrends", label: "Google Trends", dot: "bg-amber-400" },
-  { key: "dataforseo", label: "Google volume", dot: "bg-sky-500" },
-  { key: "shopeeSearch", label: "Shopee sample", dot: "bg-rose-400" },
-  { key: "internal", label: "Sinyal internal", dot: "bg-emerald-500" },
+const RELATED_MODULES = [
+  { href: "/research-hub/competitor-tracker", label: "Competitor Tracker" },
+  { href: "/research-hub/trend-radar", label: "Trend Radar" },
+  { href: "/research-hub/review-intelligence", label: "Review Intelligence" },
 ] as const;
 
-function signalCounts(stats: KeywordSignalStats) {
-  const internal =
-    (stats.internal?.competitor ?? 0) +
-    (stats.internal?.reviewIntel ?? 0) +
-    (stats.internal?.socialListening ?? 0);
-  return {
-    shopee: stats.external?.shopee ?? 0,
-    tokopedia: stats.external?.tokopedia ?? 0,
-    googleTrends: stats.external?.googleTrends ?? 0,
-    dataforseo: stats.external?.dataforseo ?? 0,
-    shopeeSearch: stats.external?.shopeeSearch ?? 0,
-    internal,
-  } as Record<(typeof SIGNAL_SEGMENTS)[number]["key"], number>;
-}
-
 const tabContentClass =
-  "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-6 duration-200 motion-reduce:animate-none pt-4";
+  "animate-in fade-in slide-in-from-bottom-1 flex flex-col gap-8 duration-200 motion-reduce:animate-none pt-5";
+
+function TabCount({ value }: { value: number }) {
+  if (value <= 0) return null;
+  return <span className="rh-num text-muted-foreground ml-1 text-xs">{value}</span>;
+}
 
 export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [briefOpen, setBriefOpen] = useState(false);
-  const [roomId, setRoomId] = useState(data.rooms[0]?.id ?? "");
-  const [projectName, setProjectName] = useState(`Keyword: ${data.category}`);
-
-  const selectedRoom = data.rooms.find((r) => r.id === roomId);
-  const canBrief = data.status === "READY";
-
-  const roomItems = useMemo(
-    (): SelectItemDef[] =>
-      data.rooms.map((r) => ({
-        value: r.id,
-        label: r.brandName ? `${r.name} — ${r.brandName}` : r.name,
-      })),
-    [data.rooms],
-  );
 
   const isProcessing = isInProgress(data.status);
 
@@ -224,54 +150,20 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
     [data.matrix],
   );
 
-  const counts = data.signalStats ? signalCounts(data.signalStats) : null;
   const signalTotal = data.signalStats?.total ?? 0;
-  const signalDenom =
-    counts != null
-      ? Math.max(
-          1,
-          SIGNAL_SEGMENTS.reduce((sum, s) => sum + counts[s.key], 0),
-        )
-      : 1;
-
-  const descriptionParts = [
-    data.seedKeyword ? `Seed: ${data.seedKeyword}` : null,
-    data.marketplace
-      ? MARKETPLACE_LABELS[data.marketplace]
-      : "Semua marketplace",
-    data.volumeSource ?? null,
-  ].filter(Boolean);
+  const hasSeasonal = data.seasonalCalendar.length > 0 || data.seasonalCurves.length > 0;
+  const hasEvidence = data.matrix.some((m) => (m.evidence?.length ?? 0) > 0);
+  const hasSummary =
+    Boolean(data.aiSummary) || Boolean(data.actionPlan) || opportunityPoints.length > 0;
 
   function handleRefresh() {
     startTransition(async () => {
       try {
         await refreshKeywordIntelQuery(data.id);
-        toast.success("Refresh dimulai.");
+        toast.success(`"${data.category}" dianalisis ulang.`);
         router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-      }
-    });
-  }
-
-  function handleBrief() {
-    if (!selectedRoom?.brandId) {
-      toast.error("Pilih room dengan brand.");
-      return;
-    }
-    startTransition(async () => {
-      try {
-        const result = await createProductBriefFromKeyword({
-          queryId: data.id,
-          roomId,
-          brandId: selectedRoom.brandId!,
-          projectName,
-        });
-        toast.success("Brief dibuat.");
-        setBriefOpen(false);
-        router.push(`/projects/${result.projectId}`);
-      } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
+        toast.error(actionErrorMessage(err, "Gagal menganalisis ulang."));
       }
     });
   }
@@ -281,74 +173,39 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
       icon={Search}
       backHref="/research-hub/keyword-intel"
       title={data.category}
-      description={descriptionParts.join(" · ")}
+      meta={
+        <>
+          <RunStatusBadge
+            tone={toneOf(data.status)}
+            label={KEYWORD_INTEL_STATUS_LABELS[data.status]}
+          />
+          {data.seedKeyword ? <span>Seed: {data.seedKeyword}</span> : null}
+          <span>
+            {data.marketplace
+              ? MARKETPLACE_LABELS[data.marketplace]
+              : "Semua marketplace"}
+          </span>
+          {data.volumeSource ? <span>Volume: {data.volumeSource}</span> : null}
+        </>
+      }
       right={
         <>
           <ResearchModelBadgeGroup meta={data.aiMeta} />
-          <StatusPill status={data.status} />
           <Button
             variant="outline"
             size="sm"
             onClick={handleRefresh}
             disabled={pending || isProcessing}
           >
-            <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
-            Refresh
+            <RefreshCw className={cn(pending && "motion-safe:animate-spin")} aria-hidden />
+            Analisis ulang
           </Button>
           {data.status === "READY" ? (
-            <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
-              <DialogTrigger
-                render={
-                  <Button size="sm" disabled={!canBrief}>
-                    <FileText className="mr-1.5 size-3.5" aria-hidden />
-                    Buat Brief
-                  </Button>
-                }
-              />
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    Buat Product Brief dari Keyword Intel
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-3 py-2">
-                  <div className="grid gap-1.5">
-                    <Label>Room / Brand</Label>
-                    <Select
-                      value={roomId}
-                      items={roomItems}
-                      onValueChange={(v) => setRoomId(v ?? "")}
-                    >
-                      <SelectTrigger>
-                        {selectedRoom
-                          ? `${selectedRoom.name}${selectedRoom.brandName ? ` (${selectedRoom.brandName})` : ""}`
-                          : "Pilih room"}
-                      </SelectTrigger>
-                      <SelectContent>
-                        {data.rooms.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.name}
-                            {r.brandName ? ` — ${r.brandName}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label>Nama proyek</Label>
-                    <Input
-                      value={projectName}
-                      onChange={(e) => setProjectName(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleBrief} disabled={pending || !canBrief}>
-                    Buat Brief
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <KeywordBriefDialog
+              queryId={data.id}
+              category={data.category}
+              rooms={data.rooms}
+            />
           ) : null}
         </>
       }
@@ -358,151 +215,19 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
       <DataSourceProvenancePanel entries={data.dataProvenance} />
 
       {isProcessing ? (
-        <div className={lab.entrance}>
-          <JobProgressBar
-            title="Mengumpulkan & menganalisis keyword"
-            percent={45}
-            stepLabel="Pipeline sinyal marketplace, volume, dan AI berjalan di background — halaman refresh otomatis."
-          />
-        </div>
+        <KeywordProgress status={data.status} />
       ) : (
         <>
-          {/* Papan hero bento */}
           {data.matrix.length > 0 || signalTotal > 0 ? (
-            <div
-              className={cn(
-                lab.entrance,
-                "grid grid-flow-row-dense auto-rows-[6.75rem] grid-cols-2 gap-3 lg:grid-cols-4",
-              )}
-            >
-              {/* Keyword — tile hero violet */}
-              <div className="bento-tile col-span-2 row-span-2 border-transparent bg-violet-600 shadow-md shadow-violet-600/20 lg:col-span-1 dark:bg-violet-500">
-                <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
-                  Keyword teranalisis
-                </span>
-                <span className="bento-value text-5xl text-white dark:text-violet-950">
-                  {data.matrix.length.toLocaleString("id-ID")}
-                </span>
-                <span className="text-xs font-medium leading-snug text-violet-100/90 dark:text-violet-900/80">
-                  {highConfidenceCount > 0
-                    ? `${highConfidenceCount} keyword confidence tinggi`
-                    : "dari sinyal multi-sumber terverifikasi"}
-                </span>
-              </div>
-
-              {/* Distribusi sinyal — stacked bar */}
-              <div className="bento-tile col-span-2 row-span-2 justify-start gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="bento-label">Sinyal per sumber</span>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {signalTotal.toLocaleString("id-ID")} sinyal
-                  </span>
-                </div>
-                {counts ? (
-                  <>
-                    <div className="bg-muted flex h-2.5 overflow-hidden rounded-full">
-                      {SIGNAL_SEGMENTS.map((s) => {
-                        const count = counts[s.key];
-                        if (count === 0) return null;
-                        return (
-                          <div
-                            key={s.key}
-                            className={s.dot}
-                            style={{
-                              width: `${(count / signalDenom) * 100}%`,
-                            }}
-                            title={`${s.label}: ${count}`}
-                          />
-                        );
-                      })}
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      {SIGNAL_SEGMENTS.filter((s) => counts[s.key] > 0).map(
-                        (s) => (
-                          <div
-                            key={s.key}
-                            className="flex items-center gap-2 text-xs"
-                          >
-                            <span
-                              className={cn(
-                                "size-2 shrink-0 rounded-full",
-                                s.dot,
-                              )}
-                              aria-hidden
-                            />
-                            <span className="text-muted-foreground flex-1">
-                              {s.label}
-                            </span>
-                            <span className="font-semibold tabular-nums">
-                              {counts[s.key]}
-                            </span>
-                            <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
-                              {Math.round((counts[s.key] / signalDenom) * 100)}
-                              %
-                            </span>
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground m-auto text-sm">
-                    Belum ada statistik sinyal.
-                  </p>
-                )}
-              </div>
-
-              {/* Gap — amber pastel */}
-              <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-                <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
-                  Keyword gap
-                </span>
-                <span className="bento-value text-amber-900 dark:text-amber-300">
-                  {data.gaps.length.toLocaleString("id-ID")}
-                </span>
-                <span className="text-xs font-medium text-amber-800/70 dark:text-amber-300/70">
-                  peluang belum tergarap
-                </span>
-              </div>
-
-              {/* Naming — lavender pastel */}
-              <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-                <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
-                  Saran naming
-                </span>
-                <span className="bento-value text-violet-900 dark:text-violet-300">
-                  {data.namingSuggestions.length > 0
-                    ? data.namingSuggestions.length.toLocaleString("id-ID")
-                    : "—"}
-                </span>
-                <span className="text-xs font-medium text-violet-700/70 dark:text-violet-300/70">
-                  dari pola keyword
-                </span>
-              </div>
-
-              {/* Cluster */}
-              <div className="bento-tile">
-                <span className="bento-label">Cluster tema</span>
-                <span className="bento-value">
-                  {data.clusters.length > 0
-                    ? data.clusters.length.toLocaleString("id-ID")
-                    : "—"}
-                </span>
-              </div>
-
-              {/* Volume source */}
-              <div className="bento-tile">
-                <span className="bento-label">Volume Google</span>
-                <span className="bento-value text-2xl">
-                  {data.hasGoogleVolume ? "Aktif" : "Estimasi"}
-                </span>
-                <span className="text-muted-foreground text-xs font-medium">
-                  {data.hasGoogleVolume
-                    ? "volume pencarian terukur"
-                    : "proxy dari rank/listing"}
-                </span>
-              </div>
-            </div>
+            <KeywordOverview
+              keywordCount={data.matrix.length}
+              highConfidenceCount={highConfidenceCount}
+              gapCount={data.gaps.length}
+              namingCount={data.namingSuggestions.length}
+              clusterCount={data.clusters.length}
+              hasGoogleVolume={data.hasGoogleVolume}
+              signalStats={data.signalStats}
+            />
           ) : null}
 
           <Tabs defaultValue="ringkasan" className="gap-0">
@@ -518,20 +243,12 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                 <TabsTrigger value="matrix" className="px-1">
                   <Grid3x3 className="size-3.5" aria-hidden />
                   Matrix
-                  {data.matrix.length > 0 ? (
-                    <span className="text-muted-foreground ml-1 text-xs tabular-nums">
-                      {data.matrix.length}
-                    </span>
-                  ) : null}
+                  <TabCount value={data.matrix.length} />
                 </TabsTrigger>
                 <TabsTrigger value="gap" className="px-1">
                   <Copy className="size-3.5" aria-hidden />
-                  Gap & Copy
-                  {data.gaps.length > 0 ? (
-                    <span className="text-muted-foreground ml-1 text-xs tabular-nums">
-                      {data.gaps.length}
-                    </span>
-                  ) : null}
+                  Gap dan copy
+                  <TabCount value={data.gaps.length} />
                 </TabsTrigger>
                 <TabsTrigger value="musim" className="px-1">
                   <CalendarRange className="size-3.5" aria-hidden />
@@ -542,128 +259,129 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
 
             <TabsContent value="ringkasan" className={tabContentClass}>
               {data.aiSummary ? (
-                <div className="bento-tile justify-start gap-3">
-                  <span className="bento-label">AI summary</span>
-                  <p className="text-sm leading-relaxed">{data.aiSummary}</p>
-                </div>
+                <DetailSection id="kd-summary" title="Ringkasan AI">
+                  <p className="max-w-[68ch] text-sm leading-relaxed">{data.aiSummary}</p>
+                </DetailSection>
               ) : null}
 
               {data.actionPlan ? (
-                <ActionPlanPanel
-                  plan={data.actionPlan}
-                  title="Rencana Aksi Keyword (AI)"
-                />
+                <ActionPlanPanel plan={data.actionPlan} title="Rencana aksi keyword" />
               ) : null}
 
               {opportunityPoints.length > 0 ? (
-                <div className="bento-tile justify-start gap-3">
-                  <div className="flex items-center justify-between">
-                    <span className="bento-label">Peta peluang</span>
-                    <span className="text-muted-foreground text-xs">
-                      volume vs saturasi listing · kanan-atas = peluang tinggi
-                    </span>
-                  </div>
+                <DetailSection
+                  id="kd-opportunity"
+                  title="Peta peluang"
+                  description="Volume pencarian dibanding saturasi listing. Keyword di kanan atas punya peluang paling besar."
+                >
                   <KeywordOpportunityChart points={opportunityPoints} />
-                </div>
+                </DetailSection>
               ) : null}
 
-              <div className="flex flex-wrap gap-2 text-xs">
-                <Link
-                  href="/research-hub/competitor-tracker"
-                  className="text-primary hover:underline"
-                >
-                  Competitor Tracker
-                </Link>
-                <span className="text-muted-foreground">·</span>
-                <Link
-                  href="/research-hub/trend-radar"
-                  className="text-primary hover:underline"
-                >
-                  Trend Radar
-                </Link>
-                <span className="text-muted-foreground">·</span>
-                <Link
-                  href="/research-hub/review-intelligence"
-                  className="text-primary hover:underline"
-                >
-                  Review Intel
-                </Link>
-              </div>
+              {!hasSummary ? (
+                <ResearchPanelEmpty
+                  icon={Sparkles}
+                  title="Ringkasan belum tersedia"
+                  description="AI belum menghasilkan ringkasan atau rencana aksi untuk analisis ini. Jalankan analisis ulang untuk mencoba lagi."
+                />
+              ) : null}
+
+              <nav aria-label="Lanjutkan riset" className="flex flex-col gap-2">
+                <p className="rh-meta">Lanjutkan riset di modul lain</p>
+                <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                  {RELATED_MODULES.map((m) => (
+                    <li key={m.href}>
+                      <Link
+                        href={m.href}
+                        className="text-primary focus-visible:ring-ring rounded hover:underline focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        {m.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
             </TabsContent>
 
             <TabsContent value="matrix" className={tabContentClass}>
               {data.matrix.length > 0 ? (
-                <div className={cn(lab.card, "p-0")}>
-                  <div className="p-4 pb-0">
-                    <p className="text-foreground font-bold tracking-tight">
-                      Keyword matrix
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      Skor KOI, volume, dan sinyal per keyword.
-                    </p>
-                  </div>
-                  <div className="p-4">
-                    <KeywordMatrixTable
-                      rows={data.matrix}
-                      hasGoogleVolume={data.hasGoogleVolume}
-                    />
-                  </div>
-                </div>
+                <DetailSection
+                  id="kd-matrix"
+                  title="Keyword matrix"
+                  description="Skor KOI, volume, dan sinyal per keyword."
+                >
+                  <KeywordMatrixTable
+                    rows={data.matrix}
+                    hasGoogleVolume={data.hasGoogleVolume}
+                  />
+                </DetailSection>
               ) : (
-                <p className="text-muted-foreground text-sm">
-                  Belum ada data matrix.
-                </p>
+                <ResearchPanelEmpty
+                  icon={Grid3x3}
+                  title="Matrix keyword masih kosong"
+                  description="Tidak ada keyword yang lolos dari sinyal yang terkumpul. Coba kategori yang lebih umum atau tambah seed keyword, lalu analisis ulang."
+                />
               )}
             </TabsContent>
 
             <TabsContent value="gap" className={tabContentClass}>
-              <div className="bento-tile justify-start gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="bento-label">Keyword gap</span>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {data.gaps.length} peluang
-                  </span>
-                </div>
+              <DetailSection
+                id="kd-gap"
+                title="Keyword gap"
+                description="Keyword yang dicari pembeli tetapi jarang dipakai listing kompetitor."
+                aside={`${data.gaps.length.toLocaleString("id-ID")} peluang`}
+              >
                 {data.gaps.length > 0 ? (
                   <KeywordGapList gaps={data.gaps} />
                 ) : (
-                  <p className="text-muted-foreground text-sm">
-                    Tidak ada gap keyword teridentifikasi.
-                  </p>
+                  <ResearchPanelEmpty
+                    icon={Copy}
+                    title="Tidak ada gap keyword"
+                    description="Keyword di kategori ini sudah banyak dipakai listing kompetitor. Fokus ke diferensiasi naming dan copy di bawah."
+                  />
                 )}
-              </div>
+              </DetailSection>
 
               {data.namingSuggestions.length > 0 ? (
-                <div className="bento-tile justify-start gap-3">
-                  <span className="bento-label">Naming intelligence</span>
-                  <NamingSuggestionsCard
-                    suggestions={data.namingSuggestions}
-                    bare
-                  />
-                </div>
+                <DetailSection
+                  id="kd-naming"
+                  title="Saran naming"
+                  description="Nama produk dari pola keyword yang paling sering dicari."
+                >
+                  <NamingSuggestionsCard suggestions={data.namingSuggestions} bare />
+                </DetailSection>
               ) : null}
 
               <CopyKeywordsPanel data={data.copyKeywords} />
             </TabsContent>
 
             <TabsContent value="musim" className={tabContentClass}>
-              <div className="bento-tile justify-start gap-3">
-                <span className="bento-label">Seasonal keyword calendar</span>
-                <SeasonalKeywordChart
-                  data={data.seasonalCalendar}
-                  volumeByKeyword={volumeByKeyword}
-                  seasonalCurves={data.seasonalCurves}
+              {hasSeasonal ? (
+                <DetailSection
+                  id="kd-seasonal"
+                  title="Kalender keyword musiman"
+                  description="Bulan ketika keyword di kategori ini biasanya naik."
+                >
+                  <SeasonalKeywordChart
+                    data={data.seasonalCalendar}
+                    volumeByKeyword={volumeByKeyword}
+                    seasonalCurves={data.seasonalCurves}
+                  />
+                </DetailSection>
+              ) : (
+                <ResearchPanelEmpty
+                  icon={CalendarRange}
+                  title="Pola musiman belum terdeteksi"
+                  description="Butuh data Google Trends atau riwayat volume untuk memetakan musim. Aktifkan Google Trends di sumber data, lalu analisis ulang."
                 />
-              </div>
+              )}
 
               {data.clusters.length > 0 ? (
-                <div className="bento-tile justify-start gap-3">
-                  <div className="flex items-center justify-between">
-                    <span className="bento-label">Keyword clusters</span>
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {data.clusters.length} tema
-                    </span>
-                  </div>
+                <DetailSection
+                  id="kd-clusters"
+                  title="Cluster keyword"
+                  aside={`${data.clusters.length.toLocaleString("id-ID")} tema`}
+                >
                   <div className="grid gap-2 sm:grid-cols-2">
                     {data.clusters.map((c) => (
                       <div key={c.name} className={lab.nestedPanel}>
@@ -674,18 +392,19 @@ export function KeywordDetailClient({ data }: { data: KeywordDetailData }) {
                       </div>
                     ))}
                   </div>
-                </div>
+                </DetailSection>
               ) : null}
 
-              {data.matrix.some((m) => (m.evidence?.length ?? 0) > 0) ? (
-                <div className="bento-tile justify-start gap-3">
-                  <span className="bento-label">Bukti sinyal</span>
+              {hasEvidence ? (
+                <DetailSection
+                  id="kd-evidence"
+                  title="Bukti sinyal"
+                  description="Sumber mentah di balik keyword teratas."
+                >
                   <div className="overflow-x-auto">
-                    <KeywordEvidenceTable
-                      evidence={data.matrix[0]?.evidence ?? []}
-                    />
+                    <KeywordEvidenceTable evidence={data.matrix[0]?.evidence ?? []} />
                   </div>
-                </div>
+                </DetailSection>
               ) : null}
             </TabsContent>
           </Tabs>

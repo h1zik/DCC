@@ -37,7 +37,7 @@ export default async function ResearchReportsPage() {
     <ResearchHubModulePage
       icon={FileText}
       title="Research Reports"
-      description="Laporan riset terdokumentasi — weekly digest, deep dive, battle card, dan export PDF."
+      description="Laporan riset terdokumentasi: digest mingguan, deep dive, battle card, dan export PDF."
     >
       <ResearchReportsClient
         reports={rows}

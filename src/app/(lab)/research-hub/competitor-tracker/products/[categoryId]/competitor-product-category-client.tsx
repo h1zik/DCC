@@ -4,18 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { ResearchMarketplace } from "@prisma/client";
-import {
-  ArrowUpRight,
-  Bell,
-  ExternalLink,
-  Package,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
+import { Bell, ExternalLink, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  addCompetitorProductTrack,
   deleteCompetitorProductTrack,
   markAllCompetitorProductAlertsRead,
   markCompetitorProductAlertRead,
@@ -25,36 +16,33 @@ import {
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ProductDiscoveryProductThumb } from "@/components/research-hub/product-discovery-product-thumb";
-import { CompetitorTrackerModeNav } from "@/components/research-hub/competitor-tracker-mode-nav";
-import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
-import {
-  MarketplaceBadge,
-  MarketplaceLogo,
-} from "@/components/research-hub/marketplace-logo";
+import { MarketplaceLogo } from "@/components/research-hub/marketplace-logo";
 import { ResearchHubDetailPage } from "@/components/research-hub/research-hub-module-page";
-import { MARKETPLACE_LABELS, formatRp } from "@/lib/research/labels";
-import type { SelectItemDef } from "@/lib/select-option-items";
-import { cn } from "@/lib/utils";
-
-const MARKETPLACE_ITEMS: SelectItemDef[] = Object.entries(MARKETPLACE_LABELS).map(
-  ([value, label]) => ({ value, label }),
-);
+import { RunStatusBadge, type RunTone } from "@/components/research-hub/kit/run-status";
+import { countRunTones } from "@/components/research-hub/kit/run-ledger";
+import {
+  ResearchFilterBar,
+  filterRuns,
+  type RunToneFilter,
+} from "@/components/research-hub/kit/research-filter-bar";
+import {
+  ResearchTable,
+  SortableHead,
+  useSortedRows,
+} from "@/components/research-hub/kit/research-table";
+import { ResearchPanelEmpty } from "@/components/research-hub/kit/research-states";
+import { MARKETPLACE_LABELS, formatRelativeTime, formatRp } from "@/lib/research/labels";
+import { DetailSection, FactList, type Fact } from "../../_components/detail-section";
+import { CompetitorAlertList } from "../../_components/competitor-alert-list";
+import { AddProductDialog } from "./add-product-dialog";
 
 export type CompetitorProductTrackRow = {
   id: string;
@@ -90,6 +78,21 @@ export type CompetitorProductCategoryDetail = {
   alerts: CompetitorProductAlertRow[];
 };
 
+function toneOf(t: CompetitorProductTrackRow): RunTone {
+  if (t.scrapeError) return "failed";
+  return t.lastScrapedAt ? "ready" : "idle";
+}
+
+const STATUS_LABELS: Partial<Record<RunTone, string>> = {
+  ready: "Terpantau",
+  failed: "Gagal ditarik",
+  idle: "Belum ditarik",
+};
+
+function formatThousands(value: number) {
+  return `${Math.round(value / 1000).toLocaleString("id-ID")} rb`;
+}
+
 export function CompetitorProductCategoryClient({
   category,
 }: {
@@ -98,14 +101,13 @@ export function CompetitorProductCategoryClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [productUrl, setProductUrl] = useState("");
-  const [marketplace, setMarketplace] = useState<ResearchMarketplace>(
-    ResearchMarketplace.SHOPEE,
-  );
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<RunToneFilter>("all");
+  const [deleteTarget, setDeleteTarget] = useState<CompetitorProductTrackRow | null>(null);
 
   const unreadAlerts = category.alerts.filter((a) => !a.isRead).length;
+  const hasTracks = category.tracks.length > 0;
 
-  /* --------------------------- Statistik papan hero --------------------------- */
   const stats = useMemo(() => {
     const prices = category.tracks
       .map((t) => t.currentPrice)
@@ -114,403 +116,389 @@ export function CompetitorProductCategoryClient({
       .map((t) => t.rating)
       .filter((r): r is number => r != null);
     return {
-      avgPrice: prices.length
-        ? prices.reduce((a, b) => a + b, 0) / prices.length
-        : null,
+      avgPrice: prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null,
       minPrice: prices.length ? Math.min(...prices) : null,
       maxPrice: prices.length ? Math.max(...prices) : null,
-      avgRating: ratings.length
-        ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-        : null,
+      avgRating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
       promoCount: category.tracks.filter((t) => t.hasPromo).length,
       errorCount: category.tracks.filter((t) => t.scrapeError).length,
     };
   }, [category.tracks]);
 
-  function handleAddProduct() {
+  const counts = useMemo(() => countRunTones(category.tracks, toneOf), [category.tracks]);
+
+  const filtered = useMemo(
+    () =>
+      filterRuns(category.tracks, {
+        search,
+        status,
+        text: (t) =>
+          `${t.name} ${t.brand ?? ""} ${t.shopName ?? ""} ${MARKETPLACE_LABELS[t.marketplace]}`,
+        tone: toneOf,
+      }),
+    [category.tracks, search, status],
+  );
+
+  const { sorted, sort, toggle } = useSortedRows(filtered, {
+    name: (t) => t.name,
+    price: (t) => t.currentPrice,
+    rating: (t) => t.rating,
+    reviews: (t) => t.reviewCount,
+  });
+
+  const facts: Fact[] = [
+    {
+      label: "Produk dipantau",
+      value: category.tracks.length.toLocaleString("id-ID"),
+      hint:
+        stats.errorCount > 0 ? `${stats.errorCount} gagal ditarik` : "Semua berhasil ditarik",
+    },
+    {
+      label: "Harga rata-rata",
+      value: stats.avgPrice != null ? formatRp(Math.round(stats.avgPrice)) : "—",
+      hint:
+        stats.minPrice != null && stats.maxPrice != null
+          ? `${formatThousands(stats.minPrice)} sampai ${formatThousands(stats.maxPrice)}`
+          : undefined,
+    },
+    {
+      label: "Rating rata-rata",
+      value: stats.avgRating != null ? stats.avgRating.toFixed(1) : "—",
+    },
+    {
+      label: "Sedang promo",
+      value: stats.promoCount.toLocaleString("id-ID"),
+      hint: "produk",
+    },
+    {
+      label: "Alert belum dibaca",
+      value: unreadAlerts.toLocaleString("id-ID"),
+    },
+  ];
+
+  function handleRefreshAll() {
     startTransition(async () => {
       try {
-        const result = await addCompetitorProductTrack({
-          categoryId: category.id,
-          productUrl,
-          marketplace,
-        });
-        toast.success("Produk ditambahkan.");
-        setDialogOpen(false);
-        setProductUrl("");
-        router.push(
-          `/research-hub/competitor-tracker/products/${category.id}/tracks/${result.id}`,
-        );
+        await refreshCompetitorProductCategory(category.id);
+        toast.success("Semua produk ditarik ulang di background.");
+        router.refresh();
       } catch (err) {
-        toast.error(actionErrorMessage(err, "Gagal menambah produk."));
+        toast.error(actionErrorMessage(err, "Produk gagal ditarik ulang. Coba lagi sebentar."));
+      }
+    });
+  }
+
+  function handleRefreshTrack(track: CompetitorProductTrackRow) {
+    startTransition(async () => {
+      try {
+        await refreshCompetitorProductTrack(track.id);
+        toast.success(`"${track.name}" ditarik ulang di background.`);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, `"${track.name}" gagal ditarik ulang. Coba lagi sebentar.`));
+      }
+    });
+  }
+
+  function handleDelete() {
+    const target = deleteTarget;
+    if (!target) return;
+    startTransition(async () => {
+      try {
+        await deleteCompetitorProductTrack(target.id);
+        toast.success(`"${target.name}" dihapus.`);
+        setDeleteTarget(null);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, `"${target.name}" gagal dihapus.`));
+      }
+    });
+  }
+
+  function handleMarkAllRead() {
+    startTransition(async () => {
+      try {
+        await markAllCompetitorProductAlertsRead(category.id);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Alert gagal ditandai dibaca."));
+      }
+    });
+  }
+
+  function handleMarkRead(alert: { id: string }) {
+    startTransition(async () => {
+      try {
+        await markCompetitorProductAlertRead(alert.id);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Alert gagal ditandai dibaca."));
       }
     });
   }
 
   return (
     <ResearchHubDetailPage
-      icon={Package}
       backHref="/research-hub/competitor-tracker/products"
+      backLabel="Competitor products"
       title={category.name}
       description={
         category.description ??
-        "Pantau URL produk kompetitor spesifik — harga, rating, promo."
+        "Pantau harga, rating, dan promo produk kompetitor di kategori ini."
       }
       right={
         <>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                try {
-                  await refreshCompetitorProductCategory(category.id);
-                  toast.success("Refresh semua produk dijadwalkan.");
-                  router.refresh();
-                } catch (err) {
-                  toast.error(actionErrorMessage(err, "Gagal refresh."));
-                }
-              })
-            }
-          >
-            <RefreshCw className="size-4" />
-            Refresh Semua
+          {hasTracks ? (
+            <Button size="sm" variant="outline" disabled={pending} onClick={handleRefreshAll}>
+              <RefreshCw aria-hidden />
+              Tarik ulang semua
+            </Button>
+          ) : null}
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus aria-hidden />
+            Tambah produk
           </Button>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger
-              render={
-                <Button size="sm" className="gap-1.5">
-                  <Plus className="size-4" />
-                  Tambah Produk
-                </Button>
-              }
-            />
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Tambah Produk via URL</DialogTitle>
-              </DialogHeader>
-              <p className="text-muted-foreground text-sm">
-                Nama produk diisi otomatis dari data marketplace setelah scrape.
-              </p>
-              <div className="grid gap-4 py-2">
-                <div className="grid gap-2">
-                  <Label>Marketplace</Label>
-                  <Select
-                    value={marketplace}
-                    items={MARKETPLACE_ITEMS}
-                    onValueChange={(v) => {
-                      if (v) setMarketplace(v as ResearchMarketplace);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <MarketplaceBadge marketplace={marketplace} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MARKETPLACE_ITEMS.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          <MarketplaceBadge marketplace={item.value} />
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="product-url">URL produk</Label>
-                  <Input
-                    id="product-url"
-                    placeholder="https://shopee.co.id/product/..."
-                    value={productUrl}
-                    onChange={(e) => setProductUrl(e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={handleAddProduct}
-                  disabled={pending || !productUrl.trim()}
-                >
-                  {pending ? "Mengambil data…" : "Tambah Produk"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </>
       }
     >
-      <CompetitorTrackerModeNav />
-
-      {/* Papan hero bento */}
-      {category.tracks.length > 0 ? (
-        <div className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}>
-          <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
-              Produk dipantau
-            </span>
-            <span className="bento-value text-white dark:text-violet-950">
-              {category.tracks.length.toLocaleString("id-ID")}
-            </span>
-            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
-              {stats.errorCount > 0
-                ? `${stats.errorCount} gagal scrape — cek daftar di bawah`
-                : "semua ter-scrape tanpa error"}
-            </span>
-          </div>
-
-          <div className="bento-tile">
-            <span className="bento-label">Harga rata-rata</span>
-            <span className="bento-value text-2xl">
-              {stats.avgPrice != null ? formatRp(Math.round(stats.avgPrice)) : "—"}
-            </span>
-            {stats.minPrice != null && stats.maxPrice != null ? (
-              <span className="text-muted-foreground text-xs font-medium">
-                rentang {Math.round(stats.minPrice / 1000)}–
-                {Math.round(stats.maxPrice / 1000)}rb
-              </span>
-            ) : null}
-          </div>
-
-          <div className="bento-tile border-transparent bg-[#e9e3f9] dark:bg-violet-400/10">
-            <span className="text-xs font-semibold text-violet-700/70 dark:text-violet-300/70">
-              Rating rata-rata
-            </span>
-            <span className="bento-value text-violet-900 dark:text-violet-300">
-              {stats.avgRating != null ? stats.avgRating.toFixed(1) : "—"}
-            </span>
-            <span className="text-xs font-medium text-violet-700/60 dark:text-violet-300/60">
-              {stats.promoCount > 0
-                ? `${stats.promoCount} produk sedang promo`
-                : "tidak ada promo aktif"}
-            </span>
-          </div>
-
-          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-            <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
-              Alert belum dibaca
-            </span>
-            <span className="bento-value text-amber-900 dark:text-amber-300">
-              {unreadAlerts.toLocaleString("id-ID")}
-            </span>
-            <span className="text-xs font-medium text-amber-800/60 dark:text-amber-300/60">
-              harga, rating, dan promo
-            </span>
-          </div>
-        </div>
+      {hasTracks ? (
+        <section aria-label="Ringkasan kategori" className="border-border border-y py-5">
+          <FactList facts={facts} className="xl:grid-cols-5" />
+        </section>
       ) : null}
 
-      {category.tracks.length === 0 ? (
-        <LabEmptyState
-          icon={Package}
-          title="Belum ada produk"
-          description="Tambahkan URL produk kompetitor (Shopee, Tokopedia, Lazada, TikTok Shop) ke kategori ini."
-          action={
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
-              <Plus className="size-3.5" aria-hidden />
-              Tambah Produk
-            </Button>
-          }
-        />
-      ) : (
-        <LabSection
-          title="Produk Dipantau"
-          description="Klik produk untuk riwayat harga & penjualan."
-        >
-          <div className="grid gap-3">
-            {category.tracks.map((track) => (
-              <div
-                key={track.id}
-                className={cn(lab.card, "group flex flex-col p-0")}
-              >
-                <Link
-                  href={`/research-hub/competitor-tracker/products/${category.id}/tracks/${track.id}`}
-                  className="flex min-w-0 flex-1 items-center gap-4 p-4"
-                >
-                  <div className="border-border/50 bg-muted/20 size-14 shrink-0 overflow-hidden rounded-xl border">
-                    <ProductDiscoveryProductThumb
-                      imageUrl={track.imageUrl}
-                      name={track.name}
-                      className="size-full"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-foreground flex items-center gap-1 font-bold leading-snug tracking-tight">
-                      <span className="line-clamp-1">{track.name}</span>
-                      <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
-                    </p>
-                    <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                      <MarketplaceLogo
-                        marketplace={track.marketplace}
-                        className="size-3.5"
-                      />
-                      <span className="truncate">
-                        {MARKETPLACE_LABELS[track.marketplace]}
-                        {track.brand ? ` · ${track.brand}` : ""}
-                        {track.shopName ? ` · ${track.shopName}` : ""}
-                      </span>
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                      <span className="font-extrabold tabular-nums tracking-tight">
-                        {track.currentPrice != null
-                          ? formatRp(track.currentPrice)
-                          : "—"}
-                      </span>
-                      {track.rating != null ? (
-                        <span className="text-muted-foreground text-xs tabular-nums">
-                          ★ {track.rating.toFixed(1)}
-                        </span>
-                      ) : null}
-                      {track.reviewCount > 0 ? (
-                        <span className="text-muted-foreground text-xs tabular-nums">
-                          {track.reviewCount.toLocaleString("id-ID")} review
-                        </span>
-                      ) : null}
-                      {track.hasPromo ? (
-                        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-                          {track.promoText ?? "Promo"}
-                        </span>
-                      ) : null}
-                    </div>
-                    {track.scrapeError ? (
-                      <p className="mt-1 inline-flex items-center rounded-full bg-rose-500/15 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
-                        {track.scrapeError}
-                      </p>
-                    ) : null}
-                  </div>
-                </Link>
+      <DetailSection
+        id="ct-tracks"
+        title="Produk dipantau"
+        description={hasTracks ? "Pilih produk untuk melihat riwayat harga dan penjualan." : undefined}
+      >
+        {!hasTracks ? (
+          <ResearchPanelEmpty
+            icon={Package}
+            title="Belum ada produk di kategori ini"
+            description="Tambahkan URL produk kompetitor dari Shopee, Tokopedia, Lazada, atau TikTok Shop untuk mulai memantau harganya."
+            action={
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <Plus className="size-3.5" aria-hidden />
+                Tambah produk
+              </Button>
+            }
+          />
+        ) : (
+          <>
+            <ResearchFilterBar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Cari produk, brand, atau toko…"
+              status={status}
+              onStatusChange={setStatus}
+              statusCounts={counts}
+              statusLabels={STATUS_LABELS}
+              resultCount={filtered.length}
+              totalCount={category.tracks.length}
+              onReset={() => {
+                setSearch("");
+                setStatus("all");
+              }}
+            />
+            {sorted.length === 0 ? (
+              <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
+                Tidak ada produk yang cocok dengan filter ini.
+              </p>
+            ) : (
+              <ResearchTable maxHeight="70vh">
+                <TableHeader sticky>
+                  <TableRow>
+                    <SortableHead sortKey="name" sort={sort} onSort={toggle}>
+                      Produk
+                    </SortableHead>
+                    <TableHead>Marketplace</TableHead>
+                    <TableHead>Status</TableHead>
+                    <SortableHead sortKey="price" sort={sort} onSort={toggle} align="right">
+                      Harga
+                    </SortableHead>
+                    <SortableHead sortKey="rating" sort={sort} onSort={toggle} align="right">
+                      Rating
+                    </SortableHead>
+                    <SortableHead sortKey="reviews" sort={sort} onSort={toggle} align="right">
+                      Review
+                    </SortableHead>
+                    <TableHead className="w-0 text-right">
+                      <span className="sr-only">Aksi</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sorted.map((track) => {
+                    const tone = toneOf(track);
+                    return (
+                      <TableRow key={track.id}>
+                        <TableCell className="max-w-[26rem] whitespace-normal">
+                          <div className="flex items-center gap-3">
+                            <div className="border-border/60 bg-muted/20 size-10 shrink-0 overflow-hidden rounded-lg border">
+                              <ProductDiscoveryProductThumb
+                                imageUrl={track.imageUrl}
+                                name={track.name}
+                                className="size-full"
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <Link
+                                href={`/research-hub/competitor-tracker/products/${category.id}/tracks/${track.id}`}
+                                className="text-foreground focus-visible:ring-ring line-clamp-2 rounded font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
+                              >
+                                {track.name}
+                              </Link>
+                              {track.brand || track.shopName ? (
+                                <p className="rh-meta truncate">
+                                  {track.shopName ?? track.brand}
+                                </p>
+                              ) : null}
+                              {track.scrapeError ? (
+                                <p className="mt-0.5 line-clamp-2 text-xs text-rose-700 dark:text-rose-300">
+                                  {track.scrapeError}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="inline-flex items-center gap-1.5">
+                            <MarketplaceLogo marketplace={track.marketplace} className="size-4" />
+                            {MARKETPLACE_LABELS[track.marketplace]}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <RunStatusBadge tone={tone} label={STATUS_LABELS[tone]} />
+                          {track.lastScrapedAt ? (
+                            <p className="rh-meta mt-0.5">
+                              <time
+                                dateTime={track.lastScrapedAt}
+                                title={new Date(track.lastScrapedAt).toLocaleString("id-ID")}
+                              >
+                                {formatRelativeTime(new Date(track.lastScrapedAt))}
+                              </time>
+                            </p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="rh-num text-right">
+                          {track.currentPrice != null ? (
+                            formatRp(track.currentPrice)
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                          {track.hasPromo ? (
+                            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                              {track.promoText ?? "Promo"}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="rh-num text-right">
+                          {track.rating != null ? (
+                            track.rating.toFixed(1)
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="rh-num text-right">
+                          {track.reviewCount.toLocaleString("id-ID")}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-0.5">
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              disabled={pending}
+                              onClick={() => handleRefreshTrack(track)}
+                              aria-label={`Tarik ulang "${track.name}"`}
+                              title="Tarik ulang"
+                            >
+                              <RefreshCw aria-hidden />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              render={
+                                <a
+                                  href={track.productUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Buka "${track.name}" di ${MARKETPLACE_LABELS[track.marketplace]}`}
+                                  title="Buka di marketplace"
+                                />
+                              }
+                            >
+                              <ExternalLink aria-hidden />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground hover:text-destructive"
+                              disabled={pending}
+                              onClick={() => setDeleteTarget(track)}
+                              aria-label={`Hapus "${track.name}"`}
+                              title="Hapus"
+                            >
+                              <Trash2 aria-hidden />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </ResearchTable>
+            )}
+          </>
+        )}
+      </DetailSection>
 
-                <div className="border-border/60 flex items-center justify-end gap-1 border-t px-3 py-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() =>
-                      startTransition(async () => {
-                        try {
-                          await refreshCompetitorProductTrack(track.id);
-                          toast.success("Refresh produk dijadwalkan.");
-                          router.refresh();
-                        } catch (err) {
-                          toast.error(actionErrorMessage(err, "Gagal refresh."));
-                        }
-                      })
-                    }
-                  >
-                    <RefreshCw className="size-3.5" aria-hidden />
-                    Refresh
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    render={
-                      <a
-                        href={track.productUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Buka ${track.name} di marketplace`}
-                      />
-                    }
-                  >
-                    <ExternalLink className="size-3.5" aria-hidden />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    disabled={pending}
-                    aria-label="Hapus produk"
-                    onClick={() =>
-                      startTransition(async () => {
-                        if (!confirm(`Hapus "${track.name}" dari kategori?`)) {
-                          return;
-                        }
-                        try {
-                          await deleteCompetitorProductTrack(track.id);
-                          toast.success("Produk dihapus.");
-                          router.refresh();
-                        } catch (err) {
-                          toast.error(actionErrorMessage(err, "Gagal menghapus."));
-                        }
-                      })
-                    }
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </LabSection>
-      )}
-
-      {category.alerts.length > 0 ? (
-        <LabSection
+      {hasTracks || category.alerts.length > 0 ? (
+        <DetailSection
+          id="ct-category-alerts"
           title="Alert"
-          description="Perubahan harga, rating, dan promo."
+          description="Perubahan harga, rating, dan promo produk di kategori ini."
           action={
             unreadAlerts > 0 ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    await markAllCompetitorProductAlertsRead(category.id);
-                    router.refresh();
-                  })
-                }
-              >
+              <Button size="sm" variant="outline" disabled={pending} onClick={handleMarkAllRead}>
                 Tandai semua dibaca
               </Button>
             ) : null
           }
         >
-          <div className="grid gap-2">
-            {category.alerts.map((alert) => (
-              <button
-                key={alert.id}
-                type="button"
-                className={cn(
-                  lab.card,
-                  "flex w-full items-start gap-3 p-4 text-left text-sm",
-                  alert.isRead && "opacity-60",
-                )}
-                onClick={() =>
-                  startTransition(async () => {
-                    if (!alert.isRead) {
-                      await markCompetitorProductAlertRead(alert.id);
-                      router.refresh();
-                    }
-                  })
-                }
-              >
-                <span
-                  className={cn(
-                    "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg",
-                    alert.isRead
-                      ? "bg-muted text-muted-foreground"
-                      : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-                  )}
-                  aria-hidden
-                >
-                  <Bell className="size-3.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block">{alert.message}</span>
-                  <span className="text-muted-foreground mt-0.5 block text-xs">
-                    {new Date(alert.createdAt).toLocaleString("id-ID")}
-                  </span>
-                </span>
-                {!alert.isRead ? (
-                  <span className="inline-flex shrink-0 items-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
-                    Baru
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </LabSection>
+          {category.alerts.length === 0 ? (
+            <ResearchPanelEmpty
+              icon={Bell}
+              title="Belum ada alert"
+              description="Alert muncul saat refresh menemukan perubahan harga, rating, atau promo."
+            />
+          ) : (
+            <CompetitorAlertList
+              alerts={category.alerts}
+              pending={pending}
+              onMarkRead={handleMarkRead}
+            />
+          )}
+        </DetailSection>
       ) : null}
+
+      <AddProductDialog
+        categoryId={category.id}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Hapus "${deleteTarget?.name ?? ""}"?`}
+        description="Produk ini berhenti dipantau. Riwayat harga dan penjualannya ikut terhapus dari kategori. Tindakan ini tidak bisa dibatalkan."
+        confirmLabel="Hapus produk"
+        pending={pending}
+        onConfirm={handleDelete}
+      />
     </ResearchHubDetailPage>
   );
 }

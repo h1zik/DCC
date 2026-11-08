@@ -4,56 +4,44 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { ResearchMarketplace, ReviewIntelSourceStatus } from "@prisma/client";
-import {
-  ArrowUpRight,
-  FileUp,
-  Plus,
-  RefreshCw,
-  Star,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Plus, RefreshCw, Star, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
-  createReviewIntelSource,
-  createReviewIntelSourceFromCsv,
   deleteReviewIntelSource,
   rescrapeReviewIntelSource,
 } from "@/actions/research-review-intelligence";
 import { actionErrorMessage } from "@/lib/action-error-message";
-import { JobProgressBar } from "@/components/research-hub/job-progress-bar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  getReviewPlatformLabel,
-  REVIEW_PLATFORMS,
-  reviewPlatformsByCategory,
-} from "@/lib/review-platforms/platforms";
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { getReviewPlatformLabel } from "@/lib/review-platforms/platforms";
 import { SOURCE_STATUS_LABELS } from "@/lib/research/labels";
-import type { SelectItemDef } from "@/lib/select-option-items";
 import { RelativeTime } from "@/components/research-hub/relative-time";
 import {
   MarketplaceLogo,
   resolveMarketplace,
 } from "@/components/research-hub/marketplace-logo";
-import { lab, LabEmptyState, LabSection } from "@/components/lab/lab-primitives";
-import { cn } from "@/lib/utils";
+import { LabEmptyState } from "@/components/lab/lab-primitives";
+import { RunLedger, countRunTones } from "@/components/research-hub/kit/run-ledger";
+import { RunStatusBadge, type RunTone } from "@/components/research-hub/kit/run-status";
+import {
+  ResearchFilterBar,
+  filterRuns,
+  type RunToneFilter,
+} from "@/components/research-hub/kit/research-filter-bar";
+import {
+  ResearchTable,
+  SortableHead,
+  useSortedRows,
+} from "@/components/research-hub/kit/research-table";
 import { useReviewIntelPolling } from "./use-review-intel-polling";
-
-const PLATFORM_ITEMS: SelectItemDef[] = [
-  ...reviewPlatformsByCategory("marketplace"),
-  ...reviewPlatformsByCategory("community"),
-].map((p) => ({ value: p.key, label: p.label }));
+import { ReviewSourceForm } from "./review-source-form";
 
 export type ReviewSourceRow = {
   id: string;
@@ -74,61 +62,22 @@ function isInProgress(status: ReviewIntelSourceStatus) {
   return status === "SCRAPING" || status === "ANALYZING";
 }
 
-function isPartial(row: ReviewSourceRow) {
-  return (
-    row.totalReviewsReported != null &&
-    row.totalReviewsReported > row.reviewCount
-  );
+function toneOf(status: ReviewIntelSourceStatus): RunTone {
+  if (status === "READY") return "ready";
+  if (status === "FAILED") return "failed";
+  if (isInProgress(status)) return "running";
+  return "idle";
 }
 
-/** Pill status tinted: emerald siap, amber berjalan, rose gagal, muted menunggu. */
-function StatusPill({ status }: { status: ReviewIntelSourceStatus }) {
-  const running = isInProgress(status);
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
-        status === "READY" &&
-          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-        status === "FAILED" &&
-          "bg-rose-500/15 text-rose-700 dark:text-rose-300",
-        running && "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-        status === "PENDING" && "bg-muted text-muted-foreground",
-      )}
-    >
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          status === "READY" && "bg-emerald-500",
-          status === "FAILED" && "bg-rose-500",
-          running && "bg-amber-500 animate-pulse motion-reduce:animate-none",
-          status === "PENDING" && "bg-muted-foreground/50",
-        )}
-        aria-hidden
-      />
-      {SOURCE_STATUS_LABELS[status]}
-    </span>
-  );
+/** Persentase review yang berhasil ditarik; null bila tidak diketahui/penuh. */
+function coverageOf(row: ReviewSourceRow): number | null {
+  if (row.totalReviewsReported == null || row.totalReviewsReported <= row.reviewCount) {
+    return null;
+  }
+  return Math.round((row.reviewCount / row.totalReviewsReported) * 100);
 }
 
-function CardStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-muted-foreground text-xs font-semibold">
-        {label}
-      </p>
-      <p className="text-foreground mt-0.5 truncate text-sm font-extrabold tabular-nums tracking-tight">
-        {value}
-      </p>
-    </div>
-  );
-}
+const LEDGER_LABELS = { running: "Scrape atau analisis", idle: "Menunggu" } as const;
 
 export function ReviewIntelligenceClient({
   sources,
@@ -138,561 +87,272 @@ export function ReviewIntelligenceClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [formOpen, setFormOpen] = useState(sources.length === 0);
-  const [mode, setMode] = useState<"scrape" | "csv">("scrape");
-  const [productName, setProductName] = useState("");
-  const [competitorBrand, setCompetitorBrand] = useState("");
-  const [platformKey, setPlatformKey] = useState("shopee");
-  const [productUrl, setProductUrl] = useState("");
-  const [csvContent, setCsvContent] = useState("");
-
-  const selectedPlatform = useMemo(
-    () => REVIEW_PLATFORMS.find((p) => p.key === platformKey),
-    [platformKey],
-  );
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<RunToneFilter>("all");
+  const [deleteTarget, setDeleteTarget] = useState<ReviewSourceRow | null>(null);
 
   const hasInProgress = sources.some((s) => isInProgress(s.status));
-  const inProgressCount = sources.filter((s) => isInProgress(s.status)).length;
-  const readyCount = sources.filter((s) => s.status === "READY").length;
-  const failedCount = sources.filter((s) => s.status === "FAILED").length;
   const totalReviews = sources.reduce((sum, s) => sum + s.reviewCount, 0);
-  const partialCount = sources.filter(isPartial).length;
+  const partialCount = sources.filter((s) => coverageOf(s) != null).length;
+  const counts = useMemo(() => countRunTones(sources, (s) => toneOf(s.status)), [sources]);
 
   useReviewIntelPolling(hasInProgress);
 
-  function resetForm() {
-    setProductName("");
-    setCompetitorBrand("");
-    setProductUrl("");
-    setCsvContent("");
-    setPlatformKey("shopee");
-    setMode("scrape");
+  const filtered = useMemo(
+    () =>
+      filterRuns(sources, {
+        search,
+        status,
+        text: (s) =>
+          `${s.productName} ${s.competitorBrand} ${getReviewPlatformLabel(s.platformKey)}`,
+        tone: (s) => toneOf(s.status),
+      }),
+    [sources, search, status],
+  );
+
+  const { sorted, sort, toggle } = useSortedRows(filtered, {
+    product: (s) => s.productName,
+    brand: (s) => s.competitorBrand,
+    reviews: (s) => s.reviewCount,
+    updated: (s) => s.lastAnalyzedAt,
+  });
+
+  function handleRescrape(s: ReviewSourceRow) {
+    startTransition(async () => {
+      try {
+        await rescrapeReviewIntelSource(s.id);
+        toast.success(`"${s.productName}" di-scrape ulang.`);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal scrape ulang."));
+      }
+    });
   }
 
-  async function handleCreateScrape() {
-    let result;
-    try {
-      result = await new Promise<{ id: string }>((resolve, reject) => {
-        startTransition(async () => {
-          try {
-            resolve(await createReviewIntelSource({
-              productName,
-              competitorBrand,
-              platformKey,
-              productUrl,
-            }));
-          } catch (err) {
-            reject(err);
-          }
-        });
-      });
-    } catch (err) {
-      toast.error(actionErrorMessage(err, "Gagal memproses permintaan."));
-      return;
-    }
-    toast.success(
-      "Scrape dimulai di background. Halaman akan update otomatis.",
-    );
-    setFormOpen(false);
-    resetForm();
-    router.push(`/research-hub/review-intelligence/${result.id}`);
+  function handleDelete() {
+    const target = deleteTarget;
+    if (!target) return;
+    startTransition(async () => {
+      try {
+        await deleteReviewIntelSource(target.id);
+        toast.success(`"${target.productName}" dihapus.`);
+        setDeleteTarget(null);
+        router.refresh();
+      } catch (err) {
+        toast.error(actionErrorMessage(err, "Gagal menghapus sumber."));
+      }
+    });
   }
 
-  async function handleCreateCsv() {
-    let result;
-    try {
-      result = await new Promise<{ id: string }>((resolve, reject) => {
-        startTransition(async () => {
-          try {
-            resolve(await createReviewIntelSourceFromCsv({
-              productName,
-              competitorBrand,
-              csvContent,
-              productUrl:
-                productUrl.trim() || "https://manual-import.local/reviews",
-            }));
-          } catch (err) {
-            reject(err);
-          }
-        });
-      });
-    } catch (err) {
-      toast.error(actionErrorMessage(err, "Gagal import CSV."));
-      return;
-    }
-    toast.success("Review diimport dan dianalisis.");
-    setFormOpen(false);
-    resetForm();
-    router.push(`/research-hub/review-intelligence/${result.id}`);
-  }
-
-  function handleCsvFile(file: File | null) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCsvContent(String(reader.result ?? ""));
-    };
-    reader.readAsText(file);
-  }
-
-  const submitDisabled =
-    pending ||
-    !productName.trim() ||
-    !competitorBrand.trim() ||
-    (mode === "scrape" ? !productUrl.trim() : !csvContent.trim());
+  const ledgerDetail =
+    `${totalReviews.toLocaleString("id-ID")} review terkumpul` +
+    (partialCount > 0 ? `, ${partialCount} sumber parsial` : "");
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Strip ringkasan bento */}
       {sources.length > 0 ? (
-        <div
-          className={cn(lab.entrance, "grid grid-cols-2 gap-3 lg:grid-cols-4")}
-        >
-          <div className="bento-tile border-transparent bg-violet-600 shadow-md shadow-violet-600/20 dark:bg-violet-500">
-            <span className="text-xs font-semibold text-violet-100 dark:text-violet-950/70">
-              Total review
-            </span>
-            <span className="bento-value text-white dark:text-violet-950">
-              {totalReviews.toLocaleString("id-ID")}
-            </span>
-            <span className="text-xs font-medium text-violet-100/90 dark:text-violet-900/80">
-              dari {sources.length} sumber kompetitor
-              {partialCount > 0 ? ` · ${partialCount} parsial` : ""}
-            </span>
-          </div>
-
-          <div className="bento-tile">
-            <span className="bento-label">Siap dianalisis</span>
-            <span className="bento-value">
-              {readyCount}
-              <span className="text-muted-foreground/60 text-lg font-bold">
-                {" "}
-                / {sources.length}
-              </span>
-            </span>
-            <span className="text-muted-foreground text-xs font-medium">
-              sumber dengan insight lengkap
-            </span>
-          </div>
-
-          <div className="bento-tile border-transparent bg-[#ffedcd] dark:bg-amber-400/10">
-            <span className="text-xs font-semibold text-amber-800/70 dark:text-amber-200/60">
-              Berjalan
-            </span>
-            <span className="bento-value text-amber-900 dark:text-amber-300">
-              {inProgressCount}
-            </span>
-            <span className="text-xs font-medium text-amber-800/60 dark:text-amber-200/50">
-              scrape / analisis aktif
-            </span>
-          </div>
-
-          <div className="bento-tile border-transparent bg-[#fbdcd7] dark:bg-rose-400/10">
-            <span className="text-xs font-semibold text-rose-800/70 dark:text-rose-200/60">
-              Gagal
-            </span>
-            <span className="bento-value text-rose-900 dark:text-rose-300">
-              {failedCount}
-            </span>
-            <span className="text-xs font-medium text-rose-800/60 dark:text-rose-200/50">
-              perlu scrape ulang
-            </span>
-          </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+          <RunLedger
+            className="flex-1"
+            counts={counts}
+            noun="sumber review"
+            labels={LEDGER_LABELS}
+            detail={ledgerDetail}
+          />
+          <Button
+            variant={formOpen ? "outline" : "default"}
+            onClick={() => setFormOpen((v) => !v)}
+            aria-expanded={formOpen}
+            aria-controls="ri-form"
+          >
+            {formOpen ? <X aria-hidden /> : <Plus aria-hidden />}
+            {formOpen ? "Tutup form" : "Tambah sumber"}
+          </Button>
         </div>
       ) : null}
 
       {hasInProgress ? (
-        <div className={lab.entrance}>
-          <JobProgressBar
-            title="Scrape & analisis review berjalan"
-            percent={40}
-            stepLabel="Satu atau lebih sumber sedang mengambil review dan menjalankan AI."
-          />
-          <p className="text-muted-foreground mt-1.5 px-1 text-xs">
-            Halaman diperbarui otomatis setiap beberapa detik.
-          </p>
-        </div>
+        <p className="rh-meta" aria-live="polite">
+          Ada sumber yang masih di-scrape atau dianalisis. Halaman ini
+          diperbarui otomatis setiap beberapa detik.
+        </p>
       ) : null}
 
-      <LabSection
-        title="Sumber Review"
-        description={
-          sources.length === 0
-            ? "Mulai dengan menambahkan produk kompetitor pertama di bawah."
-            : `${sources.length} produk kompetitor · ${totalReviews.toLocaleString("id-ID")} review terkumpul.`
-        }
-        action={
-          sources.length > 0 ? (
-            <Button
-              variant={formOpen ? "outline" : "default"}
-              onClick={() => setFormOpen((v) => !v)}
-            >
-              {formOpen ? <X /> : <Plus />}
-              {formOpen ? "Tutup" : "Tambah Produk"}
+      {formOpen ? (
+        <ReviewSourceForm
+          id="ri-form"
+          onCancel={sources.length > 0 ? () => setFormOpen(false) : undefined}
+          onCreated={() => setFormOpen(false)}
+        />
+      ) : null}
+
+      {sources.length === 0 && !formOpen ? (
+        <LabEmptyState
+          icon={Star}
+          title="Belum ada sumber review"
+          description="Tambahkan URL produk kompetitor atau impor CSV untuk mulai analisis sentimen, keluhan, dan gap opportunity."
+          action={
+            <Button size="sm" onClick={() => setFormOpen(true)}>
+              <Plus className="size-3.5" aria-hidden />
+              Tambah sumber
             </Button>
-          ) : null
-        }
-      >
-        {/* Form tambah sumber (collapsible) */}
-        {formOpen ? (
-          <div
-            className={cn(
-              lab.panel,
-              "grid gap-4",
-              "animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none",
-            )}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-foreground font-bold tracking-tight">
-                  Tambah sumber review
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  Scrape URL produk kompetitor, atau import CSV review yang
-                  sudah Anda miliki.
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mode === "scrape" ? "default" : "outline"}
-                  onClick={() => setMode("scrape")}
-                >
-                  Scrape URL
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={mode === "csv" ? "default" : "outline"}
-                  onClick={() => {
-                    setMode("csv");
-                    setPlatformKey("csv");
-                  }}
-                >
-                  <FileUp className="size-3.5" aria-hidden />
-                  Import CSV
-                </Button>
-              </div>
-            </div>
+          }
+        />
+      ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="productName">Nama produk</Label>
-                <Input
-                  id="productName"
-                  value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
-                  placeholder="Body Lotion Brightening 200ml"
-                  disabled={pending}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="competitorBrand">Brand kompetitor</Label>
-                <Input
-                  id="competitorBrand"
-                  value={competitorBrand}
-                  onChange={(e) => setCompetitorBrand(e.target.value)}
-                  placeholder="Brand X"
-                  disabled={pending}
-                />
-              </div>
-            </div>
+      {sources.length > 0 ? (
+        <section aria-label="Daftar sumber review" className="flex flex-col gap-3">
+          <ResearchFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Cari produk, brand, atau platform…"
+            status={status}
+            onStatusChange={setStatus}
+            statusCounts={counts}
+            statusLabels={LEDGER_LABELS}
+            resultCount={filtered.length}
+            totalCount={sources.length}
+            onReset={() => {
+              setSearch("");
+              setStatus("all");
+            }}
+          />
 
-            {mode === "scrape" ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <Label>Sumber review</Label>
-                  <Select
-                    value={platformKey}
-                    items={PLATFORM_ITEMS}
-                    onValueChange={(v) => {
-                      if (v) setPlatformKey(v);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <span className="inline-flex items-center gap-1.5">
-                        <MarketplaceLogo
-                          marketplace={platformKey}
-                          className="size-4"
-                        />
-                        {selectedPlatform?.label ?? platformKey}
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel>Marketplace</SelectLabel>
-                        {reviewPlatformsByCategory("marketplace").map((p) => (
-                          <SelectItem key={p.key} value={p.key}>
-                            <span className="inline-flex items-center gap-1.5">
-                              <MarketplaceLogo
-                                marketplace={p.key}
-                                className="size-4"
-                              />
-                              {p.label}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                      <SelectGroup>
-                        <SelectLabel>Komunitas</SelectLabel>
-                        {reviewPlatformsByCategory("community").map((p) => (
-                          <SelectItem key={p.key} value={p.key}>
-                            <span className="inline-flex items-center gap-1.5">
-                              <MarketplaceLogo
-                                marketplace={p.key}
-                                className="size-4"
-                              />
-                              {p.label}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="productUrl">URL produk</Label>
-                  <Input
-                    id="productUrl"
-                    value={productUrl}
-                    onChange={(e) => setProductUrl(e.target.value)}
-                    placeholder={
-                      selectedPlatform?.urlPlaceholder ?? "https://..."
-                    }
-                    disabled={pending}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="csvFile">File CSV</Label>
-                  <Input
-                    id="csvFile"
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={(e) => handleCsvFile(e.target.files?.[0] ?? null)}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Kolom wajib: text/review/ulasan. Opsional: rating, author,
-                    date.
-                  </p>
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="csvPaste">Atau tempel CSV</Label>
-                  <Textarea
-                    id="csvPaste"
-                    value={csvContent}
-                    onChange={(e) => setCsvContent(e.target.value)}
-                    rows={5}
-                    placeholder={'text,rating,author\n"Tekstur enak",5,Sari'}
-                    disabled={pending}
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="csvRefUrl">URL referensi (opsional)</Label>
-                  <Input
-                    id="csvRefUrl"
-                    value={productUrl}
-                    onChange={(e) => setProductUrl(e.target.value)}
-                    placeholder="https://reviews.femaledaily.com/products/..."
-                    disabled={pending}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-muted-foreground text-xs">
-                {mode === "scrape"
-                  ? "Review di-scrape lalu dianalisis AI — sentimen, keluhan, pujian, dan gap opportunity."
-                  : "Review dari CSV langsung dianalisis tanpa scraping."}
-              </p>
-              <Button
-                onClick={mode === "csv" ? handleCreateCsv : handleCreateScrape}
-                disabled={submitDisabled}
-              >
-                <Plus />
-                {pending
-                  ? "Memproses…"
-                  : mode === "csv"
-                    ? "Import & Analisis"
-                    : "Mulai Scrape & Analisis"}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {sources.length === 0 ? (
-          !formOpen ? (
-            <LabEmptyState
-              icon={Star}
-              title="Belum ada sumber review"
-              description="Tambahkan URL produk kompetitor atau import CSV untuk mulai analisis sentimen, keluhan, dan gap opportunity."
-              action={
-                <Button size="sm" onClick={() => setFormOpen(true)}>
-                  <Plus className="size-3.5" aria-hidden />
-                  Tambah Produk
-                </Button>
-              }
-            />
-          ) : null
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {sources.map((s) => {
-              const coverage = isPartial(s)
-                ? Math.round((s.reviewCount / s.totalReviewsReported!) * 100)
-                : null;
-              return (
-                <div
-                  key={s.id}
-                  className={cn(lab.card, "group flex flex-col p-0")}
-                >
-                  <Link
-                    href={`/research-hub/review-intelligence/${s.id}`}
-                    className="flex flex-1 flex-col gap-4 p-5 pb-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span
-                          className="bg-primary/12 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl text-base font-extrabold"
-                          aria-hidden
+          {sorted.length === 0 ? (
+            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
+              Tidak ada sumber yang cocok dengan filter ini.
+            </p>
+          ) : (
+            <ResearchTable maxHeight="70vh">
+              <TableHeader sticky>
+                <TableRow>
+                  <SortableHead sortKey="product" sort={sort} onSort={toggle}>
+                    Produk
+                  </SortableHead>
+                  <SortableHead sortKey="brand" sort={sort} onSort={toggle}>
+                    Brand
+                  </SortableHead>
+                  <TableHead>Platform</TableHead>
+                  <TableHead>Status</TableHead>
+                  <SortableHead sortKey="reviews" sort={sort} onSort={toggle} align="right">
+                    Review
+                  </SortableHead>
+                  <TableHead className="text-right">Cakupan</TableHead>
+                  <SortableHead sortKey="updated" sort={sort} onSort={toggle}>
+                    Dianalisis
+                  </SortableHead>
+                  <TableHead className="w-0 text-right">
+                    <span className="sr-only">Aksi</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sorted.map((s) => {
+                  const tone = toneOf(s.status);
+                  const coverage = coverageOf(s);
+                  const platformLabel = getReviewPlatformLabel(s.platformKey);
+                  return (
+                    <TableRow key={s.id}>
+                      <TableCell className="max-w-[22rem] whitespace-normal">
+                        <Link
+                          href={`/research-hub/review-intelligence/${s.id}`}
+                          className="text-foreground focus-visible:ring-ring rounded font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
                         >
-                          {s.productName.trim().charAt(0) || "?"}
+                          {s.productName}
+                        </Link>
+                        {tone === "failed" && s.errorMessage ? (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-rose-700 dark:text-rose-300">
+                            {s.errorMessage}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {s.competitorBrand}
+                      </TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center gap-1.5">
+                          {resolveMarketplace(s.platformKey) ? (
+                            <MarketplaceLogo marketplace={s.platformKey} className="size-4" />
+                          ) : (
+                            <Star className="text-muted-foreground size-4 shrink-0" aria-hidden />
+                          )}
+                          {platformLabel}
                         </span>
-                        <div className="min-w-0">
-                          <p className="text-foreground flex items-center gap-1 truncate font-bold tracking-tight">
-                            <span className="truncate">{s.productName}</span>
-                            <ArrowUpRight className="text-muted-foreground/0 group-hover:text-muted-foreground size-3.5 shrink-0 transition-colors" />
-                          </p>
-                          <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                            <span className="truncate">
-                              {s.competitorBrand}
-                            </span>
-                            <span aria-hidden>·</span>
-                            <MarketplaceLogo
-                              marketplace={s.platformKey}
-                              className="size-3.5"
-                            />
-                            <span className="truncate">
-                              {getReviewPlatformLabel(s.platformKey)}
-                            </span>
-                          </p>
+                      </TableCell>
+                      <TableCell>
+                        <RunStatusBadge tone={tone} label={SOURCE_STATUS_LABELS[s.status]} />
+                      </TableCell>
+                      <TableCell className="rh-num text-right">
+                        {s.reviewCount > 0 ? (
+                          s.reviewCount.toLocaleString("id-ID")
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="rh-num text-right">
+                        {coverage != null ? (
+                          <span
+                            className="text-amber-700 dark:text-amber-300"
+                            title={`${s.reviewCount.toLocaleString("id-ID")} dari ${s.totalReviewsReported?.toLocaleString("id-ID")} review`}
+                          >
+                            {coverage}%
+                          </span>
+                        ) : s.reviewCount > 0 ? (
+                          <span className="text-muted-foreground">Penuh</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <RelativeTime date={s.lastAnalyzedAt} className="text-[13px] font-normal" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-0.5">
+                          {s.platformKey !== "csv" ? (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              disabled={pending || isInProgress(s.status)}
+                              onClick={() => handleRescrape(s)}
+                              aria-label={`Scrape ulang "${s.productName}"`}
+                              title="Scrape ulang"
+                            >
+                              <RefreshCw aria-hidden />
+                            </Button>
+                          ) : null}
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive"
+                            disabled={pending}
+                            onClick={() => setDeleteTarget(s)}
+                            aria-label={`Hapus "${s.productName}"`}
+                            title="Hapus sumber"
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
                         </div>
-                      </div>
-                      <StatusPill status={s.status} />
-                    </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </ResearchTable>
+          )}
+        </section>
+      ) : null}
 
-                    {s.status === "FAILED" && s.errorMessage ? (
-                      <p className="line-clamp-2 text-xs leading-relaxed text-rose-700 dark:text-rose-300">
-                        {s.errorMessage}
-                      </p>
-                    ) : null}
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <CardStat
-                        label="Review"
-                        value={s.reviewCount.toLocaleString("id-ID")}
-                      />
-                      <CardStat
-                        label="Cakupan"
-                        value={
-                          coverage != null
-                            ? `${coverage}%`
-                            : s.reviewCount > 0
-                              ? "Penuh"
-                              : "—"
-                        }
-                      />
-                      <CardStat
-                        label="Update"
-                        value={
-                          <RelativeTime
-                            date={
-                              s.lastAnalyzedAt
-                                ? new Date(s.lastAnalyzedAt)
-                                : null
-                            }
-                          />
-                        }
-                      />
-                    </div>
-                  </Link>
-
-                  <div className="border-border/60 flex items-center justify-between gap-2 border-t px-3 py-2">
-                    <span className="text-muted-foreground inline-flex items-center gap-1.5 truncate text-xs">
-                      {resolveMarketplace(s.platformKey) ? (
-                        <MarketplaceLogo
-                          marketplace={s.platformKey}
-                          className="size-3.5"
-                        />
-                      ) : (
-                        <Star className="size-3.5 shrink-0" aria-hidden />
-                      )}
-                      {getReviewPlatformLabel(s.platformKey)}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {s.platformKey !== "csv" ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={pending || isInProgress(s.status)}
-                          onClick={() =>
-                            startTransition(async () => {
-                              try {
-                                await rescrapeReviewIntelSource(s.id);
-                                toast.success("Scrape ulang dimulai.");
-                                router.refresh();
-                              } catch (err) {
-                                toast.error(
-                                  actionErrorMessage(
-                                    err,
-                                    "Gagal memproses permintaan.",
-                                  ),
-                                );
-                              }
-                            })
-                          }
-                        >
-                          <RefreshCw className="size-3.5" aria-hidden />
-                          Refresh
-                        </Button>
-                      ) : null}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        disabled={pending}
-                        aria-label="Hapus sumber"
-                        onClick={() =>
-                          startTransition(async () => {
-                            if (!confirm("Hapus sumber ini?")) return;
-                            try {
-                              await deleteReviewIntelSource(s.id);
-                              toast.success("Sumber dihapus.");
-                              router.refresh();
-                            } catch (err) {
-                              toast.error(
-                                actionErrorMessage(
-                                  err,
-                                  "Gagal memproses permintaan.",
-                                ),
-                              );
-                            }
-                          })
-                        }
-                      >
-                        <Trash2 className="size-3.5" aria-hidden />
-                        Hapus
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </LabSection>
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Hapus sumber "${deleteTarget?.productName ?? ""}"?`}
+        description={`${(deleteTarget?.reviewCount ?? 0).toLocaleString("id-ID")} review beserta analisis sentimen, keluhan, dan gap opportunity-nya ikut terhapus. Tindakan ini tidak bisa dibatalkan.`}
+        confirmLabel="Hapus sumber"
+        pending={pending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
