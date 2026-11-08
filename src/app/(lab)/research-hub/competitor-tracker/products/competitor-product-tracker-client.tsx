@@ -39,6 +39,7 @@ import {
 } from "@/components/research-hub/kit/research-table";
 import { formatRelativeTime } from "@/lib/research/labels";
 import { cn } from "@/lib/utils";
+import { ResearchFilterEmpty } from "@/components/research-hub/kit/research-section";
 
 export type CompetitorProductCategoryCard = {
   id: string;
@@ -266,9 +267,7 @@ export function CompetitorProductTrackerClient({
           />
 
           {sorted.length === 0 ? (
-            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
-              Tidak ada kategori yang cocok dengan filter ini.
-            </p>
+            <ResearchFilterEmpty>Tidak ada kategori yang cocok dengan filter ini.</ResearchFilterEmpty>
           ) : (
             <ResearchTable maxHeight="70vh">
               <TableHeader sticky>

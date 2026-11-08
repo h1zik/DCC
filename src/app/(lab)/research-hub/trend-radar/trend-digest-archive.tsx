@@ -24,6 +24,7 @@ import {
 } from "@/components/research-hub/kit/research-table";
 import type { TrendRadarPageData } from "./trend-radar-client";
 import { formatWeekRange, trendToneOf } from "./trend-status";
+import { ResearchFilterEmpty } from "@/components/research-hub/kit/research-section";
 
 type Digest = TrendRadarPageData["digests"][number];
 
@@ -81,9 +82,7 @@ export function TrendDigestArchive({
       />
 
       {sorted.length === 0 ? (
-        <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
-          Tidak ada digest yang cocok dengan filter ini.
-        </p>
+        <ResearchFilterEmpty>Tidak ada digest yang cocok dengan filter ini.</ResearchFilterEmpty>
       ) : (
         <ResearchTable maxHeight="70vh">
           <TableHeader sticky>

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Lightbulb, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { Lightbulb, RefreshCw, TriangleAlert } from "lucide-react";
 import { ProductInnovationStatus } from "@prisma/client";
 import { toast } from "sonner";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/lib/research/product-innovation/types";
 import type { RiskFactor } from "@/lib/research/concept-lab/types";
 import { cn } from "@/lib/utils";
+import { ResearchRunningNote } from "@/components/research-hub/kit/research-section";
 
 export type InnovationDetailData = {
   id: string;
@@ -195,18 +196,10 @@ export function InnovationDetailClient({ data }: { data: InnovationDetailData })
       ) : null}
 
       {isGenerating ? (
-        <div
-          className="border-border bg-muted/30 flex items-start gap-3 rounded-xl border px-4 py-3"
-          aria-live="polite"
-        >
-          <Loader2 className="text-muted-foreground mt-0.5 size-4 shrink-0 motion-safe:animate-spin" aria-hidden />
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium">AI sedang menerapkan enam lensa SCAMPER</p>
-            <p className="rh-meta">
-              Membaca bukti riset lalu menyusun alternatif per lensa. Halaman ini diperbarui otomatis.
-            </p>
-          </div>
-        </div>
+        <ResearchRunningNote
+          title={<>AI sedang menerapkan enam lensa SCAMPER</>}
+          description={<>Membaca bukti riset lalu menyusun alternatif per lensa. Halaman ini diperbarui otomatis.</>}
+        />
       ) : null}
 
       {data.ideas.length > 0 ? (

@@ -6,7 +6,6 @@ import {
   BarChart3,
   Grid3x3,
   Layers,
-  Loader2,
   Map,
   RefreshCw,
   Search,
@@ -49,6 +48,7 @@ import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 import { UspBriefDialog } from "./usp-brief-dialog";
+import { ResearchRunningNote } from "@/components/research-hub/kit/research-section";
 
 export type UspDetailData = {
   id: string;
@@ -238,20 +238,12 @@ export function UspDetailClient({ data }: { data: UspDetailData }) {
       }
     >
       {inProgress ? (
-        <div
-          className="border-border bg-muted/30 flex items-start gap-3 rounded-xl border px-4 py-3"
-          aria-live="polite"
-        >
-          <Loader2 className="text-muted-foreground mt-0.5 size-4 shrink-0 motion-safe:animate-spin" aria-hidden />
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium">
-              {data.status === "ANALYZING"
+        <ResearchRunningNote
+          title={<>{data.status === "ANALYZING"
                 ? "Langkah 2 dari 2: AI menyusun gap matrix dan kandidat USP"
-                : "Langkah 1 dari 2: mengumpulkan konteks dari modul riset"}
-            </p>
-            <p className="rh-meta">Halaman ini diperbarui otomatis setiap beberapa detik.</p>
-          </div>
-        </div>
+                : "Langkah 1 dari 2: mengumpulkan konteks dari modul riset"}</>}
+          description={<>Halaman ini diperbarui otomatis setiap beberapa detik.</>}
+        />
       ) : null}
 
       {data.status === "FAILED" && data.errorMessage ? (

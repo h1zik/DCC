@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { TrackedProductDetail } from "@/components/research-hub/kit/tracked-product-detail";
 import {
-  ShopProductDetailPanel,
   type ShopProductDetailData,
 } from "@/components/research-hub/shop-product-detail-panel";
 import {

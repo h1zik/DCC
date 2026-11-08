@@ -42,6 +42,7 @@ import {
 } from "@/components/research-hub/kit/research-table";
 import { useReviewIntelPolling } from "./use-review-intel-polling";
 import { ReviewSourceForm } from "./review-source-form";
+import { ResearchFilterEmpty } from "@/components/research-hub/kit/research-section";
 
 export type ReviewSourceRow = {
   id: string;
@@ -219,9 +220,7 @@ export function ReviewIntelligenceClient({
           />
 
           {sorted.length === 0 ? (
-            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
-              Tidak ada sumber yang cocok dengan filter ini.
-            </p>
+            <ResearchFilterEmpty>Tidak ada sumber yang cocok dengan filter ini.</ResearchFilterEmpty>
           ) : (
             <ResearchTable maxHeight="70vh">
               <TableHeader sticky>

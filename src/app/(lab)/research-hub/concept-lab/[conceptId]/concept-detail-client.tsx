@@ -8,7 +8,6 @@ import {
   Archive,
   FlaskConical,
   GitCompare,
-  Loader2,
   PenLine,
   Save,
   Send,
@@ -52,6 +51,7 @@ import { cn } from "@/lib/utils";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
 import { ResearchModelBadgeGroup } from "@/components/research-hub/research-model-badge";
 import { SendToRdDialog } from "./send-to-rd-dialog";
+import { ResearchRunningNote } from "@/components/research-hub/kit/research-section";
 
 export type ConceptDetailData = {
   id: string;
@@ -256,19 +256,11 @@ export function ConceptDetailClient({ data }: { data: ConceptDetailData }) {
       }
     >
       {inProgress ? (
-        <div
-          className="border-border bg-muted/30 flex items-start gap-3 rounded-xl border px-4 py-3"
-          aria-live="polite"
-        >
-          <Loader2 className="text-muted-foreground mt-0.5 size-4 shrink-0 motion-safe:animate-spin" aria-hidden />
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium">AI sedang memvalidasi konsep</p>
-            <p className="rh-meta">
-              Demand, diferensiasi, pricing, dan risiko dinilai dengan data kompetitor bila tersedia.
-              Halaman ini diperbarui otomatis.
-            </p>
-          </div>
-        </div>
+        <ResearchRunningNote
+          title={<>AI sedang memvalidasi konsep</>}
+          description={<>Demand, diferensiasi, pricing, dan risiko dinilai dengan data kompetitor bila tersedia.
+              Halaman ini diperbarui otomatis.</>}
+        />
       ) : null}
 
       {needsRevalidate ? (

@@ -1,32 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Section halaman detail: judul rh-section-title + kalimat rh-meta opsional. */
-export function DetailSection({
-  id,
-  title,
-  description,
-  children,
-  className,
-}: {
-  id: string;
-  title: string;
-  description?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section aria-labelledby={id} className={cn("flex min-w-0 flex-col gap-3", className)}>
-      <div className="space-y-0.5">
-        <h2 id={id} className="rh-section-title">
-          {title}
-        </h2>
-        {description ? <p className="rh-meta">{description}</p> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
+export { ResearchSection as DetailSection } from "@/components/research-hub/kit/research-section";
 
 /** Peringatan data parsial: marketplace melaporkan lebih banyak review dari yang ter-scrape. */
 export function PartialDataNotice({

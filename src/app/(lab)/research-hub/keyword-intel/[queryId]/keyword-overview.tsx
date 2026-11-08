@@ -3,38 +3,7 @@ import { Loader2 } from "lucide-react";
 import type { KeywordSignalStats } from "@/lib/research/keyword-intel/keyword-signal-types";
 import { cn } from "@/lib/utils";
 
-/** Section halaman detail: judul rh-section-title + kalimat rh-meta opsional. */
-export function DetailSection({
-  id,
-  title,
-  description,
-  aside,
-  children,
-  className,
-}: {
-  id: string;
-  title: string;
-  description?: React.ReactNode;
-  /** Info kecil di kanan judul (mis. jumlah). */
-  aside?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section aria-labelledby={id} className={cn("flex flex-col gap-3", className)}>
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-        <div className="space-y-0.5">
-          <h2 id={id} className="rh-section-title">
-            {title}
-          </h2>
-          {description ? <p className="rh-meta">{description}</p> : null}
-        </div>
-        {aside ? <p className="rh-meta rh-num">{aside}</p> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
+export { ResearchSection as DetailSection } from "@/components/research-hub/kit/research-section";
 
 /** Langkah pipeline nyata dari status — tanpa persentase karangan. */
 const QUEUED_STEP = { step: 0, label: "Menunggu antrean" };

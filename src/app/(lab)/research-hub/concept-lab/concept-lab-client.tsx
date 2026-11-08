@@ -38,6 +38,7 @@ import {
 } from "@/components/research-hub/kit/research-table";
 import { cn } from "@/lib/utils";
 import { NewConceptForm } from "./new-concept-form";
+import { ResearchFilterEmpty } from "@/components/research-hub/kit/research-section";
 
 export type ConceptRow = {
   id: string;
@@ -228,11 +229,9 @@ export function ConceptLabClient({ concepts }: { concepts: ConceptRow[] }) {
           </ResearchFilterBar>
 
           {sorted.length === 0 ? (
-            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
-              {active.length === 0
+            <ResearchFilterEmpty>{active.length === 0
                 ? "Semua konsep sudah diarsipkan. Centang Tampilkan arsip untuk melihatnya."
-                : "Tidak ada konsep yang cocok dengan filter ini."}
-            </p>
+                : "Tidak ada konsep yang cocok dengan filter ini."}</ResearchFilterEmpty>
           ) : (
             <ResearchTable maxHeight="70vh">
               <TableHeader sticky>

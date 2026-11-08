@@ -55,6 +55,7 @@ import {
 } from "@/components/research-hub/kit/research-table";
 import { cn } from "@/lib/utils";
 import { useProductDiscoveryPolling } from "./use-product-discovery-polling";
+import { ResearchFilterEmpty } from "@/components/research-hub/kit/research-section";
 
 export type ProductDiscoveryQueryRow = {
   id: string;
@@ -352,9 +353,7 @@ export function ProductDiscoveryClient({
           />
 
           {sorted.length === 0 ? (
-            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
-              Tidak ada pencarian yang cocok dengan filter ini.
-            </p>
+            <ResearchFilterEmpty>Tidak ada pencarian yang cocok dengan filter ini.</ResearchFilterEmpty>
           ) : (
             <ResearchTable maxHeight="70vh">
               <TableHeader sticky>

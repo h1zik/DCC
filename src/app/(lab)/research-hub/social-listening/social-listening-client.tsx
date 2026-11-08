@@ -43,6 +43,7 @@ import {
   useSortedRows,
 } from "@/components/research-hub/kit/research-table";
 import { SocialMonitorForm } from "./social-monitor-form";
+import { ResearchFilterEmpty } from "@/components/research-hub/kit/research-section";
 
 export type SocialMonitorRow = {
   id: string;
@@ -226,9 +227,7 @@ export function SocialListeningClient({
           />
 
           {sorted.length === 0 ? (
-            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
-              Tidak ada monitor yang cocok dengan filter ini.
-            </p>
+            <ResearchFilterEmpty>Tidak ada monitor yang cocok dengan filter ini.</ResearchFilterEmpty>
           ) : (
             <ResearchTable maxHeight="70vh">
               <TableHeader sticky>

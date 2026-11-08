@@ -6,7 +6,6 @@ import {
   FileText,
   GitBranch,
   ListChecks,
-  Loader2,
   RefreshCw,
   Sparkles,
   TriangleAlert,
@@ -42,6 +41,7 @@ import {
   ReportDocument,
   type ReportActionItem,
 } from "./report-reading";
+import { ResearchRunningNote } from "@/components/research-hub/kit/research-section";
 
 export type ReportActivityMetrics = {
   reviewSourcesReady: number;
@@ -180,18 +180,10 @@ export function ReportDetailClient({ data }: { data: ReportDetailData }) {
       }
     >
       {inProgress ? (
-        <div
-          className="border-border bg-muted/30 flex items-start gap-3 rounded-xl border px-4 py-3"
-          aria-live="polite"
-        >
-          <Loader2 className="text-muted-foreground mt-0.5 size-4 shrink-0 motion-safe:animate-spin" aria-hidden />
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium">AI sedang menulis laporan</p>
-            <p className="rh-meta">
-              Data modul riset dikumpulkan lalu tiap bagian ditulis. Halaman ini diperbarui otomatis.
-            </p>
-          </div>
-        </div>
+        <ResearchRunningNote
+          title={<>AI sedang menulis laporan</>}
+          description={<>Data modul riset dikumpulkan lalu tiap bagian ditulis. Halaman ini diperbarui otomatis.</>}
+        />
       ) : null}
 
       {data.status === "FAILED" ? (

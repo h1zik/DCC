@@ -39,14 +39,14 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     id: "2026-11-08-research-hub-ui-foundation",
     date: "2026-11-08",
-    title: "Research Hub: navigasi per tahap riset & daftar yang lebih mudah dipindai",
+    title: "Research Hub: tampilan baru di semua modul",
     category: "improved",
     description:
-      "Navigasi Research Hub kini mengikuti alur riset (temukan peluang, pahami pasar, susun strategi) dan bisa diciutkan agar tabel lebih lega. Product Discovery menampilkan status semua pencarian dalam satu bar, bisa dicari, difilter per status, dan diurutkan. Hapus pencarian kini meminta konfirmasi.",
+      "Navigasi Research Hub kini mengikuti alur riset (temukan peluang, pahami pasar, susun strategi) dan bisa diciutkan agar tabel lebih lega. Setiap modul menampilkan status semua job dalam satu bar, daftar bisa dicari, difilter per status, dan diurutkan. Halaman detail lebih rapi, menjelaskan kenapa sebuah bagian masih kosong, dan aksi hapus atau ambil ulang kini meminta konfirmasi.",
     highlights: [
-      "Header modul menunjukkan tahap riset dan model AI yang dipakai",
-      "Halaman detail produk kompetitor punya tampilan yang sama",
-      "Loading dan pesan error per halaman, navigasi tetap bisa dipakai",
+      "Overview disusun per tahap riset dengan status kesehatan data tiap modul",
+      "Teks minimal 12px dan angka sejajar agar mudah dibandingkan",
+      "Progress palsu diganti status nyata; loading dan pesan error per halaman",
     ],
   },
   {

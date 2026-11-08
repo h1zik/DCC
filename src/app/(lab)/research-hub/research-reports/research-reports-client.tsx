@@ -45,6 +45,7 @@ import {
   useSortedRows,
 } from "@/components/research-hub/kit/research-table";
 import { NewReportForm } from "./new-report-form";
+import { ResearchFilterEmpty } from "@/components/research-hub/kit/research-section";
 
 export type ReportRow = {
   id: string;
@@ -272,9 +273,7 @@ export function ResearchReportsClient({
           </ResearchFilterBar>
 
           {sorted.length === 0 ? (
-            <p className="rh-meta border-border rounded-xl border border-dashed px-5 py-8 text-center text-[13px]">
-              Tidak ada laporan yang cocok dengan filter ini.
-            </p>
+            <ResearchFilterEmpty>Tidak ada laporan yang cocok dengan filter ini.</ResearchFilterEmpty>
           ) : (
             <ResearchTable maxHeight="70vh">
               <TableHeader sticky>
