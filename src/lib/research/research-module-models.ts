@@ -17,8 +17,7 @@ export type ResearchModuleAiProfile = {
 
 /** Label tampilan human-readable untuk ID model API. */
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  [RESEARCH_DEFAULT_OLLAMA_MODELS.flash]: "DeepSeek V4 Flash",
-  [RESEARCH_DEFAULT_OLLAMA_MODELS.pro]: "DeepSeek V4 Pro",
+  "kimi-k3.1-pro": "Kimi K3.1 Pro",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
 };
@@ -33,6 +32,7 @@ export function formatModelShortName(model: string): string {
   return model
     .replace(/:cloud$/i, "")
     .replace(/^deepseek-/i, "DeepSeek ")
+    .replace(/^kimi-/i, "Kimi ")
     .replace(/^gemini-/i, "Gemini ")
     .replace(/-/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase())
@@ -47,7 +47,12 @@ export function formatTierModelLabel(
   tier: ResearchModelTier,
   model?: string,
 ): string {
-  return formatModelShortName(model ?? defaultOllamaModelForTier(tier));
+  const name = formatModelShortName(model ?? defaultOllamaModelForTier(tier));
+  // Bila kedua tier memakai model yang sama, bedakan lewat mode thinking.
+  if (!model && RESEARCH_DEFAULT_OLLAMA_MODELS.flash === RESEARCH_DEFAULT_OLLAMA_MODELS.pro) {
+    return `${name} · ${tier === "pro" ? "reasoning" : "cepat"}`;
+  }
+  return name;
 }
 
 /** Peta tier default per modul — selaras dengan analyzer di backend. */

@@ -16,7 +16,7 @@ import {
   sampleVisualAssetsForVision,
   loadVisualImageParts,
 } from "@/lib/brand-research/strategy/visual-vision";
-import { resolveResearchProvider } from "@/lib/research/llm/config";
+import { researchTierSupportsVision } from "@/lib/research/llm/config";
 
 type GuidelineResult = {
   moodboardAssetIds: string[];
@@ -94,11 +94,11 @@ export async function generateBrandCreativeGuideline(
     }));
 
     // Feed a real visual sample to the model so moodboard selection and palette are
-    // grounded in the actual images — not just filenames/tags. The multimodal adapter
-    // (Gemini) supports image parts; each part is labelled with its asset id so the
+    // grounded in the actual images — not just filenames/tags. The multimodal adapters
+    // (Gemini, Ollama/Kimi) support image parts; each part is labelled with its asset id so the
     // model can reference images when choosing moodboardAssetIds.
     let imageParts: { mimeType: string; data: string; label?: string }[] = [];
-    if (resolveResearchProvider() === "gemini") {
+    if (researchTierSupportsVision("pro")) {
       const sampled = sampleVisualAssetsForVision(
         assets.map((a) => ({
           id: a.id,

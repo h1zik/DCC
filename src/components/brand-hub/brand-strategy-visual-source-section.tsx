@@ -306,7 +306,7 @@ export function BrandStrategyVisualSourceSection({
               </Label>
               <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
                 {visual.analyzeImages
-                  ? `Gemini menganalisis hingga ${visual.maxSamples} sampel dari pilihan Anda — bukan hanya tags.`
+                  ? `AI menganalisis hingga ${visual.maxSamples} sampel dari pilihan Anda — bukan hanya tags.`
                   : "Hanya tags & metadata teks yang dikirim ke AI (bukan gambar)."}
               </p>
             </div>

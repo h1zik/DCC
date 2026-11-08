@@ -1,3 +1,6 @@
+import { resolveOllamaApiKey } from "@/lib/research/llm/config";
+import { RESEARCH_DEFAULT_OLLAMA_MODELS } from "@/lib/research/llm/defaults";
+import type { OllamaThinkLevel } from "@/lib/research/llm/types";
 import { buildAgentSystemInstruction } from "./user-context";
 import type { AgentUser } from "./types";
 
@@ -8,11 +11,8 @@ export type AgentProviderConfig = {
   accessContext?: string;
 };
 
-/** Model utama agent — Gemini murah dengan dukungan function calling. */
-const DEFAULT_MODEL = "gemini-2.5-flash-lite";
-
-/** Cadangan jika model utama sibuk / rate limit. */
-const FALLBACK_MODELS = ["gemini-2.0-flash-lite", "gemini-2.5-flash"] as const;
+/** Model agent — Kimi K3.1 Pro via Ollama Cloud (mendukung tool calling). */
+const DEFAULT_MODEL = RESEARCH_DEFAULT_OLLAMA_MODELS.pro;
 
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -24,19 +24,20 @@ export function buildAgentSystemPrompt(
 }
 
 export function resolveAgentApiKey(): string | null {
-  return (
-    process.env.GEMINI_API_KEY?.trim() ||
-    process.env.GOOGLE_AI_API_KEY?.trim() ||
-    null
-  );
+  return resolveOllamaApiKey();
 }
 
 export function resolveAgentModel(): string {
-  return (
-    process.env.AGENT_LLM_MODEL?.trim() ||
-    process.env.GEMINI_MODEL?.trim() ||
-    DEFAULT_MODEL
-  );
+  return process.env.AGENT_LLM_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+/**
+ * Thinking untuk agent: default mati supaya chat tetap responsif.
+ * Set AGENT_LLM_THINK=true untuk reasoning lebih dalam (lebih lambat).
+ */
+export function resolveAgentThink(): OllamaThinkLevel {
+  const raw = process.env.AGENT_LLM_THINK?.trim().toLowerCase();
+  return raw === "true" || raw === "on" || raw === "1";
 }
 
 export function resolveAgentModelCandidates(): string[] {
@@ -44,7 +45,7 @@ export function resolveAgentModelCandidates(): string[] {
   const seen = new Set<string>();
   const candidates: string[] = [];
 
-  for (const name of [primary, DEFAULT_MODEL, ...FALLBACK_MODELS]) {
+  for (const name of [primary, DEFAULT_MODEL]) {
     if (!name || seen.has(name)) continue;
     seen.add(name);
     candidates.push(name);

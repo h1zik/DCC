@@ -31,7 +31,7 @@ import {
 } from "@/lib/brand-research/strategy/visual-vision";
 import { listBrandVisualAssets } from "@/lib/brand-research/visual";
 import { brandStudioBrandFilter } from "@/lib/brand-research/brand-studio-scope";
-import { resolveResearchProvider } from "@/lib/research/llm/config";
+import { researchTierSupportsVision } from "@/lib/research/llm/config";
 import { gatherStrategyEvidence } from "@/lib/brand-research/strategy/strategy-evidence-gather";
 import {
   buildCitationRepairPrompt,
@@ -99,7 +99,7 @@ async function loadVisionParts(
   const useVision =
     config.visual.enabled &&
     config.visual.analyzeImages &&
-    resolveResearchProvider() === "gemini" &&
+    researchTierSupportsVision("pro") &&
     visualAssets.length > 0;
 
   if (useVision) {
