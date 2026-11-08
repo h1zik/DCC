@@ -23,7 +23,11 @@ export type ResearchHubNavItem = {
 
 export type ResearchHubNavZone = {
   id: string;
+  /** Urutan di alur riset: temukan → pahami pasar → susun strategi. */
+  step: number;
   label: string;
+  /** Satu kalimat: apa yang dikerjakan di tahap ini. */
+  summary: string;
   items: ResearchHubNavItem[];
 };
 
@@ -37,7 +41,9 @@ export const RESEARCH_HUB_OVERVIEW: ResearchHubNavItem = {
 export const RESEARCH_HUB_ZONES: ResearchHubNavZone[] = [
   {
     id: "discover",
-    label: "Discover",
+    step: 1,
+    label: "Temukan peluang",
+    summary: "Cari produk dan keyword yang sedang dicari pembeli.",
     items: [
       {
         key: "product-discovery",
@@ -55,7 +61,9 @@ export const RESEARCH_HUB_ZONES: ResearchHubNavZone[] = [
   },
   {
     id: "intelligence",
-    label: "Market Intelligence",
+    step: 2,
+    label: "Pahami pasar",
+    summary: "Baca review, kompetitor, percakapan sosial, dan tren.",
     items: [
       {
         key: "review-intelligence",
@@ -66,13 +74,13 @@ export const RESEARCH_HUB_ZONES: ResearchHubNavZone[] = [
       {
         key: "competitor-tracker-shops",
         href: "/research-hub/competitor-tracker",
-        label: "Competitor — Shops",
+        label: "Competitor shops",
         icon: Store,
       },
       {
         key: "competitor-tracker-products",
         href: "/research-hub/competitor-tracker/products",
-        label: "Competitor — Products",
+        label: "Competitor products",
         icon: Package,
       },
       {
@@ -91,7 +99,9 @@ export const RESEARCH_HUB_ZONES: ResearchHubNavZone[] = [
   },
   {
     id: "strategy",
-    label: "Strategy & Output",
+    step: 3,
+    label: "Susun strategi",
+    summary: "Ubah temuan jadi USP, konsep produk, dan laporan.",
     items: [
       {
         key: "usp-analyzer",
@@ -139,4 +149,29 @@ export function isResearchHubNavActive(
     return false;
   }
   return pathname.startsWith(itemHref);
+}
+
+export type ResearchHubLocation = {
+  zone: ResearchHubNavZone | null;
+  item: ResearchHubNavItem;
+  /** True bila pathname lebih dalam dari halaman indeks modul (halaman detail). */
+  isDetail: boolean;
+};
+
+/** Modul & tahap alur riset untuk pathname tertentu. */
+export function findResearchHubLocation(
+  pathname: string,
+): ResearchHubLocation | null {
+  const path = pathname.replace(/\/$/, "") || "/research-hub";
+  if (path === RESEARCH_HUB_OVERVIEW.href) {
+    return { zone: null, item: RESEARCH_HUB_OVERVIEW, isDetail: false };
+  }
+  for (const zone of RESEARCH_HUB_ZONES) {
+    for (const item of zone.items) {
+      if (isResearchHubNavActive(item.href, path)) {
+        return { zone, item, isDetail: path !== item.href };
+      }
+    }
+  }
+  return null;
 }

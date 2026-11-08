@@ -50,7 +50,7 @@ export function formatTierModelLabel(
   const name = formatModelShortName(model ?? defaultOllamaModelForTier(tier));
   // Bila kedua tier memakai model yang sama, bedakan lewat mode thinking.
   if (!model && RESEARCH_DEFAULT_OLLAMA_MODELS.flash === RESEARCH_DEFAULT_OLLAMA_MODELS.pro) {
-    return `${name} · ${tier === "pro" ? "reasoning" : "cepat"}`;
+    return `${name} mode ${tier === "pro" ? "reasoning" : "cepat"}`;
   }
   return name;
 }

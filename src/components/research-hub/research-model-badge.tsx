@@ -2,11 +2,7 @@
 
 import { Cpu } from "lucide-react";
 import type { ResearchAiMetaView } from "@/lib/research/research-module-models";
-import {
-  formatModelShortName,
-  formatTierModelLabel,
-  type ResearchModuleAiProfile,
-} from "@/lib/research/research-module-models";
+import { formatModelShortName } from "@/lib/research/research-module-models";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -73,39 +69,6 @@ export function ResearchModelBadgeGroup({
       </span>
       {meta.steps.map((step) => (
         <StepBadge key={`${step.label}-${step.tier}-${step.model}`} step={step} />
-      ))}
-    </div>
-  );
-}
-
-/** Petunjuk tier default modul (statis, dari konfigurasi analyzer). */
-export function ResearchModuleModelHint({
-  profile,
-  className,
-}: {
-  profile: ResearchModuleAiProfile;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "border-border/50 bg-card text-muted-foreground flex flex-wrap items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs",
-        className,
-      )}
-    >
-      <Cpu className="size-3.5 shrink-0" aria-hidden />
-      <span className="text-foreground font-medium">{profile.label}:</span>
-      {profile.steps.map((step) => (
-        <Badge
-          key={`${step.label}-${step.tier}`}
-          variant="outline"
-          className={cn("font-normal", TIER_STYLE[step.tier])}
-          title={step.label}
-        >
-          <span className="font-semibold">{formatTierModelLabel(step.tier)}</span>
-          <span className="opacity-60"> — </span>
-          <span className="opacity-90">{step.label}</span>
-        </Badge>
       ))}
     </div>
   );

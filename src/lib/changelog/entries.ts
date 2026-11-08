@@ -37,6 +37,19 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-08-research-hub-ui-foundation",
+    date: "2026-11-08",
+    title: "Research Hub: navigasi per tahap riset & daftar yang lebih mudah dipindai",
+    category: "improved",
+    description:
+      "Navigasi Research Hub kini mengikuti alur riset (temukan peluang, pahami pasar, susun strategi) dan bisa diciutkan agar tabel lebih lega. Product Discovery menampilkan status semua pencarian dalam satu bar, bisa dicari, difilter per status, dan diurutkan. Hapus pencarian kini meminta konfirmasi.",
+    highlights: [
+      "Header modul menunjukkan tahap riset dan model AI yang dipakai",
+      "Halaman detail produk kompetitor punya tampilan yang sama",
+      "Loading dan pesan error per halaman, navigasi tetap bisa dipakai",
+    ],
+  },
+  {
     id: "2026-11-08-kimi-k3-1-pro-shopee-actors",
     date: "2026-11-08",
     title: "Semua fitur AI kini memakai Kimi K3.1 Pro & scraper Shopee baru",
