@@ -13,27 +13,13 @@ import {
   isProfileRoute,
   isStudioWorkspaceRoute,
 } from "@/lib/routes";
-import {
-  isLogistics,
-  isMarketAnalyst,
-  isStudioOrProjectManager,
-} from "@/lib/roles";
+import { isMarketAnalyst, isStudioOrProjectManager } from "@/lib/roles";
+import { defaultHomeForRole } from "@/lib/role-home";
 import { NextResponse } from "next/server";
 
 // Instance NextAuth ringan khusus proxy: cukup verifikasi JWT, tanpa
 // provider Credentials (yang menyeret Prisma + bcrypt ke bundle proxy).
 const { auth } = NextAuth(authConfig);
-
-function defaultHomeForRole(role: UserRole | undefined): string {
-  if (role === UserRole.CEO) return "/";
-  if (role === UserRole.ADMINISTRATOR) return "/home";
-  if (role === UserRole.FINANCE) return "/finance";
-  if (isMarketAnalyst(role)) return "/dominatus-lab";
-  // Logistik ikut ruang kerja studio, tapi beranda kerjanya tetap inventori.
-  if (isLogistics(role)) return "/inventory";
-  if (isStudioOrProjectManager(role)) return "/home";
-  return "/inventory";
-}
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;

@@ -44,13 +44,21 @@ export async function updateUserRoleByCeo(input: z.infer<typeof updateSchema>) {
     throw new Error("Peran CEO tidak dapat diubah.");
   }
 
-  await prisma.user.update({
-    where: { id: data.userId },
-    data: {
-      role: role.permissionTier,
-      customRoleId: role.id,
-    },
-  });
+  // Peran yang ditetapkan admin selalu menjadi peran UTAMA: akun ditarik
+  // keluar dari mode lain, dan peran ini tidak lagi dihitung mode tambahan.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: data.userId },
+      data: {
+        role: role.permissionTier,
+        customRoleId: role.id,
+        primaryCustomRoleId: null,
+      },
+    }),
+    prisma.userModeGrant.deleteMany({
+      where: { userId: data.userId, customRoleId: role.id },
+    }),
+  ]);
 
   revalidatePath("/admin/access");
   revalidatePath("/admin/users");

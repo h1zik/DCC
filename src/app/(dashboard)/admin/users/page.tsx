@@ -57,6 +57,24 @@ export default async function AdminUsersPage() {
             capabilities: true,
           },
         },
+        // Mode akun: peran utama (terisi hanya selagi akun di mode lain) dan
+        // daftar mode tambahan yang boleh dimasuki.
+        primaryCustomRole: {
+          select: {
+            id: true,
+            name: true,
+            isProtected: true,
+            permissionTier: true,
+          },
+        },
+        modeGrants: {
+          select: {
+            customRole: {
+              select: { id: true, name: true, permissionTier: true },
+            },
+          },
+          orderBy: { customRole: { name: "asc" } },
+        },
         capabilities: {
           select: {
             capability: true,
@@ -85,8 +103,25 @@ export default async function AdminUsersPage() {
   // hidrasi client konsisten (tanpa Date.now() di render client).
   const nowMs = new Date().getTime();
   const users = rawUsers.map(
-    ({ lastSeenAt, capabilities, customRole, ...u }) => ({
+    ({
+      lastSeenAt,
+      capabilities,
+      customRole,
+      primaryCustomRole,
+      modeGrants,
+      ...u
+    }) => ({
       ...u,
+      // Peran utama ≠ peran aktif hanya selagi akun berada di mode lain.
+      primaryRole: primaryCustomRole
+        ? {
+            id: primaryCustomRole.id,
+            name: primaryCustomRole.name,
+            isProtected: primaryCustomRole.isProtected,
+            permissionTier: primaryCustomRole.permissionTier,
+          }
+        : null,
+      modeRoles: modeGrants.map((g) => g.customRole),
       // Basis akses Lab: kapabilitas perannya, atau — bila belum punya peran
       // kustom — matriks tier historis. Sama persis dengan yang dipakai
       // resolver di server (lihat `src/lib/lab-access.ts`).
