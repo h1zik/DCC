@@ -8,6 +8,7 @@ import { DashboardHeader } from "@/components/dashboard-header";
 import { RoomNavProvider } from "@/components/nav/room-nav-context";
 import type { NavRoom } from "@/lib/room-nav-data";
 import { type LabAccess, NO_LAB_ACCESS } from "@/lib/capabilities";
+import type { AccountModes } from "@/lib/account-modes";
 import { cn } from "@/lib/utils";
 import { PwaPushRegistrar } from "@/components/push/pwa-push-registrar";
 import { PAGE_GAP_CLASS, PAGE_MAX_WIDTH_CLASS, PAGE_PADDING_CLASS } from "@/components/page-container";
@@ -16,18 +17,21 @@ export function DashboardShell({
   children,
   navRooms = [],
   labAccess = NO_LAB_ACCESS,
+  accountModes,
 }: {
   children: React.ReactNode;
   navRooms?: NavRoom[];
   /** Diresolusi di layout server — sidebar tidak boleh menebak dari peran. */
   labAccess?: LabAccess;
+  /** Mode akun untuk pemilih mode di kartu user sidebar. */
+  accountModes?: AccountModes;
 }) {
   return (
     <SidebarProvider defaultOpen={false}>
       <PwaPushRegistrar />
       <RoomNavProvider rooms={navRooms}>
         <AgentPanelProvider>
-          <AppSidebar labAccess={labAccess} />
+          <AppSidebar labAccess={labAccess} accountModes={accountModes} />
           <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-x-hidden has-[_[data-chat-shell]]:overflow-hidden">
             <DashboardHeader />
             <div

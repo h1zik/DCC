@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-10-account-modes",
+    date: "2026-11-10",
+    title: "Mode akun: satu akun untuk beberapa peran",
+    category: "new",
+    description:
+      "Satu akun kini bisa berpindah ke beberapa peran tanpa login ulang, misalnya dari Logistik ke Finance. Admin mengatur peran mana saja yang boleh dimasuki tiap akun di halaman Pengguna, lalu pemilik akun berpindah lewat kartu profil di sidebar.",
+    highlights: [
+      "Admin: centang Mode tambahan di dialog Edit pengguna",
+      "Pengguna: klik kartu profil di sidebar, pilih mode, dan menu langsung berganti",
+      "Hanya satu mode aktif; aksesnya sama persis dengan peran yang dipilih",
+      "Peran Administrator dan CEO tidak bisa dijadikan mode tambahan",
+    ],
+  },
+  {
     id: "2026-11-10-finance-stock-movements",
     date: "2026-11-10",
     title: "Finance: notifikasi barang masuk & keluar dari Inventori",

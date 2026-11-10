@@ -25,6 +25,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   Lock,
+  UserRound,
   LogOut,
   Package,
   PiggyBank,
@@ -40,6 +41,18 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { type LabAccess, NO_LAB_ACCESS } from "@/lib/capabilities";
+import type { AccountModes } from "@/lib/account-modes";
+import {
+  AccountModeMenuGroup,
+  hasAccountModeChoice,
+} from "@/components/account-mode-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { effectiveRoleLabel } from "@/lib/role-labels";
 import {
   canUseAgent,
@@ -282,8 +295,11 @@ function SidebarNavLabel({
 
 export function AppSidebar({
   labAccess = NO_LAB_ACCESS,
+  accountModes,
 }: {
   labAccess?: LabAccess;
+  /** Mode akun (peran yang boleh dimasuki) — diresolusi di layout server. */
+  accountModes?: AccountModes;
 }) {
   const pathname = usePathname();
   const { data: session } = useSession();
@@ -483,6 +499,7 @@ export function AppSidebar({
           initial={initial}
           roleLabel={roleLabel}
           isActive={pathname.startsWith("/profile")}
+          accountModes={accountModes}
         />
         <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:items-center">
           <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center">
@@ -600,6 +617,7 @@ function UserCard({
   initial,
   roleLabel,
   isActive,
+  accountModes,
 }: {
   href: string;
   name: string;
@@ -607,20 +625,22 @@ function UserCard({
   initial: string;
   roleLabel: string;
   isActive: boolean;
+  accountModes?: AccountModes;
 }) {
-  return (
-    <Link
-      href={href}
-      title={`${name}${roleLabel ? ` • ${roleLabel}` : ""}`}
-      className={cn(
+  // Akun dengan lebih dari satu mode: kartu menjadi pemicu menu (profil +
+  // pemilih mode). Akun bermode tunggal tetap berupa tautan ke profil.
+  const withModes = accountModes && hasAccountModeChoice(accountModes);
+  const title = `${name}${roleLabel ? ` • ${roleLabel}` : ""}`;
+  const cardClassName = cn(
         "group/usercard relative mb-1 flex items-center gap-2 overflow-hidden rounded-lg border p-1.5",
         "transition-[border-color,background-color,padding,gap] duration-300 ease-in-out motion-reduce:transition-none",
         isActive
           ? "border-sidebar-primary/35 bg-gradient-to-r from-sidebar-primary/[0.18] via-sidebar-accent/35 to-transparent"
           : "border-sidebar-border/60 bg-sidebar/40 hover:border-sidebar-primary/30 hover:bg-sidebar-accent/40",
         "group-data-[collapsible=icon]:m-0 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:overflow-visible group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0",
-      )}
-    >
+  );
+  const body = (
+    <>
       <span
         className={cn(
           "relative shrink-0 rounded-full p-[2px]",
@@ -669,8 +689,41 @@ function UserCard({
         )}
         aria-hidden
       >
-        Profile
+        {withModes ? "Mode" : "Profile"}
       </span>
-    </Link>
+    </>
+  );
+
+  if (!withModes) {
+    return (
+      <Link href={href} title={title} className={cardClassName}>
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            title={title}
+            aria-label={`Menu akun ${name}`}
+            className={cn(cardClassName, "w-full text-left")}
+          >
+            {body}
+          </button>
+        }
+      />
+      <DropdownMenuContent side="top" align="start" className="min-w-56">
+        <AccountModeMenuGroup modes={accountModes} />
+        <DropdownMenuSeparator />
+        <DropdownMenuItem render={<Link href={href} />}>
+          <UserRound />
+          Profil
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
