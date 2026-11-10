@@ -15,6 +15,8 @@ export function hrefForNotificationType(type: NotificationType): string {
       return "/kol-hub/approvals";
     case NotificationType.KOL_APPROVAL_DECIDED:
       return "/kol-hub/schedules";
+    case NotificationType.STOCK_MOVEMENT:
+      return "/finance/stock-movements";
     default:
       return "/for-me";
   }

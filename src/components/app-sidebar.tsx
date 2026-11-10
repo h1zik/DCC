@@ -142,6 +142,7 @@ const navFinance = [
   { href: "/finance", label: "Financial Overview", icon: LayoutDashboard },
   { href: "/finance/chart-of-accounts", label: "Chart of Accounts", icon: LayoutGrid },
   { href: "/finance/journals", label: "Journals", icon: ScrollText },
+  { href: "/finance/stock-movements", label: "Stock Movements", icon: Boxes },
   { href: "/finance/general-ledger", label: "General Ledger", icon: FileBarChart },
   { href: "/finance/currencies", label: "Exchange Rates", icon: Coins },
   { href: "/finance/treasury", label: "Cash & Treasury", icon: ArrowLeftRight },

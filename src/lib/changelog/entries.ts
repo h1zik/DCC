@@ -37,6 +37,20 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-10-finance-stock-movements",
+    date: "2026-11-10",
+    title: "Finance: notifikasi barang masuk & keluar dari Inventori",
+    category: "new",
+    description:
+      "Setiap barang masuk atau keluar yang dicatat tim logistik kini langsung mengirim notifikasi ke tim Finance dan masuk ke halaman baru Stock Movements. Dari sana, tombol Masukkan ke pencatatan membuat draf jurnal bertanggal mutasi, lengkap dengan keterangan produk, untuk diperiksa lalu diposting.",
+    highlights: [
+      "Antrean Menunggu dicatat, Sudah dicatat, dan Diabaikan",
+      "Akun debit dan kredit disarankan sesuai jenis mutasi; nilai diisi Finance",
+      "Mutasi yang di-void sebelum dicatat otomatis keluar dari antrean; yang sudah dijurnal memunculkan pengingat untuk dibalik",
+      "Hanya mutasi baru yang masuk antrean; riwayat stok lama tidak berubah",
+    ],
+  },
+  {
     id: "2026-11-08-research-hub-ui-foundation",
     date: "2026-11-08",
     title: "Research Hub: tampilan baru di semua modul",
