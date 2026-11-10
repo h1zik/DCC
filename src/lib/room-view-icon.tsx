@@ -2,6 +2,7 @@ import {
   BookMarked,
   BookOpen,
   CalendarDays,
+  ClipboardList,
   Link as LinkIcon,
   Milestone,
   Presentation,
@@ -26,6 +27,8 @@ export function roomViewTypeIcon(type: RoomViewType): LucideIcon {
       return BookMarked;
     case RoomViewType.WHITEBOARD:
       return Presentation;
+    case RoomViewType.CONTENT_PLAN:
+      return ClipboardList;
     default:
       return Table;
   }

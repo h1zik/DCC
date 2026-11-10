@@ -1,10 +1,8 @@
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { getRoomMemberContextOrThrow } from "@/lib/ensure-room-studio";
 import { isSimpleTeamOrHqRoom } from "@/lib/room-simple-hub";
-import { contentPlanTaskKindOrDefault } from "@/lib/content-plan-task-kind";
 import { ContentPlanningClient } from "./content-planning-client";
-import type { ContentPlanFeedDefaults } from "./content-plan-feed";
+import { loadContentPlanData } from "./content-plan-data";
 
 type PageProps = { params: Promise<{ roomId: string }> };
 
@@ -15,73 +13,7 @@ export default async function RoomContentPlanningPage({ params }: PageProps) {
     redirect(`/room/${roomId}/tasks`);
   }
 
-  const [items, memberRows, projects, feedProfileRow] = await Promise.all([
-    prisma.roomContentPlanItem.findMany({
-      where: { roomId },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        pic: { select: { id: true, name: true, email: true, image: true } },
-        // Tugas Kanban aktif per baris: dipakai UI untuk tahu sisi mana (copy/
-        // design) yang sudah punya tugas sehingga tidak ditawarkan lagi.
-        tasksFromContentPlan: {
-          where: { archivedAt: null },
-          select: { contentPlanKind: true },
-        },
-      },
-    }),
-    prisma.roomMember.findMany({
-      where: { roomId },
-      include: { user: { select: { id: true, name: true, email: true, image: true } } },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.project.findMany({
-      where: { roomId },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    }),
-    prisma.roomContentPlanFeedProfile.findUnique({
-      where: { roomId },
-      select: {
-        username: true,
-        displayName: true,
-        bio: true,
-        avatarPath: true,
-        followersLabel: true,
-        followingLabel: true,
-        includeArchived: true,
-        instagramOnly: true,
-        includeUndated: true,
-      },
-    }),
-  ]);
+  const data = await loadContentPlanData(roomId, null, room);
 
-  const picUserOptions = memberRows.map((m) => m.user);
-  const kanbanProjectId = projects[0]?.id ?? null;
-  const rows = items.map(({ tasksFromContentPlan, ...row }) => ({
-    ...row,
-    kanbanTaskKinds: [
-      ...new Set(
-        tasksFromContentPlan.map((t) => contentPlanTaskKindOrDefault(t.contentPlanKind)),
-      ),
-    ],
-  }));
-
-  /** Simulasi feed: identitas awal diambil dari brand ruangan (fallback nama ruangan). */
-  const feedDefaults: ContentPlanFeedDefaults = {
-    username: room.brand?.name?.trim() || room.name,
-    displayName: room.brand?.name?.trim() || room.name,
-    avatarPath: room.logoImage ?? room.brand?.logo ?? null,
-  };
-
-  return (
-    <ContentPlanningClient
-      roomId={roomId}
-      items={rows}
-      picUserOptions={picUserOptions}
-      kanbanProjectId={kanbanProjectId}
-      feedProfile={feedProfileRow}
-      feedDefaults={feedDefaults}
-    />
-  );
+  return <ContentPlanningClient roomId={roomId} viewId={null} {...data} />;
 }

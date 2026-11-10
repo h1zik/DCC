@@ -1,5 +1,7 @@
 "use server";
 
+import { rm, unlink } from "node:fs/promises";
+import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { RoomViewType } from "@prisma/client";
 import { z } from "zod";
@@ -8,6 +10,10 @@ import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomHubManager } from "@/lib/room-access";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
 import { ROOM_VIEW_TYPE_META } from "@/lib/room-view-meta";
+import {
+  absolutePathFromStoredPublicPath,
+  getUploadPublicDir,
+} from "@/lib/upload-storage";
 
 const titleSchema = z.string().trim().min(1).max(80);
 const subtitleSchema = z.string().trim().max(160).optional().nullable();
@@ -83,11 +89,58 @@ export async function renameRoomView(input: z.infer<typeof renameSchema>) {
   revalidatePath(`/room/${roomId}/view/${data.viewId}`);
 }
 
+/**
+ * File unggahan milik view Content Plan (folder per baris + avatar profil feed).
+ * Dikumpulkan sebelum view dihapus karena baris & profilnya ikut ter-cascade.
+ */
+async function collectContentPlanViewFiles(viewId: string) {
+  const [items, profile] = await Promise.all([
+    prisma.roomContentPlanItem.findMany({ where: { viewId }, select: { id: true } }),
+    prisma.roomContentPlanFeedProfile.findUnique({
+      where: { viewId },
+      select: { avatarPath: true },
+    }),
+  ]);
+  return { itemIds: items.map((i) => i.id), avatarPath: profile?.avatarPath ?? null };
+}
+
+/** Best-effort: kegagalan menghapus file tidak membatalkan penghapusan view. */
+async function removeContentPlanViewFiles(files: {
+  itemIds: string[];
+  avatarPath: string | null;
+}) {
+  const baseDir = path.join(getUploadPublicDir(), "room-content-plan");
+  for (const itemId of files.itemIds) {
+    try {
+      await rm(path.join(baseDir, itemId), { recursive: true, force: true });
+    } catch {
+      /* folder sudah hilang / terkunci */
+    }
+  }
+  if (files.avatarPath?.startsWith("/uploads/room-content-plan-feed/")) {
+    const abs = absolutePathFromStoredPublicPath(files.avatarPath);
+    try {
+      if (abs) await unlink(abs);
+    } catch {
+      /* sudah hilang */
+    }
+  }
+}
+
 export async function deleteRoomView(viewId: string) {
   const session = await requireTasksRoomHubSession();
-  const roomId = await getViewRoomIdOrThrow(viewId);
+  const view = await prisma.roomView.findUniqueOrThrow({
+    where: { id: viewId },
+    select: { roomId: true, type: true },
+  });
+  const roomId = view.roomId;
   await assertRoomHubManager(roomId, session.user.id);
+  const contentPlanFiles =
+    view.type === RoomViewType.CONTENT_PLAN
+      ? await collectContentPlanViewFiles(viewId)
+      : null;
   await prisma.roomView.delete({ where: { id: viewId } });
+  if (contentPlanFiles) await removeContentPlanViewFiles(contentPlanFiles);
   revalidateTasksAndRoomHub();
   revalidatePath(`/room/${roomId}`);
 }

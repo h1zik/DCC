@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import {
   ContentPlanStatusKerja,
   ContentPlanTaskKind,
@@ -13,6 +12,7 @@ import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
 import { isSimpleHubRoom } from "@/lib/room-simple-hub";
 import { createTask } from "@/actions/tasks";
+import { contentPlanHref, revalidateContentPlan } from "@/lib/content-plan-scope";
 import {
   contentPlanTaskKindLabel,
   contentPlanTaskKindOrDefault,
@@ -31,6 +31,7 @@ const KIND_ORDER: ContentPlanTaskKind[] = [
 
 type PlanRow = {
   id: string;
+  viewId: string | null;
   konten: string;
   jenisKonten: keyof typeof JENIS_LABEL;
   usage: keyof typeof USAGE_LABEL;
@@ -105,7 +106,7 @@ function buildTaskDescription(params: {
     facts.join("\n"),
     row.detailKonten?.trim() ? `Detail konten:\n${row.detailKonten.trim()}` : null,
     links.filter(Boolean).join("\n") || null,
-    `Halaman Content Planning: /room/${roomId}/content-planning`,
+    `Halaman Content Planning: ${contentPlanHref(roomId, row.viewId)}`,
   ].filter(Boolean);
 
   return sections.join("\n\n");
@@ -177,6 +178,7 @@ export async function createKanbanTasksFromContentPlan(params: {
       where: { roomId: params.roomId, id: { in: requested }, archivedAt: null },
       select: {
         id: true,
+        viewId: true,
         konten: true,
         jenisKonten: true,
         usage: true,
@@ -269,6 +271,6 @@ export async function createKanbanTasksFromContentPlan(params: {
     }
   }
 
-  revalidatePath(`/room/${params.roomId}/content-planning`);
+  revalidateContentPlan(params.roomId);
   return result;
 }

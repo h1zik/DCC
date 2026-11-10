@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { contentPlanHref } from "@/lib/content-plan-scope";
 import { roomTaskProcessLabel } from "@/lib/room-task-process";
 import { taskStatusLabel } from "@/lib/task-status-ui";
 import { Badge } from "@/components/ui/badge";
@@ -112,6 +113,7 @@ export default async function MyTasksPage() {
       orderBy: [{ tanggalPosting: "asc" }, { createdAt: "desc" }],
       select: {
         id: true,
+        viewId: true,
         konten: true,
         jenisKonten: true,
         tanggalPosting: true,
@@ -270,7 +272,7 @@ export default async function MyTasksPage() {
             {contentPlanningItems.map((item) => (
               <li key={item.id}>
                 <Link
-                  href={`/room/${item.room.id}/content-planning`}
+                  href={contentPlanHref(item.room.id, item.viewId)}
                   className="bg-card hover:border-primary/40 hover:shadow-md group flex h-full flex-col gap-2 rounded-xl border border-border p-3.5 shadow-sm transition-all"
                 >
                   <div className="flex items-center gap-2">

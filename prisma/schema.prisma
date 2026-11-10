@@ -287,6 +287,8 @@ enum RoomViewType {
   LIST
   GLOSSARY
   WHITEBOARD
+  /// Content plan tambahan: tabel, Gantt, dan simulasi feed sendiri per view.
+  CONTENT_PLAN
 }
 
 /**
@@ -717,7 +719,7 @@ model Room {
   documentFolderShares RoomDocumentFolderShare[]
   members              RoomMember[]
   contentPlanItems     RoomContentPlanItem[]
-  contentPlanFeed      RoomContentPlanFeedProfile?
+  contentPlanFeeds     RoomContentPlanFeedProfile[]
   /**
    * Judul & urutan kolom Kanban per fase proses (diatur manager ruangan).
    */
@@ -785,6 +787,8 @@ model RoomView {
   listRows           RoomListRow[]
   glossaryEntries    RoomGlossaryEntry[]
   whiteboards        RoomWhiteboard[]
+  contentPlanItems   RoomContentPlanItem[]
+  contentPlanFeed    RoomContentPlanFeedProfile?
 
   @@index([roomId, sortOrder])
 }
@@ -1147,6 +1151,12 @@ model RoomContentPlanItem {
   id                   String                 @id @default(cuid())
   roomId               String
   room                 Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /**
+   * View Content Plan pemilik baris. Null = content plan bawaan ruangan
+   * (menu "Content Plan"); terisi = view tambahan bertipe CONTENT_PLAN.
+   */
+  viewId               String?
+  view                 RoomView?              @relation(fields: [viewId], references: [id], onDelete: Cascade)
   konten               String                 @default("")
   jenisKonten          ContentPlanJenis       @default(REELS)
   usage                ContentPlanUsage       @default(AWARENESS)
@@ -1212,17 +1222,21 @@ model RoomContentPlanItem {
   tasksFromContentPlan Task[]
 
   @@index([roomId, archivedAt])
+  @@index([viewId, archivedAt])
 }
 
 /**
- * Pengaturan simulasi feed Instagram per ruangan: identitas profil tiruan
+ * Pengaturan simulasi feed Instagram per content plan: identitas profil tiruan
  * (username, nama, bio, avatar, angka pengikut) dan preferensi baris mana
- * yang ikut ditampilkan. Satu ruangan = satu profil.
+ * yang ikut ditampilkan. Satu content plan = satu profil: `viewId` null untuk
+ * content plan bawaan ruangan, terisi untuk view tambahan.
  */
 model RoomContentPlanFeedProfile {
   id              String   @id @default(cuid())
-  roomId          String   @unique
+  roomId          String
   room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  viewId          String?  @unique
+  view            RoomView? @relation(fields: [viewId], references: [id], onDelete: Cascade)
   username        String   @default("") @db.VarChar(60)
   displayName     String   @default("") @db.VarChar(80)
   bio             String   @default("") @db.VarChar(400)
@@ -1246,6 +1260,8 @@ model RoomContentPlanFeedProfile {
   includeUndated  Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  @@index([roomId])
 }
 
 model RoomMember {

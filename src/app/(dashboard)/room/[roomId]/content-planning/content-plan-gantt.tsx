@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import {
   JENIS_LABEL,
+  JENIS_MARK_CLASS,
   STATUS_BAR_CLASS,
   STATUS_LABEL,
   STATUS_PROGRESS_PCT,
@@ -98,7 +99,14 @@ const GROUP_ITEMS: SelectItemDef[] = [
 /** Lebar kolom daftar konten (sidebar kiri). */
 const SIDEBAR_PX = 288;
 /** Tinggi satu baris konten (px) — dipakai juga untuk content-visibility. */
-const ROW_PX = 46;
+const ROW_PX = 52;
+/** Tinggi bar fase & posisi vertikalnya di dalam baris (copy di atas, design di bawah). */
+const BAR_PX = 15;
+const COPY_TOP_PX = 9;
+const DESIGN_TOP_PX = 28;
+/** Bar selebar ini ke atas memuat nama fasenya, jadi tidak perlu legenda terpisah. */
+const BAR_LABEL_MIN_PX = 52;
+const STATUS_ORDER = Object.values(ContentPlanStatusKerja) as ContentPlanStatusKerja[];
 /** Tinggi baris judul grup. */
 const GROUP_PX = 30;
 /** Batas rentang hari yang digambar agar DOM tetap ringan. */
@@ -232,6 +240,8 @@ type Phase = {
     "deadlineCopywriting" | "deadlineDesign"
   >;
   label: string;
+  /** Nama pendek yang ditulis di dalam bar. */
+  short: string;
   status: ContentPlanStatusKerja;
   startDay: Date;
   endDay: Date;
@@ -258,6 +268,10 @@ type TimeCell = {
   sub?: string;
   isWeekend?: boolean;
   isToday?: boolean;
+  /** Minggu ditulis merah seperti kalender dinding. */
+  isSunday?: boolean;
+  /** Tanggal 1: garis pemisah bulan dipertegas. */
+  isMonthStart?: boolean;
 };
 
 type ListItem =
@@ -290,6 +304,7 @@ function buildGeom(row: ContentPlanGanttRow, today: Date): GanttGeom | null {
     ? {
         field: "deadlineCopywriting",
         label: "Copywriting",
+        short: "Copy",
         status: row.statusCopywriting,
         startDay: anchor,
         endDay: dc,
@@ -306,6 +321,7 @@ function buildGeom(row: ContentPlanGanttRow, today: Date): GanttGeom | null {
     design = {
       field: "deadlineDesign",
       label: "Design",
+      short: "Design",
       status: row.statusDesign,
       startDay: designStart,
       endDay: dd,
@@ -378,6 +394,7 @@ const GanttRow = memo(function GanttRow({
   onHover: (rowId: string | null, rect?: DOMRect) => void;
 }) {
   const { row, copy, design, post, progressPct } = geom;
+  const rowLate = Boolean(copy?.late || design?.late || geom.postLate);
 
   const dragRef = useRef<{
     pointerId: number;
@@ -525,15 +542,15 @@ const GanttRow = memo(function GanttRow({
         data-field={phase.field}
         data-min-delta={-(phase.lenDays - 1)}
         className={cn(
-          "absolute z-10 h-[11px] overflow-hidden rounded-full border text-left shadow-xs outline-none transition-shadow",
+          "absolute z-10 overflow-hidden rounded-md border text-left outline-none transition-shadow",
           "focus-visible:ring-ring/60 focus-visible:ring-2",
           meta.base,
           meta.border,
-          phase.late && "ring-1 ring-rose-500/50",
+          phase.late && "ring-2 ring-rose-500/60",
           !readOnly && "cursor-grab touch-pan-y",
           dragging && "z-30 cursor-grabbing shadow-md",
         )}
-        style={{ top, left, width: widthPx }}
+        style={{ top, left, width: widthPx, height: BAR_PX }}
       >
         {pct > 0 ? (
           <span
@@ -541,6 +558,17 @@ const GanttRow = memo(function GanttRow({
             style={{ width: `${pct}%` }}
             aria-hidden
           />
+        ) : null}
+        {widthPx >= BAR_LABEL_MIN_PX ? (
+          <span
+            className={cn(
+              "relative z-10 block truncate px-1.5 text-[10px] leading-[13px] font-semibold",
+              meta.text,
+            )}
+            aria-hidden
+          >
+            {phase.short}
+          </span>
         ) : null}
         {!readOnly ? (
           <span
@@ -603,45 +631,39 @@ const GanttRow = memo(function GanttRow({
           className="border-border bg-card sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r px-3"
           style={{ width: SIDEBAR_PX }}
         >
-          <span className="flex shrink-0 flex-col gap-[3px]" aria-hidden>
-            <span
-              className={cn(
-                "size-1.5 rounded-full",
-                STATUS_BAR_CLASS[row.statusCopywriting].dot,
-              )}
-              title={`Copywriting: ${STATUS_LABEL[row.statusCopywriting]}`}
-            />
-            <span
-              className={cn(
-                "size-1.5 rounded-full",
-                STATUS_BAR_CLASS[row.statusDesign].dot,
-              )}
-              title={`Design: ${STATUS_LABEL[row.statusDesign]}`}
-            />
-          </span>
+          <span
+            className={cn("h-7 w-1 shrink-0 rounded-full", JENIS_MARK_CLASS[row.jenisKonten])}
+            title={JENIS_LABEL[row.jenisKonten]}
+            aria-hidden
+          />
           <button
             type="button"
             onClick={() => onOpen(row.id)}
-            className="min-w-0 flex-1 text-left outline-none focus-visible:ring-0"
+            className="focus-visible:ring-ring/60 min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2"
           >
             <p className="text-foreground truncate text-xs font-medium group-hover:underline">
               {title}
             </p>
-            <p className="text-muted-foreground truncate text-[10px] tabular-nums">
-              {JENIS_LABEL[row.jenisKonten]}
-              {post ? ` · terbit ${fmtShort(post)}` : " · belum ada tanggal terbit"}
-              {row.jamPosting ? ` ${row.jamPosting}` : ""}
+            <p className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-[11px] tabular-nums">
+              <span className="shrink-0">{JENIS_LABEL[row.jenisKonten]}</span>
+              {rowLate ? (
+                <span className="truncate font-medium text-rose-600 dark:text-rose-400">
+                  Lewat tenggat
+                </span>
+              ) : (
+                <span className="truncate">
+                  {post
+                    ? `Tayang ${fmtShort(post)}${row.jamPosting ? ` ${row.jamPosting}` : ""}`
+                    : "Belum ada tanggal tayang"}
+                </span>
+              )}
             </p>
           </button>
           <span
-            className="bg-muted h-1 w-8 shrink-0 overflow-hidden rounded-full"
+            className="text-muted-foreground w-8 shrink-0 text-right text-[10px] tabular-nums"
             title={`Progres ${progressPct}%`}
-            aria-hidden
           >
-            <span
-              className="bg-primary/70 block h-full rounded-full"
-              style={{ width: `${progressPct}%` }}
-            />
+            {progressPct}%
           </span>
           <PicAvatars pics={row.pics ?? []} max={2} />
         </div>
@@ -657,8 +679,8 @@ const GanttRow = memo(function GanttRow({
           />
         ) : null}
 
-        {copy ? renderPhase(copy, 8) : null}
-        {design ? renderPhase(design, 27) : null}
+        {copy ? renderPhase(copy, COPY_TOP_PX) : null}
+        {design ? renderPhase(design, DESIGN_TOP_PX) : null}
 
         {post ? (
           <>
@@ -859,6 +881,8 @@ export function ContentPlanGantt({
           label: String(d.getDate()),
           sub: d.toLocaleDateString("id-ID", { weekday: "narrow" }),
           isWeekend: dow === 0 || dow === 6,
+          isSunday: dow === 0,
+          isMonthStart: d.getDate() === 1,
           isToday: d.getTime() === today.getTime(),
         });
       }
@@ -971,6 +995,24 @@ export function ContentPlanGantt({
     });
   }, []);
 
+  /** Konten yang salah satu tenggat / tanggal tayangnya sudah lewat tanpa selesai. */
+  const lateGeoms = useMemo(
+    () => geoms.filter((g) => g.copy?.late || g.design?.late || g.postLate),
+    [geoms],
+  );
+
+  const jumpToLate = useCallback(() => {
+    const dates = lateGeoms.flatMap((g) =>
+      [
+        g.copy?.late ? g.copy.endDay : null,
+        g.design?.late ? g.design.endDay : null,
+        g.postLate ? g.post : null,
+      ].filter((d): d is Date => d !== null),
+    );
+    if (dates.length === 0) return;
+    scrollToX(differenceInCalendarDays(minDate(dates), rangeStart) * pxPerDay, true);
+  }, [lateGeoms, rangeStart, pxPerDay, scrollToX]);
+
   const hoverGeom = hoverCard
     ? geoms.find((g) => g.row.id === hoverCard.rowId)
     : undefined;
@@ -984,17 +1026,17 @@ export function ContentPlanGantt({
         title={
           hasActiveFilters
             ? "Tidak ada konten yang cocok dengan filter"
-            : "Belum ada baris content planning"
+            : "Belum ada konten di rencana ini"
         }
         description={
           hasActiveFilters
             ? "Longgarkan filter atau pencarian untuk melihat linimasa."
-            : "Tambahkan konten lewat tombol Baris baru untuk mulai menyusun linimasa."
+            : "Tambahkan konten lewat tombol Tambah konten untuk mulai menyusun linimasa."
         }
         action={
           !hasActiveFilters && onAddRow ? (
             <Button type="button" size="sm" onClick={onAddRow}>
-              Baris baru
+              Tambah konten
             </Button>
           ) : undefined
         }
@@ -1007,7 +1049,7 @@ export function ContentPlanGantt({
       <EmptyState
         icon={CalendarRange}
         title="Belum ada konten yang dijadwalkan"
-        description={`${rows.length} baris belum punya deadline copywriting, deadline design, maupun tanggal posting. Isi salah satunya agar muncul di Gantt.`}
+        description={`${rows.length} konten belum punya deadline copywriting, deadline design, maupun tanggal posting. Isi salah satunya agar muncul di Gantt.`}
       />
     );
   }
@@ -1016,34 +1058,42 @@ export function ContentPlanGantt({
 
   return (
     <div ref={wrapRef} className="relative flex min-h-0 flex-1 flex-col gap-3">
-      {/* Toolbar: legenda, grup, zoom, sidebar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <div className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-muted-foreground inline-flex items-center gap-1.5">
-            <span
-              className="bg-muted-foreground/40 h-[7px] w-6 rounded-full"
-              aria-hidden
-            />
-            Copywriting
-          </span>
-          <span className="text-muted-foreground inline-flex items-center gap-1.5">
-            <span
-              className="bg-muted-foreground/40 h-[7px] w-6 rounded-full"
-              aria-hidden
-            />
-            Design
-          </span>
-          <span className="text-muted-foreground inline-flex items-center gap-1.5">
-            <span
-              className="block size-2.5 rotate-45 rounded-[2px] bg-fuchsia-500"
-              aria-hidden
-            />
-            Posting
-          </span>
-          <span className="text-muted-foreground/70 hidden lg:inline">
-            Warna bar = status kerja · seret ujung bar untuk menggeser tenggat
-          </span>
+      {/* Toolbar: ringkasan, legenda status, grup, zoom, sidebar */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-medium tabular-nums">{geoms.length} terjadwal</span>
+          {lateGeoms.length > 0 ? (
+            <button
+              type="button"
+              title="Lompat ke tenggat terlewat yang paling awal."
+              onClick={jumpToLate}
+              className="focus-visible:ring-ring/60 rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 font-medium text-rose-700 tabular-nums outline-none transition-colors hover:bg-rose-500/20 focus-visible:ring-2 dark:text-rose-300"
+            >
+              {lateGeoms.length} lewat tenggat
+            </button>
+          ) : null}
         </div>
+        <ul
+          className="text-muted-foreground hidden flex-wrap items-center gap-x-3 gap-y-1 text-[11px] xl:flex"
+          aria-label="Arti warna bar"
+        >
+          {STATUS_ORDER.map((status) => (
+            <li key={status} className="inline-flex items-center gap-1">
+              <span
+                className={cn("size-2 rounded-full", STATUS_BAR_CLASS[status].dot)}
+                aria-hidden
+              />
+              {STATUS_LABEL[status]}
+            </li>
+          ))}
+          <li className="inline-flex items-center gap-1.5">
+            <span
+              className="block size-2 rotate-45 rounded-[2px] bg-fuchsia-500"
+              aria-hidden
+            />
+            Tayang
+          </li>
+        </ul>
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Select
@@ -1075,7 +1125,7 @@ export function ContentPlanGantt({
                 aria-pressed={zoom === z.key}
                 onClick={() => setZoom(z.key)}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  "focus-visible:ring-ring/60 rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2",
                   zoom === z.key
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
@@ -1090,6 +1140,7 @@ export function ContentPlanGantt({
             type="button"
             variant="outline"
             size="sm"
+            title={readOnly ? undefined : "Tip: seret ujung kanan bar untuk menggeser tenggat."}
             onClick={() => scrollToX(todayX, true)}
           >
             <LocateFixed className="size-3.5" aria-hidden />
@@ -1131,9 +1182,7 @@ export function ContentPlanGantt({
                   className="border-border bg-card sticky left-0 z-20 flex shrink-0 items-end border-r px-3 pb-1.5"
                   style={{ width: SIDEBAR_PX }}
                 >
-                  <p className="text-muted-foreground text-[11px] font-medium">
-                    {geoms.length} konten terjadwal
-                  </p>
+                  <p className="text-muted-foreground text-[11px] font-medium">Konten</p>
                 </div>
               ) : null}
               <div className="relative shrink-0" style={{ width: timelineWidth }}>
@@ -1153,9 +1202,9 @@ export function ContentPlanGantt({
                     <span
                       key={c.left}
                       className={cn(
-                        "border-border/40 absolute inset-y-0 flex flex-col items-center justify-center border-r leading-none",
+                        "border-border/40 absolute inset-y-0 flex flex-col items-center justify-center gap-px border-r leading-none",
                         c.isWeekend && "bg-muted/40",
-                        c.isToday && "bg-primary/10",
+                        c.isMonthStart && "border-l-border border-l",
                       )}
                       style={{ left: c.left, width: c.width }}
                     >
@@ -1165,7 +1214,9 @@ export function ContentPlanGantt({
                             "text-[9px]",
                             c.isToday
                               ? "text-primary font-semibold"
-                              : "text-muted-foreground/60",
+                              : c.isSunday
+                                ? "text-red-600/80 dark:text-red-400/80"
+                                : "text-muted-foreground/60",
                           )}
                         >
                           {c.sub}
@@ -1175,15 +1226,19 @@ export function ContentPlanGantt({
                         className={cn(
                           "text-[11px] tabular-nums",
                           c.isToday
-                            ? "text-primary font-semibold"
-                            : "text-muted-foreground",
+                            ? zoom === "day"
+                              ? "bg-primary text-primary-foreground rounded-full px-1 py-px font-semibold"
+                              : "text-primary font-semibold"
+                            : c.isSunday
+                              ? "text-red-600 dark:text-red-400"
+                              : "text-muted-foreground",
                         )}
                       >
                         {c.label}
                       </span>
                     </span>
                   ))}
-                  {todayX >= 0 && todayX <= timelineWidth ? (
+                  {zoom !== "day" && todayX >= 0 && todayX <= timelineWidth ? (
                     <span
                       className="bg-primary text-primary-foreground absolute bottom-0.5 z-10 -translate-x-1/2 rounded-full px-1.5 py-px text-[9px] font-semibold whitespace-nowrap"
                       style={{ left: todayX }}
@@ -1212,6 +1267,7 @@ export function ContentPlanGantt({
                   className={cn(
                     "border-border/30 absolute inset-y-0 border-r",
                     c.isWeekend && "bg-muted/30",
+                    c.isMonthStart && "border-l-border border-l",
                     c.isToday && "bg-primary/5",
                   )}
                   style={{ left: c.left, width: c.width }}
@@ -1266,8 +1322,8 @@ export function ContentPlanGantt({
       {unscheduled.length > 0 ? (
         <div className="border-border bg-muted/20 shrink-0 rounded-xl border border-dashed p-3">
           <p className="text-muted-foreground text-[11px] font-medium">
-            {unscheduled.length} konten belum terjadwal — isi deadline atau
-            tanggal posting agar muncul di linimasa.
+            {unscheduled.length} konten belum terjadwal. Isi deadline atau tanggal
+            posting agar muncul di linimasa.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {unscheduled.slice(0, 12).map((r) => (
@@ -1307,7 +1363,7 @@ export function ContentPlanGantt({
             {hoverGeom.row.konten?.trim() || "Tanpa judul"}
           </p>
           <p className="text-muted-foreground mt-1 text-[11px]">
-            {JENIS_LABEL[hoverGeom.row.jenisKonten]} ·{" "}
+            {JENIS_LABEL[hoverGeom.row.jenisKonten]},{" "}
             {USAGE_LABEL[hoverGeom.row.usage ?? ContentPlanUsage.AWARENESS]}
           </p>
 
@@ -1333,7 +1389,7 @@ export function ContentPlanGantt({
                 )}
               >
                 {hoverGeom.post ? fmtLong(hoverGeom.post) : "—"}
-                {hoverGeom.row.jamPosting ? ` · ${hoverGeom.row.jamPosting}` : ""}
+                {hoverGeom.row.jamPosting ? `, ${hoverGeom.row.jamPosting}` : ""}
               </dd>
             </div>
           </dl>
@@ -1389,7 +1445,7 @@ function PhaseLine({
           aria-hidden
         />
         <span className="shrink-0">{label}</span>
-        <span className="truncate opacity-70">· {STATUS_LABEL[status]}</span>
+        <span className="text-foreground/80 truncate">{STATUS_LABEL[status]}</span>
       </dt>
       <dd
         className={cn(

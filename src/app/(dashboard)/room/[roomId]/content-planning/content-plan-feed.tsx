@@ -350,7 +350,7 @@ function FeedTile({
       {!published ? (
         <span
           className={cn(
-            "pointer-events-none absolute bottom-1 left-1 rounded px-1 py-px text-[8px] font-semibold tabular-nums text-white",
+            "pointer-events-none absolute bottom-1 left-1 rounded-full px-1.5 py-px text-[9px] font-semibold tabular-nums text-white",
             row.tanggalPosting ? "bg-black/60" : "bg-amber-600/90",
           )}
         >
@@ -383,7 +383,7 @@ function FeedTile({
       {/* Menu aksi tile */}
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="absolute right-1 bottom-1 flex size-5 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[popup-open]:opacity-100"
+          className="absolute right-1 bottom-1 flex size-5 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[popup-open]:opacity-100 [@media(hover:none)]:opacity-100"
           aria-label={`Aksi untuk ${title}`}
         >
           <MoreHorizontal className="size-3" />
@@ -644,11 +644,13 @@ function FeedCoverDialog({
 
 function FeedProfileForm({
   roomId,
+  viewId,
   profile,
   defaults,
   onProfileChange,
 }: {
   roomId: string;
+  viewId: string | null;
   profile: ContentPlanFeedProfileData;
   defaults: ContentPlanFeedDefaults;
   onProfileChange: (next: ContentPlanFeedProfileData) => void;
@@ -685,7 +687,7 @@ function FeedProfileForm({
     };
     startSave(async () => {
       try {
-        await saveContentPlanFeedProfile(roomId, input);
+        await saveContentPlanFeedProfile(roomId, input, viewId);
         const next: ContentPlanFeedProfileData = {
           ...profile,
           username: input.username || slugifyFeedUsername(defaults.username),
@@ -732,7 +734,7 @@ function FeedProfileForm({
               fd.append("file", file);
               startAvatar(async () => {
                 try {
-                  const res = await uploadContentPlanFeedAvatar(roomId, fd);
+                  const res = await uploadContentPlanFeedAvatar(roomId, fd, viewId);
                   onProfileChange({ ...profile, avatarPath: res.avatarPath });
                   toast.success("Avatar diperbarui.");
                   router.refresh();
@@ -762,7 +764,7 @@ function FeedProfileForm({
                 onClick={() => {
                   startAvatar(async () => {
                     try {
-                      await clearContentPlanFeedAvatar(roomId);
+                      await clearContentPlanFeedAvatar(roomId, viewId);
                       onProfileChange({ ...profile, avatarPath: null });
                       toast.success("Avatar kembali ke logo ruangan.");
                       router.refresh();
@@ -931,8 +933,17 @@ function FeedToggleRow({
 
 type FeedTab = "grid" | "reels";
 
+type FeedPanel = "konten" | "aturan" | "profil";
+
+const FEED_PANELS: { key: FeedPanel; label: string }[] = [
+  { key: "konten", label: "Di luar feed" },
+  { key: "aturan", label: "Aturan" },
+  { key: "profil", label: "Profil" },
+];
+
 export function ContentPlanFeedSimulation({
   roomId,
+  viewId,
   rows,
   profile: savedProfile,
   defaults,
@@ -944,6 +955,8 @@ export function ContentPlanFeedSimulation({
   onRowsPatched,
 }: {
   roomId: string;
+  /** Content plan pemilik feed ini (null = bawaan ruangan). */
+  viewId: string | null;
   /** Semua baris (aktif + arsip) yang sudah lolos filter toolbar. */
   rows: ContentPlanTableRow[];
   profile: ContentPlanFeedProfileData | null;
@@ -960,6 +973,7 @@ export function ContentPlanFeedSimulation({
     resolveProfile(savedProfile, defaults),
   );
   const [tab, setTab] = useState<FeedTab>("grid");
+  const [panel, setPanel] = useState<FeedPanel>("konten");
   const [coverRowId, setCoverRowId] = useState<string | null>(null);
   const [togglePending, startToggle] = useTransition();
   const [orderPending, startOrder] = useTransition();
@@ -1030,7 +1044,7 @@ export function ContentPlanFeedSimulation({
       setProfile((p) => ({ ...p, [key]: next }));
       startToggle(async () => {
         try {
-          await saveContentPlanFeedProfile(roomId, { [key]: next });
+          await saveContentPlanFeedProfile(roomId, { [key]: next }, viewId);
           router.refresh();
         } catch (e) {
           setProfile(prev);
@@ -1038,7 +1052,7 @@ export function ContentPlanFeedSimulation({
         }
       });
     },
-    [profile, roomId, router],
+    [profile, roomId, router, viewId],
   );
 
   const setVisibility = useCallback(
@@ -1099,7 +1113,7 @@ export function ContentPlanFeedSimulation({
     onRowsPatched(rollback.map((p) => ({ id: p.id, patch: { feedPosition: null } })));
     startOrder(async () => {
       try {
-        await resetContentPlanFeedOrder(roomId);
+        await resetContentPlanFeedOrder(roomId, viewId);
         toast.success("Urutan feed kembali mengikuti tanggal posting.");
         router.refresh();
       } catch (e) {
@@ -1107,7 +1121,7 @@ export function ContentPlanFeedSimulation({
         toast.error(actionErrorMessage(e, "Gagal mereset urutan feed."));
       }
     });
-  }, [rows, onRowsPatched, roomId, router]);
+  }, [rows, onRowsPatched, roomId, router, viewId]);
 
   const tileActions: TileActions = {
     onPreview,
@@ -1126,37 +1140,39 @@ export function ContentPlanFeedSimulation({
       {/* ------------------------------------------------------------ */}
       {/* Bingkai ponsel                                                 */}
       {/* ------------------------------------------------------------ */}
-      <div className="min-w-0">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
-          <p className="text-muted-foreground text-xs">
-            Simulasi profil Instagram — {feedRows.length} post di grid
-            {scheduledCount > 0 ? `, ${scheduledCount} belum tayang` : ""}.
-            {hasActiveFilters ? " Filter toolbar ikut diterapkan." : ""}
-          </p>
-          <div className="flex items-center gap-2">
-            {hasManualOrder ? (
-              <>
-                <Badge variant="outline" className="text-[10px]">
-                  Urutan manual
-                </Badge>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  disabled={orderPending}
-                  title="Hapus semua posisi manual; grid kembali mengikuti tanggal & jam posting."
-                  onClick={resetOrder}
-                >
-                  <RotateCcw className="size-3" />
-                  Reset ke urutan tanggal
-                </Button>
-              </>
-            ) : (
-              <p className="text-muted-foreground text-[11px]">
-                Seret tile untuk mengatur posisi. Tanpa geser: terbaru di kiri atas.
-              </p>
-            )}
+      <div className="border-border bg-muted/30 min-w-0 rounded-2xl border p-3 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">Pratinjau profil Instagram</h2>
+            <p className="text-muted-foreground text-xs tabular-nums">
+              {feedRows.length} post di grid
+              {scheduledCount > 0 ? `, ${scheduledCount} belum tayang` : ""}.
+              {hasActiveFilters ? " Pencarian dan filter ikut diterapkan." : ""}
+            </p>
           </div>
+          {hasManualOrder ? (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px]">
+                Urutan manual
+              </Badge>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={orderPending}
+                title="Hapus semua posisi manual; grid kembali mengikuti tanggal & jam posting."
+                onClick={resetOrder}
+              >
+                <RotateCcw className="size-3" />
+                Urutkan menurut tanggal
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground max-w-60 text-[11px] leading-snug sm:text-right">
+              Seret tile untuk mengatur posisi. Tanpa digeser, post terbaru ada di kiri
+              atas.
+            </p>
+          )}
         </div>
 
         <div
@@ -1178,7 +1194,7 @@ export function ContentPlanFeedSimulation({
                 type="button"
                 className="hover:text-foreground text-foreground/80"
                 aria-label="Tambah baris konten baru"
-                title="Baris baru"
+                title="Tambah konten"
                 onClick={onAddRow}
               >
                 <Plus className="size-5" strokeWidth={2.25} aria-hidden />
@@ -1235,7 +1251,7 @@ export function ContentPlanFeedSimulation({
                 </div>
               ) : (
                 <p className="text-muted-foreground text-sm italic">
-                  Bio belum diisi — atur di panel kanan.
+                  Bio belum diisi. Atur di tab Profil.
                 </p>
               )}
             </div>
@@ -1296,15 +1312,15 @@ export function ContentPlanFeedSimulation({
               <Grid3x3 className="size-8 opacity-40" aria-hidden />
               <p>
                 {tab === "reels"
-                  ? "Belum ada baris berjenis Reels yang masuk feed."
+                  ? "Belum ada Reels yang masuk feed."
                   : rows.length === 0
-                    ? "Belum ada baris content plan."
-                    : "Tidak ada post di feed. Tambahkan dari panel kanan."}
+                    ? "Belum ada konten di rencana ini."
+                    : "Belum ada post di feed. Masukkan dari tab Di luar feed."}
               </p>
               {rows.length === 0 ? (
                 <Button type="button" size="xs" variant="outline" onClick={onAddRow}>
                   <Plus className="size-3" />
-                  Baris baru
+                  Tambah konten
                 </Button>
               ) : null}
             </div>
@@ -1336,32 +1352,56 @@ export function ContentPlanFeedSimulation({
       {/* ------------------------------------------------------------ */}
       {/* Panel kustomisasi                                              */}
       {/* ------------------------------------------------------------ */}
-      <aside className="min-w-0 space-y-4 lg:self-start">
-        <section className="border-border bg-card rounded-xl border p-3">
-          <div className="mb-1 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">
-              Di luar feed
-              {excludedRows.length > 0 ? (
-                <span className="bg-muted text-muted-foreground ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
+      <aside className="min-w-0 space-y-3 lg:sticky lg:top-0 lg:self-start">
+        <div
+          className="bg-muted/60 flex items-center rounded-lg p-0.5"
+          role="group"
+          aria-label="Pengaturan feed"
+        >
+          {FEED_PANELS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              aria-pressed={panel === p.key}
+              onClick={() => setPanel(p.key)}
+              className={cn(
+                "focus-visible:ring-ring inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2",
+                panel === p.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {p.label}
+              {p.key === "konten" && excludedRows.length > 0 ? (
+                <span className="bg-muted text-muted-foreground inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
                   {excludedRows.length}
                 </span>
               ) : null}
-            </h3>
+            </button>
+          ))}
+        </div>
+
+        <section
+          hidden={panel !== "konten"}
+          className="border-border bg-card rounded-xl border p-3"
+        >
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Konten di luar feed</h3>
             <Button type="button" size="xs" variant="outline" onClick={onAddRow}>
               <Plus className="size-3" />
-              Baris baru
+              Tambah konten
             </Button>
           </div>
           {excludedRows.length === 0 ? (
             <p className="text-muted-foreground text-[11px]">
-              Semua baris sudah tampil di feed. Pakai tombol X di tile (saat hover) untuk
-              mengeluarkan post, atau buat baris baru.
+              Semua konten sudah tampil di feed. Untuk mengeluarkan post, buka menu
+              titik tiga di tile lalu pilih Hapus dari feed.
             </p>
           ) : (
             <>
               <p className="text-muted-foreground mb-1.5 text-[11px]">
-                Klik Tambah untuk memasukkan post ke grid (selalu tampil, mengabaikan aturan
-                otomatis). Baris berjenis Story tidak pernah masuk feed.
+                Tambah memasukkan post ke grid dan membuatnya selalu tampil, apa pun
+                aturan otomatisnya. Story tidak pernah masuk feed.
               </p>
               <ul className="flex max-h-72 flex-col gap-0.5 overflow-y-auto pr-0.5">
                 {excludedRows.map(({ row: r, reason }) => (
@@ -1373,7 +1413,7 @@ export function ContentPlanFeedSimulation({
                       <p className="truncate text-xs">{rowTitle(r)}</p>
                       <p className="text-muted-foreground text-[10px]">
                         {FEED_EXCLUSION_LABEL[reason]}
-                        {r.tanggalPosting ? ` · ${feedDateLabel(r)}` : ""}
+                        {r.tanggalPosting ? `, ${feedDateLabel(r)}` : ""}
                       </p>
                     </div>
                     {reason === "story" ? (
@@ -1402,10 +1442,14 @@ export function ContentPlanFeedSimulation({
           )}
         </section>
 
-        <section className="border-border bg-card rounded-xl border p-3">
+        <section
+          hidden={panel !== "aturan"}
+          className="border-border bg-card rounded-xl border p-3"
+        >
           <h3 className="mb-1 text-sm font-semibold">Aturan otomatis</h3>
           <p className="text-muted-foreground mb-1 text-[11px]">
-            Berlaku untuk baris yang belum diatur manual lewat Tambah / Hapus.
+            Berlaku untuk konten yang belum diatur manual lewat Tambah atau Hapus dari
+            feed.
           </p>
           <div className="-mx-1.5 flex flex-col">
             <FeedToggleRow
@@ -1435,13 +1479,18 @@ export function ContentPlanFeedSimulation({
           </div>
         </section>
 
-        <section className="border-border bg-card rounded-xl border p-3">
+        {/* Disembunyikan, bukan dilepas, supaya draf profil tidak hilang saat pindah tab. */}
+        <section
+          hidden={panel !== "profil"}
+          className="border-border bg-card rounded-xl border p-3"
+        >
           <h3 className="text-sm font-semibold">Profil simulasi</h3>
           <p className="text-muted-foreground mb-3 text-[11px]">
             Berlaku untuk semua anggota ruangan. Tidak mengubah akun Instagram asli.
           </p>
           <FeedProfileForm
             roomId={roomId}
+            viewId={viewId}
             profile={profile}
             defaults={defaults}
             onProfileChange={setProfile}

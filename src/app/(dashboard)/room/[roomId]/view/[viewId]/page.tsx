@@ -16,6 +16,8 @@ import { LinksViewClient } from "./links-view-client";
 import { ListViewClient } from "./list-view-client";
 import { GlossaryViewClient } from "./glossary-view-client";
 import { WhiteboardViewClient } from "@/components/whiteboard/whiteboard-view-client";
+import { ContentPlanningClient } from "../../content-planning/content-planning-client";
+import { loadContentPlanData } from "../../content-planning/content-plan-data";
 
 type PageProps = {
   params: Promise<{ roomId: string; viewId: string }>;
@@ -30,7 +32,7 @@ export default async function RoomCustomViewPage({
   const { roomId, viewId } = await params;
   const { board: boardParam } = await searchParams;
   const requestedBoardId = typeof boardParam === "string" ? boardParam : null;
-  const { role, viewerUserId } = await getRoomMemberContextOrThrow(roomId);
+  const { room, role, viewerUserId } = await getRoomMemberContextOrThrow(roomId);
 
   const view = await prisma.roomView.findUnique({
     where: { id: viewId },
@@ -63,6 +65,21 @@ export default async function RoomCustomViewPage({
           viewerUserId,
           requestedBoardId,
         )}
+      </div>
+    );
+  }
+
+  // Content plan memakai shell setinggi viewport yang sama dengan content plan
+  // bawaan ruangan: tabel & Gantt menggulung di dalam, bukan seluruh halaman.
+  if (view.type === RoomViewType.CONTENT_PLAN) {
+    const data = await loadContentPlanData(roomId, view.id, room);
+    return (
+      <div
+        data-content-plan-shell
+        className="flex min-w-0 flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden"
+      >
+        <RoomViewHeader view={view} canManage={canManage} />
+        <ContentPlanningClient roomId={roomId} viewId={view.id} {...data} />
       </div>
     );
   }

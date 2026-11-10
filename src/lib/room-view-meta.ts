@@ -67,9 +67,18 @@ export const ROOM_VIEW_TYPE_META: Record<RoomViewType, RoomViewTypeMeta> = {
     defaultTitle: "Whiteboard",
     iconKey: "presentation",
   },
+  [RoomViewType.CONTENT_PLAN]: {
+    type: RoomViewType.CONTENT_PLAN,
+    label: "Content Plan",
+    description:
+      "Rencana konten tersendiri dengan tabel, Gantt, dan simulasi feed. Cocok untuk akun, brand, atau campaign yang jadwalnya dipisah.",
+    defaultTitle: "Content Plan",
+    iconKey: "clipboard-list",
+  },
 };
 
 export const ROOM_VIEW_TYPE_ORDER: RoomViewType[] = [
+  RoomViewType.CONTENT_PLAN,
   RoomViewType.CALENDAR,
   RoomViewType.TIMELINE,
   RoomViewType.WHITEBOARD,
