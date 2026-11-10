@@ -405,6 +405,14 @@ model User {
    */
   customRoleId                       String?
   customRole                         CustomRole?                    @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  /**
+   * Mode akun: peran UTAMA selagi akun sedang berada di mode lain. Null =
+   * tidak sedang berpindah mode, artinya `customRoleId` adalah peran utama.
+   * Peran utama efektif = `primaryCustomRoleId ?? customRoleId`. Mode aktif
+   * selalu ditulis ke `role` + `customRoleId` (lihat `src/lib/account-modes.ts`).
+   */
+  primaryCustomRoleId                String?
+  primaryCustomRole                  CustomRole?                    @relation("UserPrimaryCustomRole", fields: [primaryCustomRoleId], references: [id], onDelete: SetNull)
   createdAt                          DateTime                       @default(now())
   updatedAt                          DateTime                       @updatedAt
   taskAssignments                    TaskAssignee[]
@@ -528,8 +536,12 @@ model User {
   // ─── Kapabilitas (akses per-fitur di luar tier peran) ───
   capabilities                       UserCapability[]               @relation("UserCapabilityUser")
   capabilitiesGranted                UserCapability[]               @relation("UserCapabilityGrantedBy")
+  // ─── Mode akun (peran tambahan yang boleh dimasuki) ───
+  modeGrants                         UserModeGrant[]                @relation("UserModeGrantUser")
+  modeGrantsGiven                    UserModeGrant[]                @relation("UserModeGrantGrantedBy")
 
   @@index([customRoleId])
+  @@index([primaryCustomRoleId])
 }
 
 /**
@@ -576,8 +588,30 @@ model CustomRole {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   users          User[]
+  primaryUsers   User[]          @relation("UserPrimaryCustomRole")
+  modeGrants     UserModeGrant[]
 
   @@index([permissionTier])
+}
+
+/**
+ * Mode tambahan sebuah akun: peran kustom LAIN (di luar peran utamanya) yang
+ * boleh dimasuki pemilik akun lewat pemilih mode. Diatur admin di halaman
+ * Users. Tier CEO/Administrator tidak boleh dijadikan mode tambahan —
+ * divalidasi di `src/actions/account-modes.ts`.
+ */
+model UserModeGrant {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation("UserModeGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  customRoleId String
+  customRole   CustomRole @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
+  grantedById  String?
+  grantedBy    User?      @relation("UserModeGrantGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, customRoleId])
+  @@index([customRoleId])
 }
 
 /**

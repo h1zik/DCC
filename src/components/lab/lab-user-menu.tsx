@@ -12,6 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AccountModeMenuGroup } from "@/components/account-mode-menu";
+import type { AccountModes } from "@/lib/account-modes";
 import { effectiveRoleLabel } from "@/lib/role-labels";
 
 export type LabUser = {
@@ -19,6 +21,8 @@ export type LabUser = {
   image: string | null;
   role: UserRole;
   customRoleName: string | null;
+  /** Mode akun — grup pemilih hanya muncul bila ada lebih dari satu. */
+  accountModes?: AccountModes;
 };
 
 function initials(name: string | null): string {
@@ -69,6 +73,12 @@ export function LabUserMenu({ user }: { user: LabUser }) {
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {user.accountModes && user.accountModes.modes.length > 1 ? (
+          <>
+            <AccountModeMenuGroup modes={user.accountModes} />
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <DropdownMenuItem render={<Link href="/home" />}>
           <ArrowLeft />
           Kembali ke DCC

@@ -117,6 +117,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.customRoleName = row.customRole?.name ?? null;
         }
       }
+      // Pindah mode akun: client memanggil `update({ refreshRole: true })`
+      // setelah action menulis mode baru ke DB. Peran SELALU dibaca ulang
+      // dari DB — payload client hanya pemicu, tidak pernah jadi sumber nilai.
+      if (
+        params.trigger === "update" &&
+        token.id &&
+        (params.session as { refreshRole?: unknown } | null)?.refreshRole ===
+          true
+      ) {
+        const row = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: {
+            role: true,
+            employmentType: true,
+            customRole: { select: { name: true } },
+          },
+        });
+        if (row) {
+          token.role = row.role;
+          token.employmentType = row.employmentType;
+          token.customRoleName = row.customRole?.name ?? null;
+        }
+      }
       if (token.id && token.employmentType === undefined) {
         const row = await prisma.user.findUnique({
           where: { id: token.id as string },

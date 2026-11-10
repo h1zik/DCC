@@ -5,6 +5,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdministrator } from "@/lib/auth-helpers";
+import { isModeEligibleTier } from "@/lib/account-modes";
 import { baselineCapabilitiesForRole } from "@/lib/capabilities";
 import {
   ASSIGNABLE_PERMISSION_TIERS,
@@ -132,6 +133,19 @@ export async function updateCustomRoleTier(input: z.infer<typeof retierSchema>) 
   }
   if (existing.permissionTier === data.permissionTier) return;
 
+  // Mode tambahan tidak boleh bertier Administrator — kalau peran ini masih
+  // dipakai sebagai mode, menaikkan tier-nya akan jadi jalur naik hak akses.
+  if (!isModeEligibleTier(data.permissionTier)) {
+    const asMode = await prisma.userModeGrant.count({
+      where: { customRoleId: data.id },
+    });
+    if (asMode > 0) {
+      throw new Error(
+        `Peran ini masih menjadi mode tambahan ${asMode} akun. Cabut dulu dari akun tersebut sebelum menaikkan tier-nya.`,
+      );
+    }
+  }
+
   await prisma.$transaction([
     prisma.customRole.update({
       where: { id: data.id },
@@ -158,15 +172,22 @@ export async function deleteCustomRole(input: z.infer<typeof deleteSchema>) {
 
   const role = await prisma.customRole.findUnique({
     where: { id },
-    select: { id: true, isProtected: true, name: true, _count: { select: { users: true } } },
+    select: {
+      id: true,
+      isProtected: true,
+      name: true,
+      // `primaryUsers` = akun yang peran utamanya ini tapi sedang di mode lain.
+      _count: { select: { users: true, primaryUsers: true } },
+    },
   });
   if (!role) throw new Error("Peran tidak ditemukan.");
   if (role.isProtected) {
     throw new Error(`Peran inti "${role.name}" tidak dapat dihapus.`);
   }
-  if (role._count.users > 0) {
+  const inUse = role._count.users + role._count.primaryUsers;
+  if (inUse > 0) {
     throw new Error(
-      `Peran "${role.name}" masih dipakai ${role._count.users} pengguna. Pindahkan dulu mereka ke peran lain.`,
+      `Peran "${role.name}" masih dipakai ${inUse} pengguna. Pindahkan dulu mereka ke peran lain.`,
     );
   }
   await prisma.customRole.delete({ where: { id } });

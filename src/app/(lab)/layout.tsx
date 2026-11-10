@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { LabShell } from "@/components/lab/lab-shell";
 import { LabThemeScript } from "@/components/lab/lab-theme-script";
 import { PwaPushRegistrar } from "@/components/push/pwa-push-registrar";
+import { getAccountModes } from "@/lib/account-modes";
 import { ensureLabPage } from "@/lib/lab-access";
 
 /**
@@ -18,6 +19,7 @@ export default async function LabLayout({
 
   // State sidebar dibaca server-side agar SSR langsung render lebar yang
   // benar — tanpa flash saat reload.
+  const accountModes = await getAccountModes(session.user.id);
   const sidebarCollapsed =
     (await cookies()).get("lab_sidebar_state")?.value === "collapsed";
 
@@ -33,6 +35,7 @@ export default async function LabLayout({
           image: session.user.image ?? null,
           role: session.user.role,
           customRoleName: session.user.customRoleName ?? null,
+          accountModes,
         }}
       >
         {children}

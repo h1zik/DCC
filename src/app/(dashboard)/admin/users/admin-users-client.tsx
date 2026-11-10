@@ -13,10 +13,12 @@ import {
   updateUserDetailsByCeo,
 } from "@/actions/users";
 import { updateUserRoleByCeo } from "@/actions/user-roles";
+import { setUserModeGrants } from "@/actions/account-modes";
 import { effectiveRoleLabel, enumRoleLabel } from "@/lib/role-labels";
 import { tierTone } from "@/lib/role-tier-tone";
 import { hub } from "@/components/brand-hub/brand-hub-primitives";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +65,19 @@ export type UserAdminRow = {
   createdAt: Date;
   customRoleId: string | null;
   customRole: { id: string; name: string; isProtected: boolean } | null;
+  /**
+   * Peran utama — terisi HANYA selagi akun sedang berada di mode lain (saat itu
+   * `role`/`customRole` berisi mode yang aktif). Null = peran aktif adalah
+   * peran utamanya.
+   */
+  primaryRole: {
+    id: string;
+    name: string;
+    isProtected: boolean;
+    permissionTier: UserRole;
+  } | null;
+  /** Mode tambahan yang boleh dimasuki akun ini. */
+  modeRoles: { id: string; name: string; permissionTier: UserRole }[];
   online: boolean;
   lastSeenLabel: string;
   /** Kapabilitas Lab yang datang dari peran — basis sebelum override. */
@@ -128,22 +143,69 @@ function UserAvatar({
   );
 }
 
+/** Id peran utama: `primaryRole` bila sedang di mode lain, selain itu peran aktif. */
+function primaryRoleIdOf(u: UserAdminRow): string | null {
+  return u.primaryRole?.id ?? u.customRoleId;
+}
+
+/** Label peran UTAMA — dipakai tabel & filter agar tidak ikut berubah saat pindah mode. */
+function primaryRoleLabel(u: UserAdminRow): string {
+  return u.primaryRole?.name ?? effectiveRoleLabel(u);
+}
+
 function RoleBadge({ user }: { user: UserAdminRow }) {
-  const tone = tierTone(user.role);
-  const label = effectiveRoleLabel(user);
-  const locked = user.role === UserRole.CEO || user.customRole?.isProtected;
+  const tier = user.primaryRole?.permissionTier ?? user.role;
+  const tone = tierTone(tier);
+  const label = primaryRoleLabel(user);
+  const locked =
+    user.role === UserRole.CEO ||
+    (user.primaryRole ?? user.customRole)?.isProtected;
   return (
     <span
       className={cn(
         "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
         tone.chip,
       )}
-      title={`Tier permission: ${enumRoleLabel(user.role)}`}
+      title={`Tier permission: ${enumRoleLabel(tier)}`}
     >
       <span className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} aria-hidden />
       <span className="truncate">{label}</span>
       {locked ? <Lock className="size-2.5 shrink-0" aria-hidden /> : null}
     </span>
+  );
+}
+
+/** Peran utama + chip mode tambahan + penanda mode yang sedang dipakai. */
+function RoleCell({ user }: { user: UserAdminRow }) {
+  const activeModeName = user.primaryRole ? effectiveRoleLabel(user) : null;
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <div className="flex max-w-full flex-wrap items-center gap-1">
+        <RoleBadge user={user} />
+        {user.modeRoles.map((m) => (
+          <span
+            key={m.id}
+            className="text-muted-foreground inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-border px-1.5 py-0.5 text-[10px] font-medium"
+            title={`Mode tambahan: ${m.name} (tier ${enumRoleLabel(m.permissionTier)})`}
+          >
+            <span
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                tierTone(m.permissionTier).dot,
+              )}
+              aria-hidden
+            />
+            <span className="truncate">{m.name}</span>
+          </span>
+        ))}
+      </div>
+      {activeModeName ? (
+        <span className="text-muted-foreground text-[10px]">
+          Sedang di mode{" "}
+          <span className="text-foreground font-medium">{activeModeName}</span>
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -167,6 +229,7 @@ export function AdminUsersClient({
   const [draftEmail, setDraftEmail] = useState("");
   const [draftName, setDraftName] = useState("");
   const [draftCustomRoleId, setDraftCustomRoleId] = useState<string>("");
+  const [draftModeIds, setDraftModeIds] = useState<string[]>([]);
   const [draftEmployment, setDraftEmployment] =
     useState<EmploymentType>("EMPLOYEE");
   const [draftPassword, setDraftPassword] = useState("");
@@ -190,7 +253,7 @@ export function AdminUsersClient({
   const roleChips = useMemo(() => {
     const map = new Map<string, number>();
     for (const u of users) {
-      const label = effectiveRoleLabel(u);
+      const label = primaryRoleLabel(u);
       map.set(label, (map.get(label) ?? 0) + 1);
     }
     return [...map.entries()]
@@ -201,7 +264,7 @@ export function AdminUsersClient({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return users.filter((u) => {
-      if (roleFilter !== "all" && effectiveRoleLabel(u) !== roleFilter) {
+      if (roleFilter !== "all" && primaryRoleLabel(u) !== roleFilter) {
         return false;
       }
       if (employmentFilter !== "all" && u.employmentType !== employmentFilter) {
@@ -219,7 +282,8 @@ export function AdminUsersClient({
     setEditing(row);
     setDraftEmail(row.email);
     setDraftName(row.name ?? "");
-    setDraftCustomRoleId(row.customRoleId ?? fallbackRoleId);
+    setDraftCustomRoleId(primaryRoleIdOf(row) ?? fallbackRoleId);
+    setDraftModeIds(row.modeRoles.map((m) => m.id));
     setDraftEmployment(row.employmentType);
     setDraftPassword("");
     setEditOpen(true);
@@ -251,12 +315,27 @@ export function AdminUsersClient({
       if (
         editing.role !== UserRole.CEO &&
         draftCustomRoleId &&
-        draftCustomRoleId !== editing.customRoleId
+        draftCustomRoleId !== primaryRoleIdOf(editing)
       ) {
         await updateUserRoleByCeo({
           userId: editing.id,
           customRoleId: draftCustomRoleId,
         });
+      }
+
+      // Mode tambahan — peran utama tidak pernah ikut dihitung sebagai mode.
+      if (canEditModes(editing)) {
+        const nextModes = draftModeIds.filter((id) => id !== draftCustomRoleId);
+        const prevModes = editing.modeRoles.map((m) => m.id);
+        const changed =
+          nextModes.length !== prevModes.length ||
+          nextModes.some((id) => !prevModes.includes(id));
+        if (changed) {
+          await setUserModeGrants({
+            userId: editing.id,
+            customRoleIds: nextModes,
+          });
+        }
       }
 
       if (pwd) {
@@ -271,6 +350,25 @@ export function AdminUsersClient({
     } finally {
       setPending(false);
     }
+  }
+
+  /** Mode tambahan tidak bisa diatur untuk akun sendiri maupun akun CEO. */
+  function canEditModes(row: UserAdminRow): boolean {
+    return row.id !== currentUserId && row.role !== UserRole.CEO;
+  }
+
+  /** Peran yang boleh jadi mode tambahan: non-Admin, selain peran utama terpilih. */
+  const modeOptions = roles.filter(
+    (r) =>
+      r.permissionTier !== UserRole.ADMINISTRATOR &&
+      r.permissionTier !== UserRole.CEO &&
+      r.id !== draftCustomRoleId,
+  );
+
+  function toggleDraftMode(id: string, checked: boolean) {
+    setDraftModeIds((prev) =>
+      checked ? [...new Set([...prev, id])] : prev.filter((x) => x !== id),
+    );
   }
 
   async function onDelete(row: UserAdminRow) {
@@ -549,7 +647,7 @@ export function AdminUsersClient({
                   {rowActions(u)}
                 </div>
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border/50 pt-2.5">
-                  <RoleBadge user={u} />
+                  <RoleCell user={u} />
                   <span className="text-muted-foreground text-xs">
                     {u.online ? (
                       <span className="inline-flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-300">
@@ -598,7 +696,7 @@ export function AdminUsersClient({
                   >
                     <td className="px-4 py-3">{identityCell(u)}</td>
                     <td className="px-4 py-3">
-                      <RoleBadge user={u} />
+                      <RoleCell user={u} />
                     </td>
                     <td className="px-4 py-3">
                       {u.online ? (
@@ -708,6 +806,50 @@ export function AdminUsersClient({
                   </Select>
                 )}
               </div>
+              {editing && canEditModes(editing) ? (
+                <div className="space-y-2">
+                  <Label>Mode tambahan</Label>
+                  {modeOptions.length === 0 ? (
+                    <p className="text-muted-foreground text-[11px]">
+                      Belum ada peran lain yang bisa dijadikan mode.
+                    </p>
+                  ) : (
+                    <div className="max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-border p-1.5">
+                      {modeOptions.map((r) => (
+                        <label
+                          key={r.id}
+                          className="hover:bg-muted/50 flex cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1.5 text-sm"
+                        >
+                          <Checkbox
+                            checked={draftModeIds.includes(r.id)}
+                            onCheckedChange={(c) =>
+                              toggleDraftMode(r.id, c === true)
+                            }
+                          />
+                          <span
+                            className={cn(
+                              "size-1.5 shrink-0 rounded-full",
+                              tierTone(r.permissionTier).dot,
+                            )}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {r.name}
+                          </span>
+                          <span className="text-muted-foreground shrink-0 text-[10px]">
+                            {enumRoleLabel(r.permissionTier)}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-muted-foreground text-[11px]">
+                    Akun ini bisa berpindah ke peran yang dicentang lewat kartu
+                    profil di sidebar. Peran Administrator tidak bisa dijadikan
+                    mode.
+                  </p>
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label>Status kepegawaian</Label>
                 <div className="border-border bg-background inline-flex rounded-lg border p-0.5">
