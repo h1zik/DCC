@@ -37,6 +37,23 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-10-content-plan-view",
+    date: "2026-11-10",
+    title: "Content Plan bisa ditambahkan sebagai view, tampilannya dirapikan",
+    category: "new",
+    description:
+      "Manager ruangan kini bisa menambah Content Plan lewat Tambah view di ruangan mana pun, termasuk ruangan tim dan HQ. Setiap view punya tabel, Gantt, dan simulasi feed sendiri, jadi akun atau campaign berbeda bisa dijadwalkan terpisah. Halaman Content Plan juga dirapikan agar jadwal dua minggu ke depan terbaca sekilas.",
+    highlights: [
+      "Tambah view, pilih Content Plan: konten, urutan, dan profil feed tiap view terpisah dari Content Plan bawaan ruangan",
+      "Ritme posting: strip dua minggu yang menunjukkan hari kosong, hari padat, dan jam yang bentrok; klik satu hari untuk menyaring tabel",
+      "Ringkasan tahap (Belum mulai, Dikerjakan, Tertahan, Selesai) bisa diklik untuk menyaring, lengkap dengan tombol arsipkan yang selesai",
+      "Centang konten untuk memunculkan bar Buat tugas Kanban (Copy, Design, atau keduanya)",
+      "Gantt: bar Copy dan Design lebih tebal dan berlabel, legenda warna status, tombol lompat ke konten yang lewat tenggat, hari Minggu dan awal bulan lebih mudah dikenali",
+      "Feed: pengaturan dipecah jadi tab Di luar feed, Aturan, dan Profil yang ikut menempel saat menggulir; menu tile kini terlihat di layar sentuh",
+      "Tombol Baris baru berganti nama menjadi Tambah konten",
+    ],
+  },
+  {
     id: "2026-11-10-account-modes",
     date: "2026-11-10",
     title: "Mode akun: satu akun untuk beberapa peran",

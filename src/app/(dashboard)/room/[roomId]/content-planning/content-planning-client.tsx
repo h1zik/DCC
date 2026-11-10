@@ -2,7 +2,15 @@
 import { actionErrorMessage } from "@/lib/action-error-message";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ContentPlanFeedVisibility,
@@ -61,9 +69,12 @@ import {
   PLATFORM_LABEL,
   PLATFORM_ORDER,
   sortPlatforms,
+  contentPlanStage,
+  STAGE_LABEL,
   STATUS_BADGE_CLASS,
   STATUS_LABEL,
   USAGE_LABEL,
+  type ContentPlanStage,
 } from "@/lib/content-plan-ui";
 import {
   ContentPlanGantt,
@@ -76,6 +87,7 @@ import {
   type ContentPlanFeedRowPatch,
 } from "./content-plan-feed";
 import { ContentPlanEditSheet } from "./content-plan-edit-sheet";
+import { ContentPlanRhythm, UNSCHEDULED_DAY } from "./content-plan-rhythm";
 import {
   JenisBadge,
   PlatformBadge,
@@ -1103,8 +1115,56 @@ function ContentPlanPreviewDialog({
   );
 }
 
+/** Chip saringan cepat (hari / tahap) yang bisa dilepas dari toolbar. */
+function QuickFilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="border-primary/40 bg-primary/10 inline-flex h-7 items-center gap-1 rounded-full border pr-1 pl-2.5 text-xs font-medium">
+      {label}
+      <button
+        type="button"
+        aria-label={`Lepas saringan ${label}`}
+        className="hover:bg-primary/15 focus-visible:ring-ring rounded-full p-0.5 outline-none focus-visible:ring-2"
+        onClick={onClear}
+      >
+        <X className="size-3" />
+      </button>
+    </span>
+  );
+}
+
+const RHYTHM_PREF_KEY = "dcc:content-plan-rhythm";
+const rhythmPrefListeners = new Set<() => void>();
+
+function subscribeRhythmPref(onChange: () => void) {
+  rhythmPrefListeners.add(onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    rhythmPrefListeners.delete(onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+/** Panel ritme tampil secara default; "0" = pengguna menyembunyikannya di peramban ini. */
+function readRhythmPref(): boolean {
+  try {
+    return window.localStorage.getItem(RHYTHM_PREF_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function writeRhythmPref(next: boolean) {
+  try {
+    window.localStorage.setItem(RHYTHM_PREF_KEY, next ? "1" : "0");
+  } catch {
+    /* penyimpanan lokal diblokir: pilihan hanya tidak diingat */
+  }
+  rhythmPrefListeners.forEach((fn) => fn());
+}
+
 export function ContentPlanningClient({
   roomId,
+  viewId,
   items,
   picUserOptions,
   kanbanProjectId,
@@ -1112,6 +1172,8 @@ export function ContentPlanningClient({
   feedDefaults,
 }: {
   roomId: string;
+  /** View Content Plan yang sedang dibuka; null = content plan bawaan ruangan. */
+  viewId: string | null;
   items: ContentPlanTableRow[];
   picUserOptions: PicOption[];
   kanbanProjectId: string | null;
@@ -1186,6 +1248,12 @@ export function ContentPlanningClient({
   const [picFilter, setPicFilter] = useState<string>("all");
   const [platformFilter, setPlatformFilter] = useState<ContentPlanPlatform | "all">("all");
   const [showFilters, setShowFilters] = useState(false);
+  /** Saringan cepat dari panel ringkasan: satu hari posting ("none" = tanpa tanggal) & tahap. */
+  const [dayFilter, setDayFilter] = useState<string | null>(null);
+  const [stageFilter, setStageFilter] = useState<ContentPlanStage | null>(null);
+  /** Panel ringkasan + ritme posting; pilihan tampil/sembunyi diingat per peramban. */
+  const showRhythm = useSyncExternalStore(subscribeRhythmPref, readRhythmPref, () => true);
+  const toggleRhythm = useCallback(() => writeRhythmPref(!readRhythmPref()), []);
   const [view, setView] = useState<"table" | "gantt" | "feed">("table");
   /** true = tabel menampilkan baris arsip (konten selesai), bukan baris aktif. */
   const [showArchived, setShowArchived] = useState(false);
@@ -1272,9 +1340,23 @@ export function ContentPlanningClient({
             : [];
         if (!ids.includes(picFilter)) return false;
       }
+      if (dayFilter) {
+        const key = cpPostingDayKey(row.tanggalPosting);
+        if (dayFilter === UNSCHEDULED_DAY ? key !== null : key !== dayFilter) return false;
+      }
+      if (stageFilter && contentPlanStage(row) !== stageFilter) return false;
       return true;
     },
-    [searchQuery, jenisFilter, platformFilter, statusCwFilter, statusDesignFilter, picFilter],
+    [
+      searchQuery,
+      jenisFilter,
+      platformFilter,
+      statusCwFilter,
+      statusDesignFilter,
+      picFilter,
+      dayFilter,
+      stageFilter,
+    ],
   );
 
   const filteredRows = useMemo(() => {
@@ -1298,25 +1380,9 @@ export function ContentPlanningClient({
     setStatusDesignFilter("all");
     setPicFilter("all");
     setPlatformFilter("all");
+    setDayFilter(null);
+    setStageFilter(null);
   }, []);
-
-  const stats = useMemo(() => {
-    const total = activeRows.length;
-    const published = activeRows.filter(
-      (r) => r.statusDesign === ContentPlanStatusKerja.DIPUBLIKASIKAN,
-    ).length;
-    const inProgress = activeRows.filter(
-      (r) =>
-        r.statusCopywriting === ContentPlanStatusKerja.DALAM_PROSES ||
-        r.statusDesign === ContentPlanStatusKerja.DALAM_PROSES ||
-        r.statusCopywriting === ContentPlanStatusKerja.DALAM_PENINJAUAN ||
-        r.statusDesign === ContentPlanStatusKerja.DALAM_PENINJAUAN,
-    ).length;
-    const fresh = activeRows.filter(
-      (r) => r.statusDesign === ContentPlanStatusKerja.BARU,
-    ).length;
-    return { total, published, inProgress, fresh };
-  }, [activeRows]);
 
   /** Info per hari posting: jumlah konten + apakah pembagian jamnya masih bermasalah. */
   const postingDayInfo = useMemo(() => {
@@ -1605,6 +1671,7 @@ export function ContentPlanningClient({
           await reorderRoomContentPlanItems(
             roomId,
             next.map((r) => r.id),
+            viewId,
           );
         } catch (e) {
           setTableRows(rollback);
@@ -1612,7 +1679,7 @@ export function ContentPlanningClient({
         }
       })();
     },
-    [roomId, tableRows],
+    [roomId, tableRows, viewId],
   );
 
   /** Mobile: geser satu baris naik/turun dalam daftar yang sedang tampil. */
@@ -1676,7 +1743,7 @@ export function ContentPlanningClient({
   const onAiSuggest = useCallback(() => {
     startAiSuggest(async () => {
       try {
-        const res = await suggestContentPlanPostingTimes(roomId);
+        const res = await suggestContentPlanPostingTimes(roomId, viewId);
         if (res.suggestions.length === 0) {
           toast.info(
             res.scheduledCount === 0
@@ -1691,7 +1758,7 @@ export function ContentPlanningClient({
         toast.error(actionErrorMessage(e, "Gagal meminta saran jam dari AI."));
       }
     });
-  }, [roomId]);
+  }, [roomId, viewId]);
 
   const onAiApply = useCallback(() => {
     if (!aiSuggestions) return;
@@ -1750,7 +1817,10 @@ export function ContentPlanningClient({
         maxSize: 48,
         enableSorting: false,
         header: () => (
-          <div className="flex justify-center px-0.5">
+          <div
+            className="flex justify-center px-0.5"
+            title="Centang konten untuk membuat tugas Kanban (copy/design berstatus Baru)."
+          >
             <Checkbox
               checked={kanbanEligibleCount > 0 && allKanbanSelected}
               disabled={kanbanEligibleCount === 0}
@@ -2344,54 +2414,38 @@ export function ContentPlanningClient({
     ],
   );
 
-  const hasActiveFilters = activeFilterCount > 0 || searchQuery.trim().length > 0;
+  const hasActiveFilters =
+    activeFilterCount > 0 ||
+    dayFilter !== null ||
+    stageFilter !== null ||
+    searchQuery.trim().length > 0;
+  /** Belum ada satu baris pun (aktif maupun arsip): tampilkan ajakan mulai, bukan tabel kosong. */
+  const planIsEmpty = tableRows.length === 0;
+  const archiveDone = () => {
+    if (archiveReadyIds.length === 0) return;
+    if (
+      !confirm(
+        `Arsipkan ${archiveReadyIds.length} konten yang sudah selesai (copy & design Dipublikasikan)? Konten bisa dipulihkan lagi dari Arsip.`,
+      )
+    ) {
+      return;
+    }
+    onArchive(archiveReadyIds, true);
+  };
+  const kanbanHint =
+    "Sisi yang statusnya bukan Baru atau sudah punya tugas dilewati. Tenggat mengikuti DL Copy / DL Design.";
   const filteredCount = filteredRows.length;
-  const totalCount = tableRows.length;
 
   return (
     <div
       data-content-plan-shell
       className="flex min-w-0 flex-col gap-4 md:min-h-0 md:flex-1 md:overflow-hidden"
     >
-      <div className="border-border bg-card flex shrink-0 flex-wrap items-center gap-2 rounded-xl border p-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="border-border bg-background/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
-            <Layers className="size-3.5 opacity-70" aria-hidden /> {stats.total} total
-          </span>
-          <span className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
-            ✓ {stats.published} terbit
-          </span>
-          <span className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
-            ↻ {stats.inProgress} proses
-          </span>
-          <span className="border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
-            • {stats.fresh} baru
-          </span>
-        </div>
-        <div className="border-input focus-within:border-ring focus-within:ring-ring/40 bg-background/40 flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2.5 transition-colors focus-within:ring-2 sm:max-w-md">
-          <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari konten / detail…"
-            className="placeholder:text-muted-foreground h-8 min-w-0 flex-1 bg-transparent text-sm outline-none"
-          />
-          {searchQuery ? (
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Bersihkan pencarian"
-              onClick={() => setSearchQuery("")}
-            >
-              <X className="size-3.5" />
-            </button>
-          ) : null}
-        </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         <div
-          className="bg-muted/50 flex shrink-0 items-center rounded-lg p-0.5"
+          className="bg-muted/60 flex shrink-0 items-center rounded-lg p-0.5"
           role="group"
-          aria-label="Tampilan content planning"
+          aria-label="Tampilan content plan"
         >
           {(
             [
@@ -2406,7 +2460,7 @@ export function ContentPlanningClient({
               aria-pressed={view === v.key}
               onClick={() => setView(v.key)}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                "focus-visible:ring-ring inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2",
                 view === v.key
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -2417,31 +2471,27 @@ export function ContentPlanningClient({
             </button>
           ))}
         </div>
-        {view !== "feed" ? (
-        <Button
-          type="button"
-          size="sm"
-          variant={showArchived ? "secondary" : "outline"}
-          aria-pressed={showArchived}
-          title={
-            showArchived
-              ? "Kembali ke baris aktif."
-              : "Lihat konten yang sudah diarsipkan (tidak tampil di tabel utama)."
-          }
-          onClick={() => {
-            setShowArchived((v) => !v);
-            setKanbanSelectedIds([]);
-          }}
-        >
-          <Archive className="size-3.5" />
-          Arsip
-          {archivedRows.length > 0 ? (
-            <span className="bg-muted text-muted-foreground ml-1 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
-              {archivedRows.length}
-            </span>
+        <div className="border-input focus-within:border-ring focus-within:ring-ring/40 bg-background flex min-w-40 flex-1 items-center gap-2 rounded-lg border px-2.5 transition-colors focus-within:ring-2 sm:max-w-xs">
+          <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari judul atau detail konten"
+            aria-label="Cari konten"
+            className="placeholder:text-muted-foreground h-8 min-w-0 flex-1 bg-transparent text-sm outline-none"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Bersihkan pencarian"
+              onClick={() => setSearchQuery("")}
+            >
+              <X className="size-3.5" />
+            </button>
           ) : null}
-        </Button>
-        ) : null}
+        </div>
         <Button
           type="button"
           size="sm"
@@ -2457,45 +2507,75 @@ export function ContentPlanningClient({
             </span>
           ) : null}
         </Button>
-        {hasActiveFilters ? (
+        {view !== "feed" ? (
           <Button
             type="button"
             size="sm"
-            variant="ghost"
-            onClick={resetFilters}
-          >
-            <X className="size-3.5" />
-            Reset
-          </Button>
-        ) : null}
-        {hasActiveFilters ? (
-          <span className="text-muted-foreground text-xs tabular-nums">
-            {filteredCount} dari {totalCount}
-          </span>
-        ) : null}
-        <span className="ml-auto" />
-        {!showArchived && archiveReadyIds.length > 0 ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={archivePending}
-            title="Arsipkan semua baris aktif yang copy dan design-nya sudah Dipublikasikan."
+            variant={showArchived ? "secondary" : "outline"}
+            aria-pressed={showArchived}
+            title={
+              showArchived
+                ? "Kembali ke konten aktif."
+                : "Lihat konten yang sudah diarsipkan."
+            }
             onClick={() => {
-              if (
-                !confirm(
-                  `Arsipkan ${archiveReadyIds.length} baris yang sudah selesai (copy & design Dipublikasikan)? Baris bisa dipulihkan lagi dari tab Arsip.`,
-                )
-              ) {
-                return;
-              }
-              onArchive(archiveReadyIds, true);
+              setShowArchived((v) => !v);
+              setKanbanSelectedIds([]);
             }}
           >
-            <Archive className="size-4" />
-            {archivePending ? "Mengarsipkan…" : `Arsipkan selesai (${archiveReadyIds.length})`}
+            <Archive className="size-3.5" />
+            Arsip
+            {archivedRows.length > 0 ? (
+              <span className="bg-muted text-muted-foreground ml-1 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
+                {archivedRows.length}
+              </span>
+            ) : null}
           </Button>
         ) : null}
+        {view === "table" && !showArchived && activeRows.length > 0 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={showRhythm ? "secondary" : "outline"}
+            aria-pressed={showRhythm}
+            title={
+              showRhythm
+                ? "Sembunyikan ringkasan tahap dan ritme posting."
+                : "Tampilkan ringkasan tahap dan ritme posting."
+            }
+            onClick={toggleRhythm}
+          >
+            <CalendarDays className="size-3.5" />
+            Ritme
+          </Button>
+        ) : null}
+        {dayFilter ? (
+          <QuickFilterChip
+            label={
+              dayFilter === UNSCHEDULED_DAY
+                ? "Belum dijadwalkan"
+                : `Tayang ${formatDayKeyLabel(dayFilter)}`
+            }
+            onClear={() => setDayFilter(null)}
+          />
+        ) : null}
+        {stageFilter ? (
+          <QuickFilterChip
+            label={`Tahap: ${STAGE_LABEL[stageFilter]}`}
+            onClear={() => setStageFilter(null)}
+          />
+        ) : null}
+        {hasActiveFilters ? (
+          <>
+            <span className="text-muted-foreground text-xs tabular-nums">
+              {filteredCount} dari {showArchived ? archivedRows.length : activeRows.length}
+            </span>
+            <Button type="button" size="sm" variant="ghost" onClick={resetFilters}>
+              Reset
+            </Button>
+          </>
+        ) : null}
+        <span className="ml-auto" />
         <Button
           type="button"
           variant="outline"
@@ -2503,83 +2583,21 @@ export function ContentPlanningClient({
           disabled={aiSuggestPending || !hasScheduledPosting}
           title={
             hasScheduledPosting
-              ? "Minta AI menyarankan jam posting efektif (WIB) untuk konten terjadwal — terutama hari dengan lebih dari satu postingan."
-              : "Isi tanggal posting minimal satu baris dulu untuk meminta saran jam."
+              ? "Minta AI menyarankan jam posting efektif (WIB) untuk konten terjadwal, terutama hari dengan lebih dari satu postingan."
+              : "Isi tanggal posting minimal satu konten dulu untuk meminta saran jam."
           }
           onClick={onAiSuggest}
         >
           <Sparkles className="size-4" />
-          {aiSuggestPending ? "Menganalisis…" : "Saran Jam AI"}
+          {aiSuggestPending ? "Menganalisis…" : "Saran jam AI"}
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-            disabled={!kanbanProjectId || kanbanPending || kanbanSelectedIds.length === 0}
-            title={
-              !kanbanProjectId
-                ? "Butuh minimal satu proyek di ruangan ini untuk membuat tugas Kanban."
-                : kanbanSelectedIds.length === 0
-                  ? "Centang satu atau lebih baris (copy/design berstatus Baru), lalu pilih jenis tugas yang dibuat."
-                  : "Pilih tugas Copy, Design, atau keduanya untuk baris yang dicentang."
-            }
-          >
-            <LayoutGrid className="size-4" />
-            {kanbanPending ? "Memproses…" : "Tambahkan ke Kanban"}
-            {kanbanSelectedIds.length > 0 && !kanbanPending ? (
-              <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[10px] tabular-nums">
-                {kanbanSelectedIds.length}
-              </span>
-            ) : null}
-            <ChevronDown className="size-3.5 opacity-70" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuItem
-              disabled={kanbanSelectedByKind.COPYWRITING === 0}
-              onClick={() => runKanbanCreate([ContentPlanTaskKind.COPYWRITING])}
-            >
-              <PenLine className="size-4" />
-              <span className="flex-1">Tugas Copy</span>
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {kanbanSelectedByKind.COPYWRITING}
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={kanbanSelectedByKind.DESIGN === 0}
-              onClick={() => runKanbanCreate([ContentPlanTaskKind.DESIGN])}
-            >
-              <Palette className="size-4" />
-              <span className="flex-1">Tugas Design</span>
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {kanbanSelectedByKind.DESIGN}
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled={
-                kanbanSelectedByKind.COPYWRITING === 0 && kanbanSelectedByKind.DESIGN === 0
-              }
-              onClick={() =>
-                runKanbanCreate([ContentPlanTaskKind.COPYWRITING, ContentPlanTaskKind.DESIGN])
-              }
-            >
-              <LayoutGrid className="size-4" />
-              <span className="flex-1">Copy + Design</span>
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {kanbanSelectedByKind.COPYWRITING + kanbanSelectedByKind.DESIGN}
-              </span>
-            </DropdownMenuItem>
-            <p className="text-muted-foreground px-2 pt-1 pb-1.5 text-[11px] leading-snug">
-              Angka = jumlah tugas yang akan dibuat. Sisi yang statusnya bukan Baru atau
-              sudah punya tugas dilewati. Tenggat mengikuti DL Copy / DL Design baris.
-            </p>
-          </DropdownMenuContent>
-        </DropdownMenu>
         <Button type="button" size="sm" onClick={openCreate}>
           <Plus className="size-4" />
-          Baris baru
+          Tambah konten
         </Button>
         <ContentPlanEditSheet
           roomId={roomId}
+          viewId={viewId}
           open={open}
           row={editing}
           openKey={openKey}
@@ -2600,7 +2618,7 @@ export function ContentPlanningClient({
       {showFilters ? (
         <div className="border-border bg-muted/30 grid shrink-0 gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5">
-            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+            <Label className="text-muted-foreground text-xs font-medium">
               Platform
             </Label>
             <Select
@@ -2628,7 +2646,7 @@ export function ContentPlanningClient({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+            <Label className="text-muted-foreground text-xs font-medium">
               Jenis
             </Label>
             <Select
@@ -2654,7 +2672,7 @@ export function ContentPlanningClient({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+            <Label className="text-muted-foreground text-xs font-medium">
               Status copy
             </Label>
             <Select
@@ -2684,7 +2702,7 @@ export function ContentPlanningClient({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+            <Label className="text-muted-foreground text-xs font-medium">
               Status design
             </Label>
             <Select
@@ -2714,7 +2732,7 @@ export function ContentPlanningClient({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.06em] uppercase">
+            <Label className="text-muted-foreground text-xs font-medium">
               PIC
             </Label>
             <Select
@@ -2744,11 +2762,107 @@ export function ContentPlanningClient({
         </div>
       ) : null}
 
+      {view === "table" && showRhythm && !showArchived && activeRows.length > 0 ? (
+        <ContentPlanRhythm
+          rows={activeRows}
+          dayInfo={postingDayInfo}
+          dayFilter={dayFilter}
+          onDayFilterChange={setDayFilter}
+          stageFilter={stageFilter}
+          onStageFilterChange={setStageFilter}
+          archivePending={archivePending}
+          onArchiveDone={archiveDone}
+        />
+      ) : null}
+
+      {view === "table" && kanbanSelectedIds.length > 0 ? (
+        <div
+          role="region"
+          aria-label="Aksi untuk konten terpilih"
+          className="border-primary/30 bg-primary/5 flex shrink-0 flex-wrap items-center gap-2 rounded-xl border px-3 py-2"
+        >
+          <span className="text-sm font-medium tabular-nums">
+            {kanbanSelectedIds.length} konten dipilih
+          </span>
+          {kanbanProjectId ? (
+            <>
+              <span className="text-muted-foreground text-xs">Buat tugas Kanban</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title={kanbanHint}
+                disabled={kanbanPending || kanbanSelectedByKind.COPYWRITING === 0}
+                onClick={() => runKanbanCreate([ContentPlanTaskKind.COPYWRITING])}
+              >
+                <PenLine className="size-3.5" />
+                Copy
+                <span className="text-muted-foreground tabular-nums">
+                  {kanbanSelectedByKind.COPYWRITING}
+                </span>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title={kanbanHint}
+                disabled={kanbanPending || kanbanSelectedByKind.DESIGN === 0}
+                onClick={() => runKanbanCreate([ContentPlanTaskKind.DESIGN])}
+              >
+                <Palette className="size-3.5" />
+                Design
+                <span className="text-muted-foreground tabular-nums">
+                  {kanbanSelectedByKind.DESIGN}
+                </span>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                title={kanbanHint}
+                disabled={
+                  kanbanPending ||
+                  (kanbanSelectedByKind.COPYWRITING === 0 &&
+                    kanbanSelectedByKind.DESIGN === 0)
+                }
+                onClick={() =>
+                  runKanbanCreate([
+                    ContentPlanTaskKind.COPYWRITING,
+                    ContentPlanTaskKind.DESIGN,
+                  ])
+                }
+              >
+                <LayoutGrid className="size-3.5" />
+                {kanbanPending ? "Membuat tugas…" : "Copy + Design"}
+                {!kanbanPending ? (
+                  <span className="tabular-nums opacity-80">
+                    {kanbanSelectedByKind.COPYWRITING + kanbanSelectedByKind.DESIGN}
+                  </span>
+                ) : null}
+              </Button>
+            </>
+          ) : (
+            <span className="text-muted-foreground text-xs">
+              Ruangan ini belum punya proyek, jadi tugas Kanban belum bisa dibuat.
+            </span>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            onClick={() => setKanbanSelectedIds([])}
+          >
+            Batalkan pilihan
+          </Button>
+        </div>
+      ) : null}
+
       {view === "feed" ? (
         /* Shell halaman overflow-hidden di desktop (tabel/Gantt scroll sendiri), jadi feed butuh area scroll sendiri. */
         <div className="min-w-0 max-w-full pb-6 md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-1">
           <ContentPlanFeedSimulation
             roomId={roomId}
+            viewId={viewId}
             rows={feedSourceRows}
             profile={feedProfile}
             defaults={feedDefaults}
@@ -2773,16 +2887,28 @@ export function ContentPlanningClient({
             hasActiveFilters={hasActiveFilters}
           />
         </div>
+      ) : planIsEmpty ? (
+        <div className="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-14 text-center">
+          <p className="text-base font-semibold">Rencana konten ini masih kosong</p>
+          <p className="text-muted-foreground max-w-sm text-sm">
+            Mulai dari satu ide. Tanggal posting, PIC, dan file design bisa diisi
+            belakangan.
+          </p>
+          <Button type="button" onClick={openCreate}>
+            <Plus className="size-4" />
+            Tambah konten
+          </Button>
+        </div>
       ) : (
         <>
         <div className="min-w-0 max-w-full md:hidden">
           {filteredRows.length === 0 ? (
             <div className="text-muted-foreground rounded-xl border border-border px-4 py-8 text-center text-sm">
               {hasActiveFilters
-                ? "Tidak ada baris yang cocok dengan filter / pencarian."
+                ? "Tidak ada konten yang cocok. Ubah pencarian atau tekan Reset."
                 : showArchived
-                  ? "Belum ada baris yang diarsipkan."
-                  : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."}
+                  ? "Belum ada konten yang diarsipkan."
+                  : "Semua konten sudah diarsipkan. Tambah konten baru atau buka Arsip."}
             </div>
           ) : (
             <div className="space-y-3">
@@ -2885,11 +3011,11 @@ export function ContentPlanningClient({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <p className="text-muted-foreground text-[11px] uppercase">Status Copy</p>
+                        <p className="text-muted-foreground text-[11px]">Status copy</p>
                         <StatusBadge status={row.statusCopywriting} />
                       </div>
                       <div className="space-y-1">
-                        <p className="text-muted-foreground text-[11px] uppercase">Status Design</p>
+                        <p className="text-muted-foreground text-[11px]">Status design</p>
                         <StatusBadge status={row.statusDesign} />
                       </div>
                     </div>
@@ -2961,10 +3087,10 @@ export function ContentPlanningClient({
             data={filteredRows}
             empty={
               hasActiveFilters
-                ? "Tidak ada baris yang cocok dengan filter / pencarian."
+                ? "Tidak ada konten yang cocok. Ubah pencarian atau tekan Reset."
                 : showArchived
-                  ? "Belum ada baris yang diarsipkan."
-                  : "Belum ada baris. Tambahkan konten lewat tombol Baris baru."
+                  ? "Belum ada konten yang diarsipkan."
+                  : "Semua konten sudah diarsipkan. Tambah konten baru atau buka Arsip."
             }
             fitViewport
             sortable
@@ -3021,7 +3147,7 @@ export function ContentPlanningClient({
           <DialogHeader className="pb-0">
             <DialogTitle className="inline-flex items-center gap-2">
               <Sparkles className="text-accent-foreground size-4" />
-              Saran Jam Posting (AI)
+              Saran jam posting dari AI
             </DialogTitle>
           </DialogHeader>
           <p className="text-muted-foreground text-xs">
@@ -3031,7 +3157,7 @@ export function ContentPlanningClient({
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
             {aiGroups.map(([dateKey, group]) => (
               <div key={dateKey} className="space-y-1.5">
-                <p className="text-muted-foreground inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.04em] uppercase">
+                <p className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-semibold">
                   <CalendarDays className="size-3.5" aria-hidden />
                   {formatDayKeyLabel(dateKey)}
                   <span className="tabular-nums">({group.length} konten)</span>

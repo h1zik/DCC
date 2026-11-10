@@ -178,6 +178,8 @@ type CloseDetails = { reason: string; cancel: () => void };
 
 export type ContentPlanEditSheetProps = {
   roomId: string;
+  /** Content plan tujuan baris baru (null = bawaan ruangan). */
+  viewId: string | null;
   open: boolean;
   /** Baris yang diedit; null = baris baru. */
   row: ContentPlanTableRow | null;
@@ -193,6 +195,7 @@ export type ContentPlanEditSheetProps = {
 
 export function ContentPlanEditSheet({
   roomId,
+  viewId,
   open,
   row,
   openKey,
@@ -254,6 +257,7 @@ export function ContentPlanEditSheet({
         <ContentPlanRowForm
           key={`${openKey}:${row?.id ?? "new"}`}
           roomId={roomId}
+          viewId={viewId}
           row={row}
           picUserOptions={picUserOptions}
           onRowPatched={onRowPatched}
@@ -318,6 +322,7 @@ function PicAvatar({ user }: { user: PicOption }) {
 
 function ContentPlanRowForm({
   roomId,
+  viewId,
   row,
   picUserOptions,
   onRowPatched,
@@ -326,6 +331,7 @@ function ContentPlanRowForm({
   onGuardChange,
 }: {
   roomId: string;
+  viewId: string | null;
   row: ContentPlanTableRow | null;
   picUserOptions: PicOption[];
   onRowPatched: (rowId: string, patch: Partial<ContentPlanTableRow>) => void;
@@ -506,6 +512,7 @@ function ContentPlanRowForm({
       const { id } = await upsertRoomContentPlanItem({
         id: itemId ?? undefined,
         roomId,
+        viewId,
         konten: form.konten.trim(),
         jenisKonten: form.jenisKonten,
         usage: form.usage,
@@ -585,6 +592,7 @@ function ContentPlanRowForm({
     row,
     serverPaths,
     slides,
+    viewId,
   ]);
 
   const onKeyDown = useCallback(

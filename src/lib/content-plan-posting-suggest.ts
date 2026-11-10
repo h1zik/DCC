@@ -56,11 +56,13 @@ type RawSuggestion = { itemId?: unknown; jam?: unknown; alasan?: unknown };
  */
 export async function suggestPostingTimesCore(
   roomId: string,
+  viewId: string | null,
 ): Promise<PostingTimeSuggestResult> {
   const now = new Date();
   const items = await prisma.roomContentPlanItem.findMany({
     where: {
       roomId,
+      viewId,
       archivedAt: null,
       tanggalPosting: { gte: startOfTodayWibUtc(now) },
     },

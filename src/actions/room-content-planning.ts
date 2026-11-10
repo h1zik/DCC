@@ -3,7 +3,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { revalidatePath } from "next/cache";
 import {
   ContentPlanJenis,
   ContentPlanPlatform,
@@ -22,6 +21,7 @@ import { MAX_DESIGN_SLIDES, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upl
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
+import { resolveContentPlanViewId, revalidateContentPlan } from "@/lib/content-plan-scope";
 
 const ALLOWED_PREFIXES = [
   "image/",
@@ -114,6 +114,8 @@ async function normalizeDesignPathsForNonCarousel(itemId: string) {
 const upsertSchema = z.object({
   id: z.string().optional(),
   roomId: z.string().min(1),
+  /** Content plan tujuan baris baru (null = bawaan ruangan). Diabaikan saat update. */
+  viewId: z.string().min(1).optional().nullable(),
   konten: z.string().min(1),
   jenisKonten: z.nativeEnum(ContentPlanJenis),
   usage: z.nativeEnum(ContentPlanUsage),
@@ -138,7 +140,7 @@ const upsertSchema = z.object({
 
 function revalidateContentPlanPaths(roomId: string) {
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
 }
 
 export async function upsertRoomContentPlanItem(
@@ -190,13 +192,15 @@ export async function upsertRoomContentPlanItem(
     return { id: data.id };
   }
 
+  const viewId = await resolveContentPlanViewId(data.roomId, data.viewId);
   const max = await prisma.roomContentPlanItem.aggregate({
-    where: { roomId: data.roomId },
+    where: { roomId: data.roomId, viewId },
     _max: { sortOrder: true },
   });
   const created = await prisma.roomContentPlanItem.create({
     data: {
       roomId: data.roomId,
+      viewId,
       konten: data.konten,
       jenisKonten: data.jenisKonten,
       usage: data.usage,
@@ -231,20 +235,21 @@ const reorderSchema = z
   });
 
 /**
- * Susun ulang posisi baris content plan satu ruangan. `orderedIds` harus memuat
- * **seluruh** baris ruangan tersebut; `sortOrder` ditulis ulang jadi 0..n-1 agar
+ * Susun ulang posisi baris satu content plan. `orderedIds` harus memuat
+ * **seluruh** baris content plan tersebut (bawaan ruangan atau satu view); `sortOrder` ditulis ulang jadi 0..n-1 agar
  * baris baru (pakai `max + 1`) selalu masuk di paling bawah.
  */
 export async function reorderRoomContentPlanItems(
   roomId: string,
   orderedIds: string[],
+  viewId?: string | null,
 ): Promise<void> {
   const session = await requireTasksRoomHubSession();
   await assertRoomMember(roomId, session.user.id);
   const ids = reorderSchema.parse(orderedIds);
 
   const rows = await prisma.roomContentPlanItem.findMany({
-    where: { roomId },
+    where: { roomId, viewId: viewId ?? null },
     select: { id: true },
   });
   const ownedIds = new Set(rows.map((r) => r.id));
@@ -260,7 +265,7 @@ export async function reorderRoomContentPlanItems(
       }),
     ),
   );
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
 }
 
 const archiveSchema = z.object({
@@ -311,7 +316,7 @@ export async function deleteRoomContentPlanItem(roomId: string, itemId: string) 
   }
   await prisma.roomContentPlanItem.delete({ where: { id: itemId } });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
 }
 
 export async function uploadContentPlanCopywritingFile(
@@ -350,7 +355,7 @@ export async function uploadContentPlanCopywritingFile(
     data: { copywritingFilePath: publicPath },
   });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
 }
 
 export async function uploadContentPlanDesignFile(
@@ -409,7 +414,7 @@ export async function uploadContentPlanDesignFile(
       : { designFilePaths: nextPaths },
   });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
   return { publicPath };
 }
 
@@ -440,7 +445,7 @@ export async function removeContentPlanDesignSlide(
     data: { designFilePaths: nextPaths, feedCoverIndex: nextCover },
   });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
   return { designFilePaths: nextPaths, feedCoverIndex: nextCover };
 }
 
@@ -486,7 +491,7 @@ export async function reorderContentPlanDesignSlides(
     throw new Error("Slide berubah di tempat lain. Muat ulang halaman lalu coba lagi.");
   }
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
   return { feedCoverIndex: nextCover };
 }
 
@@ -502,7 +507,7 @@ export async function clearContentPlanCopywritingFile(roomId: string, itemId: st
     data: { copywritingFilePath: null },
   });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
 }
 
 export async function clearContentPlanDesignFiles(roomId: string, itemId: string) {
@@ -519,7 +524,7 @@ export async function clearContentPlanDesignFiles(roomId: string, itemId: string
     data: { designFilePaths: [], feedCoverIndex: 0 },
   });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
 }
 
 /**
@@ -608,7 +613,7 @@ export async function syncContentPlanRowFromCompletedKanbanTask(params: {
     },
   });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${params.roomId}/content-planning`);
+  revalidateContentPlan(params.roomId);
 }
 
 function isDocumentMime(mime: string): boolean {
@@ -648,5 +653,5 @@ async function syncCopywritingFromCompletedTask(params: {
     },
   });
   revalidateTasksAndRoomHub();
-  revalidatePath(`/room/${params.roomId}/content-planning`);
+  revalidateContentPlan(params.roomId);
 }

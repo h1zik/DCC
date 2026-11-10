@@ -3,7 +3,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { revalidatePath } from "next/cache";
 import { ContentPlanFeedVisibility } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -13,13 +12,15 @@ import {
 } from "@/lib/upload-storage";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
+import { resolveContentPlanViewId, revalidateContentPlan } from "@/lib/content-plan-scope";
 
 /**
  * Simulasi feed Instagram di Content Plan.
  *
  * Dua kelompok data:
- *  - Profil feed per ruangan (`RoomContentPlanFeedProfile`): identitas akun
- *    tiruan + preferensi baris mana yang ikut tampil.
+ *  - Profil feed per content plan (`RoomContentPlanFeedProfile`): identitas akun
+ *    tiruan + preferensi baris mana yang ikut tampil. `viewId` null = content
+ *    plan bawaan ruangan, terisi = view tambahan.
  *  - Per baris (`RoomContentPlanItem`): pilihan cover grid dan flag sembunyi.
  *
  * Semua anggota ruangan boleh mengubah — sama dengan kolom content plan lain.
@@ -68,7 +69,7 @@ async function assertItemInRoom(roomId: string, itemId: string) {
 }
 
 function revalidateFeed(roomId: string) {
-  revalidatePath(`/room/${roomId}/content-planning`);
+  revalidateContentPlan(roomId);
 }
 
 /* ------------------------------------------------------------------ */
@@ -93,27 +94,58 @@ const profileSchema = z.object({
 
 export type ContentPlanFeedProfileInput = z.infer<typeof profileSchema>;
 
-/** Simpan sebagian/semua field profil feed ruangan (buat bila belum ada). */
+/** Profil feed milik satu content plan (bawaan ruangan bila `viewId` null). */
+async function findFeedProfile(roomId: string, viewId: string | null) {
+  return viewId
+    ? prisma.roomContentPlanFeedProfile.findUnique({ where: { viewId } })
+    : prisma.roomContentPlanFeedProfile.findFirst({
+        where: { roomId, viewId: null },
+        orderBy: { createdAt: "asc" },
+      });
+}
+
+/** Perbarui profil feed sebuah content plan; dibuat dulu bila belum ada. */
+async function upsertFeedProfile(
+  roomId: string,
+  viewId: string | null,
+  data: ContentPlanFeedProfileInput & { avatarPath?: string | null },
+) {
+  const existing = await findFeedProfile(roomId, viewId);
+  if (existing) {
+    return prisma.roomContentPlanFeedProfile.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+  return prisma.roomContentPlanFeedProfile.create({
+    data: { roomId, viewId, ...data },
+  });
+}
+
+/** Simpan sebagian/semua field profil feed content plan (buat bila belum ada). */
 export async function saveContentPlanFeedProfile(
   roomId: string,
   input: ContentPlanFeedProfileInput,
+  viewId?: string | null,
 ) {
   await assertMember(roomId);
+  const planViewId = await resolveContentPlanViewId(roomId, viewId);
   const data = profileSchema.parse(input);
   const clean = Object.fromEntries(
     Object.entries(data).filter(([, v]) => v !== undefined),
   ) as ContentPlanFeedProfileInput;
-  const row = await prisma.roomContentPlanFeedProfile.upsert({
-    where: { roomId },
-    create: { roomId, ...clean },
-    update: clean,
-  });
+  const row = await upsertFeedProfile(roomId, planViewId, clean);
   revalidateFeed(roomId);
   return row;
 }
 
-export async function uploadContentPlanFeedAvatar(roomId: string, formData: FormData) {
+export async function uploadContentPlanFeedAvatar(
+  roomId: string,
+  formData: FormData,
+  viewId?: string | null,
+) {
   await assertMember(roomId);
+  const planViewId = await resolveContentPlanViewId(roomId, viewId);
   const file = formData.get("file");
   if (!file || !(file instanceof File)) {
     throw new Error("Pilih file avatar.");
@@ -123,10 +155,7 @@ export async function uploadContentPlanFeedAvatar(roomId: string, formData: Form
   }
   assertImageMime(file.type);
 
-  const prev = await prisma.roomContentPlanFeedProfile.findUnique({
-    where: { roomId },
-    select: { avatarPath: true },
-  });
+  const prev = await findFeedProfile(roomId, planViewId);
 
   const ext = path.extname(file.name).slice(0, 10).toLowerCase() || ".png";
   const base = sanitizeBaseName(path.basename(file.name, path.extname(file.name)));
@@ -136,25 +165,19 @@ export async function uploadContentPlanFeedAvatar(roomId: string, formData: Form
   await writeFile(path.join(dir, stored), Buffer.from(await file.arrayBuffer()));
   const publicPath = `/uploads/room-content-plan-feed/${roomId}/${stored}`;
 
-  await prisma.roomContentPlanFeedProfile.upsert({
-    where: { roomId },
-    create: { roomId, avatarPath: publicPath },
-    update: { avatarPath: publicPath },
-  });
+  await upsertFeedProfile(roomId, planViewId, { avatarPath: publicPath });
   await unlinkOwned(prev?.avatarPath, `/uploads/room-content-plan-feed/${roomId}/`);
   revalidateFeed(roomId);
   return { avatarPath: publicPath };
 }
 
-export async function clearContentPlanFeedAvatar(roomId: string) {
+export async function clearContentPlanFeedAvatar(roomId: string, viewId?: string | null) {
   await assertMember(roomId);
-  const prev = await prisma.roomContentPlanFeedProfile.findUnique({
-    where: { roomId },
-    select: { avatarPath: true },
-  });
+  const planViewId = await resolveContentPlanViewId(roomId, viewId);
+  const prev = await findFeedProfile(roomId, planViewId);
   if (!prev) return;
   await prisma.roomContentPlanFeedProfile.update({
-    where: { roomId },
+    where: { id: prev.id },
     data: { avatarPath: null },
   });
   await unlinkOwned(prev.avatarPath, `/uploads/room-content-plan-feed/${roomId}/`);
@@ -272,11 +295,11 @@ export async function reorderContentPlanFeed(roomId: string, orderedIds: string[
   revalidateFeed(roomId);
 }
 
-/** Kembalikan seluruh grid ke urutan otomatis (tanggal & jam posting). */
-export async function resetContentPlanFeedOrder(roomId: string) {
+/** Kembalikan seluruh grid satu content plan ke urutan otomatis (tanggal & jam posting). */
+export async function resetContentPlanFeedOrder(roomId: string, viewId?: string | null) {
   await assertMember(roomId);
   const result = await prisma.roomContentPlanItem.updateMany({
-    where: { roomId, feedPosition: { not: null } },
+    where: { roomId, viewId: viewId ?? null, feedPosition: { not: null } },
     data: { feedPosition: null },
   });
   revalidateFeed(roomId);

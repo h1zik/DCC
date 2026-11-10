@@ -1,10 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomMember } from "@/lib/room-access";
+import { revalidateContentPlan } from "@/lib/content-plan-scope";
 import {
   JAM_POSTING_REGEX,
   suggestPostingTimesCore,
@@ -12,15 +12,16 @@ import {
 } from "@/lib/content-plan-posting-suggest";
 
 /**
- * Saran jam posting (WIB) dari AI untuk semua item content planning ruangan
- * yang punya tanggal posting hari ini atau ke depan.
+ * Saran jam posting (WIB) dari AI untuk semua item satu content plan (bawaan
+ * ruangan bila `viewId` kosong) yang punya tanggal posting hari ini atau ke depan.
  */
 export async function suggestContentPlanPostingTimes(
   roomId: string,
+  viewId?: string | null,
 ): Promise<PostingTimeSuggestResult> {
   const session = await requireTasksRoomHubSession();
   await assertRoomMember(roomId, session.user.id);
-  return suggestPostingTimesCore(roomId);
+  return suggestPostingTimesCore(roomId, viewId ?? null);
 }
 
 const applySchema = z.object({
@@ -63,6 +64,6 @@ export async function applyContentPlanPostingTimes(
     updated += 1;
   }
 
-  revalidatePath(`/room/${data.roomId}/content-planning`);
+  revalidateContentPlan(data.roomId);
   return { updated };
 }

@@ -211,3 +211,57 @@ export const STATUS_PROGRESS_PCT: Record<ContentPlanStatusKerja, number> = {
   [ContentPlanStatusKerja.DITANGGUHKAN]: 0,
   [ContentPlanStatusKerja.DIJEDA]: 25,
 };
+
+/** Tanda solid per jenis konten di strip ritme posting (satu hue dengan badge jenis). */
+export const JENIS_MARK_CLASS: Record<ContentPlanJenis, string> = {
+  [ContentPlanJenis.REELS]: "bg-fuchsia-500",
+  [ContentPlanJenis.CAROUSEL]: "bg-sky-500",
+  [ContentPlanJenis.SINGLE_FEED]: "bg-amber-500",
+  [ContentPlanJenis.STORY]: "bg-orange-500",
+};
+
+/**
+ * Tahap pengerjaan satu konten, gabungan status copy + design. Eksklusif:
+ * setiap baris masuk tepat satu tahap, jadi jumlahnya selalu sama dengan total.
+ */
+export type ContentPlanStage = "belum" | "proses" | "tertahan" | "selesai";
+
+export const CONTENT_PLAN_STAGES: ContentPlanStage[] = [
+  "belum",
+  "proses",
+  "tertahan",
+  "selesai",
+];
+
+export const STAGE_LABEL: Record<ContentPlanStage, string> = {
+  belum: "Belum mulai",
+  proses: "Dikerjakan",
+  tertahan: "Tertahan",
+  selesai: "Selesai",
+};
+
+export const STAGE_BAR_CLASS: Record<ContentPlanStage, string> = {
+  belum: "bg-slate-400",
+  proses: "bg-blue-500",
+  tertahan: "bg-amber-500",
+  selesai: "bg-emerald-500",
+};
+
+export function contentPlanStage(row: {
+  statusCopywriting: ContentPlanStatusKerja;
+  statusDesign: ContentPlanStatusKerja;
+}): ContentPlanStage {
+  const sides = [row.statusCopywriting, row.statusDesign];
+  if (sides.every((s) => s === ContentPlanStatusKerja.DIPUBLIKASIKAN)) return "selesai";
+  if (sides.every((s) => s === ContentPlanStatusKerja.BARU)) return "belum";
+  const moving = sides.some(
+    (s) =>
+      s === ContentPlanStatusKerja.DALAM_PROSES ||
+      s === ContentPlanStatusKerja.DALAM_PENINJAUAN,
+  );
+  const held = sides.some(
+    (s) =>
+      s === ContentPlanStatusKerja.DITANGGUHKAN || s === ContentPlanStatusKerja.DIJEDA,
+  );
+  return held && !moving ? "tertahan" : "proses";
+}
