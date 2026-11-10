@@ -5,7 +5,17 @@ import { Prisma, StockLogType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireLogisticsStaff } from "@/lib/auth-helpers";
-import { isSystemStockLog, parseSystemMeta } from "@/lib/stock-log-utils";
+import {
+  SALES_CATEGORY_LABELS,
+  isSystemStockLog,
+  parseSystemMeta,
+} from "@/lib/stock-log-utils";
+import {
+  createStockNotices,
+  describeStockMovement,
+  notifyFinanceStockMovement,
+  settlePriorStockNotice,
+} from "@/lib/finance-stock-notice";
 import { EXEC_DASHBOARD_TAG } from "@/lib/executive-dashboard-tag";
 
 const salesCategorySchema = z.enum(["penjualan", "sampling", "retur", "rusak"]);
@@ -40,6 +50,10 @@ const adjustStockSchema = z.object({
   targetStock: z.coerce.number().int().min(0),
   reason: z.string().min(3).max(300),
 });
+
+function actorSuffix(name: string | null | undefined): string {
+  return name?.trim() ? ` · oleh ${name.trim()}` : "";
+}
 
 function deltaOf(type: StockLogType, amount: number): number {
   return type === StockLogType.IN ? amount : -amount;
@@ -127,7 +141,7 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
   const session = await requireLogisticsStaff();
   const data = logSchema.parse(input);
 
-  await prisma.$transaction(async (tx) => {
+  const productInfo = await prisma.$transaction(async (tx) => {
     const product = await tx.product.findUniqueOrThrow({
       where: { id: data.productId },
     });
@@ -142,7 +156,7 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
       throw new Error("Stok tidak mencukupi untuk transaksi keluar.");
     }
 
-    await tx.stockLog.create({
+    const created = await tx.stockLog.create({
       data: {
         productId: data.productId,
         amount: data.amount,
@@ -156,11 +170,27 @@ export async function createStockLog(input: z.infer<typeof logSchema>) {
       },
     });
 
+    await createStockNotices(tx, [created.id]);
+
     await tx.product.update({
       where: { id: data.productId },
       data: { currentStock: next },
     });
+    return { name: product.name, sku: product.sku };
   });
+
+  const category =
+    data.type === StockLogType.OUT && data.salesCategory
+      ? ` · ${SALES_CATEGORY_LABELS[data.salesCategory] ?? data.salesCategory}`
+      : "";
+  await notifyFinanceStockMovement(
+    `Barang ${describeStockMovement({
+      type: data.type,
+      amount: data.amount,
+      productName: productInfo.name,
+      sku: productInfo.sku,
+    })}${category}${actorSuffix(session.user.name)} — menunggu dicatat.`,
+  );
 
   revalidatePath("/inventory");
   revalidatePath("/products");
@@ -172,15 +202,16 @@ export async function adjustProductStock(input: z.infer<typeof adjustStockSchema
   const session = await requireLogisticsStaff();
   const data = adjustStockSchema.parse(input);
 
-  await prisma.$transaction(async (tx) => {
+  const adjusted = await prisma.$transaction(async (tx) => {
     const product = await tx.product.findUniqueOrThrow({
       where: { id: data.productId },
     });
     const diff = data.targetStock - product.currentStock;
-    if (diff === 0) return;
+    if (diff === 0) return null;
 
+    let created: { id: string };
     if (diff > 0) {
-      await tx.stockLog.create({
+      created = await tx.stockLog.create({
         data: {
           productId: product.id,
           amount: diff,
@@ -190,7 +221,7 @@ export async function adjustProductStock(input: z.infer<typeof adjustStockSchema
         },
       });
     } else {
-      await tx.stockLog.create({
+      created = await tx.stockLog.create({
         data: {
           productId: product.id,
           amount: Math.abs(diff),
@@ -202,11 +233,25 @@ export async function adjustProductStock(input: z.infer<typeof adjustStockSchema
       });
     }
 
+    await createStockNotices(tx, [created.id]);
+
     await tx.product.update({
       where: { id: product.id },
       data: { currentStock: data.targetStock },
     });
+    return { diff, name: product.name, sku: product.sku };
   });
+
+  if (adjusted) {
+    await notifyFinanceStockMovement(
+      `Penyesuaian stok: ${describeStockMovement({
+        type: adjusted.diff > 0 ? StockLogType.IN : StockLogType.OUT,
+        amount: Math.abs(adjusted.diff),
+        productName: adjusted.name,
+        sku: adjusted.sku,
+      })} (${data.reason.trim()})${actorSuffix(session.user.name)} — menunggu dicatat.`,
+    );
+  }
 
   revalidatePath("/inventory");
   revalidatePath("/products");
@@ -218,10 +263,12 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
   const session = await requireLogisticsStaff();
   const data = updateLogSchema.parse(input);
 
-  await prisma.$transaction(async (tx) => {
+  const corrected = await prisma.$transaction(async (tx) => {
     const log = await tx.stockLog.findUniqueOrThrow({
       where: { id: data.logId },
-      include: { product: { select: { id: true, currentStock: true } } },
+      include: {
+        product: { select: { id: true, currentStock: true, name: true, sku: true } },
+      },
     });
     if (isSystemStockLog(log.note)) {
       throw new Error("Mutasi sistem tidak dapat dikoreksi ulang langsung.");
@@ -244,7 +291,13 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
       throw new Error("Koreksi membuat stok negatif. Cek jumlah koreksi.");
     }
 
-    await tx.stockLog.create({
+    // Harus sebelum baris koreksi dibuat — lihat settlePriorStockNotice.
+    const prior = await settlePriorStockNotice(tx, {
+      id: log.id,
+      productId: log.product.id,
+    });
+
+    const reversal = await tx.stockLog.create({
       data: {
         productId: log.product.id,
         amount: effective.amount,
@@ -261,7 +314,7 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
         createdById: session.user.id,
       },
     });
-    await tx.stockLog.create({
+    const replacement = await tx.stockLog.create({
       data: {
         productId: log.product.id,
         amount: data.amount,
@@ -277,11 +330,32 @@ export async function updateStockLog(input: z.infer<typeof updateLogSchema>) {
         createdById: session.user.id,
       },
     });
+    // Pembalik hanya perlu sampai ke Finance bila nilai lama sudah dijurnal.
+    await createStockNotices(tx, [
+      ...(prior.hadJournal ? [reversal.id] : []),
+      replacement.id,
+    ]);
     await tx.product.update({
       where: { id: log.product.id },
       data: { currentStock: nextStock },
     });
+    return {
+      name: log.product.name,
+      sku: log.product.sku,
+      hadJournal: prior.hadJournal,
+    };
   });
+
+  await notifyFinanceStockMovement(
+    `Koreksi mutasi stok → ${describeStockMovement({
+      type: data.type,
+      amount: data.amount,
+      productName: corrected.name,
+      sku: corrected.sku,
+    })} (${data.reason.trim()})${actorSuffix(session.user.name)}${
+      corrected.hadJournal ? " — pencatatan lama perlu dibalik." : " — menunggu dicatat."
+    }`,
+  );
 
   revalidatePath("/inventory");
   revalidatePath("/products");
@@ -293,10 +367,12 @@ export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
   const session = await requireLogisticsStaff();
   const data = deleteLogSchema.parse(input);
 
-  await prisma.$transaction(async (tx) => {
+  const voided = await prisma.$transaction(async (tx) => {
     const log = await tx.stockLog.findUniqueOrThrow({
       where: { id: data.logId },
-      include: { product: { select: { id: true, currentStock: true } } },
+      include: {
+        product: { select: { id: true, currentStock: true, name: true, sku: true } },
+      },
     });
     if (isSystemStockLog(log.note)) {
       throw new Error("Mutasi sistem tidak dapat di-void langsung.");
@@ -314,7 +390,13 @@ export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
       );
     }
 
-    await tx.stockLog.create({
+    // Harus sebelum baris void dibuat — lihat settlePriorStockNotice.
+    const prior = await settlePriorStockNotice(tx, {
+      id: log.id,
+      productId: log.product.id,
+    });
+
+    const voidRow = await tx.stockLog.create({
       data: {
         productId: log.product.id,
         amount: effective.amount,
@@ -331,11 +413,32 @@ export async function deleteStockLog(input: z.infer<typeof deleteLogSchema>) {
         createdById: session.user.id,
       },
     });
+    // Mutasi yang belum dijurnal cukup hilang dari antrean; yang sudah
+    // dijurnal butuh notice agar Finance membalik pencatatannya.
+    if (prior.hadJournal) await createStockNotices(tx, [voidRow.id]);
     await tx.product.update({
       where: { id: log.product.id },
       data: { currentStock: nextStock },
     });
+    return {
+      hadJournal: prior.hadJournal,
+      type: effective.type,
+      amount: effective.amount,
+      name: log.product.name,
+      sku: log.product.sku,
+    };
   });
+
+  if (voided.hadJournal) {
+    await notifyFinanceStockMovement(
+      `Mutasi stok di-void: ${describeStockMovement({
+        type: voided.type,
+        amount: voided.amount,
+        productName: voided.name,
+        sku: voided.sku,
+      })} (${data.reason.trim()})${actorSuffix(session.user.name)} — pencatatan perlu dibalik.`,
+    );
+  }
 
   revalidatePath("/inventory");
   revalidatePath("/products");

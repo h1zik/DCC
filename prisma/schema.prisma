@@ -149,6 +149,10 @@ enum NotificationType {
    * KOL Hub: pengajuan milik user disetujui / ditolak.
    */
   KOL_APPROVAL_DECIDED
+  /**
+   * Inventori → Finance: ada barang masuk/keluar yang menunggu dicatat ke pembukuan.
+   */
+  STOCK_MOVEMENT
 }
 
 /**
@@ -490,6 +494,7 @@ model User {
   brandCreativeGuidelinesCreated     BrandCreativeGuideline[]       @relation("BrandCreativeGuidelineCreator")
   brandAdLibraryMonitorsCreated      BrandAdLibraryMonitor[]        @relation("BrandAdLibraryMonitorCreator")
   stockLogsCreated                   StockLog[]                     @relation("StockLogCreator")
+  financeStockNoticesHandled         FinanceStockNotice[]           @relation("FinanceStockNoticeHandler")
   seoKeywordProjectsCreated          SeoKeywordProject[]            @relation("SeoKeywordProjectCreator")
   seoRankProjectsCreated             SeoRankProject[]               @relation("SeoRankProjectCreator")
   seoOnPageAuditsCreated             SeoOnPageAudit[]               @relation("SeoOnPageAuditCreator")
@@ -2043,6 +2048,7 @@ model StockLog {
   createdById   String?
   createdBy     User?        @relation("StockLogCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt     DateTime     @default(now())
+  financeNotice FinanceStockNotice?
 
   /**
    * Dashboard executive memfilter `type = OUT` dengan window 90 hari terakhir.
@@ -2253,6 +2259,7 @@ model FinanceJournalEntry {
   apPayments      FinanceApPayment[]
   arPayments      FinanceArPayment[]
   spendPayouts    FinanceSpendRequest[]
+  stockNotices    FinanceStockNotice[]
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
@@ -2260,6 +2267,36 @@ model FinanceJournalEntry {
   @@index([status])
   // Feed aktivitas lintas modul memfilter window `createdAt >= since`.
   @@index([createdAt])
+}
+
+/**
+ * Kotak masuk Finance untuk mutasi stok dari modul Inventori. Satu baris per
+ * StockLog yang dibuat SETELAH fitur ini rilis (mutasi lama tidak di-backfill).
+ * Status diturunkan, bukan disimpan:
+ * - journalEntryId terisi → sudah dicatat (draf/terposting, lihat status jurnal)
+ * - dismissedAt terisi    → diabaikan (manual oleh Finance, atau otomatis saat
+ *   mutasi di-void/dikoreksi sebelum sempat dicatat)
+ * - keduanya null         → menunggu dicatat
+ * Draf jurnal yang dihapus mengembalikan notice ke "menunggu" (ON DELETE SET NULL).
+ */
+model FinanceStockNotice {
+  id             String               @id @default(cuid())
+  stockLogId     String               @unique
+  stockLog       StockLog             @relation(fields: [stockLogId], references: [id], onDelete: Cascade)
+  journalEntryId String?
+  journalEntry   FinanceJournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+  dismissedAt    DateTime?
+  dismissNote    String?              @db.VarChar(300)
+  /**
+   * Staf Finance yang terakhir mencatat / mengabaikan notice ini.
+   */
+  handledById    String?
+  handledBy      User?                @relation("FinanceStockNoticeHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  handledAt      DateTime?
+  createdAt      DateTime             @default(now())
+
+  @@index([journalEntryId])
+  @@index([dismissedAt, createdAt(sort: Desc)])
 }
 
 /**
