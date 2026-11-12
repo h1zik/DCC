@@ -9,7 +9,8 @@ import {
 import { isRoomHubManagerRole } from "@/lib/room-access";
 import { rowToElement } from "@/lib/whiteboard/serialize";
 import { RoomViewHeader } from "./room-view-header";
-import { CalendarViewClient } from "./calendar-view-client";
+import { CalendarViewClient } from "./calendar/calendar-view-client";
+import { loadCalendarData } from "./calendar/calendar-data";
 import { TimelineViewClient } from "./timeline-view-client";
 import { WikiViewClient } from "./wiki-view-client";
 import { LinksViewClient } from "./links-view-client";
@@ -87,7 +88,7 @@ export default async function RoomCustomViewPage({
   return (
     <div className="flex flex-col gap-4">
       <RoomViewHeader view={view} canManage={canManage} />
-      {await renderViewBody(roomId, view, canManage, viewerUserId)}
+      {await renderViewBody(roomId, view, canManage, viewerUserId, room)}
     </div>
   );
 }
@@ -186,27 +187,12 @@ async function renderViewBody(
   },
   canManage: boolean,
   viewerUserId: string,
+  room: { brandId?: string | null },
 ) {
   switch (view.type) {
     case RoomViewType.CALENDAR: {
-      const events = await prisma.roomCalendarEvent.findMany({
-        where: { viewId: view.id },
-        orderBy: { startsAt: "asc" },
-      });
-      return (
-        <CalendarViewClient
-          viewId={view.id}
-          events={events.map((e) => ({
-            id: e.id,
-            title: e.title,
-            description: e.description,
-            location: e.location,
-            startsAt: e.startsAt.toISOString(),
-            endsAt: e.endsAt ? e.endsAt.toISOString() : null,
-            allDay: e.allDay,
-          }))}
-        />
-      );
+      const data = await loadCalendarData(roomId, view.id, room);
+      return <CalendarViewClient viewId={view.id} data={data} />;
     }
     case RoomViewType.TIMELINE: {
       const items = await prisma.roomTimelineMilestone.findMany({

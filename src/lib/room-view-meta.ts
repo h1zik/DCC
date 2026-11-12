@@ -15,7 +15,7 @@ export const ROOM_VIEW_TYPE_META: Record<RoomViewType, RoomViewTypeMeta> = {
     type: RoomViewType.CALENDAR,
     label: "Kalender",
     description:
-      "Acara internal ruangan (shoot, sampling, kirim ke maklon) yang terpisah dari kalender pribadi.",
+      "Rencanakan campaign brand: rentang campaign, aktivitas seperti shoot, posting, dan live, plus tanggal penting dalam satu kalender.",
     defaultTitle: "Kalender",
     iconKey: "calendar-days",
   },

@@ -292,6 +292,34 @@ enum RoomViewType {
 }
 
 /**
+ * Status campaign di view CALENDAR. Ditentukan manual oleh tim, bukan turunan
+ * dari tanggal: campaign bisa tertunda walau tanggal mulainya sudah lewat.
+ */
+enum RoomCampaignStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  DONE
+}
+
+/**
+ * Jenis aktivitas di kalender ruangan. Dibedakan lewat ikon; warna aktivitas
+ * mengikuti campaign-nya.
+ */
+enum RoomCalendarEventKind {
+  GENERAL
+  SHOOT
+  CONTENT
+  LIVE
+  PROMO
+  KOL
+  LAUNCH
+  OFFLINE
+  MEETING
+  DEADLINE
+}
+
+/**
  * Jenis objek di kanvas whiteboard. Disimpan sebagai enum agar bisa
  * difilter/di-index di DB; detail visual tiap tipe ada di `props` (JSON).
  */
@@ -814,6 +842,7 @@ model RoomView {
   updatedAt DateTime     @updatedAt
 
   calendarEvents     RoomCalendarEvent[]
+  campaigns          RoomCampaign[]
   timelineMilestones RoomTimelineMilestone[]
   wikiPages          RoomWikiPage[]
   links              RoomLinkItem[]
@@ -840,11 +869,58 @@ model RoomCalendarEvent {
   startsAt    DateTime
   endsAt      DateTime?
   allDay      Boolean   @default(false)
+  /**
+   * Campaign pemilik aktivitas (opsional). Campaign dihapus → aktivitas tetap
+   * ada, hanya terlepas.
+   */
+  campaignId  String?
+  campaign    RoomCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  kind        RoomCalendarEventKind @default(GENERAL)
+  /**
+   * Terisi saat aktivitas ditandai selesai; dipakai untuk progres campaign.
+   */
+  doneAt      DateTime?
   createdById String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([viewId, startsAt])
+  @@index([campaignId])
+}
+
+/**
+ * Campaign brand di view CALENDAR: rentang tanggal berwarna yang menaungi
+ * aktivitas. Berdiri sendiri (tidak terhubung ke KolCampaign maupun Finance);
+ * `budget` hanya catatan perencanaan.
+ */
+model RoomCampaign {
+  id          String             @id @default(cuid())
+  viewId      String
+  view        RoomView           @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  name        String             @db.VarChar(120)
+  description String?
+  startDate   DateTime           @db.Date
+  endDate     DateTime           @db.Date
+  /**
+   * Kunci palet (mis. "rose"), lihat `src/lib/room-calendar/campaign-ui.ts`.
+   */
+  color       String             @db.VarChar(16)
+  status      RoomCampaignStatus @default(PLANNED)
+  objective   ContentPlanUsage?
+  /**
+   * Kunci channel (instagram, shopee, offline, dst.) dari daftar di lib.
+   * String, bukan enum ContentPlanPlatform, karena mencakup marketplace.
+   */
+  channels    String[]           @default([])
+  picUserIds  String[]           @default([])
+  budget      Decimal?           @db.Decimal(18, 2)
+  kpiTarget   String?            @db.VarChar(500)
+  createdById String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  events      RoomCalendarEvent[]
+
+  @@index([viewId, startDate])
 }
 
 /**
