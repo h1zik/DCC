@@ -37,6 +37,24 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-12-kalender-campaign",
+    date: "2026-11-12",
+    title: "Kalender ruangan kini untuk merencanakan campaign brand",
+    category: "improved",
+    description:
+      "View Kalender di ruangan dirombak menjadi papan perencanaan campaign. Campaign tampil sebagai pita berwarna yang merentang di kalender, aktivitas seperti shoot, posting, dan live bisa dikaitkan ke campaign, dan tanggal penting ikut terlihat. Acara lama tetap ada dan tidak berubah.",
+    highlights: [
+      "Campaign baru: nama, rentang tanggal, warna, status, objective, channel, PIC, budget, dan target KPI",
+      "Tiga tampilan: Bulan, Linimasa untuk membandingkan rentang antar campaign, dan Agenda yang nyaman di ponsel",
+      "Aktivitas punya jenis (Produksi, Posting, Live, Promo, KOL, dan lainnya) dan bisa ditandai selesai, progresnya terlihat per campaign",
+      "Seret aktivitas ke tanggal lain di tampilan Bulan; di Linimasa, geser pita campaign atau tarik ujungnya untuk mengubah durasi",
+      "Klik tanggal untuk melihat semua isinya, termasuk yang dulu tersembunyi di balik +N lainnya",
+      "Lapisan yang bisa dimatikan: tanggal merah, tanggal kembar, periode gajian, jadwal posting Content Plan, dan jadwal KOL brand bagi yang punya akses KOL Hub",
+      "Panel Berikutnya menghitung mundur ke campaign dan momen terdekat, misalnya H-30 menuju 12.12",
+      "Jam aktivitas kini selalu ditulis dalam WIB",
+    ],
+  },
+  {
     id: "2026-11-10-content-plan-view",
     date: "2026-11-10",
     title: "Content Plan bisa ditambahkan sebagai view, tampilannya dirapikan",
