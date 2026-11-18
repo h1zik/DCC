@@ -43,11 +43,13 @@ import {
   eventDays,
   memberName,
   type CalCampaign,
+  type CalCampaignAttachment,
   type CalEvent,
   type CalMember,
 } from "@/lib/room-calendar/types";
 import { cn } from "@/lib/utils";
 import { EventRow, MemberAvatar } from "./calendar-parts";
+import { CampaignAttachments, type PendingAttachment } from "./campaign-attachments";
 
 export type CampaignDraft = {
   id?: string;
@@ -118,6 +120,7 @@ export function CampaignSheet({
   openKey,
   members,
   events,
+  attachments,
   saving,
   onClose,
   onSave,
@@ -125,6 +128,7 @@ export function CampaignSheet({
   onOpenEvent,
   onToggleDone,
   onAddEvent,
+  onAttachmentsChanged,
 }: {
   /** null = tertutup. */
   draft: CampaignDraft | null;
@@ -132,25 +136,33 @@ export function CampaignSheet({
   members: CalMember[];
   /** Semua aktivitas kalender; disaring ke campaign ini di dalam. */
   events: CalEvent[];
+  /** Lampiran campaign yang sedang dibuka; kosong untuk campaign baru. */
+  attachments: CalCampaignAttachment[];
   saving: boolean;
   onClose: () => void;
-  onSave: (payload: CampaignPayload) => Promise<boolean>;
+  /** `pending`: lampiran campaign baru, dikirim setelah campaign dibuat. */
+  onSave: (payload: CampaignPayload, pending: PendingAttachment[]) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
   onOpenEvent: (event: CalEvent) => void;
   onToggleDone: (event: CalEvent, done: boolean) => void;
   onAddEvent: (campaign: { id: string; startDate: DayKey }) => void;
+  onAttachmentsChanged: () => void;
 }) {
   const [dirty, setDirty] = useState(false);
+  const [uploading, setUploading] = useState(false);
   return (
     <Sheet
       open={draft !== null}
       // Perubahan yang belum disimpan tidak hilang karena salah klik di luar panel.
-      disablePointerDismissal={dirty}
+      disablePointerDismissal={dirty || uploading}
       onOpenChange={(next) => {
-        if (!next && !saving) {
-          setDirty(false);
-          onClose();
+        if (next || saving) return;
+        if (uploading) {
+          toast.info("Tunggu sampai unggahan lampiran selesai.");
+          return;
         }
+        setDirty(false);
+        onClose();
       }}
     >
       <SheetContent
@@ -163,8 +175,12 @@ export function CampaignSheet({
             initial={draft}
             members={members}
             events={events}
+            attachments={attachments}
             saving={saving}
+            uploading={uploading}
             onDirtyChange={setDirty}
+            onUploadingChange={setUploading}
+            onAttachmentsChanged={onAttachmentsChanged}
             onClose={() => {
               setDirty(false);
               onClose();
@@ -189,8 +205,12 @@ function CampaignForm({
   initial,
   members,
   events,
+  attachments,
   saving,
+  uploading,
   onDirtyChange,
+  onUploadingChange,
+  onAttachmentsChanged,
   onClose,
   onSave,
   onDelete,
@@ -201,10 +221,14 @@ function CampaignForm({
   initial: CampaignDraft;
   members: CalMember[];
   events: CalEvent[];
+  attachments: CalCampaignAttachment[];
   saving: boolean;
+  uploading: boolean;
   onDirtyChange: (dirty: boolean) => void;
+  onUploadingChange: (uploading: boolean) => void;
+  onAttachmentsChanged: () => void;
   onClose: () => void;
-  onSave: (payload: CampaignPayload) => Promise<boolean>;
+  onSave: (payload: CampaignPayload, pending: PendingAttachment[]) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
   onOpenEvent: (event: CalEvent) => void;
   onToggleDone: (event: CalEvent, done: boolean) => void;
@@ -213,6 +237,8 @@ function CampaignForm({
   const [form, setForm] = useState<CampaignDraft>(initial);
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** Lampiran campaign baru: menunggu campaign dibuat, lalu diunggah ke id-nya. */
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
   const isEdit = Boolean(form.id);
 
   function set(patch: Partial<CampaignDraft>) {
@@ -258,22 +284,25 @@ function CampaignForm({
       toast.error("Tanggal selesai tidak boleh sebelum tanggal mulai.");
       return;
     }
-    const ok = await onSave({
-      id: form.id,
-      name,
-      description: form.description.trim() || null,
-      startDate: form.startDate,
-      endDate: form.endDate,
-      color: form.color,
-      status: form.status,
-      objective: form.objective,
-      channels: form.channels.filter((c): c is CampaignChannelKey =>
-        (CAMPAIGN_CHANNEL_KEYS as readonly string[]).includes(c),
-      ),
-      picUserIds: form.picUserIds,
-      budget: budgetNumber,
-      kpiTarget: form.kpiTarget.trim() || null,
-    });
+    const ok = await onSave(
+      {
+        id: form.id,
+        name,
+        description: form.description.trim() || null,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        color: form.color,
+        status: form.status,
+        objective: form.objective,
+        channels: form.channels.filter((c): c is CampaignChannelKey =>
+          (CAMPAIGN_CHANNEL_KEYS as readonly string[]).includes(c),
+        ),
+        picUserIds: form.picUserIds,
+        budget: budgetNumber,
+        kpiTarget: form.kpiTarget.trim() || null,
+      },
+      pending,
+    );
     if (ok) {
       setDirty(false);
       onDirtyChange(false);
@@ -555,6 +584,21 @@ function CampaignForm({
             )}
           </section>
         ) : null}
+
+        <CampaignAttachments
+          campaignId={form.id ?? null}
+          attachments={attachments}
+          members={members}
+          pending={pending}
+          disabled={saving}
+          onPendingChange={(next) => {
+            setPending(next);
+            setDirty(true);
+            onDirtyChange(true);
+          }}
+          onChanged={onAttachmentsChanged}
+          onBusyChange={onUploadingChange}
+        />
       </div>
 
       <div className="bg-muted/40 border-t p-3">
@@ -565,6 +609,9 @@ function CampaignForm({
               {ownEvents.length > 0
                 ? `${ownEvents.length} aktivitasnya tetap ada di kalender, hanya tidak lagi terkait campaign.`
                 : "Tindakan ini tidak bisa dibatalkan."}
+              {attachments.length > 0
+                ? ` ${attachments.length} lampirannya ikut terhapus permanen.`
+                : null}
             </p>
             <div className="flex justify-end gap-2">
               <Button
@@ -605,12 +652,18 @@ function CampaignForm({
               ) : null}
             </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={onClose}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={saving || uploading}
+                onClick={onClose}
+              >
                 Batal
               </Button>
               <Button type="submit" size="sm" disabled={saving} className="gap-1.5">
                 {saving ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
-                Simpan campaign
+                {saving && pending.length > 0 ? "Mengunggah lampiran" : "Simpan campaign"}
               </Button>
             </div>
           </div>

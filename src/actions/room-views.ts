@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { assertRoomHubManager } from "@/lib/room-access";
 import { revalidateTasksAndRoomHub } from "@/lib/revalidate-workspace";
+import { removeCampaignFoldersBestEffort } from "@/lib/room-calendar/campaign-files";
 import { ROOM_VIEW_TYPE_META } from "@/lib/room-view-meta";
 import {
   absolutePathFromStoredPublicPath,
@@ -139,8 +140,16 @@ export async function deleteRoomView(viewId: string) {
     view.type === RoomViewType.CONTENT_PLAN
       ? await collectContentPlanViewFiles(viewId)
       : null;
+  // Campaign ikut ter-cascade; id-nya dicatat dulu agar folder lampirannya bisa dihapus.
+  const campaignIds =
+    view.type === RoomViewType.CALENDAR
+      ? (
+          await prisma.roomCampaign.findMany({ where: { viewId }, select: { id: true } })
+        ).map((c) => c.id)
+      : [];
   await prisma.roomView.delete({ where: { id: viewId } });
   if (contentPlanFiles) await removeContentPlanViewFiles(contentPlanFiles);
+  await removeCampaignFoldersBestEffort(campaignIds);
   revalidateTasksAndRoomHub();
   revalidatePath(`/room/${roomId}`);
 }

@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCeoOrAdministrator, requireTasksRoomHubSession } from "@/lib/auth-helpers";
 import { ensureSimpleRoomBoardProject } from "@/lib/room-simple-hub";
 import { assertRoomHubManager } from "@/lib/room-access";
+import { removeCampaignFoldersBestEffort } from "@/lib/room-calendar/campaign-files";
 import {
   absolutePathFromStoredPublicPath,
   getUploadPublicDir,
@@ -69,7 +70,13 @@ export async function deleteRoom(id: string) {
       "Ruangan masih memiliki proyek. Pindahkan atau hapus proyek terlebih dahulu.",
     );
   }
+  // Campaign kalender ikut ter-cascade; id-nya dicatat dulu agar folder lampirannya bisa dihapus.
+  const campaigns = await prisma.roomCampaign.findMany({
+    where: { view: { roomId: id } },
+    select: { id: true },
+  });
   await prisma.room.delete({ where: { id } });
+  await removeCampaignFoldersBestEffort(campaigns.map((c) => c.id));
   revalidatePath("/rooms");
   revalidateTasksAndRoomHub();
 }

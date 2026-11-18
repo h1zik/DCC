@@ -37,6 +37,22 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-18-lampiran-campaign",
+    date: "2026-11-18",
+    title: "Campaign di kalender ruangan kini bisa dilampiri file dan tautan",
+    category: "improved",
+    description:
+      "Brief, deck, rate card, dan dokumen lain sekarang bisa ditaruh langsung di campaign-nya. Buka campaign di view Kalender, lalu pakai bagian Lampiran di panelnya.",
+    highlights: [
+      "Unggah beberapa file sekaligus, atau seret file ke panel campaign: PDF, Word, Excel, PowerPoint, gambar, video, dan zip",
+      "Tempel tautan Google Docs, Drive, atau Canva sebagai lampiran, dengan judul sendiri bila perlu",
+      "PDF dan gambar terbuka langsung di tab baru, file lain bisa diunduh",
+      "Lampiran bisa ditambahkan sejak membuat campaign baru; file dikirim begitu campaign disimpan",
+      "Hanya anggota ruangan yang bisa membuka lampiran campaign",
+      "Jumlah lampiran terlihat di daftar campaign di panel kanan kalender",
+    ],
+  },
+  {
     id: "2026-11-12-kalender-campaign",
     date: "2026-11-12",
     title: "Kalender ruangan kini untuk merencanakan campaign brand",

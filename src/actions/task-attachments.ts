@@ -21,6 +21,11 @@ import {
 import { saveRoomDocumentToStorageAndDb } from "@/lib/room-document-upload";
 import { resolveUploadFolderId } from "@/actions/room-documents";
 import { isCreativeFile } from "@/lib/creative-file-formats";
+import {
+  MAX_LINK_TITLE_CHARS,
+  defaultLinkTitle,
+  normalizeExternalUrl,
+} from "@/lib/external-link";
 
 const ALLOWED_PREFIXES = [
   "image/",
@@ -51,42 +56,8 @@ function sanitizeBaseName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "file";
 }
 
-const MAX_LINK_URL_CHARS = 2048;
-const MAX_LINK_TITLE_CHARS = 200;
 /** Bukan MIME IANA; penanda lampiran berupa URL di UI. */
 const TASK_LINK_ATTACHMENT_MIME = "text/x-task-external-url";
-
-function normalizeExternalTaskUrl(raw: string): string {
-  const t = raw.trim();
-  if (!t) throw new Error("Masukkan tautan.");
-  const withProto = /^https?:\/\//i.test(t) ? t : `https://${t}`;
-  let u: URL;
-  try {
-    u = new URL(withProto);
-  } catch {
-    throw new Error("Format tautan tidak valid.");
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") {
-    throw new Error("Hanya tautan http atau https yang diizinkan.");
-  }
-  const s = u.toString();
-  if (s.length > MAX_LINK_URL_CHARS) {
-    throw new Error(
-      `Tautan terlalu panjang (maks. ${MAX_LINK_URL_CHARS} karakter).`,
-    );
-  }
-  return s;
-}
-
-function defaultLinkTitle(url: string): string {
-  try {
-    const u = new URL(url);
-    const path = u.pathname === "/" ? "" : u.pathname;
-    return (u.hostname + path).slice(0, MAX_LINK_TITLE_CHARS) || "Tautan";
-  } catch {
-    return "Tautan";
-  }
-}
 
 /** Lampiran berupa URL (bukan unggahan file). */
 export async function addTaskLinkAttachment(
@@ -94,7 +65,7 @@ export async function addTaskLinkAttachment(
   input: { url: string; title?: string | null },
 ) {
   const session = await requireTasksRoomHubSession();
-  const linkUrl = normalizeExternalTaskUrl(input.url);
+  const linkUrl = normalizeExternalUrl(input.url);
   const titleRaw =
     typeof input.title === "string" && input.title.trim()
       ? input.title.trim()

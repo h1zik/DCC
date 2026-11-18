@@ -919,8 +919,35 @@ model RoomCampaign {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   events      RoomCalendarEvent[]
+  attachments RoomCampaignAttachment[]
 
   @@index([viewId, startDate])
+}
+
+/**
+ * Lampiran campaign: file unggahan atau tautan. File disimpan di root privat
+ * (`src/lib/room-calendar/campaign-files.ts`), di luar `/uploads` yang publik,
+ * dan hanya dilayani route yang memeriksa keanggotaan ruangan.
+ */
+model RoomCampaignAttachment {
+  id           String       @id @default(cuid())
+  campaignId   String
+  campaign     RoomCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  uploadedById String?
+  /**
+   * Nama file asli, atau judul untuk lampiran berupa tautan.
+   */
+  fileName     String       @db.VarChar(240)
+  mimeType     String       @db.VarChar(160)
+  size         Int          @default(0)
+  /**
+   * Relatif terhadap root privat; null = lampiran berupa tautan.
+   */
+  storagePath  String?      @db.VarChar(800)
+  linkUrl      String?      @db.VarChar(2048)
+  createdAt    DateTime     @default(now())
+
+  @@index([campaignId, createdAt])
 }
 
 /**
