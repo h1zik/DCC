@@ -5,6 +5,7 @@ import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { ChartGantt, ChevronLeft, ChevronRight, LayoutGrid, ListTodo, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import {
+  addRoomCampaignLink,
   deleteRoomCalendarEvent,
   deleteRoomCampaign,
   moveRoomCalendarEvent,
@@ -16,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { actionErrorMessage } from "@/lib/action-error-message";
 import { wibDayKey } from "@/lib/kol/time";
+import { uploadCampaignAttachment } from "@/lib/room-calendar/campaign-attachment-client";
 import { nextCampaignColor } from "@/lib/room-calendar/campaign-ui";
 import {
   firstDayOfMonth,
@@ -30,6 +32,7 @@ import { momentsBetween, type Moment } from "@/lib/room-calendar/moments";
 import {
   campaignProgress,
   type CalCampaign,
+  type CalCampaignAttachment,
   type CalContentPost,
   type CalEvent,
   type CalKolPost,
@@ -47,6 +50,7 @@ import {
 } from "./calendar-prefs";
 import { CalendarRail } from "./calendar-rail";
 import { CalendarTimeline } from "./calendar-timeline";
+import { pendingAttachmentName, type PendingAttachment } from "./campaign-attachments";
 import {
   CampaignSheet,
   draftFromCampaign,
@@ -69,6 +73,7 @@ const DAY_MS = 86_400_000;
 const NO_CONTENT_POSTS: CalContentPost[] = [];
 const NO_KOL_POSTS: CalKolPost[] = [];
 const NO_MOMENTS: Moment[] = [];
+const NO_ATTACHMENTS: CalCampaignAttachment[] = [];
 
 type EventPatch =
   | { type: "move"; id: string; startsAt: string; endsAt: string | null }
@@ -267,12 +272,33 @@ export function CalendarViewClient({ viewId, data }: { viewId: string; data: Cal
     return ok;
   }
 
-  async function saveCampaign(payload: CampaignPayload) {
-    const ok = await runSave(
-      () => upsertRoomCampaign({ ...payload, viewId }),
-      "Campaign belum tersimpan. Coba lagi.",
-    );
-    if (ok) setCampaignDraft(null);
+  async function saveCampaign(payload: CampaignPayload, pending: PendingAttachment[]) {
+    // Lampiran campaign baru dikirim setelah campaign punya id. Kegagalan satu
+    // lampiran tidak membatalkan campaign yang sudah tersimpan.
+    const failed: string[] = [];
+    const ok = await runSave(async () => {
+      const { id } = await upsertRoomCampaign({ ...payload, viewId });
+      for (const item of pending) {
+        try {
+          if (item.kind === "file") {
+            await uploadCampaignAttachment(id, item.file);
+          } else {
+            await addRoomCampaignLink({ campaignId: id, url: item.url, title: item.title || null });
+          }
+        } catch {
+          failed.push(pendingAttachmentName(item));
+        }
+      }
+    }, "Campaign belum tersimpan. Coba lagi.");
+    if (ok) {
+      setCampaignDraft(null);
+      if (failed.length > 0) {
+        toast.error(
+          `Campaign tersimpan, tetapi ${failed.length} lampiran gagal dikirim: ${failed.join(", ")}. Buka campaign untuk mencoba lagi.`,
+          { duration: 10_000 },
+        );
+      }
+    }
     return ok;
   }
 
@@ -550,7 +576,12 @@ export function CalendarViewClient({ viewId, data }: { viewId: string; data: Cal
         openKey={openKey}
         members={data.members}
         events={events}
+        attachments={
+          (campaignDraft?.id ? campaignById.get(campaignDraft.id)?.attachments : null) ??
+          NO_ATTACHMENTS
+        }
         saving={saving}
+        onAttachmentsChanged={() => router.refresh()}
         onClose={() => setCampaignDraft(null)}
         onSave={saveCampaign}
         onDelete={deleteCampaign}

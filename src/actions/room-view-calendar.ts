@@ -9,27 +9,30 @@ import {
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireTasksRoomHubSession } from "@/lib/auth-helpers";
-import { assertRoomMember } from "@/lib/room-access";
+import {
+  MAX_LINK_TITLE_CHARS,
+  defaultLinkTitle,
+  normalizeExternalUrl,
+} from "@/lib/external-link";
+import {
+  ensureCalendarViewMember,
+  ensureCampaignMember,
+} from "@/lib/room-calendar/access";
+import {
+  CAMPAIGN_ATTACHMENT_MAX,
+  CAMPAIGN_LINK_MIME,
+} from "@/lib/room-calendar/campaign-attachments";
+import {
+  removeCampaignFileBestEffort,
+  removeCampaignFoldersBestEffort,
+} from "@/lib/room-calendar/campaign-files";
 import {
   CAMPAIGN_CHANNEL_KEYS,
   CAMPAIGN_COLOR_KEYS,
 } from "@/lib/room-calendar/campaign-ui";
 import { isDayKey, keyToUtcDate } from "@/lib/room-calendar/dates";
 
-/**
- * Semua anggota ruangan boleh menulis ke kalender. Setiap aksi mencari view
- * dari baris yang disentuh (bukan dari `viewId` kiriman klien), lalu memeriksa
- * keanggotaan di ruangan view itu.
- */
-async function ensureCalendarViewMember(viewId: string, userId: string) {
-  const v = await prisma.roomView.findUniqueOrThrow({
-    where: { id: viewId },
-    select: { roomId: true, type: true },
-  });
-  if (v.type !== "CALENDAR") throw new Error("View bukan tipe Kalender.");
-  await assertRoomMember(v.roomId, userId);
-  return v.roomId;
-}
+// Semua anggota ruangan boleh menulis ke kalender; lihat `ensureCalendarViewMember`.
 
 function revalidateView(roomId: string, viewId: string) {
   revalidatePath(`/room/${roomId}/view/${viewId}`);
@@ -269,7 +272,10 @@ export async function rescheduleRoomCampaign(
   revalidateView(roomId, campaign.viewId);
 }
 
-/** Aktivitas campaign tidak ikut terhapus; relasinya dilepas (onDelete: SetNull). */
+/**
+ * Aktivitas campaign tidak ikut terhapus; relasinya dilepas (onDelete: SetNull).
+ * Lampirannya ikut terhapus, termasuk file fisiknya.
+ */
 export async function deleteRoomCampaign(campaignId: string) {
   const session = await requireTasksRoomHubSession();
   const campaign = await prisma.roomCampaign.findUniqueOrThrow({
@@ -278,5 +284,59 @@ export async function deleteRoomCampaign(campaignId: string) {
   });
   const roomId = await ensureCalendarViewMember(campaign.viewId, session.user.id);
   await prisma.roomCampaign.delete({ where: { id: campaignId } });
+  await removeCampaignFoldersBestEffort([campaignId]);
   revalidateView(roomId, campaign.viewId);
+}
+
+// ───────────────────────── Lampiran campaign ─────────────────────────
+// Unggah file lewat POST /api/room-campaigns/[campaignId]/attachments (butuh progress).
+
+const addCampaignLinkSchema = z.object({
+  campaignId: z.string().min(1),
+  url: z.string().min(1).max(4000),
+  title: z.string().trim().max(MAX_LINK_TITLE_CHARS).optional().nullable(),
+});
+
+/** Lampiran berupa tautan (Google Docs, Drive, Canva, dan sejenisnya). */
+export async function addRoomCampaignLink(input: z.input<typeof addCampaignLinkSchema>) {
+  const session = await requireTasksRoomHubSession();
+  const data = addCampaignLinkSchema.parse(input);
+  const { roomId, viewId } = await ensureCampaignMember(data.campaignId, session.user.id);
+  const linkUrl = normalizeExternalUrl(data.url);
+
+  const count = await prisma.roomCampaignAttachment.count({
+    where: { campaignId: data.campaignId },
+  });
+  if (count >= CAMPAIGN_ATTACHMENT_MAX) {
+    throw new Error(`Satu campaign maksimal ${CAMPAIGN_ATTACHMENT_MAX} lampiran.`);
+  }
+
+  await prisma.roomCampaignAttachment.create({
+    data: {
+      campaignId: data.campaignId,
+      uploadedById: session.user.id,
+      fileName: (data.title?.trim() || defaultLinkTitle(linkUrl)).slice(0, MAX_LINK_TITLE_CHARS),
+      mimeType: CAMPAIGN_LINK_MIME,
+      size: 0,
+      linkUrl,
+    },
+  });
+  revalidateView(roomId, viewId);
+}
+
+/** Sama seperti isi kalender lainnya: semua anggota ruangan boleh menghapus. */
+export async function deleteRoomCampaignAttachment(attachmentId: string) {
+  const session = await requireTasksRoomHubSession();
+  const attachment = await prisma.roomCampaignAttachment.findUnique({
+    where: { id: attachmentId },
+    select: { campaignId: true, storagePath: true },
+  });
+  if (!attachment) throw new Error("Lampiran tidak ditemukan.");
+  const { roomId, viewId } = await ensureCampaignMember(
+    attachment.campaignId,
+    session.user.id,
+  );
+  await prisma.roomCampaignAttachment.delete({ where: { id: attachmentId } });
+  if (attachment.storagePath) await removeCampaignFileBestEffort(attachment.storagePath);
+  revalidateView(roomId, viewId);
 }

@@ -39,6 +39,19 @@ export type CalCampaign = {
   picUserIds: string[];
   budget: number | null;
   kpiTarget: string | null;
+  attachments: CalCampaignAttachment[];
+};
+
+/** Lampiran campaign: file unggahan, atau tautan bila `linkUrl` terisi. */
+export type CalCampaignAttachment = {
+  id: string;
+  /** Nama file, atau judul tautan. */
+  fileName: string;
+  mimeType: string;
+  size: number;
+  linkUrl: string | null;
+  uploadedById: string | null;
+  createdAt: string;
 };
 
 export type CalMember = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Crosshair, Eye, EyeOff, Plus } from "lucide-react";
+import { Crosshair, Eye, EyeOff, Paperclip, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CAMPAIGN_STATUS_LABEL, campaignStyle } from "@/lib/room-calendar/campaign-ui";
 import {
@@ -181,6 +181,16 @@ export function CalendarRail({
                       <span className="flex items-center gap-2">
                         <CampaignSwatch color={c.color} status={c.status} />
                         <span className="truncate text-sm font-medium">{c.name}</span>
+                        {c.attachments.length > 0 ? (
+                          <span
+                            className="text-muted-foreground ml-auto flex shrink-0 items-center gap-0.5 text-[11px] tabular-nums"
+                            title={`${c.attachments.length} lampiran`}
+                          >
+                            <Paperclip className="size-3" aria-hidden />
+                            {c.attachments.length}
+                            <span className="sr-only"> lampiran</span>
+                          </span>
+                        ) : null}
                       </span>
                       <span className="text-muted-foreground mt-0.5 flex justify-between gap-2 text-xs">
                         <span className="tabular-nums">

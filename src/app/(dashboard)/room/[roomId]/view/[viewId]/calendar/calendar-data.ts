@@ -42,6 +42,21 @@ export async function loadCalendarData(
     prisma.roomCampaign.findMany({
       where: { viewId },
       orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+      include: {
+        // `storagePath` sengaja tidak dipilih: lokasi file tidak pernah dikirim ke klien.
+        attachments: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            fileName: true,
+            mimeType: true,
+            size: true,
+            linkUrl: true,
+            uploadedById: true,
+            createdAt: true,
+          },
+        },
+      },
     }),
     getRoomHubMemberUsers(roomId),
     prisma.roomContentPlanItem.findMany({
@@ -101,6 +116,15 @@ export async function loadCalendarData(
       picUserIds: c.picUserIds,
       budget: c.budget == null ? null : c.budget.toNumber(),
       kpiTarget: c.kpiTarget,
+      attachments: c.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        size: a.size,
+        linkUrl: a.linkUrl,
+        uploadedById: a.uploadedById,
+        createdAt: a.createdAt.toISOString(),
+      })),
     })),
     members: members.map((m) => ({
       id: m.id,
