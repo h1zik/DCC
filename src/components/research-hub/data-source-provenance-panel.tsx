@@ -75,8 +75,8 @@ export function DataSourceProvenancePanel({
       ) : null}
       {hasApifyFallback ? (
         <p className="text-muted-foreground text-xs leading-relaxed">
-          Apify dipakai sebagai fallback. Jika ini tidak diharapkan, periksa scraper
-          VPS (SCRAPER_API_URL) dan log server.
+          Apify dipakai sebagai cadangan karena scraper VPS gagal. Jika ini tidak
+          diharapkan, periksa scraper VPS (SCRAPER_API_URL) dan log server.
         </p>
       ) : null}
     </div>

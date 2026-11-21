@@ -31,10 +31,14 @@ import {
   getShopeeProductActorId,
 } from "@/lib/apify/shopee-actors";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
+import {
+  buildTokopediaProductInput,
+  getTokopediaProductActorId,
+} from "@/lib/apify/tokopedia-actors";
 import { applyCompetitorProductSnapshot } from "@/lib/research/competitor-product-diff";
 import { snapshotMetricsFromProduct } from "@/lib/research/shop-product-ingest";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
-import { fetchMarketplaceProductViaVps } from "@/lib/scraper-api/marketplace-product-via-vps";
+import { fetchLazadaProductViaVps } from "@/lib/scraper-api/lazada-products";
 
 function normalizeProductDetailItems(
   items: Record<string, unknown>[],
@@ -87,6 +91,9 @@ async function fetchProductDetailFromApify(
     // Shopee: actor detail produk khusus (xtracto all-in-one, mode url).
     actorId = getShopeeProductActorId();
     input = buildShopeeProductInput(productUrl);
+  } else if (marketplace === ResearchMarketplace.TOKOPEDIA) {
+    actorId = getTokopediaProductActorId();
+    input = buildTokopediaProductInput(productUrl);
   } else {
     // Marketplace lain: actor review sekaligus mengembalikan data produk.
     const platformKey = marketplaceToPlatformKey(marketplace);
@@ -122,26 +129,20 @@ async function fetchProductDetail(
   productUrl: string,
   marketplace: ResearchMarketplace,
 ): Promise<NormalizedShopProduct> {
-  if (isScraperApiConfigured()) {
+  // Lazada satu-satunya marketplace yang detail produknya lewat scraper VPS;
+  // Shopee, Tokopedia, dan TikTok Shop langsung ke Apify.
+  if (marketplace === ResearchMarketplace.LAZADA && isScraperApiConfigured()) {
     try {
-      return await fetchMarketplaceProductViaVps(marketplace, productUrl);
+      return await fetchLazadaProductViaVps(productUrl);
     } catch (err) {
+      if (!isApifyConfigured()) throw err;
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(
-        `[competitor-product/${marketplace.toLowerCase()}/vps] gagal — fallback Apify:`,
-        msg,
-      );
+      console.warn("[competitor-product/lazada/vps] gagal — fallback Apify:", msg);
     }
   }
 
   if (isApifyConfigured()) {
     return fetchProductDetailFromApify(productUrl, marketplace);
-  }
-
-  if (isScraperApiConfigured()) {
-    throw new Error(
-      "Scrape VPS gagal dan Apify tidak dikonfigurasi. Periksa URL produk atau SCRAPER_API_URL.",
-    );
   }
 
   return demoProductForUrl(productUrl);
@@ -180,8 +181,8 @@ export async function scrapeCompetitorProductTrack(
 
     const metrics = snapshotMetricsFromProduct(product);
 
-    // Detail kaya dari scraper (VPS shopee-product). `undefined` = jangan ubah
-    // field lama bila marketplace ini tidak menyediakannya.
+    // Detail kaya dari actor detail produk. `undefined` = jangan ubah field
+    // lama bila marketplace ini tidak menyediakannya.
     const richData: Prisma.CompetitorProductTrackUpdateInput = {
       brand: product.brand ?? undefined,
       description: product.description ?? undefined,

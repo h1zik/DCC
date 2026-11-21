@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { NormalizedReview, ReviewScrapeMeta } from "@/lib/apify/normalize";
-import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
 import { loadAllVpsRunItems, startVpsActorRun } from "@/lib/scraper-api/client";
 
 export type VpsProductReviewsResult = {
@@ -132,15 +131,10 @@ async function fetchReviewsViaVpsActor(
   actorId: string,
   productUrl: string,
 ): Promise<VpsProductReviewsResult> {
-  const normalizedUrl =
-    actorId === "shopee-reviews"
-      ? cleanShopeeUrl(productUrl.trim())
-      : productUrl.trim();
-
   const run = await startVpsActorRun(
     actorId,
     {
-      product_url: normalizedUrl,
+      product_url: productUrl.trim(),
       limit: 500,
       max_pages: 50,
       download_images: false,
@@ -177,12 +171,6 @@ export function fetchSociollaReviewsViaVps(
   productUrl: string,
 ): Promise<VpsProductReviewsResult> {
   return fetchReviewsViaVpsActor("sociolla-reviews", productUrl);
-}
-
-export function fetchShopeeReviewsViaVps(
-  productUrl: string,
-): Promise<VpsProductReviewsResult> {
-  return fetchReviewsViaVpsActor("shopee-reviews", productUrl);
 }
 
 export function fetchLazadaReviewsViaVps(

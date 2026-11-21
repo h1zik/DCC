@@ -30,7 +30,7 @@ export type NormalizedShopProduct = {
   name: string;
   productUrl: string;
   imageUrl: string | null;
-  /** Galeri gambar produk (image_urls dari scraper VPS); kosong jika tak tersedia. */
+  /** Galeri gambar produk; kosong jika scraper tidak menyediakannya. */
   imageUrls?: string[];
   price: number | null;
   rating: number | null;
@@ -48,7 +48,7 @@ export type NormalizedShopProduct = {
   stock: number | null;
   shopLocation: string | null;
   isOfficialShop: boolean;
-  // Detail kaya (terutama dari VPS shopee-product); opsional agar normalizer lain tetap valid.
+  // Detail kaya dari actor detail produk; opsional agar normalizer lain tetap valid.
   description?: string | null;
   brand?: string | null;
   category?: string | null;
@@ -304,20 +304,63 @@ export type ReviewScrapeMeta = {
   reviewsAccessible: number | null;
   /** True bila scraper berhasil mengambil seluruh review produk. */
   reviewsComplete: boolean | null;
-  /** Pesan error VPS saat scrape gagal sebelum fallback Apify. */
+  /** Pesan error scraper VPS (Lazada / Female Daily / Sociolla). */
   vpsError?: string | null;
 };
 
+/** Baris review Tokopedia (`outputMode: "reviews"`): satu baris datar per review. */
+function isTokopediaReviewRow(item: Record<string, unknown>): boolean {
+  return item.reviewId != null && "rating" in item && !("cmtid" in item);
+}
+
+/** Review Tokopedia dari actor all-in-one (lihat tokopedia-actors.ts). */
+export function normalizeTokopediaReviews(
+  items: Record<string, unknown>[],
+): NormalizedReview[] {
+  const out: NormalizedReview[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!isTokopediaReviewRow(item)) continue;
+
+    const text = pickString(item, ["text"]);
+    if (!text) continue;
+
+    const externalId = pickId(item, ["reviewId"])!;
+    if (seen.has(externalId)) continue;
+    seen.add(externalId);
+
+    out.push({
+      externalId,
+      author: pickString(item, ["reviewerName"]),
+      rating: pickNumber(item, ["rating"]),
+      text,
+      // Review toko hanya punya tanggal perkiraan (`createdAtApprox`).
+      reviewDate: pickDate(item, ["createdAt", "createdAtApprox"]),
+    });
+  }
+  return out;
+}
+
 /**
- * Metadata review dari dataset dami_studio. Shopee tidak punya feed review per
- * produk, jadi total resmi per produk tidak tersedia; run yang terpotong
- * (TIME_LIMIT / COST_LIMIT) ditandai tidak lengkap.
+ * Metadata review dari dataset actor. Shopee (dami_studio) tidak punya feed
+ * review per produk, jadi total resmi per produk tidak tersedia; run yang
+ * terpotong (TIME_LIMIT / COST_LIMIT) ditandai tidak lengkap. Tokopedia
+ * menyertakan total review tertulis, jadi kelengkapan bisa dihitung.
  */
 export function extractReviewScrapeMeta(
   items: Record<string, unknown>[],
 ): ReviewScrapeMeta {
   const reviewRows = items.filter(isDamiReviewRow);
   if (reviewRows.length === 0) {
+    const tokopediaRows = items.filter(isTokopediaReviewRow);
+    if (tokopediaRows.length > 0) {
+      const total = pickNumber(tokopediaRows[0]!, ["writtenReviewCount"]);
+      return {
+        totalReviewsReported: total,
+        reviewsAccessible: tokopediaRows.length,
+        reviewsComplete: total != null ? tokopediaRows.length >= total : null,
+      };
+    }
     return {
       totalReviewsReported: null,
       reviewsAccessible: null,
@@ -512,6 +555,9 @@ export function normalizeReviewItems(
   const fromShopee = normalizeShopeeShopReviews(items);
   if (fromShopee.length > 0) return fromShopee;
 
+  const fromTokopedia = normalizeTokopediaReviews(items);
+  if (fromTokopedia.length > 0) return fromTokopedia;
+
   const fromKulqiz = normalizeKulqizProductReviews(items);
   if (fromKulqiz.length > 0) return fromKulqiz;
 
@@ -519,6 +565,64 @@ export function normalizeReviewItems(
   if (fromJsonLd.length > 0) return fromJsonLd;
 
   return normalizeGenericReviewItems(items);
+}
+
+/** Spesifikasi `[{ name, value }]` dari halaman detail produk. */
+function pickAttributes(value: unknown): ProductAttribute[] {
+  if (!Array.isArray(value)) return [];
+  const out: ProductAttribute[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const name = pickString(row, ["name"]);
+    const attrValue = pickString(row, ["value"]);
+    if (name && attrValue) out.push({ name, value: attrValue });
+  }
+  return out;
+}
+
+function pickStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string" && !!v.trim());
+}
+
+/**
+ * Detail kaya yang hanya ada bila actor membuka halaman produk (mis. Tokopedia
+ * `scrapeDetails`). Field yang tidak tersedia dibiarkan tidak terisi.
+ */
+function pickRichProductDetail(
+  item: Record<string, unknown>,
+): Partial<NormalizedShopProduct> {
+  const detail: Partial<NormalizedShopProduct> = {};
+
+  const description = pickString(item, ["description"]);
+  if (description) detail.description = description;
+  const brand = pickString(item, ["brand"]);
+  if (brand) detail.brand = brand;
+  const category = pickString(item, ["categoryName"]);
+  if (category) detail.category = category;
+  const currency = pickString(item, ["currency"]);
+  if (currency) detail.currency = currency;
+
+  const attributes = pickAttributes(item.specifications);
+  if (attributes.length > 0) detail.attributes = attributes;
+  const imageUrls = pickStringList(item.images);
+  if (imageUrls.length > 0) detail.imageUrls = imageUrls;
+
+  const breakdown = item.ratingBreakdown;
+  if (breakdown && typeof breakdown === "object" && !Array.isArray(breakdown)) {
+    const distribution: Record<string, number> = {};
+    for (const [star, count] of Object.entries(breakdown)) {
+      if (typeof count === "number" && Number.isFinite(count)) {
+        distribution[star] = count;
+      }
+    }
+    if (Object.keys(distribution).length > 0) {
+      detail.ratingDistribution = distribution;
+    }
+  }
+
+  return detail;
 }
 
 export function normalizeShopProducts(
@@ -554,6 +658,7 @@ export function normalizeShopProducts(
       "discount_rate",
       "discount_percent",
       "discount_pct",
+      "discountPercentage",
     ]);
     const discountRate = pickNumber(item, ["discountRate"]);
     if (
@@ -603,6 +708,7 @@ export function normalizeShopProducts(
       stock: metrics.stock,
       shopLocation: metrics.shopLocation,
       isOfficialShop: metrics.isOfficialShop,
+      ...pickRichProductDetail(item),
     });
   }
   return out;

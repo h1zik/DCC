@@ -3,7 +3,7 @@ import "server-only";
 import { cleanShopeeUrl } from "@/lib/apify/shopee-url";
 
 /**
- * Actor Apify untuk Shopee (cadangan setelah scraper VPS).
+ * Actor Apify untuk Shopee — jalur utama semua scrape Shopee.
  *
  * | Kebutuhan            | Env                           | Default                                   |
  * |----------------------|-------------------------------|-------------------------------------------|

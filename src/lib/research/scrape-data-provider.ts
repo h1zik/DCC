@@ -16,7 +16,11 @@ export type DataProvenanceEntry = {
   /** Human label, e.g. "Shopee Search" or "TikTok". */
   label: string;
   provider: ScrapeDataProvider;
-  /** True when Apify was used as fallback while VPS is expected. */
+  /**
+   * True hanya bila Apify dipakai sebagai cadangan untuk sumber yang jalur
+   * utamanya scraper VPS (saat ini Pinterest). Untuk Shopee, Tokopedia,
+   * TikTok Shop, Instagram, dan TikTok, Apify adalah jalur utama.
+   */
   isFallback?: boolean;
 };
 
@@ -36,7 +40,7 @@ export function scrapeProviderLabel(provider: ScrapeDataProvider): string {
 }
 
 export function isApifyFallbackProvider(entry: DataProvenanceEntry): boolean {
-  return entry.provider === "apify" || entry.isFallback === true;
+  return entry.isFallback === true;
 }
 
 export function providerBadgeTone(
@@ -45,6 +49,6 @@ export function providerBadgeTone(
 ): "default" | "warning" | "muted" | "danger" {
   // Demo = data fabrikasi — harus mencolok, bukan abu-abu yang mudah terlewat.
   if (provider === "demo") return "danger";
-  if (provider === "apify" || isFallback) return "warning";
+  if (isFallback) return "warning";
   return "default";
 }

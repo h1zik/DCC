@@ -2,9 +2,9 @@ import "server-only";
 
 import { Prisma, ResearchMarketplace, SeoAnalysisStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isApifyConfigured } from "@/lib/apify/client";
+import { searchMarketplaceViaApify } from "@/lib/apify/marketplace-search";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
-import { fetchShopeeSearchViaVps } from "@/lib/scraper-api/shopee-products";
-import { fetchTokopediaSearchViaVps } from "@/lib/scraper-api/tokopedia-products";
 import { fetchLazadaSearchViaVps } from "@/lib/scraper-api/lazada-products";
 import type { NormalizedShopProduct } from "@/lib/apify/normalize";
 import {
@@ -34,15 +34,31 @@ export const MARKETPLACE_SEO_SUPPORTED: ResearchMarketplace[] = [
   ResearchMarketplace.LAZADA,
 ];
 
+/** Batas tunggu run Apify — analisis ini berjalan sinkron di satu request. */
+const APIFY_SEARCH_MAX_WAIT_MS = 300_000;
+
+/** Shopee & Tokopedia lewat Apify; Lazada lewat scraper VPS. */
+function scraperConfigError(marketplace: ResearchMarketplace): string | null {
+  if (marketplace === ResearchMarketplace.LAZADA) {
+    return isScraperApiConfigured()
+      ? null
+      : "Scraper VPS belum dikonfigurasi (set SCRAPER_API_URL & SCRAPER_API_KEY).";
+  }
+  return isApifyConfigured()
+    ? null
+    : "Apify belum dikonfigurasi (set APIFY_API_TOKEN).";
+}
+
 async function searchMarketplace(
   marketplace: ResearchMarketplace,
   keyword: string,
 ): Promise<NormalizedShopProduct[]> {
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      return fetchShopeeSearchViaVps(keyword, MAX_ITEMS);
     case ResearchMarketplace.TOKOPEDIA:
-      return fetchTokopediaSearchViaVps(keyword, MAX_ITEMS);
+      return searchMarketplaceViaApify(marketplace, keyword, MAX_ITEMS, {
+        maxWaitMs: APIFY_SEARCH_MAX_WAIT_MS,
+      });
     case ResearchMarketplace.LAZADA:
       return fetchLazadaSearchViaVps(keyword, MAX_ITEMS);
     default:
@@ -56,14 +72,11 @@ export async function runMarketplaceAnalysis(analysisId: string): Promise<void> 
   });
   if (!analysis) throw new Error("Analisis tidak ditemukan.");
 
-  if (!isScraperApiConfigured()) {
+  const configError = scraperConfigError(analysis.marketplace);
+  if (configError) {
     await prisma.seoMarketplaceAnalysis.update({
       where: { id: analysisId },
-      data: {
-        status: SeoAnalysisStatus.FAILED,
-        errorMessage:
-          "Scraper VPS belum dikonfigurasi (set SCRAPER_API_URL & SCRAPER_API_KEY).",
-      },
+      data: { status: SeoAnalysisStatus.FAILED, errorMessage: configError },
     });
     return;
   }
@@ -77,10 +90,9 @@ export async function runMarketplaceAnalysis(analysisId: string): Promise<void> 
     const products = await searchMarketplace(analysis.marketplace, analysis.keyword);
 
     if (products.length === 0) {
-      // Hasil kosong hampir selalu berarti scraper diblokir (anti-bot Shopee)
-      // atau VPS sedang cooldown — bukan "tidak ada listing". Scraper tidak
-      // mengekspos status/error run saat hasil kosong (run failed sudah throw),
-      // jadi tandai FAILED agar bisa diulang, bukan READY kosong.
+      // Hasil kosong hampir selalu berarti scraper diblokir (anti-bot) atau
+      // sedang cooldown — bukan "tidak ada listing". Run yang gagal sudah
+      // throw, jadi tandai FAILED agar bisa diulang, bukan READY kosong.
       await prisma.seoMarketplaceAnalysis.update({
         where: { id: analysisId },
         data: {

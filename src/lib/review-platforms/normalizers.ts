@@ -4,6 +4,7 @@ import {
   normalizeJsonLdReviewItems,
   normalizeKulqizProductReviews,
   normalizeShopeeShopReviews,
+  normalizeTokopediaReviews,
 } from "@/lib/apify/normalize";
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | null {
@@ -158,6 +159,11 @@ export function normalizeReviewItemsForPlatform(
     case "shopee": {
       const fromShop = normalizeShopeeShopReviews(items);
       if (fromShop.length > 0) return fromShop;
+      break;
+    }
+    case "tokopedia": {
+      const fromTokopedia = normalizeTokopediaReviews(items);
+      if (fromTokopedia.length > 0) return fromTokopedia;
       break;
     }
     case "tiktok_shop": {
