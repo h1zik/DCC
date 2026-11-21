@@ -37,6 +37,21 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-21-riset-langsung-apify",
+    date: "2026-11-21",
+    title: "Riset Shopee, Tokopedia, TikTok Shop, Instagram, dan TikTok kini langsung lewat Apify",
+    category: "improved",
+    description:
+      "Semua pengambilan data riset untuk kelima platform ini di Dominatus Lab sekarang langsung memakai Apify, tidak lagi mencoba scraper VPS lebih dulu. Berlaku di Research Hub, Brand Hub, dan Marketplace SEO.",
+    highlights: [
+      "Competitor Tracker, Product Discovery, Review Intelligence, Keyword Intel, dan Social Listening langsung ke Apify untuk kelima platform",
+      "Tokopedia kini punya jalur Apify sendiri untuk pencarian, produk toko, detail produk, dan review",
+      "Label Sumber data menampilkan Apify sebagai sumber utama, bukan lagi sebagai cadangan",
+      "Data lama yang diambil lewat VPS tetap berlabel VPS",
+      "Lazada, Female Daily, Sociolla, dan Pinterest tidak berubah",
+    ],
+  },
+  {
     id: "2026-11-18-lampiran-campaign",
     date: "2026-11-18",
     title: "Campaign di kalender ruangan kini bisa dilampiri file dan tautan",

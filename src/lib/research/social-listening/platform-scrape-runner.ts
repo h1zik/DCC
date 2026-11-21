@@ -12,7 +12,6 @@ import {
   pollTikTokScrape,
   startTikTokScrape,
 } from "@/lib/research/social-listening/scrape-tiktok-mentions";
-import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import type { ScrapeDataProvider } from "@/lib/research/scrape-data-provider";
 import { PLATFORM_STATUS_PROVIDERS_KEY } from "@/lib/research/scrape-data-provider";
 import type { SocialListeningSearchLimits } from "@/lib/research/social-listening/search-limits";
@@ -69,17 +68,8 @@ export type PlatformStatusPayload = PlatformStatusMap & {
   >;
 };
 
-function platformScrapeProvider(
-  platform: SocialListeningPlatform,
-): ScrapeDataProvider {
-  if (platform === SocialListeningPlatform.TIKTOK) {
-    return isScraperApiConfigured() ? "vps" : "apify";
-  }
-  if (platform === SocialListeningPlatform.INSTAGRAM) {
-    return isScraperApiConfigured() ? "vps" : "apify";
-  }
-  return "apify";
-}
+/** TikTok dan Instagram sama-sama di-scrape lewat Apify. */
+const PLATFORM_SCRAPE_PROVIDER: ScrapeDataProvider = "apify";
 
 export async function startPlatformScrapes(input: {
   platforms: SocialListeningPlatform[];
@@ -105,7 +95,9 @@ export async function startPlatformScrapes(input: {
     if (platform === SocialListeningPlatform.TIKTOK) {
       if (!isTikTokMentionsConfigured()) {
         platformStatus[platform] = "SKIPPED";
-        warnings.push("TikTok scraper belum dikonfigurasi — lewati platform TikTok.");
+        warnings.push(
+          "TikTok scraper belum dikonfigurasi (set APIFY_API_TOKEN) — lewati platform TikTok.",
+        );
         return;
       }
       try {
@@ -122,7 +114,7 @@ export async function startPlatformScrapes(input: {
         }
         apifyRunIds[platform] = started.runId;
         platformStatus[platform] = "COLLECTING";
-        scrapeProviders[platform] = platformScrapeProvider(platform);
+        scrapeProviders[platform] = PLATFORM_SCRAPE_PROVIDER;
       } catch (err) {
         platformStatus[platform] = "FAILED";
         warnings.push(
@@ -136,7 +128,7 @@ export async function startPlatformScrapes(input: {
       if (!isInstagramMentionsConfigured()) {
         platformStatus[platform] = "SKIPPED";
         warnings.push(
-          "Instagram scraper belum dikonfigurasi (SCRAPER_API_URL atau APIFY_ACTOR_INSTAGRAM).",
+          "Instagram scraper belum dikonfigurasi (set APIFY_API_TOKEN).",
         );
         return;
       }
@@ -151,14 +143,14 @@ export async function startPlatformScrapes(input: {
         if (runIds.length === 0) {
           platformStatus[platform] = "FAILED";
           warnings.push(
-            "Instagram: VPS balik 0 (kemungkinan akun/sesi IG di VPS diblok/checkpoint) & fallback Apify tidak tersedia — re-login akun IG di VPS, atau set APIFY_API_TOKEN + APIFY_ACTOR_INSTAGRAM.",
+            "Instagram: tidak ada hashtag yang bisa dicari dari keyword ini.",
           );
           return;
         }
         apifyRunIds[platform] =
           runIds.length === 1 ? runIds[0]! : runIds;
         platformStatus[platform] = "COLLECTING";
-        scrapeProviders[platform] = platformScrapeProvider(platform);
+        scrapeProviders[platform] = PLATFORM_SCRAPE_PROVIDER;
       } catch (err) {
         platformStatus[platform] = "FAILED";
         warnings.push(

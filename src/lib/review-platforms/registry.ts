@@ -8,7 +8,12 @@ import {
 import {
   buildKulqizReviewInput,
   isKulqizTikTokShopActor,
+  KULQIZ_TIKTOK_SHOP_ACTOR,
 } from "@/lib/apify/tiktok-kulqiz";
+import {
+  buildTokopediaReviewsInput,
+  getTokopediaReviewsActorId,
+} from "@/lib/apify/tokopedia-actors";
 import {
   getReviewPlatformMeta,
   marketplaceFromPlatformKey,
@@ -35,8 +40,10 @@ export function getReviewActorIdForPlatform(platformKey: string): string | null 
   const dedicated = readActorEnv(meta.actorEnvKey);
   if (dedicated) return dedicated;
 
-  // Shopee punya actor default (dami_studio) sehingga tetap jalan tanpa env.
+  // Shopee, Tokopedia, dan TikTok Shop punya actor default — jalan tanpa env actor.
   if (platformKey === "shopee") return getShopeeReviewsActorId();
+  if (platformKey === "tokopedia") return getTokopediaReviewsActorId();
+  if (platformKey === "tiktok_shop") return KULQIZ_TIKTOK_SHOP_ACTOR;
 
   if (meta.category === "community") {
     return jsonLdActorId();
@@ -45,16 +52,16 @@ export function getReviewActorIdForPlatform(platformKey: string): string | null 
   return null;
 }
 
+/** Platform review yang di-scrape lewat VPS; sisanya lewat Apify. */
+const VPS_REVIEW_PLATFORM_LABELS = new Map<string, string>([
+  ["femaledaily", "Female Daily"],
+  ["sociolla", "Sociolla"],
+  ["lazada", "Lazada"],
+]);
+
 export function isReviewPlatformConfigured(platformKey: string): boolean {
   if (platformKey === "csv") return true;
-  if (
-    (platformKey === "femaledaily" ||
-      platformKey === "sociolla" ||
-      platformKey === "tokopedia" ||
-      platformKey === "lazada" ||
-      platformKey === "shopee") &&
-    isScraperApiConfigured()
-  ) {
+  if (VPS_REVIEW_PLATFORM_LABELS.has(platformKey) && isScraperApiConfigured()) {
     return true;
   }
   return !!getReviewActorIdForPlatform(platformKey);
@@ -68,31 +75,9 @@ export function reviewPlatformEnvHint(platformKey: string): string {
   const dedicated = readActorEnv(meta.actorEnvKey);
   if (dedicated) return meta.actorEnvHint;
 
-  if (
-    (platformKey === "femaledaily" ||
-      platformKey === "sociolla" ||
-      platformKey === "tokopedia" ||
-      platformKey === "lazada" ||
-      platformKey === "shopee") &&
-    isScraperApiConfigured()
-  ) {
-    const label =
-      platformKey === "femaledaily"
-        ? "Female Daily"
-        : platformKey === "sociolla"
-          ? "Sociolla"
-          : platformKey === "tokopedia"
-            ? "Tokopedia"
-            : platformKey === "lazada"
-              ? "Lazada"
-              : "Shopee";
-    const suffix =
-      platformKey === "shopee" ? ", fallback Apify jika VPS gagal" : "";
-    return `Scrape ${label} via VPS (SCRAPER_API_URL + SCRAPER_API_KEY)${suffix}.`;
-  }
-
-  if (platformKey === "shopee") {
-    return "Set SCRAPER_API_URL + SCRAPER_API_KEY untuk Shopee via VPS, atau APIFY_ACTOR_SHOPEE_REVIEWS sebagai fallback.";
+  const vpsLabel = VPS_REVIEW_PLATFORM_LABELS.get(platformKey);
+  if (vpsLabel && isScraperApiConfigured()) {
+    return `Scrape ${vpsLabel} via VPS (SCRAPER_API_URL + SCRAPER_API_KEY).`;
   }
 
   if (platformKey === "femaledaily") {
@@ -121,6 +106,7 @@ export function buildReviewActorInputForPlatform(
     case "shopee":
       return buildShopeeReviewsInput(url);
     case "tokopedia":
+      return buildTokopediaReviewsInput(url);
     case "lazada":
       return {
         product_url: url,

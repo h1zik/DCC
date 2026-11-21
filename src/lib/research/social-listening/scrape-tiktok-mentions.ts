@@ -6,37 +6,20 @@ import {
   parseTikTokScraperItems,
 } from "@/lib/research/trend-radar/tiktok-trends";
 import {
+  ApifyRunNotFoundError,
   fetchApifyDataset,
   getApifyRunStatus,
   isApifyConfigured,
   startApifyActor,
   waitForApifyRun,
 } from "@/lib/apify/client";
+import { getTikTokActorId } from "@/lib/apify/social-actors";
 import type { RawSocialMention } from "@/lib/research/social-listening/collect-mentions";
-import { isScraperApiConfigured } from "@/lib/scraper-api/client";
-import { resolveVpsCachedRun } from "@/lib/scraper-api/vps-run-resolver";
-import {
-  expandInstagramHashtagCandidates,
-  runVpsTikTokHashtag,
-  runVpsTikTokSearch,
-} from "@/lib/scraper-api/social-mentions";
-import { cacheVpsRun, getCachedVpsRun } from "@/lib/scraper-api/vps-run-cache";
 import { DEFAULT_TIKTOK_SEARCH_LIMIT } from "@/lib/research/social-listening/search-limits-public";
-import type { ScrapeRouteOpts } from "@/lib/research/social-listening/scrape-instagram-mentions";
 
-function getTikTokActorId(): string | null {
-  return process.env.APIFY_ACTOR_TIKTOK_TRENDS?.trim() || null;
-}
-
-export function isTikTokMentionsConfigured(
-  opts?: ScrapeRouteOpts,
-): boolean {
-  if (!opts?.preferApify && isScraperApiConfigured()) return true;
-  return isApifyConfigured() && !!getTikTokActorId();
-}
-
-function useVpsTikTok(opts?: ScrapeRouteOpts): boolean {
-  return !opts?.preferApify && isScraperApiConfigured();
+/** TikTok selalu lewat Apify; actor punya default, jadi cukup token. */
+export function isTikTokMentionsConfigured(): boolean {
+  return isApifyConfigured();
 }
 
 function itemId(item: Record<string, unknown>): string {
@@ -146,8 +129,7 @@ function buildTikTokInput(
   keywords: string[],
   searchLimit: number,
 ): Record<string, unknown> | null {
-  const actorId = getTikTokActorId();
-  if (!actorId || keywords.length === 0) return null;
+  if (keywords.length === 0) return null;
 
   const hashtags = keywords.map((k) => k.replace(/^#/, "").replace(/\s+/g, ""));
   const searchQueries = keywords.map((k) => k.trim()).filter(Boolean);
@@ -159,138 +141,39 @@ function buildTikTokInput(
   };
 }
 
-function tikTokSearchVariants(keyword: string): string[] {
-  const raw = keyword.trim();
-  if (!raw) return [];
-
-  const variants = new Set<string>();
-  variants.add(raw);
-  const noHash = raw.replace(/^#/, "").trim();
-  if (noHash) variants.add(noHash);
-  const compact = noHash.replace(/\s+/g, "");
-  if (compact && compact.toLowerCase() !== noHash.toLowerCase()) {
-    variants.add(compact);
-  }
-  return [...variants];
-}
-
-function dedupeTikTokMentions(mentions: RawSocialMention[]): RawSocialMention[] {
-  const seen = new Map<string, RawSocialMention>();
-  for (const m of mentions) {
-    const key = m.externalId || m.url || m.text.slice(0, 80);
-    if (!seen.has(key)) seen.set(key, m);
-  }
-  return [...seen.values()];
-}
-
 export async function startTikTokScrape(
   keywords: string[],
-  opts?: { searchLimit?: number } & ScrapeRouteOpts,
+  opts?: { searchLimit?: number },
 ): Promise<{ runId: string; warnings?: string[] } | null> {
   const searchLimit = opts?.searchLimit ?? DEFAULT_TIKTOK_SEARCH_LIMIT;
-  const scrapeWarnings: string[] = [];
-
-  if (useVpsTikTok(opts)) {
-    const searchQueries = keywords.map((k) => k.trim()).filter(Boolean).slice(0, 5);
-    if (searchQueries.length === 0) return null;
-
-    let allMentions: RawSocialMention[] = [];
-    let lastRunId = "";
-
-    for (const keyword of searchQueries) {
-      if (allMentions.length >= searchLimit) break;
-
-      const variants = tikTokSearchVariants(keyword);
-      for (const query of variants) {
-        if (allMentions.length >= searchLimit) break;
-
-        const remaining = searchLimit - allMentions.length;
-        const result = await runVpsTikTokSearch(query, remaining);
-        lastRunId = result.runId;
-        allMentions = dedupeTikTokMentions([
-          ...allMentions,
-          ...result.mentions,
-        ]).slice(0, searchLimit);
-      }
-
-      if (allMentions.length < searchLimit) {
-        for (const tag of expandInstagramHashtagCandidates(keyword)) {
-          if (allMentions.length >= searchLimit) break;
-
-          const remaining = searchLimit - allMentions.length;
-          let hashtagResult = await runVpsTikTokHashtag(tag, remaining);
-          lastRunId = hashtagResult.runId;
-          allMentions = dedupeTikTokMentions([
-            ...allMentions,
-            ...hashtagResult.mentions,
-          ]).slice(0, searchLimit);
-        }
-      }
-    }
-
-    if (!lastRunId) return null;
-
-    if (allMentions.length < searchLimit) {
-      scrapeWarnings.push(
-        `TikTok: total ${allMentions.length} video terkumpul dari limit ${searchLimit} — coba keyword/hashtag lain jika perlu lebih banyak.`,
-      );
-    }
-
-    cacheVpsRun(lastRunId, {
-      done: true,
-      succeeded: allMentions.length > 0,
-      mentions: allMentions,
-      status: "completed",
-    });
-
-    return scrapeWarnings.length > 0
-      ? { runId: lastRunId, warnings: scrapeWarnings }
-      : { runId: lastRunId };
-  }
-
-  const actorId = getTikTokActorId();
   const input = buildTikTokInput(keywords, searchLimit);
-  if (!actorId || !input) return null;
+  if (!input) return null;
 
-  const { runId } = await startApifyActor(actorId, input);
+  const { runId } = await startApifyActor(getTikTokActorId(), input);
   return { runId };
 }
 
 const TERMINAL = new Set(["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"]);
 
-export async function pollTikTokScrape(
-  runId: string,
-  opts?: ScrapeRouteOpts,
-): Promise<{
+export async function pollTikTokScrape(runId: string): Promise<{
   done: boolean;
   succeeded: boolean;
   mentions: RawSocialMention[];
   apifyStatus: string;
 }> {
-  if (!opts?.preferApify && isScraperApiConfigured()) {
-    const loaded = await resolveVpsCachedRun(
-      runId,
-      SocialListeningPlatform.TIKTOK,
-    );
-    return {
-      done: loaded.done,
-      succeeded: loaded.succeeded || loaded.mentions.length > 0,
-      mentions: loaded.mentions,
-      apifyStatus: loaded.status,
-    };
+  let run: { status: string; datasetId: string };
+  try {
+    run = await getApifyRunStatus(runId);
+  } catch (err) {
+    // Run yang tidak dikenal Apify (kedaluwarsa, atau run id scraper VPS dari
+    // batch lama) dianggap selesai-gagal, supaya batch-nya tidak menggantung.
+    if (err instanceof ApifyRunNotFoundError) {
+      return { done: true, succeeded: false, mentions: [], apifyStatus: "NOT-FOUND" };
+    }
+    throw err;
   }
 
-  const cached = getCachedVpsRun(runId);
-  if (cached) {
-    return {
-      done: cached.done,
-      succeeded: cached.succeeded,
-      mentions: cached.mentions,
-      apifyStatus: cached.status,
-    };
-  }
-
-  const { status, datasetId } = await getApifyRunStatus(runId);
+  const { status, datasetId } = run;
   if (!TERMINAL.has(status)) {
     return { done: false, succeeded: false, mentions: [], apifyStatus: status };
   }
@@ -317,11 +200,6 @@ export async function scrapeTikTokMentions(
 ): Promise<RawSocialMention[]> {
   const started = await startTikTokScrape(keywords, opts);
   if (!started) return [];
-
-  if (useVpsTikTok()) {
-    const cached = getCachedVpsRun(started.runId);
-    return cached?.mentions ?? [];
-  }
 
   try {
     const { status, datasetId } = await waitForApifyRun(started.runId, {

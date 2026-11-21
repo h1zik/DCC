@@ -22,7 +22,7 @@ export const REVIEW_PLATFORMS: ReviewPlatformMeta[] = [
     urlPatternSources: ["shopee\\."],
     actorEnvKey: "APIFY_ACTOR_SHOPEE_REVIEWS",
     actorEnvHint:
-      "Scrape Shopee via VPS (SCRAPER_API_URL) — fallback Apify jika VPS gagal.",
+      "Scrape Shopee via Apify — set APIFY_API_TOKEN (actor APIFY_ACTOR_SHOPEE_REVIEWS opsional).",
   },
   {
     key: "tokopedia",
@@ -31,7 +31,8 @@ export const REVIEW_PLATFORMS: ReviewPlatformMeta[] = [
     urlPlaceholder: "https://www.tokopedia.com/...",
     urlPatternSources: ["tokopedia\\.com"],
     actorEnvKey: "APIFY_ACTOR_TOKOPEDIA_REVIEWS",
-    actorEnvHint: "Set APIFY_ACTOR_TOKOPEDIA_REVIEWS.",
+    actorEnvHint:
+      "Scrape Tokopedia via Apify — set APIFY_API_TOKEN (actor APIFY_ACTOR_TOKOPEDIA_REVIEWS opsional).",
   },
   {
     key: "lazada",
@@ -49,7 +50,8 @@ export const REVIEW_PLATFORMS: ReviewPlatformMeta[] = [
     urlPlaceholder: "https://www.tiktok.com/shop/...",
     urlPatternSources: ["tiktok\\.com"],
     actorEnvKey: "APIFY_ACTOR_TIKTOK_REVIEWS",
-    actorEnvHint: "Set APIFY_ACTOR_TIKTOK_REVIEWS (mis. kulqiz~tiktok-shop-scraper).",
+    actorEnvHint:
+      "Scrape TikTok Shop via Apify — set APIFY_API_TOKEN (actor APIFY_ACTOR_TIKTOK_REVIEWS opsional).",
   },
   {
     key: "femaledaily",

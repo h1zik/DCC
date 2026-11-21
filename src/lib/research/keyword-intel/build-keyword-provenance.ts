@@ -7,6 +7,10 @@ import type {
   NormalizedKeywordSignal,
 } from "@/lib/research/keyword-intel/keyword-signal-types";
 
+/**
+ * Sinyal baru selalu dari Apify (`shopee_autocomplete_apify`). Sumber
+ * `shopee_autocomplete` hanya ada di analisis lama yang dulu lewat scraper VPS.
+ */
 function shopeeAutocompleteProvider(
   signals: NormalizedKeywordSignal[],
 ): ScrapeDataProvider {
@@ -28,11 +32,7 @@ export function buildKeywordDataProvenance(input: {
 
   if (stats.external.shopee > 0) {
     const provider = shopeeAutocompleteProvider(signals);
-    entries.push({
-      label: "Shopee Autocomplete",
-      provider,
-      isFallback: provider === "apify",
-    });
+    entries.push({ label: "Shopee Autocomplete", provider });
   }
 
   if (stats.external.tokopedia > 0) {
@@ -59,7 +59,7 @@ export function buildKeywordDataProvenance(input: {
   if (stats.external.shopeeSearch > 0) {
     entries.push({
       label: "Shopee Search",
-      provider: "vps",
+      provider: "apify",
     });
   }
 

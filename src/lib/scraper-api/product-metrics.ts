@@ -102,11 +102,18 @@ export function pickMarketplaceReviewCount(item: Record<string, unknown>): numbe
     return nums.reduce((sum, n) => sum + n, 0);
   }
   return (
-    pickNumber(item, ["rating_count", "reviewCount", "review_count", "total_ratings", "reviews"]) ?? 0
+    pickNumber(item, [
+      "rating_count",
+      "ratingCount",
+      "reviewCount",
+      "review_count",
+      "total_ratings",
+      "reviews",
+    ]) ?? 0
   );
 }
 
-/** Extract VPS marketplace sales metrics from raw scraper item. */
+/** Extract marketplace sales metrics from a raw scraper item (VPS or Apify). */
 export function extractVpsProductMetrics(
   item: Record<string, unknown>,
 ): Pick<
@@ -156,8 +163,19 @@ export function extractVpsProductMetrics(
   }
 
   const stock = pickNestedMetrics(item, ["stock", "stock_count", "stockCount"]);
-  const shopLocation = pickString(item, ["shop_location", "shopLocation", "location"]);
-  const isOfficialShop = pickBool(item, ["is_official_shop", "isOfficialShop", "is_mall"]);
+  const shopLocation = pickString(item, [
+    "shop_location",
+    "shopLocation",
+    "shopCity",
+    "location",
+  ]);
+  const isOfficialShop =
+    pickBool(item, [
+      "is_official_shop",
+      "isOfficialShop",
+      "isOfficialStore",
+      "is_mall",
+    ]) || item.shopType === "official_store";
 
   const soldCount = primarySoldCount({
     exactSold,

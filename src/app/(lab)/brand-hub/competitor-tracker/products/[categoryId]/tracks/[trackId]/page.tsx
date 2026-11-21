@@ -72,7 +72,7 @@ export default async function BrandCompetitorProductTrackDetailPage({
     monthlySold: track.monthlySold,
     estimatedRevenue: track.estimatedRevenue,
     stock: track.stock,
-    // Detail kaya dari scraper VPS shopee-product (disimpan tapi sebelumnya tidak ditampilkan).
+    // Detail kaya dari actor detail produk (disimpan tapi sebelumnya tidak ditampilkan).
     brand: track.brand,
     categoryName: track.categoryName,
     categoryPath: track.categoryPath,

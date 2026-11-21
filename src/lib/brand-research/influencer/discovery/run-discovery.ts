@@ -51,21 +51,6 @@ const ORPHANED_START_GRACE_MS = 2 * 60_000;
 export { MAX_DISCOVERY_TERMS };
 
 /**
- * Crawl penemuan kreator SELALU lewat Apify, tidak pernah lewat VPS.
- *
- * Bukan soal kualitas data — keduanya memulangkan bentuk yang sama. Soalnya
- * batas waktu: jalur VPS tidak punya satu pun, jadi panggilan yang tidak
- * dijawab menggantung tanpa henti, dan crawl berhenti selamanya di COLLECTING
- * tanpa pesan error apa pun. Itu terbukti terjadi. Modul ini berjalan tanpa
- * pengawasan lewat cron, sehingga jalur yang bisa menggantung diam-diam adalah
- * jalur yang salah; Apify punya status run yang bisa ditanya dan pasti berakhir.
- *
- * Social Listening sengaja dibiarkan tetap memakai VPS: di sana ada orang yang
- * menunggu di depan layar dan bisa menjalankan ulang.
- */
-const SCRAPE_ROUTE = { preferApify: true } as const;
-
-/**
  * Crawl yang tidak juga selesai setelah ini dianggap gagal.
  *
  * Menjaga agar kegagalan apa pun yang tidak terduga — proses mati di tengah
@@ -163,7 +148,7 @@ export async function executeDiscoveryRun(runId: string): Promise<void> {
       let igRunIds: string[] = [];
 
       if (platforms.includes(InfluencerPlatform.TIKTOK)) {
-        if (!isTikTokMentionsConfigured(SCRAPE_ROUTE)) {
+        if (!isTikTokMentionsConfigured()) {
           startWarnings.push(
             "TikTok scraper belum dikonfigurasi — platform TikTok dilewati.",
           );
@@ -171,7 +156,6 @@ export async function executeDiscoveryRun(runId: string): Promise<void> {
           try {
             const started = await startTikTokScrape(run.terms, {
               searchLimit: run.searchLimit,
-              ...SCRAPE_ROUTE,
             });
             if (started) {
               tiktokRunId = started.runId;
@@ -190,7 +174,7 @@ export async function executeDiscoveryRun(runId: string): Promise<void> {
       }
 
       if (platforms.includes(InfluencerPlatform.INSTAGRAM)) {
-        if (!isInstagramMentionsConfigured(SCRAPE_ROUTE)) {
+        if (!isInstagramMentionsConfigured()) {
           startWarnings.push(
             "Instagram scraper belum dikonfigurasi — platform Instagram dilewati.",
           );
@@ -198,7 +182,6 @@ export async function executeDiscoveryRun(runId: string): Promise<void> {
           try {
             const started = await startInstagramScrapes(run.terms, {
               searchLimit: run.searchLimit,
-              ...SCRAPE_ROUTE,
             });
             igRunIds = started.runIds;
             if (started.warnings.length > 0) {
@@ -244,7 +227,7 @@ export async function executeDiscoveryRun(runId: string): Promise<void> {
 
     if (run.apifyTikTokRunId) {
       try {
-        const result = await pollTikTokScrape(run.apifyTikTokRunId, SCRAPE_ROUTE);
+        const result = await pollTikTokScrape(run.apifyTikTokRunId);
         if (!result.done) {
           stillRunning = true;
         } else if (result.succeeded || result.mentions.length > 0) {
@@ -268,7 +251,7 @@ export async function executeDiscoveryRun(runId: string): Promise<void> {
 
     if (instagramRunIds.length > 0) {
       try {
-        const result = await pollInstagramScrapes(instagramRunIds, SCRAPE_ROUTE);
+        const result = await pollInstagramScrapes(instagramRunIds);
         if (!result.done) {
           stillRunning = true;
         } else if (result.succeeded || result.mentions.length > 0) {

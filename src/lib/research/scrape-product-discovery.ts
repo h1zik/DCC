@@ -31,12 +31,6 @@ import {
 } from "@/lib/apify/normalize";
 import { filterShopProductsByKeyword } from "@/lib/apify/tiktok-kulqiz";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
-import {
-  fetchShopeeDiscoverViaVps,
-  fetchShopeeSearchViaVps,
-  shopeeDiscoverDetailsEnabled,
-} from "@/lib/scraper-api/shopee-products";
-import { fetchTokopediaSearchViaVps } from "@/lib/scraper-api/tokopedia-products";
 import { fetchLazadaSearchViaVps } from "@/lib/scraper-api/lazada-products";
 import { fetchFemaleDailySearchViaVps } from "@/lib/scraper-api/community-products";
 import { fetchSociollaSearchViaVps } from "@/lib/scraper-api/community-products";
@@ -315,103 +309,10 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
     const mp = state.marketplaces[state.nextIndex]!;
     const remaining = query.productLimit - currentCount;
 
+    // Lazada, Female Daily, dan Sociolla lewat scraper VPS (selesai in-process).
+    // Shopee, Tokopedia, dan TikTok Shop langsung ke Apify di bawah.
     if (isScraperApiConfigured()) {
       let vpsHandled = false;
-
-      if (mp === ResearchMarketplace.SHOPEE) {
-        // Primary: shopee-discover hydrated (data lengkap). Cadangan berurut:
-        // shopee-search legacy (metrik lengkap bila session hidup) →
-        // shopee-discover SERP-only (produk nyata tanpa metrik) → Apify.
-        let shopeeProducts: NormalizedShopProduct[] = [];
-
-        try {
-          shopeeProducts = await fetchShopeeDiscoverViaVps(
-            query.keyword,
-            remaining,
-          );
-          if (shopeeProducts.length === 0) {
-            state.warnings.push(
-              `${mp}: shopee-discover tidak menemukan produk — coba shopee-search.`,
-            );
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
-          state.warnings.push(
-            `${mp}: shopee-discover gagal (${msg}) — coba shopee-search.`,
-          );
-        }
-
-        if (shopeeProducts.length === 0) {
-          try {
-            shopeeProducts = await fetchShopeeSearchViaVps(
-              query.keyword,
-              remaining,
-            );
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
-            state.warnings.push(`${mp}: shopee-search gagal (${msg}).`);
-          }
-        }
-
-        // Upaya VPS terakhir: discover tanpa hydration — hanya berguna bila
-        // percobaan pertama memakai include_details (default), karena tanpa
-        // hydration run jauh lebih ringan dan hampir selalu selesai.
-        if (shopeeProducts.length === 0 && shopeeDiscoverDetailsEnabled()) {
-          try {
-            shopeeProducts = await fetchShopeeDiscoverViaVps(
-              query.keyword,
-              remaining,
-              { includeDetails: false },
-            );
-            if (shopeeProducts.length > 0) {
-              state.warnings.push(
-                `${mp}: hydration gagal — produk dari shopee-discover masuk tanpa harga/rating/sold.`,
-              );
-            }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
-            state.warnings.push(`${mp}: shopee-discover SERP-only gagal (${msg}).`);
-          }
-        }
-
-        if (shopeeProducts.length === 0) {
-          state.warnings.push(
-            `${mp}: semua jalur VPS gagal/kosong — fallback Apify.`,
-          );
-        } else {
-          const products = shopeeProducts
-            .slice(0, remaining)
-            .map((p) => ({ ...p, marketplace: mp }));
-          await ingestDiscoveryProductsBatch(query.id, products);
-          recordDiscoverySource(state, mp, "vps");
-          vpsHandled = true;
-        }
-      }
-
-      if (mp === ResearchMarketplace.TOKOPEDIA) {
-        try {
-          const normalized = await fetchTokopediaSearchViaVps(
-            query.keyword,
-            remaining,
-          );
-          const products = normalized
-            .slice(0, remaining)
-            .map((p) => ({ ...p, marketplace: mp }));
-
-          if (products.length === 0) {
-            state.warnings.push(
-              `${mp}: VPS tidak menemukan produk — fallback Apify.`,
-            );
-          } else {
-            await ingestDiscoveryProductsBatch(query.id, products);
-            recordDiscoverySource(state, mp, "vps");
-            vpsHandled = true;
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Scrape VPS gagal";
-          state.warnings.push(`${mp}: VPS gagal (${msg}) — fallback Apify.`);
-        }
-      }
 
       if (mp === ResearchMarketplace.LAZADA) {
         try {
@@ -499,6 +400,11 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
 
     if (!actorId) {
       state.warnings.push(`${mp}: actor search belum dikonfigurasi.`);
+      state.nextIndex += 1;
+      continue;
+    }
+    if (!isApifyConfigured()) {
+      state.warnings.push(`${mp}: APIFY_API_TOKEN belum diset.`);
       state.nextIndex += 1;
       continue;
     }

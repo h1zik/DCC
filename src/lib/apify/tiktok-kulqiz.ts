@@ -2,6 +2,9 @@ import "server-only";
 
 import type { NormalizedShopProduct } from "@/lib/apify/normalize";
 
+/** Actor default TikTok Shop untuk search, toko, dan review. */
+export const KULQIZ_TIKTOK_SHOP_ACTOR = "kulqiz~tiktok-shop-scraper";
+
 /** Kategori beauty TikTok Shop Indonesia (kulqiz tidak punya keyword search). */
 export const KULQIZ_BEAUTY_CATEGORY_URL =
   "https://shop-id.tokopedia.com/c/beauty-personal-care/601450";

@@ -63,7 +63,6 @@ export function socialListeningProvenance(
   return platforms.map((platform) => ({
     label: SOCIAL_LISTENING_PLATFORM_LABELS[platform],
     provider: providers[platform] ?? "apify",
-    isFallback: providers[platform] === "apify",
   }));
 }
 
@@ -108,11 +107,7 @@ function resolveProductDiscoveryMarketplaceProvenance(
   const label = MARKETPLACE_LABELS[marketplace];
 
   if (recordedProvider) {
-    return {
-      label,
-      provider: recordedProvider,
-      isFallback: recordedProvider === "apify",
-    };
+    return { label, provider: recordedProvider };
   }
 
   const haystack = [...warnings, errorMessage ?? ""]
@@ -121,7 +116,7 @@ function resolveProductDiscoveryMarketplaceProvenance(
   const mpKey = marketplace.toLowerCase().replace(/_/g, " ");
 
   if (marketplace === ResearchMarketplace.TIKTOK_SHOP) {
-    return { label, provider: "apify", isFallback: true };
+    return { label, provider: "apify" };
   }
 
   const mentionsMarketplace = (chunk: string) =>
@@ -132,9 +127,9 @@ function resolveProductDiscoveryMarketplaceProvenance(
   const mpChunks = haystack.split("|").map((chunk) => chunk.trim());
   const relevant = mpChunks.filter(mentionsMarketplace);
 
-  const usedApifyFallback = relevant.some((chunk) => chunk.includes("apify"));
-  if (usedApifyFallback) {
-    return { label, provider: "apify", isFallback: true };
+  const usedApify = relevant.some((chunk) => chunk.includes("apify"));
+  if (usedApify) {
+    return { label, provider: "apify" };
   }
 
   const usedVps = relevant.some((chunk) => chunk.includes("vps"));
@@ -143,7 +138,7 @@ function resolveProductDiscoveryMarketplaceProvenance(
   }
 
   // Legacy query tanpa sources tersimpan — jangan asumsikan VPS hanya karena SCRAPER_API_URL ada.
-  return { label, provider: "apify", isFallback: true };
+  return { label, provider: "apify" };
 }
 
 async function latestCompletedJobProvider(
@@ -175,7 +170,6 @@ export async function competitorScrapeProvenance(input: {
       {
         label: `Toko ${MARKETPLACE_LABELS[input.marketplace]}`,
         provider,
-        isFallback: provider === "apify",
       },
     ];
   }
@@ -187,14 +181,10 @@ export async function competitorScrapeProvenance(input: {
 
   if (!provider) {
     if (input.hasProducts) {
-      const fallback: ScrapeDataProvider = isScraperApiConfigured()
-        ? "vps"
-        : "apify";
       return [
         {
           label: `Toko ${MARKETPLACE_LABELS[input.marketplace]}`,
-          provider: fallback,
-          isFallback: fallback === "apify",
+          provider: "apify",
         },
       ];
     }
@@ -210,7 +200,6 @@ export async function competitorScrapeProvenance(input: {
     {
       label: `Toko ${MARKETPLACE_LABELS[input.marketplace]}`,
       provider,
-      isFallback: provider === "apify",
     },
   ];
 }
@@ -229,13 +218,7 @@ export async function reviewScrapeProvenance(input: {
   });
   if (stored?.dataProvenance) {
     const provider = fromDbProvenance(stored.dataProvenance);
-    return [
-      {
-        label: input.productName,
-        provider,
-        isFallback: provider === "apify",
-      },
-    ];
+    return [{ label: input.productName, provider }];
   }
 
   if (platformKey === "csv") {
@@ -257,25 +240,16 @@ export async function reviewScrapeProvenance(input: {
   }
 
   if (job.apifyRunId) {
-    return [
-      {
-        label: input.productName,
-        provider: "apify",
-        isFallback: true,
-      },
-    ];
+    return [{ label: input.productName, provider: "apify" }];
   }
 
+  // Job selesai tanpa run Apify = scrape lama dari masa Shopee/Tokopedia masih
+  // lewat scraper VPS. Label riwayatnya dipertahankan.
   if (platformKey === "shopee") {
-    return [
-      {
-        label: input.productName,
-        provider: "vps",
-      },
-    ];
+    return [{ label: input.productName, provider: "vps" }];
   }
 
-  if (usesNativeReviewScrape(platformKey)) {
+  if (platformKey === "tokopedia" || usesNativeReviewScrape(platformKey)) {
     return [
       {
         label: input.productName,
@@ -322,7 +296,7 @@ export async function brandReviewScrapeProvenance(input: {
   if (!job) return [];
 
   if (job.apifyRunId) {
-    return [{ label: input.productName, provider: "apify", isFallback: true }];
+    return [{ label: input.productName, provider: "apify" }];
   }
 
   // No apifyRunId on a completed brand job means VPS, native, or demo. The real
@@ -337,11 +311,15 @@ export async function brandReviewScrapeProvenance(input: {
     ];
   }
 
+  // Job selesai tanpa run Apify pada Shopee/Tokopedia = scrape lama lewat VPS.
   if (platformKey === "shopee" && isScraperApiConfigured()) {
     return [{ label: input.productName, provider: "vps" }];
   }
 
-  if (usesNativeReviewScrape(platformKey)) {
+  if (
+    (platformKey === "tokopedia" && isScraperApiConfigured()) ||
+    usesNativeReviewScrape(platformKey)
+  ) {
     return [{ label: input.productName, provider: "native" }];
   }
 

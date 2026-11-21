@@ -1,20 +1,8 @@
 import "server-only";
 
 import { ResearchMarketplace } from "@prisma/client";
-import {
-  buildSearchActorInput,
-  getSearchActorId,
-  isProductSearchConfigured,
-} from "@/lib/apify/actors";
-import {
-  fetchApifyDataset,
-  isApifyConfigured,
-  startApifyActor,
-  waitForApifyRun,
-} from "@/lib/apify/client";
-import { normalizeShopProducts } from "@/lib/apify/normalize";
-import { isScraperApiConfigured } from "@/lib/scraper-api/client";
-import { fetchShopeeSearchViaVps } from "@/lib/scraper-api/shopee-products";
+import { isProductSearchConfigured } from "@/lib/apify/actors";
+import { searchMarketplaceViaApify } from "@/lib/apify/marketplace-search";
 import {
   signalId,
   type NormalizedKeywordSignal,
@@ -42,44 +30,12 @@ async function fetchShopeeDensity(
     return null;
   }
 
-  if (isScraperApiConfigured()) {
-    try {
-      const products = await fetchShopeeSearchViaVps(keyword, 24);
-      const prices = products
-        .map((p) => p.price)
-        .filter((p): p is number => p != null && p > 0);
-      if (products.length > 0) {
-        return {
-          keyword,
-          listingSampleCount: products.length,
-          medianPrice: median(prices),
-        };
-      }
-    } catch (err) {
-      console.warn(
-        "[collect-marketplace-density/shopee/vps] gagal — fallback Apify",
-        keyword,
-        err,
-      );
-    }
-  }
-
-  if (!isApifyConfigured()) return null;
-
-  const actorId = getSearchActorId(ResearchMarketplace.SHOPEE);
-  if (!actorId) return null;
-
   try {
-    const input = buildSearchActorInput(ResearchMarketplace.SHOPEE, keyword, 24);
-    const { runId } = await startApifyActor(actorId, input);
-    const { status, datasetId } = await waitForApifyRun(runId, {
-      maxWaitMs: 120_000,
-      pollIntervalMs: 4_000,
-    });
-    if (status !== "SUCCEEDED") return null;
-
-    const items = await fetchApifyDataset(datasetId);
-    const products = normalizeShopProducts(items);
+    const products = await searchMarketplaceViaApify(
+      ResearchMarketplace.SHOPEE,
+      keyword,
+      24,
+    );
     const prices = products
       .map((p) => p.price)
       .filter((p): p is number => p != null && p > 0);

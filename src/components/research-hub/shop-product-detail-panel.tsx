@@ -41,7 +41,7 @@ export type ShopProductDetailData = {
   promoText: string | null;
   categoryRank: number | null;
   soldCount: number | null;
-  // Detail kaya (opsional) — terisi dari scraper VPS shopee-product.
+  // Detail kaya (opsional) — terisi bila actor detail produk menyediakannya.
   brand?: string | null;
   categoryName?: string | null;
   categoryPath?: string[] | null;

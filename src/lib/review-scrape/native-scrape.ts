@@ -6,15 +6,10 @@ import {
   fetchLazadaReviewsViaVps,
   fetchSociollaReviewsViaVps,
 } from "@/lib/scraper-api/community-reviews";
-import { fetchTokopediaReviewsViaVps } from "@/lib/scraper-api/tokopedia-reviews";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 
-const VPS_REVIEW_PLATFORMS = new Set([
-  "tokopedia",
-  "lazada",
-  "femaledaily",
-  "sociolla",
-]);
+/** Platform review yang di-scrape scraper VPS. Shopee/Tokopedia/TikTok Shop lewat Apify. */
+const VPS_REVIEW_PLATFORMS = new Set(["lazada", "femaledaily", "sociolla"]);
 
 export function usesVpsReviewScrape(platformKey: string): boolean {
   return VPS_REVIEW_PLATFORMS.has(platformKey) && isScraperApiConfigured();
@@ -48,15 +43,6 @@ export async function scrapeReviewsNative(
       if (result.reviews.length === 0) {
         throw new Error(
           "Tidak ada review ditemukan. Pastikan URL produk Sociolla valid dan produk memiliki review.",
-        );
-      }
-      return result;
-    }
-    case "tokopedia": {
-      const result = await fetchTokopediaReviewsViaVps(productUrl);
-      if (result.reviews.length === 0) {
-        throw new Error(
-          "Tidak ada review dari VPS scraper. Pastikan URL produk Tokopedia valid dan SCRAPER_API_URL benar.",
         );
       }
       return result;

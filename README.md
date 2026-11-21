@@ -108,7 +108,7 @@ The application is built on a single **Next.js 16 App Router** codebase backed b
 - **AI read APIs** — guarded `/api/ai/*` endpoints for summaries, research, finance, SEO, tasks, rooms and organization data.
 - **LLM Providers** — Kimi K3.1 Pro (`kimi-k3.1-pro:cloud`) via Ollama Cloud for all AI features (research tiers, vision, in-app AI Agent with tool calling); Gemini remains optional.
 - **Research Jobs & Cron** — scheduled sync endpoints for research, SEO and task workflows.
-- **Marketplace Data Pipeline** — custom VPS scraper API for Shopee/Tokopedia/Lazada-style data, with Apify fallback actors.
+- **Marketplace & Social Data Pipeline** — Apify actors for Shopee, Tokopedia, TikTok Shop, Instagram and TikTok; custom VPS scraper API for Lazada, Female Daily, Sociolla and Pinterest.
 - **MCP Server** — optional read-only MCP bridge for external AI/agent access.
 
 ---
@@ -273,11 +273,10 @@ Use `.env.example` as the source of truth for local setup. The most important gr
 
 | Variable | Description |
 |---|---|
-| `SCRAPER_API_URL` / `SCRAPER_API_KEY` | Internal VPS scraper API endpoint and key |
-| `SCRAPER_SHOPEE_DISCOVER_DETAILS` | Controls Shopee discovery hydration behavior |
-| `APIFY_API_TOKEN` | Apify API token for fallback scrapers |
-| `APIFY_ACTOR_TOKOPEDIA_*` | Tokopedia scraping actors |
-| `APIFY_ACTOR_TIKTOK_*` | TikTok Shop, trends and comments actors |
+| `SCRAPER_API_URL` / `SCRAPER_API_KEY` | Internal VPS scraper API endpoint and key — used only for Lazada, Female Daily, Sociolla and Pinterest |
+| `APIFY_API_TOKEN` | Apify API token — the primary scraper for Shopee, Tokopedia, TikTok Shop, Instagram and TikTok. All actors below have in-code defaults |
+| `APIFY_ACTOR_TOKOPEDIA_*` | Tokopedia actors: `_SEARCH`, `_SHOP`, `_PRODUCT`, `_REVIEWS` (all default to memo23~tokopedia-scraper) |
+| `APIFY_ACTOR_TIKTOK_*` | TikTok Shop (`_SEARCH`, `_SHOP`, `_REVIEWS`, default kulqiz~tiktok-shop-scraper), trends and comments actors |
 | `APIFY_ACTOR_SHOPEE_*` | Shopee actors: `_SEARCH` (xtracto~shopee-search), `_SHOP` (xtracto~shopee-shop-scraper), `_PRODUCT` (xtracto~shopee-scraper), `_REVIEWS` (dami_studio~shopee-shop-reviews-scraper), `_AUTOCOMPLETE` (xtracto~shopee-search-hint) |
 | `APIFY_ACTOR_INSTAGRAM` | Instagram scraping actor |
 | `APIFY_ACTOR_PINTEREST` | Pinterest scraping actor |
@@ -325,7 +324,7 @@ DCC/
 │       ├── brand-research/    # Brand Hub research, strategy and visual intelligence
 │       ├── content-studio/    # Content ideation and grounding logic
 │       ├── research/          # Research Hub jobs, analysis, evidence and scoring
-│       ├── scraper-api/       # Custom marketplace scraper API integration
+│       ├── scraper-api/       # Custom VPS scraper API (Lazada, Female Daily, Sociolla, Pinterest)
 │       └── seo/               # SEO Toolkit logic: content, crawler, rank, backlinks, DataForSEO
 ├── mcp-server/                # Read-only MCP bridge package
 ├── prisma/                    # Prisma schema, seed and SQL/TS migration helper scripts
