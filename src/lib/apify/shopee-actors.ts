@@ -68,18 +68,25 @@ export function shopeeCountryFromUrl(url: string): string {
   return "ID";
 }
 
-/** xtracto/shopee-search — `{mode:"keyword"}`. */
+/**
+ * xtracto/shopee-search — `{mode:"keyword"}`.
+ *
+ * `fetchDetail` membuka halaman tiap produk (deskripsi, brand, atribut, varian,
+ * galeri, kategori) dan menambah ±8–12 detik per produk, jadi hanya dinyalakan
+ * oleh pemanggil yang memakai alur start + poll (Product Discovery).
+ */
 export function buildShopeeSearchInput(
   keyword: string,
   productLimit: number,
-  country = "id",
+  opts: { country?: string; fetchDetail?: boolean } = {},
 ): Record<string, unknown> {
   return {
     mode: "keyword",
     keyword: keyword.trim(),
-    country: country.toLowerCase(),
+    country: (opts.country ?? "id").toLowerCase(),
     sort: "relevancy",
     maxProducts: Math.min(Math.max(Math.round(productLimit), 1), 500),
+    ...(opts.fetchDetail ? { fetchDetail: true } : {}),
   };
 }
 

@@ -154,13 +154,16 @@ export function buildSearchActorInput(
   marketplace: ResearchMarketplace,
   keyword: string,
   productLimit: number,
+  opts: { fetchDetail?: boolean } = {},
 ): Record<string, unknown> {
   const actorId = getSearchActorId(marketplace);
   const limit = Math.min(Math.max(productLimit, 1), 500);
 
   switch (marketplace) {
     case ResearchMarketplace.SHOPEE:
-      return buildShopeeSearchInput(keyword, limit);
+      return buildShopeeSearchInput(keyword, limit, {
+        fetchDetail: opts.fetchDetail,
+      });
     case ResearchMarketplace.TOKOPEDIA:
       return buildTokopediaSearchInput(keyword, limit);
     case ResearchMarketplace.TIKTOK_SHOP:

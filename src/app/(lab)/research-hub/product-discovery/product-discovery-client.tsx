@@ -212,7 +212,8 @@ export function ProductDiscoveryClient({
       {hasInProgress ? (
         <p className="rh-meta" aria-live="polite">
           Ada pencarian yang masih mengambil produk. Halaman ini diperbarui
-          otomatis setiap beberapa detik.
+          otomatis setiap beberapa detik. Shopee membuka halaman tiap produk
+          untuk mengambil detailnya, sekitar 10 detik per produk.
         </p>
       ) : null}
 

@@ -6,6 +6,12 @@ import {
   type ShopProductDetailData,
 } from "@/components/research-hub/shop-product-detail-panel";
 import { mapDiscoveryProductToRow } from "@/lib/research/shop-product-mappers";
+import {
+  parseShopProductAttributes,
+  parseShopProductModels,
+  parseShopProductRatingDistribution,
+  parseShopProductVariations,
+} from "@/lib/research/shop-product-detail-parse";
 
 export default async function ProductDiscoveryProductDetailPage({
   params,
@@ -43,6 +49,20 @@ export default async function ProductDiscoveryProductDetailPage({
     monthlySold: row.monthlySold,
     estimatedRevenue: row.estimatedRevenue,
     stock: row.stock,
+    // Detail halaman produk — terisi bila scraper membuka halaman produknya.
+    imageUrls: product.imageUrls,
+    priceMin: product.priceMin,
+    priceMax: product.priceMax,
+    brand: product.brand,
+    categoryName: product.categoryName,
+    categoryPath: product.categoryPath,
+    description: product.description,
+    attributes: parseShopProductAttributes(product.attributes),
+    variations: parseShopProductVariations(product.variations),
+    models: parseShopProductModels(product.models),
+    ratingDistribution: parseShopProductRatingDistribution(
+      product.ratingDistribution,
+    ),
   };
 
   return (

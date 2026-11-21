@@ -16,6 +16,31 @@ export function isShopeeProductUrl(url: string): boolean {
   return /-i\.\d+\.\d+/i.test(url) || /\/product\/\d+/i.test(url);
 }
 
+function shopeeRowId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return value.trim();
+  return null;
+}
+
+/**
+ * Baris detail xtracto (`fetchDetail: true`) tidak membawa `url` — hanya
+ * `shop_id` + `item_id`. Tanpa URL, normalizer membuang barisnya, jadi URL
+ * kanonik `…-i.{shopId}.{itemId}` dibangun dari ID. Baris yang sudah punya URL
+ * dibiarkan apa adanya.
+ */
+export function withShopeeProductUrls(
+  items: Record<string, unknown>[],
+  host = "shopee.co.id",
+): Record<string, unknown>[] {
+  return items.map((item) => {
+    if (typeof item.url === "string" && item.url.trim()) return item;
+    const shopId = shopeeRowId(item.shop_id);
+    const itemId = shopeeRowId(item.item_id);
+    if (!shopId || !itemId) return item;
+    return { ...item, url: `https://${host}/product-i.${shopId}.${itemId}` };
+  });
+}
+
 /**
  * Convert a Shopee `/product/{shopId}/{itemId}` URL (the format the Browser Scraper
  * returns in search/shop results) into the canonical `…-i.{shopId}.{itemId}` form that

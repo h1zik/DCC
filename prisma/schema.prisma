@@ -3070,6 +3070,22 @@ model ProductDiscoveryItem {
   hasPromo         Boolean               @default(false)
   promoText        String?
   categoryRank     Int?
+  /**
+   * Detail halaman produk (Shopee `fetchDetail`). Kosong bila scraper hanya
+   * mengembalikan kartu listing.
+   */
+  brand              String?
+  description        String?  @db.Text
+  categoryName       String?
+  categoryPath       String[] @default([])
+  currency           String?
+  imageUrls          String[] @default([])
+  priceMin           Float?
+  priceMax           Float?
+  attributes         Json?
+  variations         Json?
+  models             Json?
+  ratingDistribution Json?
 
   @@unique([queryId, marketplace, externalId])
   @@index([queryId])
