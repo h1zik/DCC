@@ -29,6 +29,7 @@ import {
   normalizeShopProducts,
   type NormalizedShopProduct,
 } from "@/lib/apify/normalize";
+import { withShopeeProductUrls } from "@/lib/apify/shopee-url";
 import { filterShopProductsByKeyword } from "@/lib/apify/tiktok-kulqiz";
 import { isScraperApiConfigured } from "@/lib/scraper-api/client";
 import { fetchLazadaSearchViaVps } from "@/lib/scraper-api/lazada-products";
@@ -102,6 +103,11 @@ export async function enqueueProductDiscoveryScrape(
   });
 }
 
+/** Kolom JSON dibiarkan NULL (bukan `[]`) bila scraper tidak memberi isinya. */
+function jsonOrUndefined(value: unknown[] | undefined): Prisma.InputJsonValue | undefined {
+  return value && value.length > 0 ? (value as Prisma.InputJsonValue) : undefined;
+}
+
 export async function ingestDiscoveryProductsBatch(
   queryId: string,
   products: DiscoveryProductInput[],
@@ -131,6 +137,21 @@ export async function ingestDiscoveryProductsBatch(
       promoText: p.promoText,
       categoryRank: p.categoryRank,
       imageUrl: p.imageUrl,
+      // Detail halaman produk — hanya terisi bila scraper menyediakannya.
+      brand: p.brand ?? null,
+      description: p.description ?? null,
+      categoryName: p.category ?? null,
+      categoryPath: p.categoryPath ?? [],
+      currency: p.currency ?? null,
+      imageUrls: p.imageUrls ?? [],
+      priceMin: p.priceMin ?? null,
+      priceMax: p.priceMax ?? null,
+      attributes: jsonOrUndefined(p.attributes),
+      variations: jsonOrUndefined(p.variations),
+      models: jsonOrUndefined(p.models),
+      ratingDistribution: p.ratingDistribution
+        ? (p.ratingDistribution as Prisma.InputJsonValue)
+        : undefined,
     })),
     skipDuplicates: true,
   });
@@ -417,7 +438,11 @@ export async function startNextMarketplaceRun(jobId: string): Promise<void> {
             remaining,
             state.tiktokKulqizExpandSubcategories === true,
           )
-        : buildSearchActorInput(mp, query.keyword, remaining);
+        : // Shopee: buka halaman tiap produk supaya deskripsi, brand, atribut,
+          // varian, dan galeri ikut tersimpan (±8–12 detik per produk).
+          buildSearchActorInput(mp, query.keyword, remaining, {
+            fetchDetail: true,
+          });
 
     const { runId } = await startApifyActor(actorId, actorInput);
 
@@ -465,9 +490,19 @@ export async function pollProductDiscoveryJob(jobId: string): Promise<void> {
   const { status, datasetId } = await getApifyRunStatus(job.apifyRunId);
   if (status === "RUNNING" || status === "READY") return;
 
-  if (status === "SUCCEEDED" && mp) {
+  // Run detail Shopee bisa kena batas waktu actor pada limit besar; produk yang
+  // sudah terkumpul di dataset tetap dipakai daripada dibuang seluruhnya.
+  const timedOutShopee =
+    status === "TIMED-OUT" && mp === ResearchMarketplace.SHOPEE;
+
+  if ((status === "SUCCEEDED" || timedOutShopee) && mp) {
     try {
-      const items = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+      const rawItems = await fetchApifyDataset<Record<string, unknown>>(datasetId);
+      // Baris detail Shopee tidak membawa `url` — bangun dari shop_id + item_id.
+      const items =
+        mp === ResearchMarketplace.SHOPEE
+          ? withShopeeProductUrls(rawItems)
+          : rawItems;
       const datasetError = extractDatasetScrapeErrors(items);
       const currentCount = await prisma.productDiscoveryItem.count({
         where: { queryId: query.id },
@@ -514,6 +549,11 @@ export async function pollProductDiscoveryJob(jobId: string): Promise<void> {
       } else {
         await ingestDiscoveryProductsBatch(query.id, products);
         recordDiscoverySource(state, mp, "apify");
+        if (timedOutShopee) {
+          state.warnings.push(
+            `${mp}: run melewati batas waktu — ${products.length} produk yang sudah terkumpul tetap disimpan.`,
+          );
+        }
         if (
           mp === ResearchMarketplace.TIKTOK_SHOP &&
           products.length < remaining &&

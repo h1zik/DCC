@@ -14,6 +14,7 @@ import {
   normalizeShopProducts,
   normalizeShopeeShopReviews,
 } from "@/lib/apify/normalize";
+import { withShopeeProductUrls } from "@/lib/apify/shopee-url";
 
 const originalEnv = { ...process.env };
 afterEach(() => {
@@ -43,6 +44,20 @@ describe("shopee actor inputs", () => {
       sort: "relevancy",
       maxProducts: 500,
     });
+  });
+
+  it("search adds fetchDetail only when asked", () => {
+    expect(buildShopeeSearchInput("serum", 20, { fetchDetail: true })).toEqual({
+      mode: "keyword",
+      keyword: "serum",
+      country: "id",
+      sort: "relevancy",
+      maxProducts: 20,
+      fetchDetail: true,
+    });
+    expect(buildShopeeSearchInput("serum", 20, { fetchDetail: false })).not.toHaveProperty(
+      "fetchDetail",
+    );
   });
 
   it("shop strips query string and detects country", () => {
@@ -123,6 +138,95 @@ describe("xtracto product rows", () => {
       reviewCount: 80,
       shopName: "Toko B",
     });
+  });
+
+  // Bentuk baris `fetchDetail: true` (mode keyword): tanpa `url`, judul di `title`.
+  const detailRow = {
+    shop_id: 250649369,
+    item_id: 10547676232,
+    title: "Serum Niacinamide 30ml",
+    currency: "IDR",
+    description: "Serum pencerah untuk semua jenis kulit.",
+    brand: "GlowLab",
+    price: 89000,
+    price_min: 89000,
+    price_max: 159000,
+    discount_pct: 20,
+    rating_star: 4.9,
+    rating_count: [120, 1, 0, 4, 15, 100],
+    sold: 3400,
+    images: ["https://img/a.jpg", "https://img/b.jpg"],
+    attributes: [
+      { name: "Volume", value: "30ml" },
+      { name: "Jenis Kulit", value: "Semua" },
+    ],
+    tier_variations: [{ name: "Ukuran", options: ["30ml", "50ml"] }],
+    models: [
+      { model_id: 1, name: "30ml", price: null, stock: null, has_stock: true },
+      { model_id: 2, name: "50ml", price: null, stock: null, has_stock: true },
+    ],
+    categories: [
+      { catid: 1, name: "Perawatan & Kecantikan" },
+      { catid: 2, name: "Serum Wajah" },
+    ],
+    shop: { name: "GlowLab Official", location: "KOTA BANDUNG", is_official_shop: true },
+  };
+
+  it("drops fetchDetail rows that lack a url until one is built from ids", () => {
+    expect(normalizeShopProducts([detailRow])).toHaveLength(0);
+    const [patched] = withShopeeProductUrls([detailRow]);
+    expect(patched!.url).toBe("https://shopee.co.id/product-i.250649369.10547676232");
+    expect(normalizeShopProducts([patched!])).toHaveLength(1);
+  });
+
+  it("keeps an existing url untouched", () => {
+    const row = { shop_id: 1, item_id: 2, url: "https://shopee.co.id/Serum-i.1.2" };
+    expect(withShopeeProductUrls([row])[0]).toBe(row);
+  });
+
+  it("maps full fetchDetail rows incl. sold count and rich detail", () => {
+    const [p] = normalizeShopProducts(withShopeeProductUrls([detailRow]));
+    expect(p).toMatchObject({
+      externalId: "10547676232",
+      name: "Serum Niacinamide 30ml",
+      imageUrl: "https://img/a.jpg",
+      imageUrls: ["https://img/a.jpg", "https://img/b.jpg"],
+      price: 89000,
+      priceMin: 89000,
+      priceMax: 159000,
+      rating: 4.9,
+      reviewCount: 120,
+      hasPromo: true,
+      soldCount: 3400,
+      exactSold: 3400,
+      historicalSold: 3400,
+      shopName: "GlowLab Official",
+      shopLocation: "KOTA BANDUNG",
+      isOfficialShop: true,
+      description: "Serum pencerah untuk semua jenis kulit.",
+      brand: "GlowLab",
+      category: "Serum Wajah",
+      categoryPath: ["Perawatan & Kecantikan", "Serum Wajah"],
+      currency: "IDR",
+      attributes: [
+        { name: "Volume", value: "30ml" },
+        { name: "Jenis Kulit", value: "Semua" },
+      ],
+      variations: [{ name: "Ukuran", options: ["30ml", "50ml"] }],
+      ratingDistribution: { "1": 1, "2": 0, "3": 4, "4": 15, "5": 100 },
+    });
+    expect(p!.models).toEqual([
+      { modelId: "1", name: "30ml", price: null, priceBeforeDiscount: null, stock: null, sold: null },
+      { modelId: "2", name: "50ml", price: null, priceBeforeDiscount: null, stock: null, sold: null },
+    ]);
+  });
+
+  it("leaves sold null when Shopee hides it, without inventing a number", () => {
+    const [p] = normalizeShopProducts(
+      withShopeeProductUrls([{ ...detailRow, sold: null }]),
+    );
+    expect(p).toMatchObject({ soldCount: null, exactSold: null, historicalSold: null });
+    expect(p!.estimatedRevenue).toBeNull();
   });
 });
 

@@ -37,6 +37,22 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    id: "2026-11-21-product-discovery-detail-shopee",
+    date: "2026-11-21",
+    title: "Product Discovery Shopee kini mengambil detail lengkap tiap produk",
+    category: "improved",
+    description:
+      "Pencarian Shopee di Product Discovery sekarang membuka halaman tiap produk, jadi detailnya ikut tersimpan dan tampil di halaman detail produk. Karena itu pencarian Shopee berjalan lebih lama dari sebelumnya.",
+    highlights: [
+      "Deskripsi, brand, jalur kategori, spesifikasi, varian, dan galeri gambar tampil di halaman detail produk",
+      "Rentang harga antar varian dan sebaran rating ditampilkan bila tersedia",
+      "Waktu pencarian sekitar 10 detik per produk: 50 produk kurang lebih 8 menit",
+      "Pencarian yang terhenti karena batas waktu tetap menyimpan produk yang sudah terkumpul",
+      "Angka terjual tetap dihitung bila Shopee menampilkannya; bila tidak, kolomnya kosong",
+      "Hasil pencarian lama tidak berubah; jalankan ulang untuk mendapat detailnya",
+    ],
+  },
+  {
     id: "2026-11-21-riset-langsung-apify",
     date: "2026-11-21",
     title: "Riset Shopee, Tokopedia, TikTok Shop, Instagram, dan TikTok kini langsung lewat Apify",

@@ -33,6 +33,9 @@ export type NormalizedShopProduct = {
   /** Galeri gambar produk; kosong jika scraper tidak menyediakannya. */
   imageUrls?: string[];
   price: number | null;
+  /** Rentang harga antar varian (detail Shopee); harga per varian disembunyikan. */
+  priceMin?: number | null;
+  priceMax?: number | null;
   rating: number | null;
   reviewCount: number;
   hasPromo: boolean;
@@ -91,6 +94,17 @@ function pickId(obj: Record<string, unknown>, keys: string[]): string | null {
   return null;
 }
 
+/** Objek `shop` bersarang dari detail xtracto ({ name, location, is_official_shop }). */
+function pickShopObject(
+  item: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const shop = item.shop;
+  if (shop && typeof shop === "object" && !Array.isArray(shop)) {
+    return shop as Record<string, unknown>;
+  }
+  return null;
+}
+
 /** Nama toko: field datar atau objek `shop` ({ name } dari detail xtracto). */
 function pickShopName(item: Record<string, unknown>): string | null {
   const flat = pickString(item, [
@@ -103,11 +117,8 @@ function pickShopName(item: Record<string, unknown>): string | null {
     "storeName",
   ]);
   if (flat) return flat;
-  const shop = item.shop;
-  if (shop && typeof shop === "object" && !Array.isArray(shop)) {
-    return pickString(shop as Record<string, unknown>, ["name", "shop_name", "username"]);
-  }
-  return null;
+  const shop = pickShopObject(item);
+  return shop ? pickString(shop, ["name", "shop_name", "username"]) : null;
 }
 
 function pickImageUrl(obj: Record<string, unknown>): string | null {
@@ -179,6 +190,10 @@ function pickShopeePrice(item: Record<string, unknown>): number | null {
     return null;
   }
 
+  return scaleShopeePrice(raw);
+}
+
+function scaleShopeePrice(raw: number): number {
   if (raw >= 1_000_000_000) return Math.round(raw / 100_000);
   return raw;
 }
@@ -586,9 +601,79 @@ function pickStringList(value: unknown): string[] {
   return value.filter((v): v is string => typeof v === "string" && !!v.trim());
 }
 
+/** Pilihan varian `[{ name, options: [...] }]` (Shopee `tier_variations`). */
+function pickVariations(value: unknown): ProductVariation[] {
+  if (!Array.isArray(value)) return [];
+  const out: ProductVariation[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const name = pickString(row, ["name"]);
+    const options = pickStringList(row.options).map((o) => o.trim());
+    if (name && options.length > 0) out.push({ name, options });
+  }
+  return out;
+}
+
+/** Varian konkret `[{ model_id, name, price, stock }]` (Shopee `models`). */
+function pickModels(value: unknown): ProductModel[] {
+  if (!Array.isArray(value)) return [];
+  const out: ProductModel[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const modelId = pickId(row, ["model_id", "modelId", "id"]);
+    const name = pickString(row, ["name"]);
+    if (!modelId && !name) continue;
+    const price = pickNumber(row, ["price"]);
+    const before = pickNumber(row, ["price_before_discount", "priceBeforeDiscount"]);
+    out.push({
+      modelId,
+      name,
+      price: price != null ? scaleShopeePrice(price) : null,
+      priceBeforeDiscount: before != null ? scaleShopeePrice(before) : null,
+      stock: pickNumber(row, ["stock"]),
+      sold: pickNumber(row, ["sold"]),
+    });
+  }
+  return out;
+}
+
+/** Nama kategori berurutan dari `categories` / `breadcrumb` (`[{ name }]`). */
+function pickCategoryPath(item: Record<string, unknown>): string[] {
+  const names = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return [];
+    const out: string[] = [];
+    for (const entry of value) {
+      const name =
+        typeof entry === "string"
+          ? entry.trim()
+          : entry && typeof entry === "object"
+            ? pickString(entry as Record<string, unknown>, ["name"])
+            : null;
+      if (name) out.push(name);
+    }
+    return out;
+  };
+  const fromCategories = names(item.categories);
+  if (fromCategories.length > 0) return fromCategories;
+  // Breadcrumb diawali nama marketplace ("Shopee") — bukan kategori.
+  return names(item.breadcrumb).filter((n) => n.toLowerCase() !== "shopee");
+}
+
+/** Shopee `rating_count` = `[total, 1★, 2★, 3★, 4★, 5★]`. */
+function pickShopeeRatingHistogram(value: unknown): Record<string, number> | null {
+  if (!Array.isArray(value) || value.length !== 6) return null;
+  if (!value.every((v) => typeof v === "number" && Number.isFinite(v))) return null;
+  const counts = value as number[];
+  if (!counts.slice(1).some((n) => n > 0)) return null;
+  return { "1": counts[1]!, "2": counts[2]!, "3": counts[3]!, "4": counts[4]!, "5": counts[5]! };
+}
+
 /**
- * Detail kaya yang hanya ada bila actor membuka halaman produk (mis. Tokopedia
- * `scrapeDetails`). Field yang tidak tersedia dibiarkan tidak terisi.
+ * Detail kaya yang hanya ada bila actor membuka halaman produk (Tokopedia
+ * `scrapeDetails`, Shopee xtracto `fetchDetail`). Field yang tidak tersedia
+ * dibiarkan tidak terisi.
  */
 function pickRichProductDetail(
   item: Record<string, unknown>,
@@ -599,15 +684,28 @@ function pickRichProductDetail(
   if (description) detail.description = description;
   const brand = pickString(item, ["brand"]);
   if (brand) detail.brand = brand;
-  const category = pickString(item, ["categoryName"]);
+  const categoryPath = pickCategoryPath(item);
+  if (categoryPath.length > 0) detail.categoryPath = categoryPath;
+  const category = pickString(item, ["categoryName"]) ?? categoryPath.at(-1) ?? null;
   if (category) detail.category = category;
   const currency = pickString(item, ["currency"]);
   if (currency) detail.currency = currency;
 
-  const attributes = pickAttributes(item.specifications);
+  const specifications = pickAttributes(item.specifications);
+  const attributes =
+    specifications.length > 0 ? specifications : pickAttributes(item.attributes);
   if (attributes.length > 0) detail.attributes = attributes;
+  const variations = pickVariations(item.tier_variations);
+  if (variations.length > 0) detail.variations = variations;
+  const models = pickModels(item.models);
+  if (models.length > 0) detail.models = models;
   const imageUrls = pickStringList(item.images);
   if (imageUrls.length > 0) detail.imageUrls = imageUrls;
+
+  const priceMin = pickNumber(item, ["price_min", "priceMin"]);
+  if (priceMin != null) detail.priceMin = scaleShopeePrice(priceMin);
+  const priceMax = pickNumber(item, ["price_max", "priceMax"]);
+  if (priceMax != null) detail.priceMax = scaleShopeePrice(priceMax);
 
   const breakdown = item.ratingBreakdown;
   if (breakdown && typeof breakdown === "object" && !Array.isArray(breakdown)) {
@@ -620,6 +718,9 @@ function pickRichProductDetail(
     if (Object.keys(distribution).length > 0) {
       detail.ratingDistribution = distribution;
     }
+  } else {
+    const histogram = pickShopeeRatingHistogram(item.rating_count);
+    if (histogram) detail.ratingDistribution = histogram;
   }
 
   return detail;
@@ -681,6 +782,8 @@ export function normalizeShopProducts(
       "soldCount",
       "sold_count",
     ]);
+    // Detail xtracto menaruh lokasi & status official di objek `shop`.
+    const shop = pickShopObject(item);
 
     out.push({
       externalId,
@@ -706,8 +809,9 @@ export function normalizeShopProducts(
       monthlySold: metrics.monthlySold,
       estimatedRevenue: metrics.estimatedRevenue,
       stock: metrics.stock,
-      shopLocation: metrics.shopLocation,
-      isOfficialShop: metrics.isOfficialShop,
+      shopLocation:
+        metrics.shopLocation ?? (shop ? pickString(shop, ["location"]) : null),
+      isOfficialShop: metrics.isOfficialShop || shop?.is_official_shop === true,
       ...pickRichProductDetail(item),
     });
   }

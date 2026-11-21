@@ -35,6 +35,9 @@ export type ShopProductDetailData = {
   shopLocation: string | null;
   isOfficialShop: boolean;
   price: number | null;
+  /** Rentang harga antar varian; ditampilkan bila min dan max berbeda. */
+  priceMin?: number | null;
+  priceMax?: number | null;
   rating: number | null;
   reviewCount: number;
   hasPromo: boolean;
@@ -177,6 +180,13 @@ export function ShopProductDetailPanel({
               <p className="mt-0.5 text-lg font-extrabold tabular-nums tracking-tight">
                 {product.price != null ? formatRp(product.price) : "—"}
               </p>
+              {product.priceMin != null &&
+              product.priceMax != null &&
+              product.priceMax > product.priceMin ? (
+                <p className="text-muted-foreground mt-0.5 text-xs tabular-nums">
+                  Varian {formatRp(product.priceMin)} – {formatRp(product.priceMax)}
+                </p>
+              ) : null}
             </div>
             <div className={hub.nestedPanel}>
               <p className="text-muted-foreground text-xs font-semibold">
